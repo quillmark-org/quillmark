@@ -71,7 +71,7 @@ quill:
 
 ## `main` Section
 
-The main document card holds **frontmatter field schemas** under `main.fields`. Optional `main.title` and `main.description` describe the schema itself (independent of `quill.description`, which describes the quill package). Optional `main.ui` sets container-level UI for that card (for example `hide_body`). `quill.ui` is merged with `main.ui` when building the main card.
+The main document card holds **frontmatter field schemas** under `main.fields`. Optional `main.description` describes the schema itself (independent of `quill.description`, which describes the quill package). Optional `main.ui` sets container-level UI for that card (for example `hide_body`). `quill.ui` is merged with `main.ui` when building the main card.
 
 Field order under `main.fields` determines display order in UIs — the first field gets `order: 0`, the second gets `order: 1`, and so on.
 
@@ -81,7 +81,6 @@ Field keys must be `snake_case` (`^[a-z][a-z0-9_]*$`). Capitalized field keys ar
 main:
   fields:
     subject:          # Field name (used as the YAML frontmatter key)
-      title: Subject of the memo
       type: string
       required: true
       description: Be brief and clear.
@@ -92,7 +91,6 @@ main:
 | Property      | Type              | Required | Description |
 |---------------|-------------------|----------|-------------|
 | `type`        | string            | yes      | Data type (see [Field Types](#field-types)) |
-| `title`       | string            | no       | Short label shown in UIs |
 | `description` | string            | no       | Detailed help text |
 | `default`     | any               | no       | Default value when not provided |
 | `examples`    | array             | no       | Example values for documentation and LLMs |
@@ -257,14 +255,13 @@ main:
 
 ## `card_types` Section
 
-`card_types` define composable, repeatable content blocks (the *types* — a document can then carry zero or more *instances* of each type, interleaved with body content). Each entry is shaped exactly like `main:` (`fields`, optional `title`, `description`, `ui`); think of `main:` as the single mandatory card-type for the document body, and `card_types:` as the library of additional types that may attach to it.
+`card_types` define composable, repeatable content blocks (the *types* — a document can then carry zero or more *instances* of each type, interleaved with body content). Each entry is shaped exactly like `main:` (`fields`, optional `description`, `ui`); think of `main:` as the single mandatory card-type for the document body, and `card_types:` as the library of additional types that may attach to it.
 
 Card-type names (the keys under `card_types`) must match `[a-z_][a-z0-9_]*` (leading underscore is allowed).
 
 ```yaml
 card_types:
   indorsement:                    # Card-type name
-    title: Routing indorsement    # Display label
     description: Chain of routing endorsements.
     fields:
       from:
@@ -287,7 +284,6 @@ Invalid card-type names include:
 
 | Property      | Type   | Required | Description |
 |---------------|--------|----------|-------------|
-| `title`       | string | no       | Display label for the card type |
 | `description` | string | no       | Help text describing the card's purpose |
 | `fields`      | object | no       | Field schemas (same structure as top-level fields) |
 | `ui`          | object | no       | Container-level UI hints |
@@ -304,7 +300,6 @@ Invalid card-type names include:
 ```yaml
 card_types:
   metadata_block:
-    title: Metadata
     ui:
       hide_body: true    # Card has fields only, no body/content editor
     fields:
@@ -319,16 +314,14 @@ A template string that UI consumers interpolate with field values to produce a h
 ```yaml
 card_types:
   entry:
-    title: Card Title
     ui:
       default_title: "{name}"
     fields:
       name:
         type: string
-        title: Name
 ```
 
-With the above, a UI rendering a list of `entry` cards can title each instance (e.g. `"Project Alpha"`) instead of falling back to a generic `"Card Title (2)"`.
+With the above, a UI rendering a list of `entry` cards can title each instance (e.g. `"Project Alpha"`) instead of falling back to a generic `"Card (2)"`.
 
 **Interpolation rules (for UI consumers):**
 - `{field_name}` is replaced with the current value of that field.
@@ -411,14 +404,12 @@ quill:
 main:
   fields:
     project_name:
-      title: Project name
       type: string
       required: true
       ui:
         group: Header
 
     status:
-      title: Overall status
       type: string
       required: true
       enum: [on_track, at_risk, blocked]
@@ -426,20 +417,17 @@ main:
         group: Header
 
     risk_description:
-      title: Risk description
       type: string
       ui:
         group: Header
       description: Describe the risk or blocker. Only needed when status is not on_track.
 
     date:
-      title: Report date
       type: date
       ui:
         group: Header
 
     team_members:
-      title: Team members
       type: array
       items:
         type: string
@@ -447,7 +435,6 @@ main:
         group: Team
 
     budget:
-      title: Budget amount
       type: number
       default: 0
       ui:
@@ -455,7 +442,6 @@ main:
 
 card_types:
   milestone:
-    title: Milestone
     description: A project milestone with target date and status.
     fields:
       name:

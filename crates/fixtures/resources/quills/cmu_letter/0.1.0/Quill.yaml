@@ -9,7 +9,6 @@ quill:
 main:
   fields:
     recipient:
-      title: Recipient's name and address
       type: array
       example:
         - Mr. John Doe
@@ -20,7 +19,6 @@ main:
       description: The recipient's name and full mailing address.
 
     signature_block:
-      title: Signature block lines
       type: array
       example:
         - First M. Last
@@ -30,7 +28,6 @@ main:
       description: "The signer's information. Line 1: Name. Line 2: Title."
 
     department:
-      title: Name of the department or unit
       type: string
       example: Department of Electrical and Computer Engineering
       ui:
@@ -38,7 +35,6 @@ main:
       description: The department or organizational unit name for the letterhead.
 
     address:
-      title: Sender's address lines
       type: array
       example:
         - 5000 Forbes Avenue
@@ -48,7 +44,6 @@ main:
       description: The sender's institutional mailing address.
 
     url:
-      title: Department or university URL
       type: string
       example: www.ece.cmu.edu
       ui:
@@ -56,7 +51,6 @@ main:
       description: The department or university website URL.
 
     date:
-      title: Date of the letter
       type: date
       ui:
         group: Advanced

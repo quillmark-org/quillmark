@@ -47,10 +47,7 @@ impl QuillConfig {
             out.push_str("\n<body>\n");
         }
         for card in &self.card_types {
-            let sentinel = match &card.title {
-                Some(t) => format!("CARD: {}  # {}", card.name, t),
-                None => format!("CARD: {}", card.name),
-            };
+            let sentinel = format!("CARD: {}", card.name);
             out.push('\n');
             write_card_frontmatter(&mut out, card, &sentinel, card.description.as_deref());
             let hide = card.ui.as_ref().and_then(|u| u.hide_body).unwrap_or(false);
@@ -128,7 +125,7 @@ fn field_value(field: &FieldSchema) -> FieldValue {
         if let Some(v) = field.example.as_ref().or(field.default.as_ref()) {
             return json_to_value(v.as_json(), &field.r#type);
         }
-        required_placeholder(&field.r#type, field.title.as_deref().unwrap_or(&field.name))
+        required_placeholder(&field.r#type, &field.name)
     } else {
         // Optional: default only (example goes to e.g. comment).
         if let Some(v) = field.default.as_ref() {
@@ -286,10 +283,10 @@ mod tests {
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
-    author: { type: string, title: Author, required: true }
+    author: { type: string, required: true }
 "#)
         .template();
-        assert!(t.contains("# required\nauthor: \"<Author>\"\n"));
+        assert!(t.contains("# required\nauthor: \"<author>\"\n"));
     }
 
     #[test]
@@ -403,14 +400,13 @@ main:
     title: { type: string }
 card_types:
   note:
-    title: Note
     description: A short note appended to the document.
     fields:
       author: { type: string }
 "#)
         .template();
         assert!(t.contains(
-            "# A short note appended to the document.\nCARD: note  # Note\n"
+            "# A short note appended to the document.\nCARD: note\n"
         ));
     }
 

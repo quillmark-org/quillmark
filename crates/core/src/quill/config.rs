@@ -52,7 +52,6 @@ pub struct QuillConfig {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CardSchemaDef {
-    pub title: Option<String>,
     pub description: Option<String>,
     pub fields: Option<serde_json::Map<String, serde_json::Value>>,
     pub ui: Option<UiContainerSchema>,
@@ -777,13 +776,6 @@ impl QuillConfig {
             .cloned()
             .and_then(|v| serde_json::from_value(v).ok());
 
-        // Extract main.title (optional, authored under `main:` like any other card type).
-        let main_title = main_obj_opt
-            .and_then(|main_obj| main_obj.get("title"))
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .or_else(|| Some("main".to_string()));
-
         // Extract main.description (optional, authored under `main:` like any
         // other card type). This is independent of `quill.description`.
         let main_description = main_obj_opt
@@ -794,7 +786,6 @@ impl QuillConfig {
         // The main entry-point card.
         let main = CardSchema {
             name: "main".to_string(),
-            title: main_title,
             description: main_description,
             fields,
             ui: main_ui.or(ui_section),
@@ -840,7 +831,6 @@ impl QuillConfig {
 
                 let card_schema = CardSchema {
                     name: card_name.clone(),
-                    title: card_def.title,
                     description: card_def.description,
                     fields: card_fields,
                     ui: card_def.ui,

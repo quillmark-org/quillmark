@@ -31,7 +31,6 @@ export interface QuillCardUi {
 /** Schema entry for a single field declared in a quill's `Quill.yaml`. */
 export interface QuillFieldSchema {
     type: "string" | "number" | "integer" | "boolean" | "array" | "object" | "date" | "datetime" | "markdown";
-    title?: string;
     description?: string;
     default?: unknown;
     example?: unknown;
@@ -44,7 +43,6 @@ export interface QuillFieldSchema {
 
 /** Schema entry for the main card or a named card type. */
 export interface QuillCardSchema {
-    title?: string;
     description?: string;
     fields: Record<string, QuillFieldSchema>;
     ui?: QuillCardUi;

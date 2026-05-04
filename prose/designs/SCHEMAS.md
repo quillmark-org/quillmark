@@ -64,9 +64,9 @@ recursively stripping `ui` keys after serialisation.
 
 Top-level keys: `main`, optional `card_types` (map keyed by card name).
 `main` and each entry in `card_types` share the same `CardSchema` shape:
-`fields` (map keyed by field name), optional `title`, `description`, and —
+`fields` (map keyed by field name), optional `description`, and —
 in `form_schema()` only — `ui`. Each `FieldSchema` includes `type`,
-optional `title`/`description`/`default`/`examples`/`enum`/`properties`/
+optional `description`/`default`/`example`/`enum`/`properties`/
 `items`, optional `required` (omitted when false), and — in `form_schema()`
 only — optional `ui`.
 

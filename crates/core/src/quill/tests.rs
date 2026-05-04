@@ -1334,10 +1334,8 @@ main:
     assert_eq!(ui.order, Some(0)); // First field should have order 0
 }
 #[test]
-fn test_field_schema_with_title_and_description() {
-    // Test parsing field with new schema format (title + description, no tooltip)
+fn test_field_schema_with_description() {
     let yaml = r#"
-title: "Field Title"
 description: "Detailed field description"
 type: "string"
 example: "Example value"
@@ -1347,7 +1345,6 @@ ui:
     let quill_value = QuillValue::from_yaml_str(yaml).unwrap();
     let schema = FieldSchema::from_quill_value("test_field".to_string(), &quill_value).unwrap();
 
-    assert_eq!(schema.title, Some("Field Title".to_string()));
     assert_eq!(
         schema.description,
         Some("Detailed field description".to_string())
@@ -1367,7 +1364,6 @@ fn test_parse_card_field_type() {
     // Test that FieldSchema no longer supports type = "card" (cards are in CardSchema now)
     let yaml = r#"
 type: "string"
-title: "Simple Field"
 description: "A simple string field"
 "#;
     let quill_value = QuillValue::from_yaml_str(yaml).unwrap();
@@ -1375,7 +1371,6 @@ description: "A simple string field"
 
     assert_eq!(schema.name, "simple_field");
     assert_eq!(schema.r#type, FieldType::String);
-    assert_eq!(schema.title, Some("Simple Field".to_string()));
     assert_eq!(
         schema.description,
         Some("A simple string field".to_string())
@@ -1394,17 +1389,14 @@ quill:
 
 card_types:
   endorsements:
-    title: Endorsements
     description: Chain of endorsements
     fields:
       name:
         type: string
-        title: Endorser Name
         description: Name of the endorsing official
         required: true
       org:
         type: string
-        title: Organization
         description: Endorser's organization
         default: Unknown
 "#;
@@ -1416,7 +1408,6 @@ card_types:
     let card = config.card_type("endorsements").unwrap();
 
     assert_eq!(card.name, "endorsements");
-    assert_eq!(card.title, Some("Endorsements".to_string()));
     assert_eq!(card.description, Some("Chain of endorsements".to_string()));
 
     // Verify card fields
@@ -1424,7 +1415,6 @@ card_types:
 
     let name_field = card.fields.get("name").unwrap();
     assert_eq!(name_field.r#type, FieldType::String);
-    assert_eq!(name_field.title, Some("Endorser Name".to_string()));
     assert!(name_field.required);
 
     let org_field = card.fields.get("org").unwrap();
@@ -1478,11 +1468,9 @@ main:
 
 card_types:
   indorsements:
-    title: Routing Indorsements
     description: Chain of endorsements
     fields:
       name:
-        title: Name
         type: string
         description: Name field
 "#;
@@ -1497,7 +1485,6 @@ card_types:
     // Check card-type is in config.card_types (not config.main.fields)
     assert!(config.card_type("indorsements").is_some());
     let card = config.card_type("indorsements").unwrap();
-    assert_eq!(card.title, Some("Routing Indorsements".to_string()));
     assert_eq!(card.description, Some("Chain of endorsements".to_string()));
     assert!(card.fields.contains_key("name"));
 }

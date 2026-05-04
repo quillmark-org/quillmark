@@ -12,8 +12,6 @@ fn is_false(value: &bool) -> bool {
 /// Using constants provides IDE support (find references, autocomplete) and ensures
 /// consistency between parsing and output.
 pub mod field_key {
-    /// Short label for the field
-    pub const TITLE: &str = "title";
     /// Field type (string, number, boolean, array, etc.)
     pub const TYPE: &str = "type";
     /// Detailed field description
@@ -87,9 +85,6 @@ pub struct CardSchema {
     /// wire; skipped during serialization to avoid duplication.
     #[serde(skip_serializing, default)]
     pub name: String,
-    /// Short label for the card type
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
     /// Detailed description of this card type
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -176,9 +171,6 @@ pub struct FieldSchema {
     /// serialization to avoid duplication.
     #[serde(skip_serializing, default)]
     pub name: String,
-    /// Short label for the field (used in JSON Schema title)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
     /// Field type (required)
     pub r#type: FieldType,
     /// Detailed description of the field (used in JSON Schema description)
@@ -210,7 +202,6 @@ pub struct FieldSchema {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FieldSchemaDef {
-    pub title: Option<String>,
     pub r#type: FieldType,
     pub description: Option<String>,
     pub default: Option<QuillValue>,
@@ -230,7 +221,6 @@ impl FieldSchema {
     pub fn new(name: String, r#type: FieldType, description: Option<String>) -> Self {
         Self {
             name,
-            title: None,
             r#type,
             description,
             default: None,
@@ -249,7 +239,6 @@ impl FieldSchema {
             .map_err(|e| format!("Failed to parse field schema: {}", e))?;
         Ok(Self {
             name: key,
-            title: def.title,
             r#type: def.r#type,
             description: def.description,
             default: def.default,

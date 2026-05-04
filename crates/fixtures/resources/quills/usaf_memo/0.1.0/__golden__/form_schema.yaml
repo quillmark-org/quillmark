@@ -1,5 +1,4 @@
 main:
-  title: main
   fields:
     QUILL:
       type: string
@@ -7,7 +6,6 @@ main:
       description: "Canonical quill reference. Must be exactly this value as the QUILL: sentinel in the document frontmatter."
       required: true
     attachments:
-      title: List of attachments
       type: array
       description: >-
         List attachments in the order they are mentioned in the memo. Briefly describe
@@ -19,7 +17,6 @@ main:
         group: Additional
         order: 11
     cc:
-      title: Carbon copy recipients
       type: array
       description: List office symbols of recipients to receive copies.
       default: []
@@ -29,7 +26,6 @@ main:
         group: Additional
         order: 9
     classification:
-      title: Classification level of the memo that displays in the banner
       type: string
       description: >-
         Follow AFI 31-401 and applicable DoD guidance for classification markings.
@@ -40,7 +36,6 @@ main:
         group: Additional
         order: 12
     date:
-      title: Date of memo (YYYY-MM-DD); defaults to today
       type: string
       description: YYYY-MM-DD. Leave blank to use today's date.
       default: ""
@@ -48,7 +43,6 @@ main:
         group: Additional
         order: 7
     distribution:
-      title: Distribution list. Used when "SEE DISTRIBUTION" is specified in `memo_for`.
       type: array
       description: >-
         Complete list of recipients if 'SEE DISTRIBUTION' is used in the 'Memo For'
@@ -61,7 +55,6 @@ main:
         group: Additional
         order: 10
     font_size:
-      title: Font size for the memo text (int pt)
       type: number
       description: Font size for the memo text (pt).
       default: 11
@@ -69,7 +62,6 @@ main:
         group: Additional
         order: 13
     letterhead_caption:
-      title: Letterhead caption line(s)
       type: array
       description: The full organization name of your unit.
       default:
@@ -78,7 +70,6 @@ main:
         group: Letterhead
         order: 5
     letterhead_title:
-      title: Title in letterhead
       type: string
       description: Standard title. Only change for Joint Commands or DoW Agencies.
       default: DEPARTMENT OF THE AIR FORCE
@@ -86,7 +77,6 @@ main:
         group: Letterhead
         order: 4
     memo_for:
-      title: List of recipient organization(s)
       type: array
       description: >-
         Organization/office symbol in UPPERCASE. To address a specific person, add
@@ -100,7 +90,6 @@ main:
         order: 0
       required: true
     memo_from:
-      title: "Sender information as array: [ORG/SYMBOL, 'Organization Name', 'Street Address', 'City State ZIP']"
       type: array
       description: >-
         If recipients are on the same installation, use only the office symbol. For
@@ -116,7 +105,6 @@ main:
         order: 1
       required: true
     references:
-      title: References for the memo
       type: array
       description: Cite by organization, type, date, and title.
       default: []
@@ -126,7 +114,6 @@ main:
         group: Additional
         order: 8
     signature_block:
-      title: Signature block lines
       type: array
       description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title. Spell out 'Colonel' and general officer ranks."
       example:
@@ -137,7 +124,6 @@ main:
         order: 3
       required: true
     subject:
-      title: Subject of the memo
       type: string
       description: >-
         Be brief and clear. Capitalize the first letter of each word except articles,
@@ -149,7 +135,6 @@ main:
         order: 2
       required: true
     tag_line:
-      title: Tag line at bottom of memo
       type: string
       description: Organizational motto at the bottom of the page.
       default: ""
@@ -158,7 +143,6 @@ main:
         order: 6
 card_types:
   indorsement:
-    title: Routing indorsement
     description: >-
       Chain of routing endorsements. Each endorsement block adds an official response
       or forwarding action to the original memo.
@@ -169,28 +153,24 @@ card_types:
         description: "Card type name. Must be exactly this value as the CARD: sentinel in the card frontmatter."
         required: true
       attachments:
-        title: Attachments for this endorsement
         type: array
         description: List of attachments specific to this endorsement.
         ui:
           group: Additional
           order: 4
       cc:
-        title: Carbon copy recipients
         type: array
         description: List of office symbols to receive copies of this endorsement.
         ui:
           group: Additional
           order: 5
       date:
-        title: Date of endorsement (YYYY-MM-DD)
         type: string
         description: Date of the endorsement. Leave blank to omit.
         ui:
           group: Additional
           order: 6
       for:
-        title: To office/symbol
         type: string
         description: Office symbol or organization receiving the endorsed memo.
         default: ORG/SYMBOL
@@ -198,7 +178,6 @@ card_types:
           group: Addressing
           order: 1
       format:
-        title: Indorsement format
         type: string
         description: "Format style: 'standard' (formal on same page), 'informal' (less formal routing), or 'separate_page' (starts on new page)."
         default: standard
@@ -210,7 +189,6 @@ card_types:
         - informal
         - separate_page
       from:
-        title: From office/symbol
         type: string
         description: Office symbol or Rank Name of the endorsing official (e.g., 'ORG/SYMBOL').
         default: ORG/SYMBOL
@@ -218,7 +196,6 @@ card_types:
           group: Addressing
           order: 0
       signature_block:
-        title: Signature block lines
         type: array
         description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title."
         default:

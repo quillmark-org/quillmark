@@ -9,7 +9,6 @@ quill:
 main:
   fields:
     name:
-      title: Full Name
       type: string
       required: true
       example: John Doe
@@ -17,7 +16,6 @@ main:
         group: Personal Info
 
     contacts:
-      title: Contact Information
       type: array
       required: true
       example:
@@ -30,41 +28,32 @@ main:
 
 card_types:
   experience_section:
-    title: Experience/Education Entry
     description: An entry with a heading, subheading, and bullet points.
     ui:
       default_title: "{headingLeft} — {subheadingLeft}"
     fields:
       title:
-        title: Section Title
         type: string
         default: Experience
       headingLeft:
-        title: Heading Left (e.g., Company/School)
         type: string
         required: true
       headingRight:
-        title: Heading Right (e.g., Location)
         type: string
       subheadingLeft:
-        title: Subheading Left (e.g., Title/Degree)
         type: string
       subheadingRight:
-        title: Subheading Right (e.g., Date)
         type: string
 
   skills_section:
-    title: Skills Grid
     description: A grid of skill categories with key-value pairs.
     ui:
       hide_body: true
     fields:
       title:
-        title: Section Title
         type: string
         default: Skills
       cells:
-        title: Skill Categories
         type: array
         required: true
         example:
@@ -77,43 +66,34 @@ card_types:
           properties:
             category:
               type: string
-              title: Category
               required: true
             skills:
               type: string
-              title: Skills
               required: true
 
   projects_section:
-    title: Project Entry
     description: A project entry with a name and optional URL.
     ui:
       default_title: "{name}"
     fields:
       title:
-        title: Section Title
         type: string
         default: Projects
       name:
-        title: Project Name
         type: string
         required: true
       url:
-        title: Project URL
         type: string
 
   certifications_section:
-    title: Certifications Grid
     description: A grid of certifications.
     ui:
       hide_body: true
     fields:
       title:
-        title: Section Title
         type: string
         default: Certifications
       cells:
-        title: Certification Names
         type: array
         required: true
         example:

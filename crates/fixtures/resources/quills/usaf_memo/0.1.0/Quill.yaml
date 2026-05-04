@@ -10,7 +10,6 @@ quill:
 main:
   fields:
     memo_for:
-      title: List of recipient organization(s)
       type: array
       required: true
       example:
@@ -21,7 +20,6 @@ main:
       description: "Organization/office symbol in UPPERCASE. To address a specific person, add their rank and name in parentheses (e.g., 'ORG/SYMBOL (LT COL JANE DOE)'). For numerous recipients, use 'DISTRIBUTION'."
 
     memo_from:
-      title: "Sender information as array: [ORG/SYMBOL, 'Organization Name', 'Street Address', 'City State ZIP']"
       type: array
       required: true
       example:
@@ -34,7 +32,6 @@ main:
       description: If recipients are on the same installation, use only the office symbol. For recipients on other installations, include the full mailing address to enable return correspondence.
 
     subject:
-      title: Subject of the memo
       type: string
       required: true
       example: Subject of the Memorandum
@@ -43,7 +40,6 @@ main:
       description: Be brief and clear. Capitalize the first letter of each word except articles, prepositions, and conjunctions. Include suspense dates in parentheses if applicable.
 
     signature_block:
-      title: Signature block lines
       type: array
       required: true
       example:
@@ -54,7 +50,6 @@ main:
       description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title. Spell out 'Colonel' and general officer ranks."
 
     letterhead_title:
-      title: Title in letterhead
       type: string
       default: DEPARTMENT OF THE AIR FORCE
       ui:
@@ -62,7 +57,6 @@ main:
       description: Standard title. Only change for Joint Commands or DoW Agencies.
 
     letterhead_caption:
-      title: Letterhead caption line(s)
       type: array
       default:
         - HEADQUARTERS [UNIT NAME]
@@ -71,7 +65,6 @@ main:
       description: The full organization name of your unit.
 
     tag_line:
-      title: Tag line at bottom of memo
       type: string
       default: ""
       ui:
@@ -79,7 +72,6 @@ main:
       description: Organizational motto at the bottom of the page.
 
     date:
-      title: Date of memo (YYYY-MM-DD); defaults to today
       type: string
       default: ""
       ui:
@@ -87,7 +79,6 @@ main:
       description: YYYY-MM-DD. Leave blank to use today's date.
 
     references:
-      title: References for the memo
       type: array
       default: []
       example:
@@ -97,7 +88,6 @@ main:
       description: "Cite by organization, type, date, and title."
 
     cc:
-      title: Carbon copy recipients
       type: array
       default: []
       example:
@@ -107,7 +97,6 @@ main:
       description: List office symbols of recipients to receive copies.
 
     distribution:
-      title: Distribution list. Used when "SEE DISTRIBUTION" is specified in `memo_for`.
       type: array
       default: []
       example:
@@ -118,7 +107,6 @@ main:
       description: Complete list of recipients if 'SEE DISTRIBUTION' is used in the 'Memo For' field.
 
     attachments:
-      title: List of attachments
       type: array
       default: []
       example:
@@ -128,7 +116,6 @@ main:
       description: List attachments in the order they are mentioned in the memo. Briefly describe each; do not use 'as stated' or abbreviations.
 
     classification:
-      title: Classification level of the memo that displays in the banner
       type: string
       default: ""
       example: CONFIDENTIAL
@@ -137,7 +124,6 @@ main:
       description: Follow AFI 31-401 and applicable DoD guidance for classification markings. Leave blank for unclassified.
 
     font_size:
-      title: Font size for the memo text (int pt)
       type: number
       default: 11
       ui:
@@ -146,25 +132,21 @@ main:
 
 card_types:
   indorsement:
-    title: Routing indorsement
     description: Chain of routing endorsements. Each endorsement block adds an official response or forwarding action to the original memo.
     fields:
       from:
-        title: From office/symbol
         type: string
         default: ORG/SYMBOL
         ui:
           group: Addressing
         description: "Office symbol or Rank Name of the endorsing official (e.g., 'ORG/SYMBOL')."
       for:
-        title: To office/symbol
         type: string
         default: ORG/SYMBOL
         ui:
           group: Addressing
         description: Office symbol or organization receiving the endorsed memo.
       signature_block:
-        title: Signature block lines
         type: array
         example:
           - "FIRST M. LAST, Rank, USAF"
@@ -177,7 +159,6 @@ card_types:
           - "FIRST M. LAST, Rank, USAF"
           - Duty Title
       format:
-        title: Indorsement format
         type: string
         enum:
           - standard
@@ -188,19 +169,16 @@ card_types:
         description: "Format style: 'standard' (formal on same page), 'informal' (less formal routing), or 'separate_page' (starts on new page)."
         default: standard
       attachments:
-        title: Attachments for this endorsement
         type: array
         ui:
           group: Additional
         description: List of attachments specific to this endorsement.
       cc:
-        title: Carbon copy recipients
         type: array
         ui:
           group: Additional
         description: List of office symbols to receive copies of this endorsement.
       date:
-        title: Date of endorsement (YYYY-MM-DD)
         type: string
         ui:
           group: Additional
