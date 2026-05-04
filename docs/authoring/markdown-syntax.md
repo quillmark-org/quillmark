@@ -1,123 +1,88 @@
 # Markdown Syntax
 
-Quillmark supports a subset of CommonMark for document body content. The sections below cover what is supported; anything not listed (blockquotes, thematic breaks, raw HTML, math) is silently dropped.
+Quillmark Markdown is a **strict superset of [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)** with a small set of [GitHub Flavored Markdown](https://github.github.com/gfm/) extensions and **two declared deviations**. If you already know CommonMark, you only need to learn what is on this page.
 
-## Your First Document
+For the authoritative grammar, fence-detection rules, normalization, and limits, see the formal specification: [prose/designs/MARKDOWN.md](https://github.com/nibsbin/quillmark/blob/main/prose/designs/MARKDOWN.md).
 
-Start with a simple, realistic document body:
+## Foundation
+
+Body content (the prose between frontmatter and any [card](cards.md), and inside each card) is parsed as CommonMark 0.31.2. Headings, emphasis, links, lists, code blocks, blockquotes, thematic breaks, and inline code all behave exactly as the [CommonMark spec](https://spec.commonmark.org/0.31.2/) defines them.
+
+For the conventional syntax of these elements, refer to:
+
+- [CommonMark spec](https://spec.commonmark.org/0.31.2/) — the base grammar.
+- [CommonMark tutorial](https://commonmark.org/help/) — a 10-minute walk-through.
+- [GFM spec](https://github.github.com/gfm/) — pipe tables and strikethrough.
+
+The rest of this page covers only what Quillmark adds, removes, or interprets differently.
+
+## Selected GFM extensions
+
+Quillmark enables a small, stable subset of GFM:
+
+| Feature | Syntax | Notes |
+|---|---|---|
+| Strikethrough | `~~text~~` | Standard GFM rules; word-bounded delimiter runs. |
+| Pipe tables | `\| col \| col \|` with alignment row | Supports `:---`, `:---:`, `---:` alignment. |
+| Underline | `<u>text</u>` | The single allow-listed raw-HTML tag (see [Deviation 2](#2-raw-html-is-not-rendered-except-u)). |
+
+Task lists, autolinks beyond CommonMark's, and other GFM features are **not** enabled.
+
+## Deviations from CommonMark
+
+### 1. `__text__` is underline, not strong
+
+CommonMark renders `__text__` as **strong**. Quillmark renders it as <u>underline</u>. Standard CommonMark delimiter-run rules still apply, so `__` is **word-bounded** — it will not match across word boundaries.
 
 ```markdown
-# Project Update
+Use **bold** for strong emphasis.
+Use __underline__ for underline.
+```
 
-## Wins this week
+Because `__` is word-bounded, intraword tokens such as `__init__` render as underlined "init". Wrap code-like identifiers in backticks, the same as you would in any Markdown:
 
-- Shipped v0.51.1
-- Finalized onboarding copy
+```markdown
+The `__init__` method runs first.
+```
+
+For underline that crosses word boundaries or arbitrary ranges, use `<u>…</u>` (see below).
+
+Precedent: this matches Discord's flavor of Markdown.
+
+### 2. Raw HTML is not rendered, except `<u>`
+
+CommonMark passes raw HTML through to the output. Quillmark recognises raw HTML syntactically (so it does not break paragraph structure) but **discards every tag**, with one exception: `<u>…</u>` renders as underline.
+
+```markdown
+<u>This is underlined</u>, even <u>across word boundaries</u>.
+<span style="color: red">This span is dropped entirely.</span>
+<!-- HTML comments are also dropped -->
+```
+
+Why: Typst (the rendering backend) has no HTML renderer, and arbitrary HTML passthrough would create injection risks for downstream tooling. `<u>` is allowed because no CommonMark-native syntax covers arbitrary-range underline.
+
+Consequences:
+
+- `<br>`, `<br/>`, `<br />` produce no output. Use a CommonMark hard break instead — two trailing spaces before a newline, or a trailing `\` before a newline.
+- HTML entities and embedded SVG are dropped.
+- HTML comments do not appear in output.
+
+## Out of scope
+
+The following are recognised by the parser (so they will not corrupt surrounding content) but produce no output in the current version:
+
+- **Images** (`![alt](src)`) — reserved for the asset-resolver integration; planned for v1.
+- **Link titles** (`[text](url "title")`) — the title is discarded; the link text and URL are kept.
+- **Math** (`$…$`, `$$…$$`) — `$` is treated as a literal character.
+- **Footnotes**, **task lists**, **definition lists** — not supported.
+
+## The `---` marker is reserved
+
+Quillmark uses `---` to delimit [frontmatter](yaml-frontmatter.md) and [cards](cards.md). A `---` line that follows the fence-detection rules opens or closes a metadata fence; otherwise it falls through to CommonMark and behaves as a thematic break or setext heading underline as usual. The full detection rules are in [§4 of the spec](https://github.com/nibsbin/quillmark/blob/main/prose/designs/MARKDOWN.md#4-fence-detection-rules).
+
+In practice: use `***` or `___` if you want a thematic break inside body content, and reserve `---` for metadata.
 
 ## Next steps
-
-1. Prepare release notes
-2. Review customer feedback
-```
-
-Use this as a base, then layer in the syntax patterns below.
-
-## Headings
-
-```markdown
-# Heading 1
-## Heading 2
-### Heading 3
-#### Heading 4
-##### Heading 5
-###### Heading 6
-```
-
-## Text Formatting
-
-```markdown
-**Bold text**
-*Italic text*
-***Bold and italic***
-~~Strikethrough~~
-__Underline__
-`Inline code`
-```
-
-## Lists
-
-Unordered lists:
-
-```markdown
-- Item 1
-- Item 2
-  - Nested item
-  - Another nested item
-- Item 3
-```
-
-Ordered lists:
-
-```markdown
-1. First item
-2. Second item
-3. Third item
-```
-
-## Links
-
-```markdown
-[Link text](https://example.com)
-```
-
-## Images
-
-```markdown
-![Alt text](path/to/image.png)
-```
-
-The image source can be a path relative to the Quill bundle or an absolute path the backend can resolve. Alt text is currently ignored.
-
-## Code Blocks
-
-````markdown
-```text
-Any code or plain text content
-can be placed inside fenced blocks.
-```
-````
-
-## Tables
-
-```markdown
-| Name    | Role      |
-| ------- | --------- |
-| Alice   | Engineer  |
-| Bob     | Designer  |
-```
-
-Column alignment is supported with `:` in the separator row.
-
-## Line Breaks
-
-Use `<br>` for a hard line break within a paragraph or table cell:
-
-```markdown
-First line<br>Second line
-```
-
-## Not Supported
-
-The following are silently dropped and will not appear in rendered output:
-
-- Blockquotes (`>`)
-- Thematic breaks (`***`, `___`)
-- Raw HTML (other than `<br>`)
-- Math and footnotes
-
-The `---` syntax is always reserved for metadata delimiters and cannot be used as a thematic break.
-
-## Next Steps
 
 - [YAML Frontmatter](yaml-frontmatter.md)
 - [Cards](cards.md)
