@@ -10,6 +10,8 @@
 //! `ui.group` produces `# === <Group> ===` banners and `ui.order` controls
 //! field ordering within a group.
 
+use std::collections::BTreeMap;
+
 use super::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
 
@@ -26,12 +28,16 @@ impl QuillConfig {
     ///   - `example:` is emitted only for optional fields with an example and
     ///     no enum (the example is illustrative, not prescriptive).
     /// - Inline `# <type>` annotation only for non-obvious types (number,
-    ///   integer, boolean, markdown, object, date, datetime). String and array
-    ///   are self-evident from the YAML value.
+    ///   integer, boolean, markdown, date, datetime). String and array are
+    ///   self-evident from the YAML value.
     /// - Placeholder value precedence:
     ///   - Required: example → default → type-based placeholder.
     ///   - Optional: default → type-based empty; example surfaces only as
     ///     `# example: …` above the field.
+    /// - Typed tables (arrays whose `items` is a typed object) render every
+    ///   item property with full annotations: an `example` or non-empty
+    ///   `default` is rendered as actual rows; otherwise one synthetic row is
+    ///   emitted to teach the shape.
     pub fn blueprint(&self) -> String {
         let mut out = String::new();
         let main_desc = self
@@ -121,7 +127,29 @@ fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
 fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
     let pad = "  ".repeat(indent);
 
-    // Preceding comment block: description, required, enum, example.
+    // Typed table: array whose items are a typed object. Render with full
+    // per-property annotations; a synthetic row when no values are supplied.
+    if matches!(field.r#type, FieldType::Array) {
+        if let Some(items) = &field.items {
+            if matches!(items.r#type, FieldType::Object) {
+                if let Some(props) = &items.properties {
+                    write_typed_table_field(out, field, props, indent);
+                    return;
+                }
+            }
+        }
+    }
+
+    write_field_comments(out, field, &pad);
+    let comment = match type_annotation(&field.r#type) {
+        Some(hint) => format!("  # {}", hint),
+        None => String::new(),
+    };
+    let value = field_value(field);
+    write_value(out, &field.name, &value, &comment, &pad);
+}
+
+fn write_field_comments(out: &mut String, field: &FieldSchema, pad: &str) {
     if let Some(desc) = &field.description {
         let clean = desc.split_whitespace().collect::<Vec<_>>().join(" ");
         out.push_str(&format!("{}# {}\n", pad, clean));
@@ -137,15 +165,75 @@ fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
             out.push_str(&format!("{}# example: {}\n", pad, eg));
         }
     }
+}
 
-    // Inline: type annotation only.
-    let comment = match type_annotation(&field.r#type) {
-        Some(hint) => format!("  # {}", hint),
-        None => String::new(),
-    };
+fn sort_props(props: &BTreeMap<String, Box<FieldSchema>>) -> Vec<&FieldSchema> {
+    let mut v: Vec<&FieldSchema> = props.values().map(|b| b.as_ref()).collect();
+    v.sort_by_key(|f| f.ui.as_ref().and_then(|u| u.order).unwrap_or(i32::MAX));
+    v
+}
 
-    let value = field_value(field);
-    write_value(out, &field.name, &value, &comment, &pad);
+/// Emit a typed-table field: description/required/enum comments, then the
+/// field key, then either example/default rows or one synthetic template row.
+fn write_typed_table_field(
+    out: &mut String,
+    field: &FieldSchema,
+    item_props: &BTreeMap<String, Box<FieldSchema>>,
+    indent: usize,
+) {
+    let pad = "  ".repeat(indent);
+    // Suppress `# example:` for typed tables — values or synthetic row carry it.
+    write_field_comments_no_example(out, field, &pad);
+
+    let rows = pick_table_rows(field);
+    out.push_str(&format!("{}{}:\n", pad, field.name));
+    match rows {
+        Some(items) => write_array_items(out, &items, &pad),
+        None => write_typed_table_row(out, item_props, indent),
+    }
+}
+
+fn write_field_comments_no_example(out: &mut String, field: &FieldSchema, pad: &str) {
+    if let Some(desc) = &field.description {
+        let clean = desc.split_whitespace().collect::<Vec<_>>().join(" ");
+        out.push_str(&format!("{}# {}\n", pad, clean));
+    }
+    if field.required {
+        out.push_str(&format!("{}# required\n", pad));
+    }
+    if let Some(vals) = &field.enum_values {
+        out.push_str(&format!("{}# enum: {}\n", pad, vals.join(" | ")));
+    }
+}
+
+/// Pick concrete rows for a typed table: example (any required-ness) over
+/// non-empty default. None signals "use synthetic row."
+fn pick_table_rows(field: &FieldSchema) -> Option<Vec<serde_json::Value>> {
+    fn non_empty(v: &serde_json::Value) -> Option<Vec<serde_json::Value>> {
+        match v {
+            serde_json::Value::Array(items) if !items.is_empty() => Some(items.clone()),
+            _ => None,
+        }
+    }
+    field
+        .example
+        .as_ref()
+        .and_then(|e| non_empty(e.as_json()))
+        .or_else(|| field.default.as_ref().and_then(|d| non_empty(d.as_json())))
+}
+
+/// Emit one synthetic row of a typed-object array. The list marker `-` lives
+/// on its own line at `field_indent + 1`; item keys live at `field_indent + 2`.
+fn write_typed_table_row(
+    out: &mut String,
+    props: &BTreeMap<String, Box<FieldSchema>>,
+    field_indent: usize,
+) {
+    let dash_pad = "  ".repeat(field_indent + 1);
+    out.push_str(&format!("{}-\n", dash_pad));
+    for prop in sort_props(props) {
+        write_field(out, prop, field_indent + 2);
+    }
 }
 
 /// The value to render for a field in the template.
@@ -498,5 +586,88 @@ main:
         assert!(addressing < letterhead);
         // No banner for the ungrouped section.
         assert!(!after_quill[..notes].contains("# ==="));
+    }
+
+    #[test]
+    fn typed_table_emits_synthetic_row_when_no_example() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    references:
+      type: array
+      description: Cited works.
+      items:
+        type: object
+        properties:
+          org: { type: string, required: true, description: Citing organization. }
+          year: { type: integer, description: Publication year. }
+"#)
+        .blueprint();
+        assert!(t.contains("# Cited works.\nreferences:\n  -\n"));
+        assert!(t.contains("    # Citing organization.\n    # required\n    org: \"<org>\"\n"));
+        assert!(t.contains("    # Publication year.\n    year: 0  # integer\n"));
+    }
+
+    #[test]
+    fn typed_table_with_example_renders_example_rows() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    refs:
+      type: array
+      example:
+        - { org: ACME, year: 2020 }
+      items:
+        type: object
+        properties:
+          org: { type: string, required: true }
+          year: { type: integer }
+"#)
+        .blueprint();
+        // Example rows are rendered inline; no synthetic bare-dash row, and no
+        // `# example:` comment (which would be an unhelpful JSON blob).
+        assert!(t.contains("refs:\n  - org: ACME\n"));
+        assert!(!t.contains("refs:\n  -\n"));
+        assert!(!t.contains("# example:"));
+    }
+
+    #[test]
+    fn typed_table_with_default_renders_default_rows() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    refs:
+      type: array
+      default:
+        - { org: ACME }
+      items:
+        type: object
+        properties:
+          org: { type: string, required: true }
+"#)
+        .blueprint();
+        assert!(t.contains("refs:\n  - org: ACME\n"));
+        assert!(!t.contains("refs:\n  -\n"));
+    }
+
+    #[test]
+    fn typed_table_with_empty_default_falls_through_to_synthetic_row() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    refs:
+      type: array
+      default: []
+      items:
+        type: object
+        properties:
+          org: { type: string, required: true }
+"#)
+        .blueprint();
+        assert!(t.contains("refs:\n  -\n    # required\n    org: \"<org>\"\n"));
     }
 }
