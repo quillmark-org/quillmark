@@ -1,9 +1,9 @@
-//! Prints the auto-generated Markdown template for a quill fixture.
+//! Prints the auto-generated Markdown blueprint for a quill fixture.
 //!
 //! Usage:
-//!   cargo run -p quillmark-core --example print_template
-//!   cargo run -p quillmark-core --example print_template -- classic_resume
-//!   cargo run -p quillmark-core --example print_template -- usaf_memo 0.1.0
+//!   cargo run -p quillmark-core --example print_blueprint
+//!   cargo run -p quillmark-core --example print_blueprint -- classic_resume
+//!   cargo run -p quillmark-core --example print_blueprint -- usaf_memo 0.1.0
 
 use quillmark_core::quill::QuillConfig;
 use quillmark_fixtures::quills_path;
@@ -25,5 +25,5 @@ fn main() {
     let cfg = QuillConfig::from_yaml(&yaml)
         .unwrap_or_else(|e| panic!("could not parse {}: {}", yaml_path.display(), e));
 
-    print!("{}", cfg.template());
+    print!("{}", cfg.blueprint());
 }

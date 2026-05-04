@@ -1,15 +1,21 @@
-//! Auto-generated Markdown template for a Quill.
+//! Auto-generated Markdown blueprint for a Quill.
 //!
-//! Produces a fill-in-the-blank document that is dense enough to replace the
-//! schema for LLM consumers. Each field is annotated with preceding `# …`
-//! comment lines (description, `required`, `enum:`, `example:`) and a single
-//! inline type hint. No UI metadata is emitted.
+//! Produces an annotated reference document dense enough to replace the schema
+//! for LLM consumers. The blueprint shows the document's shape — fields,
+//! constraints, examples — so a consumer can write a fresh document from it.
+//! Each field is annotated with preceding `# …` comment lines (description,
+//! `required`, `enum:`, `example:`) and a single inline type hint. No UI
+//! metadata is emitted.
 
 use super::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
 
 impl QuillConfig {
-    /// Generate a fill-in-the-blank Markdown template for this quill.
+    /// Generate an annotated Markdown blueprint for this quill.
+    ///
+    /// The blueprint is a reference document — consumers (typically LLMs) read
+    /// it to understand the document's shape and write fresh content from
+    /// scratch, not to edit it in place.
     ///
     /// Annotation rules:
     /// - Preceding `# …` comment lines, in order: description, `required`,
@@ -23,7 +29,7 @@ impl QuillConfig {
     ///   - Required: example → default → type-based placeholder.
     ///   - Optional: default → type-based empty; example surfaces only as
     ///     `# example: …` above the field.
-    pub fn template(&self) -> String {
+    pub fn blueprint(&self) -> String {
         let mut out = String::new();
         let main_desc = self
             .main
@@ -285,7 +291,7 @@ main:
   fields:
     author: { type: string, required: true }
 "#)
-        .template();
+        .blueprint();
         assert!(t.contains("# required\nauthor: \"<author>\"\n"));
     }
 
@@ -297,7 +303,7 @@ main:
   fields:
     status: { type: string, required: true, default: draft, example: final }
 "#)
-        .template();
+        .blueprint();
         assert!(t.contains("# required\nstatus: final\n"));
     }
 
@@ -309,7 +315,7 @@ main:
   fields:
     classification: { type: string, default: "", example: CONFIDENTIAL }
 "#)
-        .template();
+        .blueprint();
         assert!(t.contains("# example: CONFIDENTIAL\nclassification: \"\"\n"));
     }
 
@@ -324,7 +330,7 @@ main:
       example:
         - AFM 33-326, Communications
 "#)
-        .template();
+        .blueprint();
         assert!(t.contains("# example: AFM 33-326, Communications\nrefs: []\n"));
     }
 
@@ -336,7 +342,7 @@ main:
   fields:
     format: { type: string, enum: [standard, informal], default: standard }
 "#)
-        .template();
+        .blueprint();
         assert!(t.contains("# enum: standard | informal\nformat: standard\n"));
         assert!(!t.contains("example:"));
     }
@@ -354,7 +360,7 @@ main:
         - ORG/SYMBOL
         - City ST 12345
 "#)
-        .template();
+        .blueprint();
         assert!(t.contains("# required\nmemo_from:\n  - ORG/SYMBOL\n  - City ST 12345\n"));
     }
 
@@ -369,7 +375,7 @@ main:
       required: true
       description: Be brief and clear.
 "#)
-        .template();
+        .blueprint();
         assert!(t.contains("# Be brief and clear.\n# required\nsubject: \"<subject>\"\n"));
     }
 
@@ -384,7 +390,7 @@ main:
     body: { type: markdown }
     issued: { type: date }
 "#)
-        .template();
+        .blueprint();
         assert!(t.contains("size: 11  # number"));
         assert!(t.contains("flag: false  # boolean"));
         assert!(t.contains("body: \"\"  # markdown"));
@@ -404,7 +410,7 @@ card_types:
     fields:
       author: { type: string }
 "#)
-        .template();
+        .blueprint();
         assert!(t.contains(
             "# A short note appended to the document.\nCARD: note\n"
         ));
@@ -423,7 +429,7 @@ card_types:
     fields:
       items: { type: array, required: true }
 "#)
-        .template();
+        .blueprint();
         let after = &t[t.find("CARD: skills").unwrap()..];
         assert!(!after.contains("<body>"));
     }
@@ -436,7 +442,7 @@ main:
   fields:
     flavor: { type: string, default: taro }
 "#)
-        .template();
+        .blueprint();
         assert!(t.starts_with("---\n# x\nQUILL: taro@0.1.0\n"));
         assert!(t.contains("<body>"));
     }

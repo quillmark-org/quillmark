@@ -314,10 +314,10 @@ impl Quill {
         self.inner.source().config().example_markdown.clone()
     }
 
-    /// Auto-generated fill-in-the-blank Markdown template for LLM consumers.
-    #[wasm_bindgen(getter, js_name = template)]
-    pub fn template(&self) -> String {
-        self.inner.source().config().template()
+    /// Auto-generated annotated Markdown blueprint for LLM consumers.
+    #[wasm_bindgen(getter, js_name = blueprint)]
+    pub fn blueprint(&self) -> String {
+        self.inner.source().config().blueprint()
     }
 
     /// Document schema with `ui` hints stripped — for LLM/MCP consumers.

@@ -133,8 +133,8 @@ impl PyQuill {
     }
 
     #[getter]
-    fn template(&self) -> String {
-        self.inner.source().config().template()
+    fn blueprint(&self) -> String {
+        self.inner.source().config().blueprint()
     }
 
     #[getter]

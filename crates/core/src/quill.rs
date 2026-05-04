@@ -7,7 +7,7 @@ mod load;
 mod query;
 mod schema;
 mod schema_yaml;
-mod template;
+mod blueprint;
 mod tree;
 mod types;
 pub(crate) mod validation;
