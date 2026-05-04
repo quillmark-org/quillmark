@@ -75,42 +75,21 @@ impl QuillConfig {
         self.card_types.iter().find(|card| card.name == name)
     }
 
-    /// Form schema as a JSON value: structural schema **plus** ui hints.
-    ///
-    /// Includes everything in [`schema`](Self::schema) and additionally
-    /// preserves field-level `ui` (group, order, compact, multiline) and
-    /// card-level `ui` (hide_body, default_title) hints. Form-builder
-    /// consumers (`Quill.formSchema` in WASM) use this to drive layout.
-    ///
-    /// LLM/MCP consumers should prefer [`schema`](Self::schema), which omits
-    /// these presentation-only keys.
+    /// Structural schema plus `ui` hints — for form builders.
     pub fn form_schema(&self) -> serde_json::Value {
         self.build_schema(true)
     }
 
-    /// Structural schema as a JSON value: types, constraints, sentinels.
+    /// Structural schema with `ui` keys stripped — for LLM/MCP consumers.
     ///
-    /// Top-level keys: `main`, and optional `card_types` (map keyed by card
-    /// name). Field-level and card-level `ui` keys are stripped — this view
-    /// is the document structure schema only, suitable for LLM/MCP consumers
-    /// composing documents.
-    ///
-    /// Each `main.fields` map is prefixed with a required `QUILL` entry whose
-    /// `const` value is the canonical ref (`name@version`). Each card type's
-    /// `fields` map is prefixed with a required `CARD` entry whose `const`
-    /// value is the card type name. These sentinels tell consumers exactly
-    /// which values to write when composing documents.
-    ///
-    /// Identity fields (`name`, `version`, `backend`, `author`, `description`)
-    /// live on `QuillMetadata` rather than the schema. The bundled example
-    /// document is exposed separately so consumers can decide whether to
-    /// include it in a prompt.
+    /// `main.fields` is prefixed with a required `QUILL` entry (`const = name@version`);
+    /// each `card_types[<name>].fields` is prefixed with a required `CARD` entry
+    /// (`const = <name>`). Identity (`name`, `version`, etc.) and the bundled
+    /// example live elsewhere on the host's metadata surface.
     pub fn schema(&self) -> serde_json::Value {
         self.build_schema(false)
     }
 
-    /// Shared projection. `with_ui = true` preserves `ui` hints for form
-    /// builders; `false` strips them for structural/composition consumers.
     fn build_schema(&self, with_ui: bool) -> serde_json::Value {
         let canonical_ref = format!("{}@{}", self.name, self.version);
 
@@ -157,9 +136,7 @@ impl QuillConfig {
         serde_json::Value::Object(obj)
     }
 
-    /// Prepend a sentinel field (QUILL or CARD) with a `const` value into
-    /// the `fields` object of a serialised card schema value so that it
-    /// appears first and LLM consumers encounter it before other fields.
+    /// Insert a `QUILL`/`CARD` sentinel as the first entry of a card's `fields`.
     fn prepend_sentinel_field(
         card_value: &mut serde_json::Value,
         key: &str,
@@ -179,7 +156,6 @@ impl QuillConfig {
         }
     }
 
-    /// Recursively remove every `ui` key from a JSON value.
     fn strip_ui_recursive(value: &mut serde_json::Value) {
         match value {
             serde_json::Value::Object(map) => {

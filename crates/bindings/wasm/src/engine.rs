@@ -51,19 +51,11 @@ export interface QuillCardSchema {
 }
 
 /**
- * Quill schema contract — the structural description of documents this
- * quill accepts.
+ * Document schema. Returned by both `Quill.schema` (no ui hints) and
+ * `Quill.formSchema` (with ui hints) — same shape, optional `ui` keys.
  *
- * Returned by both `Quill.schema` (clean structural form, no ui hints) and
- * `Quill.formSchema` (same shape extended with `ui` keys on cards and
- * fields for form-builder consumers). The two values share this type
- * because their shapes are identical except for the optional `ui` keys.
- *
- * Each `main.fields` map is prefixed with a required `QUILL` entry whose
- * `const` value is the canonical ref (`name@version`). Each card type's
- * `fields` map is prefixed with a required `CARD` entry whose `const`
- * value is the card type name. These sentinels tell composing consumers
- * exactly which sentinel strings to write.
+ * `main.fields.QUILL` and `card_types[name].fields.CARD` are required
+ * sentinels with `const` values telling consumers what to write.
  */
 export interface QuillSchema {
     main: QuillCardSchema;
@@ -72,13 +64,9 @@ export interface QuillSchema {
 }
 
 /**
- * Read-only snapshot of the loaded quill's identity, mirroring the `quill:`
- * section of `Quill.yaml`. Returned by `Quill.metadata`.
- *
- * Well-known keys are strongly typed; any additional keys declared under
- * `quill:` in `Quill.yaml` appear as `unknown`. Schemas live on dedicated
- * `Quill.schema` / `Quill.formSchema` getters and the bundled example on
- * `Quill.example`.
+ * Identity snapshot mirroring the `quill:` section of `Quill.yaml`.
+ * Schemas live on `Quill.schema` / `Quill.formSchema`; the example on
+ * `Quill.example`. Extra `quill:` keys appear as `unknown`.
  */
 export interface QuillMetadata {
     name: string;
@@ -322,21 +310,13 @@ impl Quill {
         self.inner.backend_id() == CANVAS_BACKEND_ID
     }
 
-    /// The quill's bundled example document, or `undefined` if none was declared.
-    ///
-    /// Exposed separately from the schemas so consumers can decide whether
-    /// to inject it into an LLM prompt. Stable for the lifetime of the handle.
+    /// Bundled example document, or `undefined` if none was declared.
     #[wasm_bindgen(getter, js_name = example)]
     pub fn example(&self) -> Option<String> {
         self.inner.source().config().example_markdown.clone()
     }
 
-    /// Structural document schema — types, constraints, and `QUILL`/`CARD`
-    /// sentinels with `const` values. **No ui hints.**
-    ///
-    /// Use this for LLM/MCP consumers, document validators, and any tool
-    /// that does not render forms. Identical shape to `formSchema` minus
-    /// every `ui` key.
+    /// Document schema with `ui` hints stripped — for LLM/MCP consumers.
     #[wasm_bindgen(getter, js_name = schema, unchecked_return_type = "QuillSchema")]
     pub fn schema(&self) -> JsValue {
         let value = self.inner.source().config().schema();
@@ -344,12 +324,7 @@ impl Quill {
         value.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
     }
 
-    /// Form schema — same as `schema` plus card-level (`hide_body`,
-    /// `default_title`) and field-level (`group`, `order`, `compact`,
-    /// `multiline`) `ui` hints declared in `Quill.yaml`.
-    ///
-    /// Use this for form builders. LLM/MCP consumers should prefer
-    /// `schema`.
+    /// Document schema with `ui` hints — for form builders.
     #[wasm_bindgen(getter, js_name = formSchema, unchecked_return_type = "QuillSchema")]
     pub fn form_schema(&self) -> JsValue {
         let value = self.inner.source().config().form_schema();
@@ -357,17 +332,8 @@ impl Quill {
         value.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
     }
 
-    /// Read-only identity snapshot mirroring the `quill:` section of `Quill.yaml`.
-    ///
-    /// Returns a plain JS object with:
-    /// - `name`, `version`, `backend`, `author`, `description` — identity
-    ///   fields from `Quill.yaml`'s `quill:` section. `description` describes
-    ///   the quill itself.
-    /// - `supportedFormats` — output formats the backend produces.
-    /// - Any additional unstructured keys declared under `quill:`.
-    ///
-    /// Schemas live on `Quill.schema` (clean) and `Quill.formSchema` (with
-    /// ui hints). The example document lives on `Quill.example`.
+    /// Identity snapshot of the `quill:` section of `Quill.yaml`, plus
+    /// `supportedFormats` and any custom `quill:` keys.
     ///
     /// Consumers that need validation run their own validator against
     /// `metadata.schema`.

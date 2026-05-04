@@ -99,7 +99,7 @@ impl PyQuill {
         Ok(dict)
     }
 
-    /// Structural schema (no ui hints) as a YAML string.
+    /// Document schema (no ui hints) as YAML.
     #[getter]
     fn schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let yaml = self
@@ -111,10 +111,7 @@ impl PyQuill {
         Ok(yaml.into_pyobject(py)?.into_any())
     }
 
-    /// Form schema (structural schema plus ui hints) as a YAML string.
-    ///
-    /// Use this for form builders that need `ui.group`, `ui.order`, etc.
-    /// LLM/MCP consumers should prefer the cleaner `schema` getter.
+    /// Document schema with ui hints as YAML — for form builders.
     #[getter]
     fn form_schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let yaml = self
