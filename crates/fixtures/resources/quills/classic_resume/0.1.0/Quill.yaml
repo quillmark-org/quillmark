@@ -12,8 +12,7 @@ main:
       title: Full Name
       type: string
       required: true
-      examples:
-        - John Doe
+      example: John Doe
       ui:
         group: Personal Info
 
@@ -21,10 +20,10 @@ main:
       title: Contact Information
       type: array
       required: true
-      examples:
-        - - john.doe@example.com
-          - 123-456-7890
-          - linkedin.com/in/johndoe
+      example:
+        - john.doe@example.com
+        - 123-456-7890
+        - linkedin.com/in/johndoe
       ui:
         group: Personal Info
       description: List of contact details (email, phone, links, etc.)
@@ -68,11 +67,11 @@ card_types:
         title: Skill Categories
         type: array
         required: true
-        examples:
-          - - category: Languages
-              skills: Python, Rust, C++
-            - category: DevOps
-              skills: Docker, Kubernetes
+        example:
+          - category: Languages
+            skills: Python, Rust, C++
+          - category: DevOps
+            skills: Docker, Kubernetes
         items:
           type: object
           properties:
@@ -117,7 +116,7 @@ card_types:
         title: Certification Names
         type: array
         required: true
-        examples:
-          - - AWS Certified Solutions Architect
-            - CKA
-            - OSCP
+        example:
+          - AWS Certified Solutions Architect
+          - CKA
+          - OSCP

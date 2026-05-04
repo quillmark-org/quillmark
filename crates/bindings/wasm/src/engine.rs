@@ -34,7 +34,7 @@ export interface QuillFieldSchema {
     title?: string;
     description?: string;
     default?: unknown;
-    examples?: unknown;
+    example?: unknown;
     required?: boolean;
     enum?: string[];
     ui?: QuillFieldUi;
@@ -314,6 +314,12 @@ impl Quill {
     #[wasm_bindgen(getter, js_name = example)]
     pub fn example(&self) -> Option<String> {
         self.inner.source().config().example_markdown.clone()
+    }
+
+    /// Auto-generated fill-in-the-blank Markdown template for LLM consumers.
+    #[wasm_bindgen(getter, js_name = template)]
+    pub fn template(&self) -> String {
+        self.inner.source().config().template()
     }
 
     /// Document schema with `ui` hints stripped — for LLM/MCP consumers.

@@ -694,15 +694,14 @@ fn test_field_schema_struct() {
     );
     assert_eq!(schema1.description, Some("Test description".to_string()));
     assert_eq!(schema1.r#type, FieldType::String);
-    assert_eq!(schema1.examples, None);
+    assert_eq!(schema1.example, None);
     assert_eq!(schema1.default, None);
 
     // Test parsing FieldSchema from YAML with all fields
     let yaml_str = r#"
 description: "Full field schema"
 type: "string"
-examples:
-  - "Example value"
+example: "Example value"
 default: "Default value"
 "#;
     let quill_value = QuillValue::from_yaml_str(yaml_str).unwrap();
@@ -711,12 +710,7 @@ default: "Default value"
     assert_eq!(schema2.description, Some("Full field schema".to_string()));
     assert_eq!(schema2.r#type, FieldType::String);
     assert_eq!(
-        schema2
-            .examples
-            .as_ref()
-            .and_then(|v| v.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|v| v.as_str()),
+        schema2.example.as_ref().and_then(|v| v.as_str()),
         Some("Example value")
     );
     assert_eq!(
@@ -726,22 +720,17 @@ default: "Default value"
 }
 
 #[test]
-fn test_field_schema_scalar_examples_coerced_to_array() {
+fn test_field_schema_single_example() {
     let yaml_str = r#"
-description: "Field schema with scalar example"
+description: "Field schema with single example"
 type: "date"
-examples: "2024-01-15"
+example: "2024-01-15"
 "#;
     let quill_value = QuillValue::from_yaml_str(yaml_str).unwrap();
     let schema = FieldSchema::from_quill_value("effective_date".to_string(), &quill_value).unwrap();
 
     assert_eq!(
-        schema
-            .examples
-            .as_ref()
-            .and_then(|v| v.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|v| v.as_str()),
+        schema.example.as_ref().and_then(|v| v.as_str()),
         Some("2024-01-15")
     );
 }
@@ -1200,22 +1189,20 @@ main:
 }
 
 #[test]
-fn test_config_defaults_and_examples_methods() {
+fn test_config_defaults_method() {
     let yaml_content = r#"
 quill:
-  name: defaults_examples_test
+  name: defaults_test
   version: "1.0"
   backend: typst
-  description: Defaults and examples
+  description: Defaults test
 
 main:
   fields:
     author:
       type: string
       default: Anonymous
-      examples:
-        - Alice
-        - Bob
+      example: Alice
     status:
       type: string
       default: draft
@@ -1225,28 +1212,25 @@ main:
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
     let defaults = config.main.defaults();
-    let examples = config.main.examples();
 
     assert_eq!(defaults.len(), 2);
     assert_eq!(defaults.get("author").unwrap().as_str(), Some("Anonymous"));
     assert_eq!(defaults.get("status").unwrap().as_str(), Some("draft"));
     assert!(!defaults.contains_key("title"));
 
-    assert_eq!(examples.len(), 1);
-    let author_examples = examples.get("author").unwrap();
-    assert_eq!(author_examples.len(), 2);
-    assert_eq!(author_examples[0].as_str(), Some("Alice"));
-    assert_eq!(author_examples[1].as_str(), Some("Bob"));
+    // example takes precedence over default in template
+    let author_example = config.main.fields.get("author").unwrap().example.as_ref();
+    assert_eq!(author_example.and_then(|v| v.as_str()), Some("Alice"));
 }
 
 #[test]
-fn test_card_defaults_and_examples_methods() {
+fn test_card_defaults_method() {
     let yaml_content = r#"
 quill:
-  name: card_defaults_examples_test
+  name: card_defaults_test
   version: "1.0"
   backend: typst
-  description: Card defaults and examples
+  description: Card defaults test
 
 card_types:
   indorsement:
@@ -1254,8 +1238,7 @@ card_types:
       signature_block:
         type: string
         default: Commander
-        examples:
-          - Col Smith
+        example: Col Smith
       office:
         type: string
 "#;
@@ -1270,11 +1253,8 @@ card_types:
         Some("Commander")
     );
 
-    let card_examples = card.examples();
-    assert_eq!(card_examples.len(), 1);
-    let signature_examples = card_examples.get("signature_block").unwrap();
-    assert_eq!(signature_examples.len(), 1);
-    assert_eq!(signature_examples[0].as_str(), Some("Col Smith"));
+    let sig_example = card.fields.get("signature_block").unwrap().example.as_ref();
+    assert_eq!(sig_example.and_then(|v| v.as_str()), Some("Col Smith"));
 
     assert!(config.card_type("unknown").is_none());
 }
@@ -1360,8 +1340,7 @@ fn test_field_schema_with_title_and_description() {
 title: "Field Title"
 description: "Detailed field description"
 type: "string"
-examples:
-  - "Example value"
+example: "Example value"
 ui:
   group: "Test Group"
 "#;
@@ -1375,12 +1354,7 @@ ui:
     );
 
     assert_eq!(
-        schema
-            .examples
-            .as_ref()
-            .and_then(|v| v.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|v| v.as_str()),
+        schema.example.as_ref().and_then(|v| v.as_str()),
         Some("Example value")
     );
 

@@ -11,10 +11,10 @@ main:
     recipient:
       title: Recipient's name and address
       type: array
-      examples:
-        - - Mr. John Doe
-          - 123 Main St
-          - Anytown, USA
+      example:
+        - Mr. John Doe
+        - 123 Main St
+        - Anytown, USA
       ui:
         group: Essentials
       description: The recipient's name and full mailing address.
@@ -22,9 +22,9 @@ main:
     signature_block:
       title: Signature block lines
       type: array
-      examples:
-        - - First M. Last
-          - Title
+      example:
+        - First M. Last
+        - Title
       ui:
         group: Essentials
       description: "The signer's information. Line 1: Name. Line 2: Title."
@@ -32,8 +32,7 @@ main:
     department:
       title: Name of the department or unit
       type: string
-      examples:
-        - Department of Electrical and Computer Engineering
+      example: Department of Electrical and Computer Engineering
       ui:
         group: Letterhead
       description: The department or organizational unit name for the letterhead.
@@ -41,9 +40,9 @@ main:
     address:
       title: Sender's address lines
       type: array
-      examples:
-        - - 5000 Forbes Avenue
-          - Pittsburgh, PA 15213-3890
+      example:
+        - 5000 Forbes Avenue
+        - Pittsburgh, PA 15213-3890
       ui:
         group: Letterhead
       description: The sender's institutional mailing address.
@@ -51,8 +50,7 @@ main:
     url:
       title: Department or university URL
       type: string
-      examples:
-        - www.ece.cmu.edu
+      example: www.ece.cmu.edu
       ui:
         group: Letterhead
       description: The department or university website URL.

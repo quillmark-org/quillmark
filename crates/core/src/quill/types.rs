@@ -20,8 +20,8 @@ pub mod field_key {
     pub const DESCRIPTION: &str = "description";
     /// Default value for the field
     pub const DEFAULT: &str = "default";
-    /// Example values for the field
-    pub const EXAMPLES: &str = "examples";
+    /// Example value for the field (single, used as template placeholder)
+    pub const EXAMPLE: &str = "example";
     /// UI-specific metadata
     pub const UI: &str = "ui";
     /// Whether the field is required
@@ -110,22 +110,6 @@ impl CardSchema {
             .collect()
     }
 
-    /// Example values declared on this card's fields, keyed by field name.
-    /// Fields with no `examples` (or with an empty/non-array `examples`) are
-    /// omitted.
-    pub fn examples(&self) -> HashMap<String, Vec<QuillValue>> {
-        self.fields
-            .iter()
-            .filter_map(|(name, field)| {
-                let array = field.examples.as_ref()?.as_array()?;
-                let values: Vec<QuillValue> = array
-                    .iter()
-                    .map(|v| QuillValue::from_json(v.clone()))
-                    .collect();
-                (!values.is_empty()).then_some((name.clone(), values))
-            })
-            .collect()
-    }
 }
 
 /// Field type hint enum for type-safe field type definitions
@@ -203,9 +187,9 @@ pub struct FieldSchema {
     /// Default value for the field
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default: Option<QuillValue>,
-    /// Example values for the field
+    /// Example value for the field (single; used as template placeholder)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub examples: Option<QuillValue>,
+    pub example: Option<QuillValue>,
     /// UI layout hints
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui: Option<UiFieldSchema>,
@@ -230,7 +214,7 @@ struct FieldSchemaDef {
     pub r#type: FieldType,
     pub description: Option<String>,
     pub default: Option<QuillValue>,
-    pub examples: Option<QuillValue>,
+    pub example: Option<QuillValue>,
     pub ui: Option<UiFieldSchema>,
     #[serde(default)]
     pub required: bool,
@@ -250,7 +234,7 @@ impl FieldSchema {
             r#type,
             description,
             default: None,
-            examples: None,
+            example: None,
             ui: None,
             required: false,
             enum_values: None,
@@ -263,28 +247,13 @@ impl FieldSchema {
     pub fn from_quill_value(key: String, value: &QuillValue) -> Result<Self, String> {
         let def: FieldSchemaDef = serde_json::from_value(value.clone().into_json())
             .map_err(|e| format!("Failed to parse field schema: {}", e))?;
-        let examples = match def.examples {
-            Some(examples) => {
-                if examples.is_null() {
-                    None
-                } else if examples.as_array().is_some() {
-                    Some(examples)
-                } else {
-                    Some(QuillValue::from_json(serde_json::Value::Array(vec![
-                        examples.into_json(),
-                    ])))
-                }
-            }
-            None => None,
-        };
-
         Ok(Self {
             name: key,
             title: def.title,
             r#type: def.r#type,
             description: def.description,
             default: def.default,
-            examples,
+            example: def.example,
             ui: def.ui,
             required: def.required,
             enum_values: def.enum_values,

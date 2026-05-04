@@ -13,15 +13,15 @@ main:
         List attachments in the order they are mentioned in the memo. Briefly describe
         each; do not use 'as stated' or abbreviations.
       default: []
-      examples:
-      - - Attachment description, YYYY MMM DD
+      example:
+      - Attachment description, YYYY MMM DD
     cc:
       title: Carbon copy recipients
       type: array
       description: List office symbols of recipients to receive copies.
       default: []
-      examples:
-      - - Rank and Name, ORG/SYMBOL
+      example:
+      - Rank and Name, ORG/SYMBOL
     classification:
       title: Classification level of the memo that displays in the banner
       type: string
@@ -29,8 +29,7 @@ main:
         Follow AFI 31-401 and applicable DoD guidance for classification markings.
         Leave blank for unclassified.
       default: ""
-      examples:
-      - CONFIDENTIAL
+      example: CONFIDENTIAL
     date:
       title: Date of memo (YYYY-MM-DD); defaults to today
       type: string
@@ -43,16 +42,14 @@ main:
         Complete list of recipients if 'SEE DISTRIBUTION' is used in the 'Memo For'
         field.
       default: []
-      examples:
-      - - ORG1/SYMBOL
-        - ORG2/SYMBOL
+      example:
+      - ORG1/SYMBOL
+      - ORG2/SYMBOL
     font_size:
       title: Font size for the memo text (int pt)
       type: number
       description: Font size for the memo text (pt).
       default: 11
-      examples:
-      - 11
     letterhead_caption:
       title: Letterhead caption line(s)
       type: array
@@ -71,9 +68,9 @@ main:
         Organization/office symbol in UPPERCASE. To address a specific person, add
         their rank and name in parentheses (e.g., 'ORG/SYMBOL (LT COL JANE DOE)'). For
         numerous recipients, use 'DISTRIBUTION'.
-      examples:
-      - - ORG1/SYMBOL
-        - ORG2/SYMBOL
+      example:
+      - ORG1/SYMBOL
+      - ORG2/SYMBOL
       required: true
     memo_from:
       title: "Sender information as array: [ORG/SYMBOL, 'Organization Name', 'Street Address', 'City State ZIP']"
@@ -82,26 +79,26 @@ main:
         If recipients are on the same installation, use only the office symbol. For
         recipients on other installations, include the full mailing address to enable return
         correspondence.
-      examples:
-      - - ORG/SYMBOL
-        - Organization Name
-        - 123 Street Ave
-        - City ST 12345-6789
+      example:
+      - ORG/SYMBOL
+      - Organization Name
+      - 123 Street Ave
+      - City ST 12345-6789
       required: true
     references:
       title: References for the memo
       type: array
       description: Cite by organization, type, date, and title.
       default: []
-      examples:
-      - - AFM 33-326, 31 July 2019, Preparing Official Communications
+      example:
+      - AFM 33-326, 31 July 2019, Preparing Official Communications
     signature_block:
       title: Signature block lines
       type: array
       description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title. Spell out 'Colonel' and general officer ranks."
-      examples:
-      - - FIRST M. LAST, Rank, USSF
-        - Duty Title
+      example:
+      - FIRST M. LAST, Rank, USSF
+      - Duty Title
       required: true
     subject:
       title: Subject of the memo
@@ -110,8 +107,7 @@ main:
         Be brief and clear. Capitalize the first letter of each word except articles,
         prepositions, and conjunctions. Include suspense dates in parentheses if
         applicable.
-      examples:
-      - Subject of the Memorandum
+      example: Subject of the Memorandum
       required: true
     tag_line:
       title: Tag line at bottom of memo
@@ -168,7 +164,7 @@ card_types:
         default:
         - FIRST M. LAST, Rank, USAF
         - Duty Title
-        examples:
-        - - FIRST M. LAST, Rank, USAF
-          - Duty Title
+        example:
+        - FIRST M. LAST, Rank, USAF
+        - Duty Title
         required: true
