@@ -25,11 +25,17 @@ impl QuillConfig {
     ///   - Optional: default → type-based empty; example → `e.g.` comment only.
     pub fn template(&self) -> String {
         let mut out = String::new();
+        let main_desc = self
+            .main
+            .description
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .or_else(|| Some(self.description.as_str()).filter(|s| !s.is_empty()));
         write_card_frontmatter(
             &mut out,
             &self.main,
             &format!("QUILL: {}@{}", self.name, self.version),
-            None,
+            main_desc,
         );
         let hide_body = self
             .main
@@ -63,13 +69,13 @@ fn write_card_frontmatter(
     description: Option<&str>,
 ) {
     out.push_str("---\n");
-    out.push_str(sentinel_line);
-    out.push('\n');
     if let Some(desc) = description {
         for line in desc.lines() {
             out.push_str(&format!("# {}\n", line));
         }
     }
+    out.push_str(sentinel_line);
+    out.push('\n');
     let mut fields: Vec<&FieldSchema> = card.fields.values().collect();
     fields.sort_by_key(|f| f.ui.as_ref().and_then(|u| u.order).unwrap_or(i32::MAX));
     for field in fields {
@@ -412,7 +418,7 @@ card_types:
 "#)
         .template();
         assert!(t.contains(
-            "CARD: note  # Note\n# A short note appended to the document.\n"
+            "# A short note appended to the document.\nCARD: note  # Note\n"
         ));
     }
 
@@ -443,7 +449,7 @@ main:
     flavor: { type: string, default: taro }
 "#)
         .template();
-        assert!(t.starts_with("---\nQUILL: taro@0.1.0\n"));
+        assert!(t.starts_with("---\n# x\nQUILL: taro@0.1.0\n"));
         assert!(t.contains("<body>"));
     }
 }
