@@ -42,8 +42,8 @@ impl QuillConfig {
         }
         for card in &self.card_types {
             let sentinel = match &card.title {
-                Some(t) => format!("CARD: {}  # {} (optional, repeat as needed)", card.name, t),
-                None => format!("CARD: {}  # (optional, repeat as needed)", card.name),
+                Some(t) => format!("CARD: {}  # {}", card.name, t),
+                None => format!("CARD: {}", card.name),
             };
             out.push('\n');
             write_card_frontmatter(&mut out, card, &sentinel, card.description.as_deref());
@@ -412,7 +412,7 @@ card_types:
 "#)
         .template();
         assert!(t.contains(
-            "CARD: note  # Note (optional, repeat as needed)\n# A short note appended to the document.\n"
+            "CARD: note  # Note\n# A short note appended to the document.\n"
         ));
     }
 
