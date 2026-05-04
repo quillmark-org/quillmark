@@ -1,9 +1,9 @@
 //! Auto-generated Markdown template for a Quill.
 //!
 //! Produces a fill-in-the-blank document that is dense enough to replace the
-//! schema for LLM consumers. Each field is annotated with inline comments
-//! (type, required, enum constraints, e.g. hint) and a preceding description
-//! comment where the schema declares one. No UI metadata is emitted.
+//! schema for LLM consumers. Each field is annotated with preceding `# …`
+//! comment lines (description, `required`, `enum:`, `example:`) and a single
+//! inline type hint. No UI metadata is emitted.
 
 use super::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
@@ -12,17 +12,17 @@ impl QuillConfig {
     /// Generate a fill-in-the-blank Markdown template for this quill.
     ///
     /// Annotation rules:
-    /// - Preceding `# <description>` comment for every field that declares one.
-    /// - Inline `# type | required | enum… | e.g. …` comment.
-    ///   - Type annotation only for non-obvious types (number, integer, boolean,
-    ///     markdown, object, date, datetime).
-    ///   - `required` marker when the field is required.
-    ///   - Enum values when declared.
-    ///   - `e.g. <value>` for optional fields that have an example but no enum
-    ///     (the example is illustrative, not prescriptive).
+    /// - Preceding `# …` comment lines, in order: description, `required`,
+    ///   `enum: a | b | c`, `example: <value>`.
+    ///   - `example:` is emitted only for optional fields with an example and
+    ///     no enum (the example is illustrative, not prescriptive).
+    /// - Inline `# <type>` annotation only for non-obvious types (number,
+    ///   integer, boolean, markdown, object, date, datetime). String and array
+    ///   are self-evident from the YAML value.
     /// - Placeholder value precedence:
     ///   - Required: example → default → type-based placeholder.
-    ///   - Optional: default → type-based empty; example → `e.g.` comment only.
+    ///   - Optional: default → type-based empty; example surfaces only as
+    ///     `# example: …` above the field.
     pub fn template(&self) -> String {
         let mut out = String::new();
         let main_desc = self
@@ -87,35 +87,27 @@ fn write_card_frontmatter(
 fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
     let pad = "  ".repeat(indent);
 
-    // Preceding description comment.
+    // Preceding comment block: description, required, enum, example.
     if let Some(desc) = &field.description {
         let clean = desc.split_whitespace().collect::<Vec<_>>().join(" ");
         out.push_str(&format!("{}# {}\n", pad, clean));
     }
-
-    // Build inline comment parts: type | required | enums | e.g.
-    let mut parts: Vec<String> = Vec::new();
-
-    if let Some(hint) = type_annotation(&field.r#type) {
-        parts.push(hint.to_string());
-    }
     if field.required {
-        parts.push("required".to_string());
+        out.push_str(&format!("{}# required\n", pad));
     }
     if let Some(vals) = &field.enum_values {
-        parts.push(vals.join(" | "));
+        out.push_str(&format!("{}# enum: {}\n", pad, vals.join(" | ")));
     }
-    // e.g. hint: only for optional fields with an example and no enum.
     if !field.required && field.enum_values.is_none() {
         if let Some(eg) = field.example.as_ref().map(|e| eg_hint(e)) {
-            parts.push(format!("e.g. {}", eg));
+            out.push_str(&format!("{}# example: {}\n", pad, eg));
         }
     }
 
-    let comment = if parts.is_empty() {
-        String::new()
-    } else {
-        format!("  # {}", parts.join(" | "))
+    // Inline: type annotation only.
+    let comment = match type_annotation(&field.r#type) {
+        Some(hint) => format!("  # {}", hint),
+        None => String::new(),
     };
 
     let value = field_value(field);
@@ -297,7 +289,7 @@ main:
     author: { type: string, title: Author, required: true }
 "#)
         .template();
-        assert!(t.contains("author: \"<Author>\"  # required"));
+        assert!(t.contains("# required\nauthor: \"<Author>\"\n"));
     }
 
     #[test]
@@ -309,7 +301,7 @@ main:
     status: { type: string, required: true, default: draft, example: final }
 "#)
         .template();
-        assert!(t.contains("status: final  # required"));
+        assert!(t.contains("# required\nstatus: final\n"));
     }
 
     #[test]
@@ -321,7 +313,7 @@ main:
     classification: { type: string, default: "", example: CONFIDENTIAL }
 "#)
         .template();
-        assert!(t.contains("classification: \"\"  # e.g. CONFIDENTIAL"));
+        assert!(t.contains("# example: CONFIDENTIAL\nclassification: \"\"\n"));
     }
 
     #[test]
@@ -336,7 +328,7 @@ main:
         - AFM 33-326, Communications
 "#)
         .template();
-        assert!(t.contains("refs: []  # e.g. AFM 33-326, Communications"));
+        assert!(t.contains("# example: AFM 33-326, Communications\nrefs: []\n"));
     }
 
     #[test]
@@ -348,8 +340,8 @@ main:
     format: { type: string, enum: [standard, informal], default: standard }
 "#)
         .template();
-        assert!(t.contains("format: standard  # standard | informal"));
-        assert!(!t.contains("e.g."));
+        assert!(t.contains("# enum: standard | informal\nformat: standard\n"));
+        assert!(!t.contains("example:"));
     }
 
     #[test]
@@ -366,7 +358,7 @@ main:
         - City ST 12345
 "#)
         .template();
-        assert!(t.contains("memo_from:  # required\n  - ORG/SYMBOL\n  - City ST 12345\n"));
+        assert!(t.contains("# required\nmemo_from:\n  - ORG/SYMBOL\n  - City ST 12345\n"));
     }
 
     #[test]
@@ -381,7 +373,7 @@ main:
       description: Be brief and clear.
 "#)
         .template();
-        assert!(t.contains("# Be brief and clear.\nsubject: \"<subject>\"  # required\n"));
+        assert!(t.contains("# Be brief and clear.\n# required\nsubject: \"<subject>\"\n"));
     }
 
     #[test]
