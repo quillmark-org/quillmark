@@ -1431,10 +1431,7 @@ mod tests {
     #[test]
     fn test_double_underscore_is_strong() {
         // Per CommonMark, __text__ renders as strong, identical to **text**.
-        assert_eq!(
-            mark_to_typst("__bolded__").unwrap(),
-            "#strong[bolded]\n\n"
-        );
+        assert_eq!(mark_to_typst("__bolded__").unwrap(), "#strong[bolded]\n\n");
     }
 
     #[test]
