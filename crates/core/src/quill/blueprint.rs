@@ -4,8 +4,11 @@
 //! for LLM consumers. The blueprint shows the document's shape — fields,
 //! constraints, examples — so a consumer can write a fresh document from it.
 //! Each field is annotated with preceding `# …` comment lines (description,
-//! `required`, `enum:`, `example:`) and a single inline type hint. No UI
-//! metadata is emitted.
+//! `required`, `enum:`, `example:`) and a single inline type hint.
+//!
+//! Most UI metadata is stripped, but two semantic-structure hints are honored:
+//! `ui.group` produces `# === <Group> ===` banners and `ui.order` controls
+//! field ordering within a group.
 
 use super::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
@@ -50,7 +53,7 @@ impl QuillConfig {
             .and_then(|u| u.hide_body)
             .unwrap_or(false);
         if !hide_body {
-            out.push_str("\n<body>\n");
+            out.push_str("\n<Markdown body>\n");
         }
         for card in &self.card_types {
             let sentinel = format!("CARD: {}", card.name);
@@ -58,7 +61,7 @@ impl QuillConfig {
             write_card_frontmatter(&mut out, card, &sentinel, card.description.as_deref());
             let hide = card.ui.as_ref().and_then(|u| u.hide_body).unwrap_or(false);
             if !hide {
-                out.push_str("\n<body>\n");
+                out.push_str("\n<Markdown body>\n");
             }
         }
         out
@@ -79,12 +82,40 @@ fn write_card_frontmatter(
     }
     out.push_str(sentinel_line);
     out.push('\n');
-    let mut fields: Vec<&FieldSchema> = card.fields.values().collect();
-    fields.sort_by_key(|f| f.ui.as_ref().and_then(|u| u.order).unwrap_or(i32::MAX));
-    for field in fields {
-        write_field(out, field, 0);
+    for (group, fields) in group_fields(card.fields.values()) {
+        if let Some(name) = group {
+            out.push_str(&format!("\n# === {} ===\n", name));
+        }
+        for field in fields {
+            write_field(out, field, 0);
+        }
     }
     out.push_str("---\n");
+}
+
+/// Partition fields by `ui.group`, preserving first-appearance order of groups
+/// and sorting fields within each group by `ui.order`. Ungrouped fields form
+/// the leading section (no banner).
+fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
+    fields: I,
+) -> Vec<(Option<String>, Vec<&'a FieldSchema>)> {
+    let mut sorted: Vec<&FieldSchema> = fields.into_iter().collect();
+    sorted.sort_by_key(|f| f.ui.as_ref().and_then(|u| u.order).unwrap_or(i32::MAX));
+    let mut groups: Vec<(Option<String>, Vec<&FieldSchema>)> = Vec::new();
+    for field in sorted {
+        let group = field
+            .ui
+            .as_ref()
+            .and_then(|u| u.group.as_ref())
+            .map(|s| s.to_string());
+        match groups.iter_mut().find(|(g, _)| g == &group) {
+            Some(slot) => slot.1.push(field),
+            None => groups.push((group, vec![field])),
+        }
+    }
+    // Ungrouped fields lead; named groups follow in first-appearance order.
+    groups.sort_by_key(|(g, _)| g.is_some());
+    groups
 }
 
 fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
@@ -276,7 +307,6 @@ fn yaml_string(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::quill::QuillConfig;
 
     fn cfg(yaml: &str) -> QuillConfig {
@@ -431,7 +461,7 @@ card_types:
 "#)
         .blueprint();
         let after = &t[t.find("CARD: skills").unwrap()..];
-        assert!(!after.contains("<body>"));
+        assert!(!after.contains("<Markdown body>"));
     }
 
     #[test]
@@ -444,6 +474,29 @@ main:
 "#)
         .blueprint();
         assert!(t.starts_with("---\n# x\nQUILL: taro@0.1.0\n"));
-        assert!(t.contains("<body>"));
+        assert!(t.contains("<Markdown body>"));
+    }
+
+    #[test]
+    fn ui_groups_emit_section_banners_in_first_appearance_order() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    memo_for: { type: array, required: true, ui: { group: Addressing } }
+    subject: { type: string, required: true, ui: { group: Addressing } }
+    letterhead_title: { type: string, default: HQ, ui: { group: Letterhead } }
+    notes: { type: string }
+"#)
+        .blueprint();
+        let after_quill = &t[t.find("QUILL:").unwrap()..];
+        let addressing = after_quill.find("# === Addressing ===").unwrap();
+        let letterhead = after_quill.find("# === Letterhead ===").unwrap();
+        let notes = after_quill.find("notes:").unwrap();
+        // Ungrouped (notes) leads; Addressing precedes Letterhead.
+        assert!(notes < addressing);
+        assert!(addressing < letterhead);
+        // No banner for the ungrouped section.
+        assert!(!after_quill[..notes].contains("# ==="));
     }
 }
