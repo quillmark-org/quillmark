@@ -213,17 +213,9 @@ implemented in a future revision:
   authors use CommonMark-native hard breaks (trailing two spaces plus
   newline, or trailing `\\` plus newline).
 
-### 6.4 Discarded Data
-
-CommonMark accepts the following constructs in full, but Typst (the
-rendering backend) has no corresponding output target, so the data is
-dropped at conversion. The surrounding construct still renders.
-
-- **Link titles** `[text](url "title")` — the title is dropped; link
-  text and URL are preserved. Typst's `#link` has no `title:` parameter
-  and PDF output has no tooltip primitive Typst exposes. Authors who
-  need the descriptive text should place it in the link text or in
-  adjacent prose.
+Backends MAY drop semantic data (e.g., link titles, image alt text)
+that has no equivalent in their render target. Such losses are backend
+concerns and are documented per backend, not in this spec.
 
 ## 7. Input Normalization
 

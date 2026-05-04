@@ -56,11 +56,7 @@ The following are recognised by the parser (so they will not corrupt surrounding
 - **Math** (`$…$`, `$$…$$`) — `$` is treated as a literal character.
 - **Footnotes**, **task lists**, **definition lists** — not supported.
 
-## Discarded data
-
-CommonMark accepts the following, but Typst (the rendering backend) has no equivalent target, so the data is dropped at conversion. The link or image itself still renders.
-
-- **Link titles** (`[text](url "title")`) — the title is dropped; link text and URL are kept. Typst's `#link` and PDF output have no tooltip mechanism. If you need to surface descriptive text, put it in the link text or in adjacent prose.
+Some constructs (like link titles) are accepted by the parser but may be dropped during rendering when the active backend has no target for them. Those losses are backend-specific — see each backend's documentation.
 
 ## The `---` marker is reserved
 
