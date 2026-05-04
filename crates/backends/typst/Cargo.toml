@@ -11,7 +11,6 @@ homepage = "https://github.com/nibsbin/quillmark"
 repository = "https://github.com/nibsbin/quillmark"
 
 [dependencies]
-anyhow = { workspace = true }
 pulldown-cmark = { workspace = true }
 quillmark-core = { workspace = true }
 serde_json = { workspace = true }
