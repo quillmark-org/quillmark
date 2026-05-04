@@ -11,13 +11,12 @@ homepage = "https://github.com/nibsbin/quillmark"
 repository = "https://github.com/nibsbin/quillmark"
 
 [dependencies]
-anyhow = { workspace = true }
 pulldown-cmark = { workspace = true }
 quillmark-core = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
-toml = "~0.9"
+toml = { workspace = true }
 typst = { workspace = true }
 typst-pdf = { workspace = true }
 typst-render = { workspace = true }

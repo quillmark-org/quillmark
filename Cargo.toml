@@ -33,7 +33,7 @@ serde_json = { version = "~1.0", features = ["preserve_order"] }
 
 
 thiserror = "~2.0"
-anyhow = "~1.0"
+toml = "~0.8"
 
 # File globbing
 glob = "0.3.3"
