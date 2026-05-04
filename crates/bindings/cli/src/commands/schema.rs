@@ -13,6 +13,11 @@ pub struct SchemaArgs {
     /// Output file path (optional)
     #[arg(short, long, value_name = "FILE")]
     output: Option<PathBuf>,
+
+    /// Include form-builder ui hints (group, order, compact, multiline,
+    /// hide_body, default_title). Default emits the structural schema only.
+    #[arg(long)]
+    with_ui: bool,
 }
 
 pub fn execute(args: SchemaArgs) -> Result<()> {
@@ -28,12 +33,13 @@ pub fn execute(args: SchemaArgs) -> Result<()> {
     let engine = Quillmark::new();
     let quill = engine.quill_from_path(&args.quill_path)?;
 
-    // Emit public schema contract as YAML
-    let schema_yaml = quill
-        .source()
-        .config()
-        .public_schema_yaml()
-        .map_err(|e| CliError::InvalidArgument(format!("Failed to serialize schema: {}", e)))?;
+    let config = quill.source().config();
+    let schema_yaml = if args.with_ui {
+        config.form_schema_yaml()
+    } else {
+        config.schema_yaml()
+    }
+    .map_err(|e| CliError::InvalidArgument(format!("Failed to serialize schema: {}", e)))?;
 
     // Output
     if let Some(output_path) = args.output {

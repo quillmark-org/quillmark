@@ -75,52 +75,101 @@ impl QuillConfig {
         self.card_types.iter().find(|card| card.name == name)
     }
 
-    /// Public schema contract as a JSON value.
+    /// Structural schema plus `ui` hints — for form builders.
+    pub fn form_schema(&self) -> serde_json::Value {
+        self.build_schema(true)
+    }
+
+    /// Structural schema with `ui` keys stripped — for LLM/MCP consumers.
     ///
-    /// The single source of truth for what consumers (form UIs, MCP tools,
-    /// LLM repair loops) see. Top-level keys: `name`, `version`, `ref`
-    /// (`name@version` — the string authors write in the `QUILL:` field),
-    /// `main`, optional `card_types` (map keyed by card name), and optional
-    /// `example`. `main` and each card under `card_types` serialize their
-    /// `FieldSchema` children via the structs' own serde attributes; the wire
-    /// format here is therefore pinned by those attributes plus this
-    /// projection.
-    pub fn public_schema(&self) -> serde_json::Value {
+    /// `main.fields` is prefixed with a required `QUILL` entry (`const = name@version`);
+    /// each `card_types[<name>].fields` is prefixed with a required `CARD` entry
+    /// (`const = <name>`). Identity (`name`, `version`, etc.) and the bundled
+    /// example live elsewhere on the host's metadata surface.
+    pub fn schema(&self) -> serde_json::Value {
+        self.build_schema(false)
+    }
+
+    fn build_schema(&self, with_ui: bool) -> serde_json::Value {
+        let canonical_ref = format!("{}@{}", self.name, self.version);
+
         let mut obj = serde_json::Map::new();
-        obj.insert(
-            "name".to_string(),
-            serde_json::Value::String(self.name.clone()),
+
+        let mut main_value = serde_json::to_value(&self.main).unwrap_or(serde_json::Value::Null);
+        Self::prepend_sentinel_field(
+            &mut main_value,
+            "QUILL",
+            &canonical_ref,
+            "Canonical quill reference. Must be exactly this value as the QUILL: sentinel in the document frontmatter.",
         );
-        obj.insert(
-            "version".to_string(),
-            serde_json::Value::String(self.version.clone()),
-        );
-        obj.insert(
-            "ref".to_string(),
-            serde_json::Value::String(format!("{}@{}", self.name, self.version)),
-        );
-        obj.insert(
-            "main".to_string(),
-            serde_json::to_value(&self.main).unwrap_or(serde_json::Value::Null),
-        );
+        if !with_ui {
+            Self::strip_ui_recursive(&mut main_value);
+        }
+        obj.insert("main".to_string(), main_value);
+
         if !self.card_types.is_empty() {
-            let card_types: BTreeMap<String, &CardSchema> = self
+            let card_types: BTreeMap<String, serde_json::Value> = self
                 .card_types
                 .iter()
-                .map(|card| (card.name.clone(), card))
+                .map(|card| {
+                    let mut card_value =
+                        serde_json::to_value(card).unwrap_or(serde_json::Value::Null);
+                    Self::prepend_sentinel_field(
+                        &mut card_value,
+                        "CARD",
+                        &card.name,
+                        "Card type name. Must be exactly this value as the CARD: sentinel in the card frontmatter.",
+                    );
+                    if !with_ui {
+                        Self::strip_ui_recursive(&mut card_value);
+                    }
+                    (card.name.clone(), card_value)
+                })
                 .collect();
             obj.insert(
                 "card_types".to_string(),
                 serde_json::to_value(&card_types).unwrap_or(serde_json::Value::Null),
             );
         }
-        if let Some(example) = &self.example_markdown {
-            obj.insert(
-                "example".to_string(),
-                serde_json::Value::String(example.clone()),
-            );
-        }
+
         serde_json::Value::Object(obj)
+    }
+
+    /// Insert a `QUILL`/`CARD` sentinel as the first entry of a card's `fields`.
+    fn prepend_sentinel_field(
+        card_value: &mut serde_json::Value,
+        key: &str,
+        const_value: &str,
+        description: &str,
+    ) {
+        let sentinel = serde_json::json!({
+            "type": "string",
+            "const": const_value,
+            "description": description,
+            "required": true
+        });
+        if let Some(serde_json::Value::Object(fields)) = card_value.get_mut("fields") {
+            let existing = std::mem::take(fields);
+            fields.insert(key.to_string(), sentinel);
+            fields.extend(existing);
+        }
+    }
+
+    fn strip_ui_recursive(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::Object(map) => {
+                map.remove("ui");
+                for v in map.values_mut() {
+                    Self::strip_ui_recursive(v);
+                }
+            }
+            serde_json::Value::Array(arr) => {
+                for v in arr.iter_mut() {
+                    Self::strip_ui_recursive(v);
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Coerce typed frontmatter fields (IndexMap, no CARDS/BODY keys).

@@ -1,7 +1,7 @@
 use quillmark_core::{normalize::normalize_document, quill::QuillConfig, Document};
 
 #[test]
-fn test_markdown_field_public_schema_emission() {
+fn test_markdown_field_schema_emission() {
     let config = QuillConfig::from_yaml(
         r#"
 quill:
@@ -18,7 +18,7 @@ main:
     )
     .unwrap();
 
-    let yaml = config.public_schema_yaml().unwrap();
+    let yaml = config.schema_yaml().unwrap();
     let value: serde_json::Value = serde_saphyr::from_str(&yaml).unwrap();
 
     assert_eq!(

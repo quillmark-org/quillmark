@@ -193,119 +193,57 @@ fn test_quill_from_object_tree() {
     assert_eq!(r_map.artifacts.len(), r_obj.artifacts.len());
 }
 
-/// `quill.metadata` exposes the snapshot expected by downstream consumers:
-/// engine info (`backend`, `version`, `author`, `supportedFormats`) at the
-/// top level, and the quill's declared contract under `schema` (mirroring
-/// `QuillConfig::public_schema()`: `name`, `main`, `card_types`, optional
-/// `example`).
+/// `metadata` is identity only; `schema` strips ui and injects QUILL/CARD
+/// sentinels; `formSchema` keeps ui hints.
 #[wasm_bindgen_test]
-fn test_quill_metadata_snapshot() {
+fn test_quill_metadata_and_schemas() {
     use js_sys::Reflect;
     use wasm_bindgen::JsValue;
 
-    let engine = Quillmark::new();
-    let quill = engine
+    let get = |obj: &JsValue, key: &str| Reflect::get(obj, &JsValue::from_str(key)).unwrap();
+    let get_str = |obj: &JsValue, key: &str| get(obj, key).as_string();
+
+    let quill = Quillmark::new()
         .quill(common::tree(&[
             (
                 "Quill.yaml",
-                b"quill:\n  name: meta_quill\n  backend: typst\n  version: \"0.2.1\"\n  plate_file: plate.typ\n  description: Metadata quill\n\nmain:\n  description: The main card schema\n  fields:\n    title:\n      type: string\n      description: The title\n\ncard_types:\n  indorsement:\n    title: Indorsement\n    fields:\n      signature_block:\n        type: string\n",
+                b"quill:\n  name: meta_quill\n  backend: typst\n  version: \"0.2.1\"\n  plate_file: plate.typ\n  description: Metadata quill\nmain:\n  fields:\n    title:\n      type: string\n      ui:\n        group: Header\ncard_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n",
             ),
             ("plate.typ", b"= Title"),
         ]))
-        .expect("quill failed");
+        .expect("quill load");
 
-    let meta: JsValue = quill.metadata();
-    assert!(meta.is_object(), "metadata must be a plain JS object");
-
-    let get = |key: &str| -> JsValue { Reflect::get(&meta, &JsValue::from_str(key)).unwrap() };
-
-    // Engine / quill identity lives at the top level.
-    assert_eq!(get("backend").as_string().as_deref(), Some("typst"));
-    assert_eq!(get("version").as_string().as_deref(), Some("0.2.1"));
-    // `author` defaults to "Unknown" when the YAML omits it.
-    assert_eq!(get("author").as_string().as_deref(), Some("Unknown"));
-    // The quill's own description is surfaced at the top level, distinct from
-    // any schema description authored under `main:`.
+    // metadata: identity from `quill:` section, no schema.
+    let meta = quill.metadata();
+    assert_eq!(get_str(&meta, "name").as_deref(), Some("meta_quill"));
+    assert_eq!(get_str(&meta, "version").as_deref(), Some("0.2.1"));
+    assert_eq!(get_str(&meta, "backend").as_deref(), Some("typst"));
+    assert_eq!(get_str(&meta, "author").as_deref(), Some("Unknown"));
     assert_eq!(
-        get("description").as_string().as_deref(),
+        get_str(&meta, "description").as_deref(),
         Some("Metadata quill")
     );
+    assert!(js_sys::Array::from(&get(&meta, "supportedFormats")).length() > 0);
+    assert!(get(&meta, "schema").is_undefined());
 
-    let formats = get("supportedFormats");
-    assert!(
-        js_sys::Array::is_array(&formats),
-        "supportedFormats must be an array"
-    );
-    let formats_arr = js_sys::Array::from(&formats);
-    assert!(
-        formats_arr.length() > 0,
-        "supportedFormats must be non-empty"
-    );
-
-    // The quill's declared contract lives under metadata.schema. Same shape
-    // as QuillConfig::public_schema() in Rust: { name, main, card_types,
-    // example? }.
-    let schema = get("schema");
-    assert!(schema.is_object(), "schema must be an object");
-
-    let schema_get =
-        |key: &str| -> JsValue { Reflect::get(&schema, &JsValue::from_str(key)).unwrap() };
-
+    // schema: ui stripped, QUILL/CARD sentinels with const values.
+    let schema = quill.schema();
+    let main_fields = get(&get(&schema, "main"), "fields");
+    assert!(get(&get(&main_fields, "title"), "ui").is_undefined());
     assert_eq!(
-        schema_get("name").as_string().as_deref(),
-        Some("meta_quill")
+        get_str(&get(&main_fields, "QUILL"), "const").as_deref(),
+        Some("meta_quill@0.2.1")
     );
-
-    let main = schema_get("main");
-    assert!(main.is_object(), "schema.main must be present");
-    // `schema.main.description` is the schema description authored under
-    // `main:`; it is independent of the quill's own description above.
+    let card_fields = get(&get(&get(&schema, "card_types"), "indorsement"), "fields");
     assert_eq!(
-        Reflect::get(&main, &JsValue::from_str("description"))
-            .unwrap()
-            .as_string()
-            .as_deref(),
-        Some("The main card schema")
-    );
-    let main_fields = Reflect::get(&main, &JsValue::from_str("fields")).unwrap();
-    assert!(
-        main_fields.is_object(),
-        "schema.main.fields must be an object"
-    );
-    let title_field = Reflect::get(&main_fields, &JsValue::from_str("title")).unwrap();
-    assert!(
-        title_field.is_object(),
-        "schema.main.fields.title must be present from Quill.yaml"
+        get_str(&get(&card_fields, "CARD"), "const").as_deref(),
+        Some("indorsement")
     );
 
-    // Named card-types live under schema.card_types (does NOT include main).
-    let card_types = schema_get("card_types");
-    assert!(
-        card_types.is_object(),
-        "schema.card_types must be an object"
-    );
-    assert!(
-        Reflect::get(&card_types, &JsValue::from_str("main"))
-            .unwrap()
-            .is_undefined(),
-        "schema.card_types must NOT contain the main card"
-    );
-    let indorsement = Reflect::get(&card_types, &JsValue::from_str("indorsement")).unwrap();
-    assert!(
-        indorsement.is_object(),
-        "schema.card_types.indorsement must be present"
-    );
-    let indorsement_fields = Reflect::get(&indorsement, &JsValue::from_str("fields")).unwrap();
-    assert!(
-        indorsement_fields.is_object(),
-        "named card-type entries are CardSchema-shaped (have `fields`)"
-    );
-    let signature_block =
-        Reflect::get(&indorsement_fields, &JsValue::from_str("signature_block")).unwrap();
-    assert!(
-        signature_block.is_object(),
-        "card-type field must round-trip from Quill.yaml"
-    );
+    // formSchema: ui hints retained.
+    let form = quill.form_schema();
+    let form_title = get(&get(&get(&form, "main"), "fields"), "title");
+    assert!(get(&form_title, "ui").is_object());
 }
 
 /// `doc.clone()` returns an independent handle: mutations on the clone

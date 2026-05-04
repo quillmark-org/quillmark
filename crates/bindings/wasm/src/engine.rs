@@ -51,34 +51,27 @@ export interface QuillCardSchema {
 }
 
 /**
- * Public schema contract returned as `QuillMetadata.schema`.
+ * Document schema. Returned by both `Quill.schema` (no ui hints) and
+ * `Quill.formSchema` (with ui hints) — same shape, optional `ui` keys.
  *
- * Identical to `QuillConfig::public_schema()` on the Rust side.
+ * `main.fields.QUILL` and `card_types[name].fields.CARD` are required
+ * sentinels with `const` values telling consumers what to write.
  */
 export interface QuillSchema {
-    name: string;
-    /** Semver version of this quill. */
-    version: string;
-    /** Canonical reference string (`name@version`) — the value authors write in the `QUILL:` field. */
-    ref: string;
     main: QuillCardSchema;
     /** Present only when the quill declares at least one named card type. */
     card_types?: Record<string, QuillCardSchema>;
-    /** The quill's bundled example document, if declared. */
-    example?: string;
 }
 
 /**
- * Read-only snapshot of the loaded quill's engine info and declared schema.
- * Returned by `Quill.metadata`.
- *
- * Well-known keys are strongly typed; any additional keys declared under
- * `quill:` in `Quill.yaml` appear as `unknown`.
+ * Identity snapshot mirroring the `quill:` section of `Quill.yaml`.
+ * Schemas live on `Quill.schema` / `Quill.formSchema`; the example on
+ * `Quill.example`. Extra `quill:` keys appear as `unknown`.
  */
 export interface QuillMetadata {
-    schema: QuillSchema;
-    backend: string;
+    name: string;
     version: string;
+    backend: string;
     author: string;
     description: string;
     supportedFormats: OutputFormat[];
@@ -317,24 +310,30 @@ impl Quill {
         self.inner.backend_id() == CANVAS_BACKEND_ID
     }
 
-    /// Read-only snapshot of the loaded quill's engine info and declared schema.
-    ///
-    /// Returns a plain JS object with:
-    /// - `schema` — the quill's public schema contract, identical to
-    ///   `QuillConfig::public_schema()`. Top-level keys: `name`, `version`,
-    ///   `ref` (`name@version` — the string authors write in `QUILL:`), `main`,
-    ///   optional `card_types` (map keyed by card name, omitted when empty),
-    ///   optional `example`. `main` and each card under `card_types` share
-    ///   the same shape: `fields` (map keyed by field name), optional
-    ///   `title`, `description`, `ui`.
-    /// - `backend`, `version`, `author`, `description` — quill identity
-    ///   declared in `Quill.yaml`'s `quill:` section. `description` describes
-    ///   the quill itself; if the author also declared `main.description` (the
-    ///   schema description of the entry-point card), it lives at
-    ///   `schema.main.description` and is independent.
-    /// - `supportedFormats` — output formats the backend produces, as
-    ///   lowercase strings.
-    /// - Any additional unstructured keys declared under `quill:`.
+    /// Bundled example document, or `undefined` if none was declared.
+    #[wasm_bindgen(getter, js_name = example)]
+    pub fn example(&self) -> Option<String> {
+        self.inner.source().config().example_markdown.clone()
+    }
+
+    /// Document schema with `ui` hints stripped — for LLM/MCP consumers.
+    #[wasm_bindgen(getter, js_name = schema, unchecked_return_type = "QuillSchema")]
+    pub fn schema(&self) -> JsValue {
+        let value = self.inner.source().config().schema();
+        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        value.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
+    }
+
+    /// Document schema with `ui` hints — for form builders.
+    #[wasm_bindgen(getter, js_name = formSchema, unchecked_return_type = "QuillSchema")]
+    pub fn form_schema(&self) -> JsValue {
+        let value = self.inner.source().config().form_schema();
+        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        value.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
+    }
+
+    /// Identity snapshot of the `quill:` section of `Quill.yaml`, plus
+    /// `supportedFormats` and any custom `quill:` keys.
     ///
     /// Consumers that need validation run their own validator against
     /// `metadata.schema`.
@@ -347,14 +346,17 @@ impl Quill {
         let config = source.config();
 
         let mut obj = serde_json::Map::new();
-        obj.insert("schema".to_string(), config.public_schema());
         obj.insert(
-            "backend".to_string(),
-            serde_json::Value::String(config.backend.clone()),
+            "name".to_string(),
+            serde_json::Value::String(config.name.clone()),
         );
         obj.insert(
             "version".to_string(),
             serde_json::Value::String(config.version.clone()),
+        );
+        obj.insert(
+            "backend".to_string(),
+            serde_json::Value::String(config.backend.clone()),
         );
         obj.insert(
             "author".to_string(),

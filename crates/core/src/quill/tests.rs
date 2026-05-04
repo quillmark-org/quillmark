@@ -2181,39 +2181,51 @@ main:
         .contains("Failed to parse field schema 'broken_field'"));
 }
 
-#[test]
-fn public_schema_snapshot_usaf_memo_0_1_0() {
-    let quill_path = quillmark_fixtures::resource_path("quills/usaf_memo/0.1.0");
-    let quill = load_from_path(quill_path).expect("failed to load usaf_memo fixture");
-
-    let yaml = quill
-        .config
-        .public_schema_yaml()
-        .expect("failed to emit public schema yaml");
-
-    let expected_path =
-        quillmark_fixtures::resource_path("quills/usaf_memo/0.1.0/__golden__/public_schema.yaml");
+fn check_schema_snapshot(
+    yaml_of: impl Fn(&QuillConfig) -> String,
+    json_of: impl Fn(&QuillConfig) -> serde_json::Value,
+    golden: &str,
+    expect_ui: bool,
+) {
+    let quill = load_from_path(quillmark_fixtures::resource_path("quills/usaf_memo/0.1.0"))
+        .expect("load usaf_memo fixture");
+    let yaml = yaml_of(&quill.config);
+    let golden_path =
+        quillmark_fixtures::resource_path(&format!("quills/usaf_memo/0.1.0/__golden__/{golden}"));
 
     if std::env::var("UPDATE_GOLDEN").is_ok() {
-        fs::write(&expected_path, &yaml).expect("failed to update golden public schema");
+        fs::write(&golden_path, &yaml).expect("write golden");
     }
-
-    let expected = fs::read_to_string(&expected_path).expect("failed to read golden public schema");
-    assert_eq!(yaml, expected, "public schema snapshot changed");
-
-    let parsed: serde_json::Value =
-        serde_saphyr::from_str(&yaml).expect("schema yaml should parse");
-    assert!(parsed.get("name").is_some());
-    assert!(parsed.get("main").is_some());
-    assert!(
-        parsed.get("main").and_then(|v| v.get("fields")).is_some(),
-        "main.fields should be present"
+    assert_eq!(
+        yaml,
+        fs::read_to_string(&golden_path).expect("read golden"),
+        "{golden} drifted"
     );
-    assert!(parsed.get("card_types").is_some());
-    assert!(parsed.get("CARDS").is_none());
 
-    // public_schema() (the JSON value) must agree with the YAML round-trip;
-    // they are two encodings of the same source of truth.
-    let value = quill.config.public_schema();
-    assert_eq!(value, parsed);
+    let parsed: serde_json::Value = serde_saphyr::from_str(&yaml).expect("parse yaml");
+    assert_eq!(json_of(&quill.config), parsed, "{golden} json/yaml parity");
+    assert!(parsed.get("main").and_then(|v| v.get("fields")).is_some());
+    assert!(parsed.get("card_types").is_some());
+    assert!(parsed.get("ref").is_none() && parsed.get("example").is_none());
+    assert_eq!(yaml.contains("ui:"), expect_ui, "{golden} ui presence");
+}
+
+#[test]
+fn schema_snapshot_usaf_memo_0_1_0() {
+    check_schema_snapshot(
+        |c| c.schema_yaml().unwrap(),
+        |c| c.schema(),
+        "schema.yaml",
+        false,
+    );
+}
+
+#[test]
+fn form_schema_snapshot_usaf_memo_0_1_0() {
+    check_schema_snapshot(
+        |c| c.form_schema_yaml().unwrap(),
+        |c| c.form_schema(),
+        "form_schema.yaml",
+        true,
+    );
 }

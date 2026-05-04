@@ -711,53 +711,49 @@ card_types:
         type: string
 `
 
-  it('exposes engine info at top level and the quill contract under schema', () => {
+  it('exposes identity on metadata and schemas on dedicated getters', () => {
     const engine = new Quillmark()
     const quill = engine.quill(
       makeQuill({ name: 'meta_test_quill', plate: TEST_PLATE, quillYaml: META_QUILL_YAML }),
     )
 
+    // metadata mirrors the `quill:` section of Quill.yaml — identity only.
     const meta = quill.metadata
     expect(meta).toBeDefined()
-    // Engine / quill identity lives at the top level.
-    expect(meta.backend).toBe('typst')
+    expect(meta.name).toBe('meta_test_quill')
     expect(meta.version).toBe('0.2.1')
+    expect(meta.backend).toBe('typst')
     expect(meta.author).toBe('Unknown')
-    // The quill's own description is surfaced at the top level, distinct
-    // from any schema description authored under `main:`.
     expect(meta.description).toBe('Metadata test')
     expect(Array.isArray(meta.supportedFormats)).toBe(true)
     expect(meta.supportedFormats.length).toBeGreaterThan(0)
+    expect(meta.schema).toBeUndefined()
 
-    // The quill's declared contract lives under metadata.schema. Its shape is
-    // identical to QuillConfig::public_schema() in Rust: { name, version, ref,
-    // main, card_types, example? }. main and each card under card_types share
-    // the same shape.
-    expect(meta.schema).toBeDefined()
-    expect(meta.schema.name).toBe('meta_test_quill')
-    expect(meta.schema.version).toBe('0.2.1')
-    expect(meta.schema.ref).toBe('meta_test_quill@0.2.1')
-    expect(meta.schema.main).toBeDefined()
-    // schema.main.description is the schema's own description, authored
-    // under `main:`, independent of meta.description above.
-    expect(meta.schema.main.description).toBe('The main card schema')
-    expect(meta.schema.main.fields.title).toBeDefined()
-    expect(meta.schema.card_types).toBeDefined()
-    // card_types holds the OTHER composable card types — main is not duplicated here
-    expect(meta.schema.card_types.main).toBeUndefined()
-    expect(meta.schema.card_types.indorsement).toBeDefined()
-    expect(meta.schema.card_types.indorsement.fields.signature_block).toBeDefined()
+    // schema (clean): structure only, no ui hints. QUILL/CARD sentinels with const values.
+    const schema = quill.schema
+    expect(schema.main.description).toBe('The main card schema')
+    expect(schema.main.fields.title).toBeDefined()
+    expect(schema.main.fields.title.ui).toBeUndefined()
+    expect(schema.main.fields.QUILL.const).toBe('meta_test_quill@0.2.1')
+    expect(schema.card_types.main).toBeUndefined()
+    expect(schema.card_types.indorsement.fields.signature_block).toBeDefined()
+    expect(schema.card_types.indorsement.fields.CARD.const).toBe('indorsement')
+
+    // formSchema: same shape but ui hints retained when authored.
+    const form = quill.formSchema
+    expect(form.main.fields.title).toBeDefined()
+    expect(form.card_types.indorsement.fields.signature_block).toBeDefined()
   })
 
-  it('is JSON.stringify-able (plain object, not a class)', () => {
+  it('metadata and schema are JSON.stringify-able (plain objects)', () => {
     const engine = new Quillmark()
     const quill = engine.quill(
       makeQuill({ name: 'meta_test_quill', plate: TEST_PLATE, quillYaml: META_QUILL_YAML }),
     )
-    const json = JSON.stringify(quill.metadata)
-    expect(typeof json).toBe('string')
-    const parsed = JSON.parse(json)
-    expect(parsed.schema.name).toBe('meta_test_quill')
+    const meta = JSON.parse(JSON.stringify(quill.metadata))
+    expect(meta.name).toBe('meta_test_quill')
+    const schema = JSON.parse(JSON.stringify(quill.schema))
+    expect(schema.main.fields.QUILL.const).toBe('meta_test_quill@0.2.1')
   })
 })
 
