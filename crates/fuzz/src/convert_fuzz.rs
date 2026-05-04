@@ -231,9 +231,9 @@ fn italic(text: &str) -> String {
     wrap_format(text, "*", "*")
 }
 
-/// Underline: __text__
+/// Underline: <u>text</u> (the only allowlisted HTML tag, per spec §6.2)
 fn underline(text: &str) -> String {
-    wrap_format(text, "__", "__")
+    wrap_format(text, "<u>", "</u>")
 }
 
 /// Strikethrough: ~~text~~
@@ -269,9 +269,7 @@ proptest! {
         let result = mark_to_typst(&input);
         prop_assert!(result.is_ok());
         let output = result.unwrap();
-        // Underline converts to #underline[] when parsed correctly
-        // Note: May fail for edge cases with word boundaries
-        prop_assert!(output.contains("#underline[") || output.contains("\\_"));
+        prop_assert!(output.contains("#underline["));
     }
 
     #[test]
@@ -578,12 +576,12 @@ proptest! {
         middle in "[a-zA-Z]{1,5}",
         suffix in "[a-zA-Z]{1,5}"
     ) {
-        let input = format!("{}__{}__{}", prefix, middle, suffix);
+        // <u>…</u> covers intraword underline, which __ cannot reach.
+        let input = format!("{}<u>{}</u>{}", prefix, middle, suffix);
         let result = mark_to_typst(&input);
         prop_assert!(result.is_ok());
-        // The EmphasisFixer should handle intraword underlines
         let output = result.unwrap();
-        prop_assert!(output.contains("#underline[") || output.contains(&middle));
+        prop_assert!(output.contains("#underline["));
     }
 
     #[test]
@@ -677,7 +675,7 @@ fn test_bold_italic_strike_all_nested() {
 
 #[test]
 fn test_underline_with_bold_inside() {
-    let input = "__bold **here** end__";
+    let input = "<u>bold **here** end</u>";
     let result = mark_to_typst(input).unwrap();
     assert!(result.contains("#underline["));
     assert!(result.contains("#strong["));
@@ -685,11 +683,11 @@ fn test_underline_with_bold_inside() {
 
 #[test]
 fn test_all_four_adjacent_no_space() {
-    let input = "**A**__B__*C*~~D~~";
+    // __ now produces #strong[…], same as **.
+    let input = "**A**<u>B</u>*C*~~D~~";
     let result = mark_to_typst(input).unwrap();
     assert!(result.contains("#strong[A]"));
-    // Underline may or may not parse depending on word boundaries
-    assert!(result.contains("B") || result.contains("#underline["));
+    assert!(result.contains("#underline[B]"));
     assert!(result.contains("#emph[C]"));
     assert!(result.contains("#strike[D]"));
 }
@@ -716,7 +714,7 @@ fn test_interleaved_formats_with_text() {
 
 #[test]
 fn test_format_at_word_boundaries() {
-    let input = "word**bold**word *italic*word word__under__word";
+    let input = "word**bold**word *italic*word word<u>under</u>word";
     let result = mark_to_typst(input).unwrap();
     // Should not panic and should produce valid output
     assert!(!result.is_empty());

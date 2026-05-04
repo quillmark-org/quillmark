@@ -1,6 +1,6 @@
 # Markdown Syntax
 
-Quillmark Markdown is a **strict superset of [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)** with a small set of [GitHub Flavored Markdown](https://github.github.com/gfm/) extensions and **two declared deviations**. If you already know CommonMark, you only need to learn what is on this page.
+Quillmark Markdown is a **strict superset of [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)** with a small set of [GitHub Flavored Markdown](https://github.github.com/gfm/) extensions and **one declared deviation**. If you already know CommonMark, you only need to learn what is on this page.
 
 For the authoritative grammar, fence-detection rules, normalization, and limits, see the formal specification: [prose/designs/MARKDOWN.md](https://github.com/nibsbin/quillmark/blob/main/prose/designs/MARKDOWN.md).
 
@@ -24,32 +24,13 @@ Quillmark enables a small, stable subset of GFM:
 |---|---|---|
 | Strikethrough | `~~text~~` | Standard GFM rules; word-bounded delimiter runs. |
 | Pipe tables | `\| col \| col \|` with alignment row | Supports `:---`, `:---:`, `---:` alignment. |
-| Underline | `<u>text</u>` | The single allow-listed raw-HTML tag (see [Deviation 2](#2-raw-html-is-not-rendered-except-u)). |
+| Underline | `<u>text</u>` | The single allow-listed raw-HTML tag (see [the deviation below](#raw-html-is-not-rendered-except-u)). |
 
 Task lists, autolinks beyond CommonMark's, and other GFM features are **not** enabled.
 
-## Deviations from CommonMark
+## Deviation from CommonMark
 
-### 1. `__text__` is underline, not strong
-
-CommonMark renders `__text__` as **strong**. Quillmark renders it as <u>underline</u>. Standard CommonMark delimiter-run rules still apply, so `__` is **word-bounded** — it will not match across word boundaries.
-
-```markdown
-Use **bold** for strong emphasis.
-Use __underline__ for underline.
-```
-
-Because `__` is word-bounded, intraword tokens such as `__init__` render as underlined "init". Wrap code-like identifiers in backticks, the same as you would in any Markdown:
-
-```markdown
-The `__init__` method runs first.
-```
-
-For underline that crosses word boundaries or arbitrary ranges, use `<u>…</u>` (see below).
-
-Precedent: this matches Discord's flavor of Markdown.
-
-### 2. Raw HTML is not rendered, except `<u>`
+### Raw HTML is not rendered, except `<u>`
 
 CommonMark passes raw HTML through to the output. Quillmark recognises raw HTML syntactically (so it does not break paragraph structure) but **discards every tag**, with one exception: `<u>…</u>` renders as underline.
 
