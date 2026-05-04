@@ -206,13 +206,24 @@ implemented in a future revision:
 
 - Images (`![alt](src)`) — reserved for the asset-resolver integration;
   required for v1 of this spec.
-- Link titles (`[text](url "title")`) — title is discarded.
 - Math (`$…$`, `$$…$$`), footnotes, task lists, definition lists — not
   supported; `$` is literal.
 - HTML comments — accepted syntactically, not rendered (see §6.2).
 - `<br>`, `<br/>`, `<br />` — follow the raw-HTML rule (non-rendering);
   authors use CommonMark-native hard breaks (trailing two spaces plus
   newline, or trailing `\\` plus newline).
+
+### 6.4 Discarded Data
+
+CommonMark accepts the following constructs in full, but Typst (the
+rendering backend) has no corresponding output target, so the data is
+dropped at conversion. The surrounding construct still renders.
+
+- **Link titles** `[text](url "title")` — the title is dropped; link
+  text and URL are preserved. Typst's `#link` has no `title:` parameter
+  and PDF output has no tooltip primitive Typst exposes. Authors who
+  need the descriptive text should place it in the link text or in
+  adjacent prose.
 
 ## 7. Input Normalization
 

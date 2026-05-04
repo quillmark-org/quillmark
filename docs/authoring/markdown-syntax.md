@@ -53,9 +53,14 @@ Consequences:
 The following are recognised by the parser (so they will not corrupt surrounding content) but produce no output in the current version:
 
 - **Images** (`![alt](src)`) — reserved for the asset-resolver integration; planned for v1.
-- **Link titles** (`[text](url "title")`) — the title is discarded; the link text and URL are kept.
 - **Math** (`$…$`, `$$…$$`) — `$` is treated as a literal character.
 - **Footnotes**, **task lists**, **definition lists** — not supported.
+
+## Discarded data
+
+CommonMark accepts the following, but Typst (the rendering backend) has no equivalent target, so the data is dropped at conversion. The link or image itself still renders.
+
+- **Link titles** (`[text](url "title")`) — the title is dropped; link text and URL are kept. Typst's `#link` and PDF output have no tooltip mechanism. If you need to surface descriptive text, put it in the link text or in adjacent prose.
 
 ## The `---` marker is reserved
 
