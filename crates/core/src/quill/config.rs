@@ -95,8 +95,7 @@ impl QuillConfig {
 
         let mut obj = serde_json::Map::new();
 
-        let mut main_value =
-            serde_json::to_value(&self.main).unwrap_or(serde_json::Value::Null);
+        let mut main_value = serde_json::to_value(&self.main).unwrap_or(serde_json::Value::Null);
         Self::prepend_sentinel_field(
             &mut main_value,
             "QUILL",

@@ -2181,66 +2181,51 @@ main:
         .contains("Failed to parse field schema 'broken_field'"));
 }
 
-fn check_schema_snapshot(yaml_emit: impl Fn(&QuillConfig) -> String, golden: &str) {
-    let quill_path = quillmark_fixtures::resource_path("quills/usaf_memo/0.1.0");
-    let quill = load_from_path(quill_path).expect("failed to load usaf_memo fixture");
-
-    let yaml = yaml_emit(&quill.config);
-    let expected_path = quillmark_fixtures::resource_path(&format!(
-        "quills/usaf_memo/0.1.0/__golden__/{}",
-        golden
-    ));
+fn check_schema_snapshot(
+    yaml_of: impl Fn(&QuillConfig) -> String,
+    json_of: impl Fn(&QuillConfig) -> serde_json::Value,
+    golden: &str,
+    expect_ui: bool,
+) {
+    let quill = load_from_path(quillmark_fixtures::resource_path("quills/usaf_memo/0.1.0"))
+        .expect("load usaf_memo fixture");
+    let yaml = yaml_of(&quill.config);
+    let golden_path =
+        quillmark_fixtures::resource_path(&format!("quills/usaf_memo/0.1.0/__golden__/{golden}"));
 
     if std::env::var("UPDATE_GOLDEN").is_ok() {
-        fs::write(&expected_path, &yaml).expect("failed to update golden");
+        fs::write(&golden_path, &yaml).expect("write golden");
     }
-
-    let expected = fs::read_to_string(&expected_path).expect("failed to read golden");
-    assert_eq!(yaml, expected, "schema snapshot {} changed", golden);
-
-    let parsed: serde_json::Value =
-        serde_saphyr::from_str(&yaml).expect("schema yaml should parse");
-    assert!(parsed.get("main").is_some());
-    assert!(
-        parsed.get("main").and_then(|v| v.get("fields")).is_some(),
-        "main.fields should be present"
+    assert_eq!(
+        yaml,
+        fs::read_to_string(&golden_path).expect("read golden"),
+        "{golden} drifted"
     );
+
+    let parsed: serde_json::Value = serde_saphyr::from_str(&yaml).expect("parse yaml");
+    assert_eq!(json_of(&quill.config), parsed, "{golden} json/yaml parity");
+    assert!(parsed.get("main").and_then(|v| v.get("fields")).is_some());
     assert!(parsed.get("card_types").is_some());
-    assert!(parsed.get("ref").is_none());
-    assert!(parsed.get("example").is_none());
-    assert!(parsed.get("CARDS").is_none());
+    assert!(parsed.get("ref").is_none() && parsed.get("example").is_none());
+    assert_eq!(yaml.contains("ui:"), expect_ui, "{golden} ui presence");
 }
 
 #[test]
 fn schema_snapshot_usaf_memo_0_1_0() {
     check_schema_snapshot(
-        |c| c.schema_yaml().expect("schema yaml"),
+        |c| c.schema_yaml().unwrap(),
+        |c| c.schema(),
         "schema.yaml",
+        false,
     );
-
-    let quill_path = quillmark_fixtures::resource_path("quills/usaf_memo/0.1.0");
-    let quill = load_from_path(quill_path).expect("failed to load usaf_memo fixture");
-    let yaml = quill.config.schema_yaml().expect("schema yaml");
-    let parsed: serde_json::Value = serde_saphyr::from_str(&yaml).expect("yaml parses");
-    let value = quill.config.schema();
-    assert_eq!(value, parsed);
-    // schema() must not contain any ui hints
-    assert!(!yaml.contains("ui:"), "schema() must strip ui hints");
 }
 
 #[test]
 fn form_schema_snapshot_usaf_memo_0_1_0() {
     check_schema_snapshot(
-        |c| c.form_schema_yaml().expect("form schema yaml"),
+        |c| c.form_schema_yaml().unwrap(),
+        |c| c.form_schema(),
         "form_schema.yaml",
+        true,
     );
-
-    let quill_path = quillmark_fixtures::resource_path("quills/usaf_memo/0.1.0");
-    let quill = load_from_path(quill_path).expect("failed to load usaf_memo fixture");
-    let yaml = quill.config.form_schema_yaml().expect("form schema yaml");
-    let parsed: serde_json::Value = serde_saphyr::from_str(&yaml).expect("yaml parses");
-    let value = quill.config.form_schema();
-    assert_eq!(value, parsed);
-    // form_schema() must contain ui hints from the source quill
-    assert!(yaml.contains("ui:"), "form_schema() must keep ui hints");
 }
