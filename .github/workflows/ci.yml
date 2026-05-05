@@ -84,9 +84,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            target/wasm32-unknown-unknown/wasm-release
+            target/wasm32-unknown-unknown/wasm-ci
             pkg
-          key: wasm-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'crates/**/*.rs') }}
+          # Namespaced cache key: never share artifacts with the release
+          # workflow, which builds with the size-optimized wasm-release
+          # profile and publishes pkg/ to npm.
+          key: wasm-ci-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'crates/**/*.rs') }}
 
       - name: Install wasm-bindgen-cli
         if: steps.wasm-cache.outputs.cache-hit != 'true'
@@ -96,7 +99,7 @@ jobs:
 
       - name: Build WASM
         if: steps.wasm-cache.outputs.cache-hit != 'true'
-        run: ./scripts/build-wasm.sh
+        run: ./scripts/build-wasm.sh --ci
 
       - name: Install npm dependencies
         working-directory: crates/bindings/wasm
