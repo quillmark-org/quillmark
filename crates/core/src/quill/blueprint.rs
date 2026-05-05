@@ -98,7 +98,7 @@ fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
     fields: I,
 ) -> Vec<(Option<String>, Vec<&'a FieldSchema>)> {
     let mut sorted: Vec<&FieldSchema> = fields.into_iter().collect();
-    sorted.sort_by_key(|f| f.ui.as_ref().and_then(|u| u.order).unwrap_or(i32::MAX));
+    sorted.sort_by_key(|f| ui_order(f));
     let mut groups: Vec<(Option<String>, Vec<&FieldSchema>)> = Vec::new();
     for field in sorted {
         let group = field
@@ -168,9 +168,13 @@ fn write_example_comment(out: &mut String, field: &FieldSchema, pad: &str) {
     }
 }
 
+fn ui_order(f: &FieldSchema) -> i32 {
+    f.ui.as_ref().and_then(|u| u.order).unwrap_or(i32::MAX)
+}
+
 fn sort_props(props: &BTreeMap<String, Box<FieldSchema>>) -> Vec<&FieldSchema> {
     let mut v: Vec<&FieldSchema> = props.values().map(|b| b.as_ref()).collect();
-    v.sort_by_key(|f| f.ui.as_ref().and_then(|u| u.order).unwrap_or(i32::MAX));
+    v.sort_by_key(|f| ui_order(f));
     v
 }
 
@@ -185,41 +189,26 @@ fn write_typed_table_field(
 ) {
     let pad = "  ".repeat(indent);
     write_field_comments(out, field, &pad);
-
     out.push_str(&format!("{}{}:\n", pad, field.name));
-    match pick_table_rows(field) {
-        Some(items) => write_array_items(out, &items, &pad),
-        None => write_typed_table_row(out, item_props, indent),
-    }
-}
 
-/// Pick concrete rows for a typed table: example (any required-ness) over
-/// non-empty default. None signals "use synthetic row."
-fn pick_table_rows(field: &FieldSchema) -> Option<Vec<serde_json::Value>> {
-    fn non_empty(v: &serde_json::Value) -> Option<Vec<serde_json::Value>> {
-        match v {
-            serde_json::Value::Array(items) if !items.is_empty() => Some(items.clone()),
-            _ => None,
-        }
-    }
-    field
+    let concrete_rows = field
         .example
         .as_ref()
-        .and_then(|e| non_empty(e.as_json()))
-        .or_else(|| field.default.as_ref().and_then(|d| non_empty(d.as_json())))
-}
+        .or(field.default.as_ref())
+        .and_then(|v| match v.as_json() {
+            serde_json::Value::Array(items) if !items.is_empty() => Some(items.clone()),
+            _ => None,
+        });
 
-/// Emit one synthetic row of a typed-object array. The list marker `-` lives
-/// on its own line at `field_indent + 1`; item keys live at `field_indent + 2`.
-fn write_typed_table_row(
-    out: &mut String,
-    props: &BTreeMap<String, Box<FieldSchema>>,
-    field_indent: usize,
-) {
-    let dash_pad = "  ".repeat(field_indent + 1);
-    out.push_str(&format!("{}-\n", dash_pad));
-    for prop in sort_props(props) {
-        write_field(out, prop, field_indent + 2);
+    match concrete_rows {
+        Some(items) => write_array_items(out, &items, &pad),
+        None => {
+            let dash_pad = "  ".repeat(indent + 1);
+            out.push_str(&format!("{}-\n", dash_pad));
+            for prop in sort_props(item_props) {
+                write_field(out, prop, indent + 2);
+            }
+        }
     }
 }
 
@@ -710,9 +699,7 @@ main:
         assert!(t.contains("refs:\n  -\n    # required\n    org: \"<org>\"\n"));
     }
 
-    #[test]
-    fn blueprint_is_parseable_as_document() {
-        let bp = cfg(r#"
+    const LETTER_QUILL: &str = r#"
 quill: { name: letter, version: 1.0.0, backend: typst, description: A formal letter. }
 main:
   fields:
@@ -739,42 +726,11 @@ card_types:
     fields:
       label: { type: string, required: true }
       pages: { type: integer, default: 1 }
-"#)
-        .blueprint();
-        Document::from_markdown(&bp).expect("blueprint must be parseable as a Document");
-    }
+"#;
 
     #[test]
     fn blueprint_round_trips_idempotently() {
-        let bp = cfg(r#"
-quill: { name: letter, version: 1.0.0, backend: typst, description: A formal letter. }
-main:
-  fields:
-    to:
-      type: string
-      required: true
-      description: Recipient name.
-    subject:
-      type: string
-      required: true
-    date:
-      type: date
-    priority:
-      type: string
-      enum: [normal, urgent]
-      default: normal
-    attachments:
-      type: array
-      example:
-        - report.pdf
-card_types:
-  enclosure:
-    description: An enclosure attached to the letter.
-    fields:
-      label: { type: string, required: true }
-      pages: { type: integer, default: 1 }
-"#)
-        .blueprint();
+        let bp = cfg(LETTER_QUILL).blueprint();
         let doc1 = Document::from_markdown(&bp).expect("blueprint must parse");
         let md2 = doc1.to_markdown();
         let doc2 = Document::from_markdown(&md2).expect("round-tripped markdown must parse");
