@@ -51,14 +51,29 @@ pub fn convert_render_error(err: RenderError) -> PyErr {
             }
             py_err
         }
+        RenderError::QuillConfig { diags } => {
+            let msg = if diags.len() == 1 {
+                diags[0].message.clone()
+            } else {
+                format!("Quill configuration has {} error(s)", diags.len())
+            };
+            let py_err = QuillmarkError::new_err(msg);
+            if let Ok(exc) = py_err.value(py).downcast::<pyo3::types::PyAny>() {
+                let py_diags: Vec<crate::types::PyDiagnostic> = diags
+                    .into_iter()
+                    .map(|d| crate::types::PyDiagnostic { inner: d.into() })
+                    .collect();
+                let _ = exc.setattr("diagnostics", py_diags);
+            }
+            py_err
+        }
         RenderError::InvalidFrontmatter { diag } => {
             with_diag_attached(py, ParseError::new_err(diag.message.clone()), *diag)
         }
         RenderError::EngineCreation { diag }
         | RenderError::FormatNotSupported { diag }
         | RenderError::UnsupportedBackend { diag }
-        | RenderError::ValidationFailed { diag }
-        | RenderError::QuillConfig { diag } => {
+        | RenderError::ValidationFailed { diag } => {
             with_diag_attached(py, QuillmarkError::new_err(diag.message.clone()), *diag)
         }
     })

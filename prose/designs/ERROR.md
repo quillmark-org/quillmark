@@ -19,7 +19,7 @@
 - `FormatNotSupported` — requested output format not supported
 - `UnsupportedBackend` — backend not registered
 - `ValidationFailed` — field coercion/schema validation failure
-- `QuillConfig` — quill configuration error
+- `QuillConfig` — Quill.yaml configuration error; carries `Vec<Diagnostic>` so every parse problem reaches the caller in one pass
 
 **`RenderResult`**: successful result carrying artifacts, output format, and non-fatal `Vec<Diagnostic>` warnings
 

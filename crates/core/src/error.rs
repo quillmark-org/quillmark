@@ -382,11 +382,12 @@ pub enum RenderError {
         diag: Box<Diagnostic>,
     },
 
-    /// Quill configuration error
-    #[error("{diag}")]
+    /// Quill configuration error — may carry multiple diagnostics when several
+    /// problems are detected during parsing (e.g. several unknown keys at once).
+    #[error("Quill configuration failed with {} error(s)", diags.len())]
     QuillConfig {
-        /// Diagnostic information
-        diag: Box<Diagnostic>,
+        /// All configuration diagnostics. Always non-empty.
+        diags: Vec<Diagnostic>,
     },
 }
 
@@ -394,13 +395,14 @@ impl RenderError {
     /// Extract all diagnostics from this error
     pub fn diagnostics(&self) -> Vec<&Diagnostic> {
         match self {
-            RenderError::CompilationFailed { diags } => diags.iter().collect(),
+            RenderError::CompilationFailed { diags } | RenderError::QuillConfig { diags } => {
+                diags.iter().collect()
+            }
             RenderError::EngineCreation { diag }
             | RenderError::InvalidFrontmatter { diag }
             | RenderError::FormatNotSupported { diag }
             | RenderError::UnsupportedBackend { diag }
-            | RenderError::ValidationFailed { diag }
-            | RenderError::QuillConfig { diag } => vec![diag.as_ref()],
+            | RenderError::ValidationFailed { diag } => vec![diag.as_ref()],
         }
     }
 }
