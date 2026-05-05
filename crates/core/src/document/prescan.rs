@@ -29,10 +29,15 @@ use crate::Severity;
 /// `Comment` stands alone; `Field` captures only the `fill` flag because the
 /// value is produced by serde_saphyr parsing the cleaned text. The matching
 /// YAML key is the lookup key into the parsed map.
+///
+/// `Comment.inline` distinguishes own-line comments (`# text` on a line by
+/// itself) from inline trailing comments (`field: value # text`). Inline
+/// top-level comments always immediately follow their host `Field` in the
+/// item stream; the emitter peeks ahead by one slot to attach them.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PreItem {
     Field { key: String, fill: bool },
-    Comment(String),
+    Comment { text: String, inline: bool },
 }
 
 /// One segment of a path into the parsed YAML structure.
@@ -44,15 +49,23 @@ pub enum CommentPathSegment {
 
 /// A comment that appears inside a nested mapping or sequence.
 ///
-/// `container_path` locates the immediate parent container; `position` is
-/// the ordinal within that container's child list before which the comment
-/// sits. A position equal to the container's length means "after all
-/// children".
+/// `container_path` locates the immediate parent container.
+///
+/// Position semantics depend on `inline`:
+/// - **Own-line (`inline = false`)**: `position` is the slot ordinal within
+///   the container's child list, ranging `0..=child_count`. The comment is
+///   rendered before the child at this position. `position == child_count`
+///   means "after all children".
+/// - **Inline (`inline = true`)**: `position` is the host child's index,
+///   ranging `0..child_count`. The comment is attached to that child's
+///   trailing line. An inline comment whose host is missing at emit time
+///   (orphan) degrades to an own-line comment at the same indent.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NestedComment {
     pub container_path: Vec<CommentPathSegment>,
     pub position: usize,
     pub text: String,
+    pub inline: bool,
 }
 
 /// Output of [`prescan_fence_content`].
@@ -150,12 +163,16 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
 
             if frame.path.is_empty() {
                 // Top-level comment — preserve via PreItem::Comment.
-                out.items.push(PreItem::Comment(text.to_string()));
+                out.items.push(PreItem::Comment {
+                    text: text.to_string(),
+                    inline: false,
+                });
             } else {
                 out.nested_comments.push(NestedComment {
                     container_path: frame.path.clone(),
                     position: frame.child_count,
                     text: text.to_string(),
+                    inline: false,
                 });
             }
             // Don't emit the line into the cleaned YAML — serde_saphyr
@@ -222,14 +239,15 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
             // Otherwise: inline scalar value, no further nesting.
 
             // Rebuild the line with the trailing comment stripped, and
-            // capture it as a NestedComment that lands after this item.
+            // capture it as an inline NestedComment attached to this item.
             if let Some(c) = trailing_comment {
                 let stripped = c.trim_start_matches('#');
                 let text = stripped.strip_prefix(' ').unwrap_or(stripped);
                 out.nested_comments.push(NestedComment {
                     container_path: parent_path,
-                    position: item_index + 1,
+                    position: item_index,
                     text: text.to_string(),
+                    inline: true,
                 });
                 let head = format!("{:width$}", "", width = indent);
                 let body = if after_dash.trim_end().is_empty() {
@@ -309,7 +327,10 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
                 if let Some(c) = trailing_comment {
                     let stripped = c.trim_start_matches('#');
                     let text = stripped.strip_prefix(' ').unwrap_or(stripped);
-                    out.items.push(PreItem::Comment(text.to_string()));
+                    out.items.push(PreItem::Comment {
+                        text: text.to_string(),
+                        inline: true,
+                    });
                 }
 
                 continue;
@@ -338,15 +359,16 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
 
             // Detach a possible trailing comment on the line. We keep the
             // value (sans comment) in the cleaned YAML and capture the
-            // comment as a NestedComment that lands after this entry.
+            // comment as an inline NestedComment attached to this key.
             let (value_part, trailing_comment) = split_trailing_comment(&after_colon);
             if let Some(c) = trailing_comment {
                 let stripped = c.trim_start_matches('#');
                 let text = stripped.strip_prefix(' ').unwrap_or(stripped);
                 out.nested_comments.push(NestedComment {
                     container_path: parent_path,
-                    position: key_index + 1,
+                    position: key_index,
                     text: text.to_string(),
+                    inline: true,
                 });
                 let head = format!("{:width$}", "", width = indent);
                 cleaned_lines.push(format!("{}{}:{}", head, key, value_part));
@@ -580,12 +602,18 @@ mod tests {
         assert_eq!(
             out.items,
             vec![
-                PreItem::Comment("top".to_string()),
+                PreItem::Comment {
+                    text: "top".to_string(),
+                    inline: false,
+                },
                 PreItem::Field {
                     key: "title".to_string(),
                     fill: false,
                 },
-                PreItem::Comment("mid".to_string()),
+                PreItem::Comment {
+                    text: "mid".to_string(),
+                    inline: false,
+                },
                 PreItem::Field {
                     key: "author".to_string(),
                     fill: false,
@@ -606,7 +634,10 @@ mod tests {
                     key: "title".to_string(),
                     fill: false,
                 },
-                PreItem::Comment("inline".to_string()),
+                PreItem::Comment {
+                    text: "inline".to_string(),
+                    inline: true,
+                },
             ]
         );
         assert!(out.cleaned_yaml.contains("title: foo"));
@@ -665,16 +696,19 @@ mod tests {
                     container_path: vec![CommentPathSegment::Key("arr".to_string())],
                     position: 0,
                     text: "before-first".to_string(),
+                    inline: false,
                 },
                 NestedComment {
                     container_path: vec![CommentPathSegment::Key("arr".to_string())],
                     position: 1,
                     text: "between".to_string(),
+                    inline: false,
                 },
                 NestedComment {
                     container_path: vec![CommentPathSegment::Key("arr".to_string())],
                     position: 2,
                     text: "after-last".to_string(),
+                    inline: false,
                 },
             ]
         );
@@ -696,6 +730,7 @@ mod tests {
                 container_path: vec![CommentPathSegment::Key("outer".to_string())],
                 position: 0,
                 text: "comment".to_string(),
+                inline: false,
             }]
         );
     }
@@ -713,6 +748,7 @@ mod tests {
                 ],
                 position: 0,
                 text: "deep".to_string(),
+                inline: false,
             }]
         );
     }
@@ -732,6 +768,42 @@ mod tests {
                 ],
                 position: 1,
                 text: "inside-first".to_string(),
+                inline: false,
+            }]
+        );
+    }
+
+    #[test]
+    fn nested_inline_on_sequence_item() {
+        // `- a # tail` attaches an inline comment to item 0 (host index, not
+        // the slot after).
+        let input = "arr:\n  - a # tail\n  - b\n";
+        let out = prescan_fence_content(input);
+        assert_eq!(
+            out.nested_comments,
+            vec![NestedComment {
+                container_path: vec![CommentPathSegment::Key("arr".to_string())],
+                position: 0,
+                text: "tail".to_string(),
+                inline: true,
+            }]
+        );
+        assert!(out.cleaned_yaml.contains("- a\n"));
+        assert!(!out.cleaned_yaml.contains("tail"));
+    }
+
+    #[test]
+    fn nested_inline_on_mapping_field() {
+        // `inner: 1 # tail` inside `outer:` attaches inline at host index 0.
+        let input = "outer:\n  inner: 1 # tail\n";
+        let out = prescan_fence_content(input);
+        assert_eq!(
+            out.nested_comments,
+            vec![NestedComment {
+                container_path: vec![CommentPathSegment::Key("outer".to_string())],
+                position: 0,
+                text: "tail".to_string(),
+                inline: true,
             }]
         );
     }

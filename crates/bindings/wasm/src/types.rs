@@ -155,7 +155,7 @@ pub struct RenderResult {
     pub render_time_ms: f64,
 }
 
-/// A single frontmatter item — either a field or an own-line comment.
+/// A single frontmatter item — either a field or a comment line.
 ///
 /// Exposed via `Card.frontmatterItems`.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
@@ -173,6 +173,13 @@ pub enum FrontmatterItem {
     },
     Comment {
         text: String,
+        /// `true` when the comment was a trailing inline comment in source
+        /// (`field: value # text`). Inline comments attach to the previous
+        /// field on emit; `Comment{inline:true}` at index 0 attaches to the
+        /// sentinel line. Inline comments without a host degrade to
+        /// own-line on emit.
+        #[serde(default)]
+        inline: bool,
     },
 }
 
@@ -221,8 +228,11 @@ impl From<&quillmark_core::Card> for Card {
                         fill: *fill,
                     }
                 }
-                quillmark_core::FrontmatterItem::Comment { text } => {
-                    FrontmatterItem::Comment { text: text.clone() }
+                quillmark_core::FrontmatterItem::Comment { text, inline } => {
+                    FrontmatterItem::Comment {
+                        text: text.clone(),
+                        inline: *inline,
+                    }
                 }
             })
             .collect();
