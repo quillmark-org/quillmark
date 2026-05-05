@@ -501,18 +501,27 @@ impl QuillConfig {
         fields_map: &serde_json::Map<String, serde_json::Value>,
         key_order: &[String],
         context: &str,
-        warnings: &mut Vec<Diagnostic>,
-    ) -> Result<BTreeMap<String, FieldSchema>, Box<dyn StdError + Send + Sync>> {
+        _warnings: &mut Vec<Diagnostic>,
+        errors: &mut Vec<Diagnostic>,
+    ) -> BTreeMap<String, FieldSchema> {
         let mut fields = BTreeMap::new();
         let mut fallback_counter = 0;
 
         for (field_name, field_value) in fields_map {
             if !Self::is_snake_case_identifier(field_name) {
-                return Err(format!(
-                    "Invalid {} '{}': field keys must be snake_case (lowercase letters, digits, and underscores only), and capitalized field keys are reserved.",
-                    context, field_name
-                )
-                .into());
+                errors.push(
+                    Diagnostic::new(
+                        Severity::Error,
+                        format!(
+                            "Invalid {} '{}': field keys must be snake_case \
+                             (lowercase letters, digits, and underscores only), \
+                             and capitalized field keys are reserved.",
+                            context, field_name
+                        ),
+                    )
+                    .with_code("quill::invalid_field_name".to_string()),
+                );
+                continue;
             }
 
             // Determine order from key_order, or use fallback counter
@@ -529,12 +538,13 @@ impl QuillConfig {
                 Ok(mut schema) => {
                     // Reject standalone object/dict fields — object is only valid inside array items.
                     if schema.r#type == FieldType::Object {
-                        warnings.push(
+                        errors.push(
                             Diagnostic::new(
-                                Severity::Warning,
+                                Severity::Error,
                                 format!(
                                     "Field '{}' uses standalone type: object, which is not supported. \
-                                    Use separate fields with ui.group instead, or use type: array with items: {{type: object, properties: {{...}}}}.",
+                                    Use separate fields with ui.group instead, or use \
+                                    type: array with items: {{type: object, properties: {{...}}}}.",
                                     field_name
                                 ),
                             )
@@ -544,9 +554,9 @@ impl QuillConfig {
                     }
 
                     if Self::has_disallowed_nested_object(&schema, false) {
-                        warnings.push(
+                        errors.push(
                             Diagnostic::new(
-                                Severity::Warning,
+                                Severity::Error,
                                 format!(
                                     "Field '{}' uses nested type: object, which is not supported. \
                                     Only object schemas nested under array.items are supported.",
@@ -567,7 +577,6 @@ impl QuillConfig {
                             multiline: None,
                         });
                     } else if let Some(ui) = &mut schema.ui {
-                        // Only set if not already set
                         if ui.order.is_none() {
                             ui.order = Some(order);
                         }
@@ -576,18 +585,18 @@ impl QuillConfig {
                     fields.insert(field_name.clone(), schema);
                 }
                 Err(e) => {
-                    warnings.push(
+                    errors.push(
                         Diagnostic::new(
-                            Severity::Warning,
+                            Severity::Error,
                             format!("Failed to parse {} '{}': {}", context, field_name, e),
                         )
-                        .with_code("quill::field_parse_warning".to_string()),
+                        .with_code("quill::field_parse_error".to_string()),
                     );
                 }
             }
         }
 
-        Ok(fields)
+        fields
     }
 
     fn is_snake_case_identifier(name: &str) -> bool {
@@ -616,80 +625,218 @@ impl QuillConfig {
 
     /// Parse QuillConfig from YAML content
     pub fn from_yaml(yaml_content: &str) -> Result<Self, Box<dyn StdError + Send + Sync>> {
-        let (config, _warnings) = Self::from_yaml_with_warnings(yaml_content)?;
-        Ok(config)
+        match Self::from_yaml_with_warnings(yaml_content) {
+            Ok((config, _warnings)) => Ok(config),
+            Err(diags) => {
+                let msg = diags
+                    .iter()
+                    .map(|d| d.fmt_pretty())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                Err(msg.into())
+            }
+        }
     }
 
     /// Parse QuillConfig from YAML content while collecting non-fatal warnings.
+    ///
+    /// Returns `Ok((config, warnings))` on success, or `Err(errors)` containing all
+    /// parse/validation errors when the config is invalid. Errors are always collected
+    /// exhaustively — callers see every problem, not just the first.
     pub fn from_yaml_with_warnings(
         yaml_content: &str,
-    ) -> Result<(Self, Vec<Diagnostic>), Box<dyn StdError + Send + Sync>> {
-        let mut warnings = Vec::new();
+    ) -> Result<(Self, Vec<Diagnostic>), Vec<Diagnostic>> {
+        let mut warnings: Vec<Diagnostic> = Vec::new();
+        let mut errors: Vec<Diagnostic> = Vec::new();
 
         // Parse YAML into serde_json::Value via serde_saphyr
         // Note: serde_json with "preserve_order" feature is required for this to work as expected
-        let quill_yaml_val: serde_json::Value = serde_saphyr::from_str(yaml_content)
-            .map_err(|e| format!("Failed to parse Quill.yaml: {}", e))?;
-
-        // Extract [quill] section (required)
-        let quill_section = quill_yaml_val
-            .get("quill")
-            .ok_or("Missing required 'quill' section in Quill.yaml")?;
-
-        // Extract required fields
-        let name = quill_section
-            .get("name")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing required 'name' field in 'quill' section")?
-            .to_string();
-        if !Self::is_valid_quill_name(&name) {
-            return Err(format!(
-                "Invalid Quill name '{}': quill.name must be snake_case (lowercase letters, digits, and underscores only).",
-                name
-            )
-            .into());
-        }
-
-        let backend = quill_section
-            .get("backend")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing required 'backend' field in 'quill' section")?
-            .to_string();
-
-        let description = quill_section
-            .get("description")
-            .and_then(|v| v.as_str())
-            .ok_or("Missing required 'description' field in 'quill' section")?;
-
-        if description.trim().is_empty() {
-            return Err("'description' field in 'quill' section cannot be empty".into());
-        }
-        let description = description.to_string();
-
-        // Extract optional fields (now version is required)
-        let version_val = quill_section
-            .get("version")
-            .ok_or("Missing required 'version' field in 'quill' section")?;
-
-        // Handle version as string or number (YAML might parse 1.0 as number)
-        let version = if let Some(s) = version_val.as_str() {
-            s.to_string()
-        } else if let Some(n) = version_val.as_f64() {
-            n.to_string()
-        } else {
-            return Err("Invalid 'version' field format".into());
+        let quill_yaml_val: serde_json::Value = match serde_saphyr::from_str(yaml_content) {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(vec![Diagnostic::new(
+                    Severity::Error,
+                    format!("Failed to parse Quill.yaml: {}", e),
+                )
+                .with_code("quill::yaml_parse_error".to_string())]);
+            }
         };
 
-        // Validate version format (semver: MAJOR.MINOR.PATCH or MAJOR.MINOR)
-        use std::str::FromStr;
-        crate::version::Version::from_str(&version)
-            .map_err(|e| format!("Invalid version '{}': {}", version, e))?;
+        // Extract [quill] section (required) — fail immediately if absent since all
+        // subsequent validation depends on it.
+        let quill_section = match quill_yaml_val.get("quill") {
+            Some(v) => v,
+            None => {
+                return Err(vec![Diagnostic::new(
+                    Severity::Error,
+                    "Missing required 'quill' section in Quill.yaml".to_string(),
+                )
+                .with_code("quill::missing_section".to_string())
+                .with_hint(
+                    "Add a 'quill:' section with name, backend, version, and description."
+                        .to_string(),
+                )]);
+            }
+        };
+
+        // Validate that no unknown keys appear in the [quill] section.
+        const KNOWN_QUILL_KEYS: &[&str] = &[
+            "name",
+            "backend",
+            "description",
+            "version",
+            "author",
+            "example",
+            "example_file",
+            "plate_file",
+            "ui",
+        ];
+        if let Some(quill_obj) = quill_section.as_object() {
+            for key in quill_obj.keys() {
+                if !KNOWN_QUILL_KEYS.contains(&key.as_str()) {
+                    errors.push(
+                        Diagnostic::new(
+                            Severity::Error,
+                            format!("Unknown key '{}' in 'quill:' section", key),
+                        )
+                        .with_code("quill::unknown_key".to_string())
+                        .with_hint(format!(
+                            "Valid keys are: {}",
+                            KNOWN_QUILL_KEYS.join(", ")
+                        )),
+                    );
+                }
+            }
+        }
+
+        // Extract required fields — collect all missing-field errors before returning.
+        let name = match quill_section.get("name").and_then(|v| v.as_str()) {
+            Some(n) => {
+                if !Self::is_valid_quill_name(n) {
+                    errors.push(
+                        Diagnostic::new(
+                            Severity::Error,
+                            format!(
+                                "Invalid Quill name '{}': quill.name must be snake_case \
+                                 (lowercase letters, digits, and underscores only).",
+                                n
+                            ),
+                        )
+                        .with_code("quill::invalid_name".to_string())
+                        .with_hint(format!(
+                            "Rename '{}' to '{}'",
+                            n,
+                            n.to_lowercase().replace('-', "_")
+                        )),
+                    );
+                }
+                n.to_string()
+            }
+            None => {
+                errors.push(
+                    Diagnostic::new(
+                        Severity::Error,
+                        "Missing required 'name' field in 'quill' section".to_string(),
+                    )
+                    .with_code("quill::missing_name".to_string())
+                    .with_hint("Add 'name: your_quill_name' under the 'quill:' section.".to_string()),
+                );
+                String::new()
+            }
+        };
+
+        let backend = match quill_section.get("backend").and_then(|v| v.as_str()) {
+            Some(b) => b.to_string(),
+            None => {
+                errors.push(
+                    Diagnostic::new(
+                        Severity::Error,
+                        "Missing required 'backend' field in 'quill' section".to_string(),
+                    )
+                    .with_code("quill::missing_backend".to_string())
+                    .with_hint("Add 'backend: typst' (or another supported backend).".to_string()),
+                );
+                String::new()
+            }
+        };
+
+        let description = match quill_section.get("description").and_then(|v| v.as_str()) {
+            Some(d) if !d.trim().is_empty() => d.to_string(),
+            Some(_) => {
+                errors.push(
+                    Diagnostic::new(
+                        Severity::Error,
+                        "'description' field in 'quill' section cannot be empty".to_string(),
+                    )
+                    .with_code("quill::empty_description".to_string()),
+                );
+                String::new()
+            }
+            None => {
+                errors.push(
+                    Diagnostic::new(
+                        Severity::Error,
+                        "Missing required 'description' field in 'quill' section".to_string(),
+                    )
+                    .with_code("quill::missing_description".to_string())
+                    .with_hint("Add a brief 'description:' of what this quill is for.".to_string()),
+                );
+                String::new()
+            }
+        };
+
+        // Extract optional fields (now version is required)
+        let version = match quill_section.get("version") {
+            Some(version_val) => {
+                // Handle version as string or number (YAML might parse 1.0 as number)
+                let raw = if let Some(s) = version_val.as_str() {
+                    s.to_string()
+                } else if let Some(n) = version_val.as_f64() {
+                    n.to_string()
+                } else {
+                    errors.push(
+                        Diagnostic::new(
+                            Severity::Error,
+                            "Invalid 'version' field format".to_string(),
+                        )
+                        .with_code("quill::invalid_version".to_string())
+                        .with_hint("Use semver format: '1.0' or '1.0.0'.".to_string()),
+                    );
+                    String::new()
+                };
+                if !raw.is_empty() {
+                    use std::str::FromStr;
+                    if let Err(e) = crate::version::Version::from_str(&raw) {
+                        errors.push(
+                            Diagnostic::new(
+                                Severity::Error,
+                                format!("Invalid version '{}': {}", raw, e),
+                            )
+                            .with_code("quill::invalid_version".to_string())
+                            .with_hint("Use semver format: '1.0' or '1.0.0'.".to_string()),
+                        );
+                    }
+                }
+                raw
+            }
+            None => {
+                errors.push(
+                    Diagnostic::new(
+                        Severity::Error,
+                        "Missing required 'version' field in 'quill' section".to_string(),
+                    )
+                    .with_code("quill::missing_version".to_string())
+                    .with_hint("Add 'version: 1.0' under the 'quill:' section.".to_string()),
+                );
+                String::new()
+            }
+        };
 
         let author = quill_section
             .get("author")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
-            .unwrap_or_else(|| "Unknown".to_string()); // Default author
+            .unwrap_or_else(|| "Unknown".to_string());
 
         let example_file = quill_section
             .get("example")
@@ -712,32 +859,42 @@ impl QuillConfig {
             .cloned()
             .and_then(|v| serde_json::from_value(v).ok());
 
-        // Extract additional metadata from [quill] section (excluding standard fields)
-        let mut metadata = HashMap::new();
-        if let Some(table) = quill_section.as_object() {
-            for (key, value) in table {
-                // Skip standard fields that are stored in dedicated struct fields
-                if key != "name"
-                    && key != "backend"
-                    && key != "description"
-                    && key != "version"
-                    && key != "author"
-                    && key != "example"
-                    && key != "example_file"
-                    && key != "plate_file"
-                    && key != "ui"
-                {
-                    metadata.insert(key.clone(), QuillValue::from_json(value.clone()));
+        // Extract optional backend-specific section (keyed by `quill.backend`).
+        let mut backend_config = HashMap::new();
+        if !backend.is_empty() {
+            if let Some(section_val) = quill_yaml_val.get(&backend) {
+                if let Some(table) = section_val.as_object() {
+                    for (key, value) in table {
+                        backend_config.insert(key.clone(), QuillValue::from_json(value.clone()));
+                    }
                 }
             }
         }
 
-        // Extract optional backend-specific section (keyed by `quill.backend`).
-        let mut backend_config = HashMap::new();
-        if let Some(section_val) = quill_yaml_val.get(&backend) {
-            if let Some(table) = section_val.as_object() {
-                for (key, value) in table {
-                    backend_config.insert(key.clone(), QuillValue::from_json(value.clone()));
+        // Reject unknown top-level sections. Known sections are: quill, main, card_types,
+        // and the backend name (e.g. typst). Everything else is a mistake.
+        if let Some(top_obj) = quill_yaml_val.as_object() {
+            for key in top_obj.keys() {
+                let is_known = key == "quill"
+                    || key == "main"
+                    || key == "card_types"
+                    || (!backend.is_empty() && key == &backend);
+                if !is_known {
+                    errors.push(
+                        Diagnostic::new(
+                            Severity::Error,
+                            format!("Unknown top-level section '{}'", key),
+                        )
+                        .with_code("quill::unknown_section".to_string())
+                        .with_hint(format!(
+                            "Valid top-level sections are: quill, main, card_types{}",
+                            if backend.is_empty() {
+                                String::new()
+                            } else {
+                                format!(", {}", backend)
+                            }
+                        )),
+                    );
                 }
             }
         }
@@ -745,7 +902,13 @@ impl QuillConfig {
         let main_obj_opt = quill_yaml_val.get("main").and_then(|v| v.as_object());
 
         if quill_yaml_val.get("fields").is_some() {
-            return Err("Root-level `fields` is not supported; use `main.fields` instead.".into());
+            errors.push(
+                Diagnostic::new(
+                    Severity::Error,
+                    "Root-level `fields` is not supported; use `main.fields` instead.".to_string(),
+                )
+                .with_code("quill::root_fields_not_supported".to_string()),
+            );
         }
 
         // Extract main.fields (optional)
@@ -759,7 +922,8 @@ impl QuillConfig {
                         &field_order,
                         "field schema",
                         &mut warnings,
-                    )?
+                        &mut errors,
+                    )
                 } else {
                     BTreeMap::new()
                 }
@@ -794,50 +958,82 @@ impl QuillConfig {
         // Extract [card_types] section (optional)
         let mut card_types: Vec<CardSchema> = Vec::new();
         if let Some(card_types_val) = quill_yaml_val.get("card_types") {
-            let card_types_table = card_types_val
-                .as_object()
-                .ok_or("'card_types' section must be an object")?;
-
-            for (card_name, card_value) in card_types_table {
-                if !Self::is_valid_card_identifier(card_name) {
-                    return Err(format!(
-                        "Invalid card-type name '{}': names must match [a-z_][a-z0-9_]* (lowercase letters, digits, and underscores only).",
-                        card_name
-                    )
-                    .into());
+            match card_types_val.as_object() {
+                None => {
+                    errors.push(
+                        Diagnostic::new(
+                            Severity::Error,
+                            "'card_types' section must be an object (mapping of type names to schemas)".to_string(),
+                        )
+                        .with_code("quill::invalid_card_types".to_string()),
+                    );
                 }
+                Some(card_types_table) => {
+                    for (card_name, card_value) in card_types_table {
+                        if !Self::is_valid_card_identifier(card_name) {
+                            errors.push(
+                                Diagnostic::new(
+                                    Severity::Error,
+                                    format!(
+                                        "Invalid card-type name '{}': names must match \
+                                         [a-z_][a-z0-9_]* (lowercase letters, digits, and underscores only).",
+                                        card_name
+                                    ),
+                                )
+                                .with_code("quill::invalid_card_name".to_string()),
+                            );
+                            continue;
+                        }
 
-                // Parse card basic info using serde
-                let card_def: CardSchemaDef = serde_json::from_value(card_value.clone())
-                    .map_err(|e| format!("Failed to parse card_type '{}': {}", card_name, e))?;
+                        // Parse card basic info using serde
+                        let card_def: CardSchemaDef =
+                            match serde_json::from_value(card_value.clone()) {
+                                Ok(d) => d,
+                                Err(e) => {
+                                    errors.push(
+                                        Diagnostic::new(
+                                            Severity::Error,
+                                            format!(
+                                                "Failed to parse card_type '{}': {}",
+                                                card_name, e
+                                            ),
+                                        )
+                                        .with_code("quill::invalid_card_schema".to_string()),
+                                    );
+                                    continue;
+                                }
+                            };
 
-                // Parse card fields
-                let card_fields = if let Some(card_fields_table) =
-                    card_value.get("fields").and_then(|v| v.as_object())
-                {
-                    let card_field_order: Vec<String> = card_fields_table.keys().cloned().collect();
+                        // Parse card fields
+                        let card_fields = if let Some(card_fields_table) =
+                            card_value.get("fields").and_then(|v| v.as_object())
+                        {
+                            let card_field_order: Vec<String> =
+                                card_fields_table.keys().cloned().collect();
+                            Self::parse_fields_with_order(
+                                card_fields_table,
+                                &card_field_order,
+                                &format!("card_type '{}' field", card_name),
+                                &mut warnings,
+                                &mut errors,
+                            )
+                        } else {
+                            BTreeMap::new()
+                        };
 
-                    Self::parse_fields_with_order(
-                        card_fields_table,
-                        &card_field_order,
-                        &format!("card_type '{}' field", card_name),
-                        &mut warnings,
-                    )?
-                } else if let Some(_toml_fields) = &card_def.fields {
-                    BTreeMap::new()
-                } else {
-                    BTreeMap::new()
-                };
-
-                let card_schema = CardSchema {
-                    name: card_name.clone(),
-                    description: card_def.description,
-                    fields: card_fields,
-                    ui: card_def.ui,
-                };
-
-                card_types.push(card_schema);
+                        card_types.push(CardSchema {
+                            name: card_name.clone(),
+                            description: card_def.description,
+                            fields: card_fields,
+                            ui: card_def.ui,
+                        });
+                    }
+                }
             }
+        }
+
+        if !errors.is_empty() {
+            return Err(errors);
         }
 
         Ok((
@@ -852,7 +1048,7 @@ impl QuillConfig {
                 example_file,
                 example_markdown: None,
                 plate_file,
-                metadata,
+                metadata: HashMap::new(),
                 backend_config,
             },
             warnings,

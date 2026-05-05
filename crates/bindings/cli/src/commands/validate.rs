@@ -112,16 +112,25 @@ pub fn execute(args: ValidateArgs) -> Result<()> {
     // Step 1: Parse the YAML config first (before full Quill load)
     let yaml_content = fs::read_to_string(&quill_yaml_path).map_err(CliError::Io)?;
 
-    let config = match QuillConfig::from_yaml(&yaml_content) {
-        Ok(c) => c,
-        Err(e) => {
-            result.add_error(format!("Failed to parse Quill.yaml: {}", e));
-            print_validation_result(&result, args.verbose);
+    let (config, config_warnings) = match QuillConfig::from_yaml_with_warnings(&yaml_content) {
+        Ok(pair) => pair,
+        Err(diags) => {
+            for diag in &diags {
+                eprintln!("{}", diag.fmt_pretty());
+            }
+            eprintln!(
+                "\nValidation failed: {} error(s) in Quill.yaml",
+                diags.len()
+            );
             return Err(CliError::InvalidArgument(
                 "Quill configuration is invalid".to_string(),
             ));
         }
     };
+
+    for diag in &config_warnings {
+        result.add_warning(diag.message.clone());
+    }
 
     if args.verbose {
         println!("  Quill name: {}", config.name);

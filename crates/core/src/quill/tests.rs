@@ -1103,10 +1103,9 @@ quill:
   backend: typst
   description: Test metadata flow
   author: Test Author
-  custom_field: custom_value
 
 typst:
-  packages: 
+  packages:
     - "@preview/bubble:0.2.2"
 "#;
     root_files.insert(
@@ -1124,13 +1123,6 @@ typst:
     assert!(quill.metadata.contains_key("description"));
     assert!(quill.metadata.contains_key("author"));
 
-    // Verify custom field is in metadata
-    assert!(quill.metadata.contains_key("custom_field"));
-    assert_eq!(
-        quill.metadata.get("custom_field").unwrap().as_str(),
-        Some("custom_value")
-    );
-
     // Verify typst config with typst_ prefix
     assert!(quill.metadata.contains_key("typst_packages"));
 }
@@ -1147,10 +1139,9 @@ quill:
   backend: typst
   description: Test metadata flow
   author: Test Author
-  custom_field: custom_value
 
 typst:
-  packages: 
+  packages:
     - "@preview/bubble:0.2.2"
 
 main:
@@ -1698,20 +1689,15 @@ main:
           type: string
 "#;
 
-    let (config, warnings) = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap();
+    let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
 
-    // Standalone object field should be skipped
-    assert!(config.main.fields.contains_key("valid_field"));
-    assert!(!config.main.fields.contains_key("address"));
-
-    // A warning should be emitted
-    assert_eq!(warnings.len(), 1);
-    assert_eq!(warnings[0].severity, Severity::Warning);
+    assert_eq!(err.len(), 1);
+    assert_eq!(err[0].severity, Severity::Error);
     assert_eq!(
-        warnings[0].code.as_deref(),
+        err[0].code.as_deref(),
         Some("quill::standalone_object_not_supported")
     );
-    assert!(warnings[0].message.contains("address"));
+    assert!(err[0].message.contains("address"));
 }
 
 #[test]
@@ -1739,16 +1725,15 @@ main:
                 type: string
 "#;
 
-    let (config, warnings) = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap();
+    let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
 
-    assert!(!config.main.fields.contains_key("rows"));
-    assert_eq!(warnings.len(), 1);
-    assert_eq!(warnings[0].severity, Severity::Warning);
+    assert_eq!(err.len(), 1);
+    assert_eq!(err[0].severity, Severity::Error);
     assert_eq!(
-        warnings[0].code.as_deref(),
+        err[0].code.as_deref(),
         Some("quill::nested_object_not_supported")
     );
-    assert!(warnings[0].message.contains("rows"));
+    assert!(err[0].message.contains("rows"));
 }
 
 #[test]
@@ -2193,13 +2178,13 @@ main:
 }
 
 #[test]
-fn test_quill_config_from_yaml_collects_non_fatal_field_warnings() {
+fn test_quill_config_from_yaml_errors_on_invalid_field() {
     let yaml_content = r#"
 quill:
-  name: warning_config
+  name: error_config
   version: "1.0"
   backend: typst
-  description: Warning collection test
+  description: Error on invalid field test
 
 main:
   fields:
@@ -2210,19 +2195,12 @@ main:
       description: Missing required type
 "#;
 
-    let (config, warnings) = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap();
+    let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
 
-    assert!(config.main.fields.contains_key("valid_field"));
-    assert!(!config.main.fields.contains_key("broken_field"));
-    assert_eq!(warnings.len(), 1);
-    assert_eq!(warnings[0].severity, Severity::Warning);
-    assert_eq!(
-        warnings[0].code.as_deref(),
-        Some("quill::field_parse_warning")
-    );
-    assert!(warnings[0]
-        .message
-        .contains("Failed to parse field schema 'broken_field'"));
+    assert_eq!(err.len(), 1);
+    assert_eq!(err[0].severity, Severity::Error);
+    assert_eq!(err[0].code.as_deref(), Some("quill::field_parse_error"));
+    assert!(err[0].message.contains("broken_field"));
 }
 
 fn check_schema_snapshot(
