@@ -214,7 +214,7 @@ fn write_typed_table_field(
 
 /// The value to render for a field in the template.
 enum FieldValue {
-    Inline(String),             // goes on the same line as the key
+    Inline(String),                // goes on the same line as the key
     Block(Vec<serde_json::Value>), // rendered as indented items below the key
 }
 
