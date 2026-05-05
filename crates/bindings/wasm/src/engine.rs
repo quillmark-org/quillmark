@@ -31,10 +31,9 @@ export interface QuillCardUi {
 /** Schema entry for a single field declared in a quill's `Quill.yaml`. */
 export interface QuillFieldSchema {
     type: "string" | "number" | "integer" | "boolean" | "array" | "object" | "date" | "datetime" | "markdown";
-    title?: string;
     description?: string;
     default?: unknown;
-    examples?: unknown;
+    example?: unknown;
     required?: boolean;
     enum?: string[];
     ui?: QuillFieldUi;
@@ -44,7 +43,6 @@ export interface QuillFieldSchema {
 
 /** Schema entry for the main card or a named card type. */
 export interface QuillCardSchema {
-    title?: string;
     description?: string;
     fields: Record<string, QuillFieldSchema>;
     ui?: QuillCardUi;
@@ -314,6 +312,12 @@ impl Quill {
     #[wasm_bindgen(getter, js_name = example)]
     pub fn example(&self) -> Option<String> {
         self.inner.source().config().example_markdown.clone()
+    }
+
+    /// Auto-generated annotated Markdown blueprint for LLM consumers.
+    #[wasm_bindgen(getter, js_name = blueprint)]
+    pub fn blueprint(&self) -> String {
+        self.inner.source().config().blueprint()
     }
 
     /// Document schema with `ui` hints stripped — for LLM/MCP consumers.

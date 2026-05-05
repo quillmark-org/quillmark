@@ -151,11 +151,6 @@ fn print_human_readable(quill: &quillmark::Quill) {
         println!("  Defaults:    {}", defaults_count);
     }
 
-    let examples_count = config.main.examples().len();
-    if examples_count > 0 {
-        println!("  Examples:    {}", examples_count);
-    }
-
     // Plate and example
     println!(
         "  Has plate:   {}",

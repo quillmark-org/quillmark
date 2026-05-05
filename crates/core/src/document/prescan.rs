@@ -150,8 +150,7 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
 
         // Case 1: own-line comment.
         if trimmed.starts_with('#') {
-            let without_hash = &trimmed[1..];
-            let text = without_hash.strip_prefix(' ').unwrap_or(without_hash);
+            let text = strip_comment_marker(trimmed);
 
             // Determine the deepest frame that contains this line.
             // For a comment at indent N, the containing frame is the one
@@ -241,12 +240,10 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
             // Rebuild the line with the trailing comment stripped, and
             // capture it as an inline NestedComment attached to this item.
             if let Some(c) = trailing_comment {
-                let stripped = c.trim_start_matches('#');
-                let text = stripped.strip_prefix(' ').unwrap_or(stripped);
                 out.nested_comments.push(NestedComment {
                     container_path: parent_path,
                     position: item_index,
-                    text: text.to_string(),
+                    text: strip_comment_marker(&c).to_string(),
                     inline: true,
                 });
                 let head = format!("{:width$}", "", width = indent);
@@ -325,10 +322,8 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
                 cleaned_lines.push(cleaned);
 
                 if let Some(c) = trailing_comment {
-                    let stripped = c.trim_start_matches('#');
-                    let text = stripped.strip_prefix(' ').unwrap_or(stripped);
                     out.items.push(PreItem::Comment {
-                        text: text.to_string(),
+                        text: strip_comment_marker(&c).to_string(),
                         inline: true,
                     });
                 }
@@ -362,12 +357,10 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
             // comment as an inline NestedComment attached to this key.
             let (value_part, trailing_comment) = split_trailing_comment(&after_colon);
             if let Some(c) = trailing_comment {
-                let stripped = c.trim_start_matches('#');
-                let text = stripped.strip_prefix(' ').unwrap_or(stripped);
                 out.nested_comments.push(NestedComment {
                     container_path: parent_path,
                     position: key_index,
-                    text: text.to_string(),
+                    text: strip_comment_marker(&c).to_string(),
                     inline: true,
                 });
                 let head = format!("{:width$}", "", width = indent);
@@ -435,6 +428,14 @@ fn ensure_frame_at_indent(stack: &mut Vec<Frame>, indent: usize, kind: FrameKind
         child_count: 0,
     });
     stack.len() - 1
+}
+
+/// Strip a YAML comment marker (`# `) from the start of a string.
+///
+/// Strips all leading `#` characters, then one optional space.
+fn strip_comment_marker(raw: &str) -> &str {
+    let after = raw.trim_start_matches('#');
+    after.strip_prefix(' ').unwrap_or(after)
 }
 
 /// Number of leading ASCII spaces. Tabs are not expanded; they don't appear

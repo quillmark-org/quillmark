@@ -50,11 +50,15 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
 Two projections of the same `QuillConfig` source are exposed:
 
 - `QuillConfig::schema()` — **structural schema**. Types, constraints,
-  `QUILL`/`CARD` sentinels with `const` values. No `ui` keys. The default
-  surface for LLM/MCP consumers, validators, and CLI inspection.
+  `QUILL`/`CARD` sentinels with `const` values. No `ui` keys. The surface
+  for validators, machine consumers, and CLI inspection.
 - `QuillConfig::form_schema()` — same shape **plus** field-level (`group`,
   `order`, `compact`, `multiline`) and card-level (`hide_body`,
   `default_title`) `ui` hints. The surface for form builders.
+
+For LLM/MCP authoring, see [BLUEPRINT.md](BLUEPRINT.md) — `blueprint()`
+emits a document-shaped, pre-filled Markdown reference that's denser
+than schema for prompt-time use.
 
 YAML wrappers `QuillConfig::schema_yaml()` and `QuillConfig::form_schema_yaml()`
 encode the same values. Both projections are pinned by serde attributes on
@@ -64,9 +68,9 @@ recursively stripping `ui` keys after serialisation.
 
 Top-level keys: `main`, optional `card_types` (map keyed by card name).
 `main` and each entry in `card_types` share the same `CardSchema` shape:
-`fields` (map keyed by field name), optional `title`, `description`, and —
+`fields` (map keyed by field name), optional `description`, and —
 in `form_schema()` only — `ui`. Each `FieldSchema` includes `type`,
-optional `title`/`description`/`default`/`examples`/`enum`/`properties`/
+optional `description`/`default`/`example`/`enum`/`properties`/
 `items`, optional `required` (omitted when false), and — in `form_schema()`
 only — optional `ui`.
 

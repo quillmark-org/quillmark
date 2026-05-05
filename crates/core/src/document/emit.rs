@@ -629,7 +629,7 @@ fn emit_scalar(out: &mut String, value: &JsonValue) {
 /// - `\r` → `\r`
 /// - `\t` → `\t`
 /// - Other control characters (U+0000–U+001F, U+007F–U+009F) → `\uXXXX`
-fn emit_double_quoted(out: &mut String, s: &str) {
+pub(crate) fn emit_double_quoted(out: &mut String, s: &str) {
     out.push('"');
     for ch in s.chars() {
         match ch {
@@ -639,13 +639,7 @@ fn emit_double_quoted(out: &mut String, s: &str) {
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
             c if (c as u32) < 0x20 || (0x7F..=0x9F).contains(&(c as u32)) => {
-                // Control characters: \u00XX
-                let n = c as u32;
-                if n <= 0xFF {
-                    out.push_str(&format!("\\u{:04X}", n));
-                } else {
-                    out.push_str(&format!("\\u{:04X}", n));
-                }
+                out.push_str(&format!("\\u{:04X}", c as u32));
             }
             c => out.push(c),
         }

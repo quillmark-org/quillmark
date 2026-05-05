@@ -133,16 +133,8 @@ impl PyQuill {
     }
 
     #[getter]
-    fn examples<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        let dict = PyDict::new(py);
-        for (key, values) in self.inner.source().config().main.examples() {
-            let py_list = pyo3::types::PyList::empty(py);
-            for value in values {
-                py_list.append(quillvalue_to_py(py, &value)?)?;
-            }
-            dict.set_item(key, py_list)?;
-        }
-        Ok(dict)
+    fn blueprint(&self) -> String {
+        self.inner.source().config().blueprint()
     }
 
     #[getter]

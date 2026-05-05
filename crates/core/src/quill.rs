@@ -1,5 +1,6 @@
 //! Quill source bundle types and implementations.
 
+mod blueprint;
 mod config;
 mod formats;
 mod ignore;

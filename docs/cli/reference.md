@@ -79,7 +79,7 @@ quillmark schema ./my-quill
 quillmark schema ./my-quill -o schema.yaml
 
 # Use with other tools
-quillmark schema ./my-quill | grep '^  title:'
+quillmark schema ./my-quill | grep '^  description:'
 ```
 
 ### validate

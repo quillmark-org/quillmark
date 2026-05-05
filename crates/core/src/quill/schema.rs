@@ -157,12 +157,10 @@ main:
 
 card_types:
   indorsement:
-    title: Indorsement
     fields:
       signature_block:
         type: string
   note:
-    title: Note
     fields:
       author:
         type: string

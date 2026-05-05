@@ -705,7 +705,7 @@ main:
 
 card_types:
   indorsement:
-    title: Indorsement
+    description: Indorsement
     fields:
       signature_block:
         type: string

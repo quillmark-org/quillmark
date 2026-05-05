@@ -38,7 +38,6 @@ main:
       type: integer
 card_types:
   indorsement:
-    title: Indorsement
     fields:
       signature_block:
         type: string
