@@ -111,18 +111,6 @@ impl PyQuill {
         Ok(yaml.into_pyobject(py)?.into_any())
     }
 
-    /// Document schema with ui hints as YAML — for form builders.
-    #[getter]
-    fn form_schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        let yaml = self
-            .inner
-            .source()
-            .config()
-            .form_schema_yaml()
-            .map_err(|e| PyValueError::new_err(format!("form_schema: {}", e)))?;
-        Ok(yaml.into_pyobject(py)?.into_any())
-    }
-
     #[getter]
     fn defaults<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let dict = PyDict::new(py);

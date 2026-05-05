@@ -1,14 +1,9 @@
 use super::QuillConfig;
 
 impl QuillConfig {
-    /// YAML encoding of [`QuillConfig::schema`] (structural schema, no ui).
+    /// YAML encoding of [`QuillConfig::schema`].
     pub fn schema_yaml(&self) -> Result<String, serde_saphyr::ser::Error> {
         serde_saphyr::to_string(&self.schema())
-    }
-
-    /// YAML encoding of [`QuillConfig::form_schema`] (schema + ui hints).
-    pub fn form_schema_yaml(&self) -> Result<String, serde_saphyr::ser::Error> {
-        serde_saphyr::to_string(&self.form_schema())
     }
 }
 
@@ -44,15 +39,12 @@ card_types:
 "#;
 
     #[test]
-    fn schema_strips_ui_form_schema_keeps_it() {
+    fn schema_includes_ui() {
         let config = cfg(FULL);
-        let clean = config.schema_yaml().unwrap();
-        assert!(clean.contains("enum:") && clean.contains("type: integer"));
-        assert!(clean.contains("card_types:") && clean.contains("indorsement:"));
-        assert!(!clean.contains("ui:"));
-
-        let form = config.form_schema_yaml().unwrap();
-        assert!(form.contains("ui:") && form.contains("group: Meta"));
+        let yaml = config.schema_yaml().unwrap();
+        assert!(yaml.contains("enum:") && yaml.contains("type: integer"));
+        assert!(yaml.contains("card_types:") && yaml.contains("indorsement:"));
+        assert!(yaml.contains("ui:") && yaml.contains("group: Meta"));
     }
 
     #[test]
@@ -72,13 +64,9 @@ main:
     fn omits_example_and_ref() {
         let mut config = cfg(FULL);
         config.example_markdown = Some("# x".to_string());
-        for yaml in [
-            config.schema_yaml().unwrap(),
-            config.form_schema_yaml().unwrap(),
-        ] {
-            assert!(!yaml.contains("example:"));
-            assert!(!yaml.contains("ref:"));
-        }
+        let yaml = config.schema_yaml().unwrap();
+        assert!(!yaml.contains("example:"));
+        assert!(!yaml.contains("ref:"));
     }
 
     #[test]
@@ -86,9 +74,5 @@ main:
         let config = cfg(FULL);
         let parse = |yaml: &str| serde_saphyr::from_str::<serde_json::Value>(yaml).unwrap();
         assert_eq!(config.schema(), parse(&config.schema_yaml().unwrap()));
-        assert_eq!(
-            config.form_schema(),
-            parse(&config.form_schema_yaml().unwrap())
-        );
     }
 }

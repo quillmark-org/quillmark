@@ -153,7 +153,7 @@ fixture.
 
 | Concern | Use |
 |---|---|
-| Validators, form builders, machine consumers | [SCHEMAS.md](SCHEMAS.md) — `schema()` / `form_schema()` |
+| Validators, form builders, machine consumers | [SCHEMAS.md](SCHEMAS.md) — `schema()` |
 | LLM/MCP authoring, prompt-time reference document | this doc — `blueprint()` |
 
 The two share the same source (`QuillConfig`); they differ only in
