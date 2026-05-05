@@ -3,8 +3,18 @@
 //! Produces an annotated reference document dense enough to replace the schema
 //! for LLM consumers. The blueprint shows the document's shape — fields,
 //! constraints, examples — so a consumer can write a fresh document from it.
-//! Each field is annotated with preceding `# …` comment lines (description,
-//! `required`, `enum:`, `example:`) and a single inline type hint.
+//!
+//! Annotation grammar:
+//! - **Leading `# …` comment lines** carry human prose: description,
+//!   `required`, `enum: a | b | c`, `example: <value>`.
+//! - **Inline `# …` annotations** carry structural type/constraint info:
+//!   non-obvious type hints (`# integer`, `# YYYY-MM-DD`, `# markdown`) on
+//!   ordinary fields, and `# sentinel` / `# sentinel, composable (0..N)` on
+//!   the `QUILL:` and `CARD:` lines respectively.
+//! - **Body regions** are signalled by `main body...` after the main fence
+//!   and `<card name> body...` after each card fence. The trailing ellipsis
+//!   reads as "prose continues here"; no markup conflict with HTML or
+//!   Markdown.
 //!
 //! Most UI metadata is stripped, but two semantic-structure hints are honored:
 //! `ui.group` produces `# === <Group> ===` banners and `ui.order` controls
@@ -49,7 +59,7 @@ impl QuillConfig {
         write_card_frontmatter(
             &mut out,
             &self.main,
-            &format!("QUILL: {}@{}", self.name, self.version),
+            &format!("QUILL: {}@{}  # sentinel", self.name, self.version),
             main_desc,
         );
         let hide_body = self
@@ -59,15 +69,15 @@ impl QuillConfig {
             .and_then(|u| u.hide_body)
             .unwrap_or(false);
         if !hide_body {
-            out.push_str("\n<Markdown body>\n");
+            out.push_str("\nmain body...\n");
         }
         for card in &self.card_types {
-            let sentinel = format!("CARD: {}", card.name);
+            let sentinel = format!("CARD: {}  # sentinel, composable (0..N)", card.name);
             out.push('\n');
             write_card_frontmatter(&mut out, card, &sentinel, card.description.as_deref());
             let hide = card.ui.as_ref().and_then(|u| u.hide_body).unwrap_or(false);
             if !hide {
-                out.push_str("\n<Markdown body>\n");
+                out.push_str(&format!("\n{} body...\n", card.name));
             }
         }
         out
@@ -351,13 +361,15 @@ fn type_annotation(t: &FieldType) -> Option<&'static str> {
     }
 }
 
-/// Format the first (or only) value of an example as a compact e.g. hint.
+/// Format an example value as a compact one-line hint. Arrays render as a YAML
+/// flow sequence (`[a, b, c]`) so multi-element shape information is preserved
+/// without expanding into multiple comment lines.
 fn eg_hint(example: &QuillValue) -> String {
     match example.as_json() {
-        serde_json::Value::Array(items) => items
-            .first()
-            .map(|v| render_scalar(v))
-            .unwrap_or_default(),
+        serde_json::Value::Array(items) => {
+            let parts: Vec<String> = items.iter().map(render_scalar_flow).collect();
+            format!("[{}]", parts.join(", "))
+        }
         val => render_scalar(val),
     }
 }
@@ -372,7 +384,17 @@ fn render_scalar(val: &serde_json::Value) -> String {
     }
 }
 
-/// Quote a YAML string only when necessary.
+/// Render a scalar in YAML flow context — strings containing flow indicators
+/// (`,`, `[`, `]`, `{`, `}`) must be quoted so the surrounding `[…]` parses
+/// as a single item, not a comma-split list.
+fn render_scalar_flow(val: &serde_json::Value) -> String {
+    match val {
+        serde_json::Value::String(s) => yaml_string_flow(s),
+        other => render_scalar(other),
+    }
+}
+
+/// Quote a YAML string only when necessary in block context.
 fn yaml_string(s: &str) -> String {
     let needs_quotes = s.is_empty()
         || matches!(s, "true" | "false" | "null" | "yes" | "no" | "on" | "off")
@@ -387,10 +409,25 @@ fn yaml_string(s: &str) -> String {
         || s.starts_with("- ")
         || s.starts_with('#');
     if needs_quotes {
-        format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+        quote(s)
     } else {
         s.to_string()
     }
+}
+
+/// Quote a YAML string for flow context — adds flow indicators (`,`, `[`, `]`,
+/// `{`, `}`) to the trigger set so flow-sequence items round-trip as single
+/// values.
+fn yaml_string_flow(s: &str) -> String {
+    if s.contains([',', '[', ']', '{', '}']) {
+        quote(s)
+    } else {
+        yaml_string(s)
+    }
+}
+
+fn quote(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 #[cfg(test)]
@@ -438,7 +475,7 @@ main:
     }
 
     #[test]
-    fn optional_array_with_no_default_shows_empty_with_eg() {
+    fn optional_array_with_no_default_shows_empty_with_flow_eg() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -446,10 +483,30 @@ main:
     refs:
       type: array
       example:
-        - AFM 33-326, Communications
+        - "AFM 33-326, Communications"
 "#)
         .blueprint();
-        assert!(t.contains("# example: AFM 33-326, Communications\nrefs: []\n"));
+        // Multi-element examples render as YAML flow sequences so the full
+        // shape survives. Items with embedded `, ` get YAML-quoted so the
+        // flow form remains parseable.
+        assert!(t.contains("# example: [\"AFM 33-326, Communications\"]\nrefs: []\n"));
+    }
+
+    #[test]
+    fn optional_array_example_renders_full_flow_sequence() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    recipient:
+      type: array
+      example:
+        - Mr. John Doe
+        - 123 Main St
+        - Anytown
+"#)
+        .blueprint();
+        assert!(t.contains("# example: [Mr. John Doe, 123 Main St, Anytown]\nrecipient: []\n"));
     }
 
     #[test]
@@ -530,7 +587,7 @@ card_types:
 "#)
         .blueprint();
         assert!(t.contains(
-            "# A short note appended to the document.\nCARD: note\n"
+            "# A short note appended to the document.\nCARD: note  # sentinel, composable (0..N)\n"
         ));
     }
 
@@ -549,7 +606,7 @@ card_types:
 "#)
         .blueprint();
         let after = &t[t.find("CARD: skills").unwrap()..];
-        assert!(!after.contains("<Markdown body>"));
+        assert!(!after.contains("body..."));
     }
 
     #[test]
@@ -561,8 +618,25 @@ main:
     flavor: { type: string, default: taro }
 "#)
         .blueprint();
-        assert!(t.starts_with("---\n# x\nQUILL: taro@0.1.0\n"));
-        assert!(t.contains("<Markdown body>"));
+        assert!(t.starts_with("---\n# x\nQUILL: taro@0.1.0  # sentinel\n"));
+        assert!(t.contains("\nmain body...\n"));
+    }
+
+    #[test]
+    fn card_body_placeholder_uses_card_name() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    title: { type: string }
+card_types:
+  indorsement:
+    fields:
+      from: { type: string }
+"#)
+        .blueprint();
+        assert!(t.contains("CARD: indorsement  # sentinel, composable (0..N)\n"));
+        assert!(t.contains("\nindorsement body...\n"));
     }
 
     #[test]
