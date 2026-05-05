@@ -2142,22 +2142,11 @@ card_types:
         "template card ui.title carried verbatim"
     );
 
-    // form_schema includes ui.title; structural schema strips it.
-    let form = config.form_schema();
-    assert_eq!(form["main"]["ui"]["title"].as_str(), Some("Memorandum"));
+    let schema = config.schema();
+    assert_eq!(schema["main"]["ui"]["title"].as_str(), Some("Memorandum"));
     assert_eq!(
-        form["card_types"]["indorsement"]["ui"]["title"].as_str(),
+        schema["card_types"]["indorsement"]["ui"]["title"].as_str(),
         Some("{from} → {for}")
-    );
-
-    let clean = config.schema();
-    assert!(
-        clean["main"].get("ui").is_none(),
-        "main.ui must be stripped from structural schema"
-    );
-    assert!(
-        clean["card_types"]["indorsement"].get("ui").is_none(),
-        "card_types.indorsement.ui must be stripped from structural schema"
     );
 }
 
@@ -2398,14 +2387,13 @@ main:
 }
 
 #[test]
-fn test_field_with_ui_title_errors_with_hint() {
-    // 'ui.title' is valid on card_types but not on individual fields.
+fn test_field_ui_title_is_valid() {
     let yaml_content = r#"
 quill:
   name: ui_title_test
   version: "1.0"
   backend: typst
-  description: ui.title hint test
+  description: ui.title is valid on individual fields
 
 main:
   fields:
@@ -2415,22 +2403,26 @@ main:
         title: Status Label
 "#;
 
-    let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
-
-    assert_eq!(err.len(), 1);
-    assert_eq!(err[0].code.as_deref(), Some("quill::field_parse_error"));
-    assert!(err[0]
-        .hint
-        .as_deref()
-        .unwrap_or("")
-        .contains("only valid on card type schemas"));
+    let config = QuillConfig::from_yaml(yaml_content).expect("ui.title on field should parse");
+    assert_eq!(
+        config.main.fields["status"]
+            .ui
+            .as_ref()
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("Status Label")
+    );
+    assert_eq!(
+        config.schema()["main"]["fields"]["status"]["ui"]["title"].as_str(),
+        Some("Status Label")
+    );
 }
 
 fn check_schema_snapshot(
     yaml_of: impl Fn(&QuillConfig) -> String,
     json_of: impl Fn(&QuillConfig) -> serde_json::Value,
     golden: &str,
-    expect_ui: bool,
 ) {
     let quill = load_from_path(quillmark_fixtures::resource_path("quills/usaf_memo/0.1.0"))
         .expect("load usaf_memo fixture");
@@ -2452,7 +2444,7 @@ fn check_schema_snapshot(
     assert!(parsed.get("main").and_then(|v| v.get("fields")).is_some());
     assert!(parsed.get("card_types").is_some());
     assert!(parsed.get("ref").is_none() && parsed.get("example").is_none());
-    assert_eq!(yaml.contains("ui:"), expect_ui, "{golden} ui presence");
+    assert!(yaml.contains("ui:"), "{golden} must include ui hints");
 }
 
 #[test]
@@ -2461,16 +2453,5 @@ fn schema_snapshot_usaf_memo_0_1_0() {
         |c| c.schema_yaml().unwrap(),
         |c| c.schema(),
         "schema.yaml",
-        false,
-    );
-}
-
-#[test]
-fn form_schema_snapshot_usaf_memo_0_1_0() {
-    check_schema_snapshot(
-        |c| c.form_schema_yaml().unwrap(),
-        |c| c.form_schema(),
-        "form_schema.yaml",
-        true,
     );
 }

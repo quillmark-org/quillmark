@@ -74,22 +74,13 @@ impl QuillConfig {
         self.card_types.iter().find(|card| card.name == name)
     }
 
-    /// Structural schema plus `ui` hints — for form builders.
-    pub fn form_schema(&self) -> serde_json::Value {
-        self.build_schema(true)
-    }
-
-    /// Structural schema with `ui` keys stripped — for LLM/MCP consumers.
+    /// Full schema including `ui` hints.
     ///
     /// `main.fields` is prefixed with a required `QUILL` entry (`const = name@version`);
     /// each `card_types[<name>].fields` is prefixed with a required `CARD` entry
     /// (`const = <name>`). Identity (`name`, `version`, etc.) and the bundled
     /// example live elsewhere on the host's metadata surface.
     pub fn schema(&self) -> serde_json::Value {
-        self.build_schema(false)
-    }
-
-    fn build_schema(&self, with_ui: bool) -> serde_json::Value {
         let canonical_ref = format!("{}@{}", self.name, self.version);
 
         let mut obj = serde_json::Map::new();
@@ -101,9 +92,6 @@ impl QuillConfig {
             &canonical_ref,
             "Canonical quill reference. Must be exactly this value as the QUILL: sentinel in the document frontmatter.",
         );
-        if !with_ui {
-            Self::strip_ui_recursive(&mut main_value);
-        }
         obj.insert("main".to_string(), main_value);
 
         if !self.card_types.is_empty() {
@@ -119,9 +107,6 @@ impl QuillConfig {
                         &card.name,
                         "Card type name. Must be exactly this value as the CARD: sentinel in the card frontmatter.",
                     );
-                    if !with_ui {
-                        Self::strip_ui_recursive(&mut card_value);
-                    }
                     (card.name.clone(), card_value)
                 })
                 .collect();
@@ -151,23 +136,6 @@ impl QuillConfig {
             let existing = std::mem::take(fields);
             fields.insert(key.to_string(), sentinel);
             fields.extend(existing);
-        }
-    }
-
-    fn strip_ui_recursive(value: &mut serde_json::Value) {
-        match value {
-            serde_json::Value::Object(map) => {
-                map.remove("ui");
-                for v in map.values_mut() {
-                    Self::strip_ui_recursive(v);
-                }
-            }
-            serde_json::Value::Array(arr) => {
-                for v in arr.iter_mut() {
-                    Self::strip_ui_recursive(v);
-                }
-            }
-            _ => {}
         }
     }
 
@@ -570,6 +538,7 @@ impl QuillConfig {
                     // Always set ui.order based on position
                     if schema.ui.is_none() {
                         schema.ui = Some(UiFieldSchema {
+                            title: None,
                             group: None,
                             order: Some(order),
                             compact: None,
@@ -608,17 +577,6 @@ impl QuillConfig {
                 return Some(
                     "'title' is not a valid field key; use 'description' instead.".to_string(),
                 );
-            }
-            if let Some(ui_val) = obj.get("ui") {
-                if let Some(ui_obj) = ui_val.as_object() {
-                    if ui_obj.contains_key("title") {
-                        return Some(
-                            "'ui.title' is only valid on card type schemas (under card_types:), \
-                             not on individual fields."
-                                .to_string(),
-                        );
-                    }
-                }
             }
         }
         None

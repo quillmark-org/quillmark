@@ -226,10 +226,10 @@ fn test_quill_metadata_and_schemas() {
     assert!(js_sys::Array::from(&get(&meta, "supportedFormats")).length() > 0);
     assert!(get(&meta, "schema").is_undefined());
 
-    // schema: ui stripped, QUILL/CARD sentinels with const values.
+    // schema: QUILL/CARD sentinels with const values, ui hints included.
     let schema = quill.schema();
     let main_fields = get(&get(&schema, "main"), "fields");
-    assert!(get(&get(&main_fields, "title"), "ui").is_undefined());
+    assert!(get(&get(&main_fields, "title"), "ui").is_object());
     assert_eq!(
         get_str(&get(&main_fields, "QUILL"), "const").as_deref(),
         Some("meta_quill@0.2.1")
@@ -239,11 +239,6 @@ fn test_quill_metadata_and_schemas() {
         get_str(&get(&card_fields, "CARD"), "const").as_deref(),
         Some("indorsement")
     );
-
-    // formSchema: ui hints retained.
-    let form = quill.form_schema();
-    let form_title = get(&get(&get(&form, "main"), "fields"), "title");
-    assert!(get(&form_title, "ui").is_object());
 }
 
 /// `doc.clone()` returns an independent handle: mutations on the clone

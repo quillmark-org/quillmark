@@ -51,6 +51,9 @@ pub mod ui_key {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UiFieldSchema {
+    /// Display label for the field — decoupled from the snake_case wire key.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     /// Group name for organizing fields (e.g., "Personal Info", "Preferences")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,

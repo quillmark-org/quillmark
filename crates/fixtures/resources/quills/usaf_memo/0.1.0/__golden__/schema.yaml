@@ -13,12 +13,18 @@ main:
       default: []
       example:
       - Attachment description, YYYY MMM DD
+      ui:
+        group: Additional
+        order: 11
     cc:
       type: array
       description: List office symbols of recipients to receive copies.
       default: []
       example:
       - Rank and Name, ORG/SYMBOL
+      ui:
+        group: Additional
+        order: 9
     classification:
       type: string
       description: >-
@@ -26,10 +32,16 @@ main:
         Leave blank for unclassified.
       default: ""
       example: CONFIDENTIAL
+      ui:
+        group: Additional
+        order: 12
     date:
       type: string
       description: YYYY-MM-DD. Leave blank to use today's date.
       default: ""
+      ui:
+        group: Additional
+        order: 7
     distribution:
       type: array
       description: >-
@@ -39,19 +51,31 @@ main:
       example:
       - ORG1/SYMBOL
       - ORG2/SYMBOL
+      ui:
+        group: Additional
+        order: 10
     font_size:
       type: number
       description: Font size for the memo text (pt).
       default: 11
+      ui:
+        group: Additional
+        order: 13
     letterhead_caption:
       type: array
       description: The full organization name of your unit.
       default:
       - HEADQUARTERS [UNIT NAME]
+      ui:
+        group: Letterhead
+        order: 5
     letterhead_title:
       type: string
       description: Standard title. Only change for Joint Commands or DoW Agencies.
       default: DEPARTMENT OF THE AIR FORCE
+      ui:
+        group: Letterhead
+        order: 4
     memo_for:
       type: array
       description: >-
@@ -61,6 +85,9 @@ main:
       example:
       - ORG1/SYMBOL
       - ORG2/SYMBOL
+      ui:
+        group: Addressing
+        order: 0
       required: true
     memo_from:
       type: array
@@ -73,6 +100,9 @@ main:
       - Organization Name
       - 123 Street Ave
       - City ST 12345-6789
+      ui:
+        group: Addressing
+        order: 1
       required: true
     references:
       type: array
@@ -80,12 +110,18 @@ main:
       default: []
       example:
       - AFM 33-326, 31 July 2019, Preparing Official Communications
+      ui:
+        group: Additional
+        order: 8
     signature_block:
       type: array
       description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title. Spell out 'Colonel' and general officer ranks."
       example:
       - FIRST M. LAST, Rank, USSF
       - Duty Title
+      ui:
+        group: Addressing
+        order: 3
       required: true
     subject:
       type: string
@@ -94,11 +130,17 @@ main:
         prepositions, and conjunctions. Include suspense dates in parentheses if
         applicable.
       example: Subject of the Memorandum
+      ui:
+        group: Addressing
+        order: 2
       required: true
     tag_line:
       type: string
       description: Organizational motto at the bottom of the page.
       default: ""
+      ui:
+        group: Letterhead
+        order: 6
 card_types:
   indorsement:
     description: >-
@@ -113,20 +155,35 @@ card_types:
       attachments:
         type: array
         description: List of attachments specific to this endorsement.
+        ui:
+          group: Additional
+          order: 4
       cc:
         type: array
         description: List of office symbols to receive copies of this endorsement.
+        ui:
+          group: Additional
+          order: 5
       date:
         type: string
         description: Date of the endorsement. Leave blank to omit.
+        ui:
+          group: Additional
+          order: 6
       for:
         type: string
         description: Office symbol or organization receiving the endorsed memo.
         default: ORG/SYMBOL
+        ui:
+          group: Addressing
+          order: 1
       format:
         type: string
         description: "Format style: 'standard' (formal on same page), 'informal' (less formal routing), or 'separate_page' (starts on new page)."
         default: standard
+        ui:
+          group: Additional
+          order: 3
         enum:
         - standard
         - informal
@@ -135,6 +192,9 @@ card_types:
         type: string
         description: Office symbol or Rank Name of the endorsing official (e.g., 'ORG/SYMBOL').
         default: ORG/SYMBOL
+        ui:
+          group: Addressing
+          order: 0
       signature_block:
         type: array
         description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title."
@@ -144,4 +204,7 @@ card_types:
         example:
         - FIRST M. LAST, Rank, USAF
         - Duty Title
+        ui:
+          group: Addressing
+          order: 2
         required: true

@@ -328,14 +328,6 @@ impl Quill {
         value.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
     }
 
-    /// Document schema with `ui` hints — for form builders.
-    #[wasm_bindgen(getter, js_name = formSchema, unchecked_return_type = "QuillSchema")]
-    pub fn form_schema(&self) -> JsValue {
-        let value = self.inner.source().config().form_schema();
-        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-        value.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
-    }
-
     /// Identity snapshot of the `quill:` section of `Quill.yaml`, plus
     /// `supportedFormats` and any custom `quill:` keys.
     ///
