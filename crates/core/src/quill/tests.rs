@@ -2449,9 +2449,5 @@ fn check_schema_snapshot(
 
 #[test]
 fn schema_snapshot_usaf_memo_0_1_0() {
-    check_schema_snapshot(
-        |c| c.schema_yaml().unwrap(),
-        |c| c.schema(),
-        "schema.yaml",
-    );
+    check_schema_snapshot(|c| c.schema_yaml().unwrap(), |c| c.schema(), "schema.yaml");
 }
