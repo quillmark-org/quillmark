@@ -554,7 +554,10 @@ fn orphan_inline_after_remove_degrades_to_own_line() {
     // Re-parsing the emitted form yields a stable round-trip.
     let doc2 = Document::from_markdown(&emitted).unwrap();
     let emitted2 = doc2.to_markdown();
-    assert_eq!(emitted, emitted2, "post-orphan round-trip must be idempotent");
+    assert_eq!(
+        emitted, emitted2,
+        "post-orphan round-trip must be idempotent"
+    );
 }
 
 /// Inline comment on an empty-mapping field — the field is omitted on emit

@@ -150,11 +150,7 @@ fn emit_card_fence(out: &mut String, card: &Card) {
     let mut i = 0;
 
     // Sentinel-inline preview.
-    if let Some(FrontmatterItem::Comment {
-        text,
-        inline: true,
-    }) = items.first()
-    {
+    if let Some(FrontmatterItem::Comment { text, inline: true }) = items.first() {
         attach_inline_to_last_line(out, text);
         i = 1;
     }
@@ -163,10 +159,7 @@ fn emit_card_fence(out: &mut String, card: &Card) {
         match &items[i] {
             FrontmatterItem::Field { key, value, fill } => {
                 let trailer = items.get(i + 1).and_then(|next| match next {
-                    FrontmatterItem::Comment {
-                        text,
-                        inline: true,
-                    } => Some(text.as_str()),
+                    FrontmatterItem::Comment { text, inline: true } => Some(text.as_str()),
                     _ => None,
                 });
                 let path = vec![CommentPathSegment::Key(key.clone())];
@@ -500,8 +493,7 @@ fn emit_sequence_item(
                 if !first {
                     emit_own_line_pending(out, path, i, base_indent + 2, nested);
                 }
-                let inner_trailer =
-                    find_inline_trailer(out, path, i, base_indent + 2, nested);
+                let inner_trailer = find_inline_trailer(out, path, i, base_indent + 2, nested);
                 let mut child_path = path.to_vec();
                 child_path.push(CommentPathSegment::Key(k.clone()));
                 if first {
