@@ -408,6 +408,7 @@ fn quote(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use crate::quill::QuillConfig;
+    use crate::Document;
 
     fn cfg(yaml: &str) -> QuillConfig {
         QuillConfig::from_yaml(yaml).expect("valid yaml")
@@ -704,5 +705,76 @@ main:
 "#)
         .blueprint();
         assert!(t.contains("refs:\n  -\n    # required\n    org: \"<org>\"\n"));
+    }
+
+    #[test]
+    fn blueprint_is_parseable_as_document() {
+        let bp = cfg(r#"
+quill: { name: letter, version: 1.0.0, backend: typst, description: A formal letter. }
+main:
+  fields:
+    to:
+      type: string
+      required: true
+      description: Recipient name.
+    subject:
+      type: string
+      required: true
+    date:
+      type: date
+    priority:
+      type: string
+      enum: [normal, urgent]
+      default: normal
+    attachments:
+      type: array
+      example:
+        - report.pdf
+card_types:
+  enclosure:
+    description: An enclosure attached to the letter.
+    fields:
+      label: { type: string, required: true }
+      pages: { type: integer, default: 1 }
+"#)
+        .blueprint();
+        Document::from_markdown(&bp).expect("blueprint must be parseable as a Document");
+    }
+
+    #[test]
+    fn blueprint_round_trips_idempotently() {
+        let bp = cfg(r#"
+quill: { name: letter, version: 1.0.0, backend: typst, description: A formal letter. }
+main:
+  fields:
+    to:
+      type: string
+      required: true
+      description: Recipient name.
+    subject:
+      type: string
+      required: true
+    date:
+      type: date
+    priority:
+      type: string
+      enum: [normal, urgent]
+      default: normal
+    attachments:
+      type: array
+      example:
+        - report.pdf
+card_types:
+  enclosure:
+    description: An enclosure attached to the letter.
+    fields:
+      label: { type: string, required: true }
+      pages: { type: integer, default: 1 }
+"#)
+        .blueprint();
+        let doc1 = Document::from_markdown(&bp).expect("blueprint must parse");
+        let md2 = doc1.to_markdown();
+        let doc2 = Document::from_markdown(&md2).expect("round-tripped markdown must parse");
+        assert_eq!(doc1, doc2, "Document must be equal after blueprint → parse → emit → parse");
     }
 }
