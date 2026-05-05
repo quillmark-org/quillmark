@@ -99,8 +99,8 @@ enum ListType {
 
 #[derive(Debug, Clone, Copy)]
 enum StrongKind {
-    Bold,      // Source was **...**
-    Underline, // Source was __...__
+    Bold,      // Source was ** or __
+    Underline, // Source was <u> (synthesized by MarkdownFixer)
 }
 
 fn typst_alignment(align: &pulldown_cmark::Alignment) -> &'static str {
@@ -281,18 +281,14 @@ where
                         end_newline = false;
                     }
                     Tag::Strong => {
-                        // Detect whether this is __ (underline), <u> (underline), or ** (bold)
-                        // by peeking at source. Per spec §6.2, __ and <u> both render as underline;
-                        // <u> is synthesized as Tag::Strong by MarkdownFixer.
-                        let kind = if range.start + 2 <= source.len() {
-                            let head = &source[range.start..range.start + 2];
-                            if head == "__" || head.eq_ignore_ascii_case("<u") {
-                                StrongKind::Underline
-                            } else {
-                                StrongKind::Bold // ** or edge cases
-                            }
+                        // <u>…</u> is synthesized as Tag::Strong by MarkdownFixer; detect it
+                        // by peeking at the source. Both ** and __ render as #strong[…].
+                        let kind = if range.start + 2 <= source.len()
+                            && source[range.start..range.start + 2].eq_ignore_ascii_case("<u")
+                        {
+                            StrongKind::Underline
                         } else {
-                            StrongKind::Bold // Fallback for very short ranges
+                            StrongKind::Bold
                         };
                         strong_stack.push(kind);
                         match kind {
@@ -523,8 +519,9 @@ where
             _ => {
                 // Ignore other events not specified in requirements
                 // (math, footnotes, etc.)
-                // Note: per spec §6.2/§6.3, raw HTML produces no output except <u>…</u>,
-                // which MarkdownFixer rewrites to Start/End(Tag::Strong) with Underline kind.
+                // Note: per spec §6.2, raw HTML produces no output except <u>…</u>,
+                // which MarkdownFixer rewrites to Start/End(Tag::Strong) and is detected
+                // as Underline in the Tag::Strong handler above.
             }
         }
     }
@@ -703,7 +700,7 @@ where
             }
             Event::End(TagEnd::Strong) | Event::End(TagEnd::Emphasis) => {
                 // Check if next event starts with *, which means we might need to fix closing tags
-                // This happens when we have something like __Underlined__***
+                // This happens when we have something like __strong__***
                 // The __ produces End(Strong), and following *** should be interpreted as closing.
 
                 // Only apply this fixup if there are still unclosed emphasis/strong tags
@@ -805,7 +802,7 @@ where
             let (event, range) = self.inner.next()?;
 
             // 3. Handle HTML: allowlist <u>…</u> as underline; strip everything else.
-            // Spec §6.2 deviation 2 / §6.3: <br> and all other raw HTML produce no output.
+            // Spec §6.2 / §6.3: <br> and all other raw HTML produce no output.
             let (event, range) = match event {
                 Event::InlineHtml(ref html) | Event::Html(ref html) if is_u_open_tag(html) => {
                     (Event::Start(Tag::Strong), range)
@@ -1429,22 +1426,19 @@ mod tests {
         assert_eq!(typst, "== Code example: `fn main()`\n\n");
     }
 
-    // Tests for underline support (__ syntax)
+    // Tests for __ as CommonMark strong (no longer underline)
 
-    // Basic Underline Tests
     #[test]
-    fn test_underline_basic() {
-        assert_eq!(
-            mark_to_typst("__underlined__").unwrap(),
-            "#underline[underlined]\n\n"
-        );
+    fn test_double_underscore_is_strong() {
+        // Per CommonMark, __text__ renders as strong, identical to **text**.
+        assert_eq!(mark_to_typst("__bolded__").unwrap(), "#strong[bolded]\n\n");
     }
 
     #[test]
-    fn test_underline_with_text() {
+    fn test_double_underscore_with_text() {
         assert_eq!(
-            mark_to_typst("This is __underlined__ text").unwrap(),
-            "This is #underline[underlined] text\n\n"
+            mark_to_typst("This is __bolded__ text").unwrap(),
+            "This is #strong[bolded] text\n\n"
         );
     }
 
@@ -1454,133 +1448,29 @@ mod tests {
         assert_eq!(mark_to_typst("**bold**").unwrap(), "#strong[bold]\n\n");
     }
 
-    // Nesting Tests
     #[test]
-    fn test_underline_containing_bold() {
+    fn test_double_underscore_in_list() {
         assert_eq!(
-            mark_to_typst("__A **B** A__").unwrap(),
-            "#underline[A #strong[B] A]\n\n"
+            mark_to_typst("- __bolded__ item").unwrap(),
+            "- #strong[bolded] item\n\n"
         );
     }
 
     #[test]
-    fn test_bold_containing_underline() {
+    fn test_double_underscore_in_heading() {
         assert_eq!(
-            mark_to_typst("**A __B__ A**").unwrap(),
-            "#strong[A #underline[B] A]\n\n"
+            mark_to_typst("# Heading with __bold__").unwrap(),
+            "= Heading with #strong[bold]\n\n"
         );
     }
 
     #[test]
-    fn test_deep_nesting() {
-        assert_eq!(
-            mark_to_typst("__A **B __C__ B** A__").unwrap(),
-            "#underline[A #strong[B #underline[C] B] A]\n\n"
-        );
-    }
-
-    // Adjacent Styles Tests
-    #[test]
-    fn test_adjacent_underline_bold() {
-        assert_eq!(
-            mark_to_typst("__A__**B**").unwrap(),
-            "#underline[A]#strong[B]\n\n"
-        );
-    }
-
-    #[test]
-    fn test_adjacent_bold_underline() {
-        assert_eq!(
-            mark_to_typst("**A**__B__").unwrap(),
-            "#strong[A]#underline[B]\n\n"
-        );
-    }
-
-    // Escaping Tests
-    #[test]
-    fn test_underline_special_chars() {
-        // Special characters inside underline should be escaped
-        assert_eq!(mark_to_typst("__#1__").unwrap(), "#underline[\\#1]\n\n");
-    }
-
-    #[test]
-    fn test_underline_with_brackets() {
-        assert_eq!(
-            mark_to_typst("__[text]__").unwrap(),
-            "#underline[\\[text\\]]\n\n"
-        );
-    }
-
-    #[test]
-    fn test_underline_with_asterisk() {
-        assert_eq!(
-            mark_to_typst("__a * b__").unwrap(),
-            "#underline[a \\* b]\n\n"
-        );
-    }
-
-    // Edge Case Tests
-    #[test]
-    fn test_empty_underline() {
-        // Four underscores is parsed as horizontal rule by pulldown-cmark, not empty strong
-        // This test verifies we don't crash on this input
-        // (pulldown-cmark treats ____ as a thematic break / horizontal rule)
+    fn test_quadruple_underscore_is_thematic_break() {
+        // pulldown-cmark treats ____ as a thematic break / horizontal rule.
+        // This test verifies we don't crash on this input.
         let result = mark_to_typst("____").unwrap();
         // The result is empty because Rule events are ignored in our converter
         assert_eq!(result, "");
-    }
-
-    #[test]
-    fn test_underline_in_list() {
-        assert_eq!(
-            mark_to_typst("- __underlined__ item").unwrap(),
-            "- #underline[underlined] item\n\n"
-        );
-    }
-
-    #[test]
-    fn test_underline_in_heading() {
-        assert_eq!(
-            mark_to_typst("# Heading with __underline__").unwrap(),
-            "= Heading with #underline[underline]\n\n"
-        );
-    }
-
-    #[test]
-    fn test_underline_followed_by_alphanumeric() {
-        // When __under__ is immediately followed by alphanumeric (no space),
-        // pulldown-cmark does NOT parse it as Strong - it treats underscores as literal.
-        // This is standard CommonMark behavior requiring word boundaries.
-        // With a space after, it does work as underline:
-        assert_eq!(
-            mark_to_typst("__under__ line").unwrap(),
-            "#underline[under] line\n\n"
-        );
-    }
-
-    // Mixed Formatting Tests
-    #[test]
-    fn test_underline_with_italic() {
-        assert_eq!(
-            mark_to_typst("__underline *italic*__").unwrap(),
-            "#underline[underline #emph[italic]]\n\n"
-        );
-    }
-
-    #[test]
-    fn test_underline_with_code() {
-        assert_eq!(
-            mark_to_typst("__underline `code`__").unwrap(),
-            "#underline[underline `code`]\n\n"
-        );
-    }
-
-    #[test]
-    fn test_underline_with_strikethrough() {
-        assert_eq!(
-            mark_to_typst("__underline ~~strike~~__").unwrap(),
-            "#underline[underline #strike[strike]]\n\n"
-        );
     }
 
     // Tests for Tables
@@ -1858,7 +1748,7 @@ mod tests {
 
     #[test]
     fn test_raw_html_is_stripped() {
-        // Spec §6.2 deviation 2: all raw HTML except <u> produces no output.
+        // Spec §6.2: all raw HTML except <u> produces no output.
         let md = "before <span class=\"x\">inner</span> after";
         let out = mark_to_typst(md).unwrap();
         assert!(!out.contains("<span"), "span tag stripped: {out}");
@@ -2257,10 +2147,13 @@ mod robustness_tests {
     }
 
     #[test]
-    fn test_alternating_bold_underline() {
-        let result = mark_to_typst("**bold** __under__ **bold**").unwrap();
-        assert!(result.contains("#strong[bold]"));
-        assert!(result.contains("#underline[under]"));
+    fn test_alternating_bold_styles() {
+        // Both ** and __ now produce #strong[…].
+        let result = mark_to_typst("**a** __b__ **c**").unwrap();
+        assert!(result.contains("#strong[a]"));
+        assert!(result.contains("#strong[b]"));
+        assert!(result.contains("#strong[c]"));
+        assert!(!result.contains("#underline["));
     }
 
     // escape_string function tests
@@ -2498,13 +2391,18 @@ More text with `inline code`."#;
     }
 
     #[test]
-    fn test_double_underscore_underline_still_works() {
-        // Regular __underlined__ should still produce underline formatting
-        let input = "__underlined text__";
+    fn test_double_underscore_produces_strong() {
+        // Per CommonMark, __text__ produces strong, not underline.
+        let input = "__bolded text__";
         let result = mark_to_typst(input).unwrap();
         assert!(
-            result.contains("#underline["),
-            "Should produce underline: {}",
+            result.contains("#strong["),
+            "Should produce strong: {}",
+            result
+        );
+        assert!(
+            !result.contains("#underline["),
+            "Should not produce underline: {}",
             result
         );
     }

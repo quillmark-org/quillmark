@@ -4,16 +4,16 @@
 **Editor:** Quillmark Team
 **Base:** [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)
 
-Quillmark Markdown is a **strict superset of CommonMark** with two declared
-deviations. It layers a structured-data system (YAML frontmatter + named
+Quillmark Markdown is a **strict superset of CommonMark** with one declared
+deviation. It layers a structured-data system (YAML frontmatter + named
 card blocks) on top of ordinary markdown, and selects a small, stable set of
 GFM extensions. This document is the authoritative syntax standard.
 
 ## 1. Superset Statement
 
 Every valid CommonMark 0.31.2 document parses to the same block / inline
-structure under this spec, *except* for the two deviations declared in
-§6.2. Additionally, this spec defines:
+structure under this spec, *except* for the deviation declared in §6.2.
+Additionally, this spec defines:
 
 - **Structured data** — YAML frontmatter and card blocks (§3).
 - **Extensions** — strikethrough, pipe tables, and `<u>` for underline
@@ -182,29 +182,21 @@ CommonMark 0.31.2 with the extensions and deviations below.
 |---|---|---|
 | Strikethrough | `~~text~~` | GFM rules: word-bounded delimiter runs only. |
 | Pipe tables | GFM pipe-table syntax with alignment rows | Supports `:---`, `:---:`, `---:` alignment. |
-| Underline (HTML) | `<u>text</u>` | The one allowlisted HTML tag (see §6.2). Handles intraword and arbitrary-range underline where the `__` delimiter rule does not reach. |
+| Underline (HTML) | `<u>text</u>` | The one allowlisted HTML tag (see §6.2). The only syntax for underline; handles intraword and arbitrary-range cases. |
 
-Inline `__text__` *also* produces underline (§6.2, deviation 1), but
-follows CommonMark delimiter-run rules and is therefore word-bounded.
-Intraword underline uses `<u>…</u>`.
+### 6.2 Declared Deviation from CommonMark
 
-### 6.2 Declared Deviations from CommonMark
-
-1. **`__text__` renders as underline, not strong.** Standard CommonMark
-   delimiter-run rules still apply (word-bounded). Use `**text**` for
-   strong emphasis. Precedent: Discord. Consequence: `__init__` in prose
-   renders as underlined "init"; wrap code-like tokens in backticks
-   (`` `__init__` ``) — standard practice.
-2. **Raw HTML is accepted syntactically but produces no output, except
-   `<u>…</u>` which renders as underline.** The parser recognises HTML per
-   CommonMark §4.6 / §6.11, discards every event, and re-emits only the
-   `<u>` wrapper. Rationale: Typst has no HTML renderer, and arbitrary
-   passthrough would create an injection vector for downstream
-   HTML-producing tooling; `<u>` is the one exception because no
-   CommonMark-native syntax covers arbitrary-range underline.
+**Raw HTML is accepted syntactically but produces no output, except
+`<u>…</u>` which renders as underline.** The parser recognises HTML per
+CommonMark §4.6 / §6.11, discards every event, and re-emits only the
+`<u>` wrapper. Rationale: Typst has no HTML renderer, and arbitrary
+passthrough would create an injection vector for downstream
+HTML-producing tooling; `<u>` is the one exception because no
+CommonMark-native syntax covers underline.
 
 No other syntax deviates from CommonMark. Delimiter-run semantics for `*`,
-`_`, `**`, `__`, and `~~` follow CommonMark and GFM exactly.
+`_`, `**`, `__`, and `~~` follow CommonMark and GFM exactly — in particular,
+`__text__` renders as strong emphasis, identical to `**text**`.
 
 ### 6.3 Out of Scope
 
@@ -214,13 +206,16 @@ implemented in a future revision:
 
 - Images (`![alt](src)`) — reserved for the asset-resolver integration;
   required for v1 of this spec.
-- Link titles (`[text](url "title")`) — title is discarded.
 - Math (`$…$`, `$$…$$`), footnotes, task lists, definition lists — not
   supported; `$` is literal.
 - HTML comments — accepted syntactically, not rendered (see §6.2).
 - `<br>`, `<br/>`, `<br />` — follow the raw-HTML rule (non-rendering);
   authors use CommonMark-native hard breaks (trailing two spaces plus
   newline, or trailing `\\` plus newline).
+
+Backends MAY drop semantic data (e.g., link titles, image alt text)
+that has no equivalent in their render target. Such losses are backend
+concerns and are documented per backend, not in this spec.
 
 ## 7. Input Normalization
 
