@@ -23,6 +23,7 @@
 use std::collections::BTreeMap;
 
 use super::{CardSchema, FieldSchema, FieldType, QuillConfig};
+use crate::document::emit::emit_double_quoted;
 use crate::value::QuillValue;
 
 impl QuillConfig {
@@ -402,7 +403,9 @@ fn yaml_string_flow(s: &str) -> String {
 }
 
 fn quote(s: &str) -> String {
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+    let mut out = String::new();
+    emit_double_quoted(&mut out, s);
+    out
 }
 
 #[cfg(test)]

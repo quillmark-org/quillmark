@@ -295,6 +295,101 @@ impl From<RenderOptions> for quillmark_core::RenderOptions {
 mod tests {
     use super::*;
 
+    // ── FrontmatterItem ───────────────────────────────────────────────────────
+
+    #[test]
+    fn frontmatter_item_field_serializes_with_kind_tag() {
+        let item = FrontmatterItem::Field {
+            key: "title".into(),
+            value: serde_json::json!("Hello"),
+            fill: false,
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        assert!(json.contains("\"kind\":\"field\""));
+        assert!(json.contains("\"key\":\"title\""));
+        assert!(json.contains("\"value\":\"Hello\""));
+        assert!(json.contains("\"fill\":false"));
+    }
+
+    #[test]
+    fn frontmatter_item_field_fill_flag() {
+        let item = FrontmatterItem::Field {
+            key: "dept".into(),
+            value: serde_json::json!("Sales"),
+            fill: true,
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        assert!(json.contains("\"fill\":true"));
+    }
+
+    #[test]
+    fn frontmatter_item_own_line_comment_serializes() {
+        let item = FrontmatterItem::Comment {
+            text: "required".into(),
+            inline: false,
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        assert!(json.contains("\"kind\":\"comment\""));
+        assert!(json.contains("\"text\":\"required\""));
+        // inline:false is the default — presence in JSON is an implementation
+        // detail, but the round-trip must deserialize back to false.
+        let back: FrontmatterItem = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, FrontmatterItem::Comment { inline: false, .. }));
+    }
+
+    #[test]
+    fn frontmatter_item_inline_comment_round_trips() {
+        let item = FrontmatterItem::Comment {
+            text: "sentinel".into(),
+            inline: true,
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        assert!(json.contains("\"kind\":\"comment\""));
+        assert!(json.contains("\"inline\":true"));
+        let back: FrontmatterItem = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, FrontmatterItem::Comment { inline: true, .. }));
+    }
+
+    #[test]
+    fn frontmatter_item_inline_default_is_false() {
+        // `inline` is serde(default) — omitting it from JSON must deserialize as false.
+        let json = r#"{"kind":"comment","text":"note"}"#;
+        let item: FrontmatterItem = serde_json::from_str(json).unwrap();
+        assert!(matches!(item, FrontmatterItem::Comment { inline: false, .. }));
+    }
+
+    #[test]
+    fn card_from_core_carries_frontmatter_items() {
+        use quillmark_core::Document;
+
+        let md = "---\nQUILL: q\ntitle: Hi # inline note\nauthor: Alice\n---\n";
+        let doc = Document::from_markdown(md).unwrap();
+        let card = Card::from(doc.main());
+
+        // Map view: title and author present, QUILL absent.
+        assert_eq!(card.frontmatter["title"], "Hi");
+        assert_eq!(card.frontmatter["author"], "Alice");
+        assert!(card.frontmatter.get("QUILL").is_none());
+
+        // Item list: field + inline comment + field.
+        let fields: Vec<&str> = card
+            .frontmatter_items
+            .iter()
+            .filter_map(|it| match it {
+                FrontmatterItem::Field { key, .. } => Some(key.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(fields, vec!["title", "author"]);
+
+        let inline_comment = card.frontmatter_items.iter().find(|it| {
+            matches!(it, FrontmatterItem::Comment { inline: true, .. })
+        });
+        assert!(inline_comment.is_some(), "inline comment must appear in frontmatter_items");
+    }
+
+    // ── OutputFormat ──────────────────────────────────────────────────────────
+
     #[test]
     fn test_output_format_serialization() {
         let pdf = OutputFormat::Pdf;
