@@ -2227,11 +2227,7 @@ quill:
     assert_eq!(err.len(), 1);
     assert_eq!(err[0].code.as_deref(), Some("quill::unknown_key"));
     assert!(err[0].message.contains("platefile"));
-    assert!(err[0]
-        .hint
-        .as_deref()
-        .unwrap_or("")
-        .contains("plate_file"));
+    assert!(err[0].hint.as_deref().unwrap_or("").contains("plate_file"));
 }
 
 #[test]
@@ -2329,8 +2325,16 @@ main:
         err.iter().map(|d| d.code.as_deref()).collect::<Vec<_>>()
     );
     let codes: Vec<&str> = err.iter().filter_map(|d| d.code.as_deref()).collect();
-    assert!(codes.contains(&"quill::invalid_name"), "missing invalid_name: {:?}", codes);
-    assert!(codes.contains(&"quill::unknown_key"), "missing unknown_key: {:?}", codes);
+    assert!(
+        codes.contains(&"quill::invalid_name"),
+        "missing invalid_name: {:?}",
+        codes
+    );
+    assert!(
+        codes.contains(&"quill::unknown_key"),
+        "missing unknown_key: {:?}",
+        codes
+    );
     assert!(
         codes.contains(&"quill::invalid_field_name"),
         "missing invalid_field_name: {:?}",

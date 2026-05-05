@@ -36,8 +36,8 @@ impl Quillmark {
 
     /// Build and return a render-ready quill from an in-memory file tree.
     pub fn quill(&self, tree: FileTreeNode) -> Result<Quill, RenderError> {
-        let source = QuillSource::from_tree(tree)
-            .map_err(|diags| RenderError::QuillConfig { diags })?;
+        let source =
+            QuillSource::from_tree(tree).map_err(|diags| RenderError::QuillConfig { diags })?;
         self.assemble(source)
     }
 

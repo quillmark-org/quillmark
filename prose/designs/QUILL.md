@@ -100,8 +100,20 @@ Field names must be `snake_case`. Capitalized keys (e.g. `BODY`, `CARDS`, `CARD`
 
 Metadata resolution:
 - `name`, `description`, `backend`, `version`, `author` are direct struct fields on `QuillConfig`. `description` (required, non-empty in the `quill:` section) describes the quill itself; it is independent of `QuillConfig.main.description`, which is the optional schema description authored under `main:` like any other card type.
-- `metadata` on `Quill` stores `backend`, `description`, `version`, `author`, any extra `Quill.*` keys, and `typst_*` keys from the `[typst]` section
+- `metadata` on `Quill` stores `backend`, `description`, `version`, `author`, and `typst_*` keys from the `[typst]` section. The `quill:` section accepts only the documented keys; unknown keys produce a `quill::unknown_key` error rather than landing in `metadata`.
 - `example_file` also accepts the alias `example` in YAML
+
+## Strict Parsing
+
+`Quill.yaml` is parsed strictly: every problem the parser can detect is collected and reported in one pass as a `Vec<Diagnostic>`, rather than failing on the first error or silently dropping unsupported shapes. Specifically:
+
+- Unknown keys in the `quill:` section error with `quill::unknown_key` (typos like `platefile` are not silently captured).
+- Unknown top-level sections error with `quill::unknown_section` (typos like `card_type:` are not silently ignored). Root-level `fields:` gets a targeted hint pointing to `main.fields:`.
+- Field schemas that fail to parse (e.g. legacy `title:`, missing `type:`) error with `quill::field_parse_error` and an actionable hint where applicable, rather than being dropped from the schema.
+- Standalone `object` fields and disallowed nested-object shapes error with `quill::standalone_object_not_supported` / `quill::nested_object_not_supported`.
+- Malformed `quill.ui` / `main.ui` blocks error with `quill::invalid_ui` rather than being silently discarded.
+
+Errors flow through `RenderError::QuillConfig { diags: Vec<Diagnostic> }` and surface to bindings as a structured array (`err.diagnostics` in WASM, `.diagnostics` attribute in Python).
 
 ## File Ignore Rules
 

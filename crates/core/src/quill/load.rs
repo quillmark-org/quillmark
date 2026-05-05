@@ -28,9 +28,12 @@ impl QuillSource {
     /// reported together; subsequent failures (missing plate, malformed
     /// example) surface as single-element vectors.
     pub fn from_tree(root: FileTreeNode) -> Result<Self, Vec<Diagnostic>> {
-        let quill_yaml_bytes = root
-            .get_file("Quill.yaml")
-            .ok_or_else(|| vec![diag("Quill.yaml not found in file tree", "quill::missing_file")])?;
+        let quill_yaml_bytes = root.get_file("Quill.yaml").ok_or_else(|| {
+            vec![diag(
+                "Quill.yaml not found in file tree",
+                "quill::missing_file",
+            )]
+        })?;
 
         let quill_yaml_content = String::from_utf8(quill_yaml_bytes.to_vec()).map_err(|e| {
             vec![diag(
@@ -47,10 +50,7 @@ impl QuillSource {
     }
 
     /// Create a QuillSource from a QuillConfig and file tree.
-    fn from_config(
-        mut config: QuillConfig,
-        root: FileTreeNode,
-    ) -> Result<Self, Vec<Diagnostic>> {
+    fn from_config(mut config: QuillConfig, root: FileTreeNode) -> Result<Self, Vec<Diagnostic>> {
         let mut metadata: std::collections::HashMap<String, QuillValue> =
             std::collections::HashMap::new();
 
@@ -140,7 +140,10 @@ impl QuillSource {
                 .expect("invariant violation: file_exists(example.md) but get_file returned None");
             Some(String::from_utf8(bytes.to_vec()).map_err(|e| {
                 vec![diag(
-                    format!("Default example file 'example.md' is not valid UTF-8: {}", e),
+                    format!(
+                        "Default example file 'example.md' is not valid UTF-8: {}",
+                        e
+                    ),
                     "quill::invalid_utf8",
                 )]
             })?)

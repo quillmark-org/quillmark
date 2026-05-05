@@ -22,7 +22,9 @@ typst:        # Optional — backend-specific configuration
   ...
 ```
 
-Root-level `fields:` is not supported; define the main document’s field schemas under `main.fields`.
+Root-level `fields:` is not supported; define the main document's field schemas under `main.fields`.
+
+`Quill.yaml` is parsed strictly. Unknown keys in the `quill:` section, unknown top-level sections, malformed `ui:` blocks, and field schemas that can't be parsed all produce errors — they are never silently dropped. Every error is collected in a single pass, so authors see all problems at once. Run `quillmark validate <quill_dir>` to surface them.
 
 ---
 

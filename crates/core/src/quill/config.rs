@@ -50,6 +50,9 @@ pub struct QuillConfig {
 #[serde(deny_unknown_fields)]
 struct CardSchemaDef {
     pub description: Option<String>,
+    // Declared so `deny_unknown_fields` accepts a `fields:` block on a card.
+    // Fields are re-parsed via `parse_fields_with_order` for ordering.
+    #[allow(dead_code)]
     pub fields: Option<serde_json::Map<String, serde_json::Value>>,
     pub ui: Option<UiCardSchema>,
 }
@@ -668,7 +671,7 @@ impl QuillConfig {
     pub fn from_yaml_with_warnings(
         yaml_content: &str,
     ) -> Result<(Self, Vec<Diagnostic>), Vec<Diagnostic>> {
-        let mut warnings: Vec<Diagnostic> = Vec::new();
+        let warnings: Vec<Diagnostic> = Vec::new();
         let mut errors: Vec<Diagnostic> = Vec::new();
 
         // Parse YAML into serde_json::Value via serde_saphyr
@@ -722,10 +725,7 @@ impl QuillConfig {
                             format!("Unknown key '{}' in 'quill:' section", key),
                         )
                         .with_code("quill::unknown_key".to_string())
-                        .with_hint(format!(
-                            "Valid keys are: {}",
-                            KNOWN_QUILL_KEYS.join(", ")
-                        )),
+                        .with_hint(format!("Valid keys are: {}", KNOWN_QUILL_KEYS.join(", "))),
                     );
                 }
             }
@@ -761,7 +761,9 @@ impl QuillConfig {
                         "Missing required 'name' field in 'quill' section".to_string(),
                     )
                     .with_code("quill::missing_name".to_string())
-                    .with_hint("Add 'name: your_quill_name' under the 'quill:' section.".to_string()),
+                    .with_hint(
+                        "Add 'name: your_quill_name' under the 'quill:' section.".to_string(),
+                    ),
                 );
                 String::new()
             }
@@ -887,9 +889,7 @@ impl QuillConfig {
                             format!("Invalid 'quill.ui' block: {}", e),
                         )
                         .with_code("quill::invalid_ui".to_string())
-                        .with_hint(
-                            "Valid keys under 'ui' are: title, hide_body.".to_string(),
-                        ),
+                        .with_hint("Valid keys under 'ui' are: title, hide_body.".to_string()),
                     );
                     None
                 }
@@ -973,26 +973,23 @@ impl QuillConfig {
 
         // Extract main.ui (optional). Fail loudly on malformed UI metadata rather
         // than silently dropping it — see `quill.ui` handling above.
-        let main_ui: Option<UiCardSchema> =
-            match main_obj_opt.and_then(|main_obj| main_obj.get("ui")).cloned() {
-                None => None,
-                Some(v) => match serde_json::from_value::<UiCardSchema>(v) {
-                    Ok(parsed) => Some(parsed),
-                    Err(e) => {
-                        errors.push(
-                            Diagnostic::new(
-                                Severity::Error,
-                                format!("Invalid 'main.ui' block: {}", e),
-                            )
+        let main_ui: Option<UiCardSchema> = match main_obj_opt
+            .and_then(|main_obj| main_obj.get("ui"))
+            .cloned()
+        {
+            None => None,
+            Some(v) => match serde_json::from_value::<UiCardSchema>(v) {
+                Ok(parsed) => Some(parsed),
+                Err(e) => {
+                    errors.push(
+                        Diagnostic::new(Severity::Error, format!("Invalid 'main.ui' block: {}", e))
                             .with_code("quill::invalid_ui".to_string())
-                            .with_hint(
-                                "Valid keys under 'ui' are: title, hide_body.".to_string(),
-                            ),
-                        );
-                        None
-                    }
-                },
-            };
+                            .with_hint("Valid keys under 'ui' are: title, hide_body.".to_string()),
+                    );
+                    None
+                }
+            },
+        };
 
         // Extract main.description (optional, authored under `main:` like any
         // other card type). This is independent of `quill.description`.
