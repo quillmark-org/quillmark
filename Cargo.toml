@@ -99,3 +99,15 @@ panic = "abort"      # Smaller binary
 strip = true         # Remove debug symbols
 [profile.wasm-release.package."*"]
 opt-level = "z" # Optimize all dependencies for size
+
+# Fast-compiling WASM profile for CI / local iteration. Produces a larger,
+# unoptimized binary — only correctness matters here, not size.
+[profile.wasm-ci]
+inherits = "dev"
+opt-level = 0
+lto = false
+codegen-units = 16
+panic = "abort"      # Required: wasm32 has no unwinding
+debug = false        # Smaller artifacts, faster link
+strip = "debuginfo"
+incremental = false  # Matches CARGO_INCREMENTAL=0 in CI

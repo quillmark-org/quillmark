@@ -131,9 +131,12 @@ jobs:
           path: |
             target/wasm32-unknown-unknown/wasm-release
             pkg
-          key: wasm-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'crates/**/*.rs') }}
+          # Namespaced under wasm-release- so a CI cache (wasm-ci-...) can
+          # never satisfy this restore — that would publish an unoptimized
+          # bundle to npm.
+          key: wasm-release-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'crates/**/*.rs') }}
           restore-keys: |
-            wasm-${{ runner.os }}-
+            wasm-release-${{ runner.os }}-
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

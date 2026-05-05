@@ -1,7 +1,27 @@
 #!/bin/bash
 set -e
 
-echo "Building WASM module for @quillmark/wasm..."
+# Profile selection. Default is the size-optimized release build used for
+# npm publish. `--ci` switches to a fast-compiling profile for PR validation
+# where only correctness matters. Keep these two paths in sync with the
+# cache namespacing in .github/workflows/{ci,release}.yml.
+PROFILE="wasm-release"
+MODE_LABEL="release (size-optimized)"
+for arg in "$@"; do
+    case "$arg" in
+        --ci)
+            PROFILE="wasm-ci"
+            MODE_LABEL="ci (fast compile, unoptimized)"
+            ;;
+        *)
+            echo "Unknown argument: $arg" >&2
+            echo "Usage: $0 [--ci]" >&2
+            exit 2
+            ;;
+    esac
+done
+
+echo "Building WASM module for @quillmark/wasm... [profile: $MODE_LABEL]"
 
 cd "$(dirname "$0")/.."
 
@@ -13,13 +33,13 @@ if ! command -v wasm-bindgen &> /dev/null; then
 fi
 
 echo ""
-echo "Building for target: bundler (optimized for size)"
+echo "Building for target: bundler"
 
 # Step 1: Build WASM binary with cargo
 echo "Building WASM binary..."
 cargo build \
     --target wasm32-unknown-unknown \
-    --profile wasm-release \
+    --profile "$PROFILE" \
     --manifest-path crates/bindings/wasm/Cargo.toml
 
 # Step 2: Generate JS bindings with wasm-bindgen
@@ -32,7 +52,7 @@ cargo build \
 echo "Generating JS bindings for bundler..."
 mkdir -p pkg/bundler
 wasm-bindgen \
-    target/wasm32-unknown-unknown/wasm-release/quillmark_wasm.wasm \
+    "target/wasm32-unknown-unknown/$PROFILE/quillmark_wasm.wasm" \
     --out-dir pkg/bundler \
     --out-name wasm \
     --target bundler \
