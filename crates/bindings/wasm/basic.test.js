@@ -729,20 +729,14 @@ card_types:
     expect(meta.supportedFormats.length).toBeGreaterThan(0)
     expect(meta.schema).toBeUndefined()
 
-    // schema (clean): structure only, no ui hints. QUILL/CARD sentinels with const values.
+    // schema: structure + ui hints. QUILL/CARD sentinels with const values.
     const schema = quill.schema
     expect(schema.main.description).toBe('The main card schema')
     expect(schema.main.fields.title).toBeDefined()
-    expect(schema.main.fields.title.ui).toBeUndefined()
     expect(schema.main.fields.QUILL.const).toBe('meta_test_quill@0.2.1')
     expect(schema.card_types.main).toBeUndefined()
     expect(schema.card_types.indorsement.fields.signature_block).toBeDefined()
     expect(schema.card_types.indorsement.fields.CARD.const).toBe('indorsement')
-
-    // formSchema: same shape but ui hints retained when authored.
-    const form = quill.formSchema
-    expect(form.main.fields.title).toBeDefined()
-    expect(form.card_types.indorsement.fields.signature_block).toBeDefined()
   })
 
   it('metadata and schema are JSON.stringify-able (plain objects)', () => {
