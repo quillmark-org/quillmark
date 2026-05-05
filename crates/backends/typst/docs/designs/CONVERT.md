@@ -226,6 +226,11 @@ This enables proper multi-paragraph list items in Typst with correct continuatio
 - `TagEnd::Link` → `]`
 - URL is escaped with `escape_markup()` to handle special characters
 
+**Title is dropped.** CommonMark allows `[text](url "title")`; the title
+is parsed but discarded. Typst's `#link` has no `title:` parameter and
+the PDF output Typst produces exposes no tooltip primitive that this
+backend can target, so there is nowhere to render the title.
+
 ### Line Breaks
 
 | Markdown | Typst | Event |

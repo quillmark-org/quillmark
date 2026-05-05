@@ -26,6 +26,6 @@ You can organize your thoughts with bullet points:
 
 Use additional paragraphs to develop your ideas fully and maintain clear communication.
 
-You can also **bold**, _italicize_, __underline__, and `code` your text as needed.
+You can also **bold**, _italicize_, <u>underline</u>, and `code` your text as needed.
 
 Sincerely,
