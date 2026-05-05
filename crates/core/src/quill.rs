@@ -1,5 +1,6 @@
 //! Quill source bundle types and implementations.
 
+mod blueprint;
 mod config;
 mod formats;
 mod ignore;
@@ -7,7 +8,6 @@ mod load;
 mod query;
 mod schema;
 mod schema_yaml;
-mod blueprint;
 mod tree;
 mod types;
 pub(crate) mod validation;

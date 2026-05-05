@@ -12,6 +12,7 @@
 - **[QUILL_VALUE.md](QUILL_VALUE.md)** - Unified value type for YAML/JSON conversions
 - **[VERSIONING.md](VERSIONING.md)** - Quill version resolution
 - **[SCHEMAS.md](SCHEMAS.md)** - `QuillConfig` schema model, native validation, and emission overview
+- **[BLUEPRINT.md](BLUEPRINT.md)** - Annotated Markdown blueprint for LLM/MCP authoring
 - **[CARDS.md](CARDS.md)** - Composable cards with unified CARDS array
 - **[GLUE_METADATA.md](GLUE_METADATA.md)** - Plate data injection
 

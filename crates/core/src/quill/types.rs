@@ -104,7 +104,6 @@ impl CardSchema {
             .filter_map(|(name, field)| field.default.as_ref().map(|v| (name.clone(), v.clone())))
             .collect()
     }
-
 }
 
 /// Field type hint enum for type-safe field type definitions

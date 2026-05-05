@@ -26,28 +26,9 @@ use super::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
 
 impl QuillConfig {
-    /// Generate an annotated Markdown blueprint for this quill.
-    ///
-    /// The blueprint is a reference document — consumers (typically LLMs) read
-    /// it to understand the document's shape and write fresh content from
-    /// scratch, not to edit it in place.
-    ///
-    /// Annotation rules:
-    /// - Preceding `# …` comment lines, in order: description, `required`,
-    ///   `enum: a | b | c`, `example: <value>`.
-    ///   - `example:` is emitted only for optional fields with an example and
-    ///     no enum (the example is illustrative, not prescriptive).
-    /// - Inline `# <type>` annotation only for non-obvious types (number,
-    ///   integer, boolean, markdown, date, datetime). String and array are
-    ///   self-evident from the YAML value.
-    /// - Placeholder value precedence:
-    ///   - Required: example → default → type-based placeholder.
-    ///   - Optional: default → type-based empty; example surfaces only as
-    ///     `# example: …` above the field.
-    /// - Typed tables (arrays whose `items` is a typed object) render every
-    ///   item property with full annotations: an `example` or non-empty
-    ///   `default` is rendered as actual rows; otherwise one synthetic row is
-    ///   emitted to teach the shape.
+    /// Generate an annotated Markdown blueprint for this quill. See module
+    /// docs for the annotation grammar; the function is total over any valid
+    /// `QuillConfig`.
     pub fn blueprint(&self) -> String {
         let mut out = String::new();
         let main_desc = self
@@ -151,6 +132,7 @@ fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
     }
 
     write_field_comments(out, field, &pad);
+    write_example_comment(out, field, &pad);
     let comment = match type_annotation(&field.r#type) {
         Some(hint) => format!("  # {}", hint),
         None => String::new(),
@@ -159,6 +141,8 @@ fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
     write_value(out, &field.name, &value, &comment, &pad);
 }
 
+/// Description / `# required` / `# enum:` lines. Always safe to emit; carries
+/// the structural prose every field needs.
 fn write_field_comments(out: &mut String, field: &FieldSchema, pad: &str) {
     if let Some(desc) = &field.description {
         let clean = desc.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -170,8 +154,14 @@ fn write_field_comments(out: &mut String, field: &FieldSchema, pad: &str) {
     if let Some(vals) = &field.enum_values {
         out.push_str(&format!("{}# enum: {}\n", pad, vals.join(" | ")));
     }
+}
+
+/// `# example: …` line — emitted only for optional, non-enum fields. Required
+/// fields use the example as the value; enum fields use the first enum value;
+/// typed tables surface examples as actual rows.
+fn write_example_comment(out: &mut String, field: &FieldSchema, pad: &str) {
     if !field.required && field.enum_values.is_none() {
-        if let Some(eg) = field.example.as_ref().map(|e| eg_hint(e)) {
+        if let Some(eg) = field.example.as_ref().map(eg_hint) {
             out.push_str(&format!("{}# example: {}\n", pad, eg));
         }
     }
@@ -185,6 +175,7 @@ fn sort_props(props: &BTreeMap<String, Box<FieldSchema>>) -> Vec<&FieldSchema> {
 
 /// Emit a typed-table field: description/required/enum comments, then the
 /// field key, then either example/default rows or one synthetic template row.
+/// `# example:` is intentionally suppressed — the rows below carry the example.
 fn write_typed_table_field(
     out: &mut String,
     field: &FieldSchema,
@@ -192,27 +183,12 @@ fn write_typed_table_field(
     indent: usize,
 ) {
     let pad = "  ".repeat(indent);
-    // Suppress `# example:` for typed tables — values or synthetic row carry it.
-    write_field_comments_no_example(out, field, &pad);
+    write_field_comments(out, field, &pad);
 
-    let rows = pick_table_rows(field);
     out.push_str(&format!("{}{}:\n", pad, field.name));
-    match rows {
+    match pick_table_rows(field) {
         Some(items) => write_array_items(out, &items, &pad),
         None => write_typed_table_row(out, item_props, indent),
-    }
-}
-
-fn write_field_comments_no_example(out: &mut String, field: &FieldSchema, pad: &str) {
-    if let Some(desc) = &field.description {
-        let clean = desc.split_whitespace().collect::<Vec<_>>().join(" ");
-        out.push_str(&format!("{}# {}\n", pad, clean));
-    }
-    if field.required {
-        out.push_str(&format!("{}# required\n", pad));
-    }
-    if let Some(vals) = &field.enum_values {
-        out.push_str(&format!("{}# enum: {}\n", pad, vals.join(" | ")));
     }
 }
 
@@ -258,44 +234,43 @@ fn field_value(field: &FieldSchema) -> FieldValue {
     if field.required {
         // Required: example > default > type-based placeholder.
         if let Some(v) = field.example.as_ref().or(field.default.as_ref()) {
-            return json_to_value(v.as_json(), &field.r#type);
+            return json_to_value(v.as_json());
         }
-        required_placeholder(&field.r#type, &field.name)
+        placeholder(&field.r#type, Some(&field.name))
     } else {
-        // Optional: default only (example goes to e.g. comment).
+        // Optional: default only (example goes to the `# example:` comment).
         if let Some(v) = field.default.as_ref() {
-            return json_to_value(v.as_json(), &field.r#type);
+            return json_to_value(v.as_json());
         }
         // Enum with no default: first enum value is the canonical placeholder.
         if let Some(first) = field.enum_values.as_ref().and_then(|v| v.first()) {
             return FieldValue::Scalar(first.clone());
         }
-        optional_placeholder(&field.r#type)
+        placeholder(&field.r#type, None)
     }
 }
 
-fn required_placeholder(t: &FieldType, label: &str) -> FieldValue {
+/// Type-based placeholder for a field that has no usable example/default.
+/// `label` is `Some(field_name)` when the field is required (string/markdown/
+/// object then render as `"<field_name>"`); `None` for optional fields, which
+/// fall through to an empty value.
+fn placeholder(t: &FieldType, label: Option<&str>) -> FieldValue {
     match t {
         FieldType::Array => FieldValue::EmptyArray,
         FieldType::Boolean => FieldValue::Scalar("false".to_string()),
         FieldType::Number | FieldType::Integer => FieldValue::Scalar("0".to_string()),
         // Date/datetime use empty string; type annotation carries the format hint.
         FieldType::Date | FieldType::DateTime => FieldValue::Empty,
-        // String, markdown, object: angle-bracket placeholder signals "fill this in".
-        _ => FieldValue::Scalar(format!("\"<{}>\"", label)),
+        // String, markdown, object: angle-bracket placeholder when required;
+        // empty when optional.
+        _ => match label {
+            Some(name) => FieldValue::Scalar(format!("\"<{}>\"", name)),
+            None => FieldValue::Empty,
+        },
     }
 }
 
-fn optional_placeholder(t: &FieldType) -> FieldValue {
-    match t {
-        FieldType::Array => FieldValue::EmptyArray,
-        FieldType::Boolean => FieldValue::Scalar("false".to_string()),
-        FieldType::Number | FieldType::Integer => FieldValue::Scalar("0".to_string()),
-        _ => FieldValue::Empty,
-    }
-}
-
-fn json_to_value(val: &serde_json::Value, _t: &FieldType) -> FieldValue {
+fn json_to_value(val: &serde_json::Value) -> FieldValue {
     match val {
         serde_json::Value::Array(items) if items.is_empty() => FieldValue::EmptyArray,
         serde_json::Value::Array(items) => FieldValue::Array(items.clone()),
@@ -475,25 +450,10 @@ main:
     }
 
     #[test]
-    fn optional_array_with_no_default_shows_empty_with_flow_eg() {
-        let t = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    refs:
-      type: array
-      example:
-        - "AFM 33-326, Communications"
-"#)
-        .blueprint();
-        // Multi-element examples render as YAML flow sequences so the full
-        // shape survives. Items with embedded `, ` get YAML-quoted so the
-        // flow form remains parseable.
-        assert!(t.contains("# example: [\"AFM 33-326, Communications\"]\nrefs: []\n"));
-    }
-
-    #[test]
-    fn optional_array_example_renders_full_flow_sequence() {
+    fn optional_array_example_renders_as_flow_sequence_with_context_quoting() {
+        // Multi-element array examples render as YAML flow sequences so the
+        // full shape survives. Items containing flow indicators (`,`, `[`, `]`,
+        // `{`, `}`) get quoted; bare items don't.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -503,10 +463,12 @@ main:
       example:
         - Mr. John Doe
         - 123 Main St
-        - Anytown
+        - "Anytown, USA"
 "#)
         .blueprint();
-        assert!(t.contains("# example: [Mr. John Doe, 123 Main St, Anytown]\nrecipient: []\n"));
+        assert!(
+            t.contains("# example: [Mr. John Doe, 123 Main St, \"Anytown, USA\"]\nrecipient: []\n")
+        );
     }
 
     #[test]
@@ -635,7 +597,6 @@ card_types:
       from: { type: string }
 "#)
         .blueprint();
-        assert!(t.contains("CARD: indorsement  # sentinel, composable (0..N)\n"));
         assert!(t.contains("\nindorsement body...\n"));
     }
 

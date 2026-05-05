@@ -93,7 +93,7 @@ main:
 | `type`        | string            | yes      | Data type (see [Field Types](#field-types)) |
 | `description` | string            | no       | Detailed help text |
 | `default`     | any               | no       | Default value when not provided |
-| `examples`    | array             | no       | Example values for documentation and LLMs |
+| `example`     | any               | no       | Illustrative value surfaced in the [blueprint](../../prose/designs/BLUEPRINT.md) for documentation and LLM authoring |
 | `required`    | boolean           | no       | Whether the field must be present (default: `false`) |
 | `enum`        | array of strings  | no       | Restrict to specific values |
 | `ui`          | object            | no       | UI rendering hints (see [UI Properties](#ui-properties)) |
@@ -143,8 +143,9 @@ main:
       type: array
       items:
         type: string
-      examples:
-        - ["ORG1/SYMBOL", "ORG2/SYMBOL"]
+      example:
+        - ORG1/SYMBOL
+        - ORG2/SYMBOL
 ```
 
 Use `type: object` inside `items` to define structured rows. Coercion recurses into each element and converts property values to their declared types:
