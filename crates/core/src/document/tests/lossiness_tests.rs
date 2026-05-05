@@ -1,8 +1,13 @@
 //! Round-trip tests for comments, `!fill`, and custom tags.
 //!
-//! Top-level YAML comments round-trip as own-line comments, `!fill` on
-//! scalars and sequences round-trips, and string quoting is normalised to
-//! double-quoted (the type-fidelity guarantee).
+//! Both own-line and trailing inline YAML comments round-trip at their
+//! source position. Inline comments on sentinel lines (`QUILL: r # …` /
+//! `CARD: t # …`) also round-trip. Comments whose host disappears at emit
+//! time (empty-mapping omission, programmatic field removal) degrade to
+//! own-line comments at the same indent so the comment text is preserved
+//! even when its position shifts. `!fill` on scalars and sequences round-
+//! trips, and string quoting is normalised to double-quoted (the type-
+//! fidelity guarantee).
 
 use crate::document::Document;
 
@@ -38,27 +43,26 @@ fn top_level_comments_round_trip() {
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
 
-/// Trailing comments on value lines normalise to own-line comments on the
-/// next line (canonical form).
+/// Trailing inline comments on top-level fields round-trip inline.
 #[test]
-fn trailing_comments_become_own_line_on_round_trip() {
+fn top_level_inline_comments_round_trip() {
     let src = "---\nQUILL: q\ntitle: My Document # this is a comment\n---\n\nBody.\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
 
     assert!(
-        emitted.contains("# this is a comment"),
-        "trailing comment text must survive\nGot:\n{}",
+        emitted.contains("title: \"My Document\" # this is a comment"),
+        "trailing inline comment must round-trip on the same line\nGot:\n{}",
         emitted
     );
     assert!(
-        emitted.contains("title: \"My Document\"\n# this is a comment"),
-        "trailing comment must normalise to own-line on the next line\nGot:\n{}",
+        !emitted.contains("\"My Document\"\n# this is a comment"),
+        "trailing inline comment must NOT degrade to own-line\nGot:\n{}",
         emitted
     );
 
-    // And the value is still intact.
+    // Value still intact.
     let doc2 = Document::from_markdown(&emitted).unwrap();
     assert_eq!(
         doc2.main()
@@ -67,6 +71,10 @@ fn trailing_comments_become_own_line_on_round_trip() {
             .and_then(|v| v.as_str()),
         Some("My Document"),
     );
+
+    // Idempotent across repeated round-trips.
+    let emitted2 = doc2.to_markdown();
+    assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
 
 // ── Category: Custom tags ─────────────────────────────────────────────────────
@@ -386,24 +394,218 @@ fn nested_mapping_comments_round_trip() {
     assert_eq!(emitted, emitted2);
 }
 
-/// Trailing comments on nested sequence items become own-line comments at
-/// the next position on round-trip (canonical form, mirroring the
-/// top-level rule).
+/// Trailing inline comments on nested sequence items round-trip inline.
 #[test]
-fn trailing_nested_comments_become_own_line() {
+fn nested_sequence_inline_comments_round_trip() {
     let src = "---\nQUILL: q\nitems:\n  - a # inline\n  - b\n---\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
     assert!(
-        emitted.contains("# inline"),
-        "trailing nested comment must survive\nGot:\n{}",
+        emitted.contains("- \"a\" # inline"),
+        "trailing inline comment on a sequence item must round-trip on the same line\nGot:\n{}",
         emitted
     );
-    // It must land on its own line, not on the item line.
+
+    // Idempotent across repeated round-trips.
+    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let emitted2 = doc2.to_markdown();
+    assert_eq!(emitted, emitted2, "round-trip must be idempotent");
+}
+
+/// Trailing inline comments on nested mapping fields round-trip inline.
+#[test]
+fn nested_mapping_inline_comments_round_trip() {
+    let src = "---\nQUILL: q\nouter:\n  inner: 1 # tail\n---\n";
+
+    let doc = Document::from_markdown(src).unwrap();
+    let emitted = doc.to_markdown();
     assert!(
-        !emitted.contains("\"a\" # inline"),
-        "trailing nested comment must normalise to own-line\nGot:\n{}",
+        emitted.contains("inner: 1 # tail"),
+        "trailing inline comment on a nested mapping field must round-trip\nGot:\n{}",
         emitted
     );
+
+    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let emitted2 = doc2.to_markdown();
+    assert_eq!(emitted, emitted2, "round-trip must be idempotent");
+}
+
+/// Inline comment on a container key (`outer: # tail`) lands on the key
+/// line, before the indented children.
+#[test]
+fn inline_on_container_key_round_trips() {
+    let src = "---\nQUILL: q\nouter: # describes outer\n  inner: 1\n---\n";
+
+    let doc = Document::from_markdown(src).unwrap();
+    let emitted = doc.to_markdown();
+    assert!(
+        emitted.contains("outer: # describes outer\n  inner: 1"),
+        "inline comment on a container key must land on the key line\nGot:\n{}",
+        emitted
+    );
+
+    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let emitted2 = doc2.to_markdown();
+    assert_eq!(emitted, emitted2, "round-trip must be idempotent");
+}
+
+/// Inline comment on the QUILL sentinel line round-trips on that line.
+#[test]
+fn sentinel_inline_comment_round_trips() {
+    let src = "---\nQUILL: q # main entry\ntitle: Hi\n---\n";
+
+    let doc = Document::from_markdown(src).unwrap();
+    let emitted = doc.to_markdown();
+    assert!(
+        emitted.starts_with("---\nQUILL: q # main entry\n"),
+        "inline comment on the QUILL sentinel must round-trip on the sentinel line\nGot:\n{}",
+        emitted
+    );
+
+    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let emitted2 = doc2.to_markdown();
+    assert_eq!(emitted, emitted2, "round-trip must be idempotent");
+}
+
+/// Inline comment on a CARD sentinel line round-trips on that line.
+#[test]
+fn card_sentinel_inline_comment_round_trips() {
+    let src = "---\nQUILL: q\n---\n\n---\nCARD: foo # the foo card\nx: 1\n---\n";
+
+    let doc = Document::from_markdown(src).unwrap();
+    let emitted = doc.to_markdown();
+    assert!(
+        emitted.contains("CARD: foo # the foo card\n"),
+        "inline comment on a CARD sentinel must round-trip on the sentinel line\nGot:\n{}",
+        emitted
+    );
+
+    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let emitted2 = doc2.to_markdown();
+    assert_eq!(emitted, emitted2, "round-trip must be idempotent");
+}
+
+/// Inline comment with `!fill` round-trips with the tag intact.
+#[test]
+fn fill_with_inline_comment_round_trips() {
+    let src = "---\nQUILL: q\ndept: !fill Sales # placeholder\n---\n";
+
+    let doc = Document::from_markdown(src).unwrap();
+    assert!(
+        doc.main().frontmatter().is_fill("dept"),
+        "fill marker must be set"
+    );
+
+    let emitted = doc.to_markdown();
+    assert!(
+        emitted.contains("dept: !fill \"Sales\" # placeholder"),
+        "`!fill` and inline comment must round-trip together\nGot:\n{}",
+        emitted
+    );
+
+    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let emitted2 = doc2.to_markdown();
+    assert_eq!(emitted, emitted2, "round-trip must be idempotent");
+}
+
+/// Multiple inline comments — top-level scalar, nested scalar, sequence
+/// item — all preserved in one document.
+#[test]
+fn mixed_inline_comments_round_trip() {
+    let src = "---\nQUILL: q\ntitle: Hello # greeting\nitems:\n  - a # first\n  - b\nouter:\n  inner: 1 # nested tail\n---\n";
+
+    let doc = Document::from_markdown(src).unwrap();
+    let emitted = doc.to_markdown();
+
+    assert!(emitted.contains("title: \"Hello\" # greeting"));
+    assert!(emitted.contains("- \"a\" # first"));
+    assert!(emitted.contains("inner: 1 # nested tail"));
+
+    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let emitted2 = doc2.to_markdown();
+    assert_eq!(emitted, emitted2, "round-trip must be idempotent");
+}
+
+/// Orphan inline comment whose host is removed via `Frontmatter::remove`
+/// degrades to an own-line comment instead of being silently dropped.
+#[test]
+fn orphan_inline_after_remove_degrades_to_own_line() {
+    let src = "---\nQUILL: q\nfield: value # tail\nother: 2\n---\n";
+
+    let mut doc = Document::from_markdown(src).unwrap();
+    // Remove the host field. The inline comment is now orphaned in items.
+    doc.main_mut().frontmatter_mut().remove("field");
+
+    let emitted = doc.to_markdown();
+    // Comment text preserved as own-line.
+    assert!(
+        emitted.contains("# tail"),
+        "orphan comment text must be preserved\nGot:\n{}",
+        emitted
+    );
+    // It must NOT have ended up inline on any value line.
+    assert!(
+        !emitted.contains("\" # tail"),
+        "orphan comment must not appear inline on another line\nGot:\n{}",
+        emitted
+    );
+
+    // Re-parsing the emitted form yields a stable round-trip.
+    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let emitted2 = doc2.to_markdown();
+    assert_eq!(emitted, emitted2, "post-orphan round-trip must be idempotent");
+}
+
+/// Inline comment on an empty-mapping field — the field is omitted on emit
+/// per the canonical-emission rule, but the inline trailer survives as an
+/// own-line comment at the same indent so its text is not lost.
+#[test]
+fn inline_on_empty_mapping_degrades_to_own_line() {
+    use crate::QuillValue;
+
+    // Construct programmatically since `key: {}` doesn't appear in source.
+    let src = "---\nQUILL: q\n---\n";
+    let mut doc = Document::from_markdown(src).unwrap();
+    doc.main_mut()
+        .frontmatter_mut()
+        .insert("empty", QuillValue::from_json(serde_json::json!({})));
+    // Append an inline comment item right after the empty-mapping field.
+    {
+        let fm = doc.main_mut().frontmatter_mut();
+        let items = fm.items().to_vec();
+        let mut new_items = items;
+        new_items.push(crate::FrontmatterItem::comment_inline("notes about empty"));
+        *fm = crate::document::Frontmatter::from_items(new_items);
+    }
+
+    let emitted = doc.to_markdown();
+    // Empty-mapping host is omitted. Trailer surfaces as own-line.
+    assert!(
+        !emitted.contains("empty:"),
+        "empty mapping must be omitted\nGot:\n{}",
+        emitted
+    );
+    assert!(
+        emitted.contains("# notes about empty"),
+        "inline trailer for an omitted host must degrade to own-line\nGot:\n{}",
+        emitted
+    );
+}
+
+/// Mixed: own-line and inline comments referencing the same field.
+#[test]
+fn own_line_then_inline_round_trip() {
+    let src = "---\nQUILL: q\n# header\ntitle: Hi # tail\n# footer\n---\n";
+
+    let doc = Document::from_markdown(src).unwrap();
+    let emitted = doc.to_markdown();
+
+    assert!(emitted.contains("# header\n"));
+    assert!(emitted.contains("title: \"Hi\" # tail\n"));
+    assert!(emitted.contains("# footer\n"));
+
+    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let emitted2 = doc2.to_markdown();
+    assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }

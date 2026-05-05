@@ -30,9 +30,20 @@ pub enum FrontmatterItem {
         #[serde(default)]
         fill: bool,
     },
-    /// An own-line YAML comment. Text excludes the leading `#` and one
-    /// optional space.
-    Comment { text: String },
+    /// A YAML comment. Text excludes the leading `#` and one optional space.
+    ///
+    /// `inline` distinguishes own-line comments (`# text` on a line by
+    /// itself) from trailing inline comments (`field: value # text`). An
+    /// inline comment attaches to the field that immediately precedes it
+    /// in the items vector; if no such field exists at emit time (orphan)
+    /// it degrades to an own-line comment. A `Comment { inline: true }` at
+    /// `items[0]` instead attaches to the sentinel line (`QUILL: …` /
+    /// `CARD: …`).
+    Comment {
+        text: String,
+        #[serde(default)]
+        inline: bool,
+    },
 }
 
 impl FrontmatterItem {
@@ -45,9 +56,21 @@ impl FrontmatterItem {
         }
     }
 
-    /// Build a comment item.
+    /// Build an own-line comment item.
     pub fn comment(text: impl Into<String>) -> Self {
-        FrontmatterItem::Comment { text: text.into() }
+        FrontmatterItem::Comment {
+            text: text.into(),
+            inline: false,
+        }
+    }
+
+    /// Build an inline (trailing) comment item. Attaches to the previous
+    /// field on emit; degrades to own-line if none exists.
+    pub fn comment_inline(text: impl Into<String>) -> Self {
+        FrontmatterItem::Comment {
+            text: text.into(),
+            inline: true,
+        }
     }
 }
 
@@ -328,7 +351,7 @@ mod tests {
             .items()
             .iter()
             .filter_map(|item| match item {
-                FrontmatterItem::Comment { text } => Some(text.as_str()),
+                FrontmatterItem::Comment { text, .. } => Some(text.as_str()),
                 FrontmatterItem::Field { .. } => None,
             })
             .collect();
