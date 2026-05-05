@@ -214,10 +214,8 @@ fn write_typed_table_field(
 
 /// The value to render for a field in the template.
 enum FieldValue {
-    Scalar(String),
-    Array(Vec<serde_json::Value>),
-    EmptyArray,
-    Empty, // renders as ""
+    Inline(String),             // goes on the same line as the key
+    Block(Vec<serde_json::Value>), // rendered as indented items below the key
 }
 
 fn field_value(field: &FieldSchema) -> FieldValue {
@@ -234,7 +232,7 @@ fn field_value(field: &FieldSchema) -> FieldValue {
         }
         // Enum with no default: first enum value is the canonical placeholder.
         if let Some(first) = field.enum_values.as_ref().and_then(|v| v.first()) {
-            return FieldValue::Scalar(first.clone());
+            return FieldValue::Inline(first.clone());
         }
         placeholder(&field.r#type, None)
     }
@@ -246,41 +244,33 @@ fn field_value(field: &FieldSchema) -> FieldValue {
 /// fall through to an empty value.
 fn placeholder(t: &FieldType, label: Option<&str>) -> FieldValue {
     match t {
-        FieldType::Array => FieldValue::EmptyArray,
-        FieldType::Boolean => FieldValue::Scalar("false".to_string()),
-        FieldType::Number | FieldType::Integer => FieldValue::Scalar("0".to_string()),
+        FieldType::Array => FieldValue::Inline("[]".into()),
+        FieldType::Boolean => FieldValue::Inline("false".into()),
+        FieldType::Number | FieldType::Integer => FieldValue::Inline("0".into()),
         // Date/datetime use empty string; type annotation carries the format hint.
-        FieldType::Date | FieldType::DateTime => FieldValue::Empty,
+        FieldType::Date | FieldType::DateTime => FieldValue::Inline("\"\"".into()),
         // String, markdown, object: angle-bracket placeholder when required;
         // empty when optional.
-        _ => match label {
-            Some(name) => FieldValue::Scalar(format!("\"<{}>\"", name)),
-            None => FieldValue::Empty,
-        },
+        _ => FieldValue::Inline(match label {
+            Some(name) => format!("\"<{}>\"", name),
+            None => "\"\"".into(),
+        }),
     }
 }
 
 fn json_to_value(val: &serde_json::Value) -> FieldValue {
     match val {
-        serde_json::Value::Array(items) if items.is_empty() => FieldValue::EmptyArray,
-        serde_json::Value::Array(items) => FieldValue::Array(items.clone()),
-        serde_json::Value::String(s) if s.is_empty() => FieldValue::Empty,
-        other => FieldValue::Scalar(render_scalar(other)),
+        serde_json::Value::Array(items) if items.is_empty() => FieldValue::Inline("[]".into()),
+        serde_json::Value::Array(items) => FieldValue::Block(items.clone()),
+        serde_json::Value::String(s) if s.is_empty() => FieldValue::Inline("\"\"".into()),
+        other => FieldValue::Inline(render_scalar(other)),
     }
 }
 
 fn write_value(out: &mut String, key: &str, val: &FieldValue, comment: &str, pad: &str) {
     match val {
-        FieldValue::Scalar(s) => {
-            out.push_str(&format!("{}{}: {}{}\n", pad, key, s, comment));
-        }
-        FieldValue::Empty => {
-            out.push_str(&format!("{}{}: \"\"{}\n", pad, key, comment));
-        }
-        FieldValue::EmptyArray => {
-            out.push_str(&format!("{}{}: []{}\n", pad, key, comment));
-        }
-        FieldValue::Array(items) => {
+        FieldValue::Inline(s) => out.push_str(&format!("{}{}: {}{}\n", pad, key, s, comment)),
+        FieldValue::Block(items) => {
             out.push_str(&format!("{}{}:{}\n", pad, key, comment));
             write_array_items(out, items, pad);
         }
