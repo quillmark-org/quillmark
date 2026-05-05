@@ -2203,6 +2203,63 @@ main:
     assert!(err[0].message.contains("broken_field"));
 }
 
+#[test]
+fn test_field_with_title_key_errors_with_hint() {
+    // 'title' is a common mistake — authors expect it to work like 'description'.
+    // We must fail loudly with an actionable hint rather than silently dropping the field.
+    let yaml_content = r#"
+quill:
+  name: hint_test
+  version: "1.0"
+  backend: typst
+  description: Hint test
+
+main:
+  fields:
+    author:
+      type: string
+      title: The document author
+"#;
+
+    let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
+
+    assert_eq!(err.len(), 1);
+    assert_eq!(err[0].code.as_deref(), Some("quill::field_parse_error"));
+    assert_eq!(
+        err[0].hint.as_deref(),
+        Some("'title' is not a valid field key; use 'description' instead.")
+    );
+}
+
+#[test]
+fn test_field_with_ui_title_errors_with_hint() {
+    // 'ui.title' is valid on card_types but not on individual fields.
+    let yaml_content = r#"
+quill:
+  name: ui_title_test
+  version: "1.0"
+  backend: typst
+  description: ui.title hint test
+
+main:
+  fields:
+    status:
+      type: string
+      ui:
+        title: Status Label
+"#;
+
+    let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
+
+    assert_eq!(err.len(), 1);
+    assert_eq!(err[0].code.as_deref(), Some("quill::field_parse_error"));
+    assert!(err[0]
+        .hint
+        .as_deref()
+        .unwrap_or("")
+        .contains("only valid on card type schemas"));
+}
+
 fn check_schema_snapshot(
     yaml_of: impl Fn(&QuillConfig) -> String,
     json_of: impl Fn(&QuillConfig) -> serde_json::Value,

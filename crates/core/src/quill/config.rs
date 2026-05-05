@@ -585,18 +585,44 @@ impl QuillConfig {
                     fields.insert(field_name.clone(), schema);
                 }
                 Err(e) => {
-                    errors.push(
-                        Diagnostic::new(
-                            Severity::Error,
-                            format!("Failed to parse {} '{}': {}", context, field_name, e),
-                        )
-                        .with_code("quill::field_parse_error".to_string()),
-                    );
+                    let hint = Self::field_parse_hint(field_value);
+                    let mut diag = Diagnostic::new(
+                        Severity::Error,
+                        format!("Failed to parse {} '{}': {}", context, field_name, e),
+                    )
+                    .with_code("quill::field_parse_error".to_string());
+                    if let Some(h) = hint {
+                        diag = diag.with_hint(h);
+                    }
+                    errors.push(diag);
                 }
             }
         }
 
         fields
+    }
+
+    /// Produce an actionable hint for common field schema mistakes based on the raw value.
+    fn field_parse_hint(field_value: &serde_json::Value) -> Option<String> {
+        if let Some(obj) = field_value.as_object() {
+            if obj.contains_key("title") {
+                return Some(
+                    "'title' is not a valid field key; use 'description' instead.".to_string(),
+                );
+            }
+            if let Some(ui_val) = obj.get("ui") {
+                if let Some(ui_obj) = ui_val.as_object() {
+                    if ui_obj.contains_key("title") {
+                        return Some(
+                            "'ui.title' is only valid on card type schemas (under card_types:), \
+                             not on individual fields."
+                                .to_string(),
+                        );
+                    }
+                }
+            }
+        }
+        None
     }
 
     fn is_snake_case_identifier(name: &str) -> bool {
