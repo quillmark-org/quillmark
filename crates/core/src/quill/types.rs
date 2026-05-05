@@ -36,6 +36,8 @@ pub mod ui_key {
     pub const GROUP: &str = "group";
     /// Display order within the UI
     pub const ORDER: &str = "order";
+    /// Static human-readable display label for a card type
+    pub const TITLE: &str = "title";
     /// Whether the field or specific component is hide-body (no body editor)
     pub const HIDE_BODY: &str = "hide_body";
     /// Default title template for card instances
@@ -67,7 +69,13 @@ pub struct UiFieldSchema {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct UiContainerSchema {
+pub struct UiCardSchema {
+    /// Static human-readable display label for the card type. UI consumers
+    /// should prefer this over the snake_case map key when rendering section
+    /// headers, chips, or buttons. Decoupled from the key so authors can
+    /// rename the label without changing the on-the-wire `CARD` discriminator.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     /// Whether to hide the body editor for this element (metadata only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hide_body: Option<bool>,
@@ -92,7 +100,7 @@ pub struct CardSchema {
     pub fields: BTreeMap<String, FieldSchema>,
     /// UI layout hints
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ui: Option<UiContainerSchema>,
+    pub ui: Option<UiCardSchema>,
 }
 
 impl CardSchema {

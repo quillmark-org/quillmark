@@ -291,10 +291,29 @@ Invalid card-type names include:
 
 ### Card-level `ui`
 
-| Property       | Type   | Description |
-|----------------|--------|-------------|
-| `hide_body`    | bool   | Suppress the body/content editor for this card type |
+| Property        | Type   | Description |
+|-----------------|--------|-------------|
+| `title`         | string | Static human-readable label for the card type (UI display) |
+| `hide_body`     | bool   | Suppress the body/content editor for this card type |
 | `default_title` | string | Template for per-instance titles in UI consumers |
+
+#### `title`
+
+A static, human-readable display label for the card type. UI consumers should prefer it over the snake_case map key when rendering section headers, chips, or card-picker entries.
+
+```yaml
+card_types:
+  indorsement:
+    ui:
+      title: Routing Endorsement
+    fields:
+      from:
+        type: string
+```
+
+The label is decoupled from the map key (`indorsement`), which is the on-the-wire `CARD` discriminator. Authors can rename the label freely without invalidating stored documents.
+
+`title` is a UI hint only — it has no effect on validation or rendering. When omitted, UI consumers fall back to the prettified map key.
 
 #### `hide_body`
 

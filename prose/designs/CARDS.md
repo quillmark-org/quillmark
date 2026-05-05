@@ -12,12 +12,13 @@ Cards are structured metadata blocks inline within document content. All cards a
 ```rust
 pub struct CardSchema {
     pub name: String,
-    pub title: Option<String>,
     pub description: Option<String>,
     pub fields: HashMap<String, FieldSchema>,
-    pub ui: Option<UiContainerSchema>,
+    pub ui: Option<UiCardSchema>,
 }
 ```
+
+The static display label for a card type lives on `UiCardSchema::title`, not on `CardSchema` directly — see `ui.title` below.
 
 `QuillConfig` exposes the entry-point card as `main: CardSchema` and the additional named card-types as `card_types: Vec<CardSchema>`. Look up a named card-type by name via `card_type(name)` or get a name-keyed map via `card_types_map()`.
 
@@ -30,19 +31,17 @@ main:
 
 card_types:
   indorsement:
-    title: Routing Indorsement
     description: Chain of routing endorsements for multi-level correspondence.
+    ui:
+      title: Routing Endorsement
     fields:
       from:
-        title: From office/symbol
         type: string
         description: Office symbol of the endorsing official.
       for:
-        title: To office/symbol
         type: string
         description: Office symbol receiving the endorsed memo.
       signature_block:
-        title: Signature block lines
         type: array
         required: true
         ui:
@@ -50,12 +49,13 @@ card_types:
         description: Name, grade, and duty title.
 ```
 
+`ui.title` is a static display label for UI consumers (section headers, chips, picker entries). It's decoupled from the snake_case map key (`indorsement`), which is the on-the-wire `CARD` discriminator — so authors can rename the label without breaking stored documents.
+
 ## Public Schema YAML Output
 
 ```yaml
 card_types:
   indorsement:
-    title: Routing Indorsement
     description: Chain of routing endorsements for multi-level correspondence.
     fields:
       from:
