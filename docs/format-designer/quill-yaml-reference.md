@@ -173,6 +173,23 @@ main:
 
 The `ui` property on fields controls how form builders and wizards render the field. These are UI hints, not validation constraints.
 
+### `title`
+
+Overrides the display label shown next to the input. Form builders derive a label automatically from the snake_case field key (`memo_for` → "Memo For"), so `ui.title` is only needed when that automatic label is wrong or misleading:
+
+```yaml
+main:
+  fields:
+    memo_for:
+      type: array
+      ui:
+        title: To       # "Memo For" would confuse users unfamiliar with memo conventions
+```
+
+Most fields don't need `ui.title`. Prefer clear field names over fixing a bad key with a title override.
+
+`title` is a UI hint only — no effect on validation, backend rendering, or blueprint output.
+
 ### `group`
 
 Organizes fields into visual sections:
