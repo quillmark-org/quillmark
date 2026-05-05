@@ -36,10 +36,11 @@ pub mod ui_key {
     pub const GROUP: &str = "group";
     /// Display order within the UI
     pub const ORDER: &str = "order";
+    /// Display label for a card type. May be a literal string or a template
+    /// containing `{field_name}` tokens interpolated per-instance by UI consumers.
+    pub const TITLE: &str = "title";
     /// Whether the field or specific component is hide-body (no body editor)
     pub const HIDE_BODY: &str = "hide_body";
-    /// Default title template for card instances
-    pub const DEFAULT_TITLE: &str = "default_title";
     /// Compact rendering hint for UI consumers
     pub const COMPACT: &str = "compact";
     /// Multi-line text box hint for string and markdown fields
@@ -67,15 +68,14 @@ pub struct UiFieldSchema {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct UiContainerSchema {
+pub struct UiCardSchema {
+    /// Display label for the card type — literal string or `{field_name}`
+    /// template. See `docs/format-designer/quill-yaml-reference.md`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     /// Whether to hide the body editor for this element (metadata only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hide_body: Option<bool>,
-    /// Template for generating a default per-instance title in UI consumers.
-    /// Uses `{field_name}` tokens interpolated with live field values.
-    /// Example: `"{name}"`
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub default_title: Option<String>,
 }
 
 /// Schema definition for a card type (composable content blocks)
@@ -92,7 +92,7 @@ pub struct CardSchema {
     pub fields: BTreeMap<String, FieldSchema>,
     /// UI layout hints
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ui: Option<UiContainerSchema>,
+    pub ui: Option<UiCardSchema>,
 }
 
 impl CardSchema {

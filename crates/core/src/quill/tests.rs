@@ -2110,6 +2110,89 @@ main:
 }
 
 #[test]
+fn test_card_ui_title_parses_literal_and_template_forms() {
+    let yaml_content = r#"
+quill:
+  name: card_title_test
+  version: "1.0"
+  backend: typst
+  description: Test ui.title on cards
+
+main:
+  ui:
+    title: Memorandum
+  fields:
+    subject:
+      type: string
+
+card_types:
+  indorsement:
+    ui:
+      title: "{from} → {for}"
+    fields:
+      from:
+        type: string
+      for:
+        type: string
+"#;
+
+    let config = QuillConfig::from_yaml(yaml_content).unwrap();
+
+    assert_eq!(
+        config.main.ui.as_ref().unwrap().title.as_deref(),
+        Some("Memorandum"),
+        "literal main.ui.title"
+    );
+    let indorsement = config.card_type("indorsement").unwrap();
+    assert_eq!(
+        indorsement.ui.as_ref().unwrap().title.as_deref(),
+        Some("{from} → {for}"),
+        "template card ui.title carried verbatim"
+    );
+
+    // form_schema includes ui.title; structural schema strips it.
+    let form = config.form_schema();
+    assert_eq!(form["main"]["ui"]["title"].as_str(), Some("Memorandum"));
+    assert_eq!(
+        form["card_types"]["indorsement"]["ui"]["title"].as_str(),
+        Some("{from} → {for}")
+    );
+
+    let clean = config.schema();
+    assert!(
+        clean["main"].get("ui").is_none(),
+        "main.ui must be stripped from structural schema"
+    );
+    assert!(
+        clean["card_types"]["indorsement"].get("ui").is_none(),
+        "card_types.indorsement.ui must be stripped from structural schema"
+    );
+}
+
+#[test]
+fn test_card_ui_title_omitted_when_absent() {
+    let yaml_content = r#"
+quill:
+  name: no_title_test
+  version: "1.0"
+  backend: typst
+  description: ui.title omitted when not declared
+
+main:
+  fields:
+    subject:
+      type: string
+"#;
+
+    let config = QuillConfig::from_yaml(yaml_content).unwrap();
+    assert!(config
+        .main
+        .ui
+        .as_ref()
+        .map_or(true, |ui| ui.title.is_none()));
+}
+
+#[test]
 fn test_quill_config_from_yaml_collects_non_fatal_field_warnings() {
     let yaml_content = r#"
 quill:

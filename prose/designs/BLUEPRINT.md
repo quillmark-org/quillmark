@@ -122,8 +122,7 @@ Most `ui:` keys are stripped, but two structural hints survive:
 - `ui.hide_body` (on `main` or a card) — suppresses the
   `<region> body...` marker for cards that hold no prose.
 
-`ui.compact`, `ui.multiline`, `ui.default_title` are presentation-only
-and dropped.
+`ui.compact`, `ui.multiline`, `ui.title` are presentation-only and dropped.
 
 ## Body markers
 

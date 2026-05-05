@@ -12,7 +12,7 @@ use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
 use super::formats::DATE_FORMAT;
-use super::{CardSchema, FieldSchema, FieldType, UiContainerSchema, UiFieldSchema};
+use super::{CardSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
 
 /// Top-level configuration for a Quillmark project
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -54,7 +54,7 @@ pub struct QuillConfig {
 struct CardSchemaDef {
     pub description: Option<String>,
     pub fields: Option<serde_json::Map<String, serde_json::Value>>,
-    pub ui: Option<UiContainerSchema>,
+    pub ui: Option<UiCardSchema>,
 }
 
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
@@ -707,7 +707,7 @@ impl QuillConfig {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let ui_section: Option<UiContainerSchema> = quill_section
+        let ui_section: Option<UiCardSchema> = quill_section
             .get("ui")
             .cloned()
             .and_then(|v| serde_json::from_value(v).ok());
@@ -771,7 +771,7 @@ impl QuillConfig {
         };
 
         // Extract main.ui (optional)
-        let main_ui: Option<UiContainerSchema> = main_obj_opt
+        let main_ui: Option<UiCardSchema> = main_obj_opt
             .and_then(|main_obj| main_obj.get("ui"))
             .cloned()
             .and_then(|v| serde_json::from_value(v).ok());

@@ -24,8 +24,8 @@ export interface QuillFieldUi {
 
 /** UI layout hints for a card (main or named card type). */
 export interface QuillCardUi {
+    title?: string;
     hide_body?: boolean;
-    default_title?: string;
 }
 
 /** Schema entry for a single field declared in a quill's `Quill.yaml`. */

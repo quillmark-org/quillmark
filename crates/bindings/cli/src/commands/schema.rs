@@ -15,7 +15,7 @@ pub struct SchemaArgs {
     output: Option<PathBuf>,
 
     /// Include form-builder ui hints (group, order, compact, multiline,
-    /// hide_body, default_title). Default emits the structural schema only.
+    /// title, hide_body). Default emits the structural schema only.
     #[arg(long)]
     with_ui: bool,
 }
