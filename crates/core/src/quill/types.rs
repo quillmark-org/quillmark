@@ -69,12 +69,8 @@ pub struct UiFieldSchema {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UiCardSchema {
-    /// Display label for the card type. May be a literal string (e.g.
-    /// `"Routing Endorsement"`) or a template containing `{field_name}`
-    /// tokens that UI consumers interpolate with live field values
-    /// (e.g. `"{from} → {for}"`). Decoupled from the snake_case map key,
-    /// which is the on-the-wire `CARD` discriminator — authors can rename
-    /// the label without invalidating stored documents.
+    /// Display label for the card type — literal string or `{field_name}`
+    /// template. See `docs/format-designer/quill-yaml-reference.md`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     /// Whether to hide the body editor for this element (metadata only)

@@ -2111,10 +2111,6 @@ main:
 
 #[test]
 fn test_card_ui_title_parses_literal_and_template_forms() {
-    // `ui.title` accepts a literal label (no tokens) for the type-level
-    // display name, and a `{field}` template for per-instance titles.
-    // Both forms use the same field — the body is just a string carried
-    // verbatim through the schema.
     let yaml_content = r#"
 quill:
   name: card_title_test
