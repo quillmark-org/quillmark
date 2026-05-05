@@ -741,9 +741,10 @@ fn card_to_pydict<'py>(
                 entry.set_item("value", quillvalue_to_py(py, value)?)?;
                 entry.set_item("fill", *fill)?;
             }
-            quillmark_core::FrontmatterItem::Comment { text } => {
+            quillmark_core::FrontmatterItem::Comment { text, inline } => {
                 entry.set_item("kind", "comment")?;
                 entry.set_item("text", text)?;
+                entry.set_item("inline", *inline)?;
             }
         }
         items.append(entry)?;
