@@ -36,25 +36,18 @@ impl Quillmark {
 
     /// Build and return a render-ready quill from an in-memory file tree.
     pub fn quill(&self, tree: FileTreeNode) -> Result<Quill, RenderError> {
-        let source = QuillSource::from_tree(tree).map_err(|e| RenderError::QuillConfig {
-            diag: Box::new(
-                Diagnostic::new(
-                    Severity::Error,
-                    format!("Failed to load quill from tree: {}", e),
-                )
-                .with_code("quill::load_failed".to_string()),
-            ),
-        })?;
+        let source = QuillSource::from_tree(tree)
+            .map_err(|diags| RenderError::QuillConfig { diags })?;
         self.assemble(source)
     }
 
     /// Load a quill from a filesystem path and attach the appropriate backend.
     pub fn quill_from_path<P: AsRef<Path>>(&self, path: P) -> Result<Quill, RenderError> {
         let tree = load_tree_from_path(path.as_ref()).map_err(|e| RenderError::QuillConfig {
-            diag: Box::new(
+            diags: vec![
                 Diagnostic::new(Severity::Error, format!("Failed to load quill: {}", e))
                     .with_code("quill::load_failed".to_string()),
-            ),
+            ],
         })?;
         self.quill(tree)
     }

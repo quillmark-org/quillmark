@@ -1,10 +1,14 @@
 //! QuillSource loading and construction routines.
-use std::error::Error as StdError;
 use std::path::{Component, Path};
 
+use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
 use super::{FileTreeNode, QuillConfig, QuillSource};
+
+fn diag(message: impl Into<String>, code: &str) -> Diagnostic {
+    Diagnostic::new(Severity::Error, message.into()).with_code(code.to_string())
+}
 
 impl QuillSource {
     /// Create a QuillSource from a tree structure.
@@ -19,24 +23,26 @@ impl QuillSource {
     ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - Quill.yaml is not found in the file tree
-    /// - Quill.yaml is not valid UTF-8 or YAML
-    /// - The plate file specified in Quill.yaml is not found or not valid UTF-8
-    /// - Validation fails
-    pub fn from_tree(root: FileTreeNode) -> Result<Self, Box<dyn StdError + Send + Sync>> {
-        // Read Quill.yaml
+    /// Returns a non-empty `Vec<Diagnostic>` describing every problem found.
+    /// When `Quill.yaml` itself contains multiple errors they are all
+    /// reported together; subsequent failures (missing plate, malformed
+    /// example) surface as single-element vectors.
+    pub fn from_tree(root: FileTreeNode) -> Result<Self, Vec<Diagnostic>> {
         let quill_yaml_bytes = root
             .get_file("Quill.yaml")
-            .ok_or("Quill.yaml not found in file tree")?;
+            .ok_or_else(|| vec![diag("Quill.yaml not found in file tree", "quill::missing_file")])?;
 
-        let quill_yaml_content = String::from_utf8(quill_yaml_bytes.to_vec())
-            .map_err(|e| format!("Quill.yaml is not valid UTF-8: {}", e))?;
+        let quill_yaml_content = String::from_utf8(quill_yaml_bytes.to_vec()).map_err(|e| {
+            vec![diag(
+                format!("Quill.yaml is not valid UTF-8: {}", e),
+                "quill::invalid_utf8",
+            )]
+        })?;
 
-        // Parse YAML into QuillConfig
-        let config = QuillConfig::from_yaml(&quill_yaml_content)?;
+        // Parse YAML into QuillConfig — propagate the full diagnostic vector
+        // so every Quill.yaml error reaches the caller.
+        let (config, _warnings) = QuillConfig::from_yaml_with_warnings(&quill_yaml_content)?;
 
-        // Construct QuillSource from QuillConfig
         Self::from_config(config, root)
     }
 
@@ -44,11 +50,10 @@ impl QuillSource {
     fn from_config(
         mut config: QuillConfig,
         root: FileTreeNode,
-    ) -> Result<Self, Box<dyn StdError + Send + Sync>> {
+    ) -> Result<Self, Vec<Diagnostic>> {
         // Build metadata from config
         let mut metadata = config.metadata.clone();
 
-        // Add backend to metadata
         metadata.insert(
             "backend".to_string(),
             QuillValue::from_json(serde_json::Value::String(config.backend.clone())),
@@ -59,13 +64,11 @@ impl QuillSource {
             QuillValue::from_json(serde_json::Value::String(config.description.clone())),
         );
 
-        // Add author
         metadata.insert(
             "author".to_string(),
             QuillValue::from_json(serde_json::Value::String(config.author.clone())),
         );
 
-        // Add version
         metadata.insert(
             "version".to_string(),
             QuillValue::from_json(serde_json::Value::String(config.version.clone())),
@@ -79,15 +82,20 @@ impl QuillSource {
         // Read the plate content from plate file (if specified)
         let plate_content: Option<String> = if let Some(ref plate_file_name) = config.plate_file {
             let plate_bytes = root.get_file(plate_file_name).ok_or_else(|| {
-                format!("Plate file '{}' not found in file tree", plate_file_name)
+                vec![diag(
+                    format!("Plate file '{}' not found in file tree", plate_file_name),
+                    "quill::plate_missing",
+                )]
             })?;
 
             let content = String::from_utf8(plate_bytes.to_vec()).map_err(|e| {
-                format!("Plate file '{}' is not valid UTF-8: {}", plate_file_name, e)
+                vec![diag(
+                    format!("Plate file '{}' is not valid UTF-8: {}", plate_file_name, e),
+                    "quill::invalid_utf8",
+                )]
             })?;
             Some(content)
         } else {
-            // No plate file specified
             None
         };
 
@@ -99,35 +107,42 @@ impl QuillSource {
                     .components()
                     .any(|c| matches!(c, Component::ParentDir | Component::Prefix(_)))
             {
-                return Err(format!(
-                    "Example file '{}' is outside the quill directory",
-                    example_file_name
-                )
-                .into());
+                return Err(vec![diag(
+                    format!(
+                        "Example file '{}' is outside the quill directory",
+                        example_file_name
+                    ),
+                    "quill::example_path_traversal",
+                )]);
             }
 
             let bytes = root.get_file(example_file_name).ok_or_else(|| {
-                format!(
-                    "Example file '{}' referenced in Quill.yaml not found",
-                    example_file_name
-                )
+                vec![diag(
+                    format!(
+                        "Example file '{}' referenced in Quill.yaml not found",
+                        example_file_name
+                    ),
+                    "quill::example_missing",
+                )]
             })?;
             Some(String::from_utf8(bytes.to_vec()).map_err(|e| {
-                format!(
-                    "Example file '{}' is not valid UTF-8: {}",
-                    example_file_name, e
-                )
+                vec![diag(
+                    format!(
+                        "Example file '{}' is not valid UTF-8: {}",
+                        example_file_name, e
+                    ),
+                    "quill::invalid_utf8",
+                )]
             })?)
         } else if root.file_exists("example.md") {
-            // Smart default: use example.md if it exists
             let bytes = root
                 .get_file("example.md")
                 .expect("invariant violation: file_exists(example.md) but get_file returned None");
             Some(String::from_utf8(bytes.to_vec()).map_err(|e| {
-                format!(
-                    "Default example file 'example.md' is not valid UTF-8: {}",
-                    e
-                )
+                vec![diag(
+                    format!("Default example file 'example.md' is not valid UTF-8: {}", e),
+                    "quill::invalid_utf8",
+                )]
             })?)
         } else {
             None

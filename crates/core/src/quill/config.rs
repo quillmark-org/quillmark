@@ -880,10 +880,25 @@ impl QuillConfig {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let ui_section: Option<UiCardSchema> = quill_section
-            .get("ui")
-            .cloned()
-            .and_then(|v| serde_json::from_value(v).ok());
+        let ui_section: Option<UiCardSchema> = match quill_section.get("ui").cloned() {
+            None => None,
+            Some(v) => match serde_json::from_value::<UiCardSchema>(v) {
+                Ok(parsed) => Some(parsed),
+                Err(e) => {
+                    errors.push(
+                        Diagnostic::new(
+                            Severity::Error,
+                            format!("Invalid 'quill.ui' block: {}", e),
+                        )
+                        .with_code("quill::invalid_ui".to_string())
+                        .with_hint(
+                            "Valid keys under 'ui' are: title, hide_body.".to_string(),
+                        ),
+                    );
+                    None
+                }
+            },
+        };
 
         // Extract optional backend-specific section (keyed by `quill.backend`).
         let mut backend_config = HashMap::new();
@@ -960,11 +975,28 @@ impl QuillConfig {
             BTreeMap::new()
         };
 
-        // Extract main.ui (optional)
-        let main_ui: Option<UiCardSchema> = main_obj_opt
-            .and_then(|main_obj| main_obj.get("ui"))
-            .cloned()
-            .and_then(|v| serde_json::from_value(v).ok());
+        // Extract main.ui (optional). Fail loudly on malformed UI metadata rather
+        // than silently dropping it — see `quill.ui` handling above.
+        let main_ui: Option<UiCardSchema> =
+            match main_obj_opt.and_then(|main_obj| main_obj.get("ui")).cloned() {
+                None => None,
+                Some(v) => match serde_json::from_value::<UiCardSchema>(v) {
+                    Ok(parsed) => Some(parsed),
+                    Err(e) => {
+                        errors.push(
+                            Diagnostic::new(
+                                Severity::Error,
+                                format!("Invalid 'main.ui' block: {}", e),
+                            )
+                            .with_code("quill::invalid_ui".to_string())
+                            .with_hint(
+                                "Valid keys under 'ui' are: title, hide_body.".to_string(),
+                            ),
+                        );
+                        None
+                    }
+                },
+            };
 
         // Extract main.description (optional, authored under `main:` like any
         // other card type). This is independent of `quill.description`.

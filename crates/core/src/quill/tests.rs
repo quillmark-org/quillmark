@@ -67,7 +67,14 @@ fn load_dir(
 /// Test helper: filesystem equivalent of the old `Quill::from_path`.
 fn load_from_path<P: AsRef<Path>>(path: P) -> Result<QuillSource, Box<dyn StdError + Send + Sync>> {
     let tree = load_tree(path.as_ref())?;
-    QuillSource::from_tree(tree)
+    QuillSource::from_tree(tree).map_err(|diags| {
+        diags
+            .iter()
+            .map(|d| d.fmt_pretty())
+            .collect::<Vec<_>>()
+            .join("\n")
+            .into()
+    })
 }
 
 #[test]
