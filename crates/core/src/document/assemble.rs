@@ -333,19 +333,32 @@ fn build_frontmatter_from_pre_and_parsed(
 
     let mut items: Vec<FrontmatterItem> = Vec::new();
     let mut consumed: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // When a QUILL/CARD sentinel field is skipped, its trailing inline comment
+    // loses its host field. The emitter can only round-trip an inline comment
+    // on the sentinel line when it sits at items[0] (sentinel-preview path).
+    // If other items already precede it, it will never reach items[0] and will
+    // become an orphan that degrades differently on each emit → broken
+    // idempotency. Demote it to own-line at parse time in that case.
+    let mut after_stripped_sentinel = false;
 
     for pre in pre_items {
         match pre {
-            PreItem::Comment { text, inline } => items.push(FrontmatterItem::Comment {
-                text: text.clone(),
-                inline: *inline,
-            }),
+            PreItem::Comment { text, inline } => {
+                let demote = after_stripped_sentinel && *inline && !items.is_empty();
+                after_stripped_sentinel = false;
+                items.push(FrontmatterItem::Comment {
+                    text: text.clone(),
+                    inline: *inline && !demote,
+                });
+            }
             PreItem::Field { key, fill } => {
                 // QUILL / CARD sentinel keys are stripped from the parsed
                 // map by `extract_sentinels`; skip them in the item list.
                 if key == "QUILL" || key == "CARD" {
+                    after_stripped_sentinel = true;
                     continue;
                 }
+                after_stripped_sentinel = false;
                 if let Some(value) = mapping.get(key).cloned() {
                     // `!fill` applies to scalars and sequences. Mappings
                     // are rejected because top-level `type: object` is
