@@ -336,7 +336,10 @@ fn build_frontmatter_from_pre_and_parsed(
 
     for pre in pre_items {
         match pre {
-            PreItem::Comment(text) => items.push(FrontmatterItem::comment(text.clone())),
+            PreItem::Comment { text, inline } => items.push(FrontmatterItem::Comment {
+                text: text.clone(),
+                inline: *inline,
+            }),
             PreItem::Field { key, fill } => {
                 // QUILL / CARD sentinel keys are stripped from the parsed
                 // map by `extract_sentinels`; skip them in the item list.
