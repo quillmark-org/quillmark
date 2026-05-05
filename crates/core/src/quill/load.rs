@@ -51,8 +51,8 @@ impl QuillSource {
         mut config: QuillConfig,
         root: FileTreeNode,
     ) -> Result<Self, Vec<Diagnostic>> {
-        // Build metadata from config
-        let mut metadata = config.metadata.clone();
+        let mut metadata: std::collections::HashMap<String, QuillValue> =
+            std::collections::HashMap::new();
 
         metadata.insert(
             "backend".to_string(),

@@ -40,9 +40,6 @@ pub struct QuillConfig {
     pub example_markdown: Option<String>,
     /// Plate file (template)
     pub plate_file: Option<String>,
-    /// Additional unstructured metadata
-    #[serde(flatten)]
-    pub metadata: HashMap<String, QuillValue>,
     /// Backend-specific configuration parsed from the top-level YAML section
     /// whose key matches `backend` (e.g. `[typst]`, `[html]`).
     #[serde(default)]
@@ -501,7 +498,6 @@ impl QuillConfig {
         fields_map: &serde_json::Map<String, serde_json::Value>,
         key_order: &[String],
         context: &str,
-        _warnings: &mut Vec<Diagnostic>,
         errors: &mut Vec<Diagnostic>,
     ) -> BTreeMap<String, FieldSchema> {
         let mut fields = BTreeMap::new();
@@ -913,44 +909,45 @@ impl QuillConfig {
         }
 
         // Reject unknown top-level sections. Known sections are: quill, main, card_types,
-        // and the backend name (e.g. typst). Everything else is a mistake.
+        // and the backend name (e.g. typst). Everything else is a mistake. `fields` gets
+        // a targeted hint since it's the most common shape mistake.
         if let Some(top_obj) = quill_yaml_val.as_object() {
             for key in top_obj.keys() {
                 let is_known = key == "quill"
                     || key == "main"
                     || key == "card_types"
                     || (!backend.is_empty() && key == &backend);
-                if !is_known {
-                    errors.push(
-                        Diagnostic::new(
-                            Severity::Error,
-                            format!("Unknown top-level section '{}'", key),
-                        )
-                        .with_code("quill::unknown_section".to_string())
-                        .with_hint(format!(
-                            "Valid top-level sections are: quill, main, card_types{}",
-                            if backend.is_empty() {
-                                String::new()
-                            } else {
-                                format!(", {}", backend)
-                            }
-                        )),
-                    );
+                if is_known {
+                    continue;
                 }
+
+                let mut diag = Diagnostic::new(
+                    Severity::Error,
+                    format!("Unknown top-level section '{}'", key),
+                )
+                .with_code("quill::unknown_section".to_string());
+
+                diag = if key == "fields" {
+                    diag.with_hint(
+                        "Root-level `fields` is not supported; use `main.fields` instead."
+                            .to_string(),
+                    )
+                } else {
+                    diag.with_hint(format!(
+                        "Valid top-level sections are: quill, main, card_types{}",
+                        if backend.is_empty() {
+                            String::new()
+                        } else {
+                            format!(", {}", backend)
+                        }
+                    ))
+                };
+
+                errors.push(diag);
             }
         }
 
         let main_obj_opt = quill_yaml_val.get("main").and_then(|v| v.as_object());
-
-        if quill_yaml_val.get("fields").is_some() {
-            errors.push(
-                Diagnostic::new(
-                    Severity::Error,
-                    "Root-level `fields` is not supported; use `main.fields` instead.".to_string(),
-                )
-                .with_code("quill::root_fields_not_supported".to_string()),
-            );
-        }
 
         // Extract main.fields (optional)
         let fields = if let Some(main_obj) = main_obj_opt {
@@ -962,7 +959,6 @@ impl QuillConfig {
                         fields_map,
                         &field_order,
                         "field schema",
-                        &mut warnings,
                         &mut errors,
                     )
                 } else {
@@ -1072,7 +1068,6 @@ impl QuillConfig {
                                 card_fields_table,
                                 &card_field_order,
                                 &format!("card_type '{}' field", card_name),
-                                &mut warnings,
                                 &mut errors,
                             )
                         } else {
@@ -1106,7 +1101,6 @@ impl QuillConfig {
                 example_file,
                 example_markdown: None,
                 plate_file,
-                metadata: HashMap::new(),
                 backend_config,
             },
             warnings,

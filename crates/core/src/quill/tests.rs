@@ -1,7 +1,7 @@
 //! Tests for quill types and loading.
 
 use super::*;
-use crate::Severity;
+use crate::{Diagnostic, Severity};
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fs;
@@ -1675,7 +1675,7 @@ main:
 }
 
 #[test]
-fn test_standalone_object_field_rejected_with_warning() {
+fn test_standalone_object_field_rejected_with_error() {
     let yaml_content = r#"
 quill:
   name: obj_test
@@ -1708,7 +1708,7 @@ main:
 }
 
 #[test]
-fn test_nested_object_in_typed_table_rejected_with_warning() {
+fn test_nested_object_in_typed_table_rejected_with_error() {
     let yaml_content = r#"
 quill:
   name: nested_obj_test
@@ -2208,6 +2208,161 @@ main:
     assert_eq!(err[0].severity, Severity::Error);
     assert_eq!(err[0].code.as_deref(), Some("quill::field_parse_error"));
     assert!(err[0].message.contains("broken_field"));
+}
+
+#[test]
+fn test_unknown_key_in_quill_section_errors() {
+    // Typos like 'platefile' should fail loudly, not silently land in metadata.
+    let yaml_content = r#"
+quill:
+  name: unk_key
+  version: "1.0"
+  backend: typst
+  description: Unknown key test
+  platefile: foo.typ
+"#;
+
+    let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
+
+    assert_eq!(err.len(), 1);
+    assert_eq!(err[0].code.as_deref(), Some("quill::unknown_key"));
+    assert!(err[0].message.contains("platefile"));
+    assert!(err[0]
+        .hint
+        .as_deref()
+        .unwrap_or("")
+        .contains("plate_file"));
+}
+
+#[test]
+fn test_unknown_top_level_section_errors() {
+    // 'card_type' is a common typo for 'card_types'. Must not be silently ignored.
+    let yaml_content = r#"
+quill:
+  name: unk_section
+  version: "1.0"
+  backend: typst
+  description: Unknown section test
+
+card_type:
+  foo:
+    description: Should not silently disappear
+    fields:
+      bar:
+        type: string
+"#;
+
+    let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
+
+    assert!(err.iter().any(|d| {
+        d.code.as_deref() == Some("quill::unknown_section") && d.message.contains("card_type")
+    }));
+}
+
+#[test]
+fn test_root_level_fields_gets_targeted_hint() {
+    // Root-level `fields:` (instead of `main.fields:`) should produce a single
+    // unknown_section error with a targeted hint, not a duplicate error.
+    let yaml_content = r#"
+quill:
+  name: root_fields
+  version: "1.0"
+  backend: typst
+  description: Root fields test
+
+fields:
+  author:
+    type: string
+"#;
+
+    let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
+
+    let fields_errors: Vec<&Diagnostic> = err
+        .iter()
+        .filter(|d| d.message.contains("fields"))
+        .collect();
+    assert_eq!(
+        fields_errors.len(),
+        1,
+        "expected exactly one error for root-level `fields`, got {} ({:?})",
+        fields_errors.len(),
+        fields_errors
+    );
+    assert_eq!(
+        fields_errors[0].code.as_deref(),
+        Some("quill::unknown_section")
+    );
+    assert!(fields_errors[0]
+        .hint
+        .as_deref()
+        .unwrap_or("")
+        .contains("main.fields"));
+}
+
+#[test]
+fn test_multiple_errors_collected_in_one_pass() {
+    // The headline DX behavior: an author with several mistakes should see
+    // them all in one shot, not fix-rerun-fix-rerun.
+    let yaml_content = r#"
+quill:
+  name: BadName
+  version: "1.0"
+  backend: typst
+  description: Multi-error test
+  platefile: foo.typ
+
+main:
+  fields:
+    BadFieldName:
+      type: string
+    legit:
+      title: Bad legacy key
+"#;
+
+    let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
+
+    // We expect at least: invalid_name + unknown_key + invalid_field_name + field_parse_error
+    assert!(
+        err.len() >= 4,
+        "expected >=4 errors collected at once, got {}: {:?}",
+        err.len(),
+        err.iter().map(|d| d.code.as_deref()).collect::<Vec<_>>()
+    );
+    let codes: Vec<&str> = err.iter().filter_map(|d| d.code.as_deref()).collect();
+    assert!(codes.contains(&"quill::invalid_name"), "missing invalid_name: {:?}", codes);
+    assert!(codes.contains(&"quill::unknown_key"), "missing unknown_key: {:?}", codes);
+    assert!(
+        codes.contains(&"quill::invalid_field_name"),
+        "missing invalid_field_name: {:?}",
+        codes
+    );
+    assert!(
+        codes.contains(&"quill::field_parse_error"),
+        "missing field_parse_error: {:?}",
+        codes
+    );
+}
+
+#[test]
+fn test_main_ui_malformed_errors_with_hint() {
+    // main.ui should fail loudly when malformed, not be silently dropped.
+    let yaml_content = r#"
+quill:
+  name: bad_ui
+  version: "1.0"
+  backend: typst
+  description: Bad UI test
+
+main:
+  ui:
+    bogus_key: nope
+"#;
+
+    let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
+
+    assert!(err
+        .iter()
+        .any(|d| d.code.as_deref() == Some("quill::invalid_ui")));
 }
 
 #[test]
