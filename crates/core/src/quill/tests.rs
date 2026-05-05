@@ -2110,7 +2110,11 @@ main:
 }
 
 #[test]
-fn test_card_ui_title_parses_and_emits_in_form_schema_only() {
+fn test_card_ui_title_parses_literal_and_template_forms() {
+    // `ui.title` accepts a literal label (no tokens) for the type-level
+    // display name, and a `{field}` template for per-instance titles.
+    // Both forms use the same field — the body is just a string carried
+    // verbatim through the schema.
     let yaml_content = r#"
 quill:
   name: card_title_test
@@ -2128,9 +2132,11 @@ main:
 card_types:
   indorsement:
     ui:
-      title: Routing Endorsement
+      title: "{from} → {for}"
     fields:
       from:
+        type: string
+      for:
         type: string
 "#;
 
@@ -2138,25 +2144,22 @@ card_types:
 
     assert_eq!(
         config.main.ui.as_ref().unwrap().title.as_deref(),
-        Some("Memorandum")
+        Some("Memorandum"),
+        "literal main.ui.title"
     );
     let indorsement = config.card_type("indorsement").unwrap();
     assert_eq!(
         indorsement.ui.as_ref().unwrap().title.as_deref(),
-        Some("Routing Endorsement")
+        Some("{from} → {for}"),
+        "template card ui.title carried verbatim"
     );
 
     // form_schema includes ui.title; structural schema strips it.
     let form = config.form_schema();
-    assert_eq!(
-        form["main"]["ui"]["title"].as_str(),
-        Some("Memorandum"),
-        "main.ui.title missing from form_schema"
-    );
+    assert_eq!(form["main"]["ui"]["title"].as_str(), Some("Memorandum"));
     assert_eq!(
         form["card_types"]["indorsement"]["ui"]["title"].as_str(),
-        Some("Routing Endorsement"),
-        "card_types.indorsement.ui.title missing from form_schema"
+        Some("{from} → {for}")
     );
 
     let clean = config.schema();

@@ -49,7 +49,7 @@ card_types:
         description: Name, grade, and duty title.
 ```
 
-`ui.title` is a static display label for UI consumers (section headers, chips, picker entries). It's decoupled from the snake_case map key (`indorsement`), which is the on-the-wire `CARD` discriminator — so authors can rename the label without breaking stored documents.
+`ui.title` is the display label for UI consumers (section headers, chips, picker entries, per-instance list titles). It may be a literal string or a template containing `{field_name}` tokens that consumers interpolate with live field values (e.g. `"{from} → {for}"`). It's decoupled from the snake_case map key (`indorsement`), which is the on-the-wire `CARD` discriminator — so authors can rename the label without breaking stored documents.
 
 ## Public Schema YAML Output
 

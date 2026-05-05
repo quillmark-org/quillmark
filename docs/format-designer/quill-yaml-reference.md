@@ -291,15 +291,20 @@ Invalid card-type names include:
 
 ### Card-level `ui`
 
-| Property        | Type   | Description |
-|-----------------|--------|-------------|
-| `title`         | string | Static human-readable label for the card type (UI display) |
-| `hide_body`     | bool   | Suppress the body/content editor for this card type |
-| `default_title` | string | Template for per-instance titles in UI consumers |
+| Property    | Type   | Description |
+|-------------|--------|-------------|
+| `title`     | string | Display label for the card type. Literal string or `{field}` template |
+| `hide_body` | bool   | Suppress the body/content editor for this card type |
 
 #### `title`
 
-A static, human-readable display label for the card type. UI consumers should prefer it over the snake_case map key when rendering section headers, chips, or card-picker entries.
+A human-readable display label for the card type. UI consumers should prefer it over the snake_case map key when rendering section headers, chips, picker entries, or per-instance titles in a list.
+
+The label is decoupled from the map key (e.g. `indorsement`), which is the on-the-wire `CARD` discriminator. Authors can rename the label freely without invalidating stored documents.
+
+**Two flavors:**
+
+A literal string serves as a static type label:
 
 ```yaml
 card_types:
@@ -311,7 +316,27 @@ card_types:
         type: string
 ```
 
-The label is decoupled from the map key (`indorsement`), which is the on-the-wire `CARD` discriminator. Authors can rename the label freely without invalidating stored documents.
+A template containing `{field_name}` tokens lets UI consumers produce a per-instance title by interpolating live field values:
+
+```yaml
+card_types:
+  endorsement:
+    ui:
+      title: "{from} → {for}"
+    fields:
+      from:
+        type: string
+      for:
+        type: string
+```
+
+With the template form, a UI rendering a list of cards can title each instance (e.g. `"ORG1/SYM → ORG2/SYM"`) instead of falling back to a generic `"Card (2)"`.
+
+**Interpolation rules (for UI consumers):**
+- `{field_name}` is replaced with the current value of that field.
+- A title with no `{}` tokens is rendered verbatim — it's just a literal label.
+- If a referenced field is absent or empty, the token resolves to an empty string.
+- UI consumers are responsible for trimming degenerate separators (e.g. `" — "` with one empty side).
 
 `title` is a UI hint only — it has no effect on validation or rendering. When omitted, UI consumers fall back to the prettified map key.
 
@@ -326,29 +351,6 @@ card_types:
       category:
         type: string
 ```
-
-#### `default_title`
-
-A template string that UI consumers interpolate with field values to produce a human-readable title for each card instance. Uses `{field_name}` tokens referencing fields in the same card.
-
-```yaml
-card_types:
-  entry:
-    ui:
-      default_title: "{name}"
-    fields:
-      name:
-        type: string
-```
-
-With the above, a UI rendering a list of `entry` cards can title each instance (e.g. `"Project Alpha"`) instead of falling back to a generic `"Card (2)"`.
-
-**Interpolation rules (for UI consumers):**
-- `{field_name}` is replaced with the current value of that field.
-- If a field is absent or empty, the token resolves to an empty string.
-- UI consumers are responsible for trimming degenerate separators (e.g. `" — "` with one empty side).
-
-`default_title` is a UI hint only — it has no effect on validation or rendering.
 
 ### Using Cards in Markdown
 

@@ -36,12 +36,11 @@ pub mod ui_key {
     pub const GROUP: &str = "group";
     /// Display order within the UI
     pub const ORDER: &str = "order";
-    /// Static human-readable display label for a card type
+    /// Display label for a card type. May be a literal string or a template
+    /// containing `{field_name}` tokens interpolated per-instance by UI consumers.
     pub const TITLE: &str = "title";
     /// Whether the field or specific component is hide-body (no body editor)
     pub const HIDE_BODY: &str = "hide_body";
-    /// Default title template for card instances
-    pub const DEFAULT_TITLE: &str = "default_title";
     /// Compact rendering hint for UI consumers
     pub const COMPACT: &str = "compact";
     /// Multi-line text box hint for string and markdown fields
@@ -70,20 +69,17 @@ pub struct UiFieldSchema {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UiCardSchema {
-    /// Static human-readable display label for the card type. UI consumers
-    /// should prefer this over the snake_case map key when rendering section
-    /// headers, chips, or buttons. Decoupled from the key so authors can
-    /// rename the label without changing the on-the-wire `CARD` discriminator.
+    /// Display label for the card type. May be a literal string (e.g.
+    /// `"Routing Endorsement"`) or a template containing `{field_name}`
+    /// tokens that UI consumers interpolate with live field values
+    /// (e.g. `"{from} → {for}"`). Decoupled from the snake_case map key,
+    /// which is the on-the-wire `CARD` discriminator — authors can rename
+    /// the label without invalidating stored documents.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     /// Whether to hide the body editor for this element (metadata only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hide_body: Option<bool>,
-    /// Template for generating a default per-instance title in UI consumers.
-    /// Uses `{field_name}` tokens interpolated with live field values.
-    /// Example: `"{name}"`
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub default_title: Option<String>,
 }
 
 /// Schema definition for a card type (composable content blocks)

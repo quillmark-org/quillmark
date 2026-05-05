@@ -133,7 +133,7 @@ card_types:
   indorsement:
     description: Chain of routing endorsements. Each endorsement block adds an official response or forwarding action to the original memo.
     ui:
-      default_title: "{from} → {for}"
+      title: "{from} → {for}"
     fields:
       from:
         type: string

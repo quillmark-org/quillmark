@@ -53,8 +53,8 @@ Two projections of the same `QuillConfig` source are exposed:
   `QUILL`/`CARD` sentinels with `const` values. No `ui` keys. The surface
   for validators, machine consumers, and CLI inspection.
 - `QuillConfig::form_schema()` — same shape **plus** field-level (`group`,
-  `order`, `compact`, `multiline`) and card-level (`title`, `hide_body`,
-  `default_title`) `ui` hints. The surface for form builders.
+  `order`, `compact`, `multiline`) and card-level (`title`, `hide_body`)
+  `ui` hints. The surface for form builders.
 
 For LLM/MCP authoring, see [BLUEPRINT.md](BLUEPRINT.md) — `blueprint()`
 emits a document-shaped, pre-filled Markdown reference that's denser

@@ -30,7 +30,7 @@ card_types:
   experience_section:
     description: An entry with a heading, subheading, and bullet points.
     ui:
-      default_title: "{headingLeft} — {subheadingLeft}"
+      title: "{headingLeft} — {subheadingLeft}"
     fields:
       title:
         type: string
@@ -74,7 +74,7 @@ card_types:
   projects_section:
     description: A project entry with a name and optional URL.
     ui:
-      default_title: "{name}"
+      title: "{name}"
     fields:
       title:
         type: string
