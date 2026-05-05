@@ -334,7 +334,10 @@ mod tests {
         // inline:false is the default — presence in JSON is an implementation
         // detail, but the round-trip must deserialize back to false.
         let back: FrontmatterItem = serde_json::from_str(&json).unwrap();
-        assert!(matches!(back, FrontmatterItem::Comment { inline: false, .. }));
+        assert!(matches!(
+            back,
+            FrontmatterItem::Comment { inline: false, .. }
+        ));
     }
 
     #[test]
@@ -347,7 +350,10 @@ mod tests {
         assert!(json.contains("\"kind\":\"comment\""));
         assert!(json.contains("\"inline\":true"));
         let back: FrontmatterItem = serde_json::from_str(&json).unwrap();
-        assert!(matches!(back, FrontmatterItem::Comment { inline: true, .. }));
+        assert!(matches!(
+            back,
+            FrontmatterItem::Comment { inline: true, .. }
+        ));
     }
 
     #[test]
@@ -355,7 +361,10 @@ mod tests {
         // `inline` is serde(default) — omitting it from JSON must deserialize as false.
         let json = r#"{"kind":"comment","text":"note"}"#;
         let item: FrontmatterItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(item, FrontmatterItem::Comment { inline: false, .. }));
+        assert!(matches!(
+            item,
+            FrontmatterItem::Comment { inline: false, .. }
+        ));
     }
 
     #[test]
@@ -382,10 +391,14 @@ mod tests {
             .collect();
         assert_eq!(fields, vec!["title", "author"]);
 
-        let inline_comment = card.frontmatter_items.iter().find(|it| {
-            matches!(it, FrontmatterItem::Comment { inline: true, .. })
-        });
-        assert!(inline_comment.is_some(), "inline comment must appear in frontmatter_items");
+        let inline_comment = card
+            .frontmatter_items
+            .iter()
+            .find(|it| matches!(it, FrontmatterItem::Comment { inline: true, .. }));
+        assert!(
+            inline_comment.is_some(),
+            "inline comment must appear in frontmatter_items"
+        );
     }
 
     // ── OutputFormat ──────────────────────────────────────────────────────────

@@ -778,6 +778,9 @@ card_types:
         let doc1 = Document::from_markdown(&bp).expect("blueprint must parse");
         let md2 = doc1.to_markdown();
         let doc2 = Document::from_markdown(&md2).expect("round-tripped markdown must parse");
-        assert_eq!(doc1, doc2, "Document must be equal after blueprint → parse → emit → parse");
+        assert_eq!(
+            doc1, doc2,
+            "Document must be equal after blueprint → parse → emit → parse"
+        );
     }
 }
