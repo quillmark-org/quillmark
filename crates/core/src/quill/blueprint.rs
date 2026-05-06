@@ -67,14 +67,9 @@ impl QuillConfig {
 }
 
 fn body_marker(label: &str, description: Option<&str>) -> String {
-    let mut chars = label.chars();
-    let capitalized = match chars.next() {
-        None => String::new(),
-        Some(f) => f.to_uppercase().collect::<String>() + chars.as_str(),
-    };
     match description {
-        Some(desc) => format!("{} here. {}", capitalized, desc),
-        None => format!("{} here.", capitalized),
+        Some(desc) => format!("Write {} here. {}", label, desc),
+        None => format!("Write {} here.", label),
     }
 }
 
@@ -582,8 +577,8 @@ card_types:
 "#)
         .blueprint();
         let after = &t[t.find("CARD: note").unwrap()..];
-        assert!(after.contains("\nNote body here. Write your note here\n"));
-        assert!(!after.contains("\nNote body here.\n"));
+        assert!(after.contains("\nWrite note body here. Write your note here\n"));
+        assert!(!after.contains("\nWrite note body here.\n"));
     }
 
     #[test]
@@ -597,8 +592,8 @@ main:
     to: { type: string }
 "#)
         .blueprint();
-        assert!(t.contains("\nMain body here. Write the letter body here\n"));
-        assert!(!t.contains("\nMain body here.\n"));
+        assert!(t.contains("\nWrite main body here. Write the letter body here\n"));
+        assert!(!t.contains("\nWrite main body here.\n"));
     }
 
     #[test]
@@ -611,7 +606,7 @@ main:
 "#)
         .blueprint();
         assert!(t.starts_with("---\n# x\nQUILL: taro@0.1.0  # sentinel\n"));
-        assert!(t.contains("\nMain body here.\n"));
+        assert!(t.contains("\nWrite main body here.\n"));
     }
 
     #[test]
@@ -627,7 +622,7 @@ card_types:
       from: { type: string }
 "#)
         .blueprint();
-        assert!(t.contains("\nIndorsement body here.\n"));
+        assert!(t.contains("\nWrite indorsement body here.\n"));
     }
 
     #[test]
