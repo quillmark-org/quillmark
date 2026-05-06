@@ -31,8 +31,8 @@ export interface QuillCardUi {
 export interface QuillCardBody {
     /** When false, consumers must not accept or store body content for this card type. Defaults to true. */
     enabled?: boolean;
-    /** Guide text shown in the body editor placeholder area when the body is empty. */
-    guide?: string;
+    /** Description shown in the body editor placeholder area when the body is empty. */
+    description?: string;
 }
 
 /** Schema entry for a single field declared in a quill's `Quill.yaml`. */

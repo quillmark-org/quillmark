@@ -306,8 +306,8 @@ Invalid card-type names include:
 
 | Property  | Type   | Description |
 |-----------|--------|-------------|
-| `enabled` | bool   | Whether the body editor is enabled (default: true). When false, consumers must not accept or store body content for this card type. |
-| `guide`   | string | Guide text shown in the body editor placeholder when the body is empty. |
+| `enabled`     | bool   | Whether the body editor is enabled (default: true). When false, consumers must not accept or store body content for this card type. |
+| `description` | string | Description shown in the body editor placeholder when the body is empty. |
 
 #### `title`
 
@@ -367,15 +367,15 @@ card_types:
         type: string
 ```
 
-#### `body.guide`
+#### `body.description`
 
-Optional guide text displayed in the body editor placeholder area when the body is empty. Has no effect when `body.enabled` is false.
+Optional description displayed in the body editor placeholder area when the body is empty. Has no effect when `body.enabled` is false.
 
 ```yaml
 card_types:
   experience:
     body:
-      guide: Describe your role, responsibilities, and key achievements.
+      description: Describe your role, responsibilities, and key achievements.
     fields:
       company:
         type: string

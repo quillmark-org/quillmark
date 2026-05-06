@@ -49,8 +49,8 @@ pub mod ui_key {
 pub mod body_key {
     /// Whether the body editor is enabled for this card (default: true)
     pub const ENABLED: &str = "enabled";
-    /// Optional guide text shown in the body editor placeholder area
-    pub const GUIDE: &str = "guide";
+    /// Optional description shown in the body editor placeholder area
+    pub const DESCRIPTION: &str = "description";
 }
 
 /// UI-specific metadata for field rendering
@@ -84,10 +84,10 @@ pub struct BodyCardSchema {
     /// of this card type.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
-    /// Guide text shown in the body editor placeholder area when the body is
+    /// Description shown in the body editor placeholder area when the body is
     /// empty. Has no effect when `enabled` is false.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub guide: Option<String>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -136,11 +136,11 @@ impl CardSchema {
         self.body.as_ref().and_then(|b| b.enabled).unwrap_or(true)
     }
 
-    /// Returns the body guide text, falling back to `default` when none is set.
-    pub fn body_guide<'a>(&'a self, default: &'a str) -> &'a str {
+    /// Returns the body description text, falling back to `default` when none is set.
+    pub fn body_description<'a>(&'a self, default: &'a str) -> &'a str {
         self.body
             .as_ref()
-            .and_then(|b| b.guide.as_deref())
+            .and_then(|b| b.description.as_deref())
             .unwrap_or(default)
     }
 }

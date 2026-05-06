@@ -966,7 +966,7 @@ impl QuillConfig {
                         )
                         .with_code("quill::invalid_body".to_string())
                         .with_hint(
-                            "Valid keys under 'body' are: enabled, guide.".to_string(),
+                            "Valid keys under 'body' are: enabled, description.".to_string(),
                         ),
                     );
                     None
@@ -1067,21 +1067,21 @@ impl QuillConfig {
             }
         }
 
-        // Warn when `body.guide` is set together with `body.enabled: false` —
-        // the guide has no effect since the body editor is disabled.
-        let warn_guide_unused = |label: &str, body: &Option<BodyCardSchema>| -> Option<Diagnostic> {
+        // Warn when `body.description` is set together with `body.enabled: false` —
+        // the description has no effect since the body editor is disabled.
+        let warn_description_unused = |label: &str, body: &Option<BodyCardSchema>| -> Option<Diagnostic> {
             let body = body.as_ref()?;
-            if body.enabled == Some(false) && body.guide.is_some() {
+            if body.enabled == Some(false) && body.description.is_some() {
                 Some(
                     Diagnostic::new(
                         Severity::Warning,
                         format!(
-                            "`{label}.body.guide` is set but `{label}.body.enabled` is false; the guide will have no effect"
+                            "`{label}.body.description` is set but `{label}.body.enabled` is false; the description will have no effect"
                         ),
                     )
-                    .with_code("quill::body_guide_unused".to_string())
+                    .with_code("quill::body_description_unused".to_string())
                     .with_hint(
-                        "Set `body.enabled: true` to surface the guide, or remove `body.guide`."
+                        "Set `body.enabled: true` to surface the description, or remove `body.description`."
                             .to_string(),
                     ),
                 )
@@ -1089,11 +1089,11 @@ impl QuillConfig {
                 None
             }
         };
-        if let Some(d) = warn_guide_unused("main", &main.body) {
+        if let Some(d) = warn_description_unused("main", &main.body) {
             warnings.push(d);
         }
         for card in &card_types {
-            if let Some(d) = warn_guide_unused(&format!("card_types.{}", card.name), &card.body) {
+            if let Some(d) = warn_description_unused(&format!("card_types.{}", card.name), &card.body) {
                 warnings.push(d);
             }
         }

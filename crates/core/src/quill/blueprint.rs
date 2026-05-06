@@ -45,7 +45,7 @@ impl QuillConfig {
             main_desc,
         );
         if self.main.body_enabled() {
-            out.push_str(&format!("\n{}...\n", self.main.body_guide("main body")));
+            out.push_str(&format!("\n{}...\n", self.main.body_description("main body")));
         }
         for card in &self.card_types {
             let sentinel = format!("CARD: {}  # sentinel, composable (0..N)", card.name);
@@ -53,7 +53,7 @@ impl QuillConfig {
             write_card_frontmatter(&mut out, card, &sentinel, card.description.as_deref());
             if card.body_enabled() {
                 let default = format!("{} body", card.name);
-                out.push_str(&format!("\n{}...\n", card.body_guide(&default)));
+                out.push_str(&format!("\n{}...\n", card.body_description(&default)));
             }
         }
         out
@@ -549,7 +549,7 @@ card_types:
     }
 
     #[test]
-    fn body_guide_appears_in_placeholder() {
+    fn body_description_appears_in_placeholder() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -558,7 +558,7 @@ main:
 card_types:
   note:
     body:
-      guide: Write your note here
+      description: Write your note here
     fields:
       author: { type: string }
 "#)
@@ -569,12 +569,12 @@ card_types:
     }
 
     #[test]
-    fn main_body_guide_appears_in_placeholder() {
+    fn main_body_description_appears_in_placeholder() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   body:
-    guide: Write the letter body here
+    description: Write the letter body here
   fields:
     to: { type: string }
 "#)
