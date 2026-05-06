@@ -2529,7 +2529,10 @@ main:
     title: { type: string }
 "#;
     let result = QuillConfig::from_yaml_with_warnings(yaml);
-    assert!(result.is_ok(), "four-space indented --- should not trigger fence error");
+    assert!(
+        result.is_ok(),
+        "four-space indented --- should not trigger fence error"
+    );
 }
 
 #[test]
