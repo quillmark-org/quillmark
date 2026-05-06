@@ -25,7 +25,7 @@ field: value
 
 ---
 
-main body...
+main body
 
 ---
 # <card description>
@@ -33,8 +33,12 @@ CARD: <card_name>  # sentinel, composable (0..N)
 ...fields...
 ---
 
-<card_name> body...
+<card_name> body
 ```
+
+When a `body.description` is set, the body marker line expands to
+`<tag> body — <description>` (em dash separator). When `body.enabled` is
+false the marker is omitted entirely.
 
 ## Annotation grammar
 
@@ -124,16 +128,18 @@ Most `ui:` keys are stripped, but two structural hints survive:
 
 ## Body markers
 
-- `main body...` after the main fence (or `<guide>...` when `body.description` is set)
-- `<card_name> body...` after each card fence (or `<guide>...` when `body.description` is set)
+- `main body` after the main fence
+- `<card_name> body` after each card fence
+- When `body.description` is set, the marker becomes
+  `<tag> body — <description>` (em dash separator). The structural
+  `<tag> body` label is preserved so the consumer always sees what kind
+  of body region they're filling in.
 
-Trailing ellipsis reads as "prose continues here." No markup conflict
-with HTML (avoiding the `<u>` deviation), and the named region echoes
-the sentinel above it.
+The named region echoes the sentinel above it. There is no markup
+conflict with HTML (avoiding the `<u>` deviation).
 
 `body.enabled: false` suppresses the marker entirely for body-less cards
-(e.g., a `skills` card whose data is purely structured). `body.description` replaces
-the default placeholder text with a custom hint for consumers.
+(e.g., a `skills` card whose data is purely structured).
 
 ## Bindings surface
 

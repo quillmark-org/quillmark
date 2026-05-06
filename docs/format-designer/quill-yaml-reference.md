@@ -10,10 +10,11 @@ A `Quill.yaml` has these top-level sections:
 quill:        # Required — format metadata
   ...
 
-main:         # Optional — main entry-point card: field schemas and optional ui
+main:         # Optional — main entry-point card: field schemas and optional ui/body
   fields:
     ...
-  ui:         # optional container hints (e.g. hide_body)
+  ui:         # optional UI hints (e.g. title)
+  body:       # optional body-region config (e.g. enabled, description)
 
 card_types:   # Optional — additional composable card types
   ...
@@ -263,7 +264,7 @@ main:
 
 ## `card_types` Section
 
-`card_types` define composable, repeatable content blocks (the *types* — a document can then carry zero or more *instances* of each type, interleaved with body content). Each entry is shaped exactly like `main:` (`fields`, optional `description`, `ui`); think of `main:` as the single mandatory card-type for the document body, and `card_types:` as the library of additional types that may attach to it.
+`card_types` define composable, repeatable content blocks (the *types* — a document can then carry zero or more *instances* of each type, interleaved with body content). Each entry is shaped exactly like `main:` (`fields`, optional `description`, `ui`, `body`); think of `main:` as the single mandatory card-type for the document body, and `card_types:` as the library of additional types that may attach to it.
 
 Card-type names (the keys under `card_types`) must match `[a-z_][a-z0-9_]*` (leading underscore is allowed).
 
@@ -294,7 +295,8 @@ Invalid card-type names include:
 |---------------|--------|----------|-------------|
 | `description` | string | no       | Help text describing the card's purpose |
 | `fields`      | object | no       | Field schemas (same structure as top-level fields) |
-| `ui`          | object | no       | Container-level UI hints |
+| `ui`          | object | no       | Container-level UI hints (see [Card-level `ui`](#card-level-ui)) |
+| `body`        | object | no       | Body-region config (see [Card-level `body`](#card-level-body)) |
 
 ### Card-level `ui`
 

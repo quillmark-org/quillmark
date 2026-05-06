@@ -45,14 +45,6 @@ pub mod ui_key {
     pub const MULTILINE: &str = "multiline";
 }
 
-/// Semantic constants for body namespace keys
-pub mod body_key {
-    /// Whether the body editor is enabled for this card (default: true)
-    pub const ENABLED: &str = "enabled";
-    /// Optional description shown in the body editor placeholder area
-    pub const DESCRIPTION: &str = "description";
-}
-
 /// UI-specific metadata for field rendering
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -134,14 +126,6 @@ impl CardSchema {
     /// Defaults to true when no `body` namespace is declared.
     pub fn body_enabled(&self) -> bool {
         self.body.as_ref().and_then(|b| b.enabled).unwrap_or(true)
-    }
-
-    /// Returns the body description text, falling back to `default` when none is set.
-    pub fn body_description<'a>(&'a self, default: &'a str) -> &'a str {
-        self.body
-            .as_ref()
-            .and_then(|b| b.description.as_deref())
-            .unwrap_or(default)
     }
 }
 

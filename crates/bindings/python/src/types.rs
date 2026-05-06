@@ -99,7 +99,7 @@ impl PyQuill {
         Ok(dict)
     }
 
-    /// Document schema (no ui hints) as YAML.
+    /// Document schema as YAML, including `ui` hints.
     #[getter]
     fn schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let yaml = self

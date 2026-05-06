@@ -45,7 +45,11 @@ impl QuillConfig {
             main_desc,
         );
         if self.main.body_enabled() {
-            let desc = self.main.body.as_ref().and_then(|b| b.description.as_deref());
+            let desc = self
+                .main
+                .body
+                .as_ref()
+                .and_then(|b| b.description.as_deref());
             out.push_str(&format!("\n{}\n", body_marker("main body", desc)));
         }
         for card in &self.card_types {
