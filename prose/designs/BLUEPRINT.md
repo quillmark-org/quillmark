@@ -25,7 +25,7 @@ field: value
 
 ---
 
-main body
+Main body here.
 
 ---
 # <card description>
@@ -33,7 +33,7 @@ CARD: <card_name>  # sentinel, composable (0..N)
 ...fields...
 ---
 
-<card_name> body
+<Card_name> body here.
 ```
 
 When a `body.description` is set, the body marker line expands to
@@ -128,15 +128,11 @@ Most `ui:` keys are stripped, but two structural hints survive:
 
 ## Body markers
 
-- `main body` after the main fence
-- `<card_name> body` after each card fence
+- `Main body here.` after the main fence
+- `<Card_name> body here.` after each card fence
 - When `body.description` is set, the marker becomes
-  `<tag> body — <description>` (em dash separator). The structural
-  `<tag> body` label is preserved so the consumer always sees what kind
-  of body region they're filling in.
-
-The named region echoes the sentinel above it. There is no markup
-conflict with HTML (avoiding the `<u>` deviation).
+  `<Tag> body here. <description>` (space-separated). The label names
+  the region; the description tells the author what to write.
 
 `body.enabled: false` suppresses the marker entirely for body-less cards
 (e.g., a `skills` card whose data is purely structured).
