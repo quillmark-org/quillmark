@@ -119,22 +119,21 @@ Most `ui:` keys are stripped, but two structural hints survive:
   Ungrouped fields lead (no banner); named groups follow in
   first-appearance order.
 - `ui.order` — controls field ordering within a group.
-- `ui.hide_body` (on `main` or a card) — suppresses the
-  `<region> body...` marker for cards that hold no prose.
 
 `ui.compact`, `ui.multiline`, `ui.title` are presentation-only and dropped.
 
 ## Body markers
 
-- `main body...` after the main fence
-- `<card_name> body...` after each card fence
+- `main body...` after the main fence (or `<guide>...` when `body.description` is set)
+- `<card_name> body...` after each card fence (or `<guide>...` when `body.description` is set)
 
 Trailing ellipsis reads as "prose continues here." No markup conflict
 with HTML (avoiding the `<u>` deviation), and the named region echoes
 the sentinel above it.
 
-`ui.hide_body: true` suppresses the marker entirely for body-less cards
-(e.g., a `skills` card whose data is purely structured).
+`body.enabled: false` suppresses the marker entirely for body-less cards
+(e.g., a `skills` card whose data is purely structured). `body.description` replaces
+the default placeholder text with a custom hint for consumers.
 
 ## Bindings surface
 

@@ -12,7 +12,7 @@ use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
 use super::formats::DATE_FORMAT;
-use super::{CardSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
+use super::{BodyCardSchema, CardSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
 
 /// Top-level configuration for a Quillmark project
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -55,6 +55,7 @@ struct CardSchemaDef {
     #[allow(dead_code)]
     pub fields: Option<serde_json::Map<String, serde_json::Value>>,
     pub ui: Option<UiCardSchema>,
+    pub body: Option<BodyCardSchema>,
 }
 
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
@@ -629,7 +630,7 @@ impl QuillConfig {
     pub fn from_yaml_with_warnings(
         yaml_content: &str,
     ) -> Result<(Self, Vec<Diagnostic>), Vec<Diagnostic>> {
-        let warnings: Vec<Diagnostic> = Vec::new();
+        let mut warnings: Vec<Diagnostic> = Vec::new();
         let mut errors: Vec<Diagnostic> = Vec::new();
 
         // Parse YAML into serde_json::Value via serde_saphyr
@@ -847,7 +848,7 @@ impl QuillConfig {
                             format!("Invalid 'quill.ui' block: {}", e),
                         )
                         .with_code("quill::invalid_ui".to_string())
-                        .with_hint("Valid keys under 'ui' are: title, hide_body.".to_string()),
+                        .with_hint("Valid key under 'ui' is: title.".to_string()),
                     );
                     None
                 }
@@ -942,7 +943,31 @@ impl QuillConfig {
                     errors.push(
                         Diagnostic::new(Severity::Error, format!("Invalid 'main.ui' block: {}", e))
                             .with_code("quill::invalid_ui".to_string())
-                            .with_hint("Valid keys under 'ui' are: title, hide_body.".to_string()),
+                            .with_hint("Valid key under 'ui' is: title.".to_string()),
+                    );
+                    None
+                }
+            },
+        };
+
+        // Extract main.body (optional). Fail loudly on malformed body metadata.
+        let main_body: Option<BodyCardSchema> = match main_obj_opt
+            .and_then(|main_obj| main_obj.get("body"))
+            .cloned()
+        {
+            None => None,
+            Some(v) => match serde_json::from_value::<BodyCardSchema>(v) {
+                Ok(parsed) => Some(parsed),
+                Err(e) => {
+                    errors.push(
+                        Diagnostic::new(
+                            Severity::Error,
+                            format!("Invalid 'main.body' block: {}", e),
+                        )
+                        .with_code("quill::invalid_body".to_string())
+                        .with_hint(
+                            "Valid keys under 'body' are: enabled, description.".to_string(),
+                        ),
                     );
                     None
                 }
@@ -962,6 +987,7 @@ impl QuillConfig {
             description: main_description,
             fields,
             ui: main_ui.or(ui_section),
+            body: main_body,
         };
 
         // Extract [card_types] section (optional)
@@ -1034,9 +1060,45 @@ impl QuillConfig {
                             description: card_def.description,
                             fields: card_fields,
                             ui: card_def.ui,
+                            body: card_def.body,
                         });
                     }
                 }
+            }
+        }
+
+        // Warn when `body.description` is set together with `body.enabled: false` —
+        // the description has no effect since the body editor is disabled.
+        let warn_description_unused = |label: &str,
+                                       body: &Option<BodyCardSchema>|
+         -> Option<Diagnostic> {
+            let body = body.as_ref()?;
+            if body.enabled == Some(false) && body.description.is_some() {
+                Some(
+                    Diagnostic::new(
+                        Severity::Warning,
+                        format!(
+                            "`{label}.body.description` is set but `{label}.body.enabled` is false; the description will have no effect"
+                        ),
+                    )
+                    .with_code("quill::body_description_unused".to_string())
+                    .with_hint(
+                        "Set `body.enabled: true` to surface the description, or remove `body.description`."
+                            .to_string(),
+                    ),
+                )
+            } else {
+                None
+            }
+        };
+        if let Some(d) = warn_description_unused("main", &main.body) {
+            warnings.push(d);
+        }
+        for card in &card_types {
+            if let Some(d) =
+                warn_description_unused(&format!("card_types.{}", card.name), &card.body)
+            {
+                warnings.push(d);
             }
         }
 

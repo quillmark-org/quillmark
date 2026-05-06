@@ -17,7 +17,8 @@ pub use ignore::QuillIgnore;
 pub use schema::build_transform_schema;
 pub use tree::FileTreeNode;
 pub use types::{
-    field_key, ui_key, CardSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema,
+    body_key, field_key, ui_key, BodyCardSchema, CardSchema, FieldSchema, FieldType, UiCardSchema,
+    UiFieldSchema,
 };
 
 use std::collections::HashMap;
