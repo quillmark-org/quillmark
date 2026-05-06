@@ -12,7 +12,7 @@ use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
 use super::formats::DATE_FORMAT;
-use super::{CardSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
+use super::{BodyCardSchema, CardSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
 
 /// Top-level configuration for a Quillmark project
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -55,6 +55,7 @@ struct CardSchemaDef {
     #[allow(dead_code)]
     pub fields: Option<serde_json::Map<String, serde_json::Value>>,
     pub ui: Option<UiCardSchema>,
+    pub body: Option<BodyCardSchema>,
 }
 
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
@@ -847,7 +848,7 @@ impl QuillConfig {
                             format!("Invalid 'quill.ui' block: {}", e),
                         )
                         .with_code("quill::invalid_ui".to_string())
-                        .with_hint("Valid keys under 'ui' are: title, hide_body.".to_string()),
+                        .with_hint("Valid key under 'ui' is: title.".to_string()),
                     );
                     None
                 }
@@ -942,7 +943,31 @@ impl QuillConfig {
                     errors.push(
                         Diagnostic::new(Severity::Error, format!("Invalid 'main.ui' block: {}", e))
                             .with_code("quill::invalid_ui".to_string())
-                            .with_hint("Valid keys under 'ui' are: title, hide_body.".to_string()),
+                            .with_hint("Valid key under 'ui' is: title.".to_string()),
+                    );
+                    None
+                }
+            },
+        };
+
+        // Extract main.body (optional). Fail loudly on malformed body metadata.
+        let main_body: Option<BodyCardSchema> = match main_obj_opt
+            .and_then(|main_obj| main_obj.get("body"))
+            .cloned()
+        {
+            None => None,
+            Some(v) => match serde_json::from_value::<BodyCardSchema>(v) {
+                Ok(parsed) => Some(parsed),
+                Err(e) => {
+                    errors.push(
+                        Diagnostic::new(
+                            Severity::Error,
+                            format!("Invalid 'main.body' block: {}", e),
+                        )
+                        .with_code("quill::invalid_body".to_string())
+                        .with_hint(
+                            "Valid keys under 'body' are: enabled, guide.".to_string(),
+                        ),
                     );
                     None
                 }
@@ -962,6 +987,7 @@ impl QuillConfig {
             description: main_description,
             fields,
             ui: main_ui.or(ui_section),
+            body: main_body,
         };
 
         // Extract [card_types] section (optional)
@@ -1034,6 +1060,7 @@ impl QuillConfig {
                             description: card_def.description,
                             fields: card_fields,
                             ui: card_def.ui,
+                            body: card_def.body,
                         });
                     }
                 }

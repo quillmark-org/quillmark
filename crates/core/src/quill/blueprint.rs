@@ -44,22 +44,27 @@ impl QuillConfig {
             &format!("QUILL: {}@{}  # sentinel", self.name, self.version),
             main_desc,
         );
-        let hide_body = self
-            .main
-            .ui
-            .as_ref()
-            .and_then(|u| u.hide_body)
-            .unwrap_or(false);
-        if !hide_body {
-            out.push_str("\nmain body...\n");
+        if self.main.body_enabled() {
+            let guide = self
+                .main
+                .body
+                .as_ref()
+                .and_then(|b| b.guide.as_deref())
+                .unwrap_or("main body");
+            out.push_str(&format!("\n{}...\n", guide));
         }
         for card in &self.card_types {
             let sentinel = format!("CARD: {}  # sentinel, composable (0..N)", card.name);
             out.push('\n');
             write_card_frontmatter(&mut out, card, &sentinel, card.description.as_deref());
-            let hide = card.ui.as_ref().and_then(|u| u.hide_body).unwrap_or(false);
-            if !hide {
-                out.push_str(&format!("\n{} body...\n", card.name));
+            if card.body_enabled() {
+                let default_guide = format!("{} body", card.name);
+                let guide = card
+                    .body
+                    .as_ref()
+                    .and_then(|b| b.guide.as_deref())
+                    .unwrap_or(&default_guide);
+                out.push_str(&format!("\n{}...\n", guide));
             }
         }
         out
@@ -537,7 +542,7 @@ card_types:
     }
 
     #[test]
-    fn hide_body_card_omits_body_placeholder() {
+    fn body_disabled_card_omits_body_placeholder() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -545,13 +550,48 @@ main:
     title: { type: string }
 card_types:
   skills:
-    ui: { hide_body: true }
+    body: { enabled: false }
     fields:
       items: { type: array, required: true }
 "#)
         .blueprint();
         let after = &t[t.find("CARD: skills").unwrap()..];
         assert!(!after.contains("body..."));
+    }
+
+    #[test]
+    fn body_guide_appears_in_placeholder() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    title: { type: string }
+card_types:
+  note:
+    body:
+      guide: Write your note here
+    fields:
+      author: { type: string }
+"#)
+        .blueprint();
+        let after = &t[t.find("CARD: note").unwrap()..];
+        assert!(after.contains("\nWrite your note here...\n"));
+        assert!(!after.contains("\nnote body...\n"));
+    }
+
+    #[test]
+    fn main_body_guide_appears_in_placeholder() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  body:
+    guide: Write the letter body here
+  fields:
+    to: { type: string }
+"#)
+        .blueprint();
+        assert!(t.contains("\nWrite the letter body here...\n"));
+        assert!(!t.contains("\nmain body...\n"));
     }
 
     #[test]

@@ -25,7 +25,14 @@ export interface QuillFieldUi {
 /** UI layout hints for a card (main or named card type). */
 export interface QuillCardUi {
     title?: string;
-    hide_body?: boolean;
+}
+
+/** Body namespace for a card (main or named card type). */
+export interface QuillCardBody {
+    /** When false, consumers must not accept or store body content for this card type. Defaults to true. */
+    enabled?: boolean;
+    /** Guide text shown in the body editor placeholder area when the body is empty. */
+    guide?: string;
 }
 
 /** Schema entry for a single field declared in a quill's `Quill.yaml`. */
@@ -46,6 +53,7 @@ export interface QuillCardSchema {
     description?: string;
     fields: Record<string, QuillFieldSchema>;
     ui?: QuillCardUi;
+    body?: QuillCardBody;
 }
 
 /**
