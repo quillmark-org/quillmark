@@ -277,7 +277,14 @@ fn json_to_value(val: &serde_json::Value) -> FieldValue {
     }
 }
 
-fn write_value(out: &mut String, key: &str, val: &FieldValue, comment: &str, pad: &str, commented: bool) {
+fn write_value(
+    out: &mut String,
+    key: &str,
+    val: &FieldValue,
+    comment: &str,
+    pad: &str,
+    commented: bool,
+) {
     match val {
         FieldValue::Inline(s) => {
             if commented {
@@ -465,9 +472,9 @@ main:
         - "Anytown, USA"
 "#)
         .blueprint();
-        assert!(
-            t.contains("# example: [Mr. John Doe, 123 Main St, \"Anytown, USA\"]\n# recipient: []\n")
-        );
+        assert!(t.contains(
+            "# example: [Mr. John Doe, 123 Main St, \"Anytown, USA\"]\n# recipient: []\n"
+        ));
     }
 
     #[test]

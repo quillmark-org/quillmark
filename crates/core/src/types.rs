@@ -39,5 +39,3 @@ pub struct RenderOptions {
     /// a `FormatNotSupported` error when this is `Some`.
     pub pages: Option<Vec<usize>>,
 }
-
-
