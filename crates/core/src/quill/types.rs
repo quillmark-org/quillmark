@@ -77,7 +77,7 @@ pub struct BodyCardSchema {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
     /// Example body content embedded verbatim in the blueprint body region.
-    /// When absent, the blueprint falls back to "Write <card> body here.".
+    /// When absent, the blueprint falls back to `Write <card> body here.`.
     /// Has no effect when `enabled` is false.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub example: Option<String>,
