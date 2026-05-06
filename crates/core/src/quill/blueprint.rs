@@ -89,7 +89,7 @@ fn write_card_frontmatter(
     out.push('\n');
     for (group, fields) in group_fields(card.fields.values()) {
         if let Some(name) = group {
-            out.push_str(&format!("\n# === {} ===\n", name));
+            out.push_str(&format!("# === {} ===\n", name));
         }
         for field in fields {
             write_field(out, field, 0);
