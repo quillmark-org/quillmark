@@ -11,10 +11,10 @@
 //!   non-obvious type hints (`# integer`, `# YYYY-MM-DD`, `# markdown`) on
 //!   ordinary fields, and `# sentinel` / `# sentinel, composable (0..N)` on
 //!   the `QUILL:` and `CARD:` lines respectively.
-//! - **Body regions** are signalled by `main body` after the main fence and
-//!   `<card name> body` after each card fence. When a `body.description` is
-//!   set, the marker expands to `<tag> body — <description>` using an em dash
-//!   separator. Absent when `body.enabled` is false.
+//! - **Body regions** are signalled by `Write main body here.` after the main
+//!   fence and `Write <card name> body here.` after each card fence. When a
+//!   `body.description` is set, the marker expands to
+//!   `Write <tag> body here. <description>`. Absent when `body.enabled` is false.
 //!
 //! Most UI metadata is stripped, but two semantic-structure hints are honored:
 //! `ui.group` produces `# ==== SECTION ====` banners and `ui.order` controls
