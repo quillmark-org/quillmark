@@ -45,26 +45,15 @@ impl QuillConfig {
             main_desc,
         );
         if self.main.body_enabled() {
-            let guide = self
-                .main
-                .body
-                .as_ref()
-                .and_then(|b| b.guide.as_deref())
-                .unwrap_or("main body");
-            out.push_str(&format!("\n{}...\n", guide));
+            out.push_str(&format!("\n{}...\n", self.main.body_guide("main body")));
         }
         for card in &self.card_types {
             let sentinel = format!("CARD: {}  # sentinel, composable (0..N)", card.name);
             out.push('\n');
             write_card_frontmatter(&mut out, card, &sentinel, card.description.as_deref());
             if card.body_enabled() {
-                let default_guide = format!("{} body", card.name);
-                let guide = card
-                    .body
-                    .as_ref()
-                    .and_then(|b| b.guide.as_deref())
-                    .unwrap_or(&default_guide);
-                out.push_str(&format!("\n{}...\n", guide));
+                let default = format!("{} body", card.name);
+                out.push_str(&format!("\n{}...\n", card.body_guide(&default)));
             }
         }
         out

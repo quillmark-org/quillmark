@@ -135,6 +135,14 @@ impl CardSchema {
     pub fn body_enabled(&self) -> bool {
         self.body.as_ref().and_then(|b| b.enabled).unwrap_or(true)
     }
+
+    /// Returns the body guide text, falling back to `default` when none is set.
+    pub fn body_guide<'a>(&'a self, default: &'a str) -> &'a str {
+        self.body
+            .as_ref()
+            .and_then(|b| b.guide.as_deref())
+            .unwrap_or(default)
+    }
 }
 
 /// Field type hint enum for type-safe field type definitions

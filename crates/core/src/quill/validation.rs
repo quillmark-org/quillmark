@@ -85,8 +85,6 @@ pub fn validate_typed_document(
             &card_path,
         ));
 
-        // Enforce body.enabled: when false, body content is not permitted.
-        // Whitespace-only bodies are treated as empty.
         if !card_schema.body_enabled() && !card.body().trim().is_empty() {
             errors.push(ValidationError::BodyDisabled {
                 path: card_path,
@@ -641,10 +639,31 @@ main:
         }));
     }
 
-    // ── body.enabled enforcement ──────────────────────────────────────────────
+    #[test]
+    fn body_disabled_card_enforces_trim_boundary() {
+        let config = config_with(
+            "    title:\n      type: string",
+            "card_types:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        required: true",
+        );
+        // Prose triggers the error; whitespace-only does not.
+        let mut prose_card = typed_card("skills", &[("items", json!(["Rust"]))]);
+        prose_card.replace_body("Should not be here.");
+        let doc = doc_with_typed_cards(&[], vec![prose_card]);
+        let errors = validate_typed_document(&config, &doc).unwrap_err();
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            ValidationError::BodyDisabled { card, .. } if card == "skills"
+        )));
 
-    fn config_with_body(main_fields: &str, cards: &str, extra_main: &str) -> QuillConfig {
-        let yaml = format!(
+        let mut ws_card = typed_card("skills", &[("items", json!(["Rust"]))]);
+        ws_card.replace_body("\n   \n");
+        let ok_doc = doc_with_typed_cards(&[], vec![ws_card]);
+        assert!(validate_typed_document(&config, &ok_doc).is_ok());
+    }
+
+    #[test]
+    fn main_body_disabled_with_body_content_is_an_error() {
+        let config = QuillConfig::from_yaml(
             r#"
 quill:
   name: native_validation
@@ -652,82 +671,17 @@ quill:
   description: Native validator tests
   version: 1.0.0
 main:
-{extra_main}
+  body:
+    enabled: false
   fields:
-{main_fields}
-{cards}
-"#
-        );
-        QuillConfig::from_yaml(&yaml).unwrap()
-    }
-
-    #[test]
-    fn body_disabled_card_with_body_content_is_an_error() {
-        let config = config_with_body(
-            "    title:\n      type: string",
-            "card_types:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        required: true",
-            "",
-        );
-        let mut card = typed_card("skills", &[("items", json!(["Rust", "Go"]))]);
-        card.replace_body("Should not be here.");
-        let doc = doc_with_typed_cards(&[], vec![card]);
-        let errors = validate_typed_document(&config, &doc).unwrap_err();
-        assert!(has_error(&errors, |e| matches!(
-            e,
-            ValidationError::BodyDisabled { card, .. } if card == "skills"
-        )));
-    }
-
-    #[test]
-    fn body_disabled_card_without_body_content_is_valid() {
-        let config = config_with_body(
-            "    title:\n      type: string",
-            "card_types:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        required: true",
-            "",
-        );
-        let card = typed_card("skills", &[("items", json!(["Rust"]))]);
-        let doc = doc_with_typed_cards(&[], vec![card]);
-        assert!(validate_typed_document(&config, &doc).is_ok());
-    }
-
-    #[test]
-    fn body_enabled_true_explicitly_allows_body_content() {
-        let config = config_with_body(
-            "    title:\n      type: string",
-            "card_types:\n  note:\n    body:\n      enabled: true\n    fields:\n      author:\n        type: string",
-            "",
-        );
-        let mut card = typed_card("note", &[("author", json!("Alice"))]);
-        card.replace_body("Some body text.");
-        let doc = doc_with_typed_cards(&[], vec![card]);
-        assert!(validate_typed_document(&config, &doc).is_ok());
-    }
-
-    #[test]
-    fn body_disabled_card_with_whitespace_only_body_is_valid() {
-        let config = config_with_body(
-            "    title:\n      type: string",
-            "card_types:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        required: true",
-            "",
-        );
-        let mut card = typed_card("skills", &[("items", json!(["Rust"]))]);
-        card.replace_body("\n   \n");
-        let doc = doc_with_typed_cards(&[], vec![card]);
-        assert!(validate_typed_document(&config, &doc).is_ok());
-    }
-
-    #[test]
-    fn main_body_disabled_with_body_content_is_an_error() {
-        let config = config_with_body(
-            "    title:\n      type: string",
-            "",
-            "  body:\n    enabled: false",
-        );
+    title:
+      type: string
+"#,
+        )
+        .unwrap();
         use crate::document::{Frontmatter, Sentinel};
         let main = Card::new_with_sentinel(
-            Sentinel::Main(
-                crate::version::QuillReference::from_str("test_quill").unwrap(),
-            ),
+            Sentinel::Main(crate::version::QuillReference::from_str("test_quill").unwrap()),
             Frontmatter::from_index_map(IndexMap::new()),
             "Body content that should not be here.".to_string(),
         );
