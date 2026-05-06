@@ -630,7 +630,7 @@ impl QuillConfig {
     pub fn from_yaml_with_warnings(
         yaml_content: &str,
     ) -> Result<(Self, Vec<Diagnostic>), Vec<Diagnostic>> {
-        let warnings: Vec<Diagnostic> = Vec::new();
+        let mut warnings: Vec<Diagnostic> = Vec::new();
         let mut errors: Vec<Diagnostic> = Vec::new();
 
         // Parse YAML into serde_json::Value via serde_saphyr
@@ -1064,6 +1064,37 @@ impl QuillConfig {
                         });
                     }
                 }
+            }
+        }
+
+        // Warn when `body.guide` is set together with `body.enabled: false` —
+        // the guide has no effect since the body editor is disabled.
+        let warn_guide_unused = |label: &str, body: &Option<BodyCardSchema>| -> Option<Diagnostic> {
+            let body = body.as_ref()?;
+            if body.enabled == Some(false) && body.guide.is_some() {
+                Some(
+                    Diagnostic::new(
+                        Severity::Warning,
+                        format!(
+                            "`{label}.body.guide` is set but `{label}.body.enabled` is false; the guide will have no effect"
+                        ),
+                    )
+                    .with_code("quill::body_guide_unused".to_string())
+                    .with_hint(
+                        "Set `body.enabled: true` to surface the guide, or remove `body.guide`."
+                            .to_string(),
+                    ),
+                )
+            } else {
+                None
+            }
+        };
+        if let Some(d) = warn_guide_unused("main", &main.body) {
+            warnings.push(d);
+        }
+        for card in &card_types {
+            if let Some(d) = warn_guide_unused(&format!("card_types.{}", card.name), &card.body) {
+                warnings.push(d);
             }
         }
 

@@ -37,7 +37,7 @@ pub enum ValidationError {
     MissingCardDiscriminator { path: String },
 
     #[error(
-        "card `{card}` at `{path}` has body content but `body.enabled` is false for this card type"
+        "card `{card}` at `{path}` has body content but the card type declares `body.enabled: false` — remove the body content or set `body.enabled: true` on the card type"
     )]
     BodyDisabled { path: String, card: String },
 }
@@ -52,8 +52,9 @@ pub fn validate_typed_document(
     let main_fields = doc.main().frontmatter().to_index_map();
     let mut errors = validate_fields_for_card_indexmap(&config.main, &main_fields, "");
 
-    // Enforce body.enabled on the main card.
-    if !config.main.body_enabled() && !doc.main().body().is_empty() {
+    // Enforce body.enabled on the main card. Whitespace-only bodies are
+    // treated as empty — only meaningful prose triggers the diagnostic.
+    if !config.main.body_enabled() && !doc.main().body().trim().is_empty() {
         errors.push(ValidationError::BodyDisabled {
             path: "main".to_string(),
             card: "main".to_string(),
@@ -85,7 +86,8 @@ pub fn validate_typed_document(
         ));
 
         // Enforce body.enabled: when false, body content is not permitted.
-        if !card_schema.body_enabled() && !card.body().is_empty() {
+        // Whitespace-only bodies are treated as empty.
+        if !card_schema.body_enabled() && !card.body().trim().is_empty() {
             errors.push(ValidationError::BodyDisabled {
                 path: card_path,
                 card: card_name,
@@ -697,6 +699,19 @@ main:
         );
         let mut card = typed_card("note", &[("author", json!("Alice"))]);
         card.replace_body("Some body text.");
+        let doc = doc_with_typed_cards(&[], vec![card]);
+        assert!(validate_typed_document(&config, &doc).is_ok());
+    }
+
+    #[test]
+    fn body_disabled_card_with_whitespace_only_body_is_valid() {
+        let config = config_with_body(
+            "    title:\n      type: string",
+            "card_types:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        required: true",
+            "",
+        );
+        let mut card = typed_card("skills", &[("items", json!(["Rust"]))]);
+        card.replace_body("\n   \n");
         let doc = doc_with_typed_cards(&[], vec![card]);
         assert!(validate_typed_document(&config, &doc).is_ok());
     }
