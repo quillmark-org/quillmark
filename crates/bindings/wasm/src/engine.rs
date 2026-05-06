@@ -25,7 +25,14 @@ export interface QuillFieldUi {
 /** UI layout hints for a card (main or named card type). */
 export interface QuillCardUi {
     title?: string;
-    hide_body?: boolean;
+}
+
+/** Body namespace for a card (main or named card type). */
+export interface QuillCardBody {
+    /** When false, consumers must not accept or store body content for this card type. Defaults to true. */
+    enabled?: boolean;
+    /** Description shown in the body editor placeholder area when the body is empty. */
+    description?: string;
 }
 
 /** Schema entry for a single field declared in a quill's `Quill.yaml`. */
@@ -46,11 +53,11 @@ export interface QuillCardSchema {
     description?: string;
     fields: Record<string, QuillFieldSchema>;
     ui?: QuillCardUi;
+    body?: QuillCardBody;
 }
 
 /**
- * Document schema. Returned by both `Quill.schema` (no ui hints) and
- * `Quill.formSchema` (with ui hints) — same shape, optional `ui` keys.
+ * Document schema returned by `Quill.schema`. Includes optional `ui` keys.
  *
  * `main.fields.QUILL` and `card_types[name].fields.CARD` are required
  * sentinels with `const` values telling consumers what to write.
@@ -63,8 +70,8 @@ export interface QuillSchema {
 
 /**
  * Identity snapshot mirroring the `quill:` section of `Quill.yaml`.
- * Schemas live on `Quill.schema` / `Quill.formSchema`; the example on
- * `Quill.example`. Extra `quill:` keys appear as `unknown`.
+ * The schema lives on `Quill.schema`; the example on `Quill.example`.
+ * Extra `quill:` keys appear as `unknown`.
  */
 export interface QuillMetadata {
     name: string;

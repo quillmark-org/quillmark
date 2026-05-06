@@ -193,8 +193,7 @@ fn test_quill_from_object_tree() {
     assert_eq!(r_map.artifacts.len(), r_obj.artifacts.len());
 }
 
-/// `metadata` is identity only; `schema` strips ui and injects QUILL/CARD
-/// sentinels; `formSchema` keeps ui hints.
+/// `metadata` is identity only; `schema` keeps ui hints and injects QUILL/CARD sentinels.
 #[wasm_bindgen_test]
 fn test_quill_metadata_and_schemas() {
     use js_sys::Reflect;

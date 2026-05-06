@@ -35,6 +35,11 @@ pub enum ValidationError {
 
     #[error("card at `{path}` missing `CARD` discriminator")]
     MissingCardDiscriminator { path: String },
+
+    #[error(
+        "card `{card}` at `{path}` has body content but the card type declares `body.enabled: false` — remove the body content or set `body.enabled: true` on the card type"
+    )]
+    BodyDisabled { path: String, card: String },
 }
 
 /// Validate a typed [`Document`] (with `IndexMap` frontmatter + typed `Card` list).
@@ -46,6 +51,15 @@ pub fn validate_typed_document(
 ) -> Result<(), Vec<ValidationError>> {
     let main_fields = doc.main().frontmatter().to_index_map();
     let mut errors = validate_fields_for_card_indexmap(&config.main, &main_fields, "");
+
+    // Enforce body.enabled on the main card. Whitespace-only bodies are
+    // treated as empty — only meaningful prose triggers the diagnostic.
+    if !config.main.body_enabled() && !doc.main().body().trim().is_empty() {
+        errors.push(ValidationError::BodyDisabled {
+            path: "main".to_string(),
+            card: "main".to_string(),
+        });
+    }
 
     for (index, card) in doc.cards().iter().enumerate() {
         let card_name = card.tag();
@@ -70,6 +84,13 @@ pub fn validate_typed_document(
             &card_fields,
             &card_path,
         ));
+
+        if !card_schema.body_enabled() && !card.body().trim().is_empty() {
+            errors.push(ValidationError::BodyDisabled {
+                path: card_path,
+                card: card_name,
+            });
+        }
     }
 
     if errors.is_empty() {
@@ -616,5 +637,59 @@ main:
         assert!(has_error(&errors, |e| {
             matches!(e, ValidationError::MissingRequired { path } if path == "cards.indorsement[0].signature_block")
         }));
+    }
+
+    #[test]
+    fn body_disabled_card_enforces_trim_boundary() {
+        let config = config_with(
+            "    title:\n      type: string",
+            "card_types:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        required: true",
+        );
+        // Prose triggers the error; whitespace-only does not.
+        let mut prose_card = typed_card("skills", &[("items", json!(["Rust"]))]);
+        prose_card.replace_body("Should not be here.");
+        let doc = doc_with_typed_cards(&[], vec![prose_card]);
+        let errors = validate_typed_document(&config, &doc).unwrap_err();
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            ValidationError::BodyDisabled { card, .. } if card == "skills"
+        )));
+
+        let mut ws_card = typed_card("skills", &[("items", json!(["Rust"]))]);
+        ws_card.replace_body("\n   \n");
+        let ok_doc = doc_with_typed_cards(&[], vec![ws_card]);
+        assert!(validate_typed_document(&config, &ok_doc).is_ok());
+    }
+
+    #[test]
+    fn main_body_disabled_with_body_content_is_an_error() {
+        let config = QuillConfig::from_yaml(
+            r#"
+quill:
+  name: native_validation
+  backend: typst
+  description: Native validator tests
+  version: 1.0.0
+main:
+  body:
+    enabled: false
+  fields:
+    title:
+      type: string
+"#,
+        )
+        .unwrap();
+        use crate::document::{Frontmatter, Sentinel};
+        let main = Card::new_with_sentinel(
+            Sentinel::Main(crate::version::QuillReference::from_str("test_quill").unwrap()),
+            Frontmatter::from_index_map(IndexMap::new()),
+            "Body content that should not be here.".to_string(),
+        );
+        let doc = Document::from_main_and_cards(main, vec![], vec![]);
+        let errors = validate_typed_document(&config, &doc).unwrap_err();
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            ValidationError::BodyDisabled { card, .. } if card == "main"
+        )));
     }
 }

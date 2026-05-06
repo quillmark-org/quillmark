@@ -15,10 +15,11 @@ pub struct CardSchema {
     pub description: Option<String>,
     pub fields: HashMap<String, FieldSchema>,
     pub ui: Option<UiCardSchema>,
+    pub body: Option<BodyCardSchema>,
 }
 ```
 
-The static display label for a card type lives on `UiCardSchema::title`, not on `CardSchema` directly — see `ui.title` below.
+The static display label for a card type lives on `UiCardSchema::title`, not on `CardSchema` directly — see `ui.title` below. Body behavior (whether body content is permitted and optional guide text) lives under `body` — see `body.enabled` and `body.description` below.
 
 `QuillConfig` exposes the entry-point card as `main: CardSchema` and the additional named card-types as `card_types: Vec<CardSchema>`. Look up a named card-type by name via `card_type(name)` or get a name-keyed map via `card_types_map()`.
 
@@ -57,6 +58,8 @@ card_types:
 card_types:
   indorsement:
     description: Chain of routing endorsements for multi-level correspondence.
+    ui:
+      title: Routing Endorsement
     fields:
       from:
         type: string
@@ -65,9 +68,11 @@ card_types:
       signature_block:
         type: array
         required: true
+        ui:
+          group: Addressing
 ```
 
-The schema is emitted by `QuillConfig::schema()` (clean, no `ui` hints) and `QuillConfig::form_schema()` (with `ui` hints, for form builders), with YAML wrappers `schema_yaml()` and `form_schema_yaml()`. Both keep the same `card_types.<name>.fields` shape as `Quill.yaml` and inject a required `CARD` sentinel field whose `const` value is the card name. The `card_types` key is omitted entirely when no named card-types are defined. See `SCHEMAS.md` for the full surface.
+`QuillConfig::schema()` emits the schema (with `ui` and `body` hints retained) and `schema_yaml()` is the YAML wrapper. The output keeps the same `card_types.<name>.fields` shape as `Quill.yaml` and injects a required `CARD` sentinel field whose `const` value is the card name. The `card_types` key is omitted entirely when no named card-types are defined. See `SCHEMAS.md` for the full surface.
 
 ## Markdown Syntax
 

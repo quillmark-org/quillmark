@@ -47,8 +47,8 @@ card_types:
 
   skills_section:
     description: A grid of skill categories with key-value pairs.
-    ui:
-      hide_body: true
+    body:
+      enabled: false
     fields:
       title:
         type: string
@@ -87,8 +87,8 @@ card_types:
 
   certifications_section:
     description: A grid of certifications.
-    ui:
-      hide_body: true
+    body:
+      enabled: false
     fields:
       title:
         type: string

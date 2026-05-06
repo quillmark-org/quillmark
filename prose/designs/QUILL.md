@@ -84,8 +84,11 @@ main:
 
 card_types:
   quote:
-    title: Quote block
     description: A single pull quote
+    ui:
+      title: Quote block      # optional UI display label
+    body:
+      description: The quote text  # optional editor placeholder
     fields:
       author:
         type: string
@@ -112,6 +115,8 @@ Metadata resolution:
 - Field schemas that fail to parse (e.g. legacy `title:`, missing `type:`) error with `quill::field_parse_error` and an actionable hint where applicable, rather than being dropped from the schema.
 - Standalone `object` fields and disallowed nested-object shapes error with `quill::standalone_object_not_supported` / `quill::nested_object_not_supported`.
 - Malformed `quill.ui` / `main.ui` blocks error with `quill::invalid_ui` rather than being silently discarded.
+- Malformed `main.body` / `card_types.<name>.body` blocks error with `quill::invalid_body`.
+- A `body.description` set together with `body.enabled: false` warns with `quill::body_description_unused` (the description has no effect).
 
 Errors flow through `RenderError::QuillConfig { diags: Vec<Diagnostic> }` and surface to bindings as a structured array (`err.diagnostics` in WASM, `.diagnostics` attribute in Python).
 

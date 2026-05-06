@@ -11,10 +11,10 @@
 //!   non-obvious type hints (`# integer`, `# YYYY-MM-DD`, `# markdown`) on
 //!   ordinary fields, and `# sentinel` / `# sentinel, composable (0..N)` on
 //!   the `QUILL:` and `CARD:` lines respectively.
-//! - **Body regions** are signalled by `main body...` after the main fence
-//!   and `<card name> body...` after each card fence. The trailing ellipsis
-//!   reads as "prose continues here"; no markup conflict with HTML or
-//!   Markdown.
+//! - **Body regions** are signalled by `main body` after the main fence and
+//!   `<card name> body` after each card fence. When a `body.description` is
+//!   set, the marker expands to `<tag> body — <description>` using an em dash
+//!   separator. Absent when `body.enabled` is false.
 //!
 //! Most UI metadata is stripped, but two semantic-structure hints are honored:
 //! `ui.group` produces `# === <Group> ===` banners and `ui.order` controls
@@ -44,25 +44,32 @@ impl QuillConfig {
             &format!("QUILL: {}@{}  # sentinel", self.name, self.version),
             main_desc,
         );
-        let hide_body = self
-            .main
-            .ui
-            .as_ref()
-            .and_then(|u| u.hide_body)
-            .unwrap_or(false);
-        if !hide_body {
-            out.push_str("\nmain body...\n");
+        if self.main.body_enabled() {
+            let desc = self
+                .main
+                .body
+                .as_ref()
+                .and_then(|b| b.description.as_deref());
+            out.push_str(&format!("\n{}\n", body_marker("main body", desc)));
         }
         for card in &self.card_types {
             let sentinel = format!("CARD: {}  # sentinel, composable (0..N)", card.name);
             out.push('\n');
             write_card_frontmatter(&mut out, card, &sentinel, card.description.as_deref());
-            let hide = card.ui.as_ref().and_then(|u| u.hide_body).unwrap_or(false);
-            if !hide {
-                out.push_str(&format!("\n{} body...\n", card.name));
+            if card.body_enabled() {
+                let label = format!("{} body", card.name);
+                let desc = card.body.as_ref().and_then(|b| b.description.as_deref());
+                out.push_str(&format!("\n{}\n", body_marker(&label, desc)));
             }
         }
         out
+    }
+}
+
+fn body_marker(label: &str, description: Option<&str>) -> String {
+    match description {
+        Some(desc) => format!("{} \u{2014} {}", label, desc),
+        None => label.to_string(),
     }
 }
 
@@ -537,7 +544,7 @@ card_types:
     }
 
     #[test]
-    fn hide_body_card_omits_body_placeholder() {
+    fn body_disabled_card_omits_body_placeholder() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -545,13 +552,48 @@ main:
     title: { type: string }
 card_types:
   skills:
-    ui: { hide_body: true }
+    body: { enabled: false }
     fields:
       items: { type: array, required: true }
 "#)
         .blueprint();
         let after = &t[t.find("CARD: skills").unwrap()..];
-        assert!(!after.contains("body..."));
+        assert!(!after.contains("skills body"));
+    }
+
+    #[test]
+    fn body_description_appears_in_placeholder() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    title: { type: string }
+card_types:
+  note:
+    body:
+      description: Write your note here
+    fields:
+      author: { type: string }
+"#)
+        .blueprint();
+        let after = &t[t.find("CARD: note").unwrap()..];
+        assert!(after.contains("\nnote body \u{2014} Write your note here\n"));
+        assert!(!after.contains("\nnote body\n"));
+    }
+
+    #[test]
+    fn main_body_description_appears_in_placeholder() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  body:
+    description: Write the letter body here
+  fields:
+    to: { type: string }
+"#)
+        .blueprint();
+        assert!(t.contains("\nmain body \u{2014} Write the letter body here\n"));
+        assert!(!t.contains("\nmain body\n"));
     }
 
     #[test]
@@ -564,7 +606,7 @@ main:
 "#)
         .blueprint();
         assert!(t.starts_with("---\n# x\nQUILL: taro@0.1.0  # sentinel\n"));
-        assert!(t.contains("\nmain body...\n"));
+        assert!(t.contains("\nmain body\n"));
     }
 
     #[test]
@@ -580,7 +622,7 @@ card_types:
       from: { type: string }
 "#)
         .blueprint();
-        assert!(t.contains("\nindorsement body...\n"));
+        assert!(t.contains("\nindorsement body\n"));
     }
 
     #[test]

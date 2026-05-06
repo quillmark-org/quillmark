@@ -10,10 +10,11 @@ A `Quill.yaml` has these top-level sections:
 quill:        # Required — format metadata
   ...
 
-main:         # Optional — main entry-point card: field schemas and optional ui
+main:         # Optional — main entry-point card: field schemas and optional ui/body
   fields:
     ...
-  ui:         # optional container hints (e.g. hide_body)
+  ui:         # optional UI hints (e.g. title)
+  body:       # optional body-region config (e.g. enabled, description)
 
 card_types:   # Optional — additional composable card types
   ...
@@ -57,23 +58,11 @@ quill:
   example: example.md
 ```
 
-### Document-level `ui`
-
-Controls UI behavior for the document root:
-
-```yaml
-quill:
-  name: metadata-only-doc
-  # ...
-  ui:
-    hide_body: true    # Suppress the body/content editor in form UIs
-```
-
 ---
 
 ## `main` Section
 
-The main document card holds **frontmatter field schemas** under `main.fields`. Optional `main.description` describes the schema itself (independent of `quill.description`, which describes the quill package). Optional `main.ui` sets container-level UI for that card (for example `hide_body`). `quill.ui` is merged with `main.ui` when building the main card.
+The main document card holds **frontmatter field schemas** under `main.fields`. Optional `main.description` describes the schema itself (independent of `quill.description`, which describes the quill package). Optional `main.ui` sets container-level UI for that card. `quill.ui` is merged with `main.ui` when building the main card.
 
 Field order under `main.fields` determines display order in UIs — the first field gets `order: 0`, the second gets `order: 1`, and so on.
 
@@ -275,7 +264,7 @@ main:
 
 ## `card_types` Section
 
-`card_types` define composable, repeatable content blocks (the *types* — a document can then carry zero or more *instances* of each type, interleaved with body content). Each entry is shaped exactly like `main:` (`fields`, optional `description`, `ui`); think of `main:` as the single mandatory card-type for the document body, and `card_types:` as the library of additional types that may attach to it.
+`card_types` define composable, repeatable content blocks (the *types* — a document can then carry zero or more *instances* of each type, interleaved with body content). Each entry is shaped exactly like `main:` (`fields`, optional `description`, `ui`, `body`); think of `main:` as the single mandatory card-type for the document body, and `card_types:` as the library of additional types that may attach to it.
 
 Card-type names (the keys under `card_types`) must match `[a-z_][a-z0-9_]*` (leading underscore is allowed).
 
@@ -306,14 +295,21 @@ Invalid card-type names include:
 |---------------|--------|----------|-------------|
 | `description` | string | no       | Help text describing the card's purpose |
 | `fields`      | object | no       | Field schemas (same structure as top-level fields) |
-| `ui`          | object | no       | Container-level UI hints |
+| `ui`          | object | no       | Container-level UI hints (see [Card-level `ui`](#card-level-ui)) |
+| `body`        | object | no       | Body-region config (see [Card-level `body`](#card-level-body)) |
 
 ### Card-level `ui`
 
-| Property    | Type   | Description |
-|-------------|--------|-------------|
-| `title`     | string | Display label for the card type. Literal string or `{field}` template |
-| `hide_body` | bool   | Suppress the body/content editor for this card type |
+| Property | Type   | Description |
+|----------|--------|-------------|
+| `title`  | string | Display label for the card type. Literal string or `{field}` template |
+
+### Card-level `body`
+
+| Property  | Type   | Description |
+|-----------|--------|-------------|
+| `enabled`     | bool   | Whether the body editor is enabled (default: true). When false, consumers must not accept or store body content for this card type. |
+| `description` | string | Description shown in the body editor placeholder when the body is empty. |
 
 #### `title`
 
@@ -359,15 +355,31 @@ With the template form, a UI rendering a list of cards can title each instance (
 
 `title` is a UI hint only — it has no effect on validation or rendering. When omitted, UI consumers fall back to the prettified map key.
 
-#### `hide_body`
+#### `body.enabled`
+
+When `false`, the card type has no body/content area. Consumers must not accept or store body content for instances of this card type. The validator enforces this: a document instance that provides body content for a `body.enabled: false` card type is rejected with a `BodyDisabled` error.
 
 ```yaml
 card_types:
   metadata_block:
-    ui:
-      hide_body: true    # Card has fields only, no body/content editor
+    body:
+      enabled: false    # Card has fields only, no body/content area
     fields:
       category:
+        type: string
+```
+
+#### `body.description`
+
+Optional description displayed in the body editor placeholder area when the body is empty. Has no effect when `body.enabled` is false.
+
+```yaml
+card_types:
+  experience:
+    body:
+      description: Describe your role, responsibilities, and key achievements.
+    fields:
+      company:
         type: string
 ```
 

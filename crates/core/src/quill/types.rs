@@ -39,8 +39,6 @@ pub mod ui_key {
     /// Display label for a card type. May be a literal string or a template
     /// containing `{field_name}` tokens interpolated per-instance by UI consumers.
     pub const TITLE: &str = "title";
-    /// Whether the field or specific component is hide-body (no body editor)
-    pub const HIDE_BODY: &str = "hide_body";
     /// Compact rendering hint for UI consumers
     pub const COMPACT: &str = "compact";
     /// Multi-line text box hint for string and markdown fields
@@ -69,6 +67,21 @@ pub struct UiFieldSchema {
     pub multiline: Option<bool>,
 }
 
+/// Body namespace configuration for a card type
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BodyCardSchema {
+    /// Whether the body editor is enabled for this card (default: true).
+    /// When false, consumers must not accept or store body content for instances
+    /// of this card type.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// Description shown in the body editor placeholder area when the body is
+    /// empty. Has no effect when `enabled` is false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UiCardSchema {
@@ -76,9 +89,6 @@ pub struct UiCardSchema {
     /// template. See `docs/format-designer/quill-yaml-reference.md`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    /// Whether to hide the body editor for this element (metadata only)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub hide_body: Option<bool>,
 }
 
 /// Schema definition for a card type (composable content blocks)
@@ -96,6 +106,10 @@ pub struct CardSchema {
     /// UI layout hints
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui: Option<UiCardSchema>,
+    /// Body namespace: controls whether a body editor is shown and provides
+    /// optional guide text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<BodyCardSchema>,
 }
 
 impl CardSchema {
@@ -106,6 +120,12 @@ impl CardSchema {
             .iter()
             .filter_map(|(name, field)| field.default.as_ref().map(|v| (name.clone(), v.clone())))
             .collect()
+    }
+
+    /// Returns true if body content is permitted for instances of this card.
+    /// Defaults to true when no `body` namespace is declared.
+    pub fn body_enabled(&self) -> bool {
+        self.body.as_ref().and_then(|b| b.enabled).unwrap_or(true)
     }
 }
 
