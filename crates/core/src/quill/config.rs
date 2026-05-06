@@ -965,9 +965,7 @@ impl QuillConfig {
                             format!("Invalid 'main.body' block: {}", e),
                         )
                         .with_code("quill::invalid_body".to_string())
-                        .with_hint(
-                            "Valid keys under 'body' are: enabled, example.".to_string(),
-                        ),
+                        .with_hint("Valid keys under 'body' are: enabled, example.".to_string()),
                     );
                     None
                 }
@@ -1095,9 +1093,7 @@ impl QuillConfig {
             warnings.push(d);
         }
         for card in &card_types {
-            if let Some(d) =
-                warn_example_unused(&format!("card_types.{}", card.name), &card.body)
-            {
+            if let Some(d) = warn_example_unused(&format!("card_types.{}", card.name), &card.body) {
                 warnings.push(d);
             }
         }
