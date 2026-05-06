@@ -11,10 +11,10 @@
 //!   non-obvious type hints (`# integer`, `# YYYY-MM-DD`, `# markdown`) on
 //!   ordinary fields, and `# sentinel` / `# sentinel, composable (0..N)` on
 //!   the `QUILL:` and `CARD:` lines respectively.
-//! - **Body regions** are signalled by `main body` after the main fence and
-//!   `<card name> body` after each card fence. When a `body.description` is
-//!   set, the marker expands to `<tag> body — <description>` using an em dash
-//!   separator. Absent when `body.enabled` is false.
+//! - **Body regions** are signalled by `Write main body here.` after the main
+//!   fence and `Write <card name> body here.` after each card fence. When a
+//!   `body.description` is set, the marker expands to
+//!   `Write <tag> body here. <description>`. Absent when `body.enabled` is false.
 //!
 //! Most UI metadata is stripped, but two semantic-structure hints are honored:
 //! `ui.group` produces `# ==== SECTION ====` banners and `ui.order` controls
@@ -68,8 +68,8 @@ impl QuillConfig {
 
 fn body_marker(label: &str, description: Option<&str>) -> String {
     match description {
-        Some(desc) => format!("{} \u{2014} {}", label, desc),
-        None => label.to_string(),
+        Some(desc) => format!("Write {} here. {}", label, desc),
+        None => format!("Write {} here.", label),
     }
 }
 
@@ -577,8 +577,8 @@ card_types:
 "#)
         .blueprint();
         let after = &t[t.find("CARD: note").unwrap()..];
-        assert!(after.contains("\nnote body \u{2014} Write your note here\n"));
-        assert!(!after.contains("\nnote body\n"));
+        assert!(after.contains("\nWrite note body here. Write your note here\n"));
+        assert!(!after.contains("\nWrite note body here.\n"));
     }
 
     #[test]
@@ -592,8 +592,8 @@ main:
     to: { type: string }
 "#)
         .blueprint();
-        assert!(t.contains("\nmain body \u{2014} Write the letter body here\n"));
-        assert!(!t.contains("\nmain body\n"));
+        assert!(t.contains("\nWrite main body here. Write the letter body here\n"));
+        assert!(!t.contains("\nWrite main body here.\n"));
     }
 
     #[test]
@@ -606,7 +606,7 @@ main:
 "#)
         .blueprint();
         assert!(t.starts_with("---\n# x\nQUILL: taro@0.1.0  # sentinel\n"));
-        assert!(t.contains("\nmain body\n"));
+        assert!(t.contains("\nWrite main body here.\n"));
     }
 
     #[test]
@@ -622,7 +622,7 @@ card_types:
       from: { type: string }
 "#)
         .blueprint();
-        assert!(t.contains("\nindorsement body\n"));
+        assert!(t.contains("\nWrite indorsement body here.\n"));
     }
 
     #[test]
