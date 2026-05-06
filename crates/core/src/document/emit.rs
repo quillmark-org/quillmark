@@ -320,6 +320,7 @@ fn push_trailer(out: &mut String, trailer: Option<&str>) {
 ///   scalars, `key: !fill\n  - …` for non-empty sequences,
 ///   `key: !fill []` for empty sequences, and `key: !fill` for null.
 ///   Mappings are rejected at parse and never reach this path.
+#[allow(clippy::too_many_arguments)]
 fn emit_field(
     out: &mut String,
     key: &str,

@@ -85,10 +85,24 @@ canonical placeholder.
 | Required, neither | type-based placeholder (`"<name>"`, `0`, `false`, `[]`, `""`) |
 | Optional, has `default` | default |
 | Optional, has `enum` only | first enum value |
-| Optional, neither | type-based empty (`""`, `0`, `false`, `[]`) |
+| Optional, neither | **commented-out** type-based empty (`# field: ""`, `# field: 0`, …) |
 
 Optional fields' examples surface in the `# example:` comment, never as
 the value.
+
+### Commented-out optional fields
+
+An optional field with no `default` and no `enum` has nothing concrete to
+offer. Its value line is prefixed with `# ` so the author can uncomment what
+they need and ignore the rest:
+
+```
+# field_name: ""
+```
+
+The leading description and `# example:` comments are still emitted unchanged
+above it. Fields with a `default` or `enum` stay active — they carry a
+meaningful value the author should be aware of.
 
 ### Multi-element example arrays
 

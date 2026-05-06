@@ -144,7 +144,7 @@ pub(crate) fn validate_field(
                 true
             } else {
                 match value.as_str() {
-                    Some(text) if text.is_empty() => true,
+                    Some("") => true,
                     Some(text) => {
                         if is_valid_date(text) {
                             true
@@ -165,7 +165,7 @@ pub(crate) fn validate_field(
                 true
             } else {
                 match value.as_str() {
-                    Some(text) if text.is_empty() => true,
+                    Some("") => true,
                     Some(text) => {
                         if is_valid_datetime(text) {
                             true

@@ -279,7 +279,7 @@ impl<'a> IntoIterator for &'a Frontmatter {
     >;
 
     fn into_iter(self) -> Self::IntoIter {
-        fn filter<'a>(item: &'a FrontmatterItem) -> Option<(&'a String, &'a QuillValue)> {
+        fn filter(item: &FrontmatterItem) -> Option<(&String, &QuillValue)> {
             match item {
                 FrontmatterItem::Field { key, value, .. } => Some((key, value)),
                 FrontmatterItem::Comment { .. } => None,

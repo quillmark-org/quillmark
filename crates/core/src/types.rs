@@ -23,7 +23,7 @@ pub struct Artifact {
 }
 
 /// Internal rendering options.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RenderOptions {
     /// Optional output format specification
     pub output_format: Option<OutputFormat>,
@@ -38,14 +38,4 @@ pub struct RenderOptions {
     /// Backends that do not support page selection (notably PDF) return
     /// a `FormatNotSupported` error when this is `Some`.
     pub pages: Option<Vec<usize>>,
-}
-
-impl Default for RenderOptions {
-    fn default() -> Self {
-        Self {
-            output_format: None,
-            ppi: None,
-            pages: None,
-        }
-    }
 }
