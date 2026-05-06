@@ -2453,7 +2453,7 @@ fn schema_snapshot_usaf_memo_0_1_0() {
 }
 
 #[test]
-fn body_description_with_body_disabled_emits_warning() {
+fn body_example_with_body_disabled_emits_warning() {
     let yaml = r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -2463,7 +2463,7 @@ card_types:
   skills:
     body:
       enabled: false
-      description: This description is unused
+      example: This example is unused
     fields:
       items: { type: array, required: true }
 "#;
@@ -2472,9 +2472,9 @@ card_types:
         warnings.iter().any(|d| d
             .code
             .as_deref()
-            .map(|c| c == "quill::body_description_unused")
+            .map(|c| c == "quill::body_example_unused")
             .unwrap_or(false)),
-        "expected body_description_unused warning, got: {:?}",
+        "expected body_example_unused warning, got: {:?}",
         warnings
     );
 }
