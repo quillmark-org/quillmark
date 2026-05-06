@@ -156,6 +156,7 @@ pub enum FieldType {
 
 impl FieldType {
     /// Parse a FieldType from a string
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "string" => Some(FieldType::String),

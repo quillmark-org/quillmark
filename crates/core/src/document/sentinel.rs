@@ -55,6 +55,7 @@ pub(super) fn first_content_key(content: &str) -> Option<&str> {
 
 /// Extract `QUILL` / `CARD` sentinels and remaining fields from a parsed-YAML
 /// mapping. Returns `(tag, quill_ref, yaml_without_sentinel)`.
+#[allow(clippy::type_complexity)]
 pub(super) fn extract_sentinels(
     parsed: serde_json::Value,
     _markdown: &str,

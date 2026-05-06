@@ -209,9 +209,10 @@ pub fn fix_html_comment_fences(s: &str) -> String {
             let after_content = &s[after_fence..];
 
             // Determine if we need to insert a newline
-            let needs_newline = if after_content.is_empty() {
-                false
-            } else if after_content.starts_with('\n') || after_content.starts_with("\r\n") {
+            let needs_newline = if after_content.is_empty()
+                || after_content.starts_with('\n')
+                || after_content.starts_with("\r\n")
+            {
                 false
             } else {
                 // Check if there's only whitespace until end of line
