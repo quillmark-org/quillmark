@@ -17,7 +17,7 @@
 //!   separator. Absent when `body.enabled` is false.
 //!
 //! Most UI metadata is stripped, but two semantic-structure hints are honored:
-//! `ui.group` produces `# === <Group> ===` banners and `ui.order` controls
+//! `ui.group` produces `# ==== SECTION ====` banners and `ui.order` controls
 //! field ordering within a group.
 
 use std::collections::BTreeMap;
@@ -89,7 +89,7 @@ fn write_card_frontmatter(
     out.push('\n');
     for (group, fields) in group_fields(card.fields.values()) {
         if let Some(name) = group {
-            out.push_str(&format!("\n# === {} ===\n", name));
+            out.push_str(&format!("# ==== {} ====\n", name.to_uppercase()));
         }
         for field in fields {
             write_field(out, field, 0);
@@ -638,14 +638,14 @@ main:
 "#)
         .blueprint();
         let after_quill = &t[t.find("QUILL:").unwrap()..];
-        let addressing = after_quill.find("# === Addressing ===").unwrap();
-        let letterhead = after_quill.find("# === Letterhead ===").unwrap();
+        let addressing = after_quill.find("# ==== ADDRESSING ====").unwrap();
+        let letterhead = after_quill.find("# ==== LETTERHEAD ====").unwrap();
         let notes = after_quill.find("notes:").unwrap();
         // Ungrouped (notes) leads; Addressing precedes Letterhead.
         assert!(notes < addressing);
         assert!(addressing < letterhead);
         // No banner for the ungrouped section.
-        assert!(!after_quill[..notes].contains("# ==="));
+        assert!(!after_quill[..notes].contains("# ===="));
     }
 
     #[test]
