@@ -1098,6 +1098,42 @@ impl QuillConfig {
             }
         }
 
+        // Error when `body.example` contains a line that the document parser
+        // would interpret as a metadata fence (`---` with up to 3 leading
+        // spaces and optional trailing whitespace). Such a line would split the
+        // blueprint body region into a new fence, corrupting document structure.
+        let err_example_contains_fence = |label: &str,
+                                          body: &Option<BodyCardSchema>|
+         -> Option<Diagnostic> {
+            let example = body.as_ref()?.example.as_deref()?;
+            if example_contains_fence_line(example) {
+                Some(
+                    Diagnostic::new(
+                        Severity::Error,
+                        format!(
+                            "`{label}.body.example` contains a line that would be parsed as a metadata fence (`---`); this would corrupt the blueprint"
+                        ),
+                    )
+                    .with_code("quill::body_example_contains_fence".to_string())
+                    .with_hint(
+                        "Remove or reword any line that is exactly `---` (with up to 3 leading spaces and optional trailing whitespace).".to_string(),
+                    ),
+                )
+            } else {
+                None
+            }
+        };
+        if let Some(d) = err_example_contains_fence("main", &main.body) {
+            errors.push(d);
+        }
+        for card in &card_types {
+            if let Some(d) =
+                err_example_contains_fence(&format!("card_types.{}", card.name), &card.body)
+            {
+                errors.push(d);
+            }
+        }
+
         if !errors.is_empty() {
             return Err(errors);
         }
@@ -1119,4 +1155,21 @@ impl QuillConfig {
             warnings,
         ))
     }
+}
+
+/// Returns true if any line in `text` would be parsed as a metadata-fence
+/// marker by the document parser. Mirrors `document::fences::is_fence_marker_line`:
+/// up to 3 leading spaces (no leading tab), then `---`, then only whitespace.
+fn example_contains_fence_line(text: &str) -> bool {
+    text.lines().any(|line| {
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        let indent = line.bytes().take_while(|&b| b == b' ').count();
+        if indent > 3 || line.as_bytes().first() == Some(&b'\t') {
+            return false;
+        }
+        matches!(
+            line[indent..].strip_prefix("---"),
+            Some(rest) if rest.chars().all(|c| c == ' ' || c == '\t')
+        )
+    })
 }
