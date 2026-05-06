@@ -146,7 +146,10 @@ fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
         None => String::new(),
     };
     let value = field_value(field);
-    write_value(out, &field.name, &value, &comment, &pad);
+    // Optional fields with no default and no enum have nothing concrete to
+    // offer; comment them out so the author can uncomment what they need.
+    let commented = !field.required && field.default.is_none() && field.enum_values.is_none();
+    write_value(out, &field.name, &value, &comment, &pad, commented);
 }
 
 /// Description / `# required` / `# enum:` lines. Always safe to emit; carries
@@ -274,9 +277,15 @@ fn json_to_value(val: &serde_json::Value) -> FieldValue {
     }
 }
 
-fn write_value(out: &mut String, key: &str, val: &FieldValue, comment: &str, pad: &str) {
+fn write_value(out: &mut String, key: &str, val: &FieldValue, comment: &str, pad: &str, commented: bool) {
     match val {
-        FieldValue::Inline(s) => out.push_str(&format!("{}{}: {}{}\n", pad, key, s, comment)),
+        FieldValue::Inline(s) => {
+            if commented {
+                out.push_str(&format!("{}# {}: {}{}\n", pad, key, s, comment));
+            } else {
+                out.push_str(&format!("{}{}: {}{}\n", pad, key, s, comment));
+            }
+        }
         FieldValue::Block(items) => {
             out.push_str(&format!("{}{}:{}\n", pad, key, comment));
             write_array_items(out, items, pad);
@@ -457,7 +466,7 @@ main:
 "#)
         .blueprint();
         assert!(
-            t.contains("# example: [Mr. John Doe, 123 Main St, \"Anytown, USA\"]\nrecipient: []\n")
+            t.contains("# example: [Mr. John Doe, 123 Main St, \"Anytown, USA\"]\n# recipient: []\n")
         );
     }
 
@@ -520,8 +529,8 @@ main:
         .blueprint();
         assert!(t.contains("size: 11  # number"));
         assert!(t.contains("flag: false  # boolean"));
-        assert!(t.contains("body: \"\"  # markdown"));
-        assert!(t.contains("issued: \"\"  # YYYY-MM-DD"));
+        assert!(t.contains("# body: \"\"  # markdown"));
+        assert!(t.contains("# issued: \"\"  # YYYY-MM-DD"));
     }
 
     #[test]
@@ -666,7 +675,7 @@ main:
         .blueprint();
         assert!(t.contains("# Cited works.\nreferences:\n  -\n"));
         assert!(t.contains("    # Citing organization.\n    # required\n    org: \"<org>\"\n"));
-        assert!(t.contains("    # Publication year.\n    year: 0  # integer\n"));
+        assert!(t.contains("    # Publication year.\n    # year: 0  # integer\n"));
     }
 
     #[test]
@@ -759,6 +768,48 @@ card_types:
       label: { type: string, required: true }
       pages: { type: integer, default: 1 }
 "#;
+
+    #[test]
+    fn optional_no_default_field_is_commented_out() {
+        // No default, no enum → value line gets a leading `# `.
+        // Description and `# example:` comments are still emitted above it.
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    note:
+      type: string
+      description: An optional note.
+      example: See attached.
+    count: { type: integer }
+    flag: { type: boolean }
+    issued: { type: date }
+    tags: { type: array }
+"#)
+        .blueprint();
+        assert!(t.contains("# An optional note.\n# example: See attached.\n# note: \"\"\n"));
+        assert!(t.contains("# count: 0  # integer\n"));
+        assert!(t.contains("# flag: false  # boolean\n"));
+        assert!(t.contains("# issued: \"\"  # YYYY-MM-DD\n"));
+        assert!(t.contains("# tags: []\n"));
+    }
+
+    #[test]
+    fn optional_with_default_stays_active() {
+        // A default value is meaningful; the field line must not be commented out.
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    priority: { type: string, default: normal }
+    count: { type: integer, default: 0 }
+"#)
+        .blueprint();
+        assert!(t.contains("priority: normal\n"));
+        assert!(t.contains("count: 0  # integer\n"));
+        assert!(!t.contains("# priority:"));
+        assert!(!t.contains("# count:"));
+    }
 
     #[test]
     fn blueprint_round_trips_idempotently() {
