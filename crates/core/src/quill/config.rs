@@ -1069,7 +1069,9 @@ impl QuillConfig {
 
         // Warn when `body.description` is set together with `body.enabled: false` —
         // the description has no effect since the body editor is disabled.
-        let warn_description_unused = |label: &str, body: &Option<BodyCardSchema>| -> Option<Diagnostic> {
+        let warn_description_unused = |label: &str,
+                                       body: &Option<BodyCardSchema>|
+         -> Option<Diagnostic> {
             let body = body.as_ref()?;
             if body.enabled == Some(false) && body.description.is_some() {
                 Some(
@@ -1093,7 +1095,9 @@ impl QuillConfig {
             warnings.push(d);
         }
         for card in &card_types {
-            if let Some(d) = warn_description_unused(&format!("card_types.{}", card.name), &card.body) {
+            if let Some(d) =
+                warn_description_unused(&format!("card_types.{}", card.name), &card.body)
+            {
                 warnings.push(d);
             }
         }

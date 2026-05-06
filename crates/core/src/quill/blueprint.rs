@@ -45,7 +45,10 @@ impl QuillConfig {
             main_desc,
         );
         if self.main.body_enabled() {
-            out.push_str(&format!("\n{}...\n", self.main.body_description("main body")));
+            out.push_str(&format!(
+                "\n{}...\n",
+                self.main.body_description("main body")
+            ));
         }
         for card in &self.card_types {
             let sentinel = format!("CARD: {}  # sentinel, composable (0..N)", card.name);
