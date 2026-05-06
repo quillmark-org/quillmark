@@ -31,8 +31,8 @@ export interface QuillCardUi {
 export interface QuillCardBody {
     /** When false, consumers must not accept or store body content for this card type. Defaults to true. */
     enabled?: boolean;
-    /** Description shown in the body editor placeholder area when the body is empty. */
-    description?: string;
+    /** Example body content embedded verbatim in the blueprint body region. Fallback is "Write <card> body here." */
+    example?: string;
 }
 
 /** Schema entry for a single field declared in a quill's `Quill.yaml`. */

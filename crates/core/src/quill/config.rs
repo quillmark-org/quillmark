@@ -965,9 +965,7 @@ impl QuillConfig {
                             format!("Invalid 'main.body' block: {}", e),
                         )
                         .with_code("quill::invalid_body".to_string())
-                        .with_hint(
-                            "Valid keys under 'body' are: enabled, description.".to_string(),
-                        ),
+                        .with_hint("Valid keys under 'body' are: enabled, example.".to_string()),
                     );
                     None
                 }
@@ -1067,23 +1065,23 @@ impl QuillConfig {
             }
         }
 
-        // Warn when `body.description` is set together with `body.enabled: false` —
-        // the description has no effect since the body editor is disabled.
-        let warn_description_unused = |label: &str,
-                                       body: &Option<BodyCardSchema>|
+        // Warn when `body.example` is set together with `body.enabled: false` —
+        // the example has no effect since the body editor is disabled.
+        let warn_example_unused = |label: &str,
+                                   body: &Option<BodyCardSchema>|
          -> Option<Diagnostic> {
             let body = body.as_ref()?;
-            if body.enabled == Some(false) && body.description.is_some() {
+            if body.enabled == Some(false) && body.example.is_some() {
                 Some(
                     Diagnostic::new(
                         Severity::Warning,
                         format!(
-                            "`{label}.body.description` is set but `{label}.body.enabled` is false; the description will have no effect"
+                            "`{label}.body.example` is set but `{label}.body.enabled` is false; the example will have no effect"
                         ),
                     )
-                    .with_code("quill::body_description_unused".to_string())
+                    .with_code("quill::body_example_unused".to_string())
                     .with_hint(
-                        "Set `body.enabled: true` to surface the description, or remove `body.description`."
+                        "Set `body.enabled: true` to surface the example, or remove `body.example`."
                             .to_string(),
                     ),
                 )
@@ -1091,14 +1089,48 @@ impl QuillConfig {
                 None
             }
         };
-        if let Some(d) = warn_description_unused("main", &main.body) {
+        if let Some(d) = warn_example_unused("main", &main.body) {
             warnings.push(d);
         }
         for card in &card_types {
-            if let Some(d) =
-                warn_description_unused(&format!("card_types.{}", card.name), &card.body)
-            {
+            if let Some(d) = warn_example_unused(&format!("card_types.{}", card.name), &card.body) {
                 warnings.push(d);
+            }
+        }
+
+        // Error when `body.example` contains a line that the document parser
+        // would interpret as a metadata fence (`---` with up to 3 leading
+        // spaces and optional trailing whitespace). Such a line would split the
+        // blueprint body region into a new fence, corrupting document structure.
+        let err_example_contains_fence = |label: &str,
+                                          body: &Option<BodyCardSchema>|
+         -> Option<Diagnostic> {
+            let example = body.as_ref()?.example.as_deref()?;
+            if example_contains_fence_line(example) {
+                Some(
+                    Diagnostic::new(
+                        Severity::Error,
+                        format!(
+                            "`{label}.body.example` contains a line that would be parsed as a metadata fence (`---`); this would corrupt the blueprint"
+                        ),
+                    )
+                    .with_code("quill::body_example_contains_fence".to_string())
+                    .with_hint(
+                        "Remove or reword any line that is exactly `---` (with up to 3 leading spaces and optional trailing whitespace).".to_string(),
+                    ),
+                )
+            } else {
+                None
+            }
+        };
+        if let Some(d) = err_example_contains_fence("main", &main.body) {
+            errors.push(d);
+        }
+        for card in &card_types {
+            if let Some(d) =
+                err_example_contains_fence(&format!("card_types.{}", card.name), &card.body)
+            {
+                errors.push(d);
             }
         }
 
@@ -1123,4 +1155,21 @@ impl QuillConfig {
             warnings,
         ))
     }
+}
+
+/// Returns true if any line in `text` would be parsed as a metadata-fence
+/// marker by the document parser. Mirrors `document::fences::is_fence_marker_line`:
+/// up to 3 leading spaces (no leading tab), then `---`, then only whitespace.
+fn example_contains_fence_line(text: &str) -> bool {
+    text.lines().any(|line| {
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        let indent = line.bytes().take_while(|&b| b == b' ').count();
+        if indent > 3 || line.as_bytes().first() == Some(&b'\t') {
+            return false;
+        }
+        matches!(
+            line[indent..].strip_prefix("---"),
+            Some(rest) if rest.chars().all(|c| c == ' ' || c == '\t')
+        )
+    })
 }

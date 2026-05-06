@@ -2453,7 +2453,7 @@ fn schema_snapshot_usaf_memo_0_1_0() {
 }
 
 #[test]
-fn body_description_with_body_disabled_emits_warning() {
+fn body_example_with_body_disabled_emits_warning() {
     let yaml = r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -2463,7 +2463,7 @@ card_types:
   skills:
     body:
       enabled: false
-      description: This description is unused
+      example: This example is unused
     fields:
       items: { type: array, required: true }
 "#;
@@ -2472,9 +2472,93 @@ card_types:
         warnings.iter().any(|d| d
             .code
             .as_deref()
-            .map(|c| c == "quill::body_description_unused")
+            .map(|c| c == "quill::body_example_unused")
             .unwrap_or(false)),
-        "expected body_description_unused warning, got: {:?}",
+        "expected body_example_unused warning, got: {:?}",
         warnings
+    );
+}
+
+#[test]
+fn body_example_with_bare_fence_line_is_an_error() {
+    let yaml = r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  body:
+    example: "Opening paragraph.\n\n---\n\nClosing paragraph."
+  fields:
+    title: { type: string }
+"#;
+    let result = QuillConfig::from_yaml_with_warnings(yaml);
+    let errors = result.unwrap_err();
+    assert!(
+        errors.iter().any(|d| d
+            .code
+            .as_deref()
+            .map(|c| c == "quill::body_example_contains_fence")
+            .unwrap_or(false)),
+        "expected body_example_contains_fence error, got: {:?}",
+        errors
+    );
+}
+
+#[test]
+fn body_example_fence_line_with_leading_spaces_is_an_error() {
+    // Up to 3 leading spaces still counts as a fence marker.
+    let yaml = r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  body:
+    example: "text\n   ---\nmore text"
+  fields:
+    title: { type: string }
+"#;
+    let result = QuillConfig::from_yaml_with_warnings(yaml);
+    assert!(result.is_err());
+}
+
+#[test]
+fn body_example_four_leading_spaces_is_not_a_fence() {
+    // Four leading spaces = indented code block, not a fence marker.
+    let yaml = r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  body:
+    example: "text\n    ---\nmore text"
+  fields:
+    title: { type: string }
+"#;
+    let result = QuillConfig::from_yaml_with_warnings(yaml);
+    assert!(
+        result.is_ok(),
+        "four-space indented --- should not trigger fence error"
+    );
+}
+
+#[test]
+fn body_example_card_type_fence_line_is_an_error() {
+    // The fence check applies to card-type body examples too.
+    let yaml = r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    title: { type: string }
+card_types:
+  note:
+    body:
+      example: "See below:\n---\nEnd."
+    fields:
+      author: { type: string }
+"#;
+    let result = QuillConfig::from_yaml_with_warnings(yaml);
+    let errors = result.unwrap_err();
+    assert!(
+        errors.iter().any(|d| d
+            .code
+            .as_deref()
+            .map(|c| c == "quill::body_example_contains_fence")
+            .unwrap_or(false)),
+        "expected body_example_contains_fence error for card type, got: {:?}",
+        errors
     );
 }

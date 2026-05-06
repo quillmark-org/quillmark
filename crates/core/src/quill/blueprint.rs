@@ -12,9 +12,9 @@
 //!   ordinary fields, and `# sentinel` / `# sentinel, composable (0..N)` on
 //!   the `QUILL:` and `CARD:` lines respectively.
 //! - **Body regions** are signalled by `Write main body here.` after the main
-//!   fence and `Write <card name> body here.` after each card fence. When a
-//!   `body.description` is set, the marker expands to
-//!   `Write <tag> body here. <description>`. Absent when `body.enabled` is false.
+//!   fence and `Write <card name> body here.` after each card fence. When
+//!   `body.example` is set, the example text is embedded verbatim instead.
+//!   Absent when `body.enabled` is false.
 //!
 //! Most UI metadata is stripped, but two semantic-structure hints are honored:
 //! `ui.group` produces `# ==== SECTION ====` banners and `ui.order` controls
@@ -45,31 +45,22 @@ impl QuillConfig {
             main_desc,
         );
         if self.main.body_enabled() {
-            let desc = self
-                .main
-                .body
-                .as_ref()
-                .and_then(|b| b.description.as_deref());
-            out.push_str(&format!("\n{}\n", body_marker("main body", desc)));
+            let example = self.main.body.as_ref().and_then(|b| b.example.as_deref());
+            let text = example.unwrap_or("Write main body here.");
+            out.push_str(&format!("\n{}\n", text));
         }
         for card in &self.card_types {
             let sentinel = format!("CARD: {}  # sentinel, composable (0..N)", card.name);
             out.push('\n');
             write_card_frontmatter(&mut out, card, &sentinel, card.description.as_deref());
             if card.body_enabled() {
-                let label = format!("{} body", card.name);
-                let desc = card.body.as_ref().and_then(|b| b.description.as_deref());
-                out.push_str(&format!("\n{}\n", body_marker(&label, desc)));
+                let example = card.body.as_ref().and_then(|b| b.example.as_deref());
+                let fallback = format!("Write {} body here.", card.name);
+                let text = example.unwrap_or(fallback.as_str());
+                out.push_str(&format!("\n{}\n", text));
             }
         }
         out
-    }
-}
-
-fn body_marker(label: &str, description: Option<&str>) -> String {
-    match description {
-        Some(desc) => format!("Write {} here. {}", label, desc),
-        None => format!("Write {} here.", label),
     }
 }
 
@@ -578,7 +569,7 @@ card_types:
     }
 
     #[test]
-    fn body_description_appears_in_placeholder() {
+    fn body_example_appears_verbatim() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -587,29 +578,29 @@ main:
 card_types:
   note:
     body:
-      description: Write your note here
+      example: "This is an example note."
     fields:
       author: { type: string }
 "#)
         .blueprint();
         let after = &t[t.find("CARD: note").unwrap()..];
-        assert!(after.contains("\nWrite note body here. Write your note here\n"));
-        assert!(!after.contains("\nWrite note body here.\n"));
+        assert!(after.contains("\nThis is an example note.\n"));
+        assert!(!after.contains("Write note body here."));
     }
 
     #[test]
-    fn main_body_description_appears_in_placeholder() {
+    fn main_body_example_appears_verbatim() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   body:
-    description: Write the letter body here
+    example: "Dear Sir or Madam,\n\nI am writing to..."
   fields:
     to: { type: string }
 "#)
         .blueprint();
-        assert!(t.contains("\nWrite main body here. Write the letter body here\n"));
-        assert!(!t.contains("\nWrite main body here.\n"));
+        assert!(t.contains("\nDear Sir or Madam,\n\nI am writing to...\n"));
+        assert!(!t.contains("Write main body here."));
     }
 
     #[test]

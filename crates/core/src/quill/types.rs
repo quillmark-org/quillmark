@@ -76,10 +76,11 @@ pub struct BodyCardSchema {
     /// of this card type.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
-    /// Description shown in the body editor placeholder area when the body is
-    /// empty. Has no effect when `enabled` is false.
+    /// Example body content embedded verbatim in the blueprint body region.
+    /// When absent, the blueprint falls back to `Write <card> body here.`.
+    /// Has no effect when `enabled` is false.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
+    pub example: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
