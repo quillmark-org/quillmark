@@ -41,7 +41,10 @@ impl QuillConfig {
         write_card_frontmatter(
             &mut out,
             &self.main,
-            &format!("QUILL: {}@{}  # sentinel; required", self.name, self.version),
+            &format!(
+                "QUILL: {}@{}  # sentinel; required",
+                self.name, self.version
+            ),
             main_desc,
         );
         if self.main.body_enabled() {
