@@ -41,7 +41,7 @@ impl QuillConfig {
         write_card_frontmatter(
             &mut out,
             &self.main,
-            &format!("QUILL: {}@{}  # sentinel", self.name, self.version),
+            &format!("QUILL: {}@{}  # sentinel; required", self.name, self.version),
             main_desc,
         );
         if self.main.body_enabled() {
@@ -612,7 +612,7 @@ main:
     flavor: { type: string, default: taro }
 "#)
         .blueprint();
-        assert!(t.starts_with("---\n# x\nQUILL: taro@0.1.0  # sentinel\n"));
+        assert!(t.starts_with("---\n# x\nQUILL: taro@0.1.0  # sentinel; required\n"));
         assert!(t.contains("\nWrite main body here.\n"));
     }
 
