@@ -71,6 +71,9 @@ Form: **`# <type>[<format>]; <role>[, <extra>...]`**
   `string`, `integer`, `number`, `boolean`, `array`, `object`,
   `markdown`, `date`, `datetime`, `enum`, `sentinel`.
   Every field is labeled — there is no "self-evident" exemption.
+  (`object` requires a `properties` map; freeform untyped objects are not
+  supported. `object` also appears in the format slot of typed-table fields
+  as `array<object>`.)
 - **Format slot** (optional, in `<…>` angle brackets): refines the type
   when the refinement carries information beyond the type name itself.
   - `date<YYYY-MM-DD>`
@@ -110,7 +113,7 @@ Role drives "must fill"; the value rendering follows a single cascade:
 |---|---|
 | Has `default` | default |
 | Has `enum` only | first enum value |
-| Otherwise | type-empty (`""`, `0`, `false`, `[]`, `{}`, or block scalar for markdown — see below) |
+| Otherwise | type-empty (`""`, `0`, `false`, `[]`, or block scalar for markdown — see below) |
 
 Examples never become the rendered value, regardless of role. Examples
 are inherently illustrative and unsafe to ship; they always surface in
@@ -176,14 +179,52 @@ fallback; authors needing these characters must reshape their values.
 
 ## Typed tables
 
-A field of `type: array` whose `items` is a typed object (`type: object`
-+ `properties`) renders with full per-property annotations:
+A field of `type: array` with a `properties` map renders with full
+per-property annotations:
 
 - An `example:` or non-empty `default:` renders as actual rows.
 - Otherwise one synthetic row is emitted, with each property carrying
   its own description, inline type/format, and role.
 
 The outer field's inline annotation is `# array<object>; <role>`.
+
+## Typed dictionaries
+
+A field of `type: object` with a `properties` map renders as an indented
+block mapping with per-property annotations — no outer value on the key
+line:
+
+- An `example:` or non-empty `default:` renders as a concrete block
+  mapping (property values only, no annotations).
+- Otherwise each property is emitted with its own description, inline
+  type/format, and role — the same annotation rules as any other field.
+
+The outer field's inline annotation is `# object; <role>`.
+
+```
+# The sender's mailing address.
+address:  # object; optional
+  # Street address line.
+  street: ""  # string; required
+  # City name.
+  city: ""  # string; required
+  # ZIP or postal code.
+  zip: ""  # string; optional
+```
+
+With a default:
+
+```
+address:  # object; optional
+  street: 5000 Forbes Avenue
+  city: Pittsburgh
+  zip: "15213"
+```
+
+Properties of a typed dictionary may not themselves be objects (nesting
+beyond one level is not supported). The same rule applies to typed table
+properties. Freeform `type: object` fields without a `properties` map are
+rejected at `Quill.yaml` parse time (`quill::object_missing_properties`).
 
 ## UI metadata honored
 
@@ -230,7 +271,7 @@ address: []  # array<string>; optional
 # e.g. www.ece.cmu.edu
 url: ""  # string; optional
 # The date to appear on the letter.
-date: ""  # date<YYYY-MM-DD>; required
+date: ""  # date<YYYY-MM-DD>; optional
 ---
 
 Write main body here.

@@ -20,8 +20,8 @@ Supported field types:
 | `number` | Numeric value (integers and decimals) |
 | `integer` | Integer-only numeric value |
 | `boolean` | `true` / `false` |
-| `array` | Ordered list; use `items:` |
-| `object` | Structured map; use `properties:` (only valid inside `array.items`) |
+| `array` | Ordered list; add `properties:` for typed rows |
+| `object` | Structured map; requires `properties:` |
 | `date` | `YYYY-MM-DD` |
 | `datetime` | ISO 8601 |
 | `markdown` | Rich text; backends handle conversion |
@@ -60,7 +60,7 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
 
 For LLM/MCP authoring, see [BLUEPRINT.md](BLUEPRINT.md) — `blueprint()` emits a document-shaped, pre-filled Markdown reference that's denser than schema for prompt-time use.
 
-Top-level schema keys: `main`, optional `card_types` (map keyed by card name). `main` and each entry in `card_types` share the same `CardSchema` shape: `fields` (map keyed by field name), optional `description`, optional `ui`, optional `body`. Each `FieldSchema` includes `type`, optional `description`/`default`/`example`/`enum`/`properties`/`items`/`ui`, and optional `required` (omitted when false).
+Top-level schema keys: `main`, optional `card_types` (map keyed by card name). `main` and each entry in `card_types` share the same `CardSchema` shape: `fields` (map keyed by field name), optional `description`, optional `ui`, optional `body`. Each `FieldSchema` includes `type`, optional `description`/`default`/`example`/`enum`/`properties`/`ui`, and optional `required` (omitted when false).
 
 Identity fields (`name`, `version`, `backend`, `author`, `description`) live on the parent metadata object (Wasm: `Quill.metadata`; Python: `Quill.metadata` plus dedicated getters). The bundled example markdown is exposed separately (Wasm: `Quill.example`; Python: `Quill.example`) so consumers choose whether to include it in a prompt.
 

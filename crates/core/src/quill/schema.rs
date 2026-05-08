@@ -56,8 +56,18 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
                     "type".to_string(),
                     serde_json::Value::String("array".to_string()),
                 );
-                if let Some(items) = &field.items {
-                    schema.insert("items".to_string(), field_to_schema(items));
+                if let Some(props) = &field.properties {
+                    let mut prop_schemas = serde_json::Map::new();
+                    for (name, prop) in props {
+                        prop_schemas.insert(name.clone(), field_to_schema(prop));
+                    }
+                    schema.insert(
+                        "items".to_string(),
+                        serde_json::json!({
+                            "type": "object",
+                            "properties": prop_schemas
+                        }),
+                    );
                 }
             }
             FieldType::Object => {
@@ -139,6 +149,55 @@ mod tests {
     fn build_from_yaml(yaml: &str) -> QuillValue {
         let config = QuillConfig::from_yaml(yaml).expect("yaml parses");
         build_transform_schema(&config)
+    }
+
+    #[test]
+    fn typed_table_emits_items_with_object_and_properties() {
+        let yaml = r#"
+quill:
+  name: x
+  version: 1.0.0
+  backend: typst
+  description: x
+main:
+  fields:
+    refs:
+      type: array
+      properties:
+        org: { type: string, required: true }
+        year: { type: integer }
+"#;
+        let schema = build_from_yaml(yaml);
+        let json = schema.as_json();
+        let refs = &json["properties"]["refs"];
+        assert_eq!(refs["type"], "array");
+        assert_eq!(refs["items"]["type"], "object");
+        assert_eq!(refs["items"]["properties"]["org"]["type"], "string");
+        assert_eq!(refs["items"]["properties"]["year"]["type"], "integer");
+    }
+
+    #[test]
+    fn typed_dict_emits_object_with_properties() {
+        let yaml = r#"
+quill:
+  name: x
+  version: 1.0.0
+  backend: typst
+  description: x
+main:
+  fields:
+    address:
+      type: object
+      properties:
+        street: { type: string, required: true }
+        city: { type: string }
+"#;
+        let schema = build_from_yaml(yaml);
+        let json = schema.as_json();
+        let address = &json["properties"]["address"];
+        assert_eq!(address["type"], "object");
+        assert_eq!(address["properties"]["street"]["type"], "string");
+        assert_eq!(address["properties"]["city"]["type"], "string");
     }
 
     #[test]

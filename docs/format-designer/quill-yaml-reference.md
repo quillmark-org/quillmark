@@ -88,7 +88,7 @@ main:
 | `required`    | boolean           | no       | Whether the field must be present (default: `false`) |
 | `enum`        | array of strings  | no       | Restrict to specific values |
 | `ui`          | object            | no       | UI rendering hints (see [UI Properties](#ui-properties)) |
-| `items`       | object            | no       | Item schema (for `array` type; use `type: object` with `properties` for structured rows) |
+| `properties`  | object            | no       | Nested field schemas (for `array` typed-table rows or `object` typed dictionaries) |
 
 ### Field Types
 
@@ -98,13 +98,13 @@ main:
 | `number`   | Numeric scalar (integers and decimals) |
 | `integer`  | Integer-only numeric scalar |
 | `boolean`  | `true` or `false` |
-| `array`    | Use `items` for element schema |
+| `array`    | Ordered list; add `properties:` for typed rows |
 | `date`     | YYYY-MM-DD |
 | `datetime`  | ISO 8601 |
 | `markdown` | Rich text; backends convert to target format |
-| `object`   | Structured map; valid only inside `array.items` (not as a standalone field) |
+| `object`   | Structured map; requires a `properties:` map |
 
-Use `type: array` with `items: { type: object, properties: {...} }` when you need a **list** of structured rows. Quill does not yet provide a general-purpose deep-nesting field type, so `type: object` is currently scoped to `array.items` rather than standalone top-level fields.
+Use `type: array` with `properties:` when you need a **list** of structured rows. Use `type: object` with `properties:` for a single structured mapping. Nesting beyond one level is not supported.
 
 ### Enum Constraints
 
@@ -123,37 +123,36 @@ main:
       description: "Format style for the endorsement."
 ```
 
-### Typed Arrays
+### Typed Arrays and Typed Dictionaries
 
-Define array element schemas with `items`:
-
-```yaml
-main:
-  fields:
-    recipients:
-      type: array
-      items:
-        type: string
-      example:
-        - ORG1/SYMBOL
-        - ORG2/SYMBOL
-```
-
-Use `type: object` inside `items` to define structured rows. Coercion recurses into each element and converts property values to their declared types:
+Add `properties:` to a `type: array` field to define a typed table — each element is a structured object. Coercion recurses into each element and converts property values to their declared types:
 
 ```yaml
 main:
   fields:
     cells:
       type: array
-      items:
-        type: object
-        properties:
-          category:
-            type: string
-            required: true
-          score:
-            type: number
+      properties:
+        category:
+          type: string
+          required: true
+        score:
+          type: number
+```
+
+Use `type: object` with `properties:` for a single structured mapping:
+
+```yaml
+main:
+  fields:
+    address:
+      type: object
+      properties:
+        street:
+          type: string
+          required: true
+        city:
+          type: string
 ```
 
 ---
@@ -482,8 +481,6 @@ main:
 
     team_members:
       type: array
-      items:
-        type: string
       ui:
         group: Team
 

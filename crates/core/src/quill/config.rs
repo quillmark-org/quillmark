@@ -210,16 +210,31 @@ impl QuillConfig {
                     vec![json_value.clone()]
                 };
 
-                if let Some(items_schema) = &field_schema.items {
+                if let Some(props) = &field_schema.properties {
                     let mut out = Vec::with_capacity(arr.len());
                     for (idx, elem) in arr.iter().enumerate() {
-                        let item_path = format!("{path}[{idx}]");
-                        let coerced = Self::coerce_value_strict(
-                            &QuillValue::from_json(elem.clone()),
-                            items_schema,
-                            &item_path,
-                        )?;
-                        out.push(coerced.into_json());
+                        if let Some(obj) = elem.as_object() {
+                            let mut coerced_obj = serde_json::Map::new();
+                            for (k, v) in obj {
+                                if let Some(prop_schema) = props.get(k) {
+                                    let child_path = format!("{path}[{idx}].{k}");
+                                    coerced_obj.insert(
+                                        k.clone(),
+                                        Self::coerce_value_strict(
+                                            &QuillValue::from_json(v.clone()),
+                                            prop_schema,
+                                            &child_path,
+                                        )?
+                                        .into_json(),
+                                    );
+                                } else {
+                                    coerced_obj.insert(k.clone(), v.clone());
+                                }
+                            }
+                            out.push(serde_json::Value::Object(coerced_obj));
+                        } else {
+                            out.push(elem.clone());
+                        }
                     }
                     Ok(QuillValue::from_json(serde_json::Value::Array(out)))
                 } else {
@@ -449,8 +464,12 @@ impl QuillConfig {
         }
 
         if schema.r#type == FieldType::Array {
-            if let Some(items_schema) = &schema.items {
-                return Self::has_disallowed_nested_object(items_schema, true);
+            if let Some(props) = &schema.properties {
+                for prop_schema in props.values() {
+                    if Self::has_disallowed_nested_object(prop_schema, false) {
+                        return true;
+                    }
+                }
             }
         }
 
@@ -485,7 +504,11 @@ impl QuillConfig {
     /// Reject `>`, `;`, `|` in enum literals. These characters are reserved by
     /// the blueprint inline annotation grammar (`<format>` close, role
     /// separator, enum value separator) and have no escape syntax.
-    fn validate_enum_literals(field: &FieldSchema, owner_label: &str, errors: &mut Vec<Diagnostic>) {
+    fn validate_enum_literals(
+        field: &FieldSchema,
+        owner_label: &str,
+        errors: &mut Vec<Diagnostic>,
+    ) {
         if let Some(values) = &field.enum_values {
             for v in values {
                 if v.contains('>') || v.contains(';') || v.contains('|') {
@@ -506,8 +529,8 @@ impl QuillConfig {
         }
     }
 
-    /// Recursively validate field-level blueprint constraints across the field,
-    /// its array items, and any nested object properties.
+    /// Recursively validate field-level blueprint constraints across the field
+    /// and any nested object properties.
     fn validate_field_blueprint_constraints(
         schema: &FieldSchema,
         owner_label: &str,
@@ -515,10 +538,6 @@ impl QuillConfig {
     ) {
         Self::validate_description_singleline(schema.description.as_deref(), owner_label, errors);
         Self::validate_enum_literals(schema, owner_label, errors);
-        if let Some(items) = &schema.items {
-            let nested = format!("{} (items)", owner_label);
-            Self::validate_field_blueprint_constraints(items, &nested, errors);
-        }
         if let Some(props) = &schema.properties {
             for (name, prop) in props {
                 let nested = format!("{}.{}", owner_label, name);
@@ -574,30 +593,49 @@ impl QuillConfig {
             let quill_value = QuillValue::from_json(field_value.clone());
             match FieldSchema::from_quill_value(field_name.clone(), &quill_value) {
                 Ok(mut schema) => {
-                    // Reject standalone object/dict fields — object is only valid inside array items.
+                    // Typed dictionaries (type: object with properties) are supported.
+                    // Freeform objects (no properties) and objects nested inside
+                    // typed-dictionary properties are not.
                     if schema.r#type == FieldType::Object {
-                        errors.push(
-                            Diagnostic::new(
-                                Severity::Error,
-                                format!(
-                                    "Field '{}' uses standalone type: object, which is not supported. \
-                                    Use separate fields with ui.group instead, or use \
-                                    type: array with items: {{type: object, properties: {{...}}}}.",
-                                    field_name
-                                ),
-                            )
-                            .with_code("quill::standalone_object_not_supported".to_string()),
-                        );
-                        continue;
-                    }
-
-                    if Self::has_disallowed_nested_object(&schema, false) {
+                        if schema.properties.is_none() {
+                            errors.push(
+                                Diagnostic::new(
+                                    Severity::Error,
+                                    format!(
+                                        "Field '{}' has type: object but no properties defined. \
+                                        Declare a properties map, or use type: array with \
+                                        a properties map for a list of objects.",
+                                        field_name
+                                    ),
+                                )
+                                .with_code("quill::object_missing_properties".to_string()),
+                            );
+                            continue;
+                        }
+                        // Properties of a typed dictionary may not themselves be objects.
+                        if Self::has_disallowed_nested_object(&schema, true) {
+                            errors.push(
+                                Diagnostic::new(
+                                    Severity::Error,
+                                    format!(
+                                        "Field '{}' contains a nested type: object property, \
+                                        which is not supported. Properties of a typed dictionary \
+                                        may not themselves be objects.",
+                                        field_name
+                                    ),
+                                )
+                                .with_code("quill::nested_object_not_supported".to_string()),
+                            );
+                            continue;
+                        }
+                        // Typed dictionary — fall through to normal processing.
+                    } else if Self::has_disallowed_nested_object(&schema, false) {
                         errors.push(
                             Diagnostic::new(
                                 Severity::Error,
                                 format!(
                                     "Field '{}' uses nested type: object, which is not supported. \
-                                    Only object schemas nested under array.items are supported.",
+                                    Use type: array with a properties map for a list of objects.",
                                     field_name
                                 ),
                             )

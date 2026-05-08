@@ -183,13 +183,22 @@ pub(crate) fn validate_field(
         }
         FieldType::Array => match value.as_array() {
             Some(items) => {
-                if let Some(item_schema) = &field.items {
+                if let Some(properties) = &field.properties {
                     for (idx, item) in items.iter().enumerate() {
-                        errors.extend(validate_field(
-                            item_schema,
-                            &QuillValue::from_json(item.clone()),
-                            &index_path(path, idx),
-                        ));
+                        let obj = item.as_object();
+                        for (prop_name, prop_schema) in properties {
+                            let prop_path = format!("{}[{}].{}", path, idx, prop_name);
+                            match obj.and_then(|o| o.get(prop_name)) {
+                                Some(v) => errors.extend(validate_field(
+                                    prop_schema,
+                                    &QuillValue::from_json(v.clone()),
+                                    &prop_path,
+                                )),
+                                None if prop_schema.required => errors
+                                    .push(ValidationError::MissingRequired { path: prop_path }),
+                                None => {}
+                            }
+                        }
                     }
                 }
                 true
@@ -289,10 +298,6 @@ fn child_path(parent: &str, child: &str) -> String {
     } else {
         format!("{parent}.{child}")
     }
-}
-
-fn index_path(parent: &str, index: usize) -> String {
-    format!("{parent}[{index}]")
 }
 
 #[cfg(test)]
@@ -494,33 +499,9 @@ main:
     }
 
     #[test]
-    fn validates_array_of_strings() {
-        let config = config_with(
-            "    tags:\n      type: array\n      items:\n        type: string",
-            "",
-        );
-        let doc = doc_from_fm(&[("tags", json!(["a", "b"]))]);
-        assert!(validate_typed_document(&config, &doc).is_ok());
-    }
-
-    #[test]
-    fn rejects_invalid_array_element_type() {
-        let config = config_with(
-            "    tags:\n      type: array\n      items:\n        type: string",
-            "",
-        );
-        let doc = doc_from_fm(&[("tags", json!(["a", 2]))]);
-        let errors = validate_typed_document(&config, &doc).unwrap_err();
-        assert!(has_error(&errors, |e| matches!(
-            e,
-            ValidationError::TypeMismatch { path, .. } if path == "tags[1]"
-        )));
-    }
-
-    #[test]
     fn validates_array_of_objects() {
         let config = config_with(
-            "    recipients:\n      type: array\n      items:\n        type: object\n        properties:\n          name:\n            type: string\n            required: true\n          org:\n            type: string",
+            "    recipients:\n      type: array\n      properties:\n        name:\n          type: string\n          required: true\n        org:\n          type: string",
             "",
         );
         let doc = doc_from_fm(&[("recipients", json!([{ "name": "Sam", "org": "HQ" }]))]);
@@ -530,7 +511,7 @@ main:
     #[test]
     fn reports_missing_required_field_in_array_object() {
         let config = config_with(
-            "    recipients:\n      type: array\n      items:\n        type: object\n        properties:\n          name:\n            type: string\n            required: true\n          org:\n            type: string",
+            "    recipients:\n      type: array\n      properties:\n        name:\n          type: string\n          required: true\n        org:\n          type: string",
             "",
         );
         let doc = doc_from_fm(&[("recipients", json!([{ "org": "HQ" }]))]);
@@ -540,11 +521,10 @@ main:
         }));
     }
 
-    // NOTE: top-level `type: object` fields are explicitly unsupported by
-    // the config parser (see `config::parse_fields_with_order`). Object
-    // schemas only appear inside `array.items`; coverage for that shape lives
-    // in `validates_array_of_objects` and
-    // `reports_missing_required_field_in_array_object`.
+    // NOTE: top-level typed-dictionary fields (`type: object` with `properties`)
+    // are supported. Coverage lives in `validates_array_of_objects` (typed
+    // tables) and the blueprint tests. Freeform objects without properties are
+    // rejected at config parse time.
 
     #[test]
     fn accumulates_multiple_missing_required_errors() {

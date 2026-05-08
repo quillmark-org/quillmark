@@ -1645,29 +1645,22 @@ main:
     my_list:
       type: array
       description: List of objects
-      items:
-        type: object
-        properties:
-          sub_a:
-            type: string
-            description: Subfield A
-          sub_b:
-            type: number
-            description: Subfield B
+      properties:
+        sub_a:
+          type: string
+          description: Subfield A
+        sub_b:
+          type: number
+          description: Subfield B
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
 
-    // Check array with items
     let list_field = config.main.fields.get("my_list").unwrap();
     assert_eq!(list_field.r#type, FieldType::Array);
-    assert!(list_field.items.is_some());
+    assert!(list_field.properties.is_some());
 
-    let items_schema = list_field.items.as_ref().unwrap();
-    assert_eq!(items_schema.r#type, FieldType::Object);
-    assert!(items_schema.properties.is_some());
-
-    let props = items_schema.properties.as_ref().unwrap();
+    let props = list_field.properties.as_ref().unwrap();
     assert!(props.contains_key("sub_a"));
     assert!(props.contains_key("sub_b"));
     assert_eq!(props["sub_a"].r#type, FieldType::String);
@@ -1675,13 +1668,13 @@ main:
 }
 
 #[test]
-fn test_standalone_object_field_rejected_with_error() {
+fn test_typed_object_field_accepted() {
     let yaml_content = r#"
 quill:
   name: obj_test
   version: "1.0"
   backend: typst
-  description: Test standalone object rejection
+  description: Test typed dictionary acceptance
 
 main:
   fields:
@@ -1690,10 +1683,36 @@ main:
       description: A normal field
     address:
       type: object
-      description: Standalone object — should be rejected
+      description: Typed dictionary with properties
       properties:
         street:
           type: string
+          required: true
+        city:
+          type: string
+          required: true
+"#;
+
+    let (config, warnings) = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap();
+    assert!(warnings.is_empty());
+    let field = &config.main.fields["address"];
+    assert_eq!(field.r#type, FieldType::Object);
+    assert!(field.properties.as_ref().unwrap().contains_key("street"));
+}
+
+#[test]
+fn test_untyped_object_field_rejected() {
+    let yaml_content = r#"
+quill:
+  name: obj_test
+  version: "1.0"
+  backend: typst
+  description: Test freeform object rejection
+
+main:
+  fields:
+    metadata:
+      type: object
 "#;
 
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
@@ -1702,9 +1721,9 @@ main:
     assert_eq!(err[0].severity, Severity::Error);
     assert_eq!(
         err[0].code.as_deref(),
-        Some("quill::standalone_object_not_supported")
+        Some("quill::object_missing_properties")
     );
-    assert!(err[0].message.contains("address"));
+    assert!(err[0].message.contains("metadata"));
 }
 
 #[test]
@@ -1720,16 +1739,14 @@ main:
   fields:
     rows:
       type: array
-      items:
-        type: object
-        properties:
-          score:
-            type: number
-          nested:
-            type: object
-            properties:
-              inner:
-                type: string
+      properties:
+        score:
+          type: number
+        nested:
+          type: object
+          properties:
+            inner:
+              type: string
 "#;
 
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
@@ -1756,15 +1773,13 @@ main:
   fields:
     scores:
       type: array
-      items:
-        type: object
-        properties:
-          name:
-            type: string
-          value:
-            type: number
-          active:
-            type: boolean
+      properties:
+        name:
+          type: string
+        value:
+          type: number
+        active:
+          type: boolean
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1914,13 +1929,11 @@ main:
   fields:
     items:
       type: array
-      items:
-        type: object
-        properties:
-          score:
-            type: number
-          active:
-            type: boolean
+      properties:
+        score:
+          type: number
+        active:
+          type: boolean
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
