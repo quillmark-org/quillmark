@@ -7,18 +7,18 @@ author would write — pre-filled with placeholders, examples, and
 constraint hints. It is the **authoring surface** for LLM and MCP
 consumers; [SCHEMAS.md](SCHEMAS.md) covers the validation/form surface.
 
-A blueprint is the document, not a description of the document. An LLM
-asked to author a Quill document fills in the placeholders; the
-structure, sentinels, group banners, and body markers come for free.
+A blueprint is the document, not a description of the document. Fill in
+the placeholders; the structure, sentinels, group banners, and body
+markers come for free.
 
 ## Output shape
 
 ```
 ---
 # <description>
-QUILL: <name>@<version>  # sentinel
+QUILL: <name>@<version>  # sentinel; required
 
-# === <Group> ===
+# ==== <GROUP> ====
 # <field description>
 # required
 field: value
@@ -36,21 +36,15 @@ CARD: <card_name>  # sentinel, composable (0..N)
 Write <card_name> body here.
 ```
 
-When a `body.description` is set, the body marker line expands to
-`<tag> body — <description>` (em dash separator). When `body.enabled` is
-false the marker is omitted entirely.
+When `body.example` is set, its text replaces the body marker entirely.
+When `body.enabled` is false the marker is omitted entirely.
 
 ## Annotation grammar
-
-The grammar has two slots, used for two purposes:
 
 | Slot | Carries |
 |---|---|
 | **Leading `# …` lines** above a field | Human prose: description, `required`, `enum: a \| b \| c`, `example: <value>` |
 | **Inline `# …`** at end of a value line | Structural type/constraint info: `# integer`, `# YYYY-MM-DD`, `# markdown`, `# sentinel`, `# sentinel, composable (0..N)` |
-
-The split keeps human descriptions out of structural noise and lets a
-consumer parse type info by line position alone.
 
 ### Leading comments — order
 
@@ -67,9 +61,9 @@ canonical placeholder.
 
 ### Inline annotations
 
-- `# number`, `# integer`, `# boolean`, `# markdown`, `# YYYY-MM-DD`,
-  `# ISO 8601` — emitted only for non-obvious types. `string` and `array`
-  are self-evident from the YAML value.
+- `# number`, `# integer`, `# boolean`, `# markdown`, `# object`,
+  `# YYYY-MM-DD`, `# ISO 8601` — emitted only for non-obvious types.
+  `string` and `array` are self-evident from the YAML value.
 - `# sentinel` on the `QUILL:` line — copy verbatim; the value binds the
   document to a specific quill@version.
 - `# sentinel, composable (0..N)` on each `CARD:` line — copy the sentinel
@@ -90,19 +84,20 @@ canonical placeholder.
 Optional fields' examples surface in the `# example:` comment, never as
 the value.
 
+`date` and `datetime` required fields with no example or default always
+render `""` (not `"<name>"`); the inline type annotation (`# YYYY-MM-DD` or
+`# ISO 8601`) carries the format hint.
+
 ### Commented-out optional fields
 
-An optional field with no `default` and no `enum` has nothing concrete to
-offer. Its value line is prefixed with `# ` so the author can uncomment what
-they need and ignore the rest:
+An optional field with no `default` and no `enum` is commented out so the
+author can uncomment what they need:
 
 ```
 # field_name: ""
 ```
 
-The leading description and `# example:` comments are still emitted unchanged
-above it. Fields with a `default` or `enum` stay active — they carry a
-meaningful value the author should be aware of.
+The leading description and `# example:` comments are still emitted above it.
 
 ### Multi-element example arrays
 
@@ -126,16 +121,13 @@ A field of `type: array` whose `items` is a typed object (`type: object`
 - Otherwise one synthetic row is emitted, with each property carrying its
   own description / `# required` / `# enum:` / type annotation.
 
-The synthetic row teaches the per-item shape without requiring the author
-to provide an example.
-
 ## UI metadata honored
 
 Most `ui:` keys are stripped, but two structural hints survive:
 
-- `ui.group` — produces `# === <Group> ===` banners between sections.
-  Ungrouped fields lead (no banner); named groups follow in
-  first-appearance order.
+- `ui.group` — produces `# ==== GROUPNAME ====` banners between sections.
+  Group names are uppercased. Ungrouped fields lead (no banner); named
+  groups follow in first-appearance order.
 - `ui.order` — controls field ordering within a group.
 
 `ui.compact`, `ui.multiline`, `ui.title` are presentation-only and dropped.
@@ -144,12 +136,15 @@ Most `ui:` keys are stripped, but two structural hints survive:
 
 - `Write main body here.` after the main fence
 - `Write <card_name> body here.` after each card fence
-- When `body.description` is set, the marker becomes
-  `Write <tag> body here. <description>`. The label names the region;
-  the description tells the author what to write.
+- When `body.example` is set, its text replaces the marker verbatim.
 
 `body.enabled: false` suppresses the marker entirely for body-less cards
 (e.g., a `skills` card whose data is purely structured).
+
+A `body.example` whose text contains a line that would parse as a metadata
+fence (`---`, with up to three leading spaces) is rejected at `Quill.yaml`
+parse time (`quill::body_example_contains_fence`) to prevent corrupting
+the blueprint's document structure.
 
 ## Bindings surface
 
@@ -170,7 +165,3 @@ fixture.
 |---|---|
 | Validators, form builders, machine consumers | [SCHEMAS.md](SCHEMAS.md) — `schema()` |
 | LLM/MCP authoring, prompt-time reference document | this doc — `blueprint()` |
-
-The two share the same source (`QuillConfig`); they differ only in
-projection. A consumer that needs both can fetch both — they are
-constant-time and immutable.
