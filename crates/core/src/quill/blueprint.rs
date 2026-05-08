@@ -286,8 +286,8 @@ fn write_typed_object_field(
 }
 
 /// Build the inline annotation body (without the leading `# `).
-/// `force_array_object` is `true` for typed-table outer fields, so the format
-/// slot is always `<object>` regardless of `field.items`.
+/// `force_array_object` is `true` for typed-table outer fields, which always
+/// renders as `array<object>`; plain arrays render as `array<string>`.
 fn inline_annotation(field: &FieldSchema, force_array_object: bool) -> String {
     let role = if field.required { "required" } else { "optional" };
     let type_expr = type_expression(field, force_array_object);
@@ -308,29 +308,9 @@ fn type_expression(field: &FieldSchema, force_array_object: bool) -> String {
         FieldType::Date => "date<YYYY-MM-DD>".into(),
         FieldType::DateTime => "datetime<ISO 8601>".into(),
         FieldType::Array => {
-            let item = if force_array_object {
-                "object"
-            } else {
-                array_item_label(field)
-            };
+            let item = if force_array_object { "object" } else { "string" };
             format!("array<{}>", item)
         }
-    }
-}
-
-fn array_item_label(field: &FieldSchema) -> &'static str {
-    match field.items.as_deref().map(|i| &i.r#type) {
-        Some(FieldType::String) => "string",
-        Some(FieldType::Number) => "number",
-        Some(FieldType::Integer) => "integer",
-        Some(FieldType::Boolean) => "boolean",
-        Some(FieldType::Object) => "object",
-        Some(FieldType::Markdown) => "markdown",
-        Some(FieldType::Date) => "date",
-        Some(FieldType::DateTime) => "datetime",
-        // Nested arrays and missing items default to string — the most
-        // common case in existing fixtures and the safest fallback.
-        Some(FieldType::Array) | None => "string",
     }
 }
 

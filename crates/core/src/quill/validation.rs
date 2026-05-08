@@ -203,14 +203,6 @@ pub(crate) fn validate_field(
                             }
                         }
                     }
-                } else if let Some(item_schema) = &field.items {
-                    for (idx, item) in items.iter().enumerate() {
-                        errors.extend(validate_field(
-                            item_schema,
-                            &QuillValue::from_json(item.clone()),
-                            &index_path(path, idx),
-                        ));
-                    }
                 }
                 true
             }
@@ -511,30 +503,6 @@ main:
         let config = config_with("    body:\n      type: markdown", "");
         let doc = doc_from_fm(&[("body", json!("# Heading\n\nBody text"))]);
         assert!(validate_typed_document(&config, &doc).is_ok());
-    }
-
-    #[test]
-    fn validates_array_of_strings() {
-        let config = config_with(
-            "    tags:\n      type: array\n      items:\n        type: string",
-            "",
-        );
-        let doc = doc_from_fm(&[("tags", json!(["a", "b"]))]);
-        assert!(validate_typed_document(&config, &doc).is_ok());
-    }
-
-    #[test]
-    fn rejects_invalid_array_element_type() {
-        let config = config_with(
-            "    tags:\n      type: array\n      items:\n        type: string",
-            "",
-        );
-        let doc = doc_from_fm(&[("tags", json!(["a", 2]))]);
-        let errors = validate_typed_document(&config, &doc).unwrap_err();
-        assert!(has_error(&errors, |e| matches!(
-            e,
-            ValidationError::TypeMismatch { path, .. } if path == "tags[1]"
-        )));
     }
 
     #[test]

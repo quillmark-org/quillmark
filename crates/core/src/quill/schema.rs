@@ -68,8 +68,6 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
                             "properties": prop_schemas
                         }),
                     );
-                } else if let Some(items) = &field.items {
-                    schema.insert("items".to_string(), field_to_schema(items));
                 }
             }
             FieldType::Object => {

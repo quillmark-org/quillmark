@@ -237,18 +237,6 @@ impl QuillConfig {
                         }
                     }
                     Ok(QuillValue::from_json(serde_json::Value::Array(out)))
-                } else if let Some(items_schema) = &field_schema.items {
-                    let mut out = Vec::with_capacity(arr.len());
-                    for (idx, elem) in arr.iter().enumerate() {
-                        let item_path = format!("{path}[{idx}]");
-                        let coerced = Self::coerce_value_strict(
-                            &QuillValue::from_json(elem.clone()),
-                            items_schema,
-                            &item_path,
-                        )?;
-                        out.push(coerced.into_json());
-                    }
-                    Ok(QuillValue::from_json(serde_json::Value::Array(out)))
                 } else {
                     Ok(QuillValue::from_json(serde_json::Value::Array(arr)))
                 }
@@ -476,9 +464,6 @@ impl QuillConfig {
         }
 
         if schema.r#type == FieldType::Array {
-            if let Some(items_schema) = &schema.items {
-                return Self::has_disallowed_nested_object(items_schema, true);
-            }
             if let Some(props) = &schema.properties {
                 for prop_schema in props.values() {
                     if Self::has_disallowed_nested_object(prop_schema, false) {
@@ -540,8 +525,8 @@ impl QuillConfig {
         }
     }
 
-    /// Recursively validate field-level blueprint constraints across the field,
-    /// its array items, and any nested object properties.
+    /// Recursively validate field-level blueprint constraints across the field
+    /// and any nested object properties.
     fn validate_field_blueprint_constraints(
         schema: &FieldSchema,
         owner_label: &str,
@@ -549,10 +534,6 @@ impl QuillConfig {
     ) {
         Self::validate_description_singleline(schema.description.as_deref(), owner_label, errors);
         Self::validate_enum_literals(schema, owner_label, errors);
-        if let Some(items) = &schema.items {
-            let nested = format!("{} (items)", owner_label);
-            Self::validate_field_blueprint_constraints(items, &nested, errors);
-        }
         if let Some(props) = &schema.properties {
             for (name, prop) in props {
                 let nested = format!("{}.{}", owner_label, name);
@@ -650,7 +631,7 @@ impl QuillConfig {
                                 Severity::Error,
                                 format!(
                                     "Field '{}' uses nested type: object, which is not supported. \
-                                    Only object schemas nested under array.items are supported.",
+                                    Use type: array with a properties map for a list of objects.",
                                     field_name
                                 ),
                             )

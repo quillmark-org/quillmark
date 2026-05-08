@@ -218,9 +218,6 @@ pub struct FieldSchema {
     /// Properties for dict/object types (nested field schemas)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub properties: Option<BTreeMap<String, Box<FieldSchema>>>,
-    /// Item schema for array types
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub items: Option<Box<FieldSchema>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -237,7 +234,6 @@ struct FieldSchemaDef {
     pub enum_values: Option<Vec<String>>,
     // Nested schema support
     pub properties: Option<serde_json::Map<String, serde_json::Value>>,
-    pub items: Option<serde_json::Value>,
 }
 
 impl FieldSchema {
@@ -253,7 +249,6 @@ impl FieldSchema {
             required: false,
             enum_values: None,
             properties: None,
-            items: None,
         }
     }
 
@@ -282,14 +277,6 @@ impl FieldSchema {
                     );
                 }
                 Some(p)
-            } else {
-                None
-            },
-            items: if let Some(item_def) = def.items {
-                Some(Box::new(FieldSchema::from_quill_value(
-                    "items".to_string(),
-                    &QuillValue::from_json(item_def),
-                )?))
             } else {
                 None
             },
