@@ -289,7 +289,11 @@ fn write_typed_object_field(
 /// `force_array_object` is `true` for typed-table outer fields, which always
 /// renders as `array<object>`; plain arrays render as `array<string>`.
 fn inline_annotation(field: &FieldSchema, force_array_object: bool) -> String {
-    let role = if field.required { "required" } else { "optional" };
+    let role = if field.required {
+        "required"
+    } else {
+        "optional"
+    };
     let type_expr = type_expression(field, force_array_object);
     format!("{}; {}", type_expr, role)
 }
@@ -308,7 +312,11 @@ fn type_expression(field: &FieldSchema, force_array_object: bool) -> String {
         FieldType::Date => "date<YYYY-MM-DD>".into(),
         FieldType::DateTime => "datetime<ISO 8601>".into(),
         FieldType::Array => {
-            let item = if force_array_object { "object" } else { "string" };
+            let item = if force_array_object {
+                "object"
+            } else {
+                "string"
+            };
             format!("array<{}>", item)
         }
     }
@@ -815,7 +823,9 @@ main:
         org: { type: string, required: true }
 "#)
         .blueprint();
-        assert!(t.contains("refs:  # array<object>; optional\n  -\n    org: \"\"  # string; required\n"));
+        assert!(t.contains(
+            "refs:  # array<object>; optional\n  -\n    org: \"\"  # string; required\n"
+        ));
     }
 
     #[test]
@@ -870,7 +880,10 @@ main:
 "#)
         .blueprint();
         assert!(t.contains("address:  # object; optional\n"));
-        assert!(t.contains("  street: 5000 Forbes Ave\n") || t.contains("  street: \"5000 Forbes Ave\"\n"));
+        assert!(
+            t.contains("  street: 5000 Forbes Ave\n")
+                || t.contains("  street: \"5000 Forbes Ave\"\n")
+        );
         assert!(t.contains("  city: Pittsburgh\n"));
         // No per-property annotations when concrete values are present.
         assert!(!t.contains("# string; required"));

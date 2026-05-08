@@ -504,7 +504,11 @@ impl QuillConfig {
     /// Reject `>`, `;`, `|` in enum literals. These characters are reserved by
     /// the blueprint inline annotation grammar (`<format>` close, role
     /// separator, enum value separator) and have no escape syntax.
-    fn validate_enum_literals(field: &FieldSchema, owner_label: &str, errors: &mut Vec<Diagnostic>) {
+    fn validate_enum_literals(
+        field: &FieldSchema,
+        owner_label: &str,
+        errors: &mut Vec<Diagnostic>,
+    ) {
         if let Some(values) = &field.enum_values {
             for v in values {
                 if v.contains('>') || v.contains(';') || v.contains('|') {

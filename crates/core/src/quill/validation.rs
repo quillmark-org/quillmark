@@ -194,11 +194,8 @@ pub(crate) fn validate_field(
                                     &QuillValue::from_json(v.clone()),
                                     &prop_path,
                                 )),
-                                None if prop_schema.required => {
-                                    errors.push(ValidationError::MissingRequired {
-                                        path: prop_path,
-                                    })
-                                }
+                                None if prop_schema.required => errors
+                                    .push(ValidationError::MissingRequired { path: prop_path }),
                                 None => {}
                             }
                         }
