@@ -68,9 +68,11 @@ That's it. There is no leading `# required`, `# enum:`, `# default:`, or
 Form: **`# <type>[<format>]; <role>[, <extra>...]`**
 
 - **Type slot** (mandatory, first): one of
-  `string`, `integer`, `number`, `boolean`, `array`, `object`,
+  `string`, `integer`, `number`, `boolean`, `array`,
   `markdown`, `date`, `datetime`, `enum`, `sentinel`.
   Every field is labeled — there is no "self-evident" exemption.
+  (`object` appears only in the format slot of typed-table fields as
+  `array<object>`; standalone `object` fields are not supported.)
 - **Format slot** (optional, in `<…>` angle brackets): refines the type
   when the refinement carries information beyond the type name itself.
   - `date<YYYY-MM-DD>`
@@ -110,7 +112,7 @@ Role drives "must fill"; the value rendering follows a single cascade:
 |---|---|
 | Has `default` | default |
 | Has `enum` only | first enum value |
-| Otherwise | type-empty (`""`, `0`, `false`, `[]`, `{}`, or block scalar for markdown — see below) |
+| Otherwise | type-empty (`""`, `0`, `false`, `[]`, or block scalar for markdown — see below) |
 
 Examples never become the rendered value, regardless of role. Examples
 are inherently illustrative and unsafe to ship; they always surface in
@@ -230,7 +232,7 @@ address: []  # array<string>; optional
 # e.g. www.ece.cmu.edu
 url: ""  # string; optional
 # The date to appear on the letter.
-date: ""  # date<YYYY-MM-DD>; required
+date: ""  # date<YYYY-MM-DD>; optional
 ---
 
 Write main body here.
