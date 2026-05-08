@@ -1675,13 +1675,13 @@ main:
 }
 
 #[test]
-fn test_standalone_object_field_rejected_with_error() {
+fn test_typed_object_field_accepted() {
     let yaml_content = r#"
 quill:
   name: obj_test
   version: "1.0"
   backend: typst
-  description: Test standalone object rejection
+  description: Test typed dictionary acceptance
 
 main:
   fields:
@@ -1690,10 +1690,36 @@ main:
       description: A normal field
     address:
       type: object
-      description: Standalone object — should be rejected
+      description: Typed dictionary with properties
       properties:
         street:
           type: string
+          required: true
+        city:
+          type: string
+          required: true
+"#;
+
+    let (config, warnings) = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap();
+    assert!(warnings.is_empty());
+    let field = &config.main.fields["address"];
+    assert_eq!(field.r#type, FieldType::Object);
+    assert!(field.properties.as_ref().unwrap().contains_key("street"));
+}
+
+#[test]
+fn test_untyped_object_field_rejected() {
+    let yaml_content = r#"
+quill:
+  name: obj_test
+  version: "1.0"
+  backend: typst
+  description: Test freeform object rejection
+
+main:
+  fields:
+    metadata:
+      type: object
 "#;
 
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
@@ -1702,9 +1728,9 @@ main:
     assert_eq!(err[0].severity, Severity::Error);
     assert_eq!(
         err[0].code.as_deref(),
-        Some("quill::standalone_object_not_supported")
+        Some("quill::object_missing_properties")
     );
-    assert!(err[0].message.contains("address"));
+    assert!(err[0].message.contains("metadata"));
 }
 
 #[test]

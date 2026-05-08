@@ -574,24 +574,43 @@ impl QuillConfig {
             let quill_value = QuillValue::from_json(field_value.clone());
             match FieldSchema::from_quill_value(field_name.clone(), &quill_value) {
                 Ok(mut schema) => {
-                    // Reject standalone object/dict fields — object is only valid inside array items.
+                    // Typed dictionaries (type: object with properties) are supported.
+                    // Freeform objects (no properties) and objects nested inside
+                    // typed-dictionary properties are not.
                     if schema.r#type == FieldType::Object {
-                        errors.push(
-                            Diagnostic::new(
-                                Severity::Error,
-                                format!(
-                                    "Field '{}' uses standalone type: object, which is not supported. \
-                                    Use separate fields with ui.group instead, or use \
-                                    type: array with items: {{type: object, properties: {{...}}}}.",
-                                    field_name
-                                ),
-                            )
-                            .with_code("quill::standalone_object_not_supported".to_string()),
-                        );
-                        continue;
-                    }
-
-                    if Self::has_disallowed_nested_object(&schema, false) {
+                        if schema.properties.is_none() {
+                            errors.push(
+                                Diagnostic::new(
+                                    Severity::Error,
+                                    format!(
+                                        "Field '{}' has type: object but no properties defined. \
+                                        Declare a properties map, or use type: array with \
+                                        items: {{type: object, properties: {{...}}}} for a list of objects.",
+                                        field_name
+                                    ),
+                                )
+                                .with_code("quill::object_missing_properties".to_string()),
+                            );
+                            continue;
+                        }
+                        // Properties of a typed dictionary may not themselves be objects.
+                        if Self::has_disallowed_nested_object(&schema, true) {
+                            errors.push(
+                                Diagnostic::new(
+                                    Severity::Error,
+                                    format!(
+                                        "Field '{}' contains a nested type: object property, \
+                                        which is not supported. Properties of a typed dictionary \
+                                        may not themselves be objects.",
+                                        field_name
+                                    ),
+                                )
+                                .with_code("quill::nested_object_not_supported".to_string()),
+                            );
+                            continue;
+                        }
+                        // Typed dictionary — fall through to normal processing.
+                    } else if Self::has_disallowed_nested_object(&schema, false) {
                         errors.push(
                             Diagnostic::new(
                                 Severity::Error,

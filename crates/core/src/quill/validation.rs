@@ -540,11 +540,10 @@ main:
         }));
     }
 
-    // NOTE: top-level `type: object` fields are explicitly unsupported by
-    // the config parser (see `config::parse_fields_with_order`). Object
-    // schemas only appear inside `array.items`; coverage for that shape lives
-    // in `validates_array_of_objects` and
-    // `reports_missing_required_field_in_array_object`.
+    // NOTE: top-level typed-dictionary fields (`type: object` with `properties`)
+    // are supported. Coverage lives in `validates_array_of_objects` (typed
+    // tables) and the blueprint tests. Freeform objects without properties are
+    // rejected at config parse time.
 
     #[test]
     fn accumulates_multiple_missing_required_errors() {

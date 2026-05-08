@@ -129,6 +129,14 @@ fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
         }
     }
 
+    // Typed dictionary: standalone object with defined properties.
+    if matches!(field.r#type, FieldType::Object) {
+        if let Some(props) = &field.properties {
+            write_typed_object_field(out, field, props, indent);
+            return;
+        }
+    }
+
     write_description(out, field, &pad);
     write_eg_comment(out, field, &pad);
 
@@ -231,6 +239,51 @@ fn write_typed_table_field(
             out.push_str(&format!("{}-\n", dash_pad));
             for prop in sort_props(item_props) {
                 write_field(out, prop, indent + 2);
+            }
+        }
+    }
+}
+
+/// Emit a typed-dictionary field: description + optional `# e.g.` line, then the
+/// field key with its `object; <role>` inline annotation, then either a concrete
+/// mapping from example/default or per-property annotations. When concrete values
+/// are rendered, the `# e.g.` comment is suppressed (the mapping itself carries
+/// the example shape).
+fn write_typed_object_field(
+    out: &mut String,
+    field: &FieldSchema,
+    props: &BTreeMap<String, Box<FieldSchema>>,
+    indent: usize,
+) {
+    let pad = "  ".repeat(indent);
+
+    let concrete = field
+        .example
+        .as_ref()
+        .or(field.default.as_ref())
+        .and_then(|v| match v.as_json() {
+            serde_json::Value::Object(map) if !map.is_empty() => Some(map.clone()),
+            _ => None,
+        });
+
+    write_description(out, field, &pad);
+    if concrete.is_none() {
+        write_eg_comment(out, field, &pad);
+    }
+
+    let inline = inline_annotation(field, false);
+    out.push_str(&format!("{}{}:  # {}\n", pad, field.name, inline));
+
+    match concrete {
+        Some(map) => {
+            let inner_pad = format!("{}  ", pad);
+            for (k, v) in &map {
+                out.push_str(&format!("{}{}: {}\n", inner_pad, k, render_scalar(v)));
+            }
+        }
+        None => {
+            for prop in sort_props(props) {
+                write_field(out, prop, indent + 1);
             }
         }
     }
@@ -795,6 +848,84 @@ main:
 "#)
         .blueprint();
         assert!(t.contains("refs:  # array<object>; optional\n  -\n    org: \"\"  # string; required\n"));
+    }
+
+    #[test]
+    fn typed_dict_emits_per_property_annotations() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    address:
+      type: object
+      description: Mailing address.
+      properties:
+        street: { type: string, required: true, description: Street line. }
+        city:   { type: string, required: true }
+        zip:    { type: string }
+"#)
+        .blueprint();
+        assert!(t.contains("# Mailing address.\naddress:  # object; optional\n"));
+        assert!(t.contains("  # Street line.\n  street: \"\"  # string; required\n"));
+        assert!(t.contains("  city: \"\"  # string; required\n"));
+        assert!(t.contains("  zip: \"\"  # string; optional\n"));
+    }
+
+    #[test]
+    fn typed_dict_required_carries_role() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    address:
+      type: object
+      required: true
+      properties:
+        street: { type: string, required: true }
+"#)
+        .blueprint();
+        assert!(t.contains("address:  # object; required\n"));
+    }
+
+    #[test]
+    fn typed_dict_with_default_renders_block_mapping_no_annotations() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    address:
+      type: object
+      default: { street: "5000 Forbes Ave", city: Pittsburgh }
+      properties:
+        street: { type: string, required: true }
+        city:   { type: string, required: true }
+"#)
+        .blueprint();
+        assert!(t.contains("address:  # object; optional\n"));
+        assert!(t.contains("  street: 5000 Forbes Ave\n") || t.contains("  street: \"5000 Forbes Ave\"\n"));
+        assert!(t.contains("  city: Pittsburgh\n"));
+        // No per-property annotations when concrete values are present.
+        assert!(!t.contains("# string; required"));
+    }
+
+    #[test]
+    fn typed_dict_with_example_suppresses_eg_line() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    address:
+      type: object
+      example: { street: "1 Infinite Loop", city: Cupertino }
+      properties:
+        street: { type: string, required: true }
+        city:   { type: string }
+"#)
+        .blueprint();
+        assert!(t.contains("address:  # object; optional\n"));
+        // eg comment suppressed when concrete values are rendered.
+        assert!(!t.contains("# e.g."));
+        assert!(t.contains("  city: Cupertino\n"));
     }
 
     const LETTER_QUILL: &str = r#"

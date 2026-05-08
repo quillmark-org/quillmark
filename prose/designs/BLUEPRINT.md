@@ -68,11 +68,12 @@ That's it. There is no leading `# required`, `# enum:`, `# default:`, or
 Form: **`# <type>[<format>]; <role>[, <extra>...]`**
 
 - **Type slot** (mandatory, first): one of
-  `string`, `integer`, `number`, `boolean`, `array`,
+  `string`, `integer`, `number`, `boolean`, `array`, `object`,
   `markdown`, `date`, `datetime`, `enum`, `sentinel`.
   Every field is labeled — there is no "self-evident" exemption.
-  (`object` appears only in the format slot of typed-table fields as
-  `array<object>`; standalone `object` fields are not supported.)
+  (`object` requires a `properties` map; freeform untyped objects are not
+  supported. `object` also appears in the format slot of typed-table fields
+  as `array<object>`.)
 - **Format slot** (optional, in `<…>` angle brackets): refines the type
   when the refinement carries information beyond the type name itself.
   - `date<YYYY-MM-DD>`
@@ -186,6 +187,44 @@ A field of `type: array` whose `items` is a typed object (`type: object`
   its own description, inline type/format, and role.
 
 The outer field's inline annotation is `# array<object>; <role>`.
+
+## Typed dictionaries
+
+A field of `type: object` with a `properties` map renders as an indented
+block mapping with per-property annotations — no outer value on the key
+line:
+
+- An `example:` or non-empty `default:` renders as a concrete block
+  mapping (property values only, no annotations).
+- Otherwise each property is emitted with its own description, inline
+  type/format, and role — the same annotation rules as any other field.
+
+The outer field's inline annotation is `# object; <role>`.
+
+```
+# The sender's mailing address.
+address:  # object; optional
+  # Street address line.
+  street: ""  # string; required
+  # City name.
+  city: ""  # string; required
+  # ZIP or postal code.
+  zip: ""  # string; optional
+```
+
+With a default:
+
+```
+address:  # object; optional
+  street: 5000 Forbes Avenue
+  city: Pittsburgh
+  zip: "15213"
+```
+
+Properties of a typed dictionary may not themselves be objects (nesting
+beyond one level is not supported). Freeform `type: object` fields without
+a `properties` map are rejected at `Quill.yaml` parse time
+(`quill::object_missing_properties`).
 
 ## UI metadata honored
 
