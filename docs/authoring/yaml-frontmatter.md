@@ -88,6 +88,18 @@ author:
 > [!WARNING]
 > YAML objects and nested structures are syntactically valid in frontmatter. However, Quill's schema system does not yet provide a general-purpose deep-nesting field type. As a current product-scoping decision, `type: object` is only supported for structured rows inside `array.items` (not as standalone top-level fields). See [Quill.yaml Reference: Field Types](../format-designer/quill-yaml-reference.md#field-types).
 
+## Placeholder Fields (`!fill`)
+
+A top-level field tagged `!fill` marks the value as a placeholder awaiting input. The tag round-trips through parsing and emit, so editors and bindings can detect and update placeholders without losing them.
+
+```yaml
+recipient: !fill
+department: !fill Department Here
+tags: !fill []
+```
+
+`!fill` is valid on scalars (string, number, bool, null) and sequences. It is rejected on mappings. Other custom YAML tags (`!include`, `!env`, …) are dropped with a warning.
+
 ## Reserved Field Names
 
 `BODY` and `CARDS` are reserved and cannot be used in frontmatter — the parser rejects documents that include them. `BODY` holds the document's Markdown body; `CARDS` holds the array of card blocks.
