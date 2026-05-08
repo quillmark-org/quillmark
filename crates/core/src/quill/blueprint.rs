@@ -5,20 +5,22 @@
 //! constraints, examples — so a consumer can write a fresh document from it.
 //!
 //! Annotation grammar:
-//! - **Leading `# …` comment lines** carry human prose: description,
-//!   `required`, `enum: a | b | c`, `example: <value>`.
-//! - **Inline `# …` annotations** carry structural type/constraint info:
-//!   non-obvious type hints (`# integer`, `# YYYY-MM-DD`, `# markdown`) on
-//!   ordinary fields, and `# sentinel` / `# sentinel, composable (0..N)` on
-//!   the `QUILL:` and `CARD:` lines respectively.
+//! - **Leading `# …` lines** carry prose: `# <description>` (single line,
+//!   whitespace-collapsed) and `# e.g. <value>` (whenever an `example:` is
+//!   configured, regardless of role or type).
+//! - **Inline `# …` annotation** on the value line is structural:
+//!   `# <type>[<format>]; <role>[, <extras>...]`. Type is mandatory on every
+//!   field. Format slot uses angle brackets (`array<string>`,
+//!   `date<YYYY-MM-DD>`, `enum<a | b | c>`). Role is `required`, `optional`,
+//!   or `composable (0..N)` for cards. The QUILL sentinel adds a `verbatim`
+//!   extra signaling that the value must not be modified.
 //! - **Body regions** are signalled by `Write main body here.` after the main
 //!   fence and `Write <card name> body here.` after each card fence. When
 //!   `body.example` is set, the example text is embedded verbatim instead.
 //!   Absent when `body.enabled` is false.
 //!
-//! Most UI metadata is stripped, but two semantic-structure hints are honored:
-//! `ui.group` produces `# ==== SECTION ====` banners and `ui.order` controls
-//! field ordering within a group.
+//! `ui.order` controls field ordering. `ui.group` clusters fields together
+//! within the document but emits no banner.
 
 use std::collections::BTreeMap;
 
@@ -42,7 +44,7 @@ impl QuillConfig {
             &mut out,
             &self.main,
             &format!(
-                "QUILL: {}@{}  # sentinel; required",
+                "QUILL: {}@{}  # sentinel; required, verbatim",
                 self.name, self.version
             ),
             main_desc,
@@ -53,7 +55,7 @@ impl QuillConfig {
             out.push_str(&format!("\n{}\n", text));
         }
         for card in &self.card_types {
-            let sentinel = format!("CARD: {}  # sentinel, composable (0..N)", card.name);
+            let sentinel = format!("CARD: {}  # sentinel; composable (0..N)", card.name);
             out.push('\n');
             write_card_frontmatter(&mut out, card, &sentinel, card.description.as_deref());
             if card.body_enabled() {
@@ -75,16 +77,12 @@ fn write_card_frontmatter(
 ) {
     out.push_str("---\n");
     if let Some(desc) = description {
-        for line in desc.lines() {
-            out.push_str(&format!("# {}\n", line));
-        }
+        let clean = desc.split_whitespace().collect::<Vec<_>>().join(" ");
+        out.push_str(&format!("# {}\n", clean));
     }
     out.push_str(sentinel_line);
     out.push('\n');
-    for (group, fields) in group_fields(card.fields.values()) {
-        if let Some(name) = group {
-            out.push_str(&format!("# ==== {} ====\n", name.to_uppercase()));
-        }
+    for (_, fields) in group_fields(card.fields.values()) {
         for field in fields {
             write_field(out, field, 0);
         }
@@ -92,9 +90,9 @@ fn write_card_frontmatter(
     out.push_str("---\n");
 }
 
-/// Partition fields by `ui.group`, preserving first-appearance order of groups
-/// and sorting fields within each group by `ui.order`. Ungrouped fields form
-/// the leading section (no banner).
+/// Cluster fields by `ui.group` (preserving first-appearance order; ungrouped
+/// fields lead) and sort within each group by `ui.order`. The grouping is
+/// purely positional now — no banner is emitted.
 fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
     fields: I,
 ) -> Vec<(Option<String>, Vec<&'a FieldSchema>)> {
@@ -112,7 +110,6 @@ fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
             None => groups.push((group, vec![field])),
         }
     }
-    // Ungrouped fields lead; named groups follow in first-appearance order.
     groups.sort_by_key(|(g, _)| g.is_some());
     groups
 }
@@ -120,8 +117,7 @@ fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
 fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
     let pad = "  ".repeat(indent);
 
-    // Typed table: array whose items are a typed object. Render with full
-    // per-property annotations; a synthetic row when no values are supplied.
+    // Typed table: array whose items are a typed object.
     if matches!(field.r#type, FieldType::Array) {
         if let Some(items) = &field.items {
             if matches!(items.r#type, FieldType::Object) {
@@ -133,41 +129,57 @@ fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
         }
     }
 
-    write_field_comments(out, field, &pad);
-    write_example_comment(out, field, &pad);
-    let comment = match type_annotation(&field.r#type) {
-        Some(hint) => format!("  # {}", hint),
-        None => String::new(),
-    };
+    write_description(out, field, &pad);
+    write_eg_comment(out, field, &pad);
+
+    // Markdown fields render as a YAML block scalar so multi-line content has
+    // a consistent shape regardless of whether a default is configured.
+    if matches!(field.r#type, FieldType::Markdown) {
+        let inline = inline_annotation(field, false);
+        write_markdown_block(out, field, &pad, &inline);
+        return;
+    }
+
+    let inline = format!("  # {}", inline_annotation(field, false));
     let value = field_value(field);
-    // Optional fields with no default and no enum have nothing concrete to
-    // offer; comment them out so the author can uncomment what they need.
-    let commented = !field.required && field.default.is_none() && field.enum_values.is_none();
-    write_value(out, &field.name, &value, &comment, &pad, commented);
+    write_value(out, &field.name, &value, &inline, &pad);
 }
 
-/// Description / `# required` / `# enum:` lines. Always safe to emit; carries
-/// the structural prose every field needs.
-fn write_field_comments(out: &mut String, field: &FieldSchema, pad: &str) {
+fn write_description(out: &mut String, field: &FieldSchema, pad: &str) {
     if let Some(desc) = &field.description {
         let clean = desc.split_whitespace().collect::<Vec<_>>().join(" ");
-        out.push_str(&format!("{}# {}\n", pad, clean));
-    }
-    if field.required {
-        out.push_str(&format!("{}# required\n", pad));
-    }
-    if let Some(vals) = &field.enum_values {
-        out.push_str(&format!("{}# enum: {}\n", pad, vals.join(" | ")));
+        if !clean.is_empty() {
+            out.push_str(&format!("{}# {}\n", pad, clean));
+        }
     }
 }
 
-/// `# example: …` line — emitted only for optional, non-enum fields. Required
-/// fields use the example as the value; enum fields use the first enum value;
-/// typed tables surface examples as actual rows.
-fn write_example_comment(out: &mut String, field: &FieldSchema, pad: &str) {
-    if !field.required && field.enum_values.is_none() {
-        if let Some(eg) = field.example.as_ref().map(eg_hint) {
-            out.push_str(&format!("{}# example: {}\n", pad, eg));
+/// `# e.g. <value>` — emitted whenever `example:` is configured on the field.
+/// Independent of role, type, or enum-ness; examples never become rendered
+/// values.
+fn write_eg_comment(out: &mut String, field: &FieldSchema, pad: &str) {
+    if let Some(eg) = field.example.as_ref().map(eg_hint) {
+        out.push_str(&format!("{}# e.g. {}\n", pad, eg));
+    }
+}
+
+fn write_markdown_block(out: &mut String, field: &FieldSchema, pad: &str, inline: &str) {
+    out.push_str(&format!("{}{}: |-  # {}\n", pad, field.name, inline));
+    let body_pad = format!("{}  ", pad);
+    // Render default content if present; otherwise leave one indented blank
+    // line so the block scalar has a body for the author to fill in.
+    let content = field.default.as_ref().and_then(|v| match v.as_json() {
+        serde_json::Value::String(s) => Some(s),
+        _ => None,
+    });
+    match content {
+        Some(text) if !text.is_empty() => {
+            for line in text.lines() {
+                out.push_str(&format!("{}{}\n", body_pad, line));
+            }
+        }
+        _ => {
+            out.push_str(&format!("{}\n", body_pad));
         }
     }
 }
@@ -182,9 +194,11 @@ fn sort_props(props: &BTreeMap<String, Box<FieldSchema>>) -> Vec<&FieldSchema> {
     v
 }
 
-/// Emit a typed-table field: description/required/enum comments, then the
-/// field key, then either example/default rows or one synthetic template row.
-/// `# example:` is intentionally suppressed — the rows below carry the example.
+/// Emit a typed-table field: description + optional `# e.g.` line, then the
+/// field key with its `array<object>; <role>` inline annotation, then either
+/// example/default rows or a synthetic template row. When concrete rows are
+/// rendered, the `# e.g.` comment is suppressed (the rows themselves carry
+/// the example shape).
 fn write_typed_table_field(
     out: &mut String,
     field: &FieldSchema,
@@ -192,8 +206,6 @@ fn write_typed_table_field(
     indent: usize,
 ) {
     let pad = "  ".repeat(indent);
-    write_field_comments(out, field, &pad);
-    out.push_str(&format!("{}{}:\n", pad, field.name));
 
     let concrete_rows = field
         .example
@@ -203,6 +215,14 @@ fn write_typed_table_field(
             serde_json::Value::Array(items) if !items.is_empty() => Some(items.clone()),
             _ => None,
         });
+
+    write_description(out, field, &pad);
+    if concrete_rows.is_none() {
+        write_eg_comment(out, field, &pad);
+    }
+
+    let inline = inline_annotation(field, true);
+    out.push_str(&format!("{}{}:  # {}\n", pad, field.name, inline));
 
     match concrete_rows {
         Some(items) => write_array_items(out, &items, &pad),
@@ -216,49 +236,81 @@ fn write_typed_table_field(
     }
 }
 
-/// The value to render for a field in the template.
-enum FieldValue {
-    Inline(String),                // goes on the same line as the key
-    Block(Vec<serde_json::Value>), // rendered as indented items below the key
+/// Build the inline annotation body (without the leading `# `).
+/// `force_array_object` is `true` for typed-table outer fields, so the format
+/// slot is always `<object>` regardless of `field.items`.
+fn inline_annotation(field: &FieldSchema, force_array_object: bool) -> String {
+    let role = if field.required { "required" } else { "optional" };
+    let type_expr = type_expression(field, force_array_object);
+    format!("{}; {}", type_expr, role)
 }
 
-fn field_value(field: &FieldSchema) -> FieldValue {
-    if field.required {
-        // Required: example > default > type-based placeholder.
-        if let Some(v) = field.example.as_ref().or(field.default.as_ref()) {
-            return json_to_value(v.as_json());
+fn type_expression(field: &FieldSchema, force_array_object: bool) -> String {
+    if let Some(values) = &field.enum_values {
+        return format!("enum<{}>", values.join(" | "));
+    }
+    match field.r#type {
+        FieldType::String => "string".into(),
+        FieldType::Number => "number".into(),
+        FieldType::Integer => "integer".into(),
+        FieldType::Boolean => "boolean".into(),
+        FieldType::Object => "object".into(),
+        FieldType::Markdown => "markdown".into(),
+        FieldType::Date => "date<YYYY-MM-DD>".into(),
+        FieldType::DateTime => "datetime<ISO 8601>".into(),
+        FieldType::Array => {
+            let item = if force_array_object {
+                "object"
+            } else {
+                array_item_label(field)
+            };
+            format!("array<{}>", item)
         }
-        placeholder(&field.r#type, Some(&field.name))
-    } else {
-        // Optional: default only (example goes to the `# example:` comment).
-        if let Some(v) = field.default.as_ref() {
-            return json_to_value(v.as_json());
-        }
-        // Enum with no default: first enum value is the canonical placeholder.
-        if let Some(first) = field.enum_values.as_ref().and_then(|v| v.first()) {
-            return FieldValue::Inline(first.clone());
-        }
-        placeholder(&field.r#type, None)
     }
 }
 
-/// Type-based placeholder for a field that has no usable example/default.
-/// `label` is `Some(field_name)` when the field is required (string/markdown/
-/// object then render as `"<field_name>"`); `None` for optional fields, which
-/// fall through to an empty value.
-fn placeholder(t: &FieldType, label: Option<&str>) -> FieldValue {
+fn array_item_label(field: &FieldSchema) -> &'static str {
+    match field.items.as_deref().map(|i| &i.r#type) {
+        Some(FieldType::String) => "string",
+        Some(FieldType::Number) => "number",
+        Some(FieldType::Integer) => "integer",
+        Some(FieldType::Boolean) => "boolean",
+        Some(FieldType::Object) => "object",
+        Some(FieldType::Markdown) => "markdown",
+        Some(FieldType::Date) => "date",
+        Some(FieldType::DateTime) => "datetime",
+        // Nested arrays and missing items default to string — the most
+        // common case in existing fixtures and the safest fallback.
+        Some(FieldType::Array) | None => "string",
+    }
+}
+
+/// The value to render for a field. Single cascade independent of role:
+/// default → first enum value → type-empty.
+enum FieldValue {
+    Inline(String),
+    Block(Vec<serde_json::Value>),
+}
+
+fn field_value(field: &FieldSchema) -> FieldValue {
+    if let Some(v) = field.default.as_ref() {
+        return json_to_value(v.as_json());
+    }
+    if let Some(first) = field.enum_values.as_ref().and_then(|v| v.first()) {
+        return FieldValue::Inline(first.clone());
+    }
+    type_empty(&field.r#type)
+}
+
+fn type_empty(t: &FieldType) -> FieldValue {
     match t {
         FieldType::Array => FieldValue::Inline("[]".into()),
         FieldType::Boolean => FieldValue::Inline("false".into()),
         FieldType::Number | FieldType::Integer => FieldValue::Inline("0".into()),
-        // Date/datetime use empty string; type annotation carries the format hint.
         FieldType::Date | FieldType::DateTime => FieldValue::Inline("\"\"".into()),
-        // String, markdown, object: angle-bracket placeholder when required;
-        // empty when optional.
-        _ => FieldValue::Inline(match label {
-            Some(name) => format!("\"<{}>\"", name),
-            None => "\"\"".into(),
-        }),
+        // String, markdown, object: empty string. Markdown is special-cased
+        // earlier in `write_field` and never reaches this code path.
+        _ => FieldValue::Inline("\"\"".into()),
     }
 }
 
@@ -271,21 +323,10 @@ fn json_to_value(val: &serde_json::Value) -> FieldValue {
     }
 }
 
-fn write_value(
-    out: &mut String,
-    key: &str,
-    val: &FieldValue,
-    comment: &str,
-    pad: &str,
-    commented: bool,
-) {
+fn write_value(out: &mut String, key: &str, val: &FieldValue, comment: &str, pad: &str) {
     match val {
         FieldValue::Inline(s) => {
-            if commented {
-                out.push_str(&format!("{}# {}: {}{}\n", pad, key, s, comment));
-            } else {
-                out.push_str(&format!("{}{}: {}{}\n", pad, key, s, comment));
-            }
+            out.push_str(&format!("{}{}: {}{}\n", pad, key, s, comment));
         }
         FieldValue::Block(items) => {
             out.push_str(&format!("{}{}:{}\n", pad, key, comment));
@@ -315,21 +356,6 @@ fn write_array_items(out: &mut String, items: &[serde_json::Value], pad: &str) {
             }
             _ => out.push_str(&format!("{}- {}\n", item_pad, render_scalar(item))),
         }
-    }
-}
-
-/// Inline type annotation for non-obvious types. `string` and `array` are
-/// self-evident from the YAML value; no annotation needed.
-fn type_annotation(t: &FieldType) -> Option<&'static str> {
-    match t {
-        FieldType::Number => Some("number"),
-        FieldType::Integer => Some("integer"),
-        FieldType::Boolean => Some("boolean"),
-        FieldType::Markdown => Some("markdown"),
-        FieldType::Object => Some("object"),
-        FieldType::Date => Some("YYYY-MM-DD"),
-        FieldType::DateTime => Some("ISO 8601"),
-        FieldType::String | FieldType::Array => None,
     }
 }
 
@@ -414,7 +440,7 @@ mod tests {
     }
 
     #[test]
-    fn required_string_without_example_uses_angle_bracket_placeholder() {
+    fn required_string_renders_empty_with_required_role() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -422,11 +448,12 @@ main:
     author: { type: string, required: true }
 "#)
         .blueprint();
-        assert!(t.contains("# required\nauthor: \"<author>\"\n"));
+        assert!(t.contains("author: \"\"  # string; required\n"));
     }
 
     #[test]
-    fn required_field_uses_example_over_default() {
+    fn required_field_with_example_does_not_use_example_as_value() {
+        // Examples never render as values — they always surface in `# e.g.`.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -434,11 +461,11 @@ main:
     status: { type: string, required: true, default: draft, example: final }
 "#)
         .blueprint();
-        assert!(t.contains("# required\nstatus: final\n"));
+        assert!(t.contains("# e.g. final\nstatus: draft  # string; required\n"));
     }
 
     #[test]
-    fn optional_field_uses_default_example_becomes_eg() {
+    fn optional_field_default_renders_as_value_with_eg_line() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -446,14 +473,11 @@ main:
     classification: { type: string, default: "", example: CONFIDENTIAL }
 "#)
         .blueprint();
-        assert!(t.contains("# example: CONFIDENTIAL\nclassification: \"\"\n"));
+        assert!(t.contains("# e.g. CONFIDENTIAL\nclassification: \"\"  # string; optional\n"));
     }
 
     #[test]
     fn optional_array_example_renders_as_flow_sequence_with_context_quoting() {
-        // Multi-element array examples render as YAML flow sequences so the
-        // full shape survives. Items containing flow indicators (`,`, `[`, `]`,
-        // `{`, `}`) get quoted; bare items don't.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -467,12 +491,12 @@ main:
 "#)
         .blueprint();
         assert!(t.contains(
-            "# example: [Mr. John Doe, 123 Main St, \"Anytown, USA\"]\n# recipient: []\n"
+            "# e.g. [Mr. John Doe, 123 Main St, \"Anytown, USA\"]\nrecipient: []  # array<string>; optional\n"
         ));
     }
 
     #[test]
-    fn enum_field_shows_values_and_no_eg() {
+    fn enum_field_uses_enum_format_slot_and_no_eg() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -480,12 +504,14 @@ main:
     format: { type: string, enum: [standard, informal], default: standard }
 "#)
         .blueprint();
-        assert!(t.contains("# enum: standard | informal\nformat: standard\n"));
-        assert!(!t.contains("example:"));
+        assert!(t.contains("format: standard  # enum<standard | informal>; optional\n"));
+        assert!(!t.contains("e.g."));
     }
 
     #[test]
-    fn required_array_uses_example_as_items() {
+    fn required_array_with_example_renders_eg_only_not_value() {
+        // Plain (non-typed-table) required arrays render type-empty; the
+        // example surfaces in the leading `# e.g.` line.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -498,11 +524,13 @@ main:
         - City ST 12345
 "#)
         .blueprint();
-        assert!(t.contains("# required\nmemo_from:\n  - ORG/SYMBOL\n  - City ST 12345\n"));
+        assert!(t.contains(
+            "# e.g. [ORG/SYMBOL, City ST 12345]\nmemo_from: []  # array<string>; required\n"
+        ));
     }
 
     #[test]
-    fn description_emitted_as_preceding_comment() {
+    fn description_emitted_as_single_line() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -513,29 +541,72 @@ main:
       description: Be brief and clear.
 "#)
         .blueprint();
-        assert!(t.contains("# Be brief and clear.\n# required\nsubject: \"<subject>\"\n"));
+        assert!(t.contains("# Be brief and clear.\nsubject: \"\"  # string; required\n"));
     }
 
     #[test]
-    fn non_obvious_types_get_annotation() {
+    fn every_field_carries_inline_type_and_role() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
+    title: { type: string }
     size: { type: number, default: 11 }
     flag: { type: boolean, default: false }
-    body: { type: markdown }
     issued: { type: date }
+    published: { type: datetime }
+    refs: { type: array }
 "#)
         .blueprint();
-        assert!(t.contains("size: 11  # number"));
-        assert!(t.contains("flag: false  # boolean"));
-        assert!(t.contains("# body: \"\"  # markdown"));
-        assert!(t.contains("# issued: \"\"  # YYYY-MM-DD"));
+        assert!(t.contains("title: \"\"  # string; optional\n"));
+        assert!(t.contains("size: 11  # number; optional\n"));
+        assert!(t.contains("flag: false  # boolean; optional\n"));
+        assert!(t.contains("issued: \"\"  # date<YYYY-MM-DD>; optional\n"));
+        assert!(t.contains("published: \"\"  # datetime<ISO 8601>; optional\n"));
+        assert!(t.contains("refs: []  # array<string>; optional\n"));
     }
 
     #[test]
-    fn card_description_emitted_after_sentinel() {
+    fn markdown_field_renders_as_block_scalar() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    bio: { type: markdown }
+"#)
+        .blueprint();
+        assert!(t.contains("bio: |-  # markdown; optional\n  \n"));
+    }
+
+    #[test]
+    fn markdown_field_with_default_fills_block() {
+        let t = cfg(r###"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    bio:
+      type: markdown
+      default: "## About me\n\nHello."
+"###)
+        .blueprint();
+        assert!(t.contains("bio: |-  # markdown; optional\n  ## About me\n  \n  Hello.\n"));
+    }
+
+    #[test]
+    fn quill_sentinel_line_is_required_verbatim() {
+        let t = cfg(r#"
+quill: { name: taro, version: 0.1.0, backend: typst, description: x }
+main:
+  fields:
+    flavor: { type: string, default: taro }
+"#)
+        .blueprint();
+        assert!(t.starts_with("---\n# x\nQUILL: taro@0.1.0  # sentinel; required, verbatim\n"));
+        assert!(t.contains("\nWrite main body here.\n"));
+    }
+
+    #[test]
+    fn card_sentinel_line_is_composable() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -549,7 +620,7 @@ card_types:
 "#)
         .blueprint();
         assert!(t.contains(
-            "# A short note appended to the document.\nCARD: note  # sentinel, composable (0..N)\n"
+            "# A short note appended to the document.\nCARD: note  # sentinel; composable (0..N)\n"
         ));
     }
 
@@ -607,19 +678,6 @@ main:
     }
 
     #[test]
-    fn sentinel_and_body_present() {
-        let t = cfg(r#"
-quill: { name: taro, version: 0.1.0, backend: typst, description: x }
-main:
-  fields:
-    flavor: { type: string, default: taro }
-"#)
-        .blueprint();
-        assert!(t.starts_with("---\n# x\nQUILL: taro@0.1.0  # sentinel; required\n"));
-        assert!(t.contains("\nWrite main body here.\n"));
-    }
-
-    #[test]
     fn card_body_placeholder_uses_card_name() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
@@ -636,7 +694,7 @@ card_types:
     }
 
     #[test]
-    fn ui_groups_emit_section_banners_in_first_appearance_order() {
+    fn ui_groups_cluster_fields_without_emitting_banner() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -648,14 +706,14 @@ main:
 "#)
         .blueprint();
         let after_quill = &t[t.find("QUILL:").unwrap()..];
-        let addressing = after_quill.find("# ==== ADDRESSING ====").unwrap();
-        let letterhead = after_quill.find("# ==== LETTERHEAD ====").unwrap();
+        // No banners emitted at all.
+        assert!(!after_quill.contains("===="));
+        // Order: ungrouped first, then groups in first-appearance order.
         let notes = after_quill.find("notes:").unwrap();
-        // Ungrouped (notes) leads; Addressing precedes Letterhead.
-        assert!(notes < addressing);
-        assert!(addressing < letterhead);
-        // No banner for the ungrouped section.
-        assert!(!after_quill[..notes].contains("# ===="));
+        let memo_for = after_quill.find("memo_for:").unwrap();
+        let letterhead = after_quill.find("letterhead_title:").unwrap();
+        assert!(notes < memo_for);
+        assert!(memo_for < letterhead);
     }
 
     #[test]
@@ -674,13 +732,13 @@ main:
           year: { type: integer, description: Publication year. }
 "#)
         .blueprint();
-        assert!(t.contains("# Cited works.\nreferences:\n  -\n"));
-        assert!(t.contains("    # Citing organization.\n    # required\n    org: \"<org>\"\n"));
-        assert!(t.contains("    # Publication year.\n    # year: 0  # integer\n"));
+        assert!(t.contains("# Cited works.\nreferences:  # array<object>; optional\n  -\n"));
+        assert!(t.contains("    # Citing organization.\n    org: \"\"  # string; required\n"));
+        assert!(t.contains("    # Publication year.\n    year: 0  # integer; optional\n"));
     }
 
     #[test]
-    fn typed_table_with_example_renders_example_rows() {
+    fn typed_table_with_example_renders_example_rows_no_eg_line() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -696,11 +754,9 @@ main:
           year: { type: integer }
 "#)
         .blueprint();
-        // Example rows are rendered inline; no synthetic bare-dash row, and no
-        // `# example:` comment (which would be an unhelpful JSON blob).
-        assert!(t.contains("refs:\n  - org: ACME\n"));
-        assert!(!t.contains("refs:\n  -\n"));
-        assert!(!t.contains("# example:"));
+        assert!(t.contains("refs:  # array<object>; optional\n  - org: ACME\n"));
+        assert!(!t.contains("refs:  # array<object>; optional\n  -\n"));
+        assert!(!t.contains("# e.g."));
     }
 
     #[test]
@@ -719,8 +775,8 @@ main:
           org: { type: string, required: true }
 "#)
         .blueprint();
-        assert!(t.contains("refs:\n  - org: ACME\n"));
-        assert!(!t.contains("refs:\n  -\n"));
+        assert!(t.contains("refs:  # array<object>; optional\n  - org: ACME\n"));
+        assert!(!t.contains("refs:  # array<object>; optional\n  -\n"));
     }
 
     #[test]
@@ -738,7 +794,7 @@ main:
           org: { type: string, required: true }
 "#)
         .blueprint();
-        assert!(t.contains("refs:\n  -\n    # required\n    org: \"<org>\"\n"));
+        assert!(t.contains("refs:  # array<object>; optional\n  -\n    org: \"\"  # string; required\n"));
     }
 
     const LETTER_QUILL: &str = r#"
@@ -769,48 +825,6 @@ card_types:
       label: { type: string, required: true }
       pages: { type: integer, default: 1 }
 "#;
-
-    #[test]
-    fn optional_no_default_field_is_commented_out() {
-        // No default, no enum → value line gets a leading `# `.
-        // Description and `# example:` comments are still emitted above it.
-        let t = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    note:
-      type: string
-      description: An optional note.
-      example: See attached.
-    count: { type: integer }
-    flag: { type: boolean }
-    issued: { type: date }
-    tags: { type: array }
-"#)
-        .blueprint();
-        assert!(t.contains("# An optional note.\n# example: See attached.\n# note: \"\"\n"));
-        assert!(t.contains("# count: 0  # integer\n"));
-        assert!(t.contains("# flag: false  # boolean\n"));
-        assert!(t.contains("# issued: \"\"  # YYYY-MM-DD\n"));
-        assert!(t.contains("# tags: []\n"));
-    }
-
-    #[test]
-    fn optional_with_default_stays_active() {
-        // A default value is meaningful; the field line must not be commented out.
-        let t = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    priority: { type: string, default: normal }
-    count: { type: integer, default: 0 }
-"#)
-        .blueprint();
-        assert!(t.contains("priority: normal\n"));
-        assert!(t.contains("count: 0  # integer\n"));
-        assert!(!t.contains("# priority:"));
-        assert!(!t.contains("# count:"));
-    }
 
     #[test]
     fn blueprint_round_trips_idempotently() {
