@@ -457,6 +457,76 @@ impl QuillConfig {
         false
     }
 
+    /// Reject multi-line descriptions. Single-line is required so the leading
+    /// `# <description>` blueprint slot stays one line and the field-comment
+    /// stack remains parseable for LLM consumers.
+    fn validate_description_singleline(
+        desc: Option<&str>,
+        owner_label: &str,
+        errors: &mut Vec<Diagnostic>,
+    ) {
+        if let Some(d) = desc {
+            if d.contains('\n') {
+                errors.push(
+                    Diagnostic::new(
+                        Severity::Error,
+                        format!(
+                            "{} description must be a single line; multi-line \
+                             descriptions are not allowed.",
+                            owner_label
+                        ),
+                    )
+                    .with_code("quill::description_multiline".to_string()),
+                );
+            }
+        }
+    }
+
+    /// Reject `>`, `;`, `|` in enum literals. These characters are reserved by
+    /// the blueprint inline annotation grammar (`<format>` close, role
+    /// separator, enum value separator) and have no escape syntax.
+    fn validate_enum_literals(field: &FieldSchema, owner_label: &str, errors: &mut Vec<Diagnostic>) {
+        if let Some(values) = &field.enum_values {
+            for v in values {
+                if v.contains('>') || v.contains(';') || v.contains('|') {
+                    errors.push(
+                        Diagnostic::new(
+                            Severity::Error,
+                            format!(
+                                "{} enum value '{}' contains a reserved character \
+                                 ('>', ';', or '|') that conflicts with the \
+                                 blueprint inline annotation grammar.",
+                                owner_label, v
+                            ),
+                        )
+                        .with_code("quill::format_literal_reserved_char".to_string()),
+                    );
+                }
+            }
+        }
+    }
+
+    /// Recursively validate field-level blueprint constraints across the field,
+    /// its array items, and any nested object properties.
+    fn validate_field_blueprint_constraints(
+        schema: &FieldSchema,
+        owner_label: &str,
+        errors: &mut Vec<Diagnostic>,
+    ) {
+        Self::validate_description_singleline(schema.description.as_deref(), owner_label, errors);
+        Self::validate_enum_literals(schema, owner_label, errors);
+        if let Some(items) = &schema.items {
+            let nested = format!("{} (items)", owner_label);
+            Self::validate_field_blueprint_constraints(items, &nested, errors);
+        }
+        if let Some(props) = &schema.properties {
+            for (name, prop) in props {
+                let nested = format!("{}.{}", owner_label, name);
+                Self::validate_field_blueprint_constraints(prop, &nested, errors);
+            }
+        }
+    }
+
     /// Parse fields from a JSON Value map, assigning ui.order based on key_order.
     ///
     /// This helper ensures consistent field ordering logic for both top-level
@@ -550,6 +620,9 @@ impl QuillConfig {
                             ui.order = Some(order);
                         }
                     }
+
+                    let owner = format!("{} '{}'", context, field_name);
+                    Self::validate_field_blueprint_constraints(&schema, &owner, errors);
 
                     fields.insert(field_name.clone(), schema);
                 }
@@ -744,7 +817,10 @@ impl QuillConfig {
         };
 
         let description = match quill_section.get("description").and_then(|v| v.as_str()) {
-            Some(d) if !d.trim().is_empty() => d.to_string(),
+            Some(d) if !d.trim().is_empty() => {
+                Self::validate_description_singleline(Some(d), "quill", &mut errors);
+                d.to_string()
+            }
             Some(_) => {
                 errors.push(
                     Diagnostic::new(
@@ -978,6 +1054,7 @@ impl QuillConfig {
             .and_then(|main_obj| main_obj.get("description"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
+        Self::validate_description_singleline(main_description.as_deref(), "main", &mut errors);
 
         // The main entry-point card.
         let main = CardSchema {
@@ -1053,6 +1130,11 @@ impl QuillConfig {
                             BTreeMap::new()
                         };
 
+                        Self::validate_description_singleline(
+                            card_def.description.as_deref(),
+                            &format!("card_type '{}'", card_name),
+                            &mut errors,
+                        );
                         card_types.push(CardSchema {
                             name: card_name.clone(),
                             description: card_def.description,
