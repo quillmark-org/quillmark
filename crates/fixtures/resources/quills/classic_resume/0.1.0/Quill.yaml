@@ -61,15 +61,13 @@ card_types:
             skills: Python, Rust, C++
           - category: DevOps
             skills: Docker, Kubernetes
-        items:
-          type: object
-          properties:
-            category:
-              type: string
-              required: true
-            skills:
-              type: string
-              required: true
+        properties:
+          category:
+            type: string
+            required: true
+          skills:
+            type: string
+            required: true
 
   projects_section:
     description: A project entry with a name and optional URL.

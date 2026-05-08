@@ -183,7 +183,27 @@ pub(crate) fn validate_field(
         }
         FieldType::Array => match value.as_array() {
             Some(items) => {
-                if let Some(item_schema) = &field.items {
+                if let Some(properties) = &field.properties {
+                    for (idx, item) in items.iter().enumerate() {
+                        let obj = item.as_object();
+                        for (prop_name, prop_schema) in properties {
+                            let prop_path = format!("{}[{}].{}", path, idx, prop_name);
+                            match obj.and_then(|o| o.get(prop_name)) {
+                                Some(v) => errors.extend(validate_field(
+                                    prop_schema,
+                                    &QuillValue::from_json(v.clone()),
+                                    &prop_path,
+                                )),
+                                None if prop_schema.required => {
+                                    errors.push(ValidationError::MissingRequired {
+                                        path: prop_path,
+                                    })
+                                }
+                                None => {}
+                            }
+                        }
+                    }
+                } else if let Some(item_schema) = &field.items {
                     for (idx, item) in items.iter().enumerate() {
                         errors.extend(validate_field(
                             item_schema,
@@ -520,7 +540,7 @@ main:
     #[test]
     fn validates_array_of_objects() {
         let config = config_with(
-            "    recipients:\n      type: array\n      items:\n        type: object\n        properties:\n          name:\n            type: string\n            required: true\n          org:\n            type: string",
+            "    recipients:\n      type: array\n      properties:\n        name:\n          type: string\n          required: true\n        org:\n          type: string",
             "",
         );
         let doc = doc_from_fm(&[("recipients", json!([{ "name": "Sam", "org": "HQ" }]))]);
@@ -530,7 +550,7 @@ main:
     #[test]
     fn reports_missing_required_field_in_array_object() {
         let config = config_with(
-            "    recipients:\n      type: array\n      items:\n        type: object\n        properties:\n          name:\n            type: string\n            required: true\n          org:\n            type: string",
+            "    recipients:\n      type: array\n      properties:\n        name:\n          type: string\n          required: true\n        org:\n          type: string",
             "",
         );
         let doc = doc_from_fm(&[("recipients", json!([{ "org": "HQ" }]))]);

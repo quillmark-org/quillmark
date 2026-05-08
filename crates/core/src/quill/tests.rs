@@ -1645,29 +1645,22 @@ main:
     my_list:
       type: array
       description: List of objects
-      items:
-        type: object
-        properties:
-          sub_a:
-            type: string
-            description: Subfield A
-          sub_b:
-            type: number
-            description: Subfield B
+      properties:
+        sub_a:
+          type: string
+          description: Subfield A
+        sub_b:
+          type: number
+          description: Subfield B
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
 
-    // Check array with items
     let list_field = config.main.fields.get("my_list").unwrap();
     assert_eq!(list_field.r#type, FieldType::Array);
-    assert!(list_field.items.is_some());
+    assert!(list_field.properties.is_some());
 
-    let items_schema = list_field.items.as_ref().unwrap();
-    assert_eq!(items_schema.r#type, FieldType::Object);
-    assert!(items_schema.properties.is_some());
-
-    let props = items_schema.properties.as_ref().unwrap();
+    let props = list_field.properties.as_ref().unwrap();
     assert!(props.contains_key("sub_a"));
     assert!(props.contains_key("sub_b"));
     assert_eq!(props["sub_a"].r#type, FieldType::String);
@@ -1746,16 +1739,14 @@ main:
   fields:
     rows:
       type: array
-      items:
-        type: object
-        properties:
-          score:
-            type: number
-          nested:
-            type: object
-            properties:
-              inner:
-                type: string
+      properties:
+        score:
+          type: number
+        nested:
+          type: object
+          properties:
+            inner:
+              type: string
 "#;
 
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
@@ -1782,15 +1773,13 @@ main:
   fields:
     scores:
       type: array
-      items:
-        type: object
-        properties:
-          name:
-            type: string
-          value:
-            type: number
-          active:
-            type: boolean
+      properties:
+        name:
+          type: string
+        value:
+          type: number
+        active:
+          type: boolean
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1940,13 +1929,11 @@ main:
   fields:
     items:
       type: array
-      items:
-        type: object
-        properties:
-          score:
-            type: number
-          active:
-            type: boolean
+      properties:
+        score:
+          type: number
+        active:
+          type: boolean
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();

@@ -117,15 +117,11 @@ fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
 fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
     let pad = "  ".repeat(indent);
 
-    // Typed table: array whose items are a typed object.
+    // Typed table: array with a properties map directly on the field.
     if matches!(field.r#type, FieldType::Array) {
-        if let Some(items) = &field.items {
-            if matches!(items.r#type, FieldType::Object) {
-                if let Some(props) = &items.properties {
-                    write_typed_table_field(out, field, props, indent);
-                    return;
-                }
-            }
+        if let Some(props) = &field.properties {
+            write_typed_table_field(out, field, props, indent);
+            return;
         }
     }
 
@@ -778,11 +774,9 @@ main:
     references:
       type: array
       description: Cited works.
-      items:
-        type: object
-        properties:
-          org: { type: string, required: true, description: Citing organization. }
-          year: { type: integer, description: Publication year. }
+      properties:
+        org: { type: string, required: true, description: Citing organization. }
+        year: { type: integer, description: Publication year. }
 "#)
         .blueprint();
         assert!(t.contains("# Cited works.\nreferences:  # array<object>; optional\n  -\n"));
@@ -800,11 +794,9 @@ main:
       type: array
       example:
         - { org: ACME, year: 2020 }
-      items:
-        type: object
-        properties:
-          org: { type: string, required: true }
-          year: { type: integer }
+      properties:
+        org: { type: string, required: true }
+        year: { type: integer }
 "#)
         .blueprint();
         assert!(t.contains("refs:  # array<object>; optional\n  - org: ACME\n"));
@@ -822,10 +814,8 @@ main:
       type: array
       default:
         - { org: ACME }
-      items:
-        type: object
-        properties:
-          org: { type: string, required: true }
+      properties:
+        org: { type: string, required: true }
 "#)
         .blueprint();
         assert!(t.contains("refs:  # array<object>; optional\n  - org: ACME\n"));
@@ -841,10 +831,8 @@ main:
     refs:
       type: array
       default: []
-      items:
-        type: object
-        properties:
-          org: { type: string, required: true }
+      properties:
+        org: { type: string, required: true }
 "#)
         .blueprint();
         assert!(t.contains("refs:  # array<object>; optional\n  -\n    org: \"\"  # string; required\n"));

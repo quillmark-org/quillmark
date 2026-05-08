@@ -179,8 +179,8 @@ fallback; authors needing these characters must reshape their values.
 
 ## Typed tables
 
-A field of `type: array` whose `items` is a typed object (`type: object`
-+ `properties`) renders with full per-property annotations:
+A field of `type: array` with a `properties` map renders with full
+per-property annotations:
 
 - An `example:` or non-empty `default:` renders as actual rows.
 - Otherwise one synthetic row is emitted, with each property carrying
@@ -222,9 +222,9 @@ address:  # object; optional
 ```
 
 Properties of a typed dictionary may not themselves be objects (nesting
-beyond one level is not supported). Freeform `type: object` fields without
-a `properties` map are rejected at `Quill.yaml` parse time
-(`quill::object_missing_properties`).
+beyond one level is not supported). The same rule applies to typed table
+properties. Freeform `type: object` fields without a `properties` map are
+rejected at `Quill.yaml` parse time (`quill::object_missing_properties`).
 
 ## UI metadata honored
 

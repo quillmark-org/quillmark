@@ -210,7 +210,34 @@ impl QuillConfig {
                     vec![json_value.clone()]
                 };
 
-                if let Some(items_schema) = &field_schema.items {
+                if let Some(props) = &field_schema.properties {
+                    let mut out = Vec::with_capacity(arr.len());
+                    for (idx, elem) in arr.iter().enumerate() {
+                        if let Some(obj) = elem.as_object() {
+                            let mut coerced_obj = serde_json::Map::new();
+                            for (k, v) in obj {
+                                if let Some(prop_schema) = props.get(k) {
+                                    let child_path = format!("{path}[{idx}].{k}");
+                                    coerced_obj.insert(
+                                        k.clone(),
+                                        Self::coerce_value_strict(
+                                            &QuillValue::from_json(v.clone()),
+                                            prop_schema,
+                                            &child_path,
+                                        )?
+                                        .into_json(),
+                                    );
+                                } else {
+                                    coerced_obj.insert(k.clone(), v.clone());
+                                }
+                            }
+                            out.push(serde_json::Value::Object(coerced_obj));
+                        } else {
+                            out.push(elem.clone());
+                        }
+                    }
+                    Ok(QuillValue::from_json(serde_json::Value::Array(out)))
+                } else if let Some(items_schema) = &field_schema.items {
                     let mut out = Vec::with_capacity(arr.len());
                     for (idx, elem) in arr.iter().enumerate() {
                         let item_path = format!("{path}[{idx}]");
@@ -452,6 +479,13 @@ impl QuillConfig {
             if let Some(items_schema) = &schema.items {
                 return Self::has_disallowed_nested_object(items_schema, true);
             }
+            if let Some(props) = &schema.properties {
+                for prop_schema in props.values() {
+                    if Self::has_disallowed_nested_object(prop_schema, false) {
+                        return true;
+                    }
+                }
+            }
         }
 
         false
@@ -585,7 +619,7 @@ impl QuillConfig {
                                     format!(
                                         "Field '{}' has type: object but no properties defined. \
                                         Declare a properties map, or use type: array with \
-                                        items: {{type: object, properties: {{...}}}} for a list of objects.",
+                                        a properties map for a list of objects.",
                                         field_name
                                     ),
                                 )
