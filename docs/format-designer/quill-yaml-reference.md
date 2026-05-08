@@ -88,7 +88,7 @@ main:
 | `required`    | boolean           | no       | Whether the field must be present (default: `false`) |
 | `enum`        | array of strings  | no       | Restrict to specific values |
 | `ui`          | object            | no       | UI rendering hints (see [UI Properties](#ui-properties)) |
-| `items`       | object            | no       | Item schema (for `array` type; use `type: object` with `properties` for structured rows) |
+| `properties`  | object            | no       | Nested field schemas (for `array` typed-table rows or `object` typed dictionaries) |
 
 ### Field Types
 
@@ -481,8 +481,6 @@ main:
 
     team_members:
       type: array
-      items:
-        type: string
       ui:
         group: Team
 

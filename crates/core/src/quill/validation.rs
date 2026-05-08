@@ -303,10 +303,6 @@ fn child_path(parent: &str, child: &str) -> String {
     }
 }
 
-fn index_path(parent: &str, index: usize) -> String {
-    format!("{parent}[{index}]")
-}
-
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
