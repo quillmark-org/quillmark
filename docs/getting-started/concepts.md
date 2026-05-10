@@ -1,20 +1,13 @@
 # Concepts
 
-Understanding the core concepts behind Quillmark will help you use it effectively.
-
-## What is Markdown?
-
-Markdown is a lightweight markup language that uses plain text formatting syntax. It's commonly used for documentation, README files, and content authoring. Quillmark extends standard Markdown with YAML frontmatter for structured metadata.
-
 ## The Format-First Philosophy
 
-Quillmark is built around a **format-first** design philosophy:
+Quillmark separates content from presentation:
 
-- **Formats control structure and styling** - Quill formats define how documents are laid out and styled
-- **Markdown provides content** - Your markdown files contain the actual content that fills the format
-- **Separation of concerns** - Content authors can focus on writing without worrying about layout
+- **Quills control structure and styling** — a Quill format defines layout and produces the output artifact.
+- **Markdown provides content** — authors write plain Markdown with YAML frontmatter; the Quill renders it.
 
-This approach differs from traditional Markdown renderers where styling is an afterthought.
+The same Markdown can be rendered by different Quills to produce different outputs.
 
 ## Core Components
 
@@ -45,11 +38,7 @@ This metadata is accessible in formats and is validated against native schema ru
 
 ### Backends
 
-Backends compile plate content with injected JSON data into final artifacts:
-
-- **Typst Backend** - Generates PDF, SVG, and PNG files using the Typst typesetting system. Markdown fields (annotated with `contentMediaType = "text/markdown"`) are converted to Typst markup during compilation.
-
-Each backend has its own compilation process and error mapping.
+A backend compiles the plate plus injected JSON data into the final artifact. The Typst backend is currently the only one — it produces PDF, SVG, and PNG, and converts fields declared `type: markdown` to Typst markup during compilation.
 
 ### Required `QUILL` Reference
 
@@ -76,25 +65,6 @@ Quillmark follows a three-stage pipeline:
 ```
 Markdown + YAML → Parse/Normalize → Compile (Backend) → Artifacts
 ```
-
-## Mental Model
-
-Think of Quillmark as a factory:
-
-- **Input**: Raw materials (Markdown content + metadata)
-- **Quill**: The format that shapes the output
-- **Backend**: The manufacturing process
-- **Output**: Finished artifacts (PDF, SVG, PNG)
-
-Different Quills can produce completely different outputs from the same input, just as different molds produce different shapes.
-
-## Key Design Principles
-
-1. **Explicit Format Selection** - Documents declare their format with required `QUILL`
-2. **Dynamic Resource Loading** - Assets, fonts, and packages are discovered at runtime
-3. **Structured Error Handling** - Clear diagnostics with source locations
-4. **Thread-Safe** - Backends are thread-safe with no global state
-5. **Language-Agnostic** - Core concepts apply across all language bindings
 
 ## Next Steps
 
