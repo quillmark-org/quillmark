@@ -1,6 +1,33 @@
 // Auto-generated quillmark-helper package
 // Version: {version}
 
+/// Emit an unsigned signature field. PDF output gains a clickable AcroForm
+/// SigField widget at this point; SVG/PNG/canvas outputs reserve the same
+/// invisible layout space.
+///
+/// - `name` must be unique within the document and match `[A-Za-z0-9_]+`.
+/// - `width`/`height` are Typst lengths; defaults are 200pt × 50pt.
+///
+/// The Rust backend recognises a `qm-sig` metadata label adjacent to an
+/// invisible box; do not rename, reformat, or move the two lines below.
+#let signature-field(name, width: 200pt, height: 50pt) = {
+  assert(
+    type(name) == str,
+    message: "signature-field: name must be a string, got " + repr(type(name)),
+  )
+  assert(
+    name.match(regex("^[A-Za-z0-9_]+$")) != none,
+    message: "signature-field: name must match [A-Za-z0-9_]+, got " + repr(name),
+  )
+  [#metadata((
+    kind: "qm-sig",
+    name: name,
+    width: width / 1pt,
+    height: height / 1pt,
+  )) <qm-sig>]
+  box(width: width, height: height, stroke: none, fill: none)
+}
+
 /// Parse an ISO 8601 date string (YYYY-MM-DD) to a Typst datetime
 /// Handles both pure dates (2024-01-15) and datetime strings (2024-01-15T10:30:00)
 /// Must be defined before `data` — Typst does not hoist `#let` bindings.

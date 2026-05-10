@@ -30,10 +30,8 @@ pub mod convert;
 mod error_mapping;
 
 pub mod helper;
+mod sig_overlay;
 mod world;
-
-#[cfg(test)]
-mod probe_annots;
 
 /// Utilities exposed for fuzzing tests.
 /// Not intended for general use.
@@ -67,6 +65,9 @@ const SUPPORTED_FORMATS: &[OutputFormat] =
 pub struct TypstSession {
     document: typst::layout::PagedDocument,
     page_count: usize,
+    /// Signature-field placements extracted from `document` once at `open`.
+    /// Consumed during PDF inject; unused for SVG/PNG output.
+    sig_placements: Vec<sig_overlay::SigPlacement>,
 }
 
 impl TypstSession {
@@ -119,7 +120,13 @@ impl SessionHandle for TypstSession {
             });
         }
 
-        compile::render_document_pages(&self.document, opts.pages.as_deref(), format, opts.ppi)
+        compile::render_document_pages(
+            &self.document,
+            opts.pages.as_deref(),
+            format,
+            opts.ppi,
+            &self.sig_placements,
+        )
     }
 
     fn page_count(&self) -> usize {
@@ -175,9 +182,11 @@ impl Backend for TypstBackend {
             serde_json::to_string(&transformed_json).unwrap_or_else(|_| "{}".to_string());
         let document = compile::compile_to_document(source, plate_content, &json_str)?;
         let page_count = document.pages.len();
+        let sig_placements = sig_overlay::extract(&document)?;
         let session = TypstSession {
             document,
             page_count,
+            sig_placements,
         };
         Ok(RenderSession::new(Box::new(session)))
     }
