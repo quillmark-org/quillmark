@@ -41,6 +41,9 @@ mod spike_lopdf;
 #[cfg(test)]
 mod spike_pdf_oxide;
 
+#[cfg(test)]
+mod spike_pdfwriter;
+
 /// Utilities exposed for fuzzing tests.
 /// Not intended for general use.
 #[doc(hidden)]

@@ -31,3 +31,5 @@ tempfile = { workspace = true }
 # spike-only — used by src/spike_lopdf.rs and src/spike_pdf_oxide.rs
 lopdf = "0.36"
 pdf_oxide = { version = "0.3", default-features = false }
+# spike-only — used by src/spike_pdfwriter.rs (already transitive via typst-pdf → krilla)
+pdf-writer = "0.14"

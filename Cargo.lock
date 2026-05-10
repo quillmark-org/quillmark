@@ -2643,6 +2643,7 @@ version = "0.76.0"
 dependencies = [
  "js-sys",
  "lopdf",
+ "pdf-writer",
  "pdf_oxide",
  "pulldown-cmark",
  "quillmark-core",
