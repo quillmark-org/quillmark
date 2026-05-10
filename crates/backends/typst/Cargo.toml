@@ -28,3 +28,6 @@ wasm-bindgen = "^0.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# probe-only — used by src/probe_annots.rs to verify /Annots indirect-ref path
+lopdf = "0.36"
+pdf-writer = "0.14"

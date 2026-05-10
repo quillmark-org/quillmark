@@ -32,6 +32,9 @@ mod error_mapping;
 pub mod helper;
 mod world;
 
+#[cfg(test)]
+mod probe_annots;
+
 /// Utilities exposed for fuzzing tests.
 /// Not intended for general use.
 #[doc(hidden)]
