@@ -62,9 +62,9 @@ The document body is at `data.BODY`. Arrays come through as Typst arrays. Cards 
 #for author in data.authors [- #author]
 
 #for card in data.at("CARDS", default: ()) {
-  if card.CARD == "product" [
-    Product: #card.name — #card.BODY
-  ]
+  if card.CARD == "product" {
+    [Product: #card.name — #card.BODY]
+  }
 }
 ```
 
@@ -100,6 +100,18 @@ my-quill/
 ```
 
 Then reference them by family name (`#set text(font: "CustomFont")`).
+
+## Typesetting
+
+Plate authors style output with Typst's standard `#set` directives:
+
+```typst
+#set page(paper: "us-letter", margin: 1in, numbering: "1")
+#set text(font: "Linux Libertine", size: 11pt, lang: "en")
+#set par(justify: true, leading: 0.65em)
+```
+
+See the [Typst tutorial](https://typst.app/docs/tutorial/) for the full styling vocabulary. For worked plates that combine data access with real layout, see the `appreciated_letter`, `usaf_memo`, and `taro` examples in `crates/quillmark/examples/`.
 
 ## Output Formats
 

@@ -75,6 +75,9 @@ Get started with Quillmark in Python or JavaScript.
     ```javascript
     const session = quill.open(doc);                   // compile once
 
+    // Surface session-level diagnostics from compile time.
+    for (const w of session.warnings) console.warn(w.message);
+
     function renderPage(canvas, page, userZoom = 1) {
       const densityScale = (window.devicePixelRatio || 1) * userZoom;
       const result = session.paint(canvas.getContext("2d"), page, {
@@ -103,6 +106,8 @@ Get started with Quillmark in Python or JavaScript.
     - If `layoutScale * densityScale` would push either dimension past 16384
       px, `densityScale` is clamped to fit; compare `result.pixelWidth` to
       `round(result.layoutWidth * densityScale)` to detect the clamp.
+    - `pageCount` and `pageSize(page)` are stable for the session's lifetime
+      (the compiled document is an immutable snapshot) — cache them.
     - Pass an `OffscreenCanvasRenderingContext2D` to rasterize off the main
       thread.
     - Canvas pixels are opaque to the DOM — there's no text selection or

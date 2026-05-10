@@ -435,6 +435,19 @@ See the [Typst Backend Guide](typst-backend.md) for details.
 
 ---
 
+## Reading the schema programmatically
+
+Quillmark emits a public schema contract derived from `Quill.yaml`. Accessors:
+
+- Rust: `QuillConfig::schema()` (JSON) / `schema_yaml()` (YAML)
+- Python: `quill.schema` (YAML)
+- WASM: `quill.schema` (JSON)
+- CLI: `quillmark schema <path>`
+
+`ui:` hints are preserved verbatim in the output. See [SCHEMAS.md](https://github.com/nibsbin/quillmark/blob/main/prose/designs/SCHEMAS.md) for the emitted shape.
+
+---
+
 ## Complete Example
 
 ```yaml
