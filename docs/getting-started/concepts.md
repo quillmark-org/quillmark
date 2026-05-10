@@ -38,11 +38,7 @@ This metadata is accessible in formats and is validated against native schema ru
 
 ### Backends
 
-Backends compile plate content with injected JSON data into final artifacts:
-
-- **Typst Backend** - Generates PDF, SVG, and PNG files using the Typst typesetting system. Fields declared `type: markdown` in `Quill.yaml` are converted to Typst markup during compilation.
-
-Each backend has its own compilation process and error mapping.
+A backend compiles the plate plus injected JSON data into the final artifact. The Typst backend is currently the only one — it produces PDF, SVG, and PNG, and converts fields declared `type: markdown` to Typst markup during compilation.
 
 ### Required `QUILL` Reference
 
@@ -69,14 +65,6 @@ Quillmark follows a three-stage pipeline:
 ```
 Markdown + YAML → Parse/Normalize → Compile (Backend) → Artifacts
 ```
-
-## Key Design Principles
-
-1. **Explicit Format Selection** - Documents declare their format with required `QUILL`
-2. **Dynamic Resource Loading** - Assets, fonts, and packages are discovered at runtime
-3. **Structured Error Handling** - Clear diagnostics with source locations
-4. **Thread-Safe** - Backends are thread-safe with no global state
-5. **Language-Agnostic** - Core concepts apply across all language bindings
 
 ## Next Steps
 

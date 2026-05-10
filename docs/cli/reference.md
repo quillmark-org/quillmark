@@ -139,30 +139,10 @@ quillmark info ./my-quill --json | jq '.name'
 
 ## Exit Codes
 
-- `0`: Success
-- `1`: Error (invalid arguments, file not found, parse error, compilation error, etc.)
-
-## Minimal Usage Patterns
-
-```bash
-# Validate a quill
-quillmark validate ./my-quill
-
-# Render one document to PDF
-quillmark render ./my-quill input.md -o output.pdf
-
-# Print schema to stdout
-quillmark schema ./my-quill
-```
+- `0` — success
+- `1` — error (invalid arguments, file not found, parse error, compilation error, etc.)
 
 ## Environment Variables
 
-- `RUST_LOG`: Set logging level (e.g., `RUST_LOG=debug quillmark render ...`)
-- `NO_COLOR`: Disable colored output
-
-## Notes
-
-- When `--output` is omitted, the output filename is derived from the input filename (e.g., `input.md` → `input.pdf`)
-- Use `--stdout` to send output to stdout instead of a file
-- Use `--` to separate options from positional arguments if needed
-- Verbose mode shows format composition and compilation details
+- `RUST_LOG` — log level (e.g. `RUST_LOG=debug`)
+- `NO_COLOR` — disable colored output

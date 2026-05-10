@@ -85,8 +85,7 @@ author:
   email: john@example.com
 ```
 
-> [!WARNING]
-> YAML objects and nested structures are syntactically valid in frontmatter. However, Quill's schema system does not yet provide a general-purpose deep-nesting field type. As a current product-scoping decision, `type: object` is only supported for structured rows inside `array.items` (not as standalone top-level fields). See [Quill.yaml Reference: Field Types](../format-designer/quill-yaml-reference.md#field-types).
+Object-valued fields must be schematized in `Quill.yaml` with `type: object` and a `properties:` map. Nesting beyond one level is not supported. See [Quill.yaml Reference: Field Types](../format-designer/quill-yaml-reference.md#field-types).
 
 ## Placeholder Fields (`!fill`)
 
@@ -127,23 +126,4 @@ Indorsement body text here.
 
 See [Cards](cards.md) for details on card syntax and usage.
 
-## Validation
-
-Frontmatter is validated against the schema defined in your Quill's `Quill.yaml`:
-
-```yaml
-main:
-  fields:
-    title:
-      description: Document title
-      type: string
-    author:
-      description: Author name
-      type: string
-      default: Anonymous
-    date:
-      description: Publication date
-      type: string
-```
-
-When validation runs, the parser checks that required fields are present, field types match the schema, and values meet any constraints.
+Frontmatter is coerced and validated against the schema declared in the Quill's `Quill.yaml` (`main.fields`). See the [Quill.yaml Reference](../format-designer/quill-yaml-reference.md) for field types and constraints.

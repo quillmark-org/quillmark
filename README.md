@@ -14,10 +14,10 @@ Maintained by [TongueToQuill](https://tonguetoquill.com).
 
 ## Features
 
-- **Format-driven design**: Quills define structure and styling; Markdown provides content
-- **Schema-backed validation**: Strong field coercion and validation via `QuillConfig`
-- **Multiple backends**: Typst backend supports PDF/SVG/PNG output
-- **Structured diagnostics**: Path-aware errors and warnings
+- **Format-driven**: Quills define structure and styling; Markdown provides content.
+- **Schema-backed validation**: typed coercion, defaults, and constraints via `QuillConfig`.
+- **Typst backend**: produces PDF, SVG, and PNG.
+- **Structured diagnostics**: path-aware errors and warnings.
 
 ## Documentation
 
