@@ -28,3 +28,6 @@ wasm-bindgen = "^0.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# spike-only — used by src/spike_lopdf.rs and src/spike_pdf_oxide.rs
+lopdf = "0.36"
+pdf_oxide = { version = "0.3", default-features = false }

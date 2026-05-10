@@ -32,6 +32,15 @@ mod error_mapping;
 pub mod helper;
 mod world;
 
+#[cfg(test)]
+mod spike_introspector;
+
+#[cfg(test)]
+mod spike_lopdf;
+
+#[cfg(test)]
+mod spike_pdf_oxide;
+
 /// Utilities exposed for fuzzing tests.
 /// Not intended for general use.
 #[doc(hidden)]
