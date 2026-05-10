@@ -22,6 +22,7 @@ use typst::layout::PagedDocument;
 use typst_pdf::PdfOptions;
 
 use crate::error_mapping::map_typst_errors;
+use crate::sig_overlay;
 use crate::world::QuillWorld;
 use quillmark_core::{
     Artifact, Diagnostic, OutputFormat, QuillSource, RenderError, RenderResult, Severity,
@@ -86,6 +87,15 @@ pub fn compile_to_pdf(
             .with_code("typst::pdf_generation".to_string())],
         }
     })?;
+
+    // Spike: overlay AcroForm SigField widgets for any signature-field() sentinels.
+    let sig_fields = sig_overlay::extract_sig_fields(&document);
+    if !sig_fields.is_empty() {
+        match sig_overlay::inject_sig_fields(&pdf, &sig_fields) {
+            Ok(overlaid) => return Ok(overlaid),
+            Err(e) => eprintln!("sig_overlay: inject failed (falling back): {e}"),
+        }
+    }
 
     Ok(pdf)
 }

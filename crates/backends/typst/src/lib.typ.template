@@ -90,3 +90,29 @@
 
   d
 }
+
+/// Render a visible signature-field placeholder and emit a `<qm-sig>` sentinel.
+///
+/// The Quillmark Typst backend reads these sentinels after compilation and
+/// overlays AcroForm SigField widgets onto the PDF at the recorded coordinates.
+///
+/// The sentinel is a `metadata` element labelled `<qm-sig>` placed at the
+/// top-left of the box so the backend can recover the field's page position.
+///
+/// Usage:
+///   #import "@local/quillmark-helper:0.1.0": data, signature-field
+///   #signature-field("signer")
+///   #signature-field("approver", width: 150pt, height: 40pt)
+#let signature-field(name, width: 200pt, height: 50pt) = box(
+  width: width,
+  height: height,
+  stroke: (paint: luma(160), thickness: 0.5pt),
+  fill: luma(252),
+)[
+  #place(top + left)[
+    #metadata(("qm-sig", name, width.pt(), height.pt())) <qm-sig>
+  ]
+  #align(center + horizon)[
+    #text(size: 8pt, fill: luma(140))[× Signature: #name]
+  ]
+]

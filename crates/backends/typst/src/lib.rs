@@ -30,6 +30,7 @@ pub mod convert;
 mod error_mapping;
 
 pub mod helper;
+pub mod sig_overlay;
 mod world;
 
 /// Utilities exposed for fuzzing tests.

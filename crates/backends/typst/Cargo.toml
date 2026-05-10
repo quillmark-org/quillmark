@@ -13,6 +13,7 @@ repository = "https://github.com/nibsbin/quillmark"
 [dependencies]
 pulldown-cmark = { workspace = true }
 quillmark-core = { workspace = true }
+lopdf = "0.34"
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
