@@ -1,16 +1,6 @@
 # Typst Backend
 
-The Typst backend generates professional PDF, SVG, and PNG documents using the [Typst](https://typst.app/) typesetting system.
-
-## Overview
-
-Typst is a modern typesetting system designed as a better alternative to LaTeX. The Quillmark Typst backend:
-
-- Converts Markdown to Typst markup via backend `transform_fields`
-- Compiles Typst code to PDF, SVG, or PNG
-- Supports dynamic package loading
-- Handles fonts and assets automatically
-- Provides JSON data injection via helper package
+The Typst backend generates PDF, SVG, and PNG documents using the [Typst](https://typst.app/) typesetting system. It converts Markdown frontmatter fields to Typst markup, injects them into the plate as JSON via a helper package, and compiles to the requested format.
 
 ## Basic Usage
 
@@ -162,15 +152,7 @@ Then import and use them in your plate file:
 #fa-icon("envelope") Contact: info@example.com
 ```
 
-### Popular Packages
-
-- **appreciated-letter** - Professional letter templates
-- **bubble** - Speech bubble and callout boxes
-- **fontawesome** - Font Awesome icons
-- **tablex** - Advanced table layouts
-- **cetz** - Drawing and diagrams
-
-Browse packages at [Typst Universe](https://typst.app/universe/).
+Browse the full catalog at [Typst Universe](https://typst.app/universe/).
 
 ## Fonts
 
@@ -369,14 +351,6 @@ Sincerely,
 
 #data.at("BODY", default: "")
 ```
-
-## Best Practices
-
-1. **Test incrementally** - Build your plate file step-by-step
-2. **Use packages** - Leverage existing Typst packages when possible
-3. **Separate concerns** - Keep complex logic in Typst, data in frontmatter
-4. **Validate inputs** - Define field schemas in `Quill.yaml`
-5. **Handle missing fields** - Use defaults for optional fields
 
 ## Resources
 

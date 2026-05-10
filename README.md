@@ -8,9 +8,9 @@
 
 A format-first Markdown rendering system that converts Markdown with YAML frontmatter into PDF, SVG, PNG, and other output formats.
 
-Maintained by [TTQ](https://tonguetoquill.com).
+Maintained by [TongueToQuill](https://tonguetoquill.com).
 
-**UNDER DEVELOPMENT**
+**UNDER DEVELOPMENT** — APIs may change.
 
 ## Features
 
@@ -56,7 +56,6 @@ let result = quill.render(
 )?;
 
 let pdf_bytes = &result.artifacts[0].bytes;
-# Ok::<(), quillmark::RenderError>(())
 ```
 
 ## Examples
@@ -80,7 +79,7 @@ cargo run --example taro
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) to help with development. We're dedicated to making useful things. Give us a star if you find this useful!
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

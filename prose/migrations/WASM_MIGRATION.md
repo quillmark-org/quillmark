@@ -1,7 +1,10 @@
 # WASM Migration Guide
 
-Migration guide for `@quillmark/wasm` consumers after the **Canonical Document
-Model** refactor (commit `f8c7ee3`, PR #444).
+> **Historical.** Migration guide for `@quillmark/wasm` consumers crossing the
+> 0.54 → 0.58 boundary (the **Canonical Document Model** refactor, commit
+> `f8c7ee3`, PR #444). Kept for consumers still upgrading from pre-0.58
+> versions. For the current API surface, see the docs site and the
+> `@quillmark/wasm` package README.
 
 Previous in-tree migration notes lived in `MIGRATION.md`, which was deleted as
 part of this refactor. This document replaces them for the WASM surface only.

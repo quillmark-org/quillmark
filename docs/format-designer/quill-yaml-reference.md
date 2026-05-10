@@ -84,7 +84,7 @@ main:
 | `type`        | string            | yes      | Data type (see [Field Types](#field-types)) |
 | `description` | string            | no       | Detailed help text |
 | `default`     | any               | no       | Default value when not provided |
-| `example`     | any               | no       | Illustrative value surfaced in the [blueprint](../../prose/designs/BLUEPRINT.md) for documentation and LLM authoring |
+| `example`     | any               | no       | Illustrative value surfaced in the [blueprint](https://github.com/nibsbin/quillmark/blob/main/prose/designs/BLUEPRINT.md) for documentation and LLM authoring |
 | `required`    | boolean           | no       | Whether the field must be present (default: `false`) |
 | `enum`        | array of strings  | no       | Restrict to specific values |
 | `ui`          | object            | no       | UI rendering hints (see [UI Properties](#ui-properties)) |

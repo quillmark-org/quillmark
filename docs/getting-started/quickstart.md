@@ -69,70 +69,43 @@ Get started with Quillmark in Python or JavaScript.
     ## Live Preview (Canvas)
 
     For editor-style previews, paint pages directly into a `<canvas>` instead
-    of round-tripping through PNG/SVG. This skips PNG encode/decode and SVG
-    parse, and lets you bound memory by only painting visible pages.
-
-    `paint` is Typst-only and WASM-only. It is unaffected by the byte-output
-    `render` path — the same `RenderSession` serves both.
+    of round-tripping through PNG/SVG. `paint` is Typst-only and WASM-only,
+    and shares the cached compile with the byte-output `render` path.
 
     ```javascript
-    import { Document, Quillmark } from "@quillmark/wasm";
-
-    const engine = new Quillmark();
-    const quill = engine.quill(tree);                  // see Basic Usage
-
-    const doc = Document.fromMarkdown(markdown);
     const session = quill.open(doc);                   // compile once
-
-    // Surface any session-level diagnostics (e.g. version-compat shims).
-    for (const w of session.warnings) console.warn(w.message);
 
     function renderPage(canvas, page, userZoom = 1) {
       const densityScale = (window.devicePixelRatio || 1) * userZoom;
-
-      // Painter sizes canvas.width/height itself; consumer reads back the
-      // layout dimensions to drive layout.
       const result = session.paint(canvas.getContext("2d"), page, {
         layoutScale: 1,
         densityScale,
       });
-
       canvas.style.width  = `${result.layoutWidth}px`;
       canvas.style.height = `${result.layoutHeight}px`;
     }
 
-    for (let p = 0; p < session.pageCount; p++) {
-      renderPage(canvases[p], p);
-    }
+    for (let p = 0; p < session.pageCount; p++) renderPage(canvases[p], p);
 
-    // When the document changes, free the old session before opening a new one.
-    session.free();
+    session.free();                                    // when doc changes
     ```
 
-    ### Notes
+    Key contract points:
 
-    - **`layoutScale` vs `densityScale`.** `layoutScale` is layout-space
-      pixels per Typst point — a layout decision (how big does the page
-      look on screen). `densityScale` is the backing-store density
-      multiplier — a sharpness decision. Fold `window.devicePixelRatio`,
-      any in-app zoom level, and `visualViewport.scale` (pinch-zoom) into
-      one `densityScale` value. Both default to `1`.
-    - **Painter owns backing store.** Don't write to `canvas.width` /
-      `canvas.height` yourself — the painter does it on every call. Don't
-      call `clearRect` either; setting the backing-store size clears it.
-    - **Consumer owns layout.** The painter doesn't touch
-      `canvas.style.*`. Use `result.layoutWidth` / `result.layoutHeight`
-      to size the canvas's display box.
-    - **Backing-store clamp.** If `layoutScale * densityScale` would push
-      either dimension past 16384 px, the painter clamps `densityScale`
-      to fit and the result reflects what it actually wrote. Detect via
-      `result.pixelWidth < Math.round(result.layoutWidth * densityScale)`.
-    - **`pageCount` and `pageSize(page)` are stable** for the lifetime of a
-      session — the underlying compiled document is an immutable snapshot.
-      Cache them.
-    - **Worker rendering.** Pass an `OffscreenCanvasRenderingContext2D`
-      to the same `paint` call to rasterize off the main thread. Loading
-      the WASM module inside the Worker is the host's responsibility.
-    - **No text selection / find-in-page.** Canvas pixels are opaque to the
-      DOM. If you need accessibility or text selection in the preview,
-      keep an SVG/PDF export path alongside.
+    - The painter owns `canvas.width` / `canvas.height` and rewrites them on
+      every call (so each `paint` is a full repaint — no `clearRect` needed).
+      The consumer owns `canvas.style.*` and reads `result.layoutWidth` /
+      `layoutHeight` to size the display box.
+    - `layoutScale` (default `1`) is layout pixels per Typst point — how big
+      the page looks. `densityScale` (default `1`) is the backing-store
+      density multiplier — how sharp it is. Fold `devicePixelRatio`, in-app
+      zoom, and `visualViewport.scale` into one `densityScale` value.
+    - If `layoutScale * densityScale` would push either dimension past 16384
+      px, `densityScale` is clamped to fit; compare `result.pixelWidth` to
+      `round(result.layoutWidth * densityScale)` to detect the clamp.
+    - Pass an `OffscreenCanvasRenderingContext2D` to rasterize off the main
+      thread.
+    - Canvas pixels are opaque to the DOM — there's no text selection or
+      find-in-page. Keep an SVG/PDF path alongside if you need either.
+
+    Full design rationale: [PREVIEW.md](https://github.com/nibsbin/quillmark/blob/main/prose/designs/PREVIEW.md).
