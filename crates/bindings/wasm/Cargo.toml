@@ -31,5 +31,7 @@ web-sys = { version = "0.3", features = [
     "OffscreenCanvasRenderingContext2d",
 ] }
 
+lopdf = { version = "0.40.0", default-features = false, features = ["wasm_js"] }
+
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
