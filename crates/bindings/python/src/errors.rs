@@ -70,6 +70,12 @@ pub fn convert_render_error(err: RenderError) -> PyErr {
         RenderError::ValidationFailed { diags } => {
             // Multi-diagnostic: each entry sets `path` to anchor the error
             // in the document model. Consumers should iterate `.diagnostics`.
+            //
+            // Pre-PR-#566 versions of this binding attached a single
+            // `.diagnostic` for `ValidationFailed`. To soften that
+            // breaking change for the common single-error case, we also
+            // attach `.diagnostic = diagnostics[0]` when there is exactly
+            // one diagnostic. New code should prefer `.diagnostics`.
             let msg = if diags.len() == 1 {
                 diags[0].message.clone()
             } else {
@@ -81,6 +87,9 @@ pub fn convert_render_error(err: RenderError) -> PyErr {
                     .into_iter()
                     .map(|d| crate::types::PyDiagnostic { inner: d.into() })
                     .collect();
+                if py_diags.len() == 1 {
+                    let _ = exc.setattr("diagnostic", py_diags[0].clone());
+                }
                 let _ = exc.setattr("diagnostics", py_diags);
             }
             py_err

@@ -243,7 +243,14 @@ impl Quill {
                 // `path` anchor for UI navigation. Consumers should iterate
                 // `RenderError::diagnostics()` rather than reading a single
                 // flattened message.
-                let diags = errors.iter().map(|e| e.to_diagnostic()).collect();
+                //
+                // `validate_document` only returns `Err` with a non-empty
+                // error list, but the `ValidationFailed` variant documents
+                // the same invariant — assert it here so any future
+                // refactor of the underlying validator can't quietly
+                // produce an empty-diags error.
+                debug_assert!(!errors.is_empty(), "ValidationFailed must carry at least one diagnostic");
+                let diags: Vec<Diagnostic> = errors.iter().map(|e| e.to_diagnostic()).collect();
                 Err(RenderError::ValidationFailed { diags })
             }
         }
