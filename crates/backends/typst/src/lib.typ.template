@@ -3,14 +3,14 @@
 
 /// Emit an unsigned signature field. PDF: a clickable AcroForm SigField
 /// widget here. SVG/PNG: same invisible layout space.
-/// `name` must be unique and match `[A-Za-z0-9_]+`. `width` / `height` must
+/// `name` must be a non-empty unique string. `width` / `height` must
 /// be absolute lengths (pt/mm/cm/in).
 /// `<__qm_sig__>` and `kind: "__qm_sig__"` are reserved for this hand-off.
 #let signature-field(name, width: 200pt, height: 50pt) = {
   assert(type(name) == str,
     message: "signature-field: name must be a string, got " + repr(type(name)))
-  assert(name.match(regex("^[A-Za-z0-9_]+$")) != none,
-    message: "signature-field: name must match [A-Za-z0-9_]+, got " + repr(name))
+  assert(name.len() > 0,
+    message: "signature-field: name must not be empty")
   let abs-pt(field, l) = {
     let r = repr(l)
     assert(not (r.contains("em") or r.ends-with("%")),
