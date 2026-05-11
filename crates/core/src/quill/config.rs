@@ -214,23 +214,8 @@ impl QuillConfig {
                     let mut out = Vec::with_capacity(arr.len());
                     for (idx, elem) in arr.iter().enumerate() {
                         if let Some(obj) = elem.as_object() {
-                            let mut coerced_obj = serde_json::Map::new();
-                            for (k, v) in obj {
-                                if let Some(prop_schema) = props.get(k) {
-                                    let child_path = format!("{path}[{idx}].{k}");
-                                    coerced_obj.insert(
-                                        k.clone(),
-                                        Self::coerce_value_strict(
-                                            &QuillValue::from_json(v.clone()),
-                                            prop_schema,
-                                            &child_path,
-                                        )?
-                                        .into_json(),
-                                    );
-                                } else {
-                                    coerced_obj.insert(k.clone(), v.clone());
-                                }
-                            }
+                            let coerced_obj =
+                                Self::coerce_object_props(obj, props, &format!("{path}[{idx}]"))?;
                             out.push(serde_json::Value::Object(coerced_obj));
                         } else {
                             out.push(elem.clone());
@@ -419,23 +404,7 @@ impl QuillConfig {
             FieldType::Object => {
                 if let Some(obj) = json_value.as_object() {
                     if let Some(props) = &field_schema.properties {
-                        let mut coerced_obj = serde_json::Map::new();
-                        for (k, v) in obj {
-                            if let Some(prop_schema) = props.get(k) {
-                                let child_path = format!("{path}.{k}");
-                                coerced_obj.insert(
-                                    k.clone(),
-                                    Self::coerce_value_strict(
-                                        &QuillValue::from_json(v.clone()),
-                                        prop_schema,
-                                        &child_path,
-                                    )?
-                                    .into_json(),
-                                );
-                            } else {
-                                coerced_obj.insert(k.clone(), v.clone());
-                            }
-                        }
+                        let coerced_obj = Self::coerce_object_props(obj, props, path)?;
                         Ok(QuillValue::from_json(serde_json::Value::Object(
                             coerced_obj,
                         )))
@@ -447,6 +416,35 @@ impl QuillConfig {
                 }
             }
         }
+    }
+
+    /// Walk `obj`'s keys, coercing any that match `props` against the matching
+    /// schema and copying any others through verbatim. `parent_path` is the
+    /// breadcrumb for the enclosing scope (e.g. `"foo[3]"` or `"foo"`); each
+    /// child's path is `"{parent_path}.{k}"`.
+    fn coerce_object_props(
+        obj: &serde_json::Map<String, serde_json::Value>,
+        props: &std::collections::BTreeMap<String, Box<super::FieldSchema>>,
+        parent_path: &str,
+    ) -> Result<serde_json::Map<String, serde_json::Value>, CoercionError> {
+        let mut out = serde_json::Map::new();
+        for (k, v) in obj {
+            if let Some(prop_schema) = props.get(k) {
+                let child_path = format!("{parent_path}.{k}");
+                out.insert(
+                    k.clone(),
+                    Self::coerce_value_strict(
+                        &QuillValue::from_json(v.clone()),
+                        prop_schema,
+                        &child_path,
+                    )?
+                    .into_json(),
+                );
+            } else {
+                out.insert(k.clone(), v.clone());
+            }
+        }
+        Ok(out)
     }
 
     fn has_disallowed_nested_object(schema: &FieldSchema, allow_object_here: bool) -> bool {

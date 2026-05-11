@@ -36,6 +36,26 @@ impl QuillValue {
     pub fn from_json(json_val: serde_json::Value) -> Self {
         QuillValue(json_val)
     }
+
+    /// String value.
+    pub fn string(s: impl Into<String>) -> Self {
+        QuillValue(serde_json::Value::String(s.into()))
+    }
+
+    /// Integer value.
+    pub fn integer(n: i64) -> Self {
+        QuillValue(serde_json::Value::Number(n.into()))
+    }
+
+    /// Boolean value.
+    pub fn bool(b: bool) -> Self {
+        QuillValue(serde_json::Value::Bool(b))
+    }
+
+    /// Null value.
+    pub fn null() -> Self {
+        QuillValue(serde_json::Value::Null)
+    }
 }
 
 impl Deref for QuillValue {

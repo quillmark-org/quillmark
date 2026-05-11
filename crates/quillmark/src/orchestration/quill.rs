@@ -2,6 +2,7 @@
 //! [`QuillSource`] with a resolved backend.
 
 use indexmap::IndexMap;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use quillmark_core::{
@@ -18,11 +19,6 @@ use crate::form::{self, Form, FormCard};
 pub struct Quill {
     source: Arc<QuillSource>,
     backend: Arc<dyn Backend>,
-}
-
-struct PreparedRenderContext {
-    json_data: serde_json::Value,
-    plate_content: String,
 }
 
 impl Quill {
@@ -64,29 +60,28 @@ impl Quill {
         opts: &RenderOptions,
     ) -> Result<RenderResult, RenderError> {
         let session = self.open(doc)?;
-        let resolved = self.resolve_options(opts);
+        let resolved = RenderOptions {
+            output_format: opts
+                .output_format
+                .or_else(|| self.backend.supported_formats().first().copied()),
+            ppi: opts.ppi,
+            pages: opts.pages.clone(),
+        };
         session.render(&resolved)
     }
 
     /// Open an iterative render session for this document.
     pub fn open(&self, doc: &Document) -> Result<RenderSession, RenderError> {
-        let context = self.prepare_render_context(doc)?;
+        let json_data = self.compile_data(doc)?;
+        let plate_content = self
+            .source
+            .plate()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("")
+            .to_string();
         let warnings: Vec<_> = self.ref_mismatch_warning(doc).into_iter().collect();
-        let session =
-            self.backend
-                .open(&context.plate_content, &self.source, &context.json_data)?;
+        let session = self.backend.open(&plate_content, &self.source, &json_data)?;
         Ok(session.with_warnings(warnings))
-    }
-
-    fn resolve_options(&self, opts: &RenderOptions) -> RenderOptions {
-        let output_format = opts
-            .output_format
-            .or_else(|| self.backend.supported_formats().first().copied());
-        RenderOptions {
-            output_format,
-            ppi: opts.ppi,
-            pages: opts.pages.clone(),
-        }
     }
 
     /// Compile a Document to JSON data suitable for the backend.
@@ -94,40 +89,71 @@ impl Quill {
     /// Applies coercion, validation, normalization, and schema defaults, then
     /// calls [`Document::to_plate_json`] to produce the wire format.
     pub fn compile_data(&self, doc: &Document) -> Result<serde_json::Value, RenderError> {
-        // Coerce main-card frontmatter fields against the schema.
-        let main_fields_map = doc.main().frontmatter().to_index_map();
-        let coerced_frontmatter = self
-            .source
-            .config()
-            .coerce_frontmatter(&main_fields_map)
-            .map_err(|e| RenderError::ValidationFailed {
-                diag: Box::new(
-                    Diagnostic::new(Severity::Error, e.to_string())
-                        .with_code("validation::coercion_failed".to_string())
-                        .with_hint(
-                            "Ensure all fields can be coerced to their declared types".to_string(),
-                        ),
-                ),
-            })?;
+        let coerced = self.coerce_and_validate(doc)?;
 
-        // Coerce card fields against per-card schemas.
-        let mut coerced_cards: Vec<Card> = Vec::new();
+        // Normalize: strip bidi + fix HTML comment fences in body regions.
+        let normalized = normalize_document(coerced)?;
+
+        // Apply schema defaults to main + per-card frontmatter.
+        let main_with_defaults = apply_defaults(
+            &normalized.main().frontmatter().to_index_map(),
+            self.source.config().main.defaults(),
+        );
+        let cards_with_defaults: Vec<Card> = normalized
+            .cards()
+            .iter()
+            .map(|card| {
+                let defaults = self
+                    .source
+                    .config()
+                    .card_type(&card.tag())
+                    .map(|c| c.defaults())
+                    .unwrap_or_default();
+                let fields =
+                    apply_defaults(&card.frontmatter().to_index_map(), defaults);
+                Card::new_with_sentinel(
+                    Sentinel::Card(card.tag()),
+                    Frontmatter::from_index_map(fields),
+                    card.body().to_string(),
+                )
+            })
+            .collect();
+
+        let final_main = Card::new_with_sentinel(
+            Sentinel::Main(normalized.quill_reference().clone()),
+            Frontmatter::from_index_map(main_with_defaults),
+            normalized.main().body().to_string(),
+        );
+        let final_doc = Document::from_main_and_cards(
+            final_main,
+            cards_with_defaults,
+            normalized.warnings().to_vec(),
+        );
+
+        Ok(final_doc.to_plate_json())
+    }
+
+    /// Perform a dry-run validation without backend compilation.
+    pub fn dry_run(&self, doc: &Document) -> Result<(), RenderError> {
+        self.coerce_and_validate(doc).map(|_| ())
+    }
+
+    /// Coerce main + card fields against their schemas, then validate the
+    /// resulting document. Shared entry point for [`Self::compile_data`]
+    /// (which then normalizes and applies defaults) and [`Self::dry_run`]
+    /// (which stops here).
+    fn coerce_and_validate(&self, doc: &Document) -> Result<Document, RenderError> {
+        let config = self.source.config();
+
+        let coerced_frontmatter = config
+            .coerce_frontmatter(&doc.main().frontmatter().to_index_map())
+            .map_err(coercion_error)?;
+
+        let mut coerced_cards: Vec<Card> = Vec::with_capacity(doc.cards().len());
         for card in doc.cards() {
-            let card_fields_map = card.frontmatter().to_index_map();
-            let coerced_fields = self
-                .source
-                .config()
-                .coerce_card(&card.tag(), &card_fields_map)
-                .map_err(|e| RenderError::ValidationFailed {
-                    diag: Box::new(
-                        Diagnostic::new(Severity::Error, e.to_string())
-                            .with_code("validation::coercion_failed".to_string())
-                            .with_hint(
-                                "Ensure all card fields can be coerced to their declared types"
-                                    .to_string(),
-                            ),
-                    ),
-                })?;
+            let coerced_fields = config
+                .coerce_card(&card.tag(), &card.frontmatter().to_index_map())
+                .map_err(coercion_error)?;
             coerced_cards.push(Card::new_with_sentinel(
                 Sentinel::Card(card.tag()),
                 Frontmatter::from_index_map(coerced_fields),
@@ -145,49 +171,7 @@ impl Quill {
 
         self.validate_document(&coerced_doc)?;
 
-        // Normalize: strip bidi + fix HTML comment fences in body regions.
-        let normalized = normalize_document(coerced_doc)?;
-
-        // Apply schema defaults to frontmatter.
-        let normalized_main_map = normalized.main().frontmatter().to_index_map();
-        let frontmatter_with_defaults = self.apply_frontmatter_defaults(&normalized_main_map);
-
-        // Apply per-card defaults.
-        let cards_with_defaults: Vec<Card> = normalized
-            .cards()
-            .iter()
-            .map(|card| {
-                let card_map = card.frontmatter().to_index_map();
-                let fields_with_defaults = self.apply_card_defaults(&card.tag(), &card_map);
-                Card::new_with_sentinel(
-                    Sentinel::Card(card.tag()),
-                    Frontmatter::from_index_map(fields_with_defaults),
-                    card.body().to_string(),
-                )
-            })
-            .collect();
-
-        // Rebuild document with defaults applied.
-        let final_main = Card::new_with_sentinel(
-            Sentinel::Main(normalized.quill_reference().clone()),
-            Frontmatter::from_index_map(frontmatter_with_defaults),
-            normalized.main().body().to_string(),
-        );
-        let final_doc = Document::from_main_and_cards(
-            final_main,
-            cards_with_defaults,
-            normalized.warnings().to_vec(),
-        );
-
-        // Build the plate wire format.
-        Ok(final_doc.to_plate_json())
-    }
-
-    fn prepare_render_context(&self, doc: &Document) -> Result<PreparedRenderContext, RenderError> {
-        Ok(PreparedRenderContext {
-            json_data: self.compile_data(doc)?,
-            plate_content: self.plate_content().unwrap_or_default(),
-        })
+        Ok(coerced_doc)
     }
 
     fn ref_mismatch_warning(&self, doc: &Document) -> Option<Diagnostic> {
@@ -211,42 +195,6 @@ impl Quill {
         } else {
             None
         }
-    }
-
-    fn apply_frontmatter_defaults(
-        &self,
-        frontmatter: &IndexMap<String, QuillValue>,
-    ) -> IndexMap<String, QuillValue> {
-        let mut result = frontmatter.clone();
-        for (field_name, default_value) in self.source.config().main.defaults() {
-            if !result.contains_key(&field_name) {
-                result.insert(field_name, default_value);
-            }
-        }
-        result
-    }
-
-    fn apply_card_defaults(
-        &self,
-        card_tag: &str,
-        fields: &IndexMap<String, QuillValue>,
-    ) -> IndexMap<String, QuillValue> {
-        let mut result = fields.clone();
-        if let Some(card) = self.source.config().card_type(card_tag) {
-            for (field_name, default_value) in card.defaults() {
-                if !result.contains_key(&field_name) {
-                    result.insert(field_name, default_value);
-                }
-            }
-        }
-        result
-    }
-
-    fn plate_content(&self) -> Option<String> {
-        self.source
-            .plate()
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
     }
 
     /// The schema-aware form view of `doc` — the whole-document snapshot
@@ -287,57 +235,6 @@ impl Quill {
         form::blank_card_for_tag(self, card_type)
     }
 
-    /// Perform a dry-run validation without backend compilation.
-    pub fn dry_run(&self, doc: &Document) -> Result<(), RenderError> {
-        let main_fields_map = doc.main().frontmatter().to_index_map();
-        let coerced_frontmatter = self
-            .source
-            .config()
-            .coerce_frontmatter(&main_fields_map)
-            .map_err(|e| RenderError::ValidationFailed {
-                diag: Box::new(
-                    Diagnostic::new(Severity::Error, e.to_string())
-                        .with_code("validation::coercion_failed".to_string())
-                        .with_hint(
-                            "Ensure all fields and card values can be coerced to their declared types"
-                                .to_string(),
-                        ),
-                ),
-            })?;
-        let mut coerced_cards: Vec<Card> = Vec::new();
-        for card in doc.cards() {
-            let card_fields_map = card.frontmatter().to_index_map();
-            let coerced_fields = self
-                .source
-                .config()
-                .coerce_card(&card.tag(), &card_fields_map)
-                .map_err(|e| RenderError::ValidationFailed {
-                    diag: Box::new(
-                        Diagnostic::new(Severity::Error, e.to_string())
-                            .with_code("validation::coercion_failed".to_string())
-                            .with_hint(
-                                "Ensure all card fields can be coerced to their declared types"
-                                    .to_string(),
-                            ),
-                    ),
-                })?;
-            coerced_cards.push(Card::new_with_sentinel(
-                Sentinel::Card(card.tag()),
-                Frontmatter::from_index_map(coerced_fields),
-                card.body().to_string(),
-            ));
-        }
-        let coerced_main = Card::new_with_sentinel(
-            Sentinel::Main(doc.quill_reference().clone()),
-            Frontmatter::from_index_map(coerced_frontmatter),
-            doc.main().body().to_string(),
-        );
-        let coerced_doc =
-            Document::from_main_and_cards(coerced_main, coerced_cards, doc.warnings().to_vec());
-        self.validate_document(&coerced_doc)?;
-        Ok(())
-    }
-
     fn validate_document(&self, doc: &Document) -> Result<(), RenderError> {
         match self.source.config().validate_document(doc) {
             Ok(_) => Ok(()),
@@ -360,6 +257,35 @@ impl Quill {
             }
         }
     }
+}
+
+/// Wrap a coercion error from `QuillConfig::coerce_frontmatter` /
+/// `coerce_card` into a `RenderError::ValidationFailed` with a uniform hint.
+fn coercion_error(e: impl std::fmt::Display) -> RenderError {
+    RenderError::ValidationFailed {
+        diag: Box::new(
+            Diagnostic::new(Severity::Error, e.to_string())
+                .with_code("validation::coercion_failed".to_string())
+                .with_hint(
+                    "Ensure all fields can be coerced to their declared types".to_string(),
+                ),
+        ),
+    }
+}
+
+/// Merge schema `defaults` into `fields`. Fields already present in `fields`
+/// win — defaults only fill gaps. Insertion order of existing fields is
+/// preserved; new default keys append at the end (in `HashMap` iteration
+/// order, which is fine for downstream wire serialization).
+fn apply_defaults(
+    fields: &IndexMap<String, QuillValue>,
+    defaults: HashMap<String, QuillValue>,
+) -> IndexMap<String, QuillValue> {
+    let mut result = fields.clone();
+    for (k, v) in defaults {
+        result.entry(k).or_insert(v);
+    }
+    result
 }
 
 impl std::fmt::Debug for Quill {

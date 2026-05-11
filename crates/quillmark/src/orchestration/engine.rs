@@ -98,13 +98,7 @@ fn load_tree_from_path(path: &Path) -> Result<FileTreeNode, Box<dyn StdError + S
             .map_err(|e| format!("Failed to read .quillignore: {}", e))?;
         QuillIgnore::from_content(&content)
     } else {
-        QuillIgnore::new(vec![
-            ".git/".to_string(),
-            ".gitignore".to_string(),
-            ".quillignore".to_string(),
-            "target/".to_string(),
-            "node_modules/".to_string(),
-        ])
+        QuillIgnore::default()
     };
 
     load_dir(path, path, &ignore)

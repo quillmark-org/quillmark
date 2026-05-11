@@ -7,6 +7,20 @@ pub struct QuillIgnore {
     pub(crate) patterns: Vec<String>,
 }
 
+impl Default for QuillIgnore {
+    /// Built-in ignore set used when a quill directory has no `.quillignore`
+    /// file. Skips VCS metadata, build artifacts, and dependency caches.
+    fn default() -> Self {
+        Self::new(vec![
+            ".git/".to_string(),
+            ".gitignore".to_string(),
+            ".quillignore".to_string(),
+            "target/".to_string(),
+            "node_modules/".to_string(),
+        ])
+    }
+}
+
 impl QuillIgnore {
     /// Create a new QuillIgnore from pattern strings
     pub fn new(patterns: Vec<String>) -> Self {
