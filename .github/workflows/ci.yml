@@ -56,7 +56,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Tests
-        run: cargo test --all-features --locked
+        run: cargo test --workspace --all-features --locked
 
   wasm:
     runs-on: ubuntu-latest
