@@ -61,7 +61,7 @@ pub(crate) fn extract(doc: &PagedDocument) -> Result<Vec<SigPlacement>, RenderEr
         let pos = intro.position(loc);
         placements.push(SigPlacement {
             name,
-            page: pos.page.get().saturating_sub(1),
+            page: pos.page.get() - 1,
             rect_typst_pt: [
                 pos.point.x.to_pt() as f32,
                 pos.point.y.to_pt() as f32,

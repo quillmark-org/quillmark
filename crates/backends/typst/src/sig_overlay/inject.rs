@@ -93,12 +93,12 @@ pub(crate) fn inject(
     }
 
     let chunk_bytes = chunk.as_bytes();
-    let offset_in_chunk = |id: i32| -> Result<usize, RenderError> {
+    let offset_in_chunk = |id: i32| -> usize {
         let marker = format!("{} 0 obj", id);
         chunk_bytes
             .windows(marker.len())
             .position(|w| w == marker.as_bytes())
-            .ok_or_else(|| err(CODE_PARSE, format!("emitted object {id} not located in chunk")))
+            .expect("pdf_writer emitted an indirect object but its header is missing from the chunk")
     };
 
     let (cs, ce) =
@@ -140,11 +140,11 @@ pub(crate) fn inject(
 
     let mut entries: Vec<(u32, usize)> = Vec::new();
     for wref in &widget_ids {
-        entries.push((wref.get() as u32, widget_chunk_off + offset_in_chunk(wref.get())?));
+        entries.push((wref.get() as u32, widget_chunk_off + offset_in_chunk(wref.get())));
     }
     entries.push((
         acroform_id.get() as u32,
-        widget_chunk_off + offset_in_chunk(acroform_id.get())?,
+        widget_chunk_off + offset_in_chunk(acroform_id.get()),
     ));
     let new_catalog_off = out.len();
     out.extend_from_slice(&updated_catalog);
