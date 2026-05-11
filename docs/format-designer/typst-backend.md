@@ -113,6 +113,40 @@ Plate authors style output with Typst's standard `#set` directives:
 
 See the [Typst tutorial](https://typst.app/docs/tutorial/) for the full styling vocabulary. For worked plates that combine data access with real layout, see the `appreciated_letter`, `usaf_memo`, and `taro` examples in `crates/quillmark/examples/`.
 
+## Signature Fields
+
+Import `signature-field` from the helper package to drop an unsigned PDF signature box anywhere in your plate:
+
+```typst
+#import "@local/quillmark-helper:0.1.0": signature-field
+
+Approving authority:
+#signature-field("approver")
+
+Witness:
+#signature-field("witness", width: 220pt, height: 60pt)
+```
+
+PDF output gains a clickable AcroForm SigField widget at each call site. Open the result in Acrobat (or any reader that supports form signing) and the widget presents a "Sign Here" affordance. SVG and PNG outputs reserve the same invisible layout space — useful for preview but no widget visual.
+
+**Important:** the widget is **unsigned**. Quillmark does not perform any cryptography. To produce a signed PDF, run the output through pyHanko, Acrobat, endesive, or another signing tool.
+
+**Parameters:**
+
+| Name | Type | Default | Notes |
+|---|---|---|---|
+| `name` | `str` | required (positional) | Field name — must be unique within the document and match `[A-Za-z0-9_]+`. Surfaces as the widget's `/T` entry. |
+| `width` | `length` | `200pt` | Must be an absolute length (`pt`, `mm`, `cm`, `in`) — relative lengths like `2em` or `50%` are rejected. |
+| `height` | `length` | `50pt` | Same constraint as `width`. |
+
+**Errors:**
+
+- Two calls with the same `name` raise a compilation error (`typst::duplicate_signature_field`).
+- A non-absolute `width` or `height` raises a Typst assert pointing at `signature-field`.
+- Names violating `[A-Za-z0-9_]+` raise a Typst assert.
+
+The label `<__qm_sig__>` and metadata `kind: "__qm_sig__"` are reserved for this hand-off — don't use them for unrelated metadata in your plate.
+
 ## Output Formats
 
 PDF and SVG render as a single artifact. PNG renders one artifact per page.

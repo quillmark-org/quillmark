@@ -15,6 +15,10 @@
 //! - Compiles Typst documents to PDF and SVG formats
 //! - Provides template filters for YAML data transformation
 //! - Manages fonts, assets, and packages dynamically
+//! - Embeds unsigned AcroForm signature widgets via the
+//!   `signature-field` helper (see `signature-field` in the `lib.typ`
+//!   helper package; only the PDF output carries the widget — SVG and
+//!   PNG render an invisible placeholder)
 //! - Thread-safe for concurrent rendering
 //!
 //! ## Modules
