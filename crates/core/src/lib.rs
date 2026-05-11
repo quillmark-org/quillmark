@@ -67,10 +67,6 @@ pub mod value;
 pub use value::QuillValue;
 
 pub mod normalize;
-pub use normalize::{
-    normalize_document, normalize_fields, normalize_markdown, strip_bidi_formatting,
-    NormalizationError,
-};
 
 pub mod version;
 pub use version::{QuillReference, Version, VersionSelector};
