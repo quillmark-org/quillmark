@@ -16,6 +16,44 @@
 //! - [`Severity`]: Error severity levels (Error, Warning, Note)
 //! - [`RenderResult`]: Result type with artifacts and warnings
 //!
+//! ## Document Anchors
+//!
+//! A [`Diagnostic`] can carry two independent "where" anchors, both optional:
+//!
+//! - [`Diagnostic::location`] — a source-text anchor (`file:line:column`).
+//!   Produced by parsers and backend compilers that operate on raw text.
+//! - [`Diagnostic::path`] — a document-model anchor pointing into the typed
+//!   [`crate::document::Document`]. Produced by schema validation and
+//!   coercion, which run on the typed model after line spans are gone.
+//!
+//! ### Path grammar
+//!
+//! ```text
+//! path        := segment ( "." field_name | "[" index "]" )*
+//! field_name  := [a-z_][a-z0-9_]*       // same charset enforced for fields/tags
+//! index       := [0-9]+
+//! ```
+//!
+//! Because field and card tag names are validated to that charset (no `.`,
+//! `[`, `]`, or whitespace can appear in any segment), the dotted form
+//! round-trips unambiguously.
+//!
+//! ### Path conventions
+//!
+//! | Anchor                        | Path                                          |
+//! |-------------------------------|-----------------------------------------------|
+//! | Main frontmatter field        | `title`                                       |
+//! | Nested in array of objects    | `recipients[0].name`                          |
+//! | Main card body                | `main.body`                                   |
+//! | Typed card (whole)            | `cards.indorsement[0]`                        |
+//! | Field on typed card           | `cards.indorsement[0].signature_block`        |
+//! | Body on typed card            | `cards.indorsement[0].body`                   |
+//! | Card with unknown tag         | `cards[0]`                                    |
+//!
+//! The `cards.<tag>[<index>]` form fuses the card tag and the document
+//! array index into one segment so consumers receive both pieces of
+//! information without a second lookup.
+//!
 //! ## Error Hierarchy
 //!
 //! ### RenderError Variants
@@ -144,9 +182,19 @@ pub struct Diagnostic {
     pub code: Option<String>,
     /// Human-readable error message
     pub message: String,
-    /// Primary source location
+    /// Primary source location (text anchor: file/line/column).
+    ///
+    /// Set by parsers and backend compilers. May co-exist with [`Self::path`]
+    /// — the two anchors are independent.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub location: Option<Location>,
+    /// Document-model anchor — a dotted/bracketed path into the typed
+    /// [`crate::document::Document`].
+    ///
+    /// Set by schema validation and coercion. See the module-level docs for
+    /// the path grammar and conventions. May co-exist with [`Self::location`].
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub path: Option<String>,
     /// Optional hint for fixing the error
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub hint: Option<String>,
@@ -163,6 +211,7 @@ impl Diagnostic {
             code: None,
             message,
             location: None,
+            path: None,
             hint: None,
             source_chain: Vec::new(),
         }
@@ -177,6 +226,14 @@ impl Diagnostic {
     /// Set the primary location
     pub fn with_location(mut self, location: Location) -> Self {
         self.location = Some(location);
+        self
+    }
+
+    /// Set the document-model path anchor.
+    ///
+    /// See the module-level docs for the path grammar and conventions.
+    pub fn with_path(mut self, path: String) -> Self {
+        self.path = Some(path);
         self
     }
 
@@ -214,6 +271,10 @@ impl Diagnostic {
 
         if let Some(ref loc) = self.location {
             result.push_str(&format!("\n  --> {}:{}:{}", loc.file, loc.line, loc.column));
+        }
+
+        if let Some(ref path) = self.path {
+            result.push_str(&format!("\n  at {}", path));
         }
 
         if let Some(ref hint) = self.hint {
@@ -375,11 +436,14 @@ pub enum RenderError {
         diag: Box<Diagnostic>,
     },
 
-    /// Validation failed for parsed document
-    #[error("{diag}")]
+    /// Validation failed for parsed document — may carry multiple diagnostics
+    /// when several problems are detected during a single validation pass
+    /// (e.g. multiple missing required fields). Each diagnostic should set
+    /// `path` to anchor the error at a specific location in the document model.
+    #[error("Validation failed with {} error(s)", diags.len())]
     ValidationFailed {
-        /// Diagnostic information
-        diag: Box<Diagnostic>,
+        /// All validation diagnostics. Always non-empty.
+        diags: Vec<Diagnostic>,
     },
 
     /// Quill configuration error — may carry multiple diagnostics when several
@@ -395,14 +459,13 @@ impl RenderError {
     /// Extract all diagnostics from this error
     pub fn diagnostics(&self) -> Vec<&Diagnostic> {
         match self {
-            RenderError::CompilationFailed { diags } | RenderError::QuillConfig { diags } => {
-                diags.iter().collect()
-            }
+            RenderError::CompilationFailed { diags }
+            | RenderError::QuillConfig { diags }
+            | RenderError::ValidationFailed { diags } => diags.iter().collect(),
             RenderError::EngineCreation { diag }
             | RenderError::InvalidFrontmatter { diag }
             | RenderError::FormatNotSupported { diag }
-            | RenderError::UnsupportedBackend { diag }
-            | RenderError::ValidationFailed { diag } => vec![diag.as_ref()],
+            | RenderError::UnsupportedBackend { diag } => vec![diag.as_ref()],
         }
     }
 }
@@ -515,6 +578,31 @@ mod tests {
         assert!(output.contains("W001"));
         assert!(output.contains("input.md:5:10"));
         assert!(output.contains("hint:"));
+    }
+
+    #[test]
+    fn test_diagnostic_with_path() {
+        let diag = Diagnostic::new(Severity::Error, "Missing field".to_string())
+            .with_code("validation::missing_required".to_string())
+            .with_path("cards.indorsement[0].signature_block".to_string());
+
+        assert_eq!(
+            diag.path.as_deref(),
+            Some("cards.indorsement[0].signature_block")
+        );
+
+        let json = serde_json::to_string(&diag).unwrap();
+        assert!(json.contains("\"path\":\"cards.indorsement[0].signature_block\""));
+
+        let pretty = diag.fmt_pretty();
+        assert!(pretty.contains("at cards.indorsement[0].signature_block"));
+    }
+
+    #[test]
+    fn test_diagnostic_path_omitted_when_none() {
+        let diag = Diagnostic::new(Severity::Error, "No path".to_string());
+        let json = serde_json::to_string(&diag).unwrap();
+        assert!(!json.contains("\"path\""));
     }
 
     #[test]

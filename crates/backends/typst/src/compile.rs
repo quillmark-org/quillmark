@@ -184,16 +184,14 @@ pub(crate) fn render_document_pages(
                 slice.iter().copied().filter(|&i| i >= page_count).collect();
             if !out_of_bounds.is_empty() {
                 return Err(RenderError::ValidationFailed {
-                    diag: Box::new(
-                        Diagnostic::new(
-                            Severity::Error,
-                            format!(
-                                "Page index out of bounds (page_count={}); offending indices: {:?}. Check `RenderSession.pageCount` before requesting pages.",
-                                page_count, out_of_bounds
-                            ),
-                        )
-                        .with_code("typst::page_index_out_of_bounds".to_string()),
-                    ),
+                    diags: vec![Diagnostic::new(
+                        Severity::Error,
+                        format!(
+                            "Page index out of bounds (page_count={}); offending indices: {:?}. Check `RenderSession.pageCount` before requesting pages.",
+                            page_count, out_of_bounds
+                        ),
+                    )
+                    .with_code("typst::page_index_out_of_bounds".to_string())],
                 });
             }
             slice.to_vec()

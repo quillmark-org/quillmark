@@ -3,6 +3,7 @@ use time::format_description::well_known::Rfc3339;
 use time::{Date, OffsetDateTime};
 
 use crate::document::Document;
+use crate::error::{Diagnostic, Severity};
 use crate::quill::formats::DATE_FORMAT;
 use crate::quill::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
@@ -42,6 +43,70 @@ pub enum ValidationError {
     BodyDisabled { path: String, card: String },
 }
 
+impl ValidationError {
+    /// Document-model path anchor for this error.
+    ///
+    /// See [`crate::error`] module docs for the path grammar and conventions.
+    pub fn path(&self) -> &str {
+        match self {
+            ValidationError::MissingRequired { path }
+            | ValidationError::TypeMismatch { path, .. }
+            | ValidationError::EnumViolation { path, .. }
+            | ValidationError::FormatViolation { path, .. }
+            | ValidationError::UnknownCard { path, .. }
+            | ValidationError::MissingCardDiscriminator { path }
+            | ValidationError::BodyDisabled { path, .. } => path,
+        }
+    }
+
+    /// Stable diagnostic code for this error variant. Pattern-match on this
+    /// instead of the message text.
+    pub fn code(&self) -> &'static str {
+        match self {
+            ValidationError::MissingRequired { .. } => "validation::missing_required",
+            ValidationError::TypeMismatch { .. } => "validation::type_mismatch",
+            ValidationError::EnumViolation { .. } => "validation::enum_violation",
+            ValidationError::FormatViolation { .. } => "validation::format_violation",
+            ValidationError::UnknownCard { .. } => "validation::unknown_card",
+            ValidationError::MissingCardDiscriminator { .. } => {
+                "validation::missing_card_discriminator"
+            }
+            ValidationError::BodyDisabled { .. } => "validation::body_disabled",
+        }
+    }
+
+    /// Convert this error into a structured [`Diagnostic`] carrying the
+    /// stable code, the document-model `path`, and an optional hint.
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        let mut diag = Diagnostic::new(Severity::Error, self.to_string())
+            .with_code(self.code().to_string())
+            .with_path(self.path().to_string());
+
+        if let Some(hint) = self.hint() {
+            diag = diag.with_hint(hint);
+        }
+        diag
+    }
+
+    fn hint(&self) -> Option<String> {
+        match self {
+            ValidationError::MissingRequired { .. } => {
+                Some("Add this field to the document.".to_string())
+            }
+            ValidationError::TypeMismatch { expected, .. } => {
+                Some(format!("Provide a value of type `{}`.", expected))
+            }
+            ValidationError::EnumViolation { allowed, .. } => {
+                Some(format!("Use one of: {}.", allowed.join(", ")))
+            }
+            ValidationError::FormatViolation { format, .. } => {
+                Some(format!("Use the `{}` format.", format))
+            }
+            _ => None,
+        }
+    }
+}
+
 /// Validate a typed [`Document`] (with `IndexMap` frontmatter + typed `Card` list).
 ///
 /// This is the typed entry point used by `QuillConfig::validate_document`.
@@ -56,7 +121,7 @@ pub fn validate_typed_document(
     // treated as empty — only meaningful prose triggers the diagnostic.
     if !config.main.body_enabled() && !doc.main().body().trim().is_empty() {
         errors.push(ValidationError::BodyDisabled {
-            path: "main".to_string(),
+            path: "main.body".to_string(),
             card: "main".to_string(),
         });
     }
@@ -87,7 +152,7 @@ pub fn validate_typed_document(
 
         if !card_schema.body_enabled() && !card.body().trim().is_empty() {
             errors.push(ValidationError::BodyDisabled {
-                path: card_path,
+                path: format!("{card_path}.body"),
                 card: card_name,
             });
         }
@@ -632,13 +697,28 @@ main:
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
             e,
-            ValidationError::BodyDisabled { card, .. } if card == "skills"
+            ValidationError::BodyDisabled { path, card }
+            if card == "skills" && path == "cards.skills[0].body"
         )));
 
         let mut ws_card = typed_card("skills", &[("items", json!(["Rust"]))]);
         ws_card.replace_body("\n   \n");
         let ok_doc = doc_with_typed_cards(&[], vec![ws_card]);
         assert!(validate_typed_document(&config, &ok_doc).is_ok());
+    }
+
+    #[test]
+    fn to_diagnostic_carries_path_and_code() {
+        let err = ValidationError::MissingRequired {
+            path: "cards.indorsement[0].signature_block".to_string(),
+        };
+        let diag = err.to_diagnostic();
+        assert_eq!(diag.code.as_deref(), Some("validation::missing_required"));
+        assert_eq!(
+            diag.path.as_deref(),
+            Some("cards.indorsement[0].signature_block")
+        );
+        assert_eq!(diag.severity, Severity::Error);
     }
 
     #[test]
@@ -669,7 +749,8 @@ main:
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
             e,
-            ValidationError::BodyDisabled { card, .. } if card == "main"
+            ValidationError::BodyDisabled { path, card }
+            if card == "main" && path == "main.body"
         )));
     }
 }

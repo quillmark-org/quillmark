@@ -63,7 +63,12 @@ impl From<ParseError> for WasmError {
 impl From<RenderError> for WasmError {
     fn from(error: RenderError) -> Self {
         match error {
-            RenderError::CompilationFailed { diags } => WasmError { diagnostics: diags },
+            // Multi-diagnostic variants forward every diagnostic so JS
+            // consumers can iterate `err.diagnostics` and read each entry's
+            // `path` for document-model navigation.
+            RenderError::CompilationFailed { diags }
+            | RenderError::QuillConfig { diags }
+            | RenderError::ValidationFailed { diags } => WasmError { diagnostics: diags },
             _ => {
                 let diagnostic = error
                     .diagnostics()
@@ -126,6 +131,40 @@ mod tests {
         let summary = wasm_err.message();
         assert!(summary.contains("2"));
         assert!(summary.contains("Error 1"));
+    }
+
+    #[test]
+    fn test_validation_failed_carries_all_diagnostics() {
+        // Regression: prior to the PR-#566 fix, the `From<RenderError>`
+        // fallback called `.diagnostics().first()` and dropped every
+        // diagnostic after the first for non-CompilationFailed variants.
+        let diag1 = Diagnostic::new(Severity::Error, "missing title".to_string())
+            .with_path("title".to_string());
+        let diag2 = Diagnostic::new(Severity::Error, "missing author".to_string())
+            .with_path("author".to_string());
+        let render_err = RenderError::ValidationFailed {
+            diags: vec![diag1, diag2],
+        };
+        let wasm_err: WasmError = render_err.into();
+
+        assert_eq!(wasm_err.diagnostics.len(), 2);
+        assert_eq!(wasm_err.diagnostics[0].path.as_deref(), Some("title"));
+        assert_eq!(wasm_err.diagnostics[1].path.as_deref(), Some("author"));
+    }
+
+    #[test]
+    fn test_quill_config_carries_all_diagnostics() {
+        // Same regression as above, for `QuillConfig`.
+        let diag1 = Diagnostic::new(Severity::Error, "config error 1".to_string());
+        let diag2 = Diagnostic::new(Severity::Error, "config error 2".to_string());
+        let render_err = RenderError::QuillConfig {
+            diags: vec![diag1, diag2],
+        };
+        let wasm_err: WasmError = render_err.into();
+
+        assert_eq!(wasm_err.diagnostics.len(), 2);
+        assert_eq!(wasm_err.diagnostics[0].message, "config error 1");
+        assert_eq!(wasm_err.diagnostics[1].message, "config error 2");
     }
 
     #[test]
