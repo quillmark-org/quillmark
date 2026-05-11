@@ -2308,9 +2308,11 @@ dependencies = [
 name = "quillmark-fuzz"
 version = "0.76.0"
 dependencies = [
+ "indexmap",
  "proptest",
  "quillmark-core",
  "quillmark-typst",
+ "serde_json",
 ]
 
 [[package]]
