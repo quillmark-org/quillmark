@@ -11,7 +11,7 @@ Not published: `quillmark-fixtures`, `quillmark-fuzz`, `bindings/quillmark-pytho
 ## 1) Continuous Integration (CI)
 
 **Trigger**: pull requests and pushes to any branch except version tags.
-**Jobs** (all Linux, run in parallel; `ci-success` gate aggregates results):
+**Jobs** (all Linux, run in parallel):
 
 | Job | What it does |
 |-----|-------------|
