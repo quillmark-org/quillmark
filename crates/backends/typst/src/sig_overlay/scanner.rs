@@ -1,67 +1,63 @@
 //! Minimal byte-level PDF scanner used to parse a typst_pdf output well
-//! enough to do an incremental update.
-//!
-//! Scope is deliberately narrow: typst_pdf emits a traditional xref table
-//! (not an xref stream) and a small catalog/page tree. We don't aim to parse
-//! every PDF in the wild.
+//! enough to do an incremental update. Not a general PDF parser.
 
-use super::SigOverlayError;
+use quillmark_core::RenderError;
+
+use super::err;
+
+const CODE_PARSE: &str = "typst::sig_overlay_pdf_parse";
+const CODE_XREF_STREAM: &str = "typst::sig_overlay_xref_stream";
 
 /// The offset stored after the last `startxref` marker.
-pub(super) fn find_startxref(pdf: &[u8]) -> Result<usize, SigOverlayError> {
+pub(super) fn find_startxref(pdf: &[u8]) -> Result<usize, RenderError> {
     let needle = b"startxref";
     let from = pdf.len().saturating_sub(1024);
     let tail = &pdf[from..];
     let pos = tail
         .windows(needle.len())
         .rposition(|w| w == needle)
-        .ok_or(SigOverlayError::MissingStartxref)?;
+        .ok_or_else(|| err(CODE_PARSE, "missing startxref marker near EOF"))?;
     let after = skip_ws(&tail[pos + needle.len()..]);
     let mut end = 0;
     while end < after.len() && after[end].is_ascii_digit() {
         end += 1;
     }
-    if end == 0 {
-        return Err(SigOverlayError::MissingStartxref);
-    }
     std::str::from_utf8(&after[..end])
         .ok()
         .and_then(|s| s.parse().ok())
-        .ok_or(SigOverlayError::MissingStartxref)
+        .ok_or_else(|| err(CODE_PARSE, "startxref offset is not a valid integer"))
 }
 
-/// Confirm typst_pdf is emitting a traditional `xref` table at `xref_offset`.
-/// If it's emitting an xref stream we bail — we don't handle that.
-pub(super) fn assert_traditional_xref(
-    pdf: &[u8],
-    xref_offset: usize,
-) -> Result<(), SigOverlayError> {
+/// Bail if typst-pdf emitted an xref stream instead of a traditional table.
+pub(super) fn assert_traditional_xref(pdf: &[u8], xref_offset: usize) -> Result<(), RenderError> {
     if pdf.get(xref_offset..xref_offset + 4) != Some(b"xref") {
-        return Err(SigOverlayError::XrefStreamUnsupported);
+        return Err(err(
+            CODE_XREF_STREAM,
+            "PDF declares an xref stream; only traditional xref is supported",
+        ));
     }
     Ok(())
 }
 
-/// Parse the traditional trailer that follows the xref table.
 /// Returns (catalog_id, /Size, encrypted?).
 pub(super) fn parse_traditional_trailer(
     pdf: &[u8],
     xref_offset: usize,
-) -> Result<(u32, u32, bool), SigOverlayError> {
+) -> Result<(u32, u32, bool), RenderError> {
     let needle = b"trailer";
-    let from = xref_offset;
-    let pos = pdf[from..]
+    let pos = pdf[xref_offset..]
         .windows(needle.len())
         .position(|w| w == needle)
-        .ok_or(SigOverlayError::MissingTrailer)?
-        + from;
-    let dict =
-        extract_outer_dict(&pdf[pos + needle.len()..]).ok_or(SigOverlayError::MissingTrailer)?;
-    let root_bytes = find_dict_value(dict, "Root").ok_or(SigOverlayError::MissingRoot)?;
-    let (root_id, _) = parse_indirect_ref(root_bytes).ok_or(SigOverlayError::MissingRoot)?;
+        .ok_or_else(|| err(CODE_PARSE, "trailer marker not found"))?
+        + xref_offset;
+    let dict = extract_outer_dict(&pdf[pos + needle.len()..])
+        .ok_or_else(|| err(CODE_PARSE, "trailer dict not parseable"))?;
+    let (root_id, _) = find_dict_value(dict, "Root")
+        .and_then(parse_indirect_ref)
+        .ok_or_else(|| err(CODE_PARSE, "/Root missing or malformed in trailer"))?;
     let size = find_dict_value(dict, "Size")
         .and_then(parse_int)
-        .ok_or(SigOverlayError::MissingSize)? as u32;
+        .ok_or_else(|| err(CODE_PARSE, "/Size missing or malformed in trailer"))? as u32;
     let encrypted = find_dict_value(dict, "Encrypt").is_some();
     Ok((root_id, size, encrypted))
 }
@@ -85,11 +81,8 @@ pub(super) fn find_object_bytes(pdf: &[u8], id: u32) -> Option<(usize, usize)> {
 }
 
 /// Within a dict's inner bytes, locate `/Key` and return its raw value slice.
-///
-/// Tokenises the value so that Name values (`/Foo`), arrays (`[...]`), inner
-/// dicts (`<<...>>`), strings (`(...)`), numbers, and indirect refs
-/// (`N G R`) all terminate cleanly. The spike's shallow scanner mistook the
-/// `/Pages` in `/Type /Pages` for the next dict entry.
+/// Value-terminating tokenisation handles Name values like `/Pages` so they
+/// aren't mis-read as the next entry.
 pub(super) fn find_dict_value<'a>(dict_bytes: &'a [u8], key: &str) -> Option<&'a [u8]> {
     let key_marker = format!("/{}", key);
     let km = key_marker.as_bytes();
@@ -97,8 +90,6 @@ pub(super) fn find_dict_value<'a>(dict_bytes: &'a [u8], key: &str) -> Option<&'a
     let mut depth_dict = 0i32;
     let mut depth_array = 0i32;
     while i < dict_bytes.len() {
-        // Literal strings can contain anything (including `/`, `<<`, `[`, `]`).
-        // Skip them as opaque tokens before we try to match the key.
         if dict_bytes[i] == b'(' {
             i = skip_pdf_string(dict_bytes, i);
             continue;
@@ -113,7 +104,6 @@ pub(super) fn find_dict_value<'a>(dict_bytes: &'a [u8], key: &str) -> Option<&'a
             i += 2;
             continue;
         }
-        // Hex strings (`<deadbeef>`) — single `<` not part of `<<`.
         if dict_bytes[i] == b'<' {
             i = skip_pdf_hex_string(dict_bytes, i);
             continue;
@@ -206,7 +196,6 @@ fn read_value_end(b: &[u8], start: usize) -> Option<usize> {
         }
         b'<' => Some(skip_pdf_hex_string(b, i)),
         b'/' => {
-            // Name — read until whitespace or delimiter.
             i += 1;
             while i < b.len() && !is_pdf_delim(b[i]) {
                 i += 1;
@@ -214,9 +203,9 @@ fn read_value_end(b: &[u8], start: usize) -> Option<usize> {
             Some(i)
         }
         c if c.is_ascii_digit() || c == b'-' || c == b'+' || c == b'.' => {
-            // Number, possibly followed by `G R` for an indirect reference.
+            // Number, possibly followed by `N R` (indirect reference). The
+            // standalone-R check rejects `5 0 Rect`.
             let num_end = read_number_end(b, i);
-            let save = num_end;
             let mut j = num_end;
             while j < b.len() && matches!(b[j], b' ' | b'\t' | b'\n' | b'\r') {
                 j += 1;
@@ -229,21 +218,15 @@ fn read_value_end(b: &[u8], start: usize) -> Option<usize> {
                 while j < b.len() && matches!(b[j], b' ' | b'\t' | b'\n' | b'\r') {
                     j += 1;
                 }
-                if b.get(j).copied() == Some(b'R') {
-                    // Confirm the `R` is standalone — guards against e.g.
-                    // `5 0 Rect` being misread as an indirect ref.
-                    let stands_alone = b
-                        .get(j + 1)
-                        .map_or(true, |c| is_pdf_delim(*c));
-                    if stands_alone {
-                        return Some(j + 1);
-                    }
+                if b.get(j).copied() == Some(b'R')
+                    && b.get(j + 1).map_or(true, |c| is_pdf_delim(*c))
+                {
+                    return Some(j + 1);
                 }
             }
-            Some(save)
+            Some(num_end)
         }
         _ => {
-            // Boolean / null / unknown — read one word.
             while i < b.len() && !is_pdf_delim(b[i]) {
                 i += 1;
             }
@@ -263,8 +246,8 @@ fn read_number_end(b: &[u8], start: usize) -> usize {
     i
 }
 
+/// `start` points at `(`. Returns index AFTER the matching `)`.
 fn skip_pdf_string(b: &[u8], start: usize) -> usize {
-    // start should point at `(`. Returns index AFTER matching `)`.
     let mut i = start + 1;
     let mut depth = 1;
     while i < b.len() && depth > 0 {
@@ -284,36 +267,18 @@ fn skip_pdf_string(b: &[u8], start: usize) -> usize {
     i
 }
 
-/// Skip a hex string `<...>`. `start` points at the leading `<`. Returns
-/// index AFTER the closing `>`. The caller has already confirmed this is
-/// NOT a `<<` token.
+/// `start` points at `<` (not `<<`). Returns index AFTER the closing `>`.
 fn skip_pdf_hex_string(b: &[u8], start: usize) -> usize {
     let mut i = start + 1;
     while i < b.len() && b[i] != b'>' {
         i += 1;
     }
-    if i < b.len() {
-        i + 1
-    } else {
-        i
-    }
+    (i + 1).min(b.len())
 }
 
 fn is_pdf_delim(c: u8) -> bool {
-    matches!(
-        c,
-        b' ' | b'\t'
-            | b'\n'
-            | b'\r'
-            | b'\x0c'
-            | b'/'
-            | b'['
-            | b']'
-            | b'('
-            | b')'
-            | b'<'
-            | b'>'
-    )
+    matches!(c, b' ' | b'\t' | b'\n' | b'\r' | b'\x0c'
+        | b'/' | b'[' | b']' | b'(' | b')' | b'<' | b'>')
 }
 
 pub(super) fn parse_indirect_ref(s: &[u8]) -> Option<(u32, u16)> {
@@ -333,11 +298,9 @@ pub(super) fn parse_indirect_ref(s: &[u8]) -> Option<(u32, u16)> {
     if !s.starts_with(b"R") {
         return None;
     }
-    // `R` must stand alone — not be a prefix of an identifier like `Roller`.
-    match s.get(1).copied() {
-        None => {}
-        Some(c) if is_pdf_delim(c) => {}
-        _ => return None,
+    // Standalone-R check rejects identifiers like `Roller`.
+    if !s.get(1).map_or(true, |c| is_pdf_delim(*c)) {
+        return None;
     }
     Some((id, gen))
 }
@@ -396,52 +359,47 @@ fn skip_ws(s: &[u8]) -> &[u8] {
 }
 
 /// Resolve the catalog's `/Pages` tree into a flat list of page object IDs,
-/// in document order. Recurses into `/Type /Pages` nodes via `/Kids`.
-pub(super) fn resolve_page_ids(pdf: &[u8], catalog_id: u32) -> Result<Vec<u32>, SigOverlayError> {
-    let (cs, ce) = find_object_bytes(pdf, catalog_id).ok_or(SigOverlayError::MissingCatalog)?;
-    let cat_dict = extract_outer_dict(&pdf[cs..ce]).ok_or(SigOverlayError::MissingCatalog)?;
-    let (root_pages_id, _) = parse_indirect_ref(
-        find_dict_value(cat_dict, "Pages").ok_or(SigOverlayError::MissingPagesRoot)?,
-    )
-    .ok_or(SigOverlayError::MissingPagesRoot)?;
+/// in document order. typst-pdf emits a flat tree today; the recursion is
+/// defensive and capped to prevent runaway on a pathological PDF.
+pub(super) fn resolve_page_ids(pdf: &[u8], catalog_id: u32) -> Result<Vec<u32>, RenderError> {
+    let (cs, ce) =
+        find_object_bytes(pdf, catalog_id).ok_or_else(|| err(CODE_PARSE, "catalog not found"))?;
+    let cat_dict = extract_outer_dict(&pdf[cs..ce])
+        .ok_or_else(|| err(CODE_PARSE, "catalog dict not parseable"))?;
+    let (root_pages_id, _) = find_dict_value(cat_dict, "Pages")
+        .and_then(parse_indirect_ref)
+        .ok_or_else(|| err(CODE_PARSE, "catalog /Pages reference not found"))?;
 
+    const MAX_NODES: usize = 100_000;
     let mut out = Vec::new();
     let mut stack = vec![root_pages_id];
-    let mut visited = Vec::new();
-
+    let mut visited = 0usize;
     while let Some(node_id) = stack.pop() {
-        if visited.contains(&node_id) {
-            return Err(SigOverlayError::PageTreeCycle { node: node_id });
+        visited += 1;
+        if visited > MAX_NODES {
+            return Err(err(CODE_PARSE, "page tree exceeds 100 000 nodes"));
         }
-        visited.push(node_id);
-        let (s, e) = find_object_bytes(pdf, node_id).ok_or(SigOverlayError::MissingPageNode {
-            id: node_id,
-        })?;
-        let dict = extract_outer_dict(&pdf[s..e]).ok_or(SigOverlayError::MissingPageNode {
-            id: node_id,
-        })?;
+        let (s, e) = find_object_bytes(pdf, node_id)
+            .ok_or_else(|| err(CODE_PARSE, format!("page node {node_id} not found")))?;
+        let dict = extract_outer_dict(&pdf[s..e])
+            .ok_or_else(|| err(CODE_PARSE, format!("page node {node_id} dict not parseable")))?;
         let typ = find_dict_value(dict, "Type")
             .map(|b| String::from_utf8_lossy(b.trim_ascii()).into_owned())
             .unwrap_or_default();
         if typ.starts_with("/Pages") {
-            // Internal node — recurse into Kids in document order. We
-            // pushed via stack so reverse for left-to-right order.
             let kids = find_dict_value(dict, "Kids")
-                .ok_or(SigOverlayError::MissingPageNode { id: node_id })?;
-            let mut kid_ids: Vec<u32> = parse_ref_array(kids).into_iter().map(|(id, _)| id).collect();
+                .ok_or_else(|| err(CODE_PARSE, "/Pages node missing /Kids"))?;
+            let mut kid_ids: Vec<u32> =
+                parse_ref_array(kids).into_iter().map(|(id, _)| id).collect();
             kid_ids.reverse();
-            for k in kid_ids {
-                stack.push(k);
-            }
+            stack.extend(kid_ids);
         } else {
-            // Leaf — treat as a /Type /Page (default).
             out.push(node_id);
         }
     }
     Ok(out)
 }
 
-/// Parse `[N G R N G R ...]` into a vec of `(id, gen)`.
 pub(super) fn parse_ref_array(bytes: &[u8]) -> Vec<(u32, u16)> {
     let mut s = bytes;
     if let Some(l) = s.iter().position(|&b| b == b'[') {

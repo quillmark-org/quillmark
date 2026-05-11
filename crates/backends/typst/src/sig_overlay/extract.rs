@@ -1,15 +1,8 @@
-//! Walk a compiled Typst document, find every `signature-field` call, and
-//! return `Vec<SigPlacement>` in Typst (top-left origin) coordinates.
-//!
-//! Authors invoke `#signature-field("approver", width: 200pt, height: 50pt)`
-//! from `quillmark-helper`. The helper emits a metadata node labelled
-//! `<qm-sig>` whose `value` is a dict `(kind: "qm-sig", name, width, height)`,
-//! followed by an invisible same-sized box.
-//!
-//! The metadata's introspector position equals the box's top-left because
-//! metadata has zero size and the box lays out immediately after it. We use
-//! the position from `introspector.position()` and the dimensions from the
-//! metadata value — no frame walk is needed. See `probe_annots::probe_p5`.
+//! Walk a compiled Typst document and return one `SigPlacement` per
+//! `signature-field` call. The helper emits a `<__qm_sig__>`-labelled
+//! `metadata` whose value carries `(kind, name, width, height)`, followed by
+//! an invisible same-sized box. Metadata has zero size, so its
+//! `introspector.position()` equals the box's top-left — no frame walk.
 
 use std::collections::HashMap;
 
@@ -21,31 +14,15 @@ use typst::Document;
 
 use quillmark_core::{Diagnostic, RenderError, Severity};
 
-use super::SigPlacement;
+use super::{err, SigPlacement};
 
-/// Static label every `signature-field` invocation tags itself with. The
-/// double-underscore convention makes accidental collision with an author's
-/// own label virtually impossible — any same-named label in their plate is
-/// almost certainly a deliberate hand-off into our extraction pipeline.
 const SIG_LABEL: &str = "__qm_sig__";
-/// `kind` value embedded in the metadata dict — second line of defence
-/// against unrelated metadata getting through `<__qm_sig__>` collisions.
-const SIG_KIND: &str = "__qm_sig__";
+const CODE_INTERNAL: &str = "typst::sig_overlay_internal";
 
-/// Walk the document and return a `SigPlacement` per `signature-field` call.
-///
-/// Returns an empty `Vec` if the document contains no calls.
-///
-/// Errors:
-/// - Duplicate field name → `RenderError::CompilationFailed` carrying a
-///   `Diagnostic` with code `typst::duplicate_signature_field`.
-/// - Malformed helper output (wrong field types, missing keys) →
-///   `RenderError::CompilationFailed` with `typst::sig_overlay_internal`.
 pub(crate) fn extract(doc: &PagedDocument) -> Result<Vec<SigPlacement>, RenderError> {
     let intro = doc.introspector();
-    let label = Label::new(PicoStr::intern(SIG_LABEL)).ok_or_else(|| internal(
-        "invariant: SIG_LABEL must be a non-empty interned string",
-    ))?;
+    let label = Label::new(PicoStr::intern(SIG_LABEL))
+        .ok_or_else(|| err(CODE_INTERNAL, "SIG_LABEL must be a non-empty interned string"))?;
     let elems = intro.query(&Selector::Label(label));
     if elems.is_empty() {
         return Ok(Vec::new());
@@ -55,45 +32,36 @@ pub(crate) fn extract(doc: &PagedDocument) -> Result<Vec<SigPlacement>, RenderEr
     let mut placements: Vec<SigPlacement> = Vec::with_capacity(elems.len());
 
     for c in elems.iter() {
-        let value = c
-            .get_by_name("value")
-            .map_err(|e| internal(&format!("metadata.value missing: {e:?}")))?;
-        let dict = match value {
-            Value::Dict(d) => d,
-            other => {
-                return Err(internal(&format!(
-                    "expected metadata value to be a dict, got {}",
-                    other.ty()
-                )));
+        let dict = match c.get_by_name("value") {
+            Ok(Value::Dict(d)) => d,
+            Ok(other) => {
+                return Err(err(
+                    CODE_INTERNAL,
+                    format!("expected metadata value to be a dict, got {}", other.ty()),
+                ))
             }
+            Err(e) => return Err(err(CODE_INTERNAL, format!("metadata.value missing: {e:?}"))),
         };
-
-        let kind = read_str(&dict, "kind")?;
-        if kind != SIG_KIND {
-            // Some other metadata tripped over our internal label — leave
-            // it alone. The reserved label name makes this unreachable in
-            // practice; the guard is defensive.
+        if read_str(&dict, "kind")? != SIG_LABEL {
+            // User attached <__qm_sig__> to unrelated metadata; ignore it.
             continue;
         }
         let name = read_str(&dict, "name")?;
         let width = read_f64(&dict, "width")?;
         let height = read_f64(&dict, "height")?;
-
         let loc = c
             .location()
-            .ok_or_else(|| internal("signature-field metadata is not located"))?;
+            .ok_or_else(|| err(CODE_INTERNAL, "signature-field metadata is not located"))?;
 
-        if let Some(prior) = by_name.get(&name) {
-            return Err(duplicate_field_error(&name, *prior, loc));
+        if let Some(&prior) = by_name.get(&name) {
+            return Err(duplicate_field_error(&name, prior, loc));
         }
         by_name.insert(name.clone(), loc);
 
         let pos = intro.position(loc);
-        let page_index = pos.page.get().saturating_sub(1);
-
         placements.push(SigPlacement {
             name,
-            page: page_index,
+            page: pos.page.get().saturating_sub(1),
             rect_typst_pt: [
                 pos.point.x.to_pt() as f32,
                 pos.point.y.to_pt() as f32,
@@ -110,11 +78,11 @@ pub(crate) fn extract(doc: &PagedDocument) -> Result<Vec<SigPlacement>, RenderEr
 fn read_str(d: &typst::foundations::Dict, key: &str) -> Result<String, RenderError> {
     match d.get(key) {
         Ok(Value::Str(s)) => Ok(s.to_string()),
-        Ok(other) => Err(internal(&format!(
-            "expected metadata.{key} to be str, got {}",
-            other.ty()
-        ))),
-        Err(_) => Err(internal(&format!("metadata.{key} missing"))),
+        Ok(other) => Err(err(
+            CODE_INTERNAL,
+            format!("expected metadata.{key} to be str, got {}", other.ty()),
+        )),
+        Err(_) => Err(err(CODE_INTERNAL, format!("metadata.{key} missing"))),
     }
 }
 
@@ -122,36 +90,25 @@ fn read_f64(d: &typst::foundations::Dict, key: &str) -> Result<f64, RenderError>
     match d.get(key) {
         Ok(Value::Float(f)) => Ok(*f),
         Ok(Value::Int(i)) => Ok(*i as f64),
-        Ok(other) => Err(internal(&format!(
-            "expected metadata.{key} to be float, got {}",
-            other.ty()
-        ))),
-        Err(_) => Err(internal(&format!("metadata.{key} missing"))),
+        Ok(other) => Err(err(
+            CODE_INTERNAL,
+            format!("expected metadata.{key} to be float, got {}", other.ty()),
+        )),
+        Err(_) => Err(err(CODE_INTERNAL, format!("metadata.{key} missing"))),
     }
 }
 
-fn internal(msg: &str) -> RenderError {
+/// Quote the name first so downstream parsers can extract it with a stable
+/// first-quoted-token convention.
+fn duplicate_field_error(name: &str, first: Location, second: Location) -> RenderError {
     RenderError::CompilationFailed {
         diags: vec![Diagnostic::new(
             Severity::Error,
-            format!("signature-field extract: {msg}"),
+            format!("{name:?} is defined twice: each signature-field name must be unique"),
         )
-        .with_code("typst::sig_overlay_internal".to_string())],
-    }
-}
-
-fn duplicate_field_error(name: &str, first: Location, second: Location) -> RenderError {
-    // Quote the name first in the message so downstream tooling can extract
-    // it with a stable regex / first-quoted-token convention.
-    let message = format!(
-        "{name:?} is defined twice: each signature-field name must be unique"
-    );
-    let hint = format!(
-        "Rename one of the calls. Conflicting Typst location ids: {first:?}, {second:?}"
-    );
-    RenderError::CompilationFailed {
-        diags: vec![Diagnostic::new(Severity::Error, message)
-            .with_code("typst::duplicate_signature_field".to_string())
-            .with_hint(hint)],
+        .with_code("typst::duplicate_signature_field".to_string())
+        .with_hint(format!(
+            "Rename one of the calls. Conflicting Typst location ids: {first:?}, {second:?}"
+        ))],
     }
 }

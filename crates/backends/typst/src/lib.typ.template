@@ -1,36 +1,20 @@
 // Auto-generated quillmark-helper package
 // Version: {version}
 
-/// Emit an unsigned signature field. PDF output gains a clickable AcroForm
-/// SigField widget at this point; SVG/PNG/canvas outputs reserve the same
-/// invisible layout space.
-///
-/// - `name` must be unique within the document and match `[A-Za-z0-9_]+`.
-/// - `width` / `height` must be ABSOLUTE Typst lengths (pt, mm, cm, in).
-///   Relative lengths (em, ratios) are rejected up front because the backend
-///   needs concrete points to place the PDF widget rect. Defaults: 200pt × 50pt.
-///
-/// The label `<__qm_sig__>` and metadata `kind: "__qm_sig__"` are reserved
-/// names recognised by the Rust backend; don't reuse them in your plate.
+/// Emit an unsigned signature field. PDF: a clickable AcroForm SigField
+/// widget here. SVG/PNG: same invisible layout space.
+/// `name` must be unique and match `[A-Za-z0-9_]+`. `width` / `height` must
+/// be absolute lengths (pt/mm/cm/in).
+/// `<__qm_sig__>` and `kind: "__qm_sig__"` are reserved for this hand-off.
 #let signature-field(name, width: 200pt, height: 50pt) = {
-  assert(
-    type(name) == str,
-    message: "signature-field: name must be a string, got " + repr(type(name)),
-  )
-  assert(
-    name.match(regex("^[A-Za-z0-9_]+$")) != none,
-    message: "signature-field: name must match [A-Za-z0-9_]+, got " + repr(name),
-  )
-  // `length / 1pt` only succeeds for absolute lengths — em or ratio values
-  // raise a Typst error. We rephrase that error so the message names the
-  // helper.
-  let abs-pt(name, l) = {
+  assert(type(name) == str,
+    message: "signature-field: name must be a string, got " + repr(type(name)))
+  assert(name.match(regex("^[A-Za-z0-9_]+$")) != none,
+    message: "signature-field: name must match [A-Za-z0-9_]+, got " + repr(name))
+  let abs-pt(field, l) = {
     let r = repr(l)
-    assert(
-      not (r.contains("em") or r.ends-with("%")),
-      message: "signature-field: " + name + " must be an absolute length \
-                (pt, mm, cm, in); got " + r,
-    )
+    assert(not (r.contains("em") or r.ends-with("%")),
+      message: "signature-field: " + field + " must be an absolute length, got " + r)
     l / 1pt
   }
   [#metadata((

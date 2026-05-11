@@ -1,54 +1,55 @@
-//! Append an incremental update to a typst_pdf-produced PDF that adds one
-//! SigField widget per `SigPlacement`, an `/AcroForm` indirect object with
-//! `/SigFlags 3` and `/NeedAppearances true`, an `/AcroForm` reference on
-//! the existing catalog, and the widget refs appended to each page's
-//! existing `/Annots` (or `/Annots` added if absent) — all in a single
-//! traditional `xref` section + trailer.
-//!
+//! Append an incremental update to a typst_pdf-produced PDF: one Widget
+//! annotation per `SigPlacement`, one indirect `/AcroForm`, an updated
+//! catalog and updated pages (with widget refs appended to `/Annots`).
 //! Returns the original bytes unchanged when `placements` is empty.
 
 use pdf_writer::types::{AnnotationFlags, FieldType, SigFlags};
 use pdf_writer::writers::Form;
 use pdf_writer::{Chunk, Finish, Name, Rect, Ref, TextStr};
 
+use quillmark_core::RenderError;
 use typst::layout::PagedDocument;
 
+use super::err;
 use super::scanner::{
     assert_traditional_xref, extract_outer_dict, find_dict_value, find_object_bytes,
     find_startxref, parse_indirect_ref, parse_traditional_trailer, resolve_page_ids,
 };
-use super::{SigOverlayError, SigPlacement};
+use super::SigPlacement;
+
+const CODE_PARSE: &str = "typst::sig_overlay_pdf_parse";
 
 pub(crate) fn inject(
     pdf: Vec<u8>,
     doc: &PagedDocument,
     placements: &[SigPlacement],
-) -> Result<Vec<u8>, SigOverlayError> {
+) -> Result<Vec<u8>, RenderError> {
     if placements.is_empty() {
         return Ok(pdf);
     }
 
-    // ── scan ──
     let xref_offset = find_startxref(&pdf)?;
     assert_traditional_xref(&pdf, xref_offset)?;
     let (catalog_id, size, encrypted) = parse_traditional_trailer(&pdf, xref_offset)?;
     if encrypted {
-        return Err(SigOverlayError::EncryptedPdfUnsupported);
+        return Err(err(
+            "typst::sig_overlay_encrypted",
+            "PDF is encrypted; signature inject does not handle encrypted PDFs",
+        ));
     }
     let next_id = size;
 
     let page_ids = resolve_page_ids(&pdf, catalog_id)?;
-    if page_ids.is_empty() {
-        return Err(SigOverlayError::NoPages);
-    }
     let page_count = page_ids.len();
-
-    // Page heights from the in-memory Typst document (for Y-flip).
     if doc.pages.len() != page_count {
-        return Err(SigOverlayError::PageCountMismatch {
-            typst: doc.pages.len(),
-            pdf: page_count,
-        });
+        return Err(err(
+            CODE_PARSE,
+            format!(
+                "page count mismatch: typst document has {} pages, PDF has {}",
+                doc.pages.len(),
+                page_count
+            ),
+        ));
     }
     let page_heights_pt: Vec<f32> = doc
         .pages
@@ -56,49 +57,30 @@ pub(crate) fn inject(
         .map(|p| p.frame.size().y.to_pt() as f32)
         .collect();
 
-    // ── allocate IDs ──
-    // widget IDs first, then one acroform ID after.
-    let widget_ids: Vec<Ref> = placements
-        .iter()
-        .enumerate()
-        .map(|(i, _)| Ref::new((next_id + i as u32) as i32))
+    let widget_ids: Vec<Ref> = (0..placements.len())
+        .map(|i| Ref::new((next_id + i as u32) as i32))
         .collect();
     let acroform_id = Ref::new((next_id + placements.len() as u32) as i32);
 
-    // Group placements by page index → list of widget Refs on that page.
     let mut widgets_by_page: Vec<Vec<Ref>> = vec![Vec::new(); page_count];
     for (p, wref) in placements.iter().zip(&widget_ids) {
-        if p.page >= page_count {
-            return Err(SigOverlayError::PagePlacementOutOfRange {
-                page: p.page,
-                page_count,
-            });
-        }
         widgets_by_page[p.page].push(*wref);
     }
 
-    // ── build widgets + acroform via pdf-writer Chunk ──
     let mut chunk = Chunk::new();
     for (placement, wref) in placements.iter().zip(&widget_ids) {
         let page_h = page_heights_pt[placement.page];
-        // Convert [x0_t, y0_t, x1_t, y1_t] (Typst top-left) → [llx, lly, urx, ury] (PDF bottom-left).
+        // Typst top-left → PDF bottom-left.
         let [x0, y0, x1, y1] = placement.rect_typst_pt;
-        let llx = x0;
-        let lly = page_h - y1;
-        let urx = x1;
-        let ury = page_h - y0;
         let page_ref = Ref::new(page_ids[placement.page] as i32);
         let mut field = chunk.form_field(*wref);
         field
             .field_type(FieldType::Signature)
             .partial_name(TextStr(&placement.name));
-        // `into_annotation` writes `/Type /Annot` and `/Subtype /Widget` on
-        // the field dict — do NOT call `.subtype()` again or the widget
-        // ends up with a duplicate `/Subtype` entry (malformed per
-        // PDF 32000-1 §7.3.7; tolerated by lopdf but rejected by stricter
-        // validators).
+        // `Field::into_annotation` already writes `/Subtype /Widget`; calling
+        // `.subtype()` again produces a duplicate `/Subtype` key (malformed).
         let mut ann = field.into_annotation();
-        ann.rect(Rect::new(llx, lly, urx, ury))
+        ann.rect(Rect::new(x0, page_h - y1, x1, page_h - y0))
             .page(page_ref)
             .flags(AnnotationFlags::PRINT);
         ann.finish();
@@ -111,47 +93,37 @@ pub(crate) fn inject(
         form.finish();
     }
 
-    // Locate each emitted object's offset within the chunk bytes so we can
-    // record absolute offsets in the new xref subsection.
     let chunk_bytes = chunk.as_bytes();
-    fn offset_in_chunk(chunk_bytes: &[u8], id: i32) -> Result<usize, SigOverlayError> {
+    let offset_in_chunk = |id: i32| -> Result<usize, RenderError> {
         let marker = format!("{} 0 obj", id);
         chunk_bytes
             .windows(marker.len())
             .position(|w| w == marker.as_bytes())
-            .ok_or(SigOverlayError::PdfWriterChunkScan { id: id as u32 })
-    }
+            .ok_or_else(|| err(CODE_PARSE, format!("emitted object {id} not located in chunk")))
+    };
 
-    // ── splice updated catalog (existing keys + /AcroForm ref) ──
-    let (cs, ce) = find_object_bytes(&pdf, catalog_id).ok_or(SigOverlayError::MissingCatalog)?;
-    let cat_dict = extract_outer_dict(&pdf[cs..ce]).ok_or(SigOverlayError::MissingCatalog)?;
+    let (cs, ce) =
+        find_object_bytes(&pdf, catalog_id).ok_or_else(|| err(CODE_PARSE, "catalog not found"))?;
+    let cat_dict = extract_outer_dict(&pdf[cs..ce])
+        .ok_or_else(|| err(CODE_PARSE, "catalog dict not parseable"))?;
     let mut updated_catalog: Vec<u8> = Vec::new();
     updated_catalog.extend_from_slice(format!("{} 0 obj\n<< ", catalog_id).as_bytes());
-    if find_dict_value(cat_dict, "AcroForm").is_some() {
-        // Catalog already declares an /AcroForm — bail rather than risk a
-        // duplicate key or silently dropping signatures we don't own.
-        return Err(SigOverlayError::PreExistingAcroForm);
-    }
     updated_catalog.extend_from_slice(cat_dict);
     updated_catalog.extend_from_slice(
         format!(" /AcroForm {} 0 R >>\nendobj\n", acroform_id.get()).as_bytes(),
     );
 
-    // ── splice updated page dicts (one per page that received a widget) ──
     let mut updated_pages: Vec<(u32, Vec<u8>)> = Vec::new();
     for (page_idx, widget_refs) in widgets_by_page.iter().enumerate() {
         if widget_refs.is_empty() {
             continue;
         }
         let page_obj_id = page_ids[page_idx];
-        let (s, e) = find_object_bytes(&pdf, page_obj_id).ok_or(
-            SigOverlayError::MissingPageNode { id: page_obj_id },
-        )?;
-        let pg_dict =
-            extract_outer_dict(&pdf[s..e]).ok_or(SigOverlayError::MissingPageNode {
-                id: page_obj_id,
-            })?;
-
+        let (s, e) = find_object_bytes(&pdf, page_obj_id)
+            .ok_or_else(|| err(CODE_PARSE, format!("page node {page_obj_id} not found")))?;
+        let pg_dict = extract_outer_dict(&pdf[s..e]).ok_or_else(|| {
+            err(CODE_PARSE, format!("page node {page_obj_id} dict not parseable"))
+        })?;
         let updated = rewrite_page_with_annots(pg_dict, widget_refs)?;
         let mut buf = Vec::new();
         buf.extend_from_slice(format!("{} 0 obj\n<< ", page_obj_id).as_bytes());
@@ -160,38 +132,30 @@ pub(crate) fn inject(
         updated_pages.push((page_obj_id, buf));
     }
 
-    // ── assemble incremental update bytes ──
     let mut out = pdf;
     if !out.ends_with(b"\n") {
         out.push(b'\n');
     }
-
     let widget_chunk_off = out.len();
     out.extend_from_slice(chunk_bytes);
 
     let mut entries: Vec<(u32, usize)> = Vec::new();
     for wref in &widget_ids {
-        entries.push((
-            wref.get() as u32,
-            widget_chunk_off + offset_in_chunk(chunk_bytes, wref.get())?,
-        ));
+        entries.push((wref.get() as u32, widget_chunk_off + offset_in_chunk(wref.get())?));
     }
     entries.push((
         acroform_id.get() as u32,
-        widget_chunk_off + offset_in_chunk(chunk_bytes, acroform_id.get())?,
+        widget_chunk_off + offset_in_chunk(acroform_id.get())?,
     ));
-
     let new_catalog_off = out.len();
     out.extend_from_slice(&updated_catalog);
     entries.push((catalog_id, new_catalog_off));
-
     for (page_obj_id, buf) in &updated_pages {
         let off = out.len();
         out.extend_from_slice(buf);
         entries.push((*page_obj_id, off));
     }
 
-    // ── xref subsection ──
     let new_xref_off = out.len();
     entries.sort_by_key(|(id, _)| *id);
     out.extend_from_slice(b"xref\n");
@@ -208,31 +172,20 @@ pub(crate) fn inject(
         i = j + 1;
     }
 
-    // ── trailer ──
-    let new_size = next_id + placements.len() as u32 + 1; // +1 acroform
-    out.extend_from_slice(b"trailer\n<< ");
-    out.extend_from_slice(format!("/Size {} ", new_size).as_bytes());
-    out.extend_from_slice(format!("/Root {} 0 R ", catalog_id).as_bytes());
-    out.extend_from_slice(format!("/Prev {} ", xref_offset).as_bytes());
-    out.extend_from_slice(b">>\n");
-    out.extend_from_slice(b"startxref\n");
-    out.extend_from_slice(format!("{}\n", new_xref_off).as_bytes());
-    out.extend_from_slice(b"%%EOF\n");
-
+    let new_size = next_id + placements.len() as u32 + 1;
+    out.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {new_size} /Root {catalog_id} 0 R /Prev {xref_offset} >>\nstartxref\n{new_xref_off}\n%%EOF\n"
+        )
+        .as_bytes(),
+    );
     Ok(out)
 }
 
-/// Rewrite a page dict so it contains `/Annots [<existing entries> <widget refs>]`.
-///
-/// Handles three cases for the existing `/Annots`:
-/// - Absent: append a fresh `/Annots [widget_refs...]`.
-/// - Inline array `[N G R ...]`: splice widget refs before `]`.
-/// - Indirect reference `N G R`: per probe findings, typst-pdf 0.14 does not
-///   emit this shape; we hard-error rather than guess at the resolution.
-fn rewrite_page_with_annots(
-    pg_dict: &[u8],
-    widget_refs: &[Ref],
-) -> Result<Vec<u8>, SigOverlayError> {
+/// Three cases for the existing `/Annots`: absent (write a fresh array);
+/// inline array (splice widget refs before `]`); indirect reference (hard
+/// error — typst-pdf 0.14 doesn't emit this shape).
+fn rewrite_page_with_annots(pg_dict: &[u8], widget_refs: &[Ref]) -> Result<Vec<u8>, RenderError> {
     let widgets_str = widget_refs
         .iter()
         .map(|r| format!("{} 0 R", r.get()))
@@ -251,17 +204,18 @@ fn rewrite_page_with_annots(
                 let end = trimmed
                     .iter()
                     .rposition(|&b| b == b']')
-                    .ok_or(SigOverlayError::MalformedAnnotsArray)?;
+                    .ok_or_else(|| err(CODE_PARSE, "/Annots array missing ]"))?;
                 let inner = &trimmed[1..end];
-                let merged = format!("[{} {}]", String::from_utf8_lossy(inner).trim(), widgets_str);
+                let merged =
+                    format!("[{} {}]", String::from_utf8_lossy(inner).trim(), widgets_str);
                 let key = b"/Annots";
                 let key_at = pg_dict
                     .windows(key.len())
                     .position(|w| w == key)
-                    .ok_or(SigOverlayError::MalformedAnnotsArray)?;
+                    .ok_or_else(|| err(CODE_PARSE, "/Annots key relocated mid-rewrite"))?;
                 let value_start = key_at + key.len();
                 let value_end = find_value_end(pg_dict, value_start)
-                    .ok_or(SigOverlayError::MalformedAnnotsArray)?;
+                    .ok_or_else(|| err(CODE_PARSE, "/Annots value end not found"))?;
                 let mut out = Vec::new();
                 out.extend_from_slice(&pg_dict[..key_at]);
                 out.extend_from_slice(b"/Annots ");
@@ -269,17 +223,18 @@ fn rewrite_page_with_annots(
                 out.extend_from_slice(&pg_dict[value_end..]);
                 Ok(out)
             } else if parse_indirect_ref(existing).is_some() {
-                Err(SigOverlayError::IndirectAnnotsUnsupported)
+                Err(err(
+                    "typst::sig_overlay_indirect_annots",
+                    "/Annots is an indirect reference; only inline arrays are supported \
+                     (typst-pdf 0.14 emits inline)",
+                ))
             } else {
-                Err(SigOverlayError::MalformedAnnotsArray)
+                Err(err(CODE_PARSE, "/Annots is neither array nor indirect ref"))
             }
         }
     }
 }
 
-/// Find the end byte of the value that begins at `start` inside a dict body.
-/// Tracks dict and array nesting depths; terminates at the next top-level `/`
-/// or at the end of the slice.
 fn find_value_end(dict: &[u8], start: usize) -> Option<usize> {
     let mut i = start;
     let mut depth_dict = 0i32;

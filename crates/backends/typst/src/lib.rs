@@ -65,8 +65,7 @@ const SUPPORTED_FORMATS: &[OutputFormat] =
 pub struct TypstSession {
     document: typst::layout::PagedDocument,
     page_count: usize,
-    /// Signature-field placements extracted from `document` once at `open`.
-    /// Consumed during PDF inject; unused for SVG/PNG output.
+    /// Extracted once at `open`. Consumed by PDF inject; unused for SVG/PNG.
     sig_placements: Vec<sig_overlay::SigPlacement>,
 }
 

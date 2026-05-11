@@ -133,100 +133,39 @@ Page 2.
         .as_reference()
         .expect("AcroForm indirect");
     let af = doc.get_object(af_ref).unwrap().as_dict().unwrap();
-
-    // SigFlags = 3 (SignaturesExist | AppendOnly)
-    assert_eq!(
-        af.get(b"SigFlags").unwrap().as_i64().unwrap(),
-        3,
-        "expected /SigFlags 3"
-    );
-    // NeedAppearances = true
-    assert!(
-        af.get(b"NeedAppearances").unwrap().as_bool().unwrap(),
-        "expected /NeedAppearances true"
-    );
+    assert_eq!(af.get(b"SigFlags").unwrap().as_i64().unwrap(), 3);
+    assert!(af.get(b"NeedAppearances").unwrap().as_bool().unwrap());
 
     let fields = af.get(b"Fields").unwrap().as_array().unwrap();
-    assert_eq!(fields.len(), 2, "expected 2 fields");
-
+    assert_eq!(fields.len(), 2);
     let pages = doc.get_pages();
-    assert_eq!(pages.len(), 2, "expected 2 pages");
+    assert_eq!(pages.len(), 2);
 
-    // Collect widget per name.
-    let mut by_name: HashMap<String, (i64, lopdf::Dictionary)> = HashMap::new();
+    let to_f64 = |o: &lopdf::Object| -> f64 {
+        o.as_float()
+            .map(|f| f as f64)
+            .or_else(|_| o.as_i64().map(|i| i as f64))
+            .unwrap()
+    };
+    let page_refs: Vec<(u32, u16)> = pages.iter().map(|(_, &id)| (id.0, id.1)).collect();
+
     for f in fields {
-        let r = f.as_reference().unwrap();
-        let d = doc.get_object(r).unwrap().as_dict().unwrap().clone();
-        let name =
-            String::from_utf8_lossy(d.get(b"T").unwrap().as_str().unwrap()).into_owned();
-        // Confirm widget basics.
-        assert_eq!(d.get(b"FT").unwrap().as_name().unwrap(), b"Sig");
-        assert_eq!(d.get(b"Subtype").unwrap().as_name().unwrap(), b"Widget");
-        by_name.insert(name, (r.0 as i64, d));
-    }
+        let widget = doc.get_object(f.as_reference().unwrap()).unwrap().as_dict().unwrap();
+        let name = String::from_utf8_lossy(widget.get(b"T").unwrap().as_str().unwrap()).into_owned();
+        assert_eq!(widget.get(b"FT").unwrap().as_name().unwrap(), b"Sig");
+        assert_eq!(widget.get(b"Subtype").unwrap().as_name().unwrap(), b"Widget");
 
-    assert!(by_name.contains_key("a"), "missing field 'a'");
-    assert!(by_name.contains_key("b"), "missing field 'b'");
-
-    // Confirm each widget is annotated on the right page.
-    let page_refs: Vec<(u32, u16)> = pages
-        .iter()
-        .map(|(_, &id)| (id.0, id.1))
-        .collect();
-    for (name, (_, widget)) in &by_name {
         let page_ref = widget.get(b"P").unwrap().as_reference().unwrap();
         let page_index = page_refs.iter().position(|&p| p == page_ref).unwrap();
         let expected = if name == "a" { 0 } else { 1 };
-        assert_eq!(
-            page_index, expected,
-            "field {} expected on page {}, found on page {}",
-            name, expected, page_index
-        );
-    }
+        assert_eq!(page_index, expected, "field {name} on wrong page");
 
-    // Each Rect should be 200pt wide × 50pt tall (within 1 pt — Typst rounding).
-    for (name, (_, widget)) in &by_name {
         let rect = widget.get(b"Rect").unwrap().as_array().unwrap();
-        assert_eq!(rect.len(), 4);
-        let to_f64 = |o: &lopdf::Object| -> f64 {
-            o.as_float()
-                .map(|f| f as f64)
-                .or_else(|_| o.as_i64().map(|i| i as f64))
-                .unwrap()
-        };
-        let llx = to_f64(&rect[0]);
-        let lly = to_f64(&rect[1]);
-        let urx = to_f64(&rect[2]);
-        let ury = to_f64(&rect[3]);
-        let w = urx - llx;
-        let h = ury - lly;
-        assert!(
-            (w - 200.0).abs() < 1.0,
-            "field {} width {} != 200pt within 1pt",
-            name,
-            w
-        );
-        assert!(
-            (h - 50.0).abs() < 1.0,
-            "field {} height {} != 50pt within 1pt",
-            name,
-            h
-        );
-        // The widget should be inside the page (400pt tall, 50pt margins).
-        assert!(
-            llx >= 0.0 && urx <= 600.0,
-            "field {} rect x outside page: [{}, {}]",
-            name,
-            llx,
-            urx
-        );
-        assert!(
-            lly >= 0.0 && ury <= 400.0,
-            "field {} rect y outside page: [{}, {}]",
-            name,
-            lly,
-            ury
-        );
+        let (llx, lly, urx, ury) = (to_f64(&rect[0]), to_f64(&rect[1]), to_f64(&rect[2]), to_f64(&rect[3]));
+        assert!((urx - llx - 200.0).abs() < 1.0, "field {name} width: {}", urx - llx);
+        assert!((ury - lly - 50.0).abs() < 1.0, "field {name} height: {}", ury - lly);
+        assert!(llx >= 0.0 && urx <= 600.0 && lly >= 0.0 && ury <= 400.0,
+            "field {name} rect outside page: [{llx}, {lly}, {urx}, {ury}]");
     }
 }
 
