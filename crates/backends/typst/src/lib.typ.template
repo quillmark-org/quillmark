@@ -6,10 +6,12 @@
 /// invisible layout space.
 ///
 /// - `name` must be unique within the document and match `[A-Za-z0-9_]+`.
-/// - `width`/`height` are Typst lengths; defaults are 200pt × 50pt.
+/// - `width` / `height` must be ABSOLUTE Typst lengths (pt, mm, cm, in).
+///   Relative lengths (em, ratios) are rejected up front because the backend
+///   needs concrete points to place the PDF widget rect. Defaults: 200pt × 50pt.
 ///
-/// The Rust backend recognises a `qm-sig` metadata label adjacent to an
-/// invisible box; do not rename, reformat, or move the two lines below.
+/// The label `<__qm_sig__>` and metadata `kind: "__qm_sig__"` are reserved
+/// names recognised by the Rust backend; don't reuse them in your plate.
 #let signature-field(name, width: 200pt, height: 50pt) = {
   assert(
     type(name) == str,
@@ -19,12 +21,24 @@
     name.match(regex("^[A-Za-z0-9_]+$")) != none,
     message: "signature-field: name must match [A-Za-z0-9_]+, got " + repr(name),
   )
+  // `length / 1pt` only succeeds for absolute lengths — em or ratio values
+  // raise a Typst error. We rephrase that error so the message names the
+  // helper.
+  let abs-pt(name, l) = {
+    let r = repr(l)
+    assert(
+      not (r.contains("em") or r.ends-with("%")),
+      message: "signature-field: " + name + " must be an absolute length \
+                (pt, mm, cm, in); got " + r,
+    )
+    l / 1pt
+  }
   [#metadata((
-    kind: "qm-sig",
+    kind: "__qm_sig__",
     name: name,
-    width: width / 1pt,
-    height: height / 1pt,
-  )) <qm-sig>]
+    width: abs-pt("width", width),
+    height: abs-pt("height", height),
+  )) <__qm_sig__>]
   box(width: width, height: height, stroke: none, fill: none)
 }
 

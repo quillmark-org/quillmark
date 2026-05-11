@@ -97,6 +97,12 @@ pub(super) fn find_dict_value<'a>(dict_bytes: &'a [u8], key: &str) -> Option<&'a
     let mut depth_dict = 0i32;
     let mut depth_array = 0i32;
     while i < dict_bytes.len() {
+        // Literal strings can contain anything (including `/`, `<<`, `[`, `]`).
+        // Skip them as opaque tokens before we try to match the key.
+        if dict_bytes[i] == b'(' {
+            i = skip_pdf_string(dict_bytes, i);
+            continue;
+        }
         if dict_bytes[i..].starts_with(b"<<") {
             depth_dict += 1;
             i += 2;
@@ -105,6 +111,11 @@ pub(super) fn find_dict_value<'a>(dict_bytes: &'a [u8], key: &str) -> Option<&'a
         if dict_bytes[i..].starts_with(b">>") {
             depth_dict -= 1;
             i += 2;
+            continue;
+        }
+        // Hex strings (`<deadbeef>`) — single `<` not part of `<<`.
+        if dict_bytes[i] == b'<' {
+            i = skip_pdf_hex_string(dict_bytes, i);
             continue;
         }
         match dict_bytes[i] {
@@ -193,14 +204,7 @@ fn read_value_end(b: &[u8], start: usize) -> Option<usize> {
             }
             Some(i)
         }
-        b'<' => {
-            // Hex string: <...>
-            i += 1;
-            while i < b.len() && b[i] != b'>' {
-                i += 1;
-            }
-            Some(i.min(b.len() - 1) + 1)
-        }
+        b'<' => Some(skip_pdf_hex_string(b, i)),
         b'/' => {
             // Name — read until whitespace or delimiter.
             i += 1;
@@ -226,7 +230,14 @@ fn read_value_end(b: &[u8], start: usize) -> Option<usize> {
                     j += 1;
                 }
                 if b.get(j).copied() == Some(b'R') {
-                    return Some(j + 1);
+                    // Confirm the `R` is standalone — guards against e.g.
+                    // `5 0 Rect` being misread as an indirect ref.
+                    let stands_alone = b
+                        .get(j + 1)
+                        .map_or(true, |c| is_pdf_delim(*c));
+                    if stands_alone {
+                        return Some(j + 1);
+                    }
                 }
             }
             Some(save)
@@ -258,7 +269,7 @@ fn skip_pdf_string(b: &[u8], start: usize) -> usize {
     let mut depth = 1;
     while i < b.len() && depth > 0 {
         match b[i] {
-            b'\\' => i += 2,
+            b'\\' => i = (i + 2).min(b.len()),
             b'(' => {
                 depth += 1;
                 i += 1;
@@ -271,6 +282,21 @@ fn skip_pdf_string(b: &[u8], start: usize) -> usize {
         }
     }
     i
+}
+
+/// Skip a hex string `<...>`. `start` points at the leading `<`. Returns
+/// index AFTER the closing `>`. The caller has already confirmed this is
+/// NOT a `<<` token.
+fn skip_pdf_hex_string(b: &[u8], start: usize) -> usize {
+    let mut i = start + 1;
+    while i < b.len() && b[i] != b'>' {
+        i += 1;
+    }
+    if i < b.len() {
+        i + 1
+    } else {
+        i
+    }
 }
 
 fn is_pdf_delim(c: u8) -> bool {
@@ -307,6 +333,12 @@ pub(super) fn parse_indirect_ref(s: &[u8]) -> Option<(u32, u16)> {
     if !s.starts_with(b"R") {
         return None;
     }
+    // `R` must stand alone — not be a prefix of an identifier like `Roller`.
+    match s.get(1).copied() {
+        None => {}
+        Some(c) if is_pdf_delim(c) => {}
+        _ => return None,
+    }
     Some((id, gen))
 }
 
@@ -334,6 +366,11 @@ pub(super) fn extract_outer_dict(obj_bytes: &[u8]) -> Option<&[u8]> {
     let mut depth = 0i32;
     let mut i = open;
     while i + 1 < obj_bytes.len() {
+        // Skip literal strings — they can contain `<<` / `>>` as raw bytes.
+        if obj_bytes[i] == b'(' {
+            i = skip_pdf_string(obj_bytes, i);
+            continue;
+        }
         if obj_bytes[i..].starts_with(b"<<") {
             depth += 1;
             i += 2;

@@ -23,8 +23,14 @@ use quillmark_core::{Diagnostic, RenderError, Severity};
 
 use super::SigPlacement;
 
-/// Static label every `signature-field` invocation tags itself with.
-const SIG_LABEL: &str = "qm-sig";
+/// Static label every `signature-field` invocation tags itself with. The
+/// double-underscore convention makes accidental collision with an author's
+/// own label virtually impossible — any same-named label in their plate is
+/// almost certainly a deliberate hand-off into our extraction pipeline.
+const SIG_LABEL: &str = "__qm_sig__";
+/// `kind` value embedded in the metadata dict — second line of defence
+/// against unrelated metadata getting through `<__qm_sig__>` collisions.
+const SIG_KIND: &str = "__qm_sig__";
 
 /// Walk the document and return a `SigPlacement` per `signature-field` call.
 ///
@@ -63,8 +69,10 @@ pub(crate) fn extract(doc: &PagedDocument) -> Result<Vec<SigPlacement>, RenderEr
         };
 
         let kind = read_str(&dict, "kind")?;
-        if kind != SIG_LABEL {
-            // Another <qm-sig>-labelled metadata that isn't ours — leave alone.
+        if kind != SIG_KIND {
+            // Some other metadata tripped over our internal label — leave
+            // it alone. The reserved label name makes this unreachable in
+            // practice; the guard is defensive.
             continue;
         }
         let name = read_str(&dict, "name")?;
@@ -95,7 +103,7 @@ pub(crate) fn extract(doc: &PagedDocument) -> Result<Vec<SigPlacement>, RenderEr
         });
     }
 
-    placements.sort_by_key(|p| (p.page, p.name.clone()));
+    placements.sort_by(|a, b| (a.page, &a.name).cmp(&(b.page, &b.name)));
     Ok(placements)
 }
 
@@ -133,16 +141,17 @@ fn internal(msg: &str) -> RenderError {
 }
 
 fn duplicate_field_error(name: &str, first: Location, second: Location) -> RenderError {
+    // Quote the name first in the message so downstream tooling can extract
+    // it with a stable regex / first-quoted-token convention.
+    let message = format!(
+        "{name:?} is defined twice: each signature-field name must be unique"
+    );
     let hint = format!(
-        "signature-field({name:?}) appears at two locations \
-         (Typst Location ids: {first:?}, {second:?}); each field name must be unique"
+        "Rename one of the calls. Conflicting Typst location ids: {first:?}, {second:?}"
     );
     RenderError::CompilationFailed {
-        diags: vec![Diagnostic::new(
-            Severity::Error,
-            format!("duplicate signature-field name: {name:?}"),
-        )
-        .with_code("typst::duplicate_signature_field".to_string())
-        .with_hint(hint)],
+        diags: vec![Diagnostic::new(Severity::Error, message)
+            .with_code("typst::duplicate_signature_field".to_string())
+            .with_hint(hint)],
     }
 }

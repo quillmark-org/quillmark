@@ -56,6 +56,54 @@ fn compile(plate: &str) -> Result<Vec<u8>, RenderError> {
     compile_to_pdf(&host_source(), plate, MIN_JSON)
 }
 
+// ─── regression: each widget has exactly one /Subtype entry ──────────────────
+
+/// `pdf-writer::Field::into_annotation` already emits `/Subtype /Widget`; an
+/// earlier draft called `.subtype()` on the resulting Annotation too,
+/// producing a malformed widget dict with `/Subtype` written twice. lopdf
+/// silently tolerates the duplication; stricter validators (qpdf, MuPDF)
+/// reject it. This test fences the regression at the byte level.
+#[test]
+fn regression_widget_dict_has_exactly_one_subtype() {
+    let plate = r#"
+#import "@local/quillmark-helper:0.1.0": signature-field
+#set page(width: 600pt, height: 400pt, margin: 50pt)
+#signature-field("a")
+"#;
+    let pdf = compile(plate).expect("compile ok");
+
+    let doc = lopdf::Document::load_mem(&pdf).expect("reparse");
+    let cat = doc.catalog().expect("catalog");
+    let af_ref = cat.get(b"AcroForm").unwrap().as_reference().unwrap();
+    let af = doc.get_object(af_ref).unwrap().as_dict().unwrap();
+    let fields = af.get(b"Fields").unwrap().as_array().unwrap();
+    assert_eq!(fields.len(), 1);
+    let widget_ref = fields[0].as_reference().unwrap();
+
+    // Locate the widget object's raw byte range and count /Subtype occurrences.
+    let header = format!("{} 0 obj", widget_ref.0);
+    let h = header.as_bytes();
+    let start = pdf
+        .windows(h.len())
+        .position(|w| w == h)
+        .expect("widget header in PDF bytes");
+    let after = &pdf[start..];
+    let endobj = after
+        .windows(b"endobj".len())
+        .position(|w| w == b"endobj")
+        .expect("endobj after widget");
+    let body = &after[..endobj];
+    let count = body
+        .windows(b"/Subtype".len())
+        .filter(|w| *w == b"/Subtype")
+        .count();
+    assert_eq!(
+        count, 1,
+        "widget dict must declare /Subtype exactly once, got {count}:\n{}",
+        String::from_utf8_lossy(body)
+    );
+}
+
 // ─── case 1: two pages, two fields ────────────────────────────────────────────
 
 #[test]
@@ -216,6 +264,38 @@ fn acceptance_duplicate_name_errors() {
     );
 }
 
+// ─── case: user metadata with same label is ignored, real field still found ──
+
+/// A user could plausibly attach their own `<__qm_sig__>` label to unrelated
+/// metadata. The extractor's `kind` field check should filter such metadata
+/// out without raising and without losing the real signature-field call.
+#[test]
+fn user_metadata_on_reserved_label_does_not_clobber() {
+    let plate = r#"
+#import "@local/quillmark-helper:0.1.0": signature-field
+#set page(width: 600pt, height: 400pt, margin: 50pt)
+#metadata((kind: "something-else", note: "user's own metadata")) <__qm_sig__>
+#signature-field("real_field")
+"#;
+    let pdf = compile(plate).expect("compile ok");
+    let doc = lopdf::Document::load_mem(&pdf).unwrap();
+    let cat = doc.catalog().unwrap();
+    let af_ref = cat.get(b"AcroForm").unwrap().as_reference().unwrap();
+    let af = doc.get_object(af_ref).unwrap().as_dict().unwrap();
+    let fields = af.get(b"Fields").unwrap().as_array().unwrap();
+    assert_eq!(fields.len(), 1, "expected exactly 1 real field, got {}", fields.len());
+    let widget = doc
+        .get_object(fields[0].as_reference().unwrap())
+        .unwrap()
+        .as_dict()
+        .unwrap();
+    assert_eq!(
+        widget.get(b"T").unwrap().as_str().unwrap(),
+        b"real_field",
+        "wrong field name survived extraction"
+    );
+}
+
 // ─── case 3: no fields → output identical to typst_pdf ────────────────────────
 
 #[test]
@@ -234,14 +314,19 @@ Just a doc.
         "expected no /AcroForm in catalog for sig-field-free plate"
     );
 
-    // Sanity: only one xref section (i.e. no incremental update appended).
-    let xref_count = pdf
-        .windows(b"\nxref\n".len())
-        .filter(|w| *w == b"\nxref\n")
+    // Sanity: only one startxref (i.e. no incremental update appended) and
+    // no `/Prev` key in the trailer.
+    let startxref_count = pdf
+        .windows(b"startxref\n".len())
+        .filter(|w| *w == b"startxref\n")
         .count();
     assert_eq!(
-        xref_count, 1,
-        "expected exactly 1 xref section (no incremental update); got {}",
-        xref_count
+        startxref_count, 1,
+        "expected exactly 1 startxref marker (no incremental update); got {}",
+        startxref_count
+    );
+    assert!(
+        !pdf.windows(b"/Prev".len()).any(|w| w == b"/Prev"),
+        "fresh typst-pdf output should not declare /Prev in the trailer"
     );
 }

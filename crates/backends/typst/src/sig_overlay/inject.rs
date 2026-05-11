@@ -7,7 +7,7 @@
 //!
 //! Returns the original bytes unchanged when `placements` is empty.
 
-use pdf_writer::types::{AnnotationFlags, AnnotationType, FieldType, SigFlags};
+use pdf_writer::types::{AnnotationFlags, FieldType, SigFlags};
 use pdf_writer::writers::Form;
 use pdf_writer::{Chunk, Finish, Name, Rect, Ref, TextStr};
 
@@ -92,9 +92,13 @@ pub(crate) fn inject(
         field
             .field_type(FieldType::Signature)
             .partial_name(TextStr(&placement.name));
+        // `into_annotation` writes `/Type /Annot` and `/Subtype /Widget` on
+        // the field dict — do NOT call `.subtype()` again or the widget
+        // ends up with a duplicate `/Subtype` entry (malformed per
+        // PDF 32000-1 §7.3.7; tolerated by lopdf but rejected by stricter
+        // validators).
         let mut ann = field.into_annotation();
-        ann.subtype(AnnotationType::Widget)
-            .rect(Rect::new(llx, lly, urx, ury))
+        ann.rect(Rect::new(llx, lly, urx, ury))
             .page(page_ref)
             .flags(AnnotationFlags::PRINT);
         ann.finish();
