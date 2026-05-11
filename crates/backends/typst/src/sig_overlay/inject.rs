@@ -3,7 +3,7 @@
 //! catalog and updated pages (with widget refs appended to `/Annots`).
 //! Returns the original bytes unchanged when `placements` is empty.
 
-use pdf_writer::types::{AnnotationFlags, FieldType, SigFlags};
+use pdf_writer::types::{FieldType, SigFlags};
 use pdf_writer::writers::Form;
 use pdf_writer::{Chunk, Finish, Name, Rect, Ref, TextStr};
 
@@ -81,8 +81,7 @@ pub(crate) fn inject(
         // `.subtype()` again produces a duplicate `/Subtype` key (malformed).
         let mut ann = field.into_annotation();
         ann.rect(Rect::new(x0, page_h - y1, x1, page_h - y0))
-            .page(page_ref)
-            .flags(AnnotationFlags::PRINT);
+            .page(page_ref);
         ann.finish();
     }
     {
