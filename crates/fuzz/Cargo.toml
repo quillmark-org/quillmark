@@ -10,3 +10,5 @@ publish = false  # Don't publish fuzzing tests to crates.io
 quillmark-core = { workspace = true }
 quillmark-typst = { workspace = true }
 proptest = { workspace = true }
+serde_json = { workspace = true }
+indexmap = { workspace = true }

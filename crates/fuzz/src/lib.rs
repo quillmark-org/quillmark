@@ -14,6 +14,9 @@
 //! - `parse_fuzz` - Tests for YAML frontmatter and markdown parsing
 
 #[cfg(test)]
+mod coerce_fuzz;
+
+#[cfg(test)]
 mod convert_fuzz;
 
 #[cfg(test)]
