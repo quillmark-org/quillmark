@@ -1,6 +1,31 @@
 // Auto-generated quillmark-helper package
 // Version: {version}
 
+/// Emit an unsigned signature field. PDF: a clickable AcroForm SigField
+/// widget here. SVG/PNG: same invisible layout space.
+/// `name` must be unique and match `[A-Za-z0-9_]+`. `width` / `height` must
+/// be absolute lengths (pt/mm/cm/in).
+/// `<__qm_sig__>` and `kind: "__qm_sig__"` are reserved for this hand-off.
+#let signature-field(name, width: 200pt, height: 50pt) = {
+  assert(type(name) == str,
+    message: "signature-field: name must be a string, got " + repr(type(name)))
+  assert(name.match(regex("^[A-Za-z0-9_]+$")) != none,
+    message: "signature-field: name must match [A-Za-z0-9_]+, got " + repr(name))
+  let abs-pt(field, l) = {
+    let r = repr(l)
+    assert(not (r.contains("em") or r.ends-with("%")),
+      message: "signature-field: " + field + " must be an absolute length, got " + r)
+    l / 1pt
+  }
+  [#metadata((
+    kind: "__qm_sig__",
+    name: name,
+    width: abs-pt("width", width),
+    height: abs-pt("height", height),
+  )) <__qm_sig__>]
+  box(width: width, height: height, stroke: none, fill: none)
+}
+
 /// Parse an ISO 8601 date string (YYYY-MM-DD) to a Typst datetime
 /// Handles both pure dates (2024-01-15) and datetime strings (2024-01-15T10:30:00)
 /// Must be defined before `data` — Typst does not hoist `#let` bindings.

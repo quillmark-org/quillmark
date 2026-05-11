@@ -11,6 +11,7 @@ homepage = "https://github.com/nibsbin/quillmark"
 repository = "https://github.com/nibsbin/quillmark"
 
 [dependencies]
+pdf-writer = "0.14"
 pulldown-cmark = { workspace = true }
 quillmark-core = { workspace = true }
 serde_json = { workspace = true }
@@ -28,3 +29,5 @@ wasm-bindgen = "^0.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Acceptance tests parse the injected PDF to validate AcroForm structure.
+lopdf = "0.36"

@@ -15,6 +15,10 @@
 //! - Compiles Typst documents to PDF and SVG formats
 //! - Provides template filters for YAML data transformation
 //! - Manages fonts, assets, and packages dynamically
+//! - Embeds unsigned AcroForm signature widgets via the
+//!   `signature-field` helper (see `signature-field` in the `lib.typ`
+//!   helper package; only the PDF output carries the widget — SVG and
+//!   PNG render an invisible placeholder)
 //! - Thread-safe for concurrent rendering
 //!
 //! ## Modules
@@ -30,6 +34,7 @@ pub mod convert;
 mod error_mapping;
 
 pub mod helper;
+mod sig_overlay;
 mod world;
 
 /// Utilities exposed for fuzzing tests.
@@ -64,6 +69,8 @@ const SUPPORTED_FORMATS: &[OutputFormat] =
 pub struct TypstSession {
     document: typst::layout::PagedDocument,
     page_count: usize,
+    /// Extracted once at `open`. Consumed by PDF inject; unused for SVG/PNG.
+    sig_placements: Vec<sig_overlay::SigPlacement>,
 }
 
 impl TypstSession {
@@ -116,7 +123,13 @@ impl SessionHandle for TypstSession {
             });
         }
 
-        compile::render_document_pages(&self.document, opts.pages.as_deref(), format, opts.ppi)
+        compile::render_document_pages(
+            &self.document,
+            opts.pages.as_deref(),
+            format,
+            opts.ppi,
+            &self.sig_placements,
+        )
     }
 
     fn page_count(&self) -> usize {
@@ -172,9 +185,11 @@ impl Backend for TypstBackend {
             serde_json::to_string(&transformed_json).unwrap_or_else(|_| "{}".to_string());
         let document = compile::compile_to_document(source, plate_content, &json_str)?;
         let page_count = document.pages.len();
+        let sig_placements = sig_overlay::extract(&document)?;
         let session = TypstSession {
             document,
             page_count,
+            sig_placements,
         };
         Ok(RenderSession::new(Box::new(session)))
     }

@@ -22,6 +22,7 @@ use typst::layout::PagedDocument;
 use typst_pdf::PdfOptions;
 
 use crate::error_mapping::map_typst_errors;
+use crate::sig_overlay;
 use crate::world::QuillWorld;
 use quillmark_core::{
     Artifact, Diagnostic, OutputFormat, QuillSource, RenderError, RenderResult, Severity,
@@ -76,6 +77,7 @@ pub fn compile_to_pdf(
     json_data: &str,
 ) -> Result<Vec<u8>, RenderError> {
     let document = compile_to_document(source, plated_content, json_data)?;
+    let placements = sig_overlay::extract(&document)?;
 
     let pdf = typst_pdf::pdf(&document, &PdfOptions::default()).map_err(|e| {
         RenderError::CompilationFailed {
@@ -87,7 +89,7 @@ pub fn compile_to_pdf(
         }
     })?;
 
-    Ok(pdf)
+    sig_overlay::inject(pdf, &document, &placements)
 }
 
 /// Compiles a Typst document to SVG format with JSON data injection.
@@ -152,11 +154,15 @@ pub fn compile_to_png(
 }
 
 /// Render selected pages from an already-compiled Typst document.
-pub fn render_document_pages(
+///
+/// `sig_placements` is consumed only when emitting PDF. Pass an empty slice
+/// for SVG/PNG callers or documents with no `signature-field` calls.
+pub(crate) fn render_document_pages(
     document: &PagedDocument,
     pages: Option<&[usize]>,
     format: OutputFormat,
     ppi: Option<f32>,
+    sig_placements: &[sig_overlay::SigPlacement],
 ) -> Result<RenderResult, RenderError> {
     // PDF does not support selective page rendering
     if format == OutputFormat::Pdf && pages.is_some() {
@@ -237,6 +243,7 @@ pub fn render_document_pages(
                     .with_code("typst::pdf_generation".to_string())],
                 }
             })?;
+            let pdf = sig_overlay::inject(pdf, document, sig_placements)?;
             Ok(RenderResult::new(
                 vec![Artifact {
                     bytes: pdf,
