@@ -239,21 +239,12 @@ impl Quill {
         match self.source.config().validate_document(doc) {
             Ok(_) => Ok(()),
             Err(errors) => {
-                let error_message = errors
-                    .into_iter()
-                    .map(|e| format!("- {}", e))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                Err(RenderError::ValidationFailed {
-                    diag: Box::new(
-                        Diagnostic::new(Severity::Error, error_message)
-                            .with_code("validation::document_invalid".to_string())
-                            .with_hint(
-                                "Ensure all required fields are present and have correct types"
-                                    .to_string(),
-                            ),
-                    ),
-                })
+                // One diagnostic per ValidationError so each carries its own
+                // `path` anchor for UI navigation. Consumers should iterate
+                // `RenderError::diagnostics()` rather than reading a single
+                // flattened message.
+                let diags = errors.iter().map(|e| e.to_diagnostic()).collect();
+                Err(RenderError::ValidationFailed { diags })
             }
         }
     }
@@ -261,15 +252,14 @@ impl Quill {
 
 /// Wrap a coercion error from `QuillConfig::coerce_frontmatter` /
 /// `coerce_card` into a `RenderError::ValidationFailed` with a uniform hint.
+///
+/// Coercion happens before validation walks the typed document, so we don't
+/// have a structured `path` here — `Diagnostic::path` is left unset.
 fn coercion_error(e: impl std::fmt::Display) -> RenderError {
     RenderError::ValidationFailed {
-        diag: Box::new(
-            Diagnostic::new(Severity::Error, e.to_string())
-                .with_code("validation::coercion_failed".to_string())
-                .with_hint(
-                    "Ensure all fields can be coerced to their declared types".to_string(),
-                ),
-        ),
+        diags: vec![Diagnostic::new(Severity::Error, e.to_string())
+            .with_code("validation::coercion_failed".to_string())
+            .with_hint("Ensure all fields can be coerced to their declared types".to_string())],
     }
 }
 

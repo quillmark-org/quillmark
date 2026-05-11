@@ -37,6 +37,7 @@ fn map_single_diagnostic(error: &SourceDiagnostic, world: &QuillWorld) -> Diagno
         code,
         message: error.message.to_string(),
         location,
+        path: None,
         hint,
         source_chain: Vec::new(),
     }

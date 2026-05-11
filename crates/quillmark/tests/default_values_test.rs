@@ -170,9 +170,14 @@ main:
     );
 
     let err = result.unwrap_err();
+    let mentions_title = err
+        .diagnostics()
+        .iter()
+        .any(|d| d.message.contains("title") || d.path.as_deref() == Some("title"));
     assert!(
-        err.to_string().contains("title"),
-        "Error should mention missing 'title' field"
+        mentions_title,
+        "Validation diagnostics should mention missing 'title' field; got {:?}",
+        err.diagnostics()
     );
 }
 

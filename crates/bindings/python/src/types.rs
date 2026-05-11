@@ -662,6 +662,15 @@ impl PyDiagnostic {
         self.inner.hint.as_deref()
     }
 
+    /// Document-model path anchor (e.g. `"cards.indorsement[0].signature_block"`).
+    ///
+    /// Set on schema validation diagnostics; `None` otherwise. See the Rust
+    /// `quillmark_core::error` module docs for the path grammar.
+    #[getter]
+    fn path(&self) -> Option<&str> {
+        self.inner.path.as_deref()
+    }
+
     #[getter]
     fn source_chain(&self) -> Vec<String> {
         self.inner.source_chain.clone()

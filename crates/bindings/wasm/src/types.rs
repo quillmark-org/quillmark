@@ -88,6 +88,12 @@ pub struct Diagnostic {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location: Option<Location>,
+    /// Document-model path anchor (e.g. `"cards.indorsement[0].signature_block"`).
+    ///
+    /// Set on schema validation diagnostics; `undefined` otherwise. See the
+    /// Rust `quillmark_core::error` module docs for the path grammar.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -101,6 +107,7 @@ impl From<quillmark_core::Diagnostic> for Diagnostic {
             code: diag.code,
             message: diag.message,
             location: diag.location.map(Into::into),
+            path: diag.path,
             hint: diag.hint,
             source_chain: diag.source_chain,
         }

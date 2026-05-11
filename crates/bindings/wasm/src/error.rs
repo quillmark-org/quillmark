@@ -63,7 +63,12 @@ impl From<ParseError> for WasmError {
 impl From<RenderError> for WasmError {
     fn from(error: RenderError) -> Self {
         match error {
-            RenderError::CompilationFailed { diags } => WasmError { diagnostics: diags },
+            // Multi-diagnostic variants forward every diagnostic so JS
+            // consumers can iterate `err.diagnostics` and read each entry's
+            // `path` for document-model navigation.
+            RenderError::CompilationFailed { diags }
+            | RenderError::QuillConfig { diags }
+            | RenderError::ValidationFailed { diags } => WasmError { diagnostics: diags },
             _ => {
                 let diagnostic = error
                     .diagnostics()
