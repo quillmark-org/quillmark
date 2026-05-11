@@ -131,7 +131,31 @@ PDF output gains a clickable AcroForm SigField widget at each call site. Open th
 
 **Important:** the widget is **unsigned**. Quillmark does not perform any cryptography. To produce a signed PDF, run the output through pyHanko, Acrobat, endesive, or another signing tool.
 
-**Parameters:**
+### Positioning
+
+`signature-field` is ordinary Typst inline content sized `width × height`. It participates in layout the same way `#rect(width: 200pt, height: 50pt)` would — content after it gets pushed by the box's dimensions. Two modes:
+
+**In-flow (reserves layout space).** Drop the call where you want to claim that block of space and let the rest of the document flow around it:
+
+```typst
+Sign here:
+#signature-field("approver")  // reserves 200×50pt below the label
+The above signature acknowledges receipt.
+```
+
+**Overlay (no displacement).** Wrap in `#place(...)` to anchor the widget without consuming flow. This is what you want when the surrounding template *already* reserves space — for example, the four blank lines above a typed-name signature block in a USAF memo:
+
+```typst
+// At the cursor position where the typed-name signature block begins:
+#place(dx: 0pt, dy: -3.5in,
+       signature-field("approver", width: 3in, height: 0.5in))
+```
+
+`#place` without an alignment argument anchors the widget at the current cursor (then offsets by `dx`/`dy`); `#place(top + left, ...)` anchors to the containing block's top-left. Either way, the call consumes no flow space and the surrounding template stays put.
+
+Inside `#box`, `#table`, `#figure`, `#footnote`, `#move`, `#pad` — `signature-field` tracks the layout system normally. Multi-page documents work; each field's `page` is the page it lays out on, not where it was written in source.
+
+### Parameters
 
 | Name | Type | Default | Notes |
 |---|---|---|---|
@@ -139,7 +163,7 @@ PDF output gains a clickable AcroForm SigField widget at each call site. Open th
 | `width` | `length` | `200pt` | Must be an absolute length (`pt`, `mm`, `cm`, `in`) — relative lengths like `2em` or `50%` are rejected. |
 | `height` | `length` | `50pt` | Same constraint as `width`. |
 
-**Errors:**
+### Errors
 
 - Two calls with the same `name` raise a compilation error (`typst::duplicate_signature_field`).
 - A non-absolute `width` or `height` raises a Typst assert pointing at `signature-field`.
