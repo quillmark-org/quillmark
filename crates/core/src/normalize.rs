@@ -50,7 +50,7 @@
 //! assert_eq!(cleaned, "**asdf** or **(1234**");
 //! ```
 
-use crate::document::Card;
+use crate::document::Leaf;
 use crate::value::QuillValue;
 use indexmap::IndexMap;
 use unicode_normalization::UnicodeNormalization;
@@ -308,7 +308,7 @@ fn normalize_line_endings(s: &str) -> String {
 ///
 /// This is an internal helper used by [`normalize_document`]. It operates on
 /// the typed `IndexMap<String, QuillValue>` frontmatter; it does **not** touch
-/// `body` or `cards` (those are normalized separately by the caller).
+/// `body` or `leaves` (those are normalized separately by the caller).
 ///
 /// Field names at the top level are NFC-normalized (see [`normalize_field_name`]).
 /// Only **body regions** receive content normalization (bidi stripping + HTML comment
@@ -374,8 +374,8 @@ pub fn normalize_field_name(name: &str) -> String {
 ///
 /// 1. **Unicode NFC normalization** — Frontmatter field names are normalized to NFC form.
 /// 2. **Bidi stripping** — Invisible bidirectional control characters are removed from
-///    body regions (each `Card::body`). YAML field values in every
-///    `Card::frontmatter` pass through verbatim (spec §7).
+///    body regions (each `Leaf::body`). YAML field values in every
+///    `Leaf::frontmatter` pass through verbatim (spec §7).
 /// 3. **HTML comment fence fixing** — Trailing text after `-->` is preserved in body
 ///    regions only.
 ///
@@ -399,39 +399,39 @@ pub fn normalize_document(
 ) -> Result<crate::document::Document, crate::error::ParseError> {
     use crate::document::{Document, Sentinel};
 
-    // NFC-normalize main-card field names; values pass through verbatim.
+    // NFC-normalize main-leaf field names; values pass through verbatim.
     let normalized_main_fm_map = normalize_fields(doc.main().frontmatter().to_index_map());
     let normalized_main_body = normalize_markdown(doc.main().body());
     let main_sentinel = doc.main().sentinel().clone();
-    let main = Card::new_with_sentinel(
+    let main = Leaf::new_with_sentinel(
         main_sentinel,
         crate::document::Frontmatter::from_index_map(normalized_main_fm_map),
         normalized_main_body,
     );
 
-    // Normalize each composable card's body; NFC-normalize its field names;
+    // Normalize each composable leaf's body; NFC-normalize its field names;
     // values pass through verbatim.
-    let normalized_cards: Vec<Card> = doc
-        .cards()
+    let normalized_leaves: Vec<Leaf> = doc
+        .leaves()
         .iter()
-        .map(|card| {
-            let normalized_card_fields: IndexMap<String, QuillValue> = card
+        .map(|leaf| {
+            let normalized_card_fields: IndexMap<String, QuillValue> = leaf
                 .frontmatter()
                 .iter()
                 .map(|(k, v)| (normalize_field_name(k), v.clone()))
                 .collect();
-            let normalized_card_body = normalize_markdown(card.body());
-            Card::new_with_sentinel(
-                Sentinel::Card(card.tag()),
+            let normalized_card_body = normalize_markdown(leaf.body());
+            Leaf::new_with_sentinel(
+                Sentinel::Leaf(leaf.tag()),
                 crate::document::Frontmatter::from_index_map(normalized_card_fields),
                 normalized_card_body,
             )
         })
         .collect();
 
-    Ok(Document::from_main_and_cards(
+    Ok(Document::from_main_and_leaves(
         main,
-        normalized_cards,
+        normalized_leaves,
         doc.warnings().to_vec(),
     ))
 }
@@ -804,23 +804,23 @@ mod tests {
     fn test_normalize_document_card_body_bidi_stripped() {
         use crate::document::Document;
 
-        let md = "---\nQUILL: test\n---\n\nbody\n\n---\nCARD: note\n---\ncard\u{202D}body\n";
+        let md = "---\nQUILL: test\n---\n\nbody\n\n```leaf\nKIND: note\n```\nleaf\u{202D}body\n";
         let doc = Document::from_markdown(md).unwrap();
-        assert_eq!(doc.cards().len(), 1, "expected 1 card");
+        assert_eq!(doc.leaves().len(), 1, "expected 1 leaf");
         let normalized = super::normalize_document(doc).unwrap();
-        assert_eq!(normalized.cards()[0].body(), "cardbody\n");
+        assert_eq!(normalized.leaves()[0].body(), "leafbody\n");
     }
 
     #[test]
     fn test_normalize_document_card_field_bidi_preserved() {
         use crate::document::Document;
 
-        let md = "---\nQUILL: test\n---\n\nbody\n\n---\nCARD: note\nname: Ali\u{202D}ce\n---\n";
+        let md = "---\nQUILL: test\n---\n\nbody\n\n```leaf\nKIND: note\nname: Ali\u{202D}ce\n```\n";
         let doc = Document::from_markdown(md).unwrap();
-        assert_eq!(doc.cards().len(), 1, "expected 1 card");
+        assert_eq!(doc.leaves().len(), 1, "expected 1 leaf");
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(
-            normalized.cards()[0]
+            normalized.leaves()[0]
                 .frontmatter()
                 .get("name")
                 .unwrap()
@@ -834,11 +834,11 @@ mod tests {
     fn test_normalize_document_card_body_html_comment_repair() {
         use crate::document::Document;
 
-        let md = "---\nQUILL: test\n---\n\n---\nCARD: note\n---\n<!-- comment -->Trailing text\n";
+        let md = "---\nQUILL: test\n---\n\n```leaf\nKIND: note\n```\n<!-- comment -->Trailing text\n";
         let doc = Document::from_markdown(md).unwrap();
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(
-            normalized.cards()[0].body(),
+            normalized.leaves()[0].body(),
             "<!-- comment -->\nTrailing text\n"
         );
     }

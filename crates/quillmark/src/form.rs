@@ -1,7 +1,7 @@
 //! Schema-aware form views for form editors.
 //!
 //! This module provides [`Form`] — a read-only snapshot of a [`Document`]
-//! viewed through its [`Quill`] schema — and [`FormCard`], the per-card view.
+//! viewed through its [`Quill`] schema — and [`FormLeaf`], the per-leaf view.
 //! For each schema-declared field the view records the current value, the
 //! schema default, and the source of the effective value.
 //!
@@ -23,8 +23,8 @@
 //!     }
 //! }
 //!
-//! // A blank form for a fresh card the user is about to add:
-//! if let Some(blank) = quill.blank_card("indorsement") {
+//! // A blank form for a fresh leaf the user is about to add:
+//! if let Some(blank) = quill.blank_leaf("indorsement") {
 //!     // render `blank.values`...
 //!     # let _ = blank;
 //! }
@@ -33,20 +33,20 @@
 //!
 //! # Snapshot semantics
 //!
-//! A [`Form`] (or [`FormCard`]) is a read-only snapshot built at the moment
+//! A [`Form`] (or [`FormLeaf`]) is a read-only snapshot built at the moment
 //! the call returned. Subsequent edits to the document are not reflected;
 //! call `quill.form(doc)` again to obtain an updated snapshot.
 //!
-//! # Unknown card tags
+//! # Unknown leaf tags
 //!
-//! Cards whose tag is not declared in the schema are dropped from
-//! [`Form::cards`]. Each such card produces one [`Diagnostic`] in
+//! Leaves whose tag is not declared in the schema are dropped from
+//! [`Form::leaves`]. Each such leaf produces one [`Diagnostic`] in
 //! [`Form::diagnostics`] with code `"form::unknown_card_tag"`.
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-use quillmark_core::quill::CardSchema;
+use quillmark_core::quill::LeafSchema;
 use quillmark_core::{Diagnostic, Document, QuillValue, Severity};
 
 use crate::Quill;
@@ -55,7 +55,7 @@ use crate::Quill;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FormFieldSource {
-    /// Value was present in the document's frontmatter or card fields.
+    /// Value was present in the document's frontmatter or leaf fields.
     Document,
     /// Value was absent from the document; the schema provides a default.
     Default,
@@ -63,7 +63,7 @@ pub enum FormFieldSource {
     Missing,
 }
 
-/// A single field's view within a [`FormCard`].
+/// A single field's view within a [`FormLeaf`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FormFieldValue {
     /// Current value from the document, if present.
@@ -74,12 +74,12 @@ pub struct FormFieldValue {
     pub source: FormFieldSource,
 }
 
-/// A card viewed through its schema — either the main document card or a
-/// named card block.
+/// A leaf viewed through its schema — either the main document leaf or a
+/// named leaf block.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FormCard {
-    /// The schema that governs this card.
-    pub schema: CardSchema,
+pub struct FormLeaf {
+    /// The schema that governs this leaf.
+    pub schema: LeafSchema,
     /// View of each schema-declared field.
     ///
     /// Keys follow `IndexMap` insertion order: schema field definition order,
@@ -87,16 +87,16 @@ pub struct FormCard {
     pub values: IndexMap<String, FormFieldValue>,
 }
 
-impl FormCard {
-    /// A blank form card for `schema` — no document values supplied. Every
+impl FormLeaf {
+    /// A blank form leaf for `schema` — no document values supplied. Every
     /// declared field's source is [`FormFieldSource::Default`] (when the
     /// schema declares a default) or [`FormFieldSource::Missing`].
     ///
-    /// This is the "user is about to add a new card" view. Reach it through
-    /// [`Quill::blank_card`] or [`Quill::blank_main`] when you have a tag in
-    /// hand instead of a [`CardSchema`].
-    pub fn blank(schema: &CardSchema) -> Self {
-        project_card(schema, &IndexMap::new())
+    /// This is the "user is about to add a new leaf" view. Reach it through
+    /// [`Quill::blank_leaf`] or [`Quill::blank_main`] when you have a tag in
+    /// hand instead of a [`LeafSchema`].
+    pub fn blank(schema: &LeafSchema) -> Self {
+        project_leaf(schema, &IndexMap::new())
     }
 }
 
@@ -105,37 +105,37 @@ impl FormCard {
 /// Produced by [`Quill::form`]. Subsequent edits to the document are **not**
 /// reflected here — call `quill.form(doc)` again after editing.
 ///
-/// # Unknown cards
+/// # Unknown leaves
 ///
-/// Document cards whose tag is not declared in the schema are dropped and
+/// Document leaves whose tag is not declared in the schema are dropped and
 /// each produces a [`Diagnostic`] with code `"form::unknown_card_tag"` in
 /// [`Form::diagnostics`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Form {
-    /// View of the main document card (frontmatter fields).
-    pub main: FormCard,
-    /// View of each recognised card, in document order.
+    /// View of the main document leaf (frontmatter fields).
+    pub main: FormLeaf,
+    /// View of each recognised leaf, in document order.
     ///
-    /// Cards with unknown tags are excluded; see [`Form::diagnostics`].
-    pub cards: Vec<FormCard>,
-    /// Diagnostics from unknown card tags and validation.
+    /// Leaves with unknown tags are excluded; see [`Form::diagnostics`].
+    pub leaves: Vec<FormLeaf>,
+    /// Diagnostics from unknown leaf tags and validation.
     pub diagnostics: Vec<Diagnostic>,
 }
 
 // ── Internal projection ─────────────────────────────────────────────────────
 //
-// `project_card`, `build_form`, and `blank_card_for_tag` are the internal
+// `project_leaf`, `build_form`, and `blank_card_for_tag` are the internal
 // machinery used by `Quill::form`, `Quill::blank_main`, and
-// `Quill::blank_card`. They are **deliberately not public**: consumers
+// `Quill::blank_leaf`. They are **deliberately not public**: consumers
 // reach the form module through methods on `Quill`, never by holding a
-// `CardSchema` and a field map directly.
+// `LeafSchema` and a field map directly.
 
 /// Build the [`Form`] for a document. Composes:
-/// - `QuillConfig::main` — the main card schema.
-/// - `QuillConfig::card_type` — to look up card schemas by tag.
+/// - `QuillConfig::main` — the main leaf schema.
+/// - `QuillConfig::leaf_kind` — to look up leaf schemas by tag.
 /// - `QuillConfig::validate_document` — to gather validation diagnostics.
 ///
-/// Coercion (`coerce_frontmatter` / `coerce_card`) is **not** applied here:
+/// Coercion (`coerce_frontmatter` / `coerce_leaf`) is **not** applied here:
 /// the form view is the document as-is so the editor sees what the user typed.
 /// Validation diagnostics already inform the consumer when values are
 /// type-mismatched.
@@ -144,22 +144,22 @@ pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
 
     let main_schema = &quill.source().config().main;
     let main_fields = doc.main().frontmatter().to_index_map();
-    let main = project_card(main_schema, &main_fields);
+    let main = project_leaf(main_schema, &main_fields);
 
-    let mut cards: Vec<FormCard> = Vec::new();
-    for (index, card) in doc.cards().iter().enumerate() {
-        let tag = card.tag();
-        match quill.source().config().card_type(&tag) {
-            Some(card_schema) => {
-                let card_fields = card.frontmatter().to_index_map();
-                cards.push(project_card(card_schema, &card_fields));
+    let mut leaves: Vec<FormLeaf> = Vec::new();
+    for (index, leaf) in doc.leaves().iter().enumerate() {
+        let tag = leaf.tag();
+        match quill.source().config().leaf_kind(&tag) {
+            Some(leaf_schema) => {
+                let leaf_fields = leaf.frontmatter().to_index_map();
+                leaves.push(project_leaf(leaf_schema, &leaf_fields));
             }
             None => {
                 diagnostics.push(
                     Diagnostic::new(
                         Severity::Warning,
                         format!(
-                            "card at index {index} has unknown tag \"{tag}\"; \
+                            "leaf at index {index} has unknown tag \"{tag}\"; \
                              it is not declared in the quill schema and has been \
                              excluded from the form view"
                         ),
@@ -181,24 +181,24 @@ pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
 
     Form {
         main,
-        cards,
+        leaves,
         diagnostics,
     }
 }
 
-/// Build a blank [`FormCard`] for a card type by tag, or `None` if the tag
+/// Build a blank [`FormLeaf`] for a leaf type by tag, or `None` if the tag
 /// isn't declared in the quill's schema.
-pub(crate) fn blank_card_for_tag(quill: &Quill, card_type: &str) -> Option<FormCard> {
+pub(crate) fn blank_card_for_tag(quill: &Quill, leaf_kind: &str) -> Option<FormLeaf> {
     quill
         .source()
         .config()
-        .card_type(card_type)
-        .map(FormCard::blank)
+        .leaf_kind(leaf_kind)
+        .map(FormLeaf::blank)
 }
 
-/// Build a [`FormCard`] by walking each schema-declared field and looking up
+/// Build a [`FormLeaf`] by walking each schema-declared field and looking up
 /// its value in `fields`.
-fn project_card(schema: &CardSchema, fields: &IndexMap<String, QuillValue>) -> FormCard {
+fn project_leaf(schema: &LeafSchema, fields: &IndexMap<String, QuillValue>) -> FormLeaf {
     let mut values: IndexMap<String, FormFieldValue> = IndexMap::new();
 
     let mut field_names: Vec<&str> = schema.fields.keys().map(String::as_str).collect();
@@ -238,7 +238,7 @@ fn project_card(schema: &CardSchema, fields: &IndexMap<String, QuillValue>) -> F
         values.insert(field_name.to_string(), ffv);
     }
 
-    FormCard {
+    FormLeaf {
         schema: schema.clone(),
         values,
     }

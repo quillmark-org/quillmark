@@ -19,7 +19,7 @@ proptest! {
                 // If it parsed, we should be able to access the document safely
                 let _ = doc.main().body();
                 let _ = doc.main().frontmatter();
-                let _ = doc.cards();
+                let _ = doc.leaves();
             }
             Err(_) => {
                 // Error is fine - malformed YAML or other issues
@@ -55,8 +55,8 @@ proptest! {
         let result = Document::from_markdown(&markdown);
         // Should handle tag directives without panic
         if let Ok(doc) = result {
-            // Tag might create a card
-            let _ = doc.cards();
+            // Tag might create a leaf
+            let _ = doc.leaves();
             let _ = doc.main().frontmatter();
         }
     }
@@ -80,7 +80,7 @@ proptest! {
 
         let result = Document::from_markdown(&markdown);
         if let Ok(doc) = result {
-            // frontmatter has exactly the fields we provided (no BODY or CARDS keys)
+            // frontmatter has exactly the fields we provided (no BODY or LEAVES keys)
             assert!(doc.main().frontmatter().len() <= size);
         }
     }
@@ -143,7 +143,7 @@ proptest! {
         if let Ok(doc) = result {
             // Should handle multiple sections
             let _ = doc.main().frontmatter();
-            let _ = doc.cards();
+            let _ = doc.leaves();
         }
     }
 }

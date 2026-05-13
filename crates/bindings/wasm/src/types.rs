@@ -88,7 +88,7 @@ pub struct Diagnostic {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location: Option<Location>,
-    /// Document-model path anchor (e.g. `"cards.indorsement[0].signature_block"`).
+    /// Document-model path anchor (e.g. `"leaves.indorsement[0].signature_block"`).
     ///
     /// Set on schema validation diagnostics; `undefined` otherwise. See the
     /// Rust `quillmark_core::error` module docs for the path grammar.
@@ -164,7 +164,7 @@ pub struct RenderResult {
 
 /// A single frontmatter item — either a field or a comment line.
 ///
-/// Exposed via `Card.frontmatterItems`.
+/// Exposed via `Leaf.frontmatterItems`.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -174,7 +174,7 @@ pub enum FrontmatterItem {
         #[tsify(type = "unknown")]
         value: serde_json::Value,
         /// `true` when the field was written as `key: !fill <value>` in
-        /// source or was marked via `Card.setFill()`.
+        /// source or was marked via `Leaf.setFill()`.
         #[serde(default)]
         fill: bool,
     },
@@ -190,40 +190,40 @@ pub enum FrontmatterItem {
     },
 }
 
-/// A single card block parsed from a Quillmark Markdown document.
+/// A single leaf block parsed from a Quillmark Markdown document.
 ///
-/// Exposed as a plain JS object via `Document.main`, `Document.cards`, etc.
-/// Carries a sentinel that distinguishes the document entry (main) card from
-/// composable cards, a `tag` string (the QUILL reference or CARD tag), typed
+/// Exposed as a plain JS object via `Document.main`, `Document.leaves`, etc.
+/// Carries a sentinel that distinguishes the document entry (main) leaf from
+/// composable leaves, a `tag` string (the QUILL reference or KIND tag), typed
 /// frontmatter (map view under `frontmatter`, ordered item list under
 /// `frontmatterItems`), and the body.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
-pub struct Card {
-    /// `"main"` for the document entry (QUILL) card; `"card"` for composable cards.
+pub struct Leaf {
+    /// `"main"` for the document entry (QUILL) leaf; `"leaf"` for composable leaves.
     pub sentinel: String,
-    /// The CARD sentinel value (e.g. `"indorsement"`) or the QUILL reference
-    /// string for the main card.
+    /// The KIND sentinel value (e.g. `"indorsement"`) or the QUILL reference
+    /// string for the main leaf.
     pub tag: String,
-    /// Map-keyed view of frontmatter values (no `CARD`/`QUILL` key, comments invisible).
+    /// Map-keyed view of frontmatter values (no `KIND`/`QUILL` key, comments invisible).
     #[tsify(type = "Record<string, unknown>")]
     pub frontmatter: serde_json::Value,
     /// Ordered frontmatter item list — fields and comments, in source order.
     #[tsify(type = "FrontmatterItem[]")]
     pub frontmatter_items: Vec<FrontmatterItem>,
-    /// Markdown body after the card's closing `---`. Empty string when absent.
+    /// Markdown body after the leaf's closing `---`. Empty string when absent.
     pub body: String,
 }
 
-impl From<&quillmark_core::Card> for Card {
-    fn from(card: &quillmark_core::Card) -> Self {
+impl From<&quillmark_core::Leaf> for Leaf {
+    fn from(leaf: &quillmark_core::Leaf) -> Self {
         let mut fields_map = serde_json::Map::new();
-        for (k, v) in card.frontmatter().iter() {
+        for (k, v) in leaf.frontmatter().iter() {
             fields_map.insert(k.clone(), v.as_json().clone());
         }
 
-        let items: Vec<FrontmatterItem> = card
+        let items: Vec<FrontmatterItem> = leaf
             .frontmatter()
             .items()
             .iter()
@@ -244,14 +244,14 @@ impl From<&quillmark_core::Card> for Card {
             })
             .collect();
 
-        let sentinel = if card.is_main() { "main" } else { "card" };
+        let sentinel = if leaf.is_main() { "main" } else { "leaf" };
 
-        Card {
+        Leaf {
             sentinel: sentinel.to_string(),
-            tag: card.tag(),
+            tag: leaf.tag(),
             frontmatter: serde_json::Value::Object(fields_map),
             frontmatter_items: items,
-            body: card.body().to_string(),
+            body: leaf.body().to_string(),
         }
     }
 }
@@ -375,20 +375,20 @@ mod tests {
     }
 
     #[test]
-    fn card_from_core_carries_frontmatter_items() {
+    fn leaf_from_core_carries_frontmatter_items() {
         use quillmark_core::Document;
 
         let md = "---\nQUILL: q\ntitle: Hi # inline note\nauthor: Alice\n---\n";
         let doc = Document::from_markdown(md).unwrap();
-        let card = Card::from(doc.main());
+        let leaf = Leaf::from(doc.main());
 
         // Map view: title and author present, QUILL absent.
-        assert_eq!(card.frontmatter["title"], "Hi");
-        assert_eq!(card.frontmatter["author"], "Alice");
-        assert!(card.frontmatter.get("QUILL").is_none());
+        assert_eq!(leaf.frontmatter["title"], "Hi");
+        assert_eq!(leaf.frontmatter["author"], "Alice");
+        assert!(leaf.frontmatter.get("QUILL").is_none());
 
         // Item list: field + inline comment + field.
-        let fields: Vec<&str> = card
+        let fields: Vec<&str> = leaf
             .frontmatter_items
             .iter()
             .filter_map(|it| match it {
@@ -398,7 +398,7 @@ mod tests {
             .collect();
         assert_eq!(fields, vec!["title", "author"]);
 
-        let inline_comment = card
+        let inline_comment = leaf
             .frontmatter_items
             .iter()
             .find(|it| matches!(it, FrontmatterItem::Comment { inline: true, .. }));

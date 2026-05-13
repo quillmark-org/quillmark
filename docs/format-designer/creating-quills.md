@@ -59,7 +59,7 @@ Sincerely,
 #data.sender
 ```
 
-For data access patterns, helper package details, optional fields, and CARDS iteration, see the [Typst Backend](typst-backend.md) guide.
+For data access patterns, helper package details, optional fields, and LEAVES iteration, see the [Typst Backend](typst-backend.md) guide.
 
 ## 4. Add `example.md`
 
@@ -88,8 +88,8 @@ For command options and output controls, see the [CLI Reference](../cli/referenc
 
 ## 6. Next steps
 
-- [Quill.yaml Reference](quill-yaml-reference.md) — full field types, UI hints, `card_types`, `typst` section
-- [Typst Backend](typst-backend.md) — data access patterns, CARDS iteration, helper package
+- [Quill.yaml Reference](quill-yaml-reference.md) — full field types, UI hints, `leaf_kinds`, `typst` section
+- [Typst Backend](typst-backend.md) — data access patterns, LEAVES iteration, helper package
 - [Quill Versioning](versioning.md)
 
 **Tip:** To exclude files (fonts, build artifacts) from the bundle when loading from disk, add a `.quillignore` file at the bundle root using gitignore syntax.

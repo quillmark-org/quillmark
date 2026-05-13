@@ -69,19 +69,19 @@ semantic equality.
 
 ### `doc.equals(other)`
 Structural equality between two `Document` handles. Compares `main` and
-`cards` by value; parse-time `warnings` are intentionally excluded.
+`leaves` by value; parse-time `warnings` are intentionally excluded.
 
 Use this to debounce upstream prop updates: keep the last parsed `Document`
 and compare instead of re-parsing on every keystroke.
 
-### `doc.cardCount`
-O(1) getter for the number of composable cards (excluding the main card).
-Use this to validate indices before calling card mutators (`removeCard`,
-`updateCardField`, etc.) without allocating the full `cards` array.
+### `doc.leafCount`
+O(1) getter for the number of composable leaves (excluding the main leaf).
+Use this to validate indices before calling leaf mutators (`removeLeaf`,
+`updateLeafField`, etc.) without allocating the full `leaves` array.
 
 ### `quill.form(doc)`
 
-Returns `{ main, cards, diagnostics }` — a schema-aware snapshot of `doc`
+Returns `{ main, leaves, diagnostics }` — a schema-aware snapshot of `doc`
 without invoking the backend. `diagnostics` contains validation errors and
 warnings; an empty array means the document is valid. Useful for validating
 content without rendering:
@@ -181,7 +181,7 @@ compilation failures. The same shape applies to every throw site:
 
 - `Document.fromMarkdown` — parse errors (missing `QUILL`, YAML errors,
   `parse::input_too_large` for inputs > 10 MB).
-- `Document` mutators (`setField`, `updateCardField`, etc.) — `EditError`
+- `Document` mutators (`setField`, `updateLeafField`, etc.) — `EditError`
   variants (`ReservedName`, `InvalidFieldName`, `InvalidTagName`,
   `IndexOutOfRange`) appear in `diagnostics[0].message` with the
   `[EditError::<Variant>]` prefix.

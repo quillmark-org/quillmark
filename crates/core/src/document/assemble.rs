@@ -10,11 +10,11 @@ use crate::value::QuillValue;
 use crate::version::QuillReference;
 use crate::Diagnostic;
 
-use super::fences::{fence_opener_len, find_metadata_blocks};
+use super::fences::find_metadata_blocks;
 use super::frontmatter::{Frontmatter, FrontmatterItem};
 use super::prescan::{prescan_fence_content, NestedComment, PreItem};
 use super::sentinel::extract_sentinels;
-use super::{Card, Document, Sentinel};
+use super::{Document, Leaf, Sentinel};
 
 /// Strip exactly one F2 structural separator from the tail of a body slice.
 ///
@@ -45,7 +45,7 @@ pub(super) struct MetadataBlock {
     pub(super) start: usize,                          // Position of opening "---"
     pub(super) end: usize,                            // Position after closing "---\n"
     pub(super) yaml_value: Option<serde_json::Value>, // Parsed YAML as JSON (None if empty or parse failed)
-    pub(super) tag: Option<String>,                   // Field name from CARD key
+    pub(super) tag: Option<String>,                   // Field name from KIND key
     pub(super) quill_ref: Option<String>,             // Quill reference from QUILL key
     /// Pre-scan items (comments + fill-tagged field keys) in source order.
     pub(super) pre_items: Vec<PreItem>,
@@ -71,16 +71,18 @@ fn yaml_parse_options() -> serde_saphyr::Options {
 }
 
 /// Process YAML content for a recognized metadata fence and build a
-/// `MetadataBlock`. The `is_first_block` flag governs whether `QUILL` is
-/// expected (vs. `CARD`). Returns errors per spec §9.
+/// `MetadataBlock`. `content_start` is the byte position immediately after
+/// the opening fence line; `content_end` is the byte position at the start
+/// of the closing fence line. Returns errors per spec §9.
 pub(super) fn build_block(
     markdown: &str,
     abs_pos: usize,
-    abs_closing_pos: usize,
+    content_start: usize,
+    content_end: usize,
     block_end: usize,
     block_index: usize,
 ) -> Result<MetadataBlock, ParseError> {
-    let raw_content = &markdown[abs_pos + fence_opener_len(markdown, abs_pos)..abs_closing_pos];
+    let raw_content = &markdown[content_start..content_end];
 
     // Check YAML size limit (spec §8)
     if raw_content.len() > crate::error::MAX_YAML_SIZE {
@@ -120,7 +122,7 @@ pub(super) fn build_block(
 
     // Per-fence field-count check (spec §8, §6.1 of GAP analysis)
     if let Some(serde_json::Value::Object(ref map)) = yaml_value {
-        // Add +1 for QUILL (stripped) or CARD (stripped) so the cap matches
+        // Add +1 for QUILL (stripped) or KIND (stripped) so the cap matches
         // what the user wrote, not what's left after sentinel extraction.
         let sentinel_extra = if quill_ref.is_some() || tag.is_some() {
             1
@@ -200,7 +202,7 @@ pub(super) fn decompose_with_warnings(
     }
 
     // Find all metadata blocks. F1/F2 already guarantee that block 0 carries
-    // QUILL and that every subsequent block carries CARD.
+    // QUILL and that every subsequent block carries KIND.
     let (blocks, warnings, first_fence_issue) = find_metadata_blocks(markdown)?;
 
     if blocks.is_empty() {
@@ -234,7 +236,7 @@ pub(super) fn decompose_with_warnings(
     }
 
     // Global body: between end of frontmatter (block 0) and start of the
-    // first CARD block (or EOF).
+    // first KIND block (or EOF).
     //
     // When a fence follows, the body slice ends with the F2 blank-line
     // terminator — strip it so stored bodies contain only authored content.
@@ -253,19 +255,19 @@ pub(super) fn decompose_with_warnings(
         global_body_raw.to_string()
     };
 
-    // Parse tagged blocks (CARD blocks) into typed Cards.
-    let mut cards: Vec<Card> = Vec::new();
+    // Parse tagged blocks (KIND blocks) into typed Leaves.
+    let mut leaves: Vec<Leaf> = Vec::new();
     for (idx, block) in blocks.iter().enumerate() {
         if let Some(ref tag_name) = block.tag {
-            // Build the card's typed frontmatter from pre-scan + parsed YAML.
-            let card_frontmatter = build_frontmatter_from_pre_and_parsed(
+            // Build the leaf's typed frontmatter from pre-scan + parsed YAML.
+            let leaf_frontmatter = build_frontmatter_from_pre_and_parsed(
                 &block.pre_items,
                 &block.pre_nested_comments,
                 &block.yaml_value,
             )
             .map_err(|e| match e {
                 ParseError::InvalidStructure(msg) => ParseError::InvalidStructure(format!(
-                    "Invalid YAML in card block '{}': {}",
+                    "Invalid YAML in leaf block '{}': {}",
                     tag_name, msg
                 )),
                 other => other,
@@ -274,25 +276,25 @@ pub(super) fn decompose_with_warnings(
                 warnings.push(w.clone());
             }
 
-            // Card body: between this block's end and the next block's start (or EOF).
-            let card_body_start = block.end;
+            // Leaf body: between this block's end and the next block's start (or EOF).
+            let leaf_body_start = block.end;
             let has_next_block = idx + 1 < blocks.len();
-            let card_body_end = if has_next_block {
+            let leaf_body_end = if has_next_block {
                 blocks[idx + 1].start
             } else {
                 markdown.len()
             };
-            let card_body_raw = &markdown[card_body_start..card_body_end];
-            let card_body = if has_next_block {
-                strip_f2_separator(card_body_raw).to_string()
+            let leaf_body_raw = &markdown[leaf_body_start..leaf_body_end];
+            let leaf_body = if has_next_block {
+                strip_f2_separator(leaf_body_raw).to_string()
             } else {
-                card_body_raw.to_string()
+                leaf_body_raw.to_string()
             };
 
-            cards.push(Card::new_with_sentinel(
-                Sentinel::Card(tag_name.clone()),
-                card_frontmatter,
-                card_body,
+            leaves.push(Leaf::new_with_sentinel(
+                Sentinel::Leaf(tag_name.clone()),
+                leaf_frontmatter,
+                leaf_body,
             ));
         }
     }
@@ -301,8 +303,8 @@ pub(super) fn decompose_with_warnings(
         ParseError::InvalidStructure(format!("Invalid QUILL tag '{}': {}", quill_tag, e))
     })?;
 
-    let main = Card::new_with_sentinel(Sentinel::Main(quill_ref), frontmatter, global_body);
-    let doc = Document::from_main_and_cards(main, cards, warnings.clone());
+    let main = Leaf::new_with_sentinel(Sentinel::Main(quill_ref), frontmatter, global_body);
+    let doc = Document::from_main_and_leaves(main, leaves, warnings.clone());
 
     Ok((doc, warnings))
 }
@@ -333,7 +335,7 @@ fn build_frontmatter_from_pre_and_parsed(
 
     let mut items: Vec<FrontmatterItem> = Vec::new();
     let mut consumed: std::collections::HashSet<String> = std::collections::HashSet::new();
-    // When a QUILL/CARD sentinel field is skipped, its trailing inline comment
+    // When a QUILL/KIND sentinel field is skipped, its trailing inline comment
     // loses its host field. The emitter can only round-trip an inline comment
     // on the sentinel line when it sits at items[0] (sentinel-preview path).
     // If other items already precede it, it will never reach items[0] and will
@@ -352,9 +354,9 @@ fn build_frontmatter_from_pre_and_parsed(
                 });
             }
             PreItem::Field { key, fill } => {
-                // QUILL / CARD sentinel keys are stripped from the parsed
+                // QUILL / KIND sentinel keys are stripped from the parsed
                 // map by `extract_sentinels`; skip them in the item list.
-                if key == "QUILL" || key == "CARD" {
+                if key == "QUILL" || key == "KIND" {
                     after_stripped_sentinel = true;
                     continue;
                 }

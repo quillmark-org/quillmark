@@ -34,7 +34,7 @@
 //! index       := [0-9]+
 //! ```
 //!
-//! Because field and card tag names are validated to that charset (no `.`,
+//! Because field and leaf tag names are validated to that charset (no `.`,
 //! `[`, `]`, or whitespace can appear in any segment), the dotted form
 //! round-trips unambiguously.
 //!
@@ -44,13 +44,13 @@
 //! |-------------------------------|-----------------------------------------------|
 //! | Main frontmatter field        | `title`                                       |
 //! | Nested in array of objects    | `recipients[0].name`                          |
-//! | Main card body                | `main.body`                                   |
-//! | Typed card (whole)            | `cards.indorsement[0]`                        |
-//! | Field on typed card           | `cards.indorsement[0].signature_block`        |
-//! | Body on typed card            | `cards.indorsement[0].body`                   |
-//! | Card with unknown tag         | `cards[0]`                                    |
+//! | Main leaf body                | `main.body`                                   |
+//! | Typed leaf (whole)            | `leaves.indorsement[0]`                        |
+//! | Field on typed leaf           | `leaves.indorsement[0].signature_block`        |
+//! | Body on typed leaf            | `leaves.indorsement[0].body`                   |
+//! | Leaf with unknown tag         | `leaves[0]`                                    |
 //!
-//! The `cards.<tag>[<index>]` form fuses the card tag and the document
+//! The `leaves.<tag>[<index>]` form fuses the leaf tag and the document
 //! array index into one segment so consumers receive both pieces of
 //! information without a second lookup.
 //!
@@ -134,9 +134,9 @@ pub const MAX_NESTING_DEPTH: usize = 100;
 /// Re-exported from [`crate::document::limits::MAX_YAML_DEPTH`].
 pub use crate::document::limits::MAX_YAML_DEPTH;
 
-/// Maximum number of CARD blocks allowed per document
-/// Prevents memory exhaustion from documents with excessive card blocks
-pub const MAX_CARD_COUNT: usize = 1000;
+/// Maximum number of KIND blocks allowed per document
+/// Prevents memory exhaustion from documents with excessive leaf blocks
+pub const MAX_LEAF_COUNT: usize = 1000;
 
 /// Maximum number of fields allowed per document
 /// Prevents memory exhaustion from documents with excessive fields
@@ -584,18 +584,18 @@ mod tests {
     fn test_diagnostic_with_path() {
         let diag = Diagnostic::new(Severity::Error, "Missing field".to_string())
             .with_code("validation::missing_required".to_string())
-            .with_path("cards.indorsement[0].signature_block".to_string());
+            .with_path("leaves.indorsement[0].signature_block".to_string());
 
         assert_eq!(
             diag.path.as_deref(),
-            Some("cards.indorsement[0].signature_block")
+            Some("leaves.indorsement[0].signature_block")
         );
 
         let json = serde_json::to_string(&diag).unwrap();
-        assert!(json.contains("\"path\":\"cards.indorsement[0].signature_block\""));
+        assert!(json.contains("\"path\":\"leaves.indorsement[0].signature_block\""));
 
         let pretty = diag.fmt_pretty();
-        assert!(pretty.contains("at cards.indorsement[0].signature_block"));
+        assert!(pretty.contains("at leaves.indorsement[0].signature_block"));
     }
 
     #[test]

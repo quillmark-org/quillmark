@@ -55,7 +55,7 @@ Fuzz tests for parsing, templating, and rendering.
 - **`QuillSource`** — Pure data in `quillmark-core`: file bundle + config + metadata; no render ability
 - **`Backend`** — Trait for output formats (`Send + Sync`): `id()`, `supported_formats()`, `open(plate, &QuillSource, json)`
 - **`RenderSession`** — Opaque handle returned by `Backend::open()`; call `render(opts)` to produce artifacts. Exposes `page_count()` and `warnings()` for consumers (e.g. canvas previews) that don't go through `render()`. Backends with richer typed surfaces expose them via a downcast helper that goes through `RenderSession::handle()` + `SessionHandle::as_any` (Typst uses this for canvas preview — see `quillmark_typst::typst_session_of`).
-- **`Document`** — Typed in-memory representation of a Quillmark Markdown file (frontmatter, body, cards)
+- **`Document`** — Typed in-memory representation of a Quillmark Markdown file (frontmatter, body, leaves)
 - **`Diagnostic`** — Structured error with severity, code, message, location, hint, source chain
 - **`RenderResult`** — Output artifacts + accumulated warnings
 

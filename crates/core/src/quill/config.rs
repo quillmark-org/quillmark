@@ -12,7 +12,7 @@ use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
 use super::formats::DATE_FORMAT;
-use super::{BodyCardSchema, CardSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
+use super::{BodyCardSchema, LeafSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
 
 /// Top-level configuration for a Quillmark project
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -21,13 +21,13 @@ pub struct QuillConfig {
     pub name: String,
     /// Human-readable description of the quill itself (parsed from
     /// `quill.description`). Distinct from `main.description`, which describes
-    /// the main card's schema.
+    /// the main leaf's schema.
     pub description: String,
-    /// The entry-point card schema (parsed from the Quill.yaml `main:` section).
-    pub main: CardSchema,
-    /// Named, composable card-type schemas (parsed from the Quill.yaml
-    /// `card_types:` section). Does not include `main`.
-    pub card_types: Vec<CardSchema>,
+    /// The entry-point leaf schema (parsed from the Quill.yaml `main:` section).
+    pub main: LeafSchema,
+    /// Named, composable leaf-type schemas (parsed from the Quill.yaml
+    /// `leaf_kinds:` section). Does not include `main`.
+    pub leaf_kinds: Vec<LeafSchema>,
     /// Backend to use for rendering (e.g., "typst", "html")
     pub backend: String,
     /// Version of the Quillmark spec
@@ -48,9 +48,9 @@ pub struct QuillConfig {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct CardSchemaDef {
+struct LeafSchemaDef {
     pub description: Option<String>,
-    // Declared so `deny_unknown_fields` accepts a `fields:` block on a card.
+    // Declared so `deny_unknown_fields` accepts a `fields:` block on a leaf.
     // Fields are re-parsed via `parse_fields_with_order` for ordering.
     #[allow(dead_code)]
     pub fields: Option<serde_json::Map<String, serde_json::Value>>,
@@ -70,15 +70,15 @@ pub enum CoercionError {
 }
 
 impl QuillConfig {
-    /// Returns a named card-type schema by name.
-    pub fn card_type(&self, name: &str) -> Option<&CardSchema> {
-        self.card_types.iter().find(|card| card.name == name)
+    /// Returns a named leaf-type schema by name.
+    pub fn leaf_kind(&self, name: &str) -> Option<&LeafSchema> {
+        self.leaf_kinds.iter().find(|leaf| leaf.name == name)
     }
 
     /// Full schema including `ui` hints.
     ///
     /// `main.fields` is prefixed with a required `QUILL` entry (`const = name@version`);
-    /// each `card_types[<name>].fields` is prefixed with a required `CARD` entry
+    /// each `leaf_kinds[<name>].fields` is prefixed with a required `KIND` entry
     /// (`const = <name>`). Identity (`name`, `version`, etc.) and the bundled
     /// example live elsewhere on the host's metadata surface.
     pub fn schema(&self) -> serde_json::Value {
@@ -95,34 +95,34 @@ impl QuillConfig {
         );
         obj.insert("main".to_string(), main_value);
 
-        if !self.card_types.is_empty() {
-            let card_types: BTreeMap<String, serde_json::Value> = self
-                .card_types
+        if !self.leaf_kinds.is_empty() {
+            let leaf_kinds: BTreeMap<String, serde_json::Value> = self
+                .leaf_kinds
                 .iter()
-                .map(|card| {
-                    let mut card_value =
-                        serde_json::to_value(card).unwrap_or(serde_json::Value::Null);
+                .map(|leaf| {
+                    let mut leaf_value =
+                        serde_json::to_value(leaf).unwrap_or(serde_json::Value::Null);
                     Self::prepend_sentinel_field(
-                        &mut card_value,
-                        "CARD",
-                        &card.name,
-                        "Card type name. Must be exactly this value as the CARD: sentinel in the card frontmatter.",
+                        &mut leaf_value,
+                        "KIND",
+                        &leaf.name,
+                        "Leaf kind name. Must be exactly this value as the KIND: sentinel in the leaf body.",
                     );
-                    (card.name.clone(), card_value)
+                    (leaf.name.clone(), leaf_value)
                 })
                 .collect();
             obj.insert(
-                "card_types".to_string(),
-                serde_json::to_value(&card_types).unwrap_or(serde_json::Value::Null),
+                "leaf_kinds".to_string(),
+                serde_json::to_value(&leaf_kinds).unwrap_or(serde_json::Value::Null),
             );
         }
 
         serde_json::Value::Object(obj)
     }
 
-    /// Insert a `QUILL`/`CARD` sentinel as the first entry of a card's `fields`.
+    /// Insert a `QUILL`/`KIND` sentinel as the first entry of a leaf's `fields`.
     fn prepend_sentinel_field(
-        card_value: &mut serde_json::Value,
+        leaf_value: &mut serde_json::Value,
         key: &str,
         const_value: &str,
         description: &str,
@@ -133,14 +133,14 @@ impl QuillConfig {
             "description": description,
             "required": true
         });
-        if let Some(serde_json::Value::Object(fields)) = card_value.get_mut("fields") {
+        if let Some(serde_json::Value::Object(fields)) = leaf_value.get_mut("fields") {
             let existing = std::mem::take(fields);
             fields.insert(key.to_string(), sentinel);
             fields.extend(existing);
         }
     }
 
-    /// Coerce typed frontmatter fields (IndexMap, no CARDS/BODY keys).
+    /// Coerce typed frontmatter fields (IndexMap, no LEAVES/BODY keys).
     pub fn coerce_frontmatter(
         &self,
         frontmatter: &IndexMap<String, QuillValue>,
@@ -160,21 +160,21 @@ impl QuillConfig {
         Ok(coerced)
     }
 
-    /// Coerce typed fields for a single card (IndexMap, no CARD/BODY keys).
+    /// Coerce typed fields for a single leaf (IndexMap, no KIND/BODY keys).
     ///
-    /// Returns the input unchanged when the card tag is unknown.
-    pub fn coerce_card(
+    /// Returns the input unchanged when the leaf tag is unknown.
+    pub fn coerce_leaf(
         &self,
-        card_tag: &str,
+        leaf_tag: &str,
         fields: &IndexMap<String, QuillValue>,
     ) -> Result<IndexMap<String, QuillValue>, CoercionError> {
-        let Some(card_schema) = self.card_type(card_tag) else {
+        let Some(leaf_schema) = self.leaf_kind(leaf_tag) else {
             return Ok(fields.clone());
         };
         let mut coerced: IndexMap<String, QuillValue> = IndexMap::new();
         for (field_name, field_value) in fields {
-            if let Some(field_schema) = card_schema.fields.get(field_name) {
-                let path = format!("card_types.{card_tag}.{field_name}");
+            if let Some(field_schema) = leaf_schema.fields.get(field_name) {
+                let path = format!("leaf_kinds.{leaf_tag}.{field_name}");
                 coerced.insert(
                     field_name.clone(),
                     Self::coerce_value_strict(field_value, field_schema, &path)?,
@@ -547,12 +547,12 @@ impl QuillConfig {
     /// Parse fields from a JSON Value map, assigning ui.order based on key_order.
     ///
     /// This helper ensures consistent field ordering logic for both top-level
-    /// fields and card fields.
+    /// fields and leaf fields.
     ///
     /// # Arguments
     /// * `fields_map` - The JSON map containing field definitions
     /// * `key_order` - Vector of field names in their definition order
-    /// * `context` - Context string for error messages (e.g., "field" or "card 'indorsement' field")
+    /// * `context` - Context string for error messages (e.g., "field" or "leaf 'indorsement' field")
     fn parse_fields_with_order(
         fields_map: &serde_json::Map<String, serde_json::Value>,
         key_order: &[String],
@@ -979,14 +979,14 @@ impl QuillConfig {
             }
         }
 
-        // Reject unknown top-level sections. Known sections are: quill, main, card_types,
+        // Reject unknown top-level sections. Known sections are: quill, main, leaf_kinds,
         // and the backend name (e.g. typst). Everything else is a mistake. `fields` gets
         // a targeted hint since it's the most common shape mistake.
         if let Some(top_obj) = quill_yaml_val.as_object() {
             for key in top_obj.keys() {
                 let is_known = key == "quill"
                     || key == "main"
-                    || key == "card_types"
+                    || key == "leaf_kinds"
                     || (!backend.is_empty() && key == &backend);
                 if is_known {
                     continue;
@@ -1005,7 +1005,7 @@ impl QuillConfig {
                     )
                 } else {
                     diag.with_hint(format!(
-                        "Valid top-level sections are: quill, main, card_types{}",
+                        "Valid top-level sections are: quill, main, leaf_kinds{}",
                         if backend.is_empty() {
                             String::new()
                         } else {
@@ -1085,15 +1085,15 @@ impl QuillConfig {
         };
 
         // Extract main.description (optional, authored under `main:` like any
-        // other card type). This is independent of `quill.description`.
+        // other leaf type). This is independent of `quill.description`.
         let main_description = main_obj_opt
             .and_then(|main_obj| main_obj.get("description"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
         Self::validate_description_singleline(main_description.as_deref(), "main", &mut errors);
 
-        // The main entry-point card.
-        let main = CardSchema {
+        // The main entry-point leaf.
+        let main = LeafSchema {
             name: "main".to_string(),
             description: main_description,
             fields,
@@ -1101,29 +1101,29 @@ impl QuillConfig {
             body: main_body,
         };
 
-        // Extract [card_types] section (optional)
-        let mut card_types: Vec<CardSchema> = Vec::new();
-        if let Some(card_types_val) = quill_yaml_val.get("card_types") {
-            match card_types_val.as_object() {
+        // Extract [leaf_kinds] section (optional)
+        let mut leaf_kinds: Vec<LeafSchema> = Vec::new();
+        if let Some(leaf_kinds_val) = quill_yaml_val.get("leaf_kinds") {
+            match leaf_kinds_val.as_object() {
                 None => {
                     errors.push(
                         Diagnostic::new(
                             Severity::Error,
-                            "'card_types' section must be an object (mapping of type names to schemas)".to_string(),
+                            "'leaf_kinds' section must be an object (mapping of type names to schemas)".to_string(),
                         )
                         .with_code("quill::invalid_card_types".to_string()),
                     );
                 }
-                Some(card_types_table) => {
-                    for (card_name, card_value) in card_types_table {
-                        if !Self::is_valid_card_identifier(card_name) {
+                Some(leaf_kinds_table) => {
+                    for (leaf_name, leaf_value) in leaf_kinds_table {
+                        if !Self::is_valid_card_identifier(leaf_name) {
                             errors.push(
                                 Diagnostic::new(
                                     Severity::Error,
                                     format!(
-                                        "Invalid card-type name '{}': names must match \
+                                        "Invalid leaf-type name '{}': names must match \
                                          [a-z_][a-z0-9_]* (lowercase letters, digits, and underscores only).",
-                                        card_name
+                                        leaf_name
                                     ),
                                 )
                                 .with_code("quill::invalid_card_name".to_string()),
@@ -1131,17 +1131,17 @@ impl QuillConfig {
                             continue;
                         }
 
-                        // Parse card basic info using serde
-                        let card_def: CardSchemaDef =
-                            match serde_json::from_value(card_value.clone()) {
+                        // Parse leaf basic info using serde
+                        let leaf_def: LeafSchemaDef =
+                            match serde_json::from_value(leaf_value.clone()) {
                                 Ok(d) => d,
                                 Err(e) => {
                                     errors.push(
                                         Diagnostic::new(
                                             Severity::Error,
                                             format!(
-                                                "Failed to parse card_type '{}': {}",
-                                                card_name, e
+                                                "Failed to parse leaf_kind '{}': {}",
+                                                leaf_name, e
                                             ),
                                         )
                                         .with_code("quill::invalid_card_schema".to_string()),
@@ -1150,16 +1150,16 @@ impl QuillConfig {
                                 }
                             };
 
-                        // Parse card fields
-                        let card_fields = if let Some(card_fields_table) =
-                            card_value.get("fields").and_then(|v| v.as_object())
+                        // Parse leaf fields
+                        let leaf_fields = if let Some(leaf_fields_table) =
+                            leaf_value.get("fields").and_then(|v| v.as_object())
                         {
-                            let card_field_order: Vec<String> =
-                                card_fields_table.keys().cloned().collect();
+                            let leaf_field_order: Vec<String> =
+                                leaf_fields_table.keys().cloned().collect();
                             Self::parse_fields_with_order(
-                                card_fields_table,
-                                &card_field_order,
-                                &format!("card_type '{}' field", card_name),
+                                leaf_fields_table,
+                                &leaf_field_order,
+                                &format!("leaf_kind '{}' field", leaf_name),
                                 &mut errors,
                             )
                         } else {
@@ -1167,16 +1167,16 @@ impl QuillConfig {
                         };
 
                         Self::validate_description_singleline(
-                            card_def.description.as_deref(),
-                            &format!("card_type '{}'", card_name),
+                            leaf_def.description.as_deref(),
+                            &format!("leaf_kind '{}'", leaf_name),
                             &mut errors,
                         );
-                        card_types.push(CardSchema {
-                            name: card_name.clone(),
-                            description: card_def.description,
-                            fields: card_fields,
-                            ui: card_def.ui,
-                            body: card_def.body,
+                        leaf_kinds.push(LeafSchema {
+                            name: leaf_name.clone(),
+                            description: leaf_def.description,
+                            fields: leaf_fields,
+                            ui: leaf_def.ui,
+                            body: leaf_def.body,
                         });
                     }
                 }
@@ -1210,8 +1210,8 @@ impl QuillConfig {
         if let Some(d) = warn_example_unused("main", &main.body) {
             warnings.push(d);
         }
-        for card in &card_types {
-            if let Some(d) = warn_example_unused(&format!("card_types.{}", card.name), &card.body) {
+        for leaf in &leaf_kinds {
+            if let Some(d) = warn_example_unused(&format!("leaf_kinds.{}", leaf.name), &leaf.body) {
                 warnings.push(d);
             }
         }
@@ -1244,9 +1244,9 @@ impl QuillConfig {
         if let Some(d) = err_example_contains_fence("main", &main.body) {
             errors.push(d);
         }
-        for card in &card_types {
+        for leaf in &leaf_kinds {
             if let Some(d) =
-                err_example_contains_fence(&format!("card_types.{}", card.name), &card.body)
+                err_example_contains_fence(&format!("leaf_kinds.{}", leaf.name), &leaf.body)
             {
                 errors.push(d);
             }
@@ -1261,7 +1261,7 @@ impl QuillConfig {
                 name,
                 description,
                 main,
-                card_types,
+                leaf_kinds,
                 backend,
                 version,
                 author,

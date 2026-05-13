@@ -19,7 +19,7 @@ render on validity have to call `form` for its side effects. Expose a
 `crates/core/src/quill/types.rs:152` — `FieldType` serializes to bare strings
 (`"string"`, `"integer"`, `"array"`, `"dict"`, `"markdown"`). The wasm
 `.d.ts` advertises return types via wasm-bindgen `unchecked_return_type =
-"Card"` (`crates/bindings/wasm/src/engine.rs:347`) but the named type isn't
+"Leaf"` (`crates/bindings/wasm/src/engine.rs:347`) but the named type isn't
 defined anywhere in the emitted declarations, so it collapses to `any` for
 TS consumers. Either ship a real discriminated-union type alongside the
 schema payload, or document that consumers must hand-write the TS interface.
