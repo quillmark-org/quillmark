@@ -214,11 +214,11 @@ with the syntax:
 Vocabulary and syntax flip together in a single release (§7). There
 is no dual-parser deprecation window: legacy `---/CARD:---` is a hard
 parse error from day one, and the codebase carries no legacy code
-path. Migration is a one-shot pre-release sweep (§7). Bindings are
-pre-1.0 and acceptable to break; a syntax-only rename that preserved
-`CARDS`/`card_types` internally was considered and rejected —
-permanent author-vs-internal dual vocabulary would be a long-term
-translation tax.
+path. Document migration is the consumer's responsibility (§7).
+Bindings are pre-1.0 and acceptable to break; a syntax-only rename
+that preserved `CARDS`/`card_types` internally was considered and
+rejected — permanent author-vs-internal dual vocabulary would be a
+long-term translation tax.
 
 ## 5. Reserved keys
 
@@ -267,19 +267,19 @@ the parser preserves document order within each kind, mirroring today's
 
 ## 7. Migration
 
-Quillmark has a single consumer (the project's own application), so
-the entire migration ships in **one release**. The codebase never
-carries a dual-parser path: legacy `---/CARD:---` is a hard parse
-error from the first commit of the new release, with a diagnostic
-pointing at the migration tool.
+The entire migration ships in **one release**. The codebase carries
+no dual-parser path: legacy `---/CARD:---` is a hard parse error
+from the first commit of the new release, with a diagnostic naming
+the canonical syntax.
 
-**Migration tool** (one-shot, pre-release). A standalone utility —
-built from a snapshot of the legacy parser plus the new emitter —
-reads each in-repo `.md` document, parses the legacy form, and writes
-canonical ` ```leaf ` form. Comments, ordering, and `!fill` tags
-round-trip losslessly per today's emitter guarantee. The tool is not
-shipped with the release; once the consumer's documents are converted,
-it is retired.
+Quillmark ships only the canonical emitter; consumers handle their
+own legacy-document conversion. The emitter's existing round-trip
+guarantees (comments, ordering, `!fill` tags) carry forward
+unchanged, so a consumer that wants a one-shot converter can build
+one against a pinned snapshot of the previous-release parser plus
+the new emitter. In-repo fixtures and sample quills are converted by
+Quillmark contributors as part of the release PR, using whatever
+ad-hoc script they prefer — not a shipped tool.
 
 All other surfaces flip in the same release, no dual support:
 
@@ -347,11 +347,12 @@ In the spirit of honest accounting:
   apply for leaf detection. Net rule count shifts from one custom system
   to (smaller custom system + already-implemented CommonMark rules) —
   net engineering win, but not a clean collapse.
-- **Migration is real engineering work.** "Mechanical sweep" is
-  accurate for the renames but does not include the binding-API
-  breakage, backend contract updates, the migration tool itself, or
-  downstream template breakage. The single-release plan (§7) trades a
-  longer pre-release sweep for zero in-repo dual-support code.
+- **Migration burden lands on consumers.** The single-release plan
+  (§7) keeps Quillmark's codebase free of dual-support code, but
+  pushes legacy-document conversion entirely onto consumers in one
+  cliff. "Mechanical sweep" covers the renames inside Quillmark; the
+  binding-API breakage, backend contract updates, and downstream
+  template breakage land on consumers simultaneously.
 
 ## 10. What survives the design
 
