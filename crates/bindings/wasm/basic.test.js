@@ -71,10 +71,10 @@ QUILL: test_quill
 
 Global body.
 
-```leaf
+\`\`\`leaf
 KIND: note
 foo: bar
-```
+\`\`\`
 
 Leaf body.
 `
@@ -406,16 +406,16 @@ QUILL: test_quill
 
 Body.
 
-```leaf
+\`\`\`leaf
 KIND: note
 foo: bar
-```
+\`\`\`
 
 Leaf one.
 
-```leaf
+\`\`\`leaf
 KIND: summary
-```
+\`\`\`
 
 Leaf two.
 `
@@ -558,10 +558,10 @@ QUILL: test_quill
 
 Body.
 
-```leaf
+\`\`\`leaf
 KIND: note
 foo: bar
-```
+\`\`\`
 
 Leaf body.
 `

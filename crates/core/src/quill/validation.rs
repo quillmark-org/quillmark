@@ -69,7 +69,7 @@ impl ValidationError {
             ValidationError::FormatViolation { .. } => "validation::format_violation",
             ValidationError::UnknownLeaf { .. } => "validation::unknown_leaf",
             ValidationError::MissingKindDiscriminator { .. } => {
-                "validation::missing_card_discriminator"
+                "validation::missing_kind_discriminator"
             }
             ValidationError::BodyDisabled { .. } => "validation::body_disabled",
         }
@@ -115,7 +115,7 @@ pub fn validate_typed_document(
     doc: &Document,
 ) -> Result<(), Vec<ValidationError>> {
     let main_fields = doc.main().frontmatter().to_index_map();
-    let mut errors = validate_fields_for_card_indexmap(&config.main, &main_fields, "");
+    let mut errors = validate_leaf_fields(&config.main, &main_fields, "");
 
     // Enforce body.enabled on the main leaf. Whitespace-only bodies are
     // treated as empty — only meaningful prose triggers the diagnostic.
@@ -144,7 +144,7 @@ pub fn validate_typed_document(
 
         let leaf_path = format!("leaves.{leaf_name}[{index}]");
         let leaf_fields = leaf.frontmatter().to_index_map();
-        errors.extend(validate_fields_for_card_indexmap(
+        errors.extend(validate_leaf_fields(
             leaf_schema,
             &leaf_fields,
             &leaf_path,
@@ -165,7 +165,7 @@ pub fn validate_typed_document(
     }
 }
 
-fn validate_fields_for_card_indexmap(
+fn validate_leaf_fields(
     leaf: &LeafSchema,
     fields: &IndexMap<String, QuillValue>,
     base_path: &str,
@@ -611,7 +611,7 @@ main:
     }
 
     #[test]
-    fn validates_card_with_valid_discriminator() {
+    fn validates_leaf_with_valid_discriminator() {
         let config = config_with(
             "    title:\n      type: string",
             "leaf_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
@@ -627,7 +627,7 @@ main:
     }
 
     #[test]
-    fn rejects_unknown_card_discriminator() {
+    fn rejects_unknown_leaf_discriminator() {
         let config = config_with(
             "    title:\n      type: string",
             "leaf_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string",
@@ -640,7 +640,7 @@ main:
     }
 
     #[test]
-    fn validates_multiple_card_instances_same_type() {
+    fn validates_multiple_leaf_instances_same_kind() {
         let config = config_with(
             "    title:\n      type: string",
             "leaf_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
@@ -672,7 +672,7 @@ main:
     }
 
     #[test]
-    fn reports_card_field_paths_with_card_name_and_index() {
+    fn reports_leaf_field_paths_with_leaf_name_and_index() {
         let config = config_with(
             "    title:\n      type: string",
             "leaf_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
@@ -685,7 +685,7 @@ main:
     }
 
     #[test]
-    fn body_disabled_card_enforces_trim_boundary() {
+    fn body_disabled_leaf_enforces_trim_boundary() {
         let config = config_with(
             "    title:\n      type: string",
             "leaf_kinds:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        required: true",
