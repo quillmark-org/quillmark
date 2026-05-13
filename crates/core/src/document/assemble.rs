@@ -243,8 +243,8 @@ pub(super) fn decompose_with_warnings(
     // The emitter re-derives the separator on output (see `emit.rs`'s
     // `ensure_blank_line_before_fence`).
     let body_start = blocks[0].end;
-    let first_card_block = blocks.iter().skip(1).find(|b| b.tag.is_some());
-    let (body_end, body_is_followed_by_fence) = match first_card_block {
+    let first_leaf_block = blocks.iter().skip(1).find(|b| b.tag.is_some());
+    let (body_end, body_is_followed_by_fence) = match first_leaf_block {
         Some(b) => (b.start, true),
         None => (markdown.len(), false),
     };

@@ -276,6 +276,27 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
                 let content_end = lines.line_start(cj);
                 let block_end = lines.line_end_inclusive(cj);
 
+                // Spec §3.2/§9, LEAF_REWORK.md §3.3: leaf-info-string fence
+                // commits to leaf parsing; missing or misplaced `KIND:` is a
+                // hard error, not a silent classification miss.
+                let content = &markdown[content_start..content_end];
+                match first_content_key(content) {
+                    Some("KIND") => {}
+                    Some(other) => {
+                        return Err(ParseError::InvalidStructure(format!(
+                            "Leaf fence at line {} must have `KIND:` as its first body key (found `{}:`).",
+                            opener_k + 1,
+                            other
+                        )));
+                    }
+                    None => {
+                        return Err(ParseError::InvalidStructure(format!(
+                            "Leaf fence at line {} is missing required `KIND:` first body key.",
+                            opener_k + 1
+                        )));
+                    }
+                }
+
                 let block = super::assemble::build_block(
                     markdown,
                     abs_pos,
