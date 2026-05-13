@@ -49,7 +49,7 @@ title: Annual Report
 
 ### 2.2 Leaves (inline records — new)
 
-```markdown
+````markdown
 ```leaf
 KIND: product
 name: Widget
@@ -57,17 +57,17 @@ price: 19.99
 ```
 
 Body prose for this leaf, terminating at the next leaf fence or EOF.
-```
+````
 
 - A CommonMark fenced code block with info string `leaf`.
-- Body inside the fence is YAML; first key `KIND:` discriminates the record
-  type (matches `[a-z_][a-z0-9_]*`).
+- Body inside the fence is YAML; the first key **must** be `KIND:`
+  (matches `[a-z_][a-z0-9_]*`), discriminating the record type.
 - Prose following the closing fence is the leaf's body content, up to the
   next leaf fence or EOF.
 
 ### 2.3 Worked example
 
-```markdown
+````markdown
 ---
 QUILL: catalog@1.0
 title: Spring Catalog
@@ -92,7 +92,33 @@ price: 29.99
 ```
 
 The Gadget complements the Widget.
+````
+
+### 2.4 Fence closure and nesting
+
+Leaf fences inherit [CommonMark §4.5](https://spec.commonmark.org/0.31.2/#fenced-code-blocks)
+closure rules: a closing fence matches the opener's character and has
+*at least* as many backticks. To embed a fenced code block inside a
+leaf body, open the leaf with a longer fence (e.g. four backticks) and
+close with the same length:
+
+`````markdown
+````leaf
+KIND: example
+caption: Hello world in Python
+````
+
+```python
+print("hello")
 ```
+
+More body prose for this leaf.
+`````
+
+The leaf's *body* — prose attached to the leaf — extends from the
+closing leaf fence to the next ` ```leaf ` opener or EOF. Indented
+fences (0–3 leading spaces) are permitted, matching CommonMark; the
+opener may sit anywhere in that range.
 
 ## 3. Design rationale
 
@@ -185,20 +211,34 @@ with the syntax:
 - Templates: `cards.X[i].field` → `leaves.X[i].field`.
 - Output data: `data.CARDS` → `data.LEAVES`.
 
-The rename ships atomically with the syntax change. Bindings are
-pre-1.0 and acceptable to break; a syntax-only rename that preserved
-`CARDS`/`card_types` internally was considered and rejected — permanent
-author-vs-internal dual vocabulary would be a long-term translation
-tax. See §7 for migration scope.
+The vocabulary rename — Rust types, schema keys, template variables,
+output data fields — flips atomically at Release N (§7). The legacy
+`---/CARD:---` *syntax* is parsed for one deprecation release, but the
+parser normalises it into the new vocabulary internally: a legacy
+document still produces `data.LEAVES`, never `data.CARDS`. Bindings
+are pre-1.0 and acceptable to break; a syntax-only rename that
+preserved `CARDS`/`card_types` internally was considered and
+rejected — permanent author-vs-internal dual vocabulary would be a
+long-term translation tax. See §7 for migration scope.
 
 ## 5. Reserved keys
 
-Scoped to the fence they appear in:
+Two categories, scoped to the fence they appear in:
 
-| Position | Reserved keys |
+**Sentinels** — the user supplies these; the parser routes on them:
+
+| Position | Sentinel | Required position |
+|---|---|---|
+| Frontmatter body | `QUILL` | First body key |
+| Leaf body | `KIND` | First body key |
+
+**Output-only** — the parser populates these on the output object (§6);
+supplying them as input keys is a hard parse error:
+
+| Position | Output-only keys |
 |---|---|
-| Frontmatter body | `QUILL`, `BODY`, `LEAVES` |
-| Leaf body | `KIND`, `BODY` |
+| Frontmatter body | `BODY`, `LEAVES` |
+| Leaf body | `BODY` |
 
 `QUILL` is not reserved inside leaves; `KIND` is not reserved inside
 frontmatter. Legacy `CARD`/`CARDS` accepted as aliases during the
@@ -251,12 +291,15 @@ The non-syntax surfaces flip atomically in Release N, no dual support:
 | Python/WASM bindings | `data.CARDS` → `data.LEAVES` |
 | Typst backend contract | `data.CARDS` → `data.LEAVES` |
 | Diagnostic path anchors | `CARDS[i].field` → `LEAVES[i].field` |
+| Error codes & message strings | `parse::near_miss_sentinel`, `MAX_CARD_COUNT`, etc. → `leaf_*` equivalents (exact names TBD) |
+| Sample quills, fixtures, golden files | All in-repo `.md` and `Quill.yaml` examples updated |
+| CLI / user-facing diagnostic prose | Wording shifts from "card" to "leaf" |
 
-Spot check at the time of this proposal: ~22 files in `crates/`
-reference `CARD`/`CARDS`/`card_types`. Bindings are pre-1.0 — the
-binding API breakage is acceptable. The recent document-model path
-anchor work (c.f. commit `78ec6ca`) is the diagnostic surface area
-affected by the rename.
+Spot check at the time of this proposal: ~60 files in `crates/`
+reference `card`/`CARD`/`card_types` (whole-word match). Bindings are
+pre-1.0 — the binding API breakage is acceptable. The recent
+document-model path anchor work (c.f. commit `78ec6ca`) is the
+diagnostic surface area affected by the rename.
 
 ## 8. Parser behaviour
 
@@ -268,13 +311,16 @@ diagnostic + reserved-key disambiguation.
 After this change:
 
 - **Frontmatter detection** keeps F2 (top-of-file or preceded by blank)
-  and F3 (zero-to-three space indent). The F1 sentinel check
-  simplifies to "first body key is `QUILL:` — fail with a specific
-  error if not." There is no `CARD`-vs-`QUILL` branching because
-  `---/---` only ever means frontmatter now.
+  and F3 (zero-to-three space indent). When a top `---/---` block is
+  present, the F1 sentinel check simplifies to "first body key is
+  `QUILL:` — fail with a specific error if not." There is no
+  `CARD`-vs-`QUILL` branching because `---/---` only ever means
+  frontmatter now. Documents with no top `---/---` block at all parse
+  as quill-less (today's behaviour, unchanged).
 - **Leaf detection** delegates to CommonMark's existing fenced-code-block
-  rules. Quillmark only inspects fenced code blocks whose info string's
-  first token is `leaf`.
+  rules (including the 0–3 space indent allowance and run-length
+  closure semantics). Quillmark only inspects fenced code blocks whose
+  info string's first token is `leaf`.
 - **Near-miss-sentinel diagnostic** for inline records is gone. The
   closest analogue inside a `leaf` fence is "missing `KIND:` first key,"
   which is a hard error rather than a silent classification miss.
