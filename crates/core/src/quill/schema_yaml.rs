@@ -48,7 +48,7 @@ leaf_kinds:
     }
 
     #[test]
-    fn omits_card_types_when_absent() {
+    fn omits_leaf_kinds_when_absent() {
         let yaml = cfg(r#"
 quill: { name: solo, version: "1.0", backend: typst, description: x }
 main:

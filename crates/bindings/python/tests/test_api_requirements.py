@@ -112,12 +112,12 @@ def test_set_field_reserved_name_matrix():
             doc.set_field(name, "value")
 
 
-def test_card_set_field_reserved_name_matrix():
+def test_leaf_set_field_reserved_name_matrix():
     """Leaf set_field raises EditError for all four reserved names."""
     for name in ("BODY", "LEAVES", "QUILL", "KIND"):
         doc = Document.from_markdown(MD_WITH_LEAVES)
         with pytest.raises(EditError, match="ReservedName"):
-            doc.update_card_field(0, name, "value")
+            doc.update_leaf_field(0, name, "value")
 
 
 def test_set_field_invalid_field_name():
@@ -170,14 +170,14 @@ def test_push_leaf():
     assert doc.leaves[0]["body"] == "Leaf body."
 
 
-def test_push_card_invalid_tag():
+def test_push_leaf_invalid_tag():
     """push_leaf raises EditError for an invalid tag."""
     doc = Document.from_markdown(SIMPLE_MD)
     with pytest.raises(EditError, match="InvalidTagName"):
         doc.push_leaf({"tag": "BadTag"})
 
 
-def test_insert_card_at_front():
+def test_insert_leaf_at_front():
     """insert_leaf at index 0 prepends the leaf."""
     doc = Document.from_markdown(MD_WITH_LEAVES)
     doc.insert_leaf(0, {"tag": "intro"})
@@ -185,7 +185,7 @@ def test_insert_card_at_front():
     assert doc.leaves[1]["tag"] == "note"
 
 
-def test_insert_card_out_of_range():
+def test_insert_leaf_out_of_range():
     """insert_leaf raises EditError when index > len."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 leaves
     with pytest.raises(EditError, match="IndexOutOfRange"):
@@ -202,13 +202,13 @@ def test_remove_leaf():
     assert doc.leaves[0]["tag"] == "summary"
 
 
-def test_remove_card_out_of_range():
+def test_remove_leaf_out_of_range():
     """remove_leaf returns None for an out-of-range index."""
     doc = Document.from_markdown(SIMPLE_MD)
     assert doc.remove_leaf(0) is None
 
 
-def test_move_card_no_op():
+def test_move_leaf_no_op():
     """move_leaf(0, 0) is a no-op."""
     doc = Document.from_markdown(MD_WITH_LEAVES)
     doc.move_leaf(0, 0)
@@ -216,7 +216,7 @@ def test_move_card_no_op():
     assert doc.leaves[1]["tag"] == "summary"
 
 
-def test_move_card_last_to_first():
+def test_move_leaf_last_to_first():
     """move_leaf rotates the last leaf to the front."""
     doc = Document.from_markdown(MD_WITH_LEAVES)
     last = len(doc.leaves) - 1
@@ -225,46 +225,46 @@ def test_move_card_last_to_first():
     assert doc.leaves[1]["tag"] == "note"
 
 
-def test_move_card_out_of_range():
+def test_move_leaf_out_of_range():
     """move_leaf raises EditError for an out-of-range index."""
     doc = Document.from_markdown(MD_WITH_LEAVES)
     with pytest.raises(EditError, match="IndexOutOfRange"):
         doc.move_leaf(10, 0)
 
 
-def test_update_card_field():
-    """update_card_field sets a field on a specific leaf."""
+def test_update_leaf_field():
+    """update_leaf_field sets a field on a specific leaf."""
     doc = Document.from_markdown(MD_WITH_LEAVES)
-    doc.update_card_field(0, "content", "hello")
+    doc.update_leaf_field(0, "content", "hello")
     assert doc.leaves[0]["fields"]["content"] == "hello"
 
 
-def test_update_card_field_reserved_name():
-    """update_card_field raises EditError for reserved names."""
+def test_update_leaf_field_reserved_name():
+    """update_leaf_field raises EditError for reserved names."""
     doc = Document.from_markdown(MD_WITH_LEAVES)
     with pytest.raises(EditError, match="ReservedName"):
-        doc.update_card_field(0, "BODY", "value")
+        doc.update_leaf_field(0, "BODY", "value")
 
 
-def test_update_card_field_out_of_range():
-    """update_card_field raises EditError when leaf index is out of range."""
+def test_update_leaf_field_out_of_range():
+    """update_leaf_field raises EditError when leaf index is out of range."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 leaves
     with pytest.raises(EditError, match="IndexOutOfRange"):
-        doc.update_card_field(0, "title", "x")
+        doc.update_leaf_field(0, "title", "x")
 
 
-def test_update_card_body():
-    """update_card_body replaces the leaf body."""
+def test_update_leaf_body():
+    """update_leaf_body replaces the leaf body."""
     doc = Document.from_markdown(MD_WITH_LEAVES)
-    doc.update_card_body(0, "New leaf body.")
+    doc.update_leaf_body(0, "New leaf body.")
     assert doc.leaves[0]["body"] == "New leaf body."
 
 
-def test_update_card_body_out_of_range():
-    """update_card_body raises EditError when leaf index is out of range."""
+def test_update_leaf_body_out_of_range():
+    """update_leaf_body raises EditError when leaf index is out of range."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 leaves
     with pytest.raises(EditError, match="IndexOutOfRange"):
-        doc.update_card_body(0, "x")
+        doc.update_leaf_body(0, "x")
 
 
 def test_mutators_do_not_touch_warnings():
@@ -315,7 +315,7 @@ def test_invariants_after_mutation_sequence():
 def test_to_markdown_general_round_trip():
     """Mutated document survives emit → re-parse with structure intact."""
     doc = Document.from_markdown(SIMPLE_MD)
-    original_card_count = len(doc.leaves)  # 0 for SIMPLE_MD
+    original_leaf_count = len(doc.leaves)  # 0 for SIMPLE_MD
 
     # Mutate
     doc.set_field("title", "New Title")
@@ -331,7 +331,7 @@ def test_to_markdown_general_round_trip():
     doc2 = Document.from_markdown(emitted)
     assert doc2.frontmatter["title"] == "New Title"
     assert doc2.body == "Updated body"
-    assert len(doc2.leaves) == original_card_count + 1
+    assert len(doc2.leaves) == original_leaf_count + 1
     assert doc2.leaves[0]["tag"] == "note"
     assert doc2.leaves[0]["fields"]["author"] == "Alice"
     assert doc2.leaves[0]["body"] == "Hello"

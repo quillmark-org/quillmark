@@ -208,7 +208,7 @@ impl Quill {
     /// after editing `doc`.
     ///
     /// **Unknown leaf tags** are dropped from [`Form::leaves`] and surface as
-    /// `form::unknown_card_tag` diagnostics. Validation errors are appended
+    /// `form::unknown_leaf_kind` diagnostics. Validation errors are appended
     /// as `form::validation_error` diagnostics; the view itself is never
     /// altered or filtered by validation failures.
     pub fn form(&self, doc: &Document) -> Form {
@@ -232,7 +232,7 @@ impl Quill {
     /// This is the "user is about to add a new leaf" view: the UI can render
     /// the form before the leaf is committed to the document.
     pub fn blank_leaf(&self, leaf_kind: &str) -> Option<FormLeaf> {
-        form::blank_card_for_tag(self, leaf_kind)
+        form::blank_leaf_for_kind(self, leaf_kind)
     }
 
     fn validate_document(&self, doc: &Document) -> Result<(), RenderError> {

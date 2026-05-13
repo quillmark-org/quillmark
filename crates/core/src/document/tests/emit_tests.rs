@@ -253,7 +253,7 @@ Leaf body here.
 }
 
 #[test]
-fn round_trip_card_empty_body() {
+fn round_trip_leaf_empty_body() {
     let src = "\
 ---
 QUILL: q

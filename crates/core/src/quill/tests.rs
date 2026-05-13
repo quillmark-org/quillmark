@@ -1011,7 +1011,7 @@ quill:
 }
 
 #[test]
-fn test_quill_config_rejects_non_snake_case_card_name() {
+fn test_quill_config_rejects_non_snake_case_leaf_kind_name() {
     let yaml = r#"
 quill:
   name: good_quill
@@ -1034,7 +1034,7 @@ leaf_kinds:
 }
 
 #[test]
-fn test_quill_config_accepts_leading_underscore_card_name() {
+fn test_quill_config_accepts_leading_underscore_leaf_kind_name() {
     let yaml = r#"
 quill:
   name: good_quill
@@ -1076,10 +1076,10 @@ main:
 }
 
 #[test]
-fn test_quill_config_rejects_non_snake_case_card_field_keys() {
+fn test_quill_config_rejects_non_snake_case_leaf_field_keys() {
     let yaml = r#"
 quill:
-  name: bad_card_field_key
+  name: bad_leaf_field_key
   version: "1.0"
   backend: typst
   description: Bad leaf field key
@@ -1222,7 +1222,7 @@ main:
 }
 
 #[test]
-fn test_card_defaults_method() {
+fn test_leaf_defaults_method() {
     let yaml_content = r#"
 quill:
   name: leaf_defaults_test
@@ -1358,7 +1358,7 @@ ui:
 }
 
 #[test]
-fn test_parse_card_field_type() {
+fn test_parse_leaf_field_type() {
     // Test that FieldSchema no longer supports type = "leaf" (leaves are in LeafSchema now)
     let yaml = r#"
 type: "string"
@@ -1376,7 +1376,7 @@ description: "A simple string field"
 }
 
 #[test]
-fn test_parse_card_with_fields_in_yaml() {
+fn test_parse_leaf_with_fields_in_yaml() {
     // Test parsing [leaves] section with [leaves.X.fields.Y] syntax
     let yaml_content = r#"
 quill:
@@ -1450,7 +1450,7 @@ invalid_key:
 }
 
 #[test]
-fn test_quill_config_with_cards_section() {
+fn test_quill_config_with_leaf_kinds_section() {
     let yaml_content = r#"
 quill:
   name: leaves_test
@@ -1488,7 +1488,7 @@ leaf_kinds:
 }
 
 #[test]
-fn test_quill_config_cards_empty_fields() {
+fn test_quill_config_leaf_kinds_empty_fields() {
     // Test that leaves with no fields section are valid
     let yaml_content = r#"
 quill:
@@ -1510,7 +1510,7 @@ leaf_kinds:
 }
 
 #[test]
-fn test_quill_config_allows_card_collision() {
+fn test_quill_config_allows_leaf_kind_collision() {
     // Test that scope name colliding with field name is ALLOWED
     let yaml_content = r#"
 quill:
@@ -1589,11 +1589,11 @@ leaf_kinds:
 
     // Leaf fields should also have ordering
     let leaf_field = second.fields.get("leaf_field").unwrap();
-    let ord_card_field = leaf_field.ui.as_ref().unwrap().order.unwrap();
-    assert_eq!(ord_card_field, 0); // First (and only) field in this leaf
+    let ord_leaf_field = leaf_field.ui.as_ref().unwrap().order.unwrap();
+    assert_eq!(ord_leaf_field, 0); // First (and only) field in this leaf
 }
 #[test]
-fn test_card_field_order_preservation() {
+fn test_leaf_field_order_preservation() {
     // Test that leaf fields preserve definition order (not alphabetical)
     // defined: z_first, then a_second
     // alphabetical: a_second, then z_first
@@ -1957,10 +1957,10 @@ main:
 }
 
 #[test]
-fn test_config_coerce_cards_item_wise() {
+fn test_config_coerce_leaves_item_wise() {
     let yaml_content = r#"
 quill:
-  name: coerce_cards_items_test
+  name: coerce_leaves_items_test
   version: "1.0"
   backend: typst
   description: Coerce leaves
@@ -2115,7 +2115,7 @@ main:
 }
 
 #[test]
-fn test_card_ui_title_parses_literal_and_template_forms() {
+fn test_leaf_ui_title_parses_literal_and_template_forms() {
     let yaml_content = r#"
 quill:
   name: leaf_title_test
@@ -2164,7 +2164,7 @@ leaf_kinds:
 }
 
 #[test]
-fn test_card_ui_title_omitted_when_absent() {
+fn test_leaf_ui_title_omitted_when_absent() {
     let yaml_content = r#"
 quill:
   name: no_title_test
@@ -2549,7 +2549,7 @@ main:
 }
 
 #[test]
-fn body_example_card_type_fence_line_is_an_error() {
+fn body_example_leaf_kind_fence_line_is_an_error() {
     // The fence check applies to leaf-type body examples too.
     let yaml = r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }

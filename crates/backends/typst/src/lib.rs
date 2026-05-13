@@ -284,7 +284,7 @@ fn transform_markdown_fields(
     // Handle LEAVES array recursively
     if let Some(leaves_value) = result.get("LEAVES") {
         if let Some(leaves_array) = leaves_value.as_array() {
-            let transformed_leaves = transform_cards_array(schema, leaves_array);
+            let transformed_leaves = transform_leaves_array(schema, leaves_array);
             result.insert(
                 "LEAVES".to_string(),
                 QuillValue::from_json(serde_json::Value::Array(transformed_leaves)),
@@ -362,7 +362,7 @@ fn transform_markdown_fields(
 }
 
 /// Transform markdown fields in LEAVES array items.
-fn transform_cards_array(
+fn transform_leaves_array(
     document_schema: &QuillValue,
     leaves_array: &[serde_json::Value],
 ) -> Vec<serde_json::Value> {
@@ -389,18 +389,18 @@ fn transform_cards_array(
                     }
 
                     // Recursively transform this leaf's fields
-                    let transformed_card_fields = transform_markdown_fields(
+                    let transformed_leaf_fields = transform_markdown_fields(
                         &leaf_fields,
                         &QuillValue::from_json(leaf_schema_json.clone()),
                     );
 
                     // Convert back to JSON Value
-                    let mut transformed_card_obj = serde_json::Map::new();
-                    for (k, v) in transformed_card_fields {
-                        transformed_card_obj.insert(k, v.into_json());
+                    let mut transformed_leaf_obj = serde_json::Map::new();
+                    for (k, v) in transformed_leaf_fields {
+                        transformed_leaf_obj.insert(k, v.into_json());
                     }
 
-                    transformed_leaves.push(serde_json::Value::Object(transformed_card_obj));
+                    transformed_leaves.push(serde_json::Value::Object(transformed_leaf_obj));
                     continue;
                 }
             }
@@ -566,7 +566,7 @@ mod tests {
     }
 
     #[test]
-    fn test_transform_markdown_fields_collects_card_date_metadata() {
+    fn test_transform_markdown_fields_collects_leaf_date_metadata() {
         let schema = QuillValue::from_json(json!({
             "type": "object",
             "properties": {},

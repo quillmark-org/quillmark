@@ -70,7 +70,7 @@ pub struct UiFieldSchema {
 /// Body namespace configuration for a leaf type
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct BodyCardSchema {
+pub struct BodyLeafSchema {
     /// Whether the body editor is enabled for this leaf (default: true).
     /// When false, consumers must not accept or store body content for instances
     /// of this leaf type.
@@ -85,7 +85,7 @@ pub struct BodyCardSchema {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct UiCardSchema {
+pub struct UiLeafSchema {
     /// Display label for the leaf type — literal string or `{field_name}`
     /// template. See `docs/format-designer/quill-yaml-reference.md`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -106,11 +106,11 @@ pub struct LeafSchema {
     pub fields: BTreeMap<String, FieldSchema>,
     /// UI layout hints
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ui: Option<UiCardSchema>,
+    pub ui: Option<UiLeafSchema>,
     /// Body namespace: controls whether a body editor is shown and provides
     /// optional guide text.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub body: Option<BodyCardSchema>,
+    pub body: Option<BodyLeafSchema>,
 }
 
 impl LeafSchema {

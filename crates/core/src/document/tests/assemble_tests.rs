@@ -259,17 +259,17 @@ Second item body."#;
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.leaves().len(), 2);
 
-    let card1 = &doc.leaves()[0];
-    assert_eq!(card1.tag(), "items");
+    let leaf1 = &doc.leaves()[0];
+    assert_eq!(leaf1.tag(), "items");
     assert_eq!(
-        card1.frontmatter().get("name").unwrap().as_str().unwrap(),
+        leaf1.frontmatter().get("name").unwrap().as_str().unwrap(),
         "Item 1"
     );
 
-    let card2 = &doc.leaves()[1];
-    assert_eq!(card2.tag(), "items");
+    let leaf2 = &doc.leaves()[1];
+    assert_eq!(leaf2.tag(), "items");
     assert_eq!(
-        card2.frontmatter().get("name").unwrap().as_str().unwrap(),
+        leaf2.frontmatter().get("name").unwrap().as_str().unwrap(),
         "Item 2"
     );
 }
@@ -373,7 +373,7 @@ Item body"#;
 }
 
 #[test]
-fn test_card_name_collision_with_array_field() {
+fn test_leaf_kind_name_collision_with_array_field() {
     // KIND type names CAN now conflict with frontmatter field names
     let markdown = r#"---
 QUILL: test_quill
@@ -442,7 +442,7 @@ BODY: Test
 }
 
 #[test]
-fn test_reserved_field_cards_rejected() {
+fn test_reserved_field_leaves_rejected() {
     // LEAVES reserved inside the QUILL frontmatter.
     let markdown = r#"---
 QUILL: test_quill
@@ -596,17 +596,17 @@ Section 1 body"#;
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.leaves().len(), 2);
 
-    let card0 = &doc.leaves()[0];
-    assert_eq!(card0.tag(), "items");
+    let leaf0 = &doc.leaves()[0];
+    assert_eq!(leaf0.tag(), "items");
     assert_eq!(
-        card0.frontmatter().get("name").unwrap().as_str().unwrap(),
+        leaf0.frontmatter().get("name").unwrap().as_str().unwrap(),
         "Item 1"
     );
 
-    let card1 = &doc.leaves()[1];
-    assert_eq!(card1.tag(), "sections");
+    let leaf1 = &doc.leaves()[1];
+    assert_eq!(leaf1.tag(), "sections");
     assert_eq!(
-        card1.frontmatter().get("title").unwrap().as_str().unwrap(),
+        leaf1.frontmatter().get("title").unwrap().as_str().unwrap(),
         "Section 1"
     );
 }
@@ -814,7 +814,7 @@ This is the memo body."#;
 }
 
 #[test]
-fn test_quill_with_card_blocks() {
+fn test_quill_with_leaf_blocks() {
     let markdown = r#"---
 QUILL: document
 title: Test Document
@@ -892,7 +892,7 @@ QUILL: 123
 }
 
 #[test]
-fn test_card_wrong_value_type() {
+fn test_leaf_wrong_value_type() {
     let markdown = r#"---
 QUILL: test_quill
 ---
@@ -910,7 +910,7 @@ KIND: 123
 }
 
 #[test]
-fn test_both_quill_and_card_error() {
+fn test_both_quill_and_kind_error() {
     let markdown = r#"---
 QUILL: test
 KIND: items
@@ -1647,7 +1647,7 @@ Body."#;
 // KIND block edge cases
 
 #[test]
-fn test_card_with_empty_body() {
+fn test_leaf_with_empty_body() {
     let markdown = r#"---
 QUILL: test_quill
 ---
@@ -1663,7 +1663,7 @@ name: Item
 }
 
 #[test]
-fn test_card_consecutive_blocks() {
+fn test_leaf_consecutive_blocks() {
     let markdown = r#"---
 QUILL: test_quill
 ---
@@ -1684,7 +1684,7 @@ id: 2
 }
 
 #[test]
-fn test_card_with_body_containing_dashes() {
+fn test_leaf_with_body_containing_dashes() {
     let markdown = r#"---
 QUILL: test_quill
 ---
@@ -1818,7 +1818,7 @@ fn test_body_with_trailing_newlines() {
 // See `assemble.rs::strip_f2_separator` and `MARKDOWN.md §3 F2`.
 
 #[test]
-fn test_f2_strip_global_body_followed_by_card_lf() {
+fn test_f2_strip_global_body_followed_by_leaf_lf() {
     // Global body followed by a KIND fence: the source's tail `\n\n` is
     // (content line terminator) + (F2 blank line). Strip exactly the F2 `\n`,
     // leaving `\n` as the content terminator.
@@ -1828,7 +1828,7 @@ fn test_f2_strip_global_body_followed_by_card_lf() {
 }
 
 #[test]
-fn test_f2_strip_global_body_followed_by_card_crlf() {
+fn test_f2_strip_global_body_followed_by_leaf_crlf() {
     // CRLF line endings: strip exactly one `\r\n` as the F2 separator.
     let markdown = "---\r\nQUILL: q\r\n---\r\n\r\nbody\r\n\r\n---\r\nKIND: x\r\n---\r\n";
     let doc = decompose(markdown).unwrap();
@@ -1840,7 +1840,7 @@ fn test_f2_strip_global_body_followed_by_card_crlf() {
 }
 
 #[test]
-fn test_f2_strip_card_body_followed_by_leaf() {
+fn test_f2_strip_leaf_body_followed_by_leaf() {
     // First leaf body is followed by another fence → F2 stripped.
     // Last leaf body is at EOF → preserved verbatim.
     let markdown = "---\nQUILL: q\n---\n\n```leaf\nKIND: a\n```\nfirst\n\n```leaf\nKIND: b\n```\nsecond\n";
@@ -1957,7 +1957,7 @@ fn test_guillemet_double_conversion_prevention() {
 }
 
 #[test]
-fn test_allowed_card_field_collision() {
+fn test_allowed_leaf_field_collision() {
     let markdown = r#"---
 QUILL: test_quill
 my_leaf: "some global value"

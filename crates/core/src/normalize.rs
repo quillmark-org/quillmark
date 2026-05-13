@@ -415,16 +415,16 @@ pub fn normalize_document(
         .leaves()
         .iter()
         .map(|leaf| {
-            let normalized_card_fields: IndexMap<String, QuillValue> = leaf
+            let normalized_leaf_fields: IndexMap<String, QuillValue> = leaf
                 .frontmatter()
                 .iter()
                 .map(|(k, v)| (normalize_field_name(k), v.clone()))
                 .collect();
-            let normalized_card_body = normalize_markdown(leaf.body());
+            let normalized_leaf_body = normalize_markdown(leaf.body());
             Leaf::new_with_sentinel(
                 Sentinel::Leaf(leaf.tag()),
-                crate::document::Frontmatter::from_index_map(normalized_card_fields),
-                normalized_card_body,
+                crate::document::Frontmatter::from_index_map(normalized_leaf_fields),
+                normalized_leaf_body,
             )
         })
         .collect();
@@ -801,7 +801,7 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_document_card_body_bidi_stripped() {
+    fn test_normalize_document_leaf_body_bidi_stripped() {
         use crate::document::Document;
 
         let md = "---\nQUILL: test\n---\n\nbody\n\n```leaf\nKIND: note\n```\nleaf\u{202D}body\n";
@@ -812,7 +812,7 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_document_card_field_bidi_preserved() {
+    fn test_normalize_document_leaf_field_bidi_preserved() {
         use crate::document::Document;
 
         let md = "---\nQUILL: test\n---\n\nbody\n\n```leaf\nKIND: note\nname: Ali\u{202D}ce\n```\n";
@@ -831,7 +831,7 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_document_card_body_html_comment_repair() {
+    fn test_normalize_document_leaf_body_html_comment_repair() {
         use crate::document::Document;
 
         let md = "---\nQUILL: test\n---\n\n```leaf\nKIND: note\n```\n<!-- comment -->Trailing text\n";

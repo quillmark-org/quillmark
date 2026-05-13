@@ -56,11 +56,11 @@ def test_body_empty_when_absent():
     assert doc.body == ""
 
 
-def test_cards_access():
+def test_leaves_access():
     """Test accessing typed leaves list."""
     md = (
         "---\nQUILL: my_quill\ntitle: Main\n---\n\nGlobal body.\n\n"
-        "```leaf\nKIND: note\nfoo: bar\n```\n\nCard body.\n"
+        "```leaf\nKIND: note\nfoo: bar\n```\n\nLeaf body.\n"
     )
     doc = Document.from_markdown(md)
     assert len(doc.leaves) == 1
@@ -70,7 +70,7 @@ def test_cards_access():
     assert "Leaf body." in leaf["body"]
 
 
-def test_cards_empty_when_none():
+def test_leaves_empty_when_none():
     """Test that leaves is an empty list when no leaves present."""
     md = "---\nQUILL: taro\nauthor: Test\ntitle: Test\nice_cream: Vanilla\n---\n\nBody.\n"
     doc = Document.from_markdown(md)

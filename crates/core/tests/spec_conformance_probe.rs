@@ -247,7 +247,7 @@ fn body_crlf_line_endings_are_normalized() {
 // §7 — CRLF normalization reaches leaf bodies.
 #[test]
 fn leaf_body_crlf_line_endings_are_normalized() {
-    let md = "---\nQUILL: t\n---\n\n```leaf\nKIND: x\n```\n\nCard line one.\r\nCard line two.\r\n";
+    let md = "---\nQUILL: t\n---\n\n```leaf\nKIND: x\n```\n\nLeaf line one.\r\nLeaf line two.\r\n";
     let doc = Document::from_markdown(md).unwrap();
     let doc = normalize_document(doc).unwrap();
     let body = doc.leaves()[0].body();

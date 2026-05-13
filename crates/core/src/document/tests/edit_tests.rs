@@ -15,7 +15,7 @@ fn make_doc() -> Document {
 
 fn make_doc_with_leaves() -> Document {
     Document::from_markdown(
-        "---\nQUILL: test_quill\ntitle: Hello\n---\n\nBody.\n\n```leaf\nKIND: note\nfoo: bar\n```\n\nCard body.\n\n```leaf\nKIND: summary\n```\n",
+        "---\nQUILL: test_quill\ntitle: Hello\n---\n\nBody.\n\n```leaf\nKIND: note\nfoo: bar\n```\n\nLeaf body.\n\n```leaf\nKIND: summary\n```\n",
     )
     .unwrap()
 }
@@ -148,7 +148,7 @@ fn test_document_set_field_rejects_all_reserved_names() {
 // ── Reserved-name matrix: Leaf::set_field ────────────────────────────────────
 
 #[test]
-fn test_card_set_field_rejects_all_reserved_names() {
+fn test_leaf_set_field_rejects_all_reserved_names() {
     for &name in RESERVED_NAMES {
         let mut leaf = Leaf::new("note").unwrap();
         let result = leaf.set_field(name, qv("value"));
@@ -255,7 +255,7 @@ fn test_document_push_leaf() {
 // ── Document::insert_leaf ────────────────────────────────────────────────────
 
 #[test]
-fn test_document_insert_card_at_zero() {
+fn test_document_insert_leaf_at_zero() {
     let mut doc = make_doc_with_leaves(); // 2 leaves: note, summary
     let leaf = Leaf::new("intro").unwrap();
     doc.insert_leaf(0, leaf).unwrap();
@@ -265,7 +265,7 @@ fn test_document_insert_card_at_zero() {
 }
 
 #[test]
-fn test_document_insert_card_at_end() {
+fn test_document_insert_leaf_at_end() {
     let mut doc = make_doc_with_leaves(); // 2 leaves
     let len = doc.leaves().len();
     let leaf = Leaf::new("footer").unwrap();
@@ -274,7 +274,7 @@ fn test_document_insert_card_at_end() {
 }
 
 #[test]
-fn test_document_insert_card_out_of_range() {
+fn test_document_insert_leaf_out_of_range() {
     let mut doc = make_doc(); // 0 leaves
     let leaf = Leaf::new("note").unwrap();
     let result = doc.insert_leaf(1, leaf);
@@ -294,7 +294,7 @@ fn test_document_remove_leaf() {
 }
 
 #[test]
-fn test_document_remove_card_out_of_range() {
+fn test_document_remove_leaf_out_of_range() {
     let mut doc = make_doc();
     let removed = doc.remove_leaf(0);
     assert!(removed.is_none());
@@ -303,7 +303,7 @@ fn test_document_remove_card_out_of_range() {
 // ── Document::leaf_mut ───────────────────────────────────────────────────────
 
 #[test]
-fn test_document_card_mut() {
+fn test_document_leaf_mut() {
     let mut doc = make_doc_with_leaves();
     {
         let leaf = doc.leaf_mut(0).unwrap();
@@ -313,7 +313,7 @@ fn test_document_card_mut() {
 }
 
 #[test]
-fn test_document_card_mut_out_of_range() {
+fn test_document_leaf_mut_out_of_range() {
     let mut doc = make_doc();
     assert!(doc.leaf_mut(0).is_none());
 }
@@ -321,7 +321,7 @@ fn test_document_card_mut_out_of_range() {
 // ── Document::move_leaf ──────────────────────────────────────────────────────
 
 #[test]
-fn test_move_card_no_op_same_index() {
+fn test_move_leaf_no_op_same_index() {
     let mut doc = make_doc_with_leaves(); // note(0), summary(1)
     let result = doc.move_leaf(0, 0);
     assert_eq!(result, Ok(()));
@@ -330,7 +330,7 @@ fn test_move_card_no_op_same_index() {
 }
 
 #[test]
-fn test_move_card_last_to_first() {
+fn test_move_leaf_last_to_first() {
     let mut doc = make_doc_with_leaves(); // note(0), summary(1)
     doc.move_leaf(1, 0).unwrap();
     assert_eq!(doc.leaves()[0].tag(), "summary");
@@ -338,7 +338,7 @@ fn test_move_card_last_to_first() {
 }
 
 #[test]
-fn test_move_card_first_to_last() {
+fn test_move_leaf_first_to_last() {
     let mut doc = make_doc_with_leaves(); // note(0), summary(1)
     let last = doc.leaves().len() - 1;
     doc.move_leaf(0, last).unwrap();
@@ -347,7 +347,7 @@ fn test_move_card_first_to_last() {
 }
 
 #[test]
-fn test_move_card_from_out_of_range() {
+fn test_move_leaf_from_out_of_range() {
     let mut doc = make_doc_with_leaves(); // 2 leaves
     let len = doc.leaves().len();
     let result = doc.move_leaf(len, 0);
@@ -355,19 +355,19 @@ fn test_move_card_from_out_of_range() {
 }
 
 #[test]
-fn test_move_card_to_out_of_range() {
+fn test_move_leaf_to_out_of_range() {
     let mut doc = make_doc_with_leaves(); // 2 leaves
     let len = doc.leaves().len();
     let result = doc.move_leaf(0, len);
     assert_eq!(result, Err(EditError::IndexOutOfRange { index: len, len }));
 }
 
-// ── Document::set_card_tag ───────────────────────────────────────────────────
+// ── Document::set_leaf_tag ───────────────────────────────────────────────────
 
 #[test]
-fn test_set_card_tag_renames_in_place() {
+fn test_set_leaf_tag_renames_in_place() {
     let mut doc = make_doc_with_leaves(); // note(0) with field foo=bar, summary(1)
-    doc.set_card_tag(0, "annotation").unwrap();
+    doc.set_leaf_tag(0, "annotation").unwrap();
     // Sentinel changed.
     assert_eq!(doc.leaves()[0].tag(), "annotation");
     // Frontmatter and body untouched.
@@ -380,10 +380,10 @@ fn test_set_card_tag_renames_in_place() {
 }
 
 #[test]
-fn test_set_card_tag_rejects_invalid_tag() {
+fn test_set_leaf_tag_rejects_invalid_tag() {
     let mut doc = make_doc_with_leaves();
     for bad in ["", "Bad", "with-dash", "1leading_digit"] {
-        match doc.set_card_tag(0, bad) {
+        match doc.set_leaf_tag(0, bad) {
             Err(EditError::InvalidTagName(t)) => assert_eq!(t, bad),
             other => panic!("expected InvalidTagName for {bad:?}, got {other:?}"),
         }
@@ -393,19 +393,19 @@ fn test_set_card_tag_rejects_invalid_tag() {
 }
 
 #[test]
-fn test_set_card_tag_index_out_of_range() {
+fn test_set_leaf_tag_index_out_of_range() {
     let mut doc = make_doc_with_leaves();
     let len = doc.leaves().len();
-    let result = doc.set_card_tag(len, "annotation");
+    let result = doc.set_leaf_tag(len, "annotation");
     assert_eq!(result, Err(EditError::IndexOutOfRange { index: len, len }));
 }
 
 #[test]
-fn test_set_card_tag_round_trips_via_markdown() {
+fn test_set_leaf_tag_round_trips_via_markdown() {
     // Verify that renaming a leaf and re-emitting markdown produces a doc
     // that re-parses with the new tag.
     let mut doc = make_doc_with_leaves();
-    doc.set_card_tag(0, "annotation").unwrap();
+    doc.set_leaf_tag(0, "annotation").unwrap();
     let md = doc.to_markdown();
     let reparsed = crate::Document::from_markdown(&md).unwrap();
     assert_eq!(reparsed.leaves()[0].tag(), "annotation");
@@ -414,7 +414,7 @@ fn test_set_card_tag_round_trips_via_markdown() {
 // ── Leaf::new ────────────────────────────────────────────────────────────────
 
 #[test]
-fn test_card_new_valid() {
+fn test_leaf_new_valid() {
     let leaf = Leaf::new("note").unwrap();
     assert_eq!(leaf.tag(), "note");
     assert!(leaf.frontmatter().is_empty());
@@ -422,7 +422,7 @@ fn test_card_new_valid() {
 }
 
 #[test]
-fn test_card_new_invalid_tag_rejected() {
+fn test_leaf_new_invalid_tag_rejected() {
     for tag in ["Note", "", "my-leaf"] {
         assert_eq!(
             Leaf::new(tag),
@@ -434,7 +434,7 @@ fn test_card_new_invalid_tag_rejected() {
 // ── Leaf::set_field ──────────────────────────────────────────────────────────
 
 #[test]
-fn test_card_set_field_valid() {
+fn test_leaf_set_field_valid() {
     let mut leaf = Leaf::new("note").unwrap();
     leaf.set_field("content", qv("Some text")).unwrap();
     assert_eq!(
@@ -444,7 +444,7 @@ fn test_card_set_field_valid() {
 }
 
 #[test]
-fn test_card_set_field_invalid_name() {
+fn test_leaf_set_field_invalid_name() {
     let mut leaf = Leaf::new("note").unwrap();
     let result = leaf.set_field("Content", qv("text"));
     assert_eq!(
@@ -456,7 +456,7 @@ fn test_card_set_field_invalid_name() {
 // ── Leaf::remove_field ───────────────────────────────────────────────────────
 
 #[test]
-fn test_card_remove_field_existing() {
+fn test_leaf_remove_field_existing() {
     let mut doc = make_doc_with_leaves();
     // doc.leaves()[0] is "note" with field "foo" = "bar"
     let leaf = doc.leaf_mut(0).unwrap();
@@ -466,13 +466,13 @@ fn test_card_remove_field_existing() {
 }
 
 #[test]
-fn test_card_remove_field_absent() {
+fn test_leaf_remove_field_absent() {
     let mut leaf = Leaf::new("note").unwrap();
     assert!(leaf.remove_field("nonexistent").unwrap().is_none());
 }
 
 #[test]
-fn test_card_remove_field_reserved_throws() {
+fn test_leaf_remove_field_reserved_throws() {
     let mut leaf = Leaf::new("note").unwrap();
     for reserved in ["BODY", "LEAVES", "QUILL", "KIND"] {
         match leaf.remove_field(reserved) {
@@ -483,7 +483,7 @@ fn test_card_remove_field_reserved_throws() {
 }
 
 #[test]
-fn test_card_remove_field_invalid_name_throws() {
+fn test_leaf_remove_field_invalid_name_throws() {
     let mut leaf = Leaf::new("note").unwrap();
     match leaf.remove_field("Bad-Name") {
         Err(EditError::InvalidFieldName(name)) => assert_eq!(name, "Bad-Name"),
@@ -494,7 +494,7 @@ fn test_card_remove_field_invalid_name_throws() {
 // ── Leaf::set_body ───────────────────────────────────────────────────────────
 
 #[test]
-fn test_card_set_body() {
+fn test_leaf_set_body() {
     let mut leaf = Leaf::new("note").unwrap();
     leaf.replace_body("Leaf body text.");
     assert_eq!(leaf.body(), "Leaf body text.");

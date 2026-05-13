@@ -56,7 +56,7 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
 - A required `QUILL` sentinel prepended to `main.fields` (`const = "<name>@<version>"`)
 - A required `KIND` sentinel prepended to each `leaf_kinds.<name>.fields` (`const = "<name>"`)
 
-`QuillConfig::schema_yaml()` is a YAML wrapper over the same value. The schema is pinned by serde attributes on `FieldSchema`, `LeafSchema`, `UiFieldSchema`, `UiCardSchema`, and `BodyCardSchema` — there is no parallel mirror struct.
+`QuillConfig::schema_yaml()` is a YAML wrapper over the same value. The schema is pinned by serde attributes on `FieldSchema`, `LeafSchema`, `UiFieldSchema`, `UiLeafSchema`, and `BodyLeafSchema` — there is no parallel mirror struct.
 
 For LLM/MCP authoring, see [BLUEPRINT.md](BLUEPRINT.md) — `blueprint()` emits a document-shaped, pre-filled Markdown reference that's denser than schema for prompt-time use.
 
