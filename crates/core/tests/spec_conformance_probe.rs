@@ -121,6 +121,30 @@ fn leaves_is_always_present_even_when_empty() {
     assert!(doc.leaves().is_empty());
 }
 
+// §3.2 / §9 — A leaf-info-string fence missing `KIND:` first-key is a hard
+// parse error, not a silent fallthrough to body content. This is the central
+// "no silent classification miss" promise of LEAF_REWORK.md §3.3.
+#[test]
+fn leaf_fence_without_kind_first_key_is_rejected() {
+    let cases = [
+        // Missing KIND entirely.
+        "---\nQUILL: t\n---\n\n```leaf\nname: Widget\n```\n",
+        // Empty leaf body.
+        "---\nQUILL: t\n---\n\n```leaf\n```\n",
+        // KIND present but not first.
+        "---\nQUILL: t\n---\n\n```leaf\nname: Widget\nKIND: product\n```\n",
+        // QUILL inside a leaf fence (sentinel-mismatch).
+        "---\nQUILL: t\n---\n\n```leaf\nQUILL: other@1\n```\n",
+    ];
+    for md in cases {
+        let err = Document::from_markdown(md).unwrap_err().to_string();
+        assert!(
+            err.contains("KIND") && err.contains("Leaf fence"),
+            "expected hard KIND error for {md:?}, got: {err}"
+        );
+    }
+}
+
 // §5 — KIND value pattern.
 #[test]
 fn leaf_name_pattern_enforced() {
@@ -157,7 +181,7 @@ fn normalize_yaml_scalar_keeps_bidi() {
 
 // §7 — Leaf body normalization reaches nested leaves.
 #[test]
-fn normalize_reaches_card_body() {
+fn normalize_reaches_leaf_body() {
     let md = "---\nQUILL: t\n---\n\n```leaf\nKIND: x\n```\n\n<!-- c -->trailing\u{202D}text";
     let doc = Document::from_markdown(md).unwrap();
     let doc = normalize_document(doc).unwrap();
@@ -223,7 +247,7 @@ fn body_crlf_line_endings_are_normalized() {
 // §7 — CRLF normalization reaches leaf bodies.
 #[test]
 fn leaf_body_crlf_line_endings_are_normalized() {
-    let md = "---\nQUILL: t\n---\n\n```leaf\nKIND: x\n```\n\nCard line one.\r\nCard line two.\r\n";
+    let md = "---\nQUILL: t\n---\n\n```leaf\nKIND: x\n```\n\nLeaf line one.\r\nLeaf line two.\r\n";
     let doc = Document::from_markdown(md).unwrap();
     let doc = normalize_document(doc).unwrap();
     let body = doc.leaves()[0].body();

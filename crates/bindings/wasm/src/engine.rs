@@ -748,9 +748,9 @@ impl Document {
     ///
     /// Mutators never modify `warnings`.
     #[wasm_bindgen(js_name = setLeafKind)]
-    pub fn set_card_tag(&mut self, index: usize, new_tag: &str) -> Result<(), JsValue> {
+    pub fn set_leaf_tag(&mut self, index: usize, new_tag: &str) -> Result<(), JsValue> {
         self.inner
-            .set_card_tag(index, new_tag)
+            .set_leaf_tag(index, new_tag)
             .map_err(|e| edit_error_to_js(&e))
     }
 
@@ -763,7 +763,7 @@ impl Document {
     ///
     /// Mutators never modify `warnings`.
     #[wasm_bindgen(js_name = updateLeafField)]
-    pub fn update_card_field(
+    pub fn update_leaf_field(
         &mut self,
         index: usize,
         name: &str,
@@ -788,7 +788,7 @@ impl Document {
     ///
     /// Mutators never modify `warnings`.
     #[wasm_bindgen(js_name = removeLeafField)]
-    pub fn remove_card_field(&mut self, index: usize, name: &str) -> Result<JsValue, JsValue> {
+    pub fn remove_leaf_field(&mut self, index: usize, name: &str) -> Result<JsValue, JsValue> {
         let len = self.inner.leaves().len();
         let leaf = self.inner.leaf_mut(index).ok_or_else(|| {
             edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
@@ -812,7 +812,7 @@ impl Document {
     ///
     /// Mutators never modify `warnings`.
     #[wasm_bindgen(js_name = updateLeafBody)]
-    pub fn update_card_body(&mut self, index: usize, body: &str) -> Result<(), JsValue> {
+    pub fn update_leaf_body(&mut self, index: usize, body: &str) -> Result<(), JsValue> {
         let len = self.inner.leaves().len();
         let leaf = self.inner.leaf_mut(index).ok_or_else(|| {
             edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })

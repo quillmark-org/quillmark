@@ -656,7 +656,7 @@ main:
     }
 
     #[test]
-    fn validates_multiple_card_types_mixed() {
+    fn validates_multiple_leaf_kinds_mixed() {
         let config = config_with(
             "    title:\n      type: string",
             "leaf_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true\n  routing:\n    fields:\n      office:\n        type: string\n        required: true",

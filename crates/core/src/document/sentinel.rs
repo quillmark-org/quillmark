@@ -7,7 +7,7 @@ use crate::error::ParseError;
 use crate::version::QuillReference;
 
 /// Validate tag name follows pattern [a-z_][a-z0-9_]*
-pub(super) fn is_valid_tag_name(name: &str) -> bool {
+pub(crate) fn is_valid_tag_name(name: &str) -> bool {
     if name.is_empty() {
         return false;
     }
@@ -53,18 +53,30 @@ pub(super) fn first_content_key(content: &str) -> Option<&str> {
     }
 }
 
+/// Clone `mapping`, strip `key`, return the remainder (or `None` if empty).
+///
+/// `serde_json::Map` with the `preserve_order` feature (enabled in this
+/// workspace) is backed by `indexmap::IndexMap`; its default `remove` is
+/// `swap_remove` (O(1) but order-disrupting). We use `shift_remove` so that
+/// the surviving keys keep their source order.
+fn strip_key(
+    mapping: &serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Option<serde_json::Value> {
+    let mut m = mapping.clone();
+    m.shift_remove(key);
+    (!m.is_empty()).then(|| serde_json::Value::Object(m))
+}
+
 /// Extract `QUILL` / `KIND` sentinels and remaining fields from a parsed-YAML
 /// mapping. Returns `(tag, quill_ref, yaml_without_sentinel)`.
 #[allow(clippy::type_complexity)]
 pub(super) fn extract_sentinels(
     parsed: serde_json::Value,
-    _markdown: &str,
-    _abs_pos: usize,
-    _block_index: usize,
 ) -> Result<(Option<String>, Option<String>, Option<serde_json::Value>), ParseError> {
     let Some(mapping) = parsed.as_object() else {
-        // Non-mapping (scalar/sequence); keep as-is — upstream will reject if
-        // it's a frontmatter/leaf mapping was expected.
+        // Non-mapping (scalar/sequence); pass through — upstream will reject
+        // if a frontmatter/leaf mapping was expected.
         return Ok((None, None, Some(parsed)));
     };
 
@@ -77,7 +89,7 @@ pub(super) fn extract_sentinels(
         ));
     }
 
-    // Reserved keys (BODY, LEAVES) — spec §3
+    // Reserved keys (BODY, LEAVES) — spec §3.
     for reserved in ["BODY", "LEAVES"] {
         if mapping.contains_key(reserved) {
             return Err(ParseError::InvalidStructure(format!(
@@ -96,19 +108,7 @@ pub(super) fn extract_sentinels(
         quill_str.parse::<QuillReference>().map_err(|e| {
             ParseError::InvalidStructure(format!("Invalid QUILL reference '{}': {}", quill_str, e))
         })?;
-        let mut new_map = mapping.clone();
-        // Use `shift_remove` (order-preserving, O(n)) rather than the
-        // default `remove` which is `swap_remove` (O(1), disrupts order).
-        // serde_json::Map with `preserve_order` uses indexmap internally;
-        // its `.remove()` calls `swap_remove`, not `shift_remove`, so we
-        // call `shift_remove` explicitly to maintain insertion order.
-        new_map.shift_remove("QUILL");
-        let new_val = if new_map.is_empty() {
-            None
-        } else {
-            Some(serde_json::Value::Object(new_map))
-        };
-        Ok((None, Some(quill_str.to_string()), new_val))
+        Ok((None, Some(quill_str.to_string()), strip_key(mapping, "QUILL")))
     } else if has_leaf {
         let field_name = mapping
             .get("KIND")
@@ -121,14 +121,11 @@ pub(super) fn extract_sentinels(
                 field_name
             )));
         }
-        let mut new_map = mapping.clone();
-        new_map.shift_remove("KIND");
-        let new_val = if new_map.is_empty() {
-            None
-        } else {
-            Some(serde_json::Value::Object(new_map))
-        };
-        Ok((Some(field_name.to_string()), None, new_val))
+        Ok((
+            Some(field_name.to_string()),
+            None,
+            strip_key(mapping, "KIND"),
+        ))
     } else {
         Ok((None, None, Some(parsed)))
     }

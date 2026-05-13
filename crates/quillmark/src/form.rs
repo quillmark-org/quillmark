@@ -41,7 +41,7 @@
 //!
 //! Leaves whose tag is not declared in the schema are dropped from
 //! [`Form::leaves`]. Each such leaf produces one [`Diagnostic`] in
-//! [`Form::diagnostics`] with code `"form::unknown_card_tag"`.
+//! [`Form::diagnostics`] with code `"form::unknown_leaf_kind"`.
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -108,7 +108,7 @@ impl FormLeaf {
 /// # Unknown leaves
 ///
 /// Document leaves whose tag is not declared in the schema are dropped and
-/// each produces a [`Diagnostic`] with code `"form::unknown_card_tag"` in
+/// each produces a [`Diagnostic`] with code `"form::unknown_leaf_kind"` in
 /// [`Form::diagnostics`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Form {
@@ -124,7 +124,7 @@ pub struct Form {
 
 // ── Internal projection ─────────────────────────────────────────────────────
 //
-// `project_leaf`, `build_form`, and `blank_card_for_tag` are the internal
+// `project_leaf`, `build_form`, and `blank_leaf_for_kind` are the internal
 // machinery used by `Quill::form`, `Quill::blank_main`, and
 // `Quill::blank_leaf`. They are **deliberately not public**: consumers
 // reach the form module through methods on `Quill`, never by holding a
@@ -164,7 +164,7 @@ pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
                              excluded from the form view"
                         ),
                     )
-                    .with_code("form::unknown_card_tag".to_string()),
+                    .with_code("form::unknown_leaf_kind".to_string()),
                 );
             }
         }
@@ -188,7 +188,7 @@ pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
 
 /// Build a blank [`FormLeaf`] for a leaf type by tag, or `None` if the tag
 /// isn't declared in the quill's schema.
-pub(crate) fn blank_card_for_tag(quill: &Quill, leaf_kind: &str) -> Option<FormLeaf> {
+pub(crate) fn blank_leaf_for_kind(quill: &Quill, leaf_kind: &str) -> Option<FormLeaf> {
     quill
         .source()
         .config()

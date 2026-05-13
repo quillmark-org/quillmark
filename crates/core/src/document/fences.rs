@@ -7,7 +7,7 @@
 use crate::error::ParseError;
 use crate::{Diagnostic, Severity};
 
-use super::assemble::MetadataBlock;
+use super::assemble::{BlockSentinel, MetadataBlock};
 use super::sentinel::first_content_key;
 
 /// Line-oriented view of the source.
@@ -111,34 +111,22 @@ pub(super) fn code_fence_on_line(
     }
 }
 
-/// Extract the info string from a fence-opener line (everything after the
-/// fence-char run, with surrounding whitespace trimmed).
-fn code_fence_info_string(line: &str) -> &str {
+/// First whitespace-delimited token of a fence opener's info string, or
+/// `None` for non-opener lines and empty info strings.
+fn fence_info_first_token(line: &str) -> Option<&str> {
     let line = line.strip_suffix('\r').unwrap_or(line);
     let indent = line.as_bytes().iter().take_while(|&&b| b == b' ').count();
     let trimmed = &line[indent..];
-    let Some(&first) = trimmed.as_bytes().first() else {
-        return "";
-    };
+    let &first = trimmed.as_bytes().first()?;
     if first != b'`' && first != b'~' {
-        return "";
+        return None;
     }
     let run_len = trimmed
         .as_bytes()
         .iter()
         .take_while(|&&b| b == first)
         .count();
-    trimmed[run_len..].trim()
-}
-
-/// First whitespace-delimited token of an info string.
-fn first_info_token(info: &str) -> Option<&str> {
-    let trimmed = info.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.split_whitespace().next().unwrap())
-    }
+    trimmed[run_len..].split_whitespace().next()
 }
 
 /// Outcome of the fence-detection pass: the recognised metadata blocks
@@ -172,15 +160,8 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
             k += 1;
             continue;
         }
-        let mut closer_k: Option<usize> = None;
-        let mut j = k + 1;
-        while j < lines.len() {
-            if is_fence_marker_line(lines.line_text(j)) {
-                closer_k = Some(j);
-                break;
-            }
-            j += 1;
-        }
+        let closer_k =
+            (k + 1..lines.len()).find(|&j| is_fence_marker_line(lines.line_text(j)));
 
         let content_start = lines.line_end_inclusive(k);
         let content_end = closer_k
@@ -250,21 +231,14 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
         }
 
         if let Some((ch, run_len, _)) = code_fence_on_line(text, None) {
-            let info = code_fence_info_string(text);
-            if first_info_token(info) == Some("leaf") {
+            if fence_info_first_token(text) == Some("leaf") {
                 let opener_k = k;
-                let mut closer_k: Option<usize> = None;
-                let mut j = k + 1;
-                while j < lines.len() {
-                    if let Some((_, _, true)) =
-                        code_fence_on_line(lines.line_text(j), Some((ch, run_len)))
-                    {
-                        closer_k = Some(j);
-                        break;
-                    }
-                    j += 1;
-                }
-                let Some(cj) = closer_k else {
+                let Some(cj) = (k + 1..lines.len()).find(|&j| {
+                    matches!(
+                        code_fence_on_line(lines.line_text(j), Some((ch, run_len))),
+                        Some((_, _, true))
+                    )
+                }) else {
                     return Err(ParseError::InvalidStructure(format!(
                         "Leaf fence opened at line {} but never closed",
                         opener_k + 1
@@ -275,6 +249,27 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
                 let content_start = lines.line_end_inclusive(opener_k);
                 let content_end = lines.line_start(cj);
                 let block_end = lines.line_end_inclusive(cj);
+
+                // Spec §3.2/§9, LEAF_REWORK.md §3.3: leaf-info-string fence
+                // commits to leaf parsing; missing or misplaced `KIND:` is a
+                // hard error, not a silent classification miss.
+                let content = &markdown[content_start..content_end];
+                match first_content_key(content) {
+                    Some("KIND") => {}
+                    Some(other) => {
+                        return Err(ParseError::InvalidStructure(format!(
+                            "Leaf fence at line {} must have `KIND:` as its first body key (found `{}:`).",
+                            opener_k + 1,
+                            other
+                        )));
+                    }
+                    None => {
+                        return Err(ParseError::InvalidStructure(format!(
+                            "Leaf fence at line {} is missing required `KIND:` first body key.",
+                            opener_k + 1
+                        )));
+                    }
+                }
 
                 let block = super::assemble::build_block(
                     markdown,
@@ -297,7 +292,10 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
         k += 1;
     }
 
-    let leaf_count = blocks.iter().filter(|b| b.tag.is_some()).count();
+    let leaf_count = blocks
+        .iter()
+        .filter(|b| matches!(b.sentinel, BlockSentinel::Leaf(_)))
+        .count();
     if leaf_count > crate::error::MAX_LEAF_COUNT {
         return Err(ParseError::InputTooLarge {
             size: leaf_count,

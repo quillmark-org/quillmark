@@ -147,7 +147,7 @@ pub fn execute(args: ValidateArgs) -> Result<()> {
 
     // Step 4: Validate leaf-type schemas
     for leaf_schema in &config.leaf_kinds {
-        validate_card_schema(&leaf_schema.name, leaf_schema, &mut result);
+        validate_leaf_schema(&leaf_schema.name, leaf_schema, &mut result);
     }
 
     // Step 5: Try to load the full Quill (this validates schema generation)
@@ -268,7 +268,7 @@ fn validate_field_schemas(
     }
 }
 
-fn validate_card_schema(leaf_name: &str, leaf_schema: &LeafSchema, result: &mut ValidationResult) {
+fn validate_leaf_schema(leaf_name: &str, leaf_schema: &LeafSchema, result: &mut ValidationResult) {
     // Warn about missing description
     if leaf_schema
         .description

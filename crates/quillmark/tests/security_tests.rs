@@ -29,7 +29,7 @@ fn test_yaml_depth_limit_attack() {
 
 /// Test leaf count limit prevents DoS
 #[test]
-fn test_card_count_limit_attack() {
+fn test_leaf_count_limit_attack() {
     // Generate more than MAX_LEAF_COUNT (1000) leaf blocks
     let mut markdown = String::from("---\nQUILL: test_quill\ntitle: Test\n---\n\nBody\n\n");
     for i in 0..1002 {
@@ -134,7 +134,7 @@ fn test_reserved_field_injection() {
 
 /// Test that KIND directive validation prevents invalid names
 #[test]
-fn test_card_name_validation() {
+fn test_leaf_kind_name_validation() {
     let invalid_names = vec![
         "---\nQUILL: test_quill\n---\n\n```leaf\nKIND: Invalid-Name\n```\n\n",
         "---\nQUILL: test_quill\n---\n\n```leaf\nKIND: 123start\n```\n\n",
@@ -170,7 +170,7 @@ fn test_yaml_error_location() {
 
 /// Test both QUILL and KIND in same block is rejected
 #[test]
-fn test_quill_card_conflict() {
+fn test_quill_leaf_conflict() {
     let markdown = "---\nQUILL: template\nKIND: item\n---\n\n";
     let result = Document::from_markdown(markdown);
 

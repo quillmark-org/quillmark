@@ -187,7 +187,7 @@ impl Document {
     ///   `validate_document`.
     ///
     /// Schema-aware migration (clearing orphans, applying defaults, etc.) is
-    /// the caller's responsibility — `set_card_tag` is a structural primitive.
+    /// the caller's responsibility — `set_leaf_tag` is a structural primitive.
     ///
     /// # Invariants enforced
     ///
@@ -199,7 +199,7 @@ impl Document {
     /// # Warnings
     ///
     /// This method never modifies `warnings`.
-    pub fn set_card_tag(
+    pub fn set_leaf_tag(
         &mut self,
         index: usize,
         new_tag: impl Into<String>,

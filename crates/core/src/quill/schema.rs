@@ -201,7 +201,7 @@ main:
     }
 
     #[test]
-    fn injects_body_as_markdown_for_main_and_each_card_type() {
+    fn injects_body_as_markdown_for_main_and_each_leaf_kind() {
         let yaml = r#"
 quill:
   name: example

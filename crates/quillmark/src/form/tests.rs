@@ -129,14 +129,14 @@ main:
 }
 
 #[test]
-fn form_unknown_card_tag_drops_card_and_emits_diagnostic() {
+fn form_unknown_leaf_kind_drops_leaf_and_emits_diagnostic() {
     let quill = quill_from_yaml(
         r#"
 quill:
-  name: unknown_card_test
+  name: unknown_leaf_test
   version: "1.0"
   backend: typst
-  description: Unknown leaf tag test
+  description: Unknown leaf kind test
 
 main:
   fields:
@@ -151,7 +151,7 @@ leaf_kinds:
 "#,
     );
 
-    let md = "---\nQUILL: unknown_card_test\ntitle: \"T\"\n---\n\n\
+    let md = "---\nQUILL: unknown_leaf_test\ntitle: \"T\"\n---\n\n\
               ```leaf\nKIND: known_leaf\nnote: \"A\"\n```\n\n\
               ```leaf\nKIND: ghost_leaf\nnote: \"B\"\n```\n";
     let doc = Document::from_markdown(md).unwrap();
@@ -166,8 +166,8 @@ leaf_kinds:
     let unknown_diag = form
         .diagnostics
         .iter()
-        .find(|d| d.code.as_deref() == Some("form::unknown_card_tag"))
-        .expect("expected unknown_card_tag diagnostic");
+        .find(|d| d.code.as_deref() == Some("form::unknown_leaf_kind"))
+        .expect("expected unknown_leaf_kind diagnostic");
     assert!(
         unknown_diag.message.contains("ghost_leaf"),
         "diagnostic should name the tag: {:?}",
@@ -176,7 +176,7 @@ leaf_kinds:
 }
 
 #[test]
-fn form_card_field_sources() {
+fn form_leaf_field_sources() {
     let quill = quill_from_yaml(
         r#"
 quill:
@@ -413,11 +413,11 @@ main:
 }
 
 #[test]
-fn blank_card_returns_form_card_for_known_type() {
+fn blank_leaf_returns_form_leaf_for_known_kind() {
     let quill = quill_from_yaml(
         r#"
 quill:
-  name: blank_card_test
+  name: blank_leaf_test
   version: "1.0"
   backend: typst
   description: Blank leaf test
@@ -456,7 +456,7 @@ leaf_kinds:
 }
 
 #[test]
-fn blank_card_returns_none_for_unknown_type() {
+fn blank_leaf_returns_none_for_unknown_kind() {
     let quill = quill_from_yaml(
         r#"
 quill:

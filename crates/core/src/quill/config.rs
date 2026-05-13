@@ -12,7 +12,7 @@ use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
 use super::formats::DATE_FORMAT;
-use super::{BodyCardSchema, LeafSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
+use super::{BodyLeafSchema, LeafSchema, FieldSchema, FieldType, UiLeafSchema, UiFieldSchema};
 
 /// Top-level configuration for a Quillmark project
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -54,8 +54,8 @@ struct LeafSchemaDef {
     // Fields are re-parsed via `parse_fields_with_order` for ordering.
     #[allow(dead_code)]
     pub fields: Option<serde_json::Map<String, serde_json::Value>>,
-    pub ui: Option<UiCardSchema>,
-    pub body: Option<BodyCardSchema>,
+    pub ui: Option<UiLeafSchema>,
+    pub body: Option<BodyLeafSchema>,
 }
 
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
@@ -702,16 +702,6 @@ impl QuillConfig {
         chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
     }
 
-    fn is_valid_card_identifier(name: &str) -> bool {
-        let mut chars = name.chars();
-        match chars.next() {
-            Some(c) if c.is_ascii_lowercase() || c == '_' => {}
-            _ => return false,
-        }
-
-        chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-    }
-
     fn is_valid_quill_name(name: &str) -> bool {
         name == "__default__" || Self::is_snake_case_identifier(name)
     }
@@ -949,9 +939,9 @@ impl QuillConfig {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let ui_section: Option<UiCardSchema> = match quill_section.get("ui").cloned() {
+        let ui_section: Option<UiLeafSchema> = match quill_section.get("ui").cloned() {
             None => None,
-            Some(v) => match serde_json::from_value::<UiCardSchema>(v) {
+            Some(v) => match serde_json::from_value::<UiLeafSchema>(v) {
                 Ok(parsed) => Some(parsed),
                 Err(e) => {
                     errors.push(
@@ -1044,12 +1034,12 @@ impl QuillConfig {
 
         // Extract main.ui (optional). Fail loudly on malformed UI metadata rather
         // than silently dropping it — see `quill.ui` handling above.
-        let main_ui: Option<UiCardSchema> = match main_obj_opt
+        let main_ui: Option<UiLeafSchema> = match main_obj_opt
             .and_then(|main_obj| main_obj.get("ui"))
             .cloned()
         {
             None => None,
-            Some(v) => match serde_json::from_value::<UiCardSchema>(v) {
+            Some(v) => match serde_json::from_value::<UiLeafSchema>(v) {
                 Ok(parsed) => Some(parsed),
                 Err(e) => {
                     errors.push(
@@ -1063,12 +1053,12 @@ impl QuillConfig {
         };
 
         // Extract main.body (optional). Fail loudly on malformed body metadata.
-        let main_body: Option<BodyCardSchema> = match main_obj_opt
+        let main_body: Option<BodyLeafSchema> = match main_obj_opt
             .and_then(|main_obj| main_obj.get("body"))
             .cloned()
         {
             None => None,
-            Some(v) => match serde_json::from_value::<BodyCardSchema>(v) {
+            Some(v) => match serde_json::from_value::<BodyLeafSchema>(v) {
                 Ok(parsed) => Some(parsed),
                 Err(e) => {
                     errors.push(
@@ -1111,12 +1101,12 @@ impl QuillConfig {
                             Severity::Error,
                             "'leaf_kinds' section must be an object (mapping of type names to schemas)".to_string(),
                         )
-                        .with_code("quill::invalid_card_types".to_string()),
+                        .with_code("quill::invalid_leaf_kinds".to_string()),
                     );
                 }
                 Some(leaf_kinds_table) => {
                     for (leaf_name, leaf_value) in leaf_kinds_table {
-                        if !Self::is_valid_card_identifier(leaf_name) {
+                        if !crate::document::sentinel::is_valid_tag_name(leaf_name) {
                             errors.push(
                                 Diagnostic::new(
                                     Severity::Error,
@@ -1126,7 +1116,7 @@ impl QuillConfig {
                                         leaf_name
                                     ),
                                 )
-                                .with_code("quill::invalid_card_name".to_string()),
+                                .with_code("quill::invalid_leaf_kind_name".to_string()),
                             );
                             continue;
                         }
@@ -1144,7 +1134,7 @@ impl QuillConfig {
                                                 leaf_name, e
                                             ),
                                         )
-                                        .with_code("quill::invalid_card_schema".to_string()),
+                                        .with_code("quill::invalid_leaf_kind_schema".to_string()),
                                     );
                                     continue;
                                 }
@@ -1186,7 +1176,7 @@ impl QuillConfig {
         // Warn when `body.example` is set together with `body.enabled: false` —
         // the example has no effect since the body editor is disabled.
         let warn_example_unused = |label: &str,
-                                   body: &Option<BodyCardSchema>|
+                                   body: &Option<BodyLeafSchema>|
          -> Option<Diagnostic> {
             let body = body.as_ref()?;
             if body.enabled == Some(false) && body.example.is_some() {
@@ -1221,7 +1211,7 @@ impl QuillConfig {
         // spaces and optional trailing whitespace). Such a line would split the
         // blueprint body region into a new fence, corrupting document structure.
         let err_example_contains_fence = |label: &str,
-                                          body: &Option<BodyCardSchema>|
+                                          body: &Option<BodyLeafSchema>|
          -> Option<Diagnostic> {
             let example = body.as_ref()?.example.as_deref()?;
             if example_contains_fence_line(example) {

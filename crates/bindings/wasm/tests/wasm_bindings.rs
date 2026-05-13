@@ -206,7 +206,7 @@ fn test_quill_metadata_and_schemas() {
         .quill(common::tree(&[
             (
                 "Quill.yaml",
-                b"quill:\n  name: meta_quill\n  backend: typst\n  version: \"0.2.1\"\n  plate_file: plate.typ\n  description: Metadata quill\nmain:\n  fields:\n    title:\n      type: string\n      ui:\n        group: Header\ncard_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n",
+                b"quill:\n  name: meta_quill\n  backend: typst\n  version: \"0.2.1\"\n  plate_file: plate.typ\n  description: Metadata quill\nmain:\n  fields:\n    title:\n      type: string\n      ui:\n        group: Header\nleaf_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n",
             ),
             ("plate.typ", b"= Title"),
         ]))

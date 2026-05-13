@@ -137,7 +137,7 @@ def test_form_json_serializable(tmp_path):
     assert parsed["main"]["values"]["title"]["source"] == "document"
 
 
-def test_form_unknown_card_diagnostic(tmp_path):
+def test_form_unknown_leaf_kind_diagnostic(tmp_path):
     """Unknown leaf tags produce a diagnostic and are excluded from leaves."""
     quill = make_quill(tmp_path)
     md = (
@@ -150,8 +150,8 @@ def test_form_unknown_card_diagnostic(tmp_path):
 
     assert form["leaves"] == [], "unknown-tag leaf must be excluded"
     diag_codes = [d.get("code") for d in form["diagnostics"]]
-    assert "form::unknown_card_tag" in diag_codes, (
-        f"expected form::unknown_card_tag diagnostic; got: {diag_codes}"
+    assert "form::unknown_leaf_kind" in diag_codes, (
+        f"expected form::unknown_leaf_kind diagnostic; got: {diag_codes}"
     )
 
 
@@ -159,7 +159,7 @@ def test_form_unknown_card_diagnostic(tmp_path):
 # Tests: blank_main / blank_leaf
 # ---------------------------------------------------------------------------
 
-def test_blank_main_returns_card_with_no_document_values(tmp_path):
+def test_blank_main_returns_leaf_with_no_document_values(tmp_path):
     """blank_main returns a leaf with every value at default or missing."""
     quill = make_quill(tmp_path)
 
@@ -177,7 +177,7 @@ def test_blank_main_returns_card_with_no_document_values(tmp_path):
     assert values["count"]["default"] is None
 
 
-def test_blank_card_known_type(tmp_path):
+def test_blank_leaf_known_kind(tmp_path):
     """blank_leaf returns a dict for a known leaf type."""
     quill = make_quill(tmp_path)
 
@@ -190,7 +190,7 @@ def test_blank_card_known_type(tmp_path):
     assert values["tag"]["source"] == "missing"
 
 
-def test_blank_card_unknown_type(tmp_path):
+def test_blank_leaf_unknown_kind(tmp_path):
     """blank_leaf returns None for an unknown leaf type."""
     quill = make_quill(tmp_path)
 

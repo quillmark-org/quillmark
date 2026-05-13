@@ -183,7 +183,7 @@ impl PyQuill {
     /// to the document to obtain an updated view.
     ///
     /// Leaves with unknown tags are excluded from `leaves`; each produces a
-    /// diagnostic with code `"form::unknown_card_tag"`.
+    /// diagnostic with code `"form::unknown_leaf_kind"`.
     fn form<'py>(
         &self,
         py: Python<'py>,
@@ -474,16 +474,16 @@ impl PyDocument {
     ///
     /// Mutates only the sentinel — the leaf's frontmatter and body are
     /// untouched. Schema-aware migration (clearing orphan fields, applying
-    /// new defaults) is the caller's responsibility; `set_card_tag` is a
+    /// new defaults) is the caller's responsibility; `set_leaf_tag` is a
     /// structural primitive.
     ///
     /// Raises `quillmark.EditError` if `index` is out of range or `new_tag`
     /// does not match `[a-z_][a-z0-9_]*`.
     ///
     /// This method never modifies `warnings`.
-    fn set_card_tag(&mut self, index: usize, new_tag: &str) -> PyResult<()> {
+    fn set_leaf_tag(&mut self, index: usize, new_tag: &str) -> PyResult<()> {
         self.inner
-            .set_card_tag(index, new_tag)
+            .set_leaf_tag(index, new_tag)
             .map_err(convert_edit_error)
     }
 
@@ -493,7 +493,7 @@ impl PyDocument {
     /// reserved or invalid, or `value` cannot be converted.
     ///
     /// This method never modifies `warnings`.
-    fn update_card_field(
+    fn update_leaf_field(
         &mut self,
         index: usize,
         name: &str,
@@ -512,7 +512,7 @@ impl PyDocument {
     /// Raises `quillmark.EditError` if `index` is out of range.
     ///
     /// This method never modifies `warnings`.
-    fn update_card_body(&mut self, index: usize, body: &str) -> PyResult<()> {
+    fn update_leaf_body(&mut self, index: usize, body: &str) -> PyResult<()> {
         let len = self.inner.leaves().len();
         let leaf = self.inner.leaf_mut(index).ok_or_else(|| {
             convert_edit_error(quillmark_core::EditError::IndexOutOfRange { index, len })
