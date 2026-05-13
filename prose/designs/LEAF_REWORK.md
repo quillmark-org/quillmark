@@ -185,11 +185,11 @@ with the syntax:
 - Templates: `cards.X[i].field` → `leaves.X[i].field`.
 - Output data: `data.CARDS` → `data.LEAVES`.
 
-This is a separable decision from the syntax change — the syntax could
-ship with `CARDS`/`card_types` vocabulary preserved. The proposal couples
-them because the info string `leaf` becomes the canonical user-facing
-name, and divergent internal vocabulary would be a long-term confusion
-tax. See §7 for migration cost.
+The rename ships atomically with the syntax change. Bindings are
+pre-1.0 and acceptable to break; a syntax-only rename that preserved
+`CARDS`/`card_types` internally was considered and rejected — permanent
+author-vs-internal dual vocabulary would be a long-term translation
+tax. See §7 for migration scope.
 
 ## 5. Reserved keys
 
@@ -227,37 +227,36 @@ the parser preserves document order within each kind, mirroring today's
 
 ## 7. Migration
 
-Migration is mechanical but invasive. Honest scope:
+Quillmark has a single consumer (the project's own application), so
+the migration policy is round-trip-driven, not calendar-driven.
 
-**Document format** — dual-support during deprecation window.
-- Legacy `---/CARD: foo/---` parses unchanged and emits a
-  `parse::deprecated_leaf_syntax` warning.
-- Round-trip through emit converts to the ` ```leaf / KIND: foo / ``` `
-  form (lossless, comments preserved).
-- After the deprecation window, the legacy form errors with a clear
-  pointer to the migration tool.
+**Release N** ships ` ```leaf ` / `KIND:` as the canonical inline form
+and keeps a legacy parser path for `---/CARD: foo/---`. The legacy
+parser exists exclusively for round-trip migration: the consumer reads
+each existing `.md` document, parses it, and emits the new form.
+Comments, ordering, and `!fill` tags round-trip losslessly per today's
+emitter guarantee (carried forward unchanged).
 
-**Quill.yaml** — rename `card_types:` → `leaf_kinds:`. Field shapes
-below are unchanged.
+**Release N+1** removes the legacy parser path entirely. Encountering
+`---/CARD: foo/---` becomes a hard parse error with a pointer to the
+migration tool.
 
-**Templates** — `cards.X` → `leaves.X`. Mechanical sweep.
+The non-syntax surfaces flip atomically in Release N, no dual support:
 
-**Rust code** — `Card*` types rename to `Leaf*`; field names track.
-Spot check at the time of this proposal: 22+ files in `crates/` reference
-`CARD`/`CARDS`/`card_types`.
+| Surface | Change |
+|---|---|
+| `Quill.yaml` schema | `card_types:` → `leaf_kinds:` |
+| Templates | `cards.X` → `leaves.X` |
+| Rust types | `Card*` → `Leaf*` (e.g. `CardSchema` → `LeafSchema`) |
+| Python/WASM bindings | `data.CARDS` → `data.LEAVES` |
+| Typst backend contract | `data.CARDS` → `data.LEAVES` |
+| Diagnostic path anchors | `CARDS[i].field` → `LEAVES[i].field` |
 
-**Bindings** — Python and WASM both expose `CARDS` in their public APIs.
-The migration is a breaking API change for binding consumers;
-dual-emission with a deprecation cycle reduces the blast radius but does
-not eliminate it.
-
-**Backends** — the typst backend consumes `data.CARDS`. Backends maintained
-in-tree migrate in lockstep with the rename; external backends consume
-both names through the deprecation window.
-
-**Diagnostics** — path anchors that today reference `CARDS[i].field`
-re-map to `LEAVES[i].field`. The recent document-model path anchor work
-(c.f. commit `78ec6ca`) is the surface area affected.
+Spot check at the time of this proposal: ~22 files in `crates/`
+reference `CARD`/`CARDS`/`card_types`. Bindings are pre-1.0 — the
+binding API breakage is acceptable. The recent document-model path
+anchor work (c.f. commit `78ec6ca`) is the diagnostic surface area
+affected by the rename.
 
 ## 8. Parser behaviour
 
@@ -325,27 +324,27 @@ In the spirit of honest accounting:
 - **Single shared mental model** — "first body key names this fence's
   role" applies at top and inline.
 
-## 11. Open questions
+## 11. Follow-on commitments
 
-1. **Vocabulary rename scope.** Adopt the full `card` → `leaf` rename
-   (templates, bindings, backends) or scope it to syntax only and keep
-   `CARDS`/`card_types` internally? §4 recommends the full rename; the
-   alternative cuts migration cost by ~half at the price of a permanent
-   syntax-vs-internals naming split.
+The case for `leaf` over `yaml` (§3.1) rests on Quillmark shipping its
+own editor tooling. Without it, leaves render as plain grey code blocks
+in every editor that doesn't ship Quillmark support natively — the spec
+stands either way, but the user experience is meaningfully degraded.
 
-2. **Deprecation window length.** One minor version (e.g. 0.78 → 0.79)
-   or two? Longer window reduces user friction; shorter window reduces
-   parser maintenance cost.
+Concrete commitments that should land alongside or shortly behind the
+syntax change:
 
-3. **`yaml`-info-string acceptance as a future alias.** Reject for now
-   (per §3.1). Could be added later if the IDE-tooling gap proves harder
-   to close than expected — but only as `yaml` with a mandatory second
-   token (` ```yaml leaf `) to preserve lexical classification.
+- **VSCode extension** — inject YAML grammar into `leaf` fence bodies
+  via standard language-injection, layer the Quillmark schema on top
+  for kind-specific autocomplete and validation.
+- **Prettier plugin** — register `leaf` as a known language so opt-in
+  projects get YAML-style formatting of leaf bodies without altering
+  the info string.
+- **Editor coverage** — Neovim and JetBrains equivalents on a slower
+  track, acknowledged as gap-fillers for users outside VSCode.
 
-4. **`leaf` validation pattern.** Today's `[a-z_][a-z0-9_]*` is preserved
-   for `KIND:` values; should the info-string second token (if ever
-   added per (3)) follow the same rule, or accept a broader identifier
-   shape?
+These are separate work items from this spec, but the design's value
+proposition depends on at least the VSCode extension being real.
 
 ## 12. References
 
