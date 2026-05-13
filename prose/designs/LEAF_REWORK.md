@@ -211,15 +211,14 @@ with the syntax:
 - Templates: `cards.X[i].field` → `leaves.X[i].field`.
 - Output data: `data.CARDS` → `data.LEAVES`.
 
-The vocabulary rename — Rust types, schema keys, template variables,
-output data fields — flips atomically at Release N (§7). The legacy
-`---/CARD:---` *syntax* is parsed for one deprecation release, but the
-parser normalises it into the new vocabulary internally: a legacy
-document still produces `data.LEAVES`, never `data.CARDS`. Bindings
-are pre-1.0 and acceptable to break; a syntax-only rename that
-preserved `CARDS`/`card_types` internally was considered and
-rejected — permanent author-vs-internal dual vocabulary would be a
-long-term translation tax. See §7 for migration scope.
+Vocabulary and syntax flip together in a single release (§7). There
+is no dual-parser deprecation window: legacy `---/CARD:---` is a hard
+parse error from day one, and the codebase carries no legacy code
+path. Migration is a one-shot pre-release sweep (§7). Bindings are
+pre-1.0 and acceptable to break; a syntax-only rename that preserved
+`CARDS`/`card_types` internally was considered and rejected —
+permanent author-vs-internal dual vocabulary would be a long-term
+translation tax.
 
 ## 5. Reserved keys
 
@@ -241,8 +240,9 @@ supplying them as input keys is a hard parse error:
 | Leaf body | `BODY` |
 
 `QUILL` is not reserved inside leaves; `KIND` is not reserved inside
-frontmatter. Legacy `CARD`/`CARDS` accepted as aliases during the
-deprecation window (§7).
+frontmatter. Sentinel keys (`QUILL`, `KIND`) may not carry YAML tags
+such as `!fill` — they are routing keys, not data, and must resolve
+at parse time.
 
 ## 6. Data model
 
@@ -268,20 +268,20 @@ the parser preserves document order within each kind, mirroring today's
 ## 7. Migration
 
 Quillmark has a single consumer (the project's own application), so
-the migration policy is round-trip-driven, not calendar-driven.
+the entire migration ships in **one release**. The codebase never
+carries a dual-parser path: legacy `---/CARD:---` is a hard parse
+error from the first commit of the new release, with a diagnostic
+pointing at the migration tool.
 
-**Release N** ships ` ```leaf ` / `KIND:` as the canonical inline form
-and keeps a legacy parser path for `---/CARD: foo/---`. The legacy
-parser exists exclusively for round-trip migration: the consumer reads
-each existing `.md` document, parses it, and emits the new form.
-Comments, ordering, and `!fill` tags round-trip losslessly per today's
-emitter guarantee (carried forward unchanged).
+**Migration tool** (one-shot, pre-release). A standalone utility —
+built from a snapshot of the legacy parser plus the new emitter —
+reads each in-repo `.md` document, parses the legacy form, and writes
+canonical ` ```leaf ` form. Comments, ordering, and `!fill` tags
+round-trip losslessly per today's emitter guarantee. The tool is not
+shipped with the release; once the consumer's documents are converted,
+it is retired.
 
-**Release N+1** removes the legacy parser path entirely. Encountering
-`---/CARD: foo/---` becomes a hard parse error with a pointer to the
-migration tool.
-
-The non-syntax surfaces flip atomically in Release N, no dual support:
+All other surfaces flip in the same release, no dual support:
 
 | Surface | Change |
 |---|---|
@@ -347,11 +347,11 @@ In the spirit of honest accounting:
   apply for leaf detection. Net rule count shifts from one custom system
   to (smaller custom system + already-implemented CommonMark rules) —
   net engineering win, but not a clean collapse.
-- **Migration is real engineering work.** "Mechanical sweep" is accurate
-  for the renames but does not include the binding-API breakage, backend
-  contract updates, dual-parser maintenance window, or downstream
-  template breakage. Plan for one minor-version cycle of dual support
-  minimum.
+- **Migration is real engineering work.** "Mechanical sweep" is
+  accurate for the renames but does not include the binding-API
+  breakage, backend contract updates, the migration tool itself, or
+  downstream template breakage. The single-release plan (§7) trades a
+  longer pre-release sweep for zero in-repo dual-support code.
 
 ## 10. What survives the design
 
