@@ -31,7 +31,7 @@ main:
         group: Meta
     page_count:
       type: integer
-card_types:
+leaf_kinds:
   indorsement:
     fields:
       signature_block:
@@ -43,7 +43,7 @@ card_types:
         let config = cfg(FULL);
         let yaml = config.schema_yaml().unwrap();
         assert!(yaml.contains("enum:") && yaml.contains("type: integer"));
-        assert!(yaml.contains("card_types:") && yaml.contains("indorsement:"));
+        assert!(yaml.contains("leaf_kinds:") && yaml.contains("indorsement:"));
         assert!(yaml.contains("ui:") && yaml.contains("group: Meta"));
     }
 
@@ -57,7 +57,7 @@ main:
 "#)
         .schema_yaml()
         .unwrap();
-        assert!(yaml.contains("main:") && !yaml.contains("card_types:"));
+        assert!(yaml.contains("main:") && !yaml.contains("leaf_kinds:"));
     }
 
     #[test]

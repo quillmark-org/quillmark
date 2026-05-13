@@ -38,7 +38,7 @@ pub enum FrontmatterItem {
     /// in the items vector; if no such field exists at emit time (orphan)
     /// it degrades to an own-line comment. A `Comment { inline: true }` at
     /// `items[0]` instead attaches to the sentinel line (`QUILL: …` /
-    /// `CARD: …`).
+    /// `KIND: …`).
     Comment {
         text: String,
         #[serde(default)]

@@ -141,16 +141,16 @@ main:
       ui:
         group: Letterhead
         order: 6
-card_types:
+leaf_kinds:
   indorsement:
     description: >-
       Chain of routing endorsements. Each endorsement block adds an official response
       or forwarding action to the original memo.
     fields:
-      CARD:
+      KIND:
         type: string
         const: indorsement
-        description: "Card type name. Must be exactly this value as the CARD: sentinel in the card frontmatter."
+        description: "Leaf kind name. Must be exactly this value as the KIND: sentinel in the leaf body."
         required: true
       attachments:
         type: array

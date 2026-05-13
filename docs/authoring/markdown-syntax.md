@@ -6,7 +6,7 @@ For the authoritative grammar, fence-detection rules, normalization, and limits,
 
 ## Foundation
 
-Body content (the prose between frontmatter and any [card](cards.md), and inside each card) is parsed as CommonMark 0.31.2. Headings, emphasis, links, lists, code blocks, blockquotes, thematic breaks, and inline code all behave exactly as the [CommonMark spec](https://spec.commonmark.org/0.31.2/) defines them.
+Body content (the prose between frontmatter and any [leaf](leaves.md), and inside each leaf) is parsed as CommonMark 0.31.2. Headings, emphasis, links, lists, code blocks, blockquotes, thematic breaks, and inline code all behave exactly as the [CommonMark spec](https://spec.commonmark.org/0.31.2/) defines them.
 
 For the conventional syntax of these elements, refer to:
 
@@ -58,13 +58,14 @@ The following are recognised by the parser (so they will not corrupt surrounding
 
 Some constructs (like link titles) are accepted by the parser but may be dropped during rendering when the active backend has no target for them. Those losses are backend-specific — see each backend's documentation.
 
-## The `---` marker is reserved
+## The `---` marker delimits frontmatter only
 
-Quillmark uses `---` to delimit [frontmatter](yaml-frontmatter.md) and [cards](cards.md). A `---` line that follows the fence-detection rules opens or closes a metadata fence; otherwise it falls through to CommonMark and behaves as a thematic break or setext heading underline as usual. The full detection rules are in [§4 of the spec](https://github.com/nibsbin/quillmark/blob/main/prose/designs/MARKDOWN.md#4-fence-detection-rules).
-
-In practice: use `***` or `___` if you want a thematic break inside body content, and reserve `---` for metadata.
+Quillmark uses `---` to delimit [frontmatter](yaml-frontmatter.md) at the top
+of a document. Mid-document `---` is a CommonMark thematic break — it no
+longer opens a metadata fence. Inline structured records use a different
+syntax; see [Leaves](leaves.md).
 
 ## Next steps
 
 - [YAML Frontmatter](yaml-frontmatter.md)
-- [Cards](cards.md)
+- [Leaves](leaves.md)

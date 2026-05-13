@@ -5,7 +5,7 @@ use time::{Date, OffsetDateTime};
 use crate::document::Document;
 use crate::error::{Diagnostic, Severity};
 use crate::quill::formats::DATE_FORMAT;
-use crate::quill::{CardSchema, FieldSchema, FieldType, QuillConfig};
+use crate::quill::{LeafSchema, FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
 
 /// Validation error with a structured field path.
@@ -31,16 +31,16 @@ pub enum ValidationError {
     #[error("field `{path}` does not match expected format `{format}`")]
     FormatViolation { path: String, format: String },
 
-    #[error("unknown card type `{card}` at `{path}`")]
-    UnknownCard { path: String, card: String },
+    #[error("unknown leaf type `{leaf}` at `{path}`")]
+    UnknownLeaf { path: String, leaf: String },
 
-    #[error("card at `{path}` missing `CARD` discriminator")]
-    MissingCardDiscriminator { path: String },
+    #[error("leaf at `{path}` missing `KIND` discriminator")]
+    MissingKindDiscriminator { path: String },
 
     #[error(
-        "card `{card}` at `{path}` has body content but the card type declares `body.enabled: false` — remove the body content or set `body.enabled: true` on the card type"
+        "leaf `{leaf}` at `{path}` has body content but the leaf type declares `body.enabled: false` — remove the body content or set `body.enabled: true` on the leaf type"
     )]
-    BodyDisabled { path: String, card: String },
+    BodyDisabled { path: String, leaf: String },
 }
 
 impl ValidationError {
@@ -53,8 +53,8 @@ impl ValidationError {
             | ValidationError::TypeMismatch { path, .. }
             | ValidationError::EnumViolation { path, .. }
             | ValidationError::FormatViolation { path, .. }
-            | ValidationError::UnknownCard { path, .. }
-            | ValidationError::MissingCardDiscriminator { path }
+            | ValidationError::UnknownLeaf { path, .. }
+            | ValidationError::MissingKindDiscriminator { path }
             | ValidationError::BodyDisabled { path, .. } => path,
         }
     }
@@ -67,8 +67,8 @@ impl ValidationError {
             ValidationError::TypeMismatch { .. } => "validation::type_mismatch",
             ValidationError::EnumViolation { .. } => "validation::enum_violation",
             ValidationError::FormatViolation { .. } => "validation::format_violation",
-            ValidationError::UnknownCard { .. } => "validation::unknown_card",
-            ValidationError::MissingCardDiscriminator { .. } => {
+            ValidationError::UnknownLeaf { .. } => "validation::unknown_leaf",
+            ValidationError::MissingKindDiscriminator { .. } => {
                 "validation::missing_card_discriminator"
             }
             ValidationError::BodyDisabled { .. } => "validation::body_disabled",
@@ -107,7 +107,7 @@ impl ValidationError {
     }
 }
 
-/// Validate a typed [`Document`] (with `IndexMap` frontmatter + typed `Card` list).
+/// Validate a typed [`Document`] (with `IndexMap` frontmatter + typed `Leaf` list).
 ///
 /// This is the typed entry point used by `QuillConfig::validate_document`.
 pub fn validate_typed_document(
@@ -117,43 +117,43 @@ pub fn validate_typed_document(
     let main_fields = doc.main().frontmatter().to_index_map();
     let mut errors = validate_fields_for_card_indexmap(&config.main, &main_fields, "");
 
-    // Enforce body.enabled on the main card. Whitespace-only bodies are
+    // Enforce body.enabled on the main leaf. Whitespace-only bodies are
     // treated as empty — only meaningful prose triggers the diagnostic.
     if !config.main.body_enabled() && !doc.main().body().trim().is_empty() {
         errors.push(ValidationError::BodyDisabled {
             path: "main.body".to_string(),
-            card: "main".to_string(),
+            leaf: "main".to_string(),
         });
     }
 
-    for (index, card) in doc.cards().iter().enumerate() {
-        let card_name = card.tag();
-        let item_path = format!("cards[{index}]");
-        // NOTE: `cards[N]` is the document-instance-side path (the cards
-        // array on a Document). Card-type definitions live under
-        // `card_types:` in Quill.yaml, but instances on a document are
-        // still a `cards` list.
+    for (index, leaf) in doc.leaves().iter().enumerate() {
+        let leaf_name = leaf.tag();
+        let item_path = format!("leaves[{index}]");
+        // NOTE: `leaves[N]` is the document-instance-side path (the leaves
+        // array on a Document). Leaf-type definitions live under
+        // `leaf_kinds:` in Quill.yaml, but instances on a document are
+        // still a `leaves` list.
 
-        let Some(card_schema) = config.card_type(card_name.as_str()) else {
-            errors.push(ValidationError::UnknownCard {
+        let Some(leaf_schema) = config.leaf_kind(leaf_name.as_str()) else {
+            errors.push(ValidationError::UnknownLeaf {
                 path: item_path,
-                card: card_name,
+                leaf: leaf_name,
             });
             continue;
         };
 
-        let card_path = format!("cards.{card_name}[{index}]");
-        let card_fields = card.frontmatter().to_index_map();
+        let leaf_path = format!("leaves.{leaf_name}[{index}]");
+        let leaf_fields = leaf.frontmatter().to_index_map();
         errors.extend(validate_fields_for_card_indexmap(
-            card_schema,
-            &card_fields,
-            &card_path,
+            leaf_schema,
+            &leaf_fields,
+            &leaf_path,
         ));
 
-        if !card_schema.body_enabled() && !card.body().trim().is_empty() {
+        if !leaf_schema.body_enabled() && !leaf.body().trim().is_empty() {
             errors.push(ValidationError::BodyDisabled {
-                path: format!("{card_path}.body"),
-                card: card_name,
+                path: format!("{leaf_path}.body"),
+                leaf: leaf_name,
             });
         }
     }
@@ -166,16 +166,16 @@ pub fn validate_typed_document(
 }
 
 fn validate_fields_for_card_indexmap(
-    card: &CardSchema,
+    leaf: &LeafSchema,
     fields: &IndexMap<String, QuillValue>,
     base_path: &str,
 ) -> Vec<ValidationError> {
     let mut errors = Vec::new();
-    let mut field_names: Vec<&String> = card.fields.keys().collect();
+    let mut field_names: Vec<&String> = leaf.fields.keys().collect();
     field_names.sort();
 
     for field_name in field_names {
-        let schema = &card.fields[field_name];
+        let schema = &leaf.fields[field_name];
         let path = child_path(base_path, field_name);
         match fields.get(field_name) {
             Some(value) => errors.extend(validate_field(schema, value, &path)),
@@ -370,11 +370,11 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use crate::document::{Card, Document};
+    use crate::document::{Leaf, Document};
     use crate::version::QuillReference;
     use serde_json::json;
 
-    fn config_with(main_fields: &str, cards: &str) -> QuillConfig {
+    fn config_with(main_fields: &str, leaves: &str) -> QuillConfig {
         let yaml = format!(
             r#"
 quill:
@@ -385,7 +385,7 @@ quill:
 main:
   fields:
 {main_fields}
-{cards}
+{leaves}
 "#
         );
         let (config, warnings) = QuillConfig::from_yaml_with_warnings(&yaml).unwrap();
@@ -398,29 +398,29 @@ main:
     }
 
     fn doc_from_fm(entries: &[(&str, serde_json::Value)]) -> Document {
-        doc_with_typed_cards(entries, vec![])
+        doc_with_typed_leaves(entries, vec![])
     }
 
-    fn doc_with_typed_cards(fm: &[(&str, serde_json::Value)], cards: Vec<Card>) -> Document {
+    fn doc_with_typed_leaves(fm: &[(&str, serde_json::Value)], leaves: Vec<Leaf>) -> Document {
         use crate::document::{Frontmatter, Sentinel};
         let mut frontmatter = IndexMap::new();
         for (k, v) in fm {
             frontmatter.insert(k.to_string(), QuillValue::from_json(v.clone()));
         }
-        let main = Card::new_with_sentinel(
+        let main = Leaf::new_with_sentinel(
             Sentinel::Main(QuillReference::from_str("test_quill").unwrap()),
             Frontmatter::from_index_map(frontmatter),
             String::new(),
         );
-        Document::from_main_and_cards(main, cards, vec![])
+        Document::from_main_and_leaves(main, leaves, vec![])
     }
 
-    fn typed_card(tag: &str, fields: &[(&str, serde_json::Value)]) -> Card {
-        let mut card = Card::new(tag).unwrap();
+    fn typed_leaf(tag: &str, fields: &[(&str, serde_json::Value)]) -> Leaf {
+        let mut leaf = Leaf::new(tag).unwrap();
         for (k, v) in fields {
-            card.set_field(k, QuillValue::from_json(v.clone())).unwrap();
+            leaf.set_field(k, QuillValue::from_json(v.clone())).unwrap();
         }
-        card
+        leaf
     }
 
     fn has_error<F>(errors: &[ValidationError], predicate: F) -> bool
@@ -614,11 +614,11 @@ main:
     fn validates_card_with_valid_discriminator() {
         let config = config_with(
             "    title:\n      type: string",
-            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
+            "leaf_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
         );
-        let doc = doc_with_typed_cards(
+        let doc = doc_with_typed_leaves(
             &[],
-            vec![typed_card(
+            vec![typed_leaf(
                 "indorsement",
                 &[("signature_block", json!("Signed"))],
             )],
@@ -630,12 +630,12 @@ main:
     fn rejects_unknown_card_discriminator() {
         let config = config_with(
             "    title:\n      type: string",
-            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string",
+            "leaf_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string",
         );
-        let doc = doc_with_typed_cards(&[], vec![typed_card("unknown", &[])]);
+        let doc = doc_with_typed_leaves(&[], vec![typed_leaf("unknown", &[])]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::UnknownCard { path, card } if path == "cards[0]" && card == "unknown")
+            matches!(e, ValidationError::UnknownLeaf { path, leaf } if path == "leaves[0]" && leaf == "unknown")
         }));
     }
 
@@ -643,13 +643,13 @@ main:
     fn validates_multiple_card_instances_same_type() {
         let config = config_with(
             "    title:\n      type: string",
-            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
+            "leaf_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
         );
-        let doc = doc_with_typed_cards(
+        let doc = doc_with_typed_leaves(
             &[],
             vec![
-                typed_card("indorsement", &[("signature_block", json!("A"))]),
-                typed_card("indorsement", &[("signature_block", json!("B"))]),
+                typed_leaf("indorsement", &[("signature_block", json!("A"))]),
+                typed_leaf("indorsement", &[("signature_block", json!("B"))]),
             ],
         );
         assert!(validate_typed_document(&config, &doc).is_ok());
@@ -659,13 +659,13 @@ main:
     fn validates_multiple_card_types_mixed() {
         let config = config_with(
             "    title:\n      type: string",
-            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true\n  routing:\n    fields:\n      office:\n        type: string\n        required: true",
+            "leaf_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true\n  routing:\n    fields:\n      office:\n        type: string\n        required: true",
         );
-        let doc = doc_with_typed_cards(
+        let doc = doc_with_typed_leaves(
             &[],
             vec![
-                typed_card("indorsement", &[("signature_block", json!("A"))]),
-                typed_card("routing", &[("office", json!("HQ"))]),
+                typed_leaf("indorsement", &[("signature_block", json!("A"))]),
+                typed_leaf("routing", &[("office", json!("HQ"))]),
             ],
         );
         assert!(validate_typed_document(&config, &doc).is_ok());
@@ -675,12 +675,12 @@ main:
     fn reports_card_field_paths_with_card_name_and_index() {
         let config = config_with(
             "    title:\n      type: string",
-            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
+            "leaf_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
         );
-        let doc = doc_with_typed_cards(&[], vec![typed_card("indorsement", &[])]);
+        let doc = doc_with_typed_leaves(&[], vec![typed_leaf("indorsement", &[])]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::MissingRequired { path } if path == "cards.indorsement[0].signature_block")
+            matches!(e, ValidationError::MissingRequired { path } if path == "leaves.indorsement[0].signature_block")
         }));
     }
 
@@ -688,35 +688,35 @@ main:
     fn body_disabled_card_enforces_trim_boundary() {
         let config = config_with(
             "    title:\n      type: string",
-            "card_types:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        required: true",
+            "leaf_kinds:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        required: true",
         );
         // Prose triggers the error; whitespace-only does not.
-        let mut prose_card = typed_card("skills", &[("items", json!(["Rust"]))]);
-        prose_card.replace_body("Should not be here.");
-        let doc = doc_with_typed_cards(&[], vec![prose_card]);
+        let mut prose_leaf = typed_leaf("skills", &[("items", json!(["Rust"]))]);
+        prose_leaf.replace_body("Should not be here.");
+        let doc = doc_with_typed_leaves(&[], vec![prose_leaf]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
             e,
-            ValidationError::BodyDisabled { path, card }
-            if card == "skills" && path == "cards.skills[0].body"
+            ValidationError::BodyDisabled { path, leaf }
+            if leaf == "skills" && path == "leaves.skills[0].body"
         )));
 
-        let mut ws_card = typed_card("skills", &[("items", json!(["Rust"]))]);
-        ws_card.replace_body("\n   \n");
-        let ok_doc = doc_with_typed_cards(&[], vec![ws_card]);
+        let mut ws_leaf = typed_leaf("skills", &[("items", json!(["Rust"]))]);
+        ws_leaf.replace_body("\n   \n");
+        let ok_doc = doc_with_typed_leaves(&[], vec![ws_leaf]);
         assert!(validate_typed_document(&config, &ok_doc).is_ok());
     }
 
     #[test]
     fn to_diagnostic_carries_path_and_code() {
         let err = ValidationError::MissingRequired {
-            path: "cards.indorsement[0].signature_block".to_string(),
+            path: "leaves.indorsement[0].signature_block".to_string(),
         };
         let diag = err.to_diagnostic();
         assert_eq!(diag.code.as_deref(), Some("validation::missing_required"));
         assert_eq!(
             diag.path.as_deref(),
-            Some("cards.indorsement[0].signature_block")
+            Some("leaves.indorsement[0].signature_block")
         );
         assert_eq!(diag.severity, Severity::Error);
     }
@@ -740,17 +740,17 @@ main:
         )
         .unwrap();
         use crate::document::{Frontmatter, Sentinel};
-        let main = Card::new_with_sentinel(
+        let main = Leaf::new_with_sentinel(
             Sentinel::Main(crate::version::QuillReference::from_str("test_quill").unwrap()),
             Frontmatter::from_index_map(IndexMap::new()),
             "Body content that should not be here.".to_string(),
         );
-        let doc = Document::from_main_and_cards(main, vec![], vec![]);
+        let doc = Document::from_main_and_leaves(main, vec![], vec![]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
             e,
-            ValidationError::BodyDisabled { path, card }
-            if card == "main" && path == "main.body"
+            ValidationError::BodyDisabled { path, leaf }
+            if leaf == "main" && path == "main.body"
         )));
     }
 }

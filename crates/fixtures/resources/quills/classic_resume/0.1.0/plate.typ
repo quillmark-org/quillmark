@@ -8,37 +8,37 @@
   contacts: data.contacts,
 )
 
-#for card in data.CARDS {
-  if "title" in card and card.title != "" {
-    section-header(card.title)
+#for leaf in data.LEAVES {
+  if "title" in leaf and leaf.title != "" {
+    section-header(leaf.title)
   }
 
-  if card.CARD == "experience_section" {
+  if leaf.KIND == "experience_section" {
     timeline-entry(
-      heading-left: card.at("headingLeft", default: ""),
-      heading-right: card.at("headingRight", default: ""),
-      subheading-left: card.at("subheadingLeft", default: none),
-      subheading-right: card.at("subheadingRight", default: none),
-      body: card.at("BODY", default: ""),
+      heading-left: leaf.at("headingLeft", default: ""),
+      heading-right: leaf.at("headingRight", default: ""),
+      subheading-left: leaf.at("subheadingLeft", default: none),
+      subheading-right: leaf.at("subheadingRight", default: none),
+      body: leaf.at("BODY", default: ""),
     )
-  } else if card.CARD == "skills_section" {
+  } else if leaf.KIND == "skills_section" {
     table(
       columns: 2,
-      items: card.cells.map(item => (
+      items: leaf.cells.map(item => (
         category: item.category,
         text: item.skills,
       ))
     )
-  } else if card.CARD == "projects_section" {
+  } else if leaf.KIND == "projects_section" {
     project-entry(
-      name: card.name,
-      url: card.at("url", default: none),
-      body: card.at("BODY", default: ""),
+      name: leaf.name,
+      url: leaf.at("url", default: none),
+      body: leaf.at("BODY", default: ""),
     )
-  } else if card.CARD == "certifications_section" {
+  } else if leaf.KIND == "certifications_section" {
     table(
       columns: 2,
-      items: card.cells
+      items: leaf.cells
     )
   }
 }

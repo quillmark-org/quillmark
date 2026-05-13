@@ -9,10 +9,10 @@
 //!
 //! ## Key Types
 //!
-//! - [`Document`]: Typed in-memory Quillmark document — `main` card plus composable cards.
-//! - [`Card`]: A single metadata fence block, main or composable, with a sentinel,
+//! - [`Document`]: Typed in-memory Quillmark document — `main` leaf plus composable leaves.
+//! - [`Leaf`]: A single metadata fence block, main or composable, with a sentinel,
 //!   typed frontmatter, and a body.
-//! - [`Sentinel`]: Discriminates `QUILL:` main cards from `CARD:` composable cards.
+//! - [`Sentinel`]: Discriminates `QUILL:` main leaves from `KIND:` composable leaves.
 //! - [`Frontmatter`]: Ordered list of items (fields + comments) parsed from a YAML fence.
 //!
 //! ## Examples
@@ -40,7 +40,18 @@
 //!     .and_then(|v| v.as_str())
 //!     .unwrap_or("Untitled");
 //! assert_eq!(title, "My Document");
-//! assert_eq!(doc.cards().len(), 0);
+//! assert_eq!(doc.leaves().len(), 0);
+//! ```
+//!
+//! ### Document with leaves
+//!
+//! ```
+//! use quillmark_core::Document;
+//!
+//! let markdown = "---\nQUILL: my_quill\ntitle: Catalog\n---\n\nIntro.\n\n```leaf\nKIND: product\nname: Widget\n```\n";
+//! let doc = Document::from_markdown(markdown).unwrap();
+//! assert_eq!(doc.leaves().len(), 1);
+//! assert_eq!(doc.leaves()[0].tag(), "product");
 //! ```
 //!
 //! ### Accessing the plate wire format
@@ -55,7 +66,7 @@
 //! assert_eq!(json["QUILL"], "my_quill");
 //! assert_eq!(json["title"], "Hi");
 //! assert_eq!(json["BODY"], "\nBody here.\n");
-//! assert!(json["CARDS"].is_array());
+//! assert!(json["LEAVES"].is_array());
 //! ```
 //!
 //! ## Error Handling
@@ -64,7 +75,7 @@
 //! - Malformed YAML syntax
 //! - Unclosed frontmatter blocks
 //! - Multiple global frontmatter blocks
-//! - Both QUILL and CARD specified in the same block
+//! - Both QUILL and KIND specified in the same block
 //! - Reserved field name usage
 //! - Name collisions
 //!
@@ -103,27 +114,27 @@ pub struct ParseOutput {
     pub warnings: Vec<Diagnostic>,
 }
 
-/// Discriminator for a [`Card`]'s metadata fence.
+/// Discriminator for a [`Leaf`]'s metadata fence.
 ///
 /// The first fence in a Quillmark document carries `QUILL: <ref>` and is the
-/// document-level *main* card; every subsequent fence carries `CARD: <tag>`
-/// and is a composable card. `Sentinel` captures that distinction in the typed
+/// document-level *main* leaf; every subsequent fence carries `KIND: <tag>`
+/// and is a composable leaf. `Sentinel` captures that distinction in the typed
 /// model so every fence is one uniform shape.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Sentinel {
-    /// `QUILL: <ref>` — the document entry card.
+    /// `QUILL: <ref>` — the document entry leaf.
     Main(QuillReference),
-    /// `CARD: <tag>` — a composable card with the given tag.
-    Card(String),
+    /// `KIND: <tag>` — a composable leaf with the given tag.
+    Leaf(String),
 }
 
 impl Sentinel {
     /// String form of this sentinel's value: the quill reference for `Main`,
-    /// the tag for `Card`.
+    /// the tag for `Leaf`.
     pub fn as_str(&self) -> String {
         match self {
             Sentinel::Main(r) => r.to_string(),
-            Sentinel::Card(t) => t.clone(),
+            Sentinel::Leaf(t) => t.clone(),
         }
     }
 
@@ -135,34 +146,34 @@ impl Sentinel {
 
 /// A single metadata fence parsed from a Quillmark Markdown document.
 ///
-/// A `Card` is the uniform shape for both the document entry (main) fence and
-/// composable card fences. `sentinel` distinguishes the two.
+/// A `Leaf` is the uniform shape for both the document entry (main) fence and
+/// composable leaf fences. `sentinel` distinguishes the two.
 ///
-/// Every card has:
-/// - `sentinel` — the `QUILL` reference (for main) or `CARD` tag (for composable).
+/// Every leaf has:
+/// - `sentinel` — the `QUILL` reference (for main) or `KIND` tag (for composable).
 /// - `frontmatter` — ordered items parsed from the YAML fence body (with the
 ///   sentinel key already removed).
 /// - `body` — the Markdown text that follows the closing fence, up to the next
 ///   fence (or EOF).
 ///
-/// ## Card body absence
+/// ## Leaf body absence
 ///
-/// If a card block has no trailing Markdown content (e.g. the next block or
+/// If a leaf block has no trailing Markdown content (e.g. the next block or
 /// EOF immediately follows the closing fence), `body` is the empty string `""`.
 /// It is never `None`; callers that need to distinguish "absent" from "empty"
-/// should check `card.body().is_empty()`.
+/// should check `leaf.body().is_empty()`.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Card {
+pub struct Leaf {
     sentinel: Sentinel,
     frontmatter: Frontmatter,
     body: String,
 }
 
-impl Card {
-    /// Create a `Card` directly from a sentinel, a typed frontmatter, and a
+impl Leaf {
+    /// Create a `Leaf` directly from a sentinel, a typed frontmatter, and a
     /// body. Does **not** validate the sentinel tag or any field names —
     /// callers are responsible for providing already-valid data. For
-    /// user-facing construction of composable cards use [`Card::new`]
+    /// user-facing construction of composable leaves use [`Leaf::new`]
     /// (defined in `edit.rs`).
     pub fn new_with_sentinel(sentinel: Sentinel, frontmatter: Frontmatter, body: String) -> Self {
         Self {
@@ -172,13 +183,13 @@ impl Card {
         }
     }
 
-    /// The sentinel discriminating this card as main or composable.
+    /// The sentinel discriminating this leaf as main or composable.
     pub fn sentinel(&self) -> &Sentinel {
         &self.sentinel
     }
 
-    /// The card tag — the `CARD:` value for composable cards, or the string
-    /// form of the quill reference for main cards.
+    /// The leaf tag — the `KIND:` value for composable leaves, or the string
+    /// form of the quill reference for main leaves.
     pub fn tag(&self) -> String {
         self.sentinel.as_str()
     }
@@ -193,25 +204,25 @@ impl Card {
         &mut self.frontmatter
     }
 
-    /// Markdown body that follows this card's closing fence.
+    /// Markdown body that follows this leaf's closing fence.
     ///
     /// Empty string when no trailing content is present.
     pub fn body(&self) -> &str {
         &self.body
     }
 
-    /// Returns `true` if this is the document entry (main) card.
+    /// Returns `true` if this is the document entry (main) leaf.
     pub fn is_main(&self) -> bool {
         self.sentinel.is_main()
     }
 
-    /// Replace this card's sentinel. Internal helper; public mutators
+    /// Replace this leaf's sentinel. Internal helper; public mutators
     /// ([`Document::set_quill_ref`], the parser) call this.
     pub(crate) fn replace_sentinel(&mut self, sentinel: Sentinel) {
         self.sentinel = sentinel;
     }
 
-    /// Overwrite the body string. Internal helper used by [`Card::replace_body`].
+    /// Overwrite the body string. Internal helper used by [`Leaf::replace_body`].
     pub(crate) fn overwrite_body(&mut self, body: String) {
         self.body = body;
     }
@@ -225,16 +236,16 @@ impl Card {
 ///
 /// ## Structure
 ///
-/// - `main` — the entry `Card` (sentinel is `Sentinel::Main(reference)`).
-/// - `cards` — ordered composable cards (each with `Sentinel::Card(tag)`).
+/// - `main` — the entry `Leaf` (sentinel is `Sentinel::Main(reference)`).
+/// - `leaves` — ordered composable leaves (each with `Sentinel::Leaf(tag)`).
 ///
 /// Backend plates consume the flat JSON wire shape produced by
 /// [`Document::to_plate_json`]. That method is the **only** place in core
-/// that reconstructs `{"QUILL": ..., "CARDS": [...], "BODY": "..."}`.
+/// that reconstructs `{"QUILL": ..., "LEAVES": [...], "BODY": "..."}`.
 #[derive(Debug, Clone)]
 pub struct Document {
-    main: Card,
-    cards: Vec<Card>,
+    main: Leaf,
+    leaves: Vec<Leaf>,
     warnings: Vec<Diagnostic>,
 }
 
@@ -242,27 +253,27 @@ pub struct Document {
 // parse-time observations that depend on what the source text happened to
 // contain (near-miss sentinels, unsupported tag drops, etc.) and so differ
 // between a source document and its round-tripped emission. Two documents
-// are equal when their `main` and `cards` match.
+// are equal when their `main` and `leaves` match.
 impl PartialEq for Document {
     fn eq(&self, other: &Self) -> bool {
-        self.main == other.main && self.cards == other.cards
+        self.main == other.main && self.leaves == other.leaves
     }
 }
 
 impl Document {
-    /// Create a `Document` from a pre-built main `Card` and composable cards.
+    /// Create a `Document` from a pre-built main `Leaf` and composable leaves.
     ///
     /// The caller must guarantee that `main.sentinel` is `Sentinel::Main(_)`
-    /// and every card in `cards` has `sentinel` = `Sentinel::Card(_)`.
-    pub fn from_main_and_cards(main: Card, cards: Vec<Card>, warnings: Vec<Diagnostic>) -> Self {
-        debug_assert!(main.sentinel.is_main(), "main card must be Sentinel::Main");
+    /// and every leaf in `leaves` has `sentinel` = `Sentinel::Leaf(_)`.
+    pub fn from_main_and_leaves(main: Leaf, leaves: Vec<Leaf>, warnings: Vec<Diagnostic>) -> Self {
+        debug_assert!(main.sentinel.is_main(), "main leaf must be Sentinel::Main");
         debug_assert!(
-            cards.iter().all(|c| !c.sentinel.is_main()),
-            "composable cards must be Sentinel::Card"
+            leaves.iter().all(|c| !c.sentinel.is_main()),
+            "composable leaves must be Sentinel::Leaf"
         );
         Self {
             main,
-            cards,
+            leaves,
             warnings,
         }
     }
@@ -280,42 +291,42 @@ impl Document {
 
     // ── Accessors ──────────────────────────────────────────────────────────────
 
-    /// The document's main (entry) card.
-    pub fn main(&self) -> &Card {
+    /// The document's main (entry) leaf.
+    pub fn main(&self) -> &Leaf {
         &self.main
     }
 
-    /// Mutable access to the main card.
-    pub fn main_mut(&mut self) -> &mut Card {
+    /// Mutable access to the main leaf.
+    pub fn main_mut(&mut self) -> &mut Leaf {
         &mut self.main
     }
 
-    /// The quill reference (`name@version-selector`) carried by the main card's
+    /// The quill reference (`name@version-selector`) carried by the main leaf's
     /// sentinel. Convenience reader over `doc.main().sentinel()`.
     pub fn quill_reference(&self) -> &QuillReference {
         match &self.main.sentinel {
             Sentinel::Main(r) => r,
-            Sentinel::Card(_) => {
-                unreachable!("main card must carry Sentinel::Main by construction")
+            Sentinel::Leaf(_) => {
+                unreachable!("main leaf must carry Sentinel::Main by construction")
             }
         }
     }
 
-    /// Ordered list of composable card blocks.
-    pub fn cards(&self) -> &[Card] {
-        &self.cards
+    /// Ordered list of composable leaf blocks.
+    pub fn leaves(&self) -> &[Leaf] {
+        &self.leaves
     }
 
-    /// Mutable access to the composable cards slice.
-    pub fn cards_mut(&mut self) -> &mut [Card] {
-        &mut self.cards
+    /// Mutable access to the composable leaves slice.
+    pub fn leaves_mut(&mut self) -> &mut [Leaf] {
+        &mut self.leaves
     }
 
-    /// Internal mutable access to the backing `Vec<Card>`. Used by edit
-    /// operations ([`Document::push_card`], etc.) that need to insert or
+    /// Internal mutable access to the backing `Vec<Leaf>`. Used by edit
+    /// operations ([`Document::push_leaf`], etc.) that need to insert or
     /// remove elements.
-    pub(crate) fn cards_vec_mut(&mut self) -> &mut Vec<Card> {
-        &mut self.cards
+    pub(crate) fn leaves_vec_mut(&mut self) -> &mut Vec<Leaf> {
+        &mut self.leaves
     }
 
     /// Non-fatal warnings collected during parsing.
@@ -336,8 +347,8 @@ impl Document {
     ///   "<field>": <value>,
     ///   ...
     ///   "BODY": "<global-body>",
-    ///   "CARDS": [
-    ///     { "CARD": "<tag>", "<field>": <value>, ..., "BODY": "<card-body>" },
+    ///   "LEAVES": [
+    ///     { "KIND": "<tag>", "<field>": <value>, ..., "BODY": "<leaf-body>" },
     ///     ...
     ///   ]
     /// }
@@ -366,25 +377,25 @@ impl Document {
             serde_json::Value::String(self.main.body.clone()),
         );
 
-        // Cards array.
-        let cards_array: Vec<serde_json::Value> = self
-            .cards
+        // Leaves array.
+        let leaves_array: Vec<serde_json::Value> = self
+            .leaves
             .iter()
-            .map(|card| {
-                let mut card_map = serde_json::Map::new();
-                card_map.insert("CARD".to_string(), serde_json::Value::String(card.tag()));
-                for (key, value) in card.frontmatter.iter() {
-                    card_map.insert(key.clone(), value.as_json().clone());
+            .map(|leaf| {
+                let mut leaf_map = serde_json::Map::new();
+                leaf_map.insert("KIND".to_string(), serde_json::Value::String(leaf.tag()));
+                for (key, value) in leaf.frontmatter.iter() {
+                    leaf_map.insert(key.clone(), value.as_json().clone());
                 }
-                card_map.insert(
+                leaf_map.insert(
                     "BODY".to_string(),
-                    serde_json::Value::String(card.body.clone()),
+                    serde_json::Value::String(leaf.body.clone()),
                 );
-                serde_json::Value::Object(card_map)
+                serde_json::Value::Object(leaf_map)
             })
             .collect();
 
-        map.insert("CARDS".to_string(), serde_json::Value::Array(cards_array));
+        map.insert("LEAVES".to_string(), serde_json::Value::Array(leaves_array));
 
         serde_json::Value::Object(map)
     }

@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, HashMap};
 use indexmap::IndexMap;
 use proptest::prelude::*;
 use quillmark_core::quill::{
-    CardSchema, CoercionError, FieldSchema, FieldType, QuillConfig,
+    LeafSchema, CoercionError, FieldSchema, FieldType, QuillConfig,
 };
 use quillmark_core::QuillValue;
 
@@ -118,7 +118,7 @@ fn config_with_one_field(schema: FieldSchema) -> QuillConfig {
     schema.name = ROOT_FIELD.to_string();
     let mut fields = BTreeMap::new();
     fields.insert(ROOT_FIELD.to_string(), schema);
-    let main = CardSchema {
+    let main = LeafSchema {
         name: "main".to_string(),
         description: None,
         fields,
@@ -129,7 +129,7 @@ fn config_with_one_field(schema: FieldSchema) -> QuillConfig {
         name: "test".to_string(),
         description: String::new(),
         main,
-        card_types: Vec::new(),
+        leaf_kinds: Vec::new(),
         backend: "typst".to_string(),
         version: "1.0".to_string(),
         author: String::new(),

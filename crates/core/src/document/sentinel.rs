@@ -1,4 +1,4 @@
-//! QUILL / CARD sentinel extraction and reserved-name validation.
+//! QUILL / KIND sentinel extraction and reserved-name validation.
 //!
 //! Implements the sentinel rules from MARKDOWN.md §4.2 and the reserved-name
 //! checks from spec §3.
@@ -53,7 +53,7 @@ pub(super) fn first_content_key(content: &str) -> Option<&str> {
     }
 }
 
-/// Extract `QUILL` / `CARD` sentinels and remaining fields from a parsed-YAML
+/// Extract `QUILL` / `KIND` sentinels and remaining fields from a parsed-YAML
 /// mapping. Returns `(tag, quill_ref, yaml_without_sentinel)`.
 #[allow(clippy::type_complexity)]
 pub(super) fn extract_sentinels(
@@ -64,21 +64,21 @@ pub(super) fn extract_sentinels(
 ) -> Result<(Option<String>, Option<String>, Option<serde_json::Value>), ParseError> {
     let Some(mapping) = parsed.as_object() else {
         // Non-mapping (scalar/sequence); keep as-is — upstream will reject if
-        // it's a frontmatter/card mapping was expected.
+        // it's a frontmatter/leaf mapping was expected.
         return Ok((None, None, Some(parsed)));
     };
 
     let has_quill = mapping.contains_key("QUILL");
-    let has_card = mapping.contains_key("CARD");
+    let has_leaf = mapping.contains_key("KIND");
 
-    if has_quill && has_card {
+    if has_quill && has_leaf {
         return Err(ParseError::InvalidStructure(
-            "Cannot specify both QUILL and CARD in the same block".to_string(),
+            "Cannot specify both QUILL and KIND in the same block".to_string(),
         ));
     }
 
-    // Reserved keys (BODY, CARDS) — spec §3
-    for reserved in ["BODY", "CARDS"] {
+    // Reserved keys (BODY, LEAVES) — spec §3
+    for reserved in ["BODY", "LEAVES"] {
         if mapping.contains_key(reserved) {
             return Err(ParseError::InvalidStructure(format!(
                 "Reserved field name '{}' cannot be used in YAML frontmatter",
@@ -109,20 +109,20 @@ pub(super) fn extract_sentinels(
             Some(serde_json::Value::Object(new_map))
         };
         Ok((None, Some(quill_str.to_string()), new_val))
-    } else if has_card {
+    } else if has_leaf {
         let field_name = mapping
-            .get("CARD")
+            .get("KIND")
             .unwrap()
             .as_str()
-            .ok_or("CARD value must be a string")?;
+            .ok_or("KIND value must be a string")?;
         if !is_valid_tag_name(field_name) {
             return Err(ParseError::InvalidStructure(format!(
-                "Invalid card field name '{}': must match pattern [a-z_][a-z0-9_]*",
+                "Invalid leaf field name '{}': must match pattern [a-z_][a-z0-9_]*",
                 field_name
             )));
         }
         let mut new_map = mapping.clone();
-        new_map.shift_remove("CARD");
+        new_map.shift_remove("KIND");
         let new_val = if new_map.is_empty() {
             None
         } else {

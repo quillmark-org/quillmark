@@ -12,10 +12,10 @@
 //!   `# <type>[<format>]; <role>[, <extras>...]`. Type is mandatory on every
 //!   field. Format slot uses angle brackets (`array<string>`,
 //!   `date<YYYY-MM-DD>`, `enum<a | b | c>`). Role is `required`, `optional`,
-//!   or `composable (0..N)` for cards. The QUILL sentinel adds a `verbatim`
+//!   or `composable (0..N)` for leaves. The QUILL sentinel adds a `verbatim`
 //!   extra signaling that the value must not be modified.
 //! - **Body regions** are signalled by `Write main body here.` after the main
-//!   fence and `Write <card name> body here.` after each card fence. When
+//!   fence and `Write <leaf name> body here.` after each leaf fence. When
 //!   `body.example` is set, the example text is embedded verbatim instead.
 //!   Absent when `body.enabled` is false.
 //!
@@ -24,7 +24,7 @@
 
 use std::collections::BTreeMap;
 
-use super::{CardSchema, FieldSchema, FieldType, QuillConfig};
+use super::{LeafSchema, FieldSchema, FieldType, QuillConfig};
 use crate::document::emit::emit_double_quoted;
 use crate::value::QuillValue;
 
@@ -54,13 +54,13 @@ impl QuillConfig {
             let text = example.unwrap_or("Write main body here.");
             out.push_str(&format!("\n{}\n", text));
         }
-        for card in &self.card_types {
-            let sentinel = format!("CARD: {}  # sentinel; composable (0..N)", card.name);
+        for leaf in &self.leaf_kinds {
+            let sentinel = format!("KIND: {}  # sentinel; composable (0..N)", leaf.name);
             out.push('\n');
-            write_card_frontmatter(&mut out, card, &sentinel, card.description.as_deref());
-            if card.body_enabled() {
-                let example = card.body.as_ref().and_then(|b| b.example.as_deref());
-                let fallback = format!("Write {} body here.", card.name);
+            write_card_frontmatter(&mut out, leaf, &sentinel, leaf.description.as_deref());
+            if leaf.body_enabled() {
+                let example = leaf.body.as_ref().and_then(|b| b.example.as_deref());
+                let fallback = format!("Write {} body here.", leaf.name);
                 let text = example.unwrap_or(fallback.as_str());
                 out.push_str(&format!("\n{}\n", text));
             }
@@ -71,7 +71,7 @@ impl QuillConfig {
 
 fn write_card_frontmatter(
     out: &mut String,
-    card: &CardSchema,
+    leaf: &LeafSchema,
     sentinel_line: &str,
     description: Option<&str>,
 ) {
@@ -82,7 +82,7 @@ fn write_card_frontmatter(
     }
     out.push_str(sentinel_line);
     out.push('\n');
-    for (_, fields) in group_fields(card.fields.values()) {
+    for (_, fields) in group_fields(leaf.fields.values()) {
         for field in fields {
             write_field(out, field, 0);
         }
@@ -643,13 +643,13 @@ main:
     }
 
     #[test]
-    fn card_sentinel_line_is_composable() {
+    fn leaf_sentinel_line_is_composable() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     title: { type: string }
-card_types:
+leaf_kinds:
   note:
     description: A short note appended to the document.
     fields:
@@ -657,7 +657,7 @@ card_types:
 "#)
         .blueprint();
         assert!(t.contains(
-            "# A short note appended to the document.\nCARD: note  # sentinel; composable (0..N)\n"
+            "# A short note appended to the document.\nKIND: note  # sentinel; composable (0..N)\n"
         ));
     }
 
@@ -668,14 +668,14 @@ quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     title: { type: string }
-card_types:
+leaf_kinds:
   skills:
     body: { enabled: false }
     fields:
       items: { type: array, required: true }
 "#)
         .blueprint();
-        let after = &t[t.find("CARD: skills").unwrap()..];
+        let after = &t[t.find("KIND: skills").unwrap()..];
         assert!(!after.contains("skills body"));
     }
 
@@ -686,7 +686,7 @@ quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     title: { type: string }
-card_types:
+leaf_kinds:
   note:
     body:
       example: "This is an example note."
@@ -694,7 +694,7 @@ card_types:
       author: { type: string }
 "#)
         .blueprint();
-        let after = &t[t.find("CARD: note").unwrap()..];
+        let after = &t[t.find("KIND: note").unwrap()..];
         assert!(after.contains("\nThis is an example note.\n"));
         assert!(!after.contains("Write note body here."));
     }
@@ -715,13 +715,13 @@ main:
     }
 
     #[test]
-    fn card_body_placeholder_uses_card_name() {
+    fn leaf_body_placeholder_uses_card_name() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     title: { type: string }
-card_types:
+leaf_kinds:
   indorsement:
     fields:
       from: { type: string }
@@ -930,7 +930,7 @@ main:
       type: array
       example:
         - report.pdf
-card_types:
+leaf_kinds:
   enclosure:
     description: An enclosure attached to the letter.
     fields:

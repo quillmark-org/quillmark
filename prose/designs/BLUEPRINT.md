@@ -27,12 +27,12 @@ field: value  # <type>; <role>
 Write main body here.
 
 ---
-# <card description>
-CARD: <card_name>  # sentinel; composable (0..N)
+# <leaf description>
+KIND: <leaf_kind>  # sentinel; composable (0..N)
 ...fields...
 ---
 
-Write <card_name> body here.
+Write <leaf_kind> body here.
 ```
 
 When `body.example` is set, its text replaces the body marker entirely.
@@ -83,7 +83,7 @@ Form: **`# <type>[<format>]; <role>[, <extra>...]`**
   - omitted for `string`, `integer`, `number`, `boolean`, `object`,
     `markdown` (nothing meaningful to refine).
 - **Role slot** (mandatory, after `;`): `required`, `optional`, or
-  `composable (0..N)` (CARD-sentinel only).
+  `composable (0..N)` (KIND-sentinel only).
 - **Extras** (optional, comma-separated, after the role): additional
   qualifiers. Currently used for `verbatim` on the QUILL sentinel,
   signaling that the rendered value is fixed and must not be modified.
@@ -102,7 +102,7 @@ Examples:
 | `published: ""  # datetime<ISO 8601>; required` | required datetime in ISO 8601 |
 | `level: low  # enum<low \| medium \| high>; optional` | optional enum, default is first value |
 | `QUILL: cmu_letter@0.1.0  # sentinel; required, verbatim` | quill binding, do not modify |
-| `CARD: skill  # sentinel; composable (0..N)` | repeat the entire `--- CARD ... ---` block per instance |
+| `KIND: skill  # sentinel; composable (0..N)` | repeat the entire `--- KIND ... ---` block per instance |
 
 ## Placeholder value precedence
 
@@ -238,11 +238,11 @@ within the same `ui.group` still cluster together via `ui.order`.
 ## Body markers
 
 - `Write main body here.` after the main fence
-- `Write <card_name> body here.` after each card fence
+- `Write <leaf_kind> body here.` after each leaf fence
 - When `body.example` is set, its text replaces the marker verbatim.
 
-`body.enabled: false` suppresses the marker entirely for body-less cards
-(e.g., a `skills` card whose data is purely structured).
+`body.enabled: false` suppresses the marker entirely for body-less leaves
+(e.g., a `skills` leaf whose data is purely structured).
 
 A `body.example` whose text contains a line that would parse as a
 metadata fence (`---`, with up to three leading spaces) is rejected at

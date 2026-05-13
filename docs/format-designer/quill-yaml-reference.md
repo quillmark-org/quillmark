@@ -10,13 +10,13 @@ A `Quill.yaml` has these top-level sections:
 quill:        # Required — format metadata
   ...
 
-main:         # Optional — main entry-point card: field schemas and optional ui/body
+main:         # Optional — main entry-point leaf: field schemas and optional ui/body
   fields:
     ...
   ui:         # optional UI hints (e.g. title)
   body:       # optional body-region config (e.g. enabled, description)
 
-card_types:   # Optional — additional composable card types
+leaf_kinds:   # Optional — additional composable leaf kinds
   ...
 
 typst:        # Optional — backend-specific configuration
@@ -62,7 +62,7 @@ quill:
 
 ## `main` Section
 
-The main document card holds **frontmatter field schemas** under `main.fields`. Optional `main.description` describes the schema itself (independent of `quill.description`, which describes the quill package). Optional `main.ui` sets container-level UI for that card. `quill.ui` is merged with `main.ui` when building the main card.
+The main document leaf holds **frontmatter field schemas** under `main.fields`. Optional `main.description` describes the schema itself (independent of `quill.description`, which describes the quill package). Optional `main.ui` sets container-level UI for that leaf. `quill.ui` is merged with `main.ui` when building the main leaf.
 
 Field order under `main.fields` determines display order in UIs — the first field gets `order: 0`, the second gets `order: 1`, and so on.
 
@@ -261,15 +261,15 @@ main:
 
 ---
 
-## `card_types` Section
+## `leaf_kinds` Section
 
-`card_types` define composable, repeatable content blocks (the *types* — a document can then carry zero or more *instances* of each type, interleaved with body content). Each entry is shaped exactly like `main:` (`fields`, optional `description`, `ui`, `body`); think of `main:` as the single mandatory card-type for the document body, and `card_types:` as the library of additional types that may attach to it.
+`leaf_kinds` define composable, repeatable content blocks (the *types* — a document can then carry zero or more *instances* of each type, interleaved with body content). Each entry is shaped exactly like `main:` (`fields`, optional `description`, `ui`, `body`); think of `main:` as the single mandatory leaf-kind for the document body, and `leaf_kinds:` as the library of additional types that may attach to it.
 
-Card-type names (the keys under `card_types`) must match `[a-z_][a-z0-9_]*` (leading underscore is allowed).
+Leaf-kind names (the keys under `leaf_kinds`) must match `[a-z_][a-z0-9_]*` (leading underscore is allowed).
 
 ```yaml
-card_types:
-  indorsement:                    # Card-type name
+leaf_kinds:
+  indorsement:                    # Leaf-kind name
     description: Chain of routing endorsements.
     fields:
       from:
@@ -282,46 +282,46 @@ card_types:
         default: standard
 ```
 
-Invalid card-type names include:
+Invalid leaf-kind names include:
 
-- `BadCard` (uppercase letters)
-- `my-card` (hyphen)
-- `2nd_card` (starts with a digit)
+- `BadLeaf` (uppercase letters)
+- `my-leaf` (hyphen)
+- `2nd_leaf` (starts with a digit)
 
-### Card Properties
+### Leaf Properties
 
 | Property      | Type   | Required | Description |
 |---------------|--------|----------|-------------|
-| `description` | string | no       | Help text describing the card's purpose |
+| `description` | string | no       | Help text describing the leaf's purpose |
 | `fields`      | object | no       | Field schemas (same structure as top-level fields) |
-| `ui`          | object | no       | Container-level UI hints (see [Card-level `ui`](#card-level-ui)) |
-| `body`        | object | no       | Body-region config (see [Card-level `body`](#card-level-body)) |
+| `ui`          | object | no       | Container-level UI hints (see [Leaf-level `ui`](#leaf-level-ui)) |
+| `body`        | object | no       | Body-region config (see [Leaf-level `body`](#leaf-level-body)) |
 
-### Card-level `ui`
+### Leaf-level `ui`
 
 | Property | Type   | Description |
 |----------|--------|-------------|
-| `title`  | string | Display label for the card type. Literal string or `{field}` template |
+| `title`  | string | Display label for the leaf kind. Literal string or `{field}` template |
 
-### Card-level `body`
+### Leaf-level `body`
 
 | Property  | Type   | Description |
 |-----------|--------|-------------|
-| `enabled`     | bool   | Whether the body editor is enabled (default: true). When false, consumers must not accept or store body content for this card type. |
+| `enabled`     | bool   | Whether the body editor is enabled (default: true). When false, consumers must not accept or store body content for this leaf kind. |
 | `description` | string | Description shown in the body editor placeholder when the body is empty. |
 
 #### `title`
 
-A human-readable display label for the card type. UI consumers should prefer it over the snake_case map key when rendering section headers, chips, picker entries, or per-instance titles in a list.
+A human-readable display label for the leaf kind. UI consumers should prefer it over the snake_case map key when rendering section headers, chips, picker entries, or per-instance titles in a list.
 
-The label is decoupled from the map key (e.g. `indorsement`), which is the on-the-wire `CARD` discriminator. Authors can rename the label freely without invalidating stored documents.
+The label is decoupled from the map key (e.g. `indorsement`), which is the on-the-wire `KIND` discriminator. Authors can rename the label freely without invalidating stored documents.
 
 **Two flavors:**
 
 A literal string serves as a static type label:
 
 ```yaml
-card_types:
+leaf_kinds:
   indorsement:
     ui:
       title: Routing Endorsement
@@ -333,7 +333,7 @@ card_types:
 A template containing `{field_name}` tokens lets UI consumers produce a per-instance title by interpolating live field values:
 
 ```yaml
-card_types:
+leaf_kinds:
   endorsement:
     ui:
       title: "{from} → {for}"
@@ -344,7 +344,7 @@ card_types:
         type: string
 ```
 
-With the template form, a UI rendering a list of cards can title each instance (e.g. `"ORG1/SYM → ORG2/SYM"`) instead of falling back to a generic `"Card (2)"`.
+With the template form, a UI rendering a list of leaves can title each instance (e.g. `"ORG1/SYM → ORG2/SYM"`) instead of falling back to a generic `"Leaf (2)"`.
 
 **Interpolation rules (for UI consumers):**
 - `{field_name}` is replaced with the current value of that field.
@@ -356,13 +356,13 @@ With the template form, a UI rendering a list of cards can title each instance (
 
 #### `body.enabled`
 
-When `false`, the card type has no body/content area. Consumers must not accept or store body content for instances of this card type. The validator enforces this: a document instance that provides body content for a `body.enabled: false` card type is rejected with a `BodyDisabled` error.
+When `false`, the leaf kind has no body/content area. Consumers must not accept or store body content for instances of this leaf kind. The validator enforces this: a document instance that provides body content for a `body.enabled: false` leaf kind is rejected with a `BodyDisabled` error.
 
 ```yaml
-card_types:
+leaf_kinds:
   metadata_block:
     body:
-      enabled: false    # Card has fields only, no body/content area
+      enabled: false    # Leaf has fields only, no body/content area
     fields:
       category:
         type: string
@@ -373,7 +373,7 @@ card_types:
 Optional description displayed in the body editor placeholder area when the body is empty. Has no effect when `body.enabled` is false.
 
 ```yaml
-card_types:
+leaf_kinds:
   experience:
     body:
       description: Describe your role, responsibilities, and key achievements.
@@ -382,11 +382,12 @@ card_types:
         type: string
 ```
 
-### Using Cards in Markdown
+### Using Leaves in Markdown
 
-Cards appear as additional `---`-delimited metadata blocks in the document body, each declaring a `CARD:` directive:
+Leaves appear as fenced code blocks with the info string `leaf`, each
+declaring `KIND:` as the first body key:
 
-```markdown
+````markdown
 ---
 QUILL: usaf_memo
 subject: Example
@@ -395,29 +396,29 @@ subject: Example
 
 Main memo body text here.
 
----
-CARD: indorsement
+```leaf
+KIND: indorsement
 from: ORG/SYMBOL
 for: RECIPIENT/SYMBOL
 signature_block:
   - JANE A. DOE, Colonel, USAF
   - Commander
----
+```
 
 Body of the first endorsement.
 
----
-CARD: indorsement
+```leaf
+KIND: indorsement
 from: ANOTHER/ORG
 for: FINAL/RECIPIENT
 format: informal
 signature_block:
   - JOHN B. SMITH, Lt Col, USAF
   - Deputy Commander
----
+```
 
 Body of the second endorsement.
-```
+````
 
 ---
 
@@ -497,7 +498,7 @@ main:
       ui:
         group: Financials
 
-card_types:
+leaf_kinds:
   milestone:
     description: A project milestone with target date and status.
     fields:

@@ -19,7 +19,7 @@ main:
       title: title of document
       type: string
 
-card_types:
+leaf_kinds:
   quotes:
     title: Inspirational Quotes
     description: A collection of quotes about taro ice cream
