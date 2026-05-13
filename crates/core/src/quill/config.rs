@@ -702,16 +702,6 @@ impl QuillConfig {
         chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
     }
 
-    fn is_valid_card_identifier(name: &str) -> bool {
-        let mut chars = name.chars();
-        match chars.next() {
-            Some(c) if c.is_ascii_lowercase() || c == '_' => {}
-            _ => return false,
-        }
-
-        chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-    }
-
     fn is_valid_quill_name(name: &str) -> bool {
         name == "__default__" || Self::is_snake_case_identifier(name)
     }
@@ -1116,7 +1106,7 @@ impl QuillConfig {
                 }
                 Some(leaf_kinds_table) => {
                     for (leaf_name, leaf_value) in leaf_kinds_table {
-                        if !Self::is_valid_card_identifier(leaf_name) {
+                        if !crate::document::sentinel::is_valid_tag_name(leaf_name) {
                             errors.push(
                                 Diagnostic::new(
                                     Severity::Error,
