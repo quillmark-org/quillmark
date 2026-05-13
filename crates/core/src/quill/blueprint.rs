@@ -40,7 +40,7 @@ impl QuillConfig {
             .as_deref()
             .filter(|s| !s.is_empty())
             .or_else(|| Some(self.description.as_str()).filter(|s| !s.is_empty()));
-        write_card_frontmatter(
+        write_fence_block(
             &mut out,
             &self.main,
             &format!(
@@ -48,6 +48,8 @@ impl QuillConfig {
                 self.name, self.version
             ),
             main_desc,
+            "---\n",
+            "---\n",
         );
         if self.main.body_enabled() {
             let example = self.main.body.as_ref().and_then(|b| b.example.as_deref());
@@ -57,7 +59,14 @@ impl QuillConfig {
         for leaf in &self.leaf_kinds {
             let sentinel = format!("KIND: {}  # sentinel; composable (0..N)", leaf.name);
             out.push('\n');
-            write_card_frontmatter(&mut out, leaf, &sentinel, leaf.description.as_deref());
+            write_fence_block(
+                &mut out,
+                leaf,
+                &sentinel,
+                leaf.description.as_deref(),
+                "```leaf\n",
+                "```\n",
+            );
             if leaf.body_enabled() {
                 let example = leaf.body.as_ref().and_then(|b| b.example.as_deref());
                 let fallback = format!("Write {} body here.", leaf.name);
@@ -69,13 +78,15 @@ impl QuillConfig {
     }
 }
 
-fn write_card_frontmatter(
+fn write_fence_block(
     out: &mut String,
     leaf: &LeafSchema,
     sentinel_line: &str,
     description: Option<&str>,
+    open_fence: &str,
+    close_fence: &str,
 ) {
-    out.push_str("---\n");
+    out.push_str(open_fence);
     if let Some(desc) = description {
         let clean = desc.split_whitespace().collect::<Vec<_>>().join(" ");
         out.push_str(&format!("# {}\n", clean));
@@ -87,7 +98,7 @@ fn write_card_frontmatter(
             write_field(out, field, 0);
         }
     }
-    out.push_str("---\n");
+    out.push_str(close_fence);
 }
 
 /// Cluster fields by `ui.group` (preserving first-appearance order; ungrouped
@@ -662,7 +673,7 @@ leaf_kinds:
     }
 
     #[test]
-    fn body_disabled_card_omits_body_placeholder() {
+    fn body_disabled_leaf_omits_body_placeholder() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -715,7 +726,7 @@ main:
     }
 
     #[test]
-    fn leaf_body_placeholder_uses_card_name() {
+    fn leaf_body_placeholder_uses_leaf_name() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -942,6 +953,15 @@ leaf_kinds:
     fn blueprint_round_trips_idempotently() {
         let bp = cfg(LETTER_QUILL).blueprint();
         let doc1 = Document::from_markdown(&bp).expect("blueprint must parse");
+        // The blueprint declares one leaf kind (`enclosure`). It must survive
+        // parsing — earlier the leaf was emitted as `---/KIND/---`, which the
+        // parser silently dropped into body prose. See LEAF_REWORK.md §3.3.
+        assert_eq!(
+            doc1.leaves().len(),
+            1,
+            "blueprint emits one leaf; parser must recognise it"
+        );
+        assert_eq!(doc1.leaves()[0].tag(), "enclosure");
         let md2 = doc1.to_markdown();
         let doc2 = Document::from_markdown(&md2).expect("round-tripped markdown must parse");
         assert_eq!(
