@@ -239,7 +239,7 @@ fn is_date_field(field_schema: &serde_json::Value) -> bool {
 ///
 /// Identifies fields with `contentMediaType = "text/markdown"` and converts
 /// their content using `mark_to_typst()`. This includes recursive handling
-/// of CARDS arrays.
+/// of LEAVES arrays.
 ///
 /// Also injects a `__meta__` key into the result containing the names of
 /// converted fields, which the quillmark-helper package uses to auto-evaluate
@@ -281,24 +281,24 @@ fn transform_markdown_fields(
         .map(|(name, _)| name.as_str())
         .collect();
 
-    // Handle CARDS array recursively
-    if let Some(cards_value) = result.get("CARDS") {
-        if let Some(cards_array) = cards_value.as_array() {
-            let transformed_cards = transform_cards_array(schema, cards_array);
+    // Handle LEAVES array recursively
+    if let Some(leaves_value) = result.get("LEAVES") {
+        if let Some(leaves_array) = leaves_value.as_array() {
+            let transformed_leaves = transform_leaves_array(schema, leaves_array);
             result.insert(
-                "CARDS".to_string(),
-                QuillValue::from_json(serde_json::Value::Array(transformed_cards)),
+                "LEAVES".to_string(),
+                QuillValue::from_json(serde_json::Value::Array(transformed_leaves)),
             );
         }
     }
 
-    // Collect per-card-type content field names from schema $defs
-    let mut card_content_fields = serde_json::Map::new();
-    let mut card_date_fields = serde_json::Map::new();
+    // Collect per-leaf-type content field names from schema $defs
+    let mut leaf_content_fields = serde_json::Map::new();
+    let mut leaf_date_fields = serde_json::Map::new();
     if let Some(defs) = schema_json.get("$defs").and_then(|v| v.as_object()) {
         for (def_name, def_schema) in defs {
-            if let Some(card_type) = def_name.strip_suffix("_card") {
-                let card_fields: Vec<&str> = def_schema
+            if let Some(leaf_kind) = def_name.strip_suffix("_leaf") {
+                let leaf_fields: Vec<&str> = def_schema
                     .get("properties")
                     .and_then(|v| v.as_object())
                     .map(|props| {
@@ -309,11 +309,11 @@ fn transform_markdown_fields(
                             .collect()
                     })
                     .unwrap_or_default();
-                if !card_fields.is_empty() {
-                    card_content_fields.insert(
-                        card_type.to_string(),
+                if !leaf_fields.is_empty() {
+                    leaf_content_fields.insert(
+                        leaf_kind.to_string(),
                         serde_json::Value::Array(
-                            card_fields
+                            leaf_fields
                                 .into_iter()
                                 .map(|s| serde_json::Value::String(s.to_string()))
                                 .collect(),
@@ -333,8 +333,8 @@ fn transform_markdown_fields(
                     })
                     .unwrap_or_default();
                 if !date_fields.is_empty() {
-                    card_date_fields.insert(
-                        card_type.to_string(),
+                    leaf_date_fields.insert(
+                        leaf_kind.to_string(),
                         serde_json::Value::Array(
                             date_fields
                                 .into_iter()
@@ -352,65 +352,65 @@ fn transform_markdown_fields(
         "__meta__".to_string(),
         QuillValue::from_json(serde_json::json!({
             "content_fields": content_field_names,
-            "card_content_fields": card_content_fields,
+            "leaf_content_fields": leaf_content_fields,
             "date_fields": date_fields,
-            "card_date_fields": card_date_fields,
+            "leaf_date_fields": leaf_date_fields,
         })),
     );
 
     result
 }
 
-/// Transform markdown fields in CARDS array items.
-fn transform_cards_array(
+/// Transform markdown fields in LEAVES array items.
+fn transform_leaves_array(
     document_schema: &QuillValue,
-    cards_array: &[serde_json::Value],
+    leaves_array: &[serde_json::Value],
 ) -> Vec<serde_json::Value> {
-    let mut transformed_cards = Vec::new();
+    let mut transformed_leaves = Vec::new();
 
-    // Get definitions for card schemas
+    // Get definitions for leaf schemas
     let defs = document_schema
         .as_json()
         .get("$defs")
         .and_then(|v| v.as_object());
 
-    for card in cards_array {
-        if let Some(card_obj) = card.as_object() {
-            if let Some(card_type) = card_obj.get("CARD").and_then(|v| v.as_str()) {
-                // Construct the definition name: {type}_card
-                let def_name = format!("{}_card", card_type);
+    for leaf in leaves_array {
+        if let Some(leaf_obj) = leaf.as_object() {
+            if let Some(leaf_kind) = leaf_obj.get("KIND").and_then(|v| v.as_str()) {
+                // Construct the definition name: {type}_leaf
+                let def_name = format!("{}_leaf", leaf_kind);
 
-                // Look up the schema for this card type
-                if let Some(card_schema_json) = defs.and_then(|d| d.get(&def_name)) {
-                    // Convert the card object to HashMap<String, QuillValue>
-                    let mut card_fields: HashMap<String, QuillValue> = HashMap::new();
-                    for (k, v) in card_obj {
-                        card_fields.insert(k.clone(), QuillValue::from_json(v.clone()));
+                // Look up the schema for this leaf type
+                if let Some(leaf_schema_json) = defs.and_then(|d| d.get(&def_name)) {
+                    // Convert the leaf object to HashMap<String, QuillValue>
+                    let mut leaf_fields: HashMap<String, QuillValue> = HashMap::new();
+                    for (k, v) in leaf_obj {
+                        leaf_fields.insert(k.clone(), QuillValue::from_json(v.clone()));
                     }
 
-                    // Recursively transform this card's fields
-                    let transformed_card_fields = transform_markdown_fields(
-                        &card_fields,
-                        &QuillValue::from_json(card_schema_json.clone()),
+                    // Recursively transform this leaf's fields
+                    let transformed_leaf_fields = transform_markdown_fields(
+                        &leaf_fields,
+                        &QuillValue::from_json(leaf_schema_json.clone()),
                     );
 
                     // Convert back to JSON Value
-                    let mut transformed_card_obj = serde_json::Map::new();
-                    for (k, v) in transformed_card_fields {
-                        transformed_card_obj.insert(k, v.into_json());
+                    let mut transformed_leaf_obj = serde_json::Map::new();
+                    for (k, v) in transformed_leaf_fields {
+                        transformed_leaf_obj.insert(k, v.into_json());
                     }
 
-                    transformed_cards.push(serde_json::Value::Object(transformed_card_obj));
+                    transformed_leaves.push(serde_json::Value::Object(transformed_leaf_obj));
                     continue;
                 }
             }
         }
 
-        // If not an object, no CARD type, or no matching schema, keep as-is
-        transformed_cards.push(card.clone());
+        // If not an object, no KIND type, or no matching schema, keep as-is
+        transformed_leaves.push(leaf.clone());
     }
 
-    transformed_cards
+    transformed_leaves
 }
 
 #[cfg(test)]
@@ -566,12 +566,12 @@ mod tests {
     }
 
     #[test]
-    fn test_transform_markdown_fields_collects_card_date_metadata() {
+    fn test_transform_markdown_fields_collects_leaf_date_metadata() {
         let schema = QuillValue::from_json(json!({
             "type": "object",
             "properties": {},
             "$defs": {
-                "indorsement_card": {
+                "indorsement_leaf": {
                     "type": "object",
                     "properties": {
                         "date": { "type": "string", "format": "date" },
@@ -586,6 +586,6 @@ mod tests {
         let result = transform_markdown_fields(&fields, &schema);
         let meta = result.get("__meta__").expect("missing __meta__").as_json();
 
-        assert_eq!(meta["card_date_fields"]["indorsement"], json!(["date"]));
+        assert_eq!(meta["leaf_date_fields"]["indorsement"], json!(["date"]));
     }
 }

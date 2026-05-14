@@ -2,7 +2,7 @@
 //!
 //! Both own-line and trailing inline YAML comments round-trip at their
 //! source position. Inline comments on sentinel lines (`QUILL: r # …` /
-//! `CARD: t # …`) also round-trip. Comments whose host disappears at emit
+//! `KIND: t # …`) also round-trip. Comments whose host disappears at emit
 //! time (empty-mapping omission, programmatic field removal) degrade to
 //! own-line comments at the same indent so the comment text is preserved
 //! even when its position shifts. `!fill` on scalars and sequences round-
@@ -468,16 +468,16 @@ fn sentinel_inline_comment_round_trips() {
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
 
-/// Inline comment on a CARD sentinel line round-trips on that line.
+/// Inline comment on a KIND sentinel line round-trips on that line.
 #[test]
-fn card_sentinel_inline_comment_round_trips() {
-    let src = "---\nQUILL: q\n---\n\n---\nCARD: foo # the foo card\nx: 1\n---\n";
+fn leaf_sentinel_inline_comment_round_trips() {
+    let src = "---\nQUILL: q\n---\n\n```leaf\nKIND: foo # the foo leaf\nx: 1\n```\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
     assert!(
-        emitted.contains("CARD: foo # the foo card\n"),
-        "inline comment on a CARD sentinel must round-trip on the sentinel line\nGot:\n{}",
+        emitted.contains("KIND: foo # the foo leaf\n"),
+        "inline comment on a KIND sentinel must round-trip on the sentinel line\nGot:\n{}",
         emitted
     );
 

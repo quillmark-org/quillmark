@@ -27,18 +27,18 @@ fn test_yaml_depth_limit_attack() {
     );
 }
 
-/// Test card count limit prevents DoS
+/// Test leaf count limit prevents DoS
 #[test]
-fn test_card_count_limit_attack() {
-    // Generate more than MAX_CARD_COUNT (1000) card blocks
+fn test_leaf_count_limit_attack() {
+    // Generate more than MAX_LEAF_COUNT (1000) leaf blocks
     let mut markdown = String::from("---\nQUILL: test_quill\ntitle: Test\n---\n\nBody\n\n");
     for i in 0..1002 {
-        markdown.push_str(&format!("---\nCARD: item{}\nvalue: {}\n---\n\n", i, i));
+        markdown.push_str(&format!("```leaf\nKIND: item{}\nvalue: {}\n```\n\n", i, i));
     }
     let result = Document::from_markdown(&markdown);
 
-    // Should fail with card count limit error
-    assert!(result.is_err(), "Should reject excessive card blocks");
+    // Should fail with leaf count limit error
+    assert!(result.is_err(), "Should reject excessive leaf blocks");
     let err_msg = result.unwrap_err().to_string();
     assert!(
         err_msg.contains("too large") || err_msg.contains("max"),
@@ -113,7 +113,7 @@ fn test_reserved_field_injection() {
             "---\nQUILL: test_quill\nBODY: injected\n---\n\nBody",
             "BODY",
         ),
-        ("---\nQUILL: test_quill\nCARDS: []\n---\n\nBody", "CARDS"),
+        ("---\nQUILL: test_quill\nLEAVES: []\n---\n\nBody", "LEAVES"),
     ];
 
     for (markdown, reserved) in reserved_tests {
@@ -132,21 +132,21 @@ fn test_reserved_field_injection() {
     }
 }
 
-/// Test that CARD directive validation prevents invalid names
+/// Test that KIND directive validation prevents invalid names
 #[test]
-fn test_card_name_validation() {
+fn test_leaf_kind_name_validation() {
     let invalid_names = vec![
-        "---\nQUILL: test_quill\n---\n\n---\nCARD: Invalid-Name\n---\n\n",
-        "---\nQUILL: test_quill\n---\n\n---\nCARD: 123start\n---\n\n",
-        "---\nQUILL: test_quill\n---\n\n---\nCARD: UPPERCASE\n---\n\n",
-        "---\nQUILL: test_quill\n---\n\n---\nCARD: spaces here\n---\n\n",
+        "---\nQUILL: test_quill\n---\n\n```leaf\nKIND: Invalid-Name\n```\n\n",
+        "---\nQUILL: test_quill\n---\n\n```leaf\nKIND: 123start\n```\n\n",
+        "---\nQUILL: test_quill\n---\n\n```leaf\nKIND: UPPERCASE\n```\n\n",
+        "---\nQUILL: test_quill\n---\n\n```leaf\nKIND: spaces here\n```\n\n",
     ];
 
     for markdown in invalid_names {
         let result = Document::from_markdown(markdown);
         assert!(
             result.is_err(),
-            "Should reject invalid card name in: {}",
+            "Should reject invalid leaf name in: {}",
             markdown
         );
     }
@@ -156,7 +156,7 @@ fn test_card_name_validation() {
 #[test]
 fn test_yaml_error_location() {
     let markdown =
-        "---\nQUILL: test_quill\ntitle: Test\n---\n\nBody\n\n---\nCARD: test\ninvalid yaml: {\n---\n\n";
+        "---\nQUILL: test_quill\ntitle: Test\n---\n\nBody\n\n```leaf\nKIND: test\ninvalid yaml: {\n```\n\n";
     let result = Document::from_markdown(markdown);
 
     assert!(result.is_err(), "Should reject invalid YAML");
@@ -168,16 +168,16 @@ fn test_yaml_error_location() {
     );
 }
 
-/// Test both QUILL and CARD in same block is rejected
+/// Test both QUILL and KIND in same block is rejected
 #[test]
-fn test_quill_card_conflict() {
-    let markdown = "---\nQUILL: template\nCARD: item\n---\n\n";
+fn test_quill_leaf_conflict() {
+    let markdown = "---\nQUILL: template\nKIND: item\n---\n\n";
     let result = Document::from_markdown(markdown);
 
-    assert!(result.is_err(), "Should reject QUILL + CARD in same block");
+    assert!(result.is_err(), "Should reject QUILL + KIND in same block");
     let err_msg = result.unwrap_err().to_string();
     assert!(
-        err_msg.contains("QUILL") && err_msg.contains("CARD"),
+        err_msg.contains("QUILL") && err_msg.contains("KIND"),
         "Error should mention both keys: {}",
         err_msg
     );
@@ -187,13 +187,13 @@ fn test_quill_card_conflict() {
 #[test]
 fn test_strict_fence_detection() {
     let markdown =
-        "---\nQUILL: test_quill\ntitle: Test\n---\n\n````\n---\nCARD: test\nvalue: 1\n---\n````";
+        "---\nQUILL: test_quill\ntitle: Test\n---\n\n````\n```leaf\nKIND: test\nvalue: 1\n```\n````";
     let result = Document::from_markdown(markdown);
 
     assert!(result.is_ok(), "Should parse successfully");
     let doc = result.unwrap();
     assert_eq!(
-        doc.cards().len(),
+        doc.leaves().len(),
         0,
         "--- inside ```` fence should not be parsed as metadata"
     );
@@ -203,13 +203,13 @@ fn test_strict_fence_detection() {
 #[test]
 fn test_tilde_fence_hides_metadata() {
     let markdown =
-        "---\nQUILL: test_quill\ntitle: Test\n---\n\n~~~\n---\nCARD: test\nvalue: 1\n---\n~~~";
+        "---\nQUILL: test_quill\ntitle: Test\n---\n\n~~~\n```leaf\nKIND: test\nvalue: 1\n```\n~~~";
     let result = Document::from_markdown(markdown);
 
     assert!(result.is_ok(), "Should parse successfully");
     let doc = result.unwrap();
     assert_eq!(
-        doc.cards().len(),
+        doc.leaves().len(),
         0,
         "--- inside ~~~ fence should not be parsed as metadata"
     );

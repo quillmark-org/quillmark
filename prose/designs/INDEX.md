@@ -13,7 +13,8 @@
 - **[VERSIONING.md](VERSIONING.md)** - Quill version resolution
 - **[SCHEMAS.md](SCHEMAS.md)** - `QuillConfig` schema model, native validation, and emission overview
 - **[BLUEPRINT.md](BLUEPRINT.md)** - Annotated Markdown blueprint for LLM/MCP authoring
-- **[CARDS.md](CARDS.md)** - Composable cards with unified CARDS array
+- **[LEAVES.md](LEAVES.md)** - Composable leaves with unified LEAVES array
+- **[LEAF_REWORK.md](LEAF_REWORK.md)** - Design rationale for the inline-leaf syntax
 - **[GLUE_METADATA.md](GLUE_METADATA.md)** - Plate data injection
 
 ## Backends

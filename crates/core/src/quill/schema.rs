@@ -9,7 +9,7 @@
 use super::{FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
 
-/// Build a JSON-Schema-shaped descriptor of a [`QuillConfig`]'s main + card fields.
+/// Build a JSON-Schema-shaped descriptor of a [`QuillConfig`]'s main + leaf fields.
 ///
 /// The descriptor marks markdown fields with `contentMediaType: "text/markdown"`
 /// and date/date-time fields with the corresponding JSON Schema `format`.
@@ -117,20 +117,20 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
     );
 
     let mut defs = serde_json::Map::new();
-    for card in &config.card_types {
-        let mut card_properties = serde_json::Map::new();
-        for (name, field) in &card.fields {
-            card_properties.insert(name.clone(), field_to_schema(field));
+    for leaf in &config.leaf_kinds {
+        let mut leaf_properties = serde_json::Map::new();
+        for (name, field) in &leaf.fields {
+            leaf_properties.insert(name.clone(), field_to_schema(field));
         }
-        card_properties.insert(
+        leaf_properties.insert(
             "BODY".to_string(),
             serde_json::json!({ "type": "string", "contentMediaType": "text/markdown" }),
         );
         defs.insert(
-            format!("{}_card", card.name),
+            format!("{}_leaf", leaf.name),
             serde_json::json!({
                 "type": "object",
-                "properties": card_properties,
+                "properties": leaf_properties,
             }),
         );
     }
@@ -201,7 +201,7 @@ main:
     }
 
     #[test]
-    fn injects_body_as_markdown_for_main_and_each_card_type() {
+    fn injects_body_as_markdown_for_main_and_each_leaf_kind() {
         let yaml = r#"
 quill:
   name: example
@@ -214,7 +214,7 @@ main:
     title:
       type: string
 
-card_types:
+leaf_kinds:
   indorsement:
     fields:
       signature_block:
@@ -232,14 +232,14 @@ card_types:
         assert_eq!(main_body["type"], "string");
         assert_eq!(main_body["contentMediaType"], "text/markdown");
 
-        for def_name in ["indorsement_card", "note_card"] {
-            let card_body = &json["$defs"][def_name]["properties"]["BODY"];
+        for def_name in ["indorsement_leaf", "note_leaf"] {
+            let leaf_body = &json["$defs"][def_name]["properties"]["BODY"];
             assert_eq!(
-                card_body["type"], "string",
+                leaf_body["type"], "string",
                 "{def_name} BODY type should be string"
             );
             assert_eq!(
-                card_body["contentMediaType"], "text/markdown",
+                leaf_body["contentMediaType"], "text/markdown",
                 "{def_name} BODY should be markdown"
             );
         }

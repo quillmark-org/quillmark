@@ -1,4 +1,4 @@
-//! Tests for [`Quill::form`], [`Quill::blank_main`], and [`Quill::blank_card`].
+//! Tests for [`Quill::form`], [`Quill::blank_main`], and [`Quill::blank_leaf`].
 
 use std::collections::HashMap;
 
@@ -50,7 +50,7 @@ main:
     let form = quill.form(&doc);
 
     assert!(form.diagnostics.is_empty(), "no diagnostics expected");
-    assert!(form.cards.is_empty(), "no cards expected");
+    assert!(form.leaves.is_empty(), "no leaves expected");
 
     let title_fv = form.main.values.get("title").expect("title field");
     assert_eq!(title_fv.source, FormFieldSource::Document);
@@ -129,68 +129,68 @@ main:
 }
 
 #[test]
-fn form_unknown_card_tag_drops_card_and_emits_diagnostic() {
+fn form_unknown_leaf_kind_drops_leaf_and_emits_diagnostic() {
     let quill = quill_from_yaml(
         r#"
 quill:
-  name: unknown_card_test
+  name: unknown_leaf_test
   version: "1.0"
   backend: typst
-  description: Unknown card tag test
+  description: Unknown leaf kind test
 
 main:
   fields:
     title:
       type: string
 
-card_types:
-  known_card:
+leaf_kinds:
+  known_leaf:
     fields:
       note:
         type: string
 "#,
     );
 
-    let md = "---\nQUILL: unknown_card_test\ntitle: \"T\"\n---\n\n\
-              ---\nCARD: known_card\nnote: \"A\"\n---\n\n\
-              ---\nCARD: ghost_card\nnote: \"B\"\n---\n";
+    let md = "---\nQUILL: unknown_leaf_test\ntitle: \"T\"\n---\n\n\
+              ```leaf\nKIND: known_leaf\nnote: \"A\"\n```\n\n\
+              ```leaf\nKIND: ghost_leaf\nnote: \"B\"\n```\n";
     let doc = Document::from_markdown(md).unwrap();
 
     let form = quill.form(&doc);
 
-    // Only the known card appears in cards
-    assert_eq!(form.cards.len(), 1, "only known_card should be projected");
-    assert_eq!(form.cards[0].schema.name, "known_card");
+    // Only the known leaf appears in leaves
+    assert_eq!(form.leaves.len(), 1, "only known_leaf should be projected");
+    assert_eq!(form.leaves[0].schema.name, "known_leaf");
 
-    // A diagnostic for ghost_card
+    // A diagnostic for ghost_leaf
     let unknown_diag = form
         .diagnostics
         .iter()
-        .find(|d| d.code.as_deref() == Some("form::unknown_card_tag"))
-        .expect("expected unknown_card_tag diagnostic");
+        .find(|d| d.code.as_deref() == Some("form::unknown_leaf_kind"))
+        .expect("expected unknown_leaf_kind diagnostic");
     assert!(
-        unknown_diag.message.contains("ghost_card"),
+        unknown_diag.message.contains("ghost_leaf"),
         "diagnostic should name the tag: {:?}",
         unknown_diag.message
     );
 }
 
 #[test]
-fn form_card_field_sources() {
+fn form_leaf_field_sources() {
     let quill = quill_from_yaml(
         r#"
 quill:
-  name: card_fields_test
+  name: leaf_fields_test
   version: "1.0"
   backend: typst
-  description: Card field source test
+  description: Leaf field source test
 
 main:
   fields:
     title:
       type: string
 
-card_types:
+leaf_kinds:
   indorsement:
     fields:
       signature_block:
@@ -205,27 +205,27 @@ card_types:
     );
 
     // signature_block present, office absent (has default), extra absent (no default)
-    let md = "---\nQUILL: card_fields_test\ntitle: \"T\"\n---\n\n\
-              ---\nCARD: indorsement\nsignature_block: \"Col Smith\"\n---\n";
+    let md = "---\nQUILL: leaf_fields_test\ntitle: \"T\"\n---\n\n\
+              ```leaf\nKIND: indorsement\nsignature_block: \"Col Smith\"\n```\n";
     let doc = Document::from_markdown(md).unwrap();
 
     let form = quill.form(&doc);
-    assert_eq!(form.cards.len(), 1);
-    let card = &form.cards[0];
+    assert_eq!(form.leaves.len(), 1);
+    let leaf = &form.leaves[0];
 
-    let sig = card.values.get("signature_block").expect("signature_block");
+    let sig = leaf.values.get("signature_block").expect("signature_block");
     assert_eq!(sig.source, FormFieldSource::Document);
     assert_eq!(
         sig.value.as_ref().and_then(|v| v.as_str()),
         Some("Col Smith")
     );
 
-    let office = card.values.get("office").expect("office");
+    let office = leaf.values.get("office").expect("office");
     assert_eq!(office.source, FormFieldSource::Default);
     assert!(office.value.is_none());
     assert_eq!(office.default.as_ref().and_then(|v| v.as_str()), Some("HQ"));
 
-    let extra = card.values.get("extra").expect("extra");
+    let extra = leaf.values.get("extra").expect("extra");
     assert_eq!(extra.source, FormFieldSource::Missing);
     assert!(extra.value.is_none());
     assert!(extra.default.is_none());
@@ -295,11 +295,11 @@ main:
     let json = serde_json::to_string(&form).expect("Form must serialize");
     let back: Form = serde_json::from_str(&json).expect("Form must deserialize");
 
-    // Name fields on CardSchema / FieldSchema are intentionally skipped on the
+    // Name fields on LeafSchema / FieldSchema are intentionally skipped on the
     // wire (the map key carries them), so round-trip identity does not hold for
     // those. Compare structural content instead.
     assert_eq!(form.main.values, back.main.values);
-    assert_eq!(form.cards, back.cards);
+    assert_eq!(form.leaves, back.leaves);
     assert_eq!(form.diagnostics, back.diagnostics);
     assert_eq!(
         form.main.schema.fields.keys().collect::<Vec<_>>(),
@@ -331,10 +331,10 @@ fn form_over_usaf_memo_fixture() {
 
     let form = quill.form(&doc);
 
-    // The form must produce a FormCard for main with at least the required fields.
+    // The form must produce a FormLeaf for main with at least the required fields.
     assert!(
         !form.main.values.is_empty(),
-        "main card view should have fields"
+        "main leaf view should have fields"
     );
 
     // Every field value must have a deterministic source.
@@ -374,7 +374,7 @@ fn form_over_usaf_memo_fixture() {
     assert!(!json.is_empty());
 }
 
-// ── blank_main / blank_card ─────────────────────────────────────────────────
+// ── blank_main / blank_leaf ─────────────────────────────────────────────────
 
 #[test]
 fn blank_main_has_default_or_missing_sources() {
@@ -413,21 +413,21 @@ main:
 }
 
 #[test]
-fn blank_card_returns_form_card_for_known_type() {
+fn blank_leaf_returns_form_leaf_for_known_kind() {
     let quill = quill_from_yaml(
         r#"
 quill:
-  name: blank_card_test
+  name: blank_leaf_test
   version: "1.0"
   backend: typst
-  description: Blank card test
+  description: Blank leaf test
 
 main:
   fields:
     title:
       type: string
 
-card_types:
+leaf_kinds:
   indorsement:
     fields:
       office:
@@ -439,8 +439,8 @@ card_types:
     );
 
     let blank = quill
-        .blank_card("indorsement")
-        .expect("known card type should yield a FormCard");
+        .blank_leaf("indorsement")
+        .expect("known leaf type should yield a FormLeaf");
 
     assert_eq!(blank.schema.name, "indorsement");
 
@@ -456,21 +456,21 @@ card_types:
 }
 
 #[test]
-fn blank_card_returns_none_for_unknown_type() {
+fn blank_leaf_returns_none_for_unknown_kind() {
     let quill = quill_from_yaml(
         r#"
 quill:
   name: blank_unknown_test
   version: "1.0"
   backend: typst
-  description: Blank unknown card test
+  description: Blank unknown leaf test
 
 main:
   fields:
     title:
       type: string
 
-card_types:
+leaf_kinds:
   known:
     fields:
       x:
@@ -478,5 +478,5 @@ card_types:
 "#,
     );
 
-    assert!(quill.blank_card("does_not_exist").is_none());
+    assert!(quill.blank_leaf("does_not_exist").is_none());
 }

@@ -1,7 +1,7 @@
 use crate::errors::{CliError, Result};
 use clap::Parser;
 use quillmark::Quillmark;
-use quillmark_core::quill::{CardSchema, FieldSchema, FieldType, QuillConfig};
+use quillmark_core::quill::{LeafSchema, FieldSchema, FieldType, QuillConfig};
 use quillmark_core::QuillValue;
 use std::collections::BTreeMap;
 use std::fs;
@@ -136,7 +136,7 @@ pub fn execute(args: ValidateArgs) -> Result<()> {
         println!("  Quill name: {}", config.name);
         println!("  Backend: {}", config.backend);
         println!("  Fields: {}", config.main.fields.len());
-        println!("  Cards: {}", config.card_types.len());
+        println!("  Leaves: {}", config.leaf_kinds.len());
     }
 
     // Step 2: Validate file references
@@ -145,9 +145,9 @@ pub fn execute(args: ValidateArgs) -> Result<()> {
     // Step 3: Validate field schemas including defaults
     validate_field_schemas(&config.main.fields, &mut result, "field");
 
-    // Step 4: Validate card-type schemas
-    for card_schema in &config.card_types {
-        validate_card_schema(&card_schema.name, card_schema, &mut result);
+    // Step 4: Validate leaf-type schemas
+    for leaf_schema in &config.leaf_kinds {
+        validate_leaf_schema(&leaf_schema.name, leaf_schema, &mut result);
     }
 
     // Step 5: Try to load the full Quill (this validates schema generation)
@@ -268,9 +268,9 @@ fn validate_field_schemas(
     }
 }
 
-fn validate_card_schema(card_name: &str, card_schema: &CardSchema, result: &mut ValidationResult) {
+fn validate_leaf_schema(leaf_name: &str, leaf_schema: &LeafSchema, result: &mut ValidationResult) {
     // Warn about missing description
-    if card_schema
+    if leaf_schema
         .description
         .as_deref()
         .unwrap_or("")
@@ -278,14 +278,14 @@ fn validate_card_schema(card_name: &str, card_schema: &CardSchema, result: &mut 
         .is_empty()
     {
         result.add_warning(format!(
-            "card '{}': missing or empty description",
-            card_name
+            "leaf '{}': missing or empty description",
+            leaf_name
         ));
     }
 
-    // Validate card fields
-    let context = format!("card '{}' field", card_name);
-    validate_field_schemas(&card_schema.fields, result, &context);
+    // Validate leaf fields
+    let context = format!("leaf '{}' field", leaf_name);
+    validate_field_schemas(&leaf_schema.fields, result, &context);
 }
 
 fn check_type_mismatch(field_type: &FieldType, value: &QuillValue) -> Option<String> {

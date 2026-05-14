@@ -101,29 +101,28 @@ tags: !fill []
 
 ## Reserved Field Names
 
-`BODY` and `CARDS` are reserved and cannot be used in frontmatter — the parser rejects documents that include them. `BODY` holds the document's Markdown body; `CARDS` holds the array of card blocks.
+`BODY` and `LEAVES` are reserved as **output-only** fields: the parser
+populates them, and supplying them as input keys is a hard parse error.
+`BODY` holds the document's Markdown body; `LEAVES` holds the ordered list
+of leaf records. `QUILL` is also reserved — it's the sentinel that names the
+quill format. YAML tags such as `!fill` cannot decorate `QUILL` or `KIND`.
 
 ## Rules Summary
 
-- `QUILL` can only appear in the first (global) metadata block.
-- `QUILL` and `CARD` cannot both appear in the same block.
-- A document can have only one global metadata block.
-- All metadata blocks after the first must carry a `CARD` directive (see below).
+- `QUILL` is required and must be the first body key in the frontmatter
+  block.
+- The frontmatter block sits at the top of the document (after optional
+  blank lines).
+- Mid-document `---/---` is a CommonMark thematic break, not a metadata
+  fence.
 
-## Card Blocks
+## Leaves
 
-Additional `---`-delimited blocks embedded in the document body are **card blocks**. Each must declare `CARD: <type>`, where `<type>` matches `[a-z_][a-z0-9_]*`. All card blocks are collected into the `CARDS` array available to templates.
+Inline structured records — *leaves* — use a `` ```leaf `` fenced code block
+with `KIND:` as the first body key. See [Leaves](leaves.md) for the full
+syntax.
 
-```markdown
----
-CARD: indorsement
-from: ORG/SYMBOL
-for: ORG2/SYMBOL
----
-
-Indorsement body text here.
-```
-
-See [Cards](cards.md) for details on card syntax and usage.
-
-Frontmatter is coerced and validated against the schema declared in the Quill's `Quill.yaml` (`main.fields`). See the [Quill.yaml Reference](../format-designer/quill-yaml-reference.md) for field types and constraints.
+Frontmatter is coerced and validated against the schema declared in the
+Quill's `Quill.yaml` (`main.fields`). See the
+[Quill.yaml Reference](../format-designer/quill-yaml-reference.md) for field
+types and constraints.

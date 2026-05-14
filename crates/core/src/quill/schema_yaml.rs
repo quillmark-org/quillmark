@@ -31,7 +31,7 @@ main:
         group: Meta
     page_count:
       type: integer
-card_types:
+leaf_kinds:
   indorsement:
     fields:
       signature_block:
@@ -43,12 +43,12 @@ card_types:
         let config = cfg(FULL);
         let yaml = config.schema_yaml().unwrap();
         assert!(yaml.contains("enum:") && yaml.contains("type: integer"));
-        assert!(yaml.contains("card_types:") && yaml.contains("indorsement:"));
+        assert!(yaml.contains("leaf_kinds:") && yaml.contains("indorsement:"));
         assert!(yaml.contains("ui:") && yaml.contains("group: Meta"));
     }
 
     #[test]
-    fn omits_card_types_when_absent() {
+    fn omits_leaf_kinds_when_absent() {
         let yaml = cfg(r#"
 quill: { name: solo, version: "1.0", backend: typst, description: x }
 main:
@@ -57,7 +57,7 @@ main:
 "#)
         .schema_yaml()
         .unwrap();
-        assert!(yaml.contains("main:") && !yaml.contains("card_types:"));
+        assert!(yaml.contains("main:") && !yaml.contains("leaf_kinds:"));
     }
 
     #[test]

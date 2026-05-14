@@ -22,7 +22,7 @@ use serde_json::Value as JsonValue;
 
 use super::frontmatter::FrontmatterItem;
 use super::prescan::{CommentPathSegment, NestedComment};
-use super::{Card, Document, Sentinel};
+use super::{Leaf, Document, Sentinel};
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
@@ -47,8 +47,8 @@ impl Document {
     /// - Line endings: `\n` only.  CRLF normalization happens on import.
     /// - Frontmatter: `---\n`, `QUILL: <ref>` first, remaining fields in
     ///   `IndexMap` insertion order, `---\n`, blank line.
-    /// - Cards: one blank line before each, fence `---\nCARD: <tag>\n<fields>\n---\n<body>`.
-    /// - Body: emitted verbatim after frontmatter (and cards).
+    /// - Leaves: one blank line before each, fence `` ```leaf\nKIND: <tag>\n<fields>\n```\n<body> ``.
+    /// - Body: emitted verbatim after frontmatter (and leaves).
     /// - Mappings and sequences: **block style** at every nesting level.
     /// - Booleans: `true` / `false`.
     /// - Null: `null`.
@@ -74,7 +74,7 @@ impl Document {
     ///
     /// - **YAML comments**: own-line and inline trailing comments round-trip
     ///   at their source position. Inline comments on sentinel lines
-    ///   (`QUILL: r # …` / `CARD: t # …`) round-trip too. Comments whose
+    ///   (`QUILL: r # …` / `KIND: t # …`) round-trip too. Comments whose
     ///   host disappears at emit time (empty-mapping omission, programmatic
     ///   field removal) degrade to own-line comments at the same indent so
     ///   the comment text is preserved even when its position shifts.
@@ -89,18 +89,18 @@ impl Document {
     pub fn to_markdown(&self) -> String {
         let mut out = String::new();
 
-        // ── Main card (first fence + global body) ─────────────────────────────
-        emit_card_fence(&mut out, self.main());
+        // ── Main leaf (first fence + global body) ─────────────────────────────
+        emit_leaf_fence(&mut out, self.main());
         out.push_str(self.main().body());
 
-        // ── Composable cards ──────────────────────────────────────────────────
-        // `emit_card` normalises the separator before each fence, so edited
+        // ── Composable leaves ──────────────────────────────────────────────────
+        // `emit_leaf` normalises the separator before each fence, so edited
         // bodies (which may lack a trailing blank line) still round-trip.
-        for card in self.cards() {
+        for leaf in self.leaves() {
             ensure_f2_before_fence(&mut out);
-            emit_card_fence(&mut out, card);
-            if !card.body().is_empty() {
-                out.push_str(card.body());
+            emit_leaf_fence(&mut out, leaf);
+            if !leaf.body().is_empty() {
+                out.push_str(leaf.body());
             }
         }
 
@@ -108,16 +108,16 @@ impl Document {
     }
 }
 
-// ── Card emission ─────────────────────────────────────────────────────────────
+// ── Leaf emission ─────────────────────────────────────────────────────────────
 
-/// Emit a card's metadata fence (between `---\n` markers), including the
+/// Emit a leaf's metadata fence (between `---\n` markers), including the
 /// sentinel line and every frontmatter item.
 ///
 /// ## Inline-comment handling
 ///
 /// - **Sentinel-inline preview.** If `items[0]` is a `Comment{inline:true}`,
 ///   its text is appended to the sentinel line (`QUILL: r # text` /
-///   `CARD: tag # text`) and the item is skipped. This is the only way to
+///   `KIND: tag # text`) and the item is skipped. This is the only way to
 ///   round-trip a source-level inline comment on the sentinel line.
 /// - **Field + trailing inline.** When iterating items, a `Field` peeks at
 ///   its successor: if the next item is `Comment{inline:true}`, the comment
@@ -128,25 +128,29 @@ impl Document {
 ///   emitted as an own-line `# text` comment instead. This is also the
 ///   degrade path for empty-object fields (whose key is omitted) — the
 ///   trailer becomes an own-line comment at the same indent.
-fn emit_card_fence(out: &mut String, card: &Card) {
-    out.push_str("---\n");
+fn emit_leaf_fence(out: &mut String, leaf: &Leaf) {
+    let (open_fence, close_fence) = match leaf.sentinel() {
+        Sentinel::Main(_) => ("---\n", "---\n"),
+        Sentinel::Leaf(_) => ("```leaf\n", "```\n"),
+    };
+    out.push_str(open_fence);
 
     // Sentinel line.
-    match card.sentinel() {
+    match leaf.sentinel() {
         Sentinel::Main(r) => {
             out.push_str("QUILL: ");
             out.push_str(&r.to_string());
             out.push('\n');
         }
-        Sentinel::Card(tag) => {
-            out.push_str("CARD: ");
+        Sentinel::Leaf(tag) => {
+            out.push_str("KIND: ");
             out.push_str(tag);
             out.push('\n');
         }
     }
 
-    let nested = card.frontmatter().nested_comments();
-    let items = card.frontmatter().items();
+    let nested = leaf.frontmatter().nested_comments();
+    let items = leaf.frontmatter().items();
     let mut i = 0;
 
     // Sentinel-inline preview.
@@ -178,7 +182,7 @@ fn emit_card_fence(out: &mut String, card: &Card) {
         }
     }
 
-    out.push_str("---\n");
+    out.push_str(close_fence);
 }
 
 /// Ensures `out` ends with a `\n\n` suffix suitable for the F2 precondition

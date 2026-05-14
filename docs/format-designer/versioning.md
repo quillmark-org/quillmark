@@ -18,7 +18,7 @@ Quill names must be `snake_case` (lowercase letters, digits, and underscores onl
 
 Use semantic versioning (`MAJOR.MINOR.PATCH`) to communicate compatibility:
 
-- **MAJOR**: breaking changes to fields, cards, or expected document shape
+- **MAJOR**: breaking changes to fields, leaves, or expected document shape
 - **MINOR**: backward-compatible additions (new optional fields, non-breaking behavior)
 - **PATCH**: fixes and small improvements without shape changes
 
@@ -48,7 +48,7 @@ Supported selectors:
 1. Start at `1.0.0` for your first stable internal format release.
 2. Increase versions on every format change, even if small.
 3. Treat field renames/removals as breaking (`MAJOR`) changes.
-4. Prefer additive changes (new optional fields/cards) to reduce migration work.
+4. Prefer additive changes (new optional fields/leaves) to reduce migration work.
 5. Keep example documents updated for the latest major/minor versions.
 
 ## Related Pages

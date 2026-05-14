@@ -168,10 +168,10 @@ impl PyQuill {
 
     /// The schema-aware form view of `doc`.
     ///
-    /// Returns a dict with keys `main`, `cards`, and `diagnostics`:
+    /// Returns a dict with keys `main`, `leaves`, and `diagnostics`:
     ///
     /// - `main`: dict with `schema` (dict) and `values` (dict of field → value info)
-    /// - `cards`: list of dicts in the same shape as `main`
+    /// - `leaves`: list of dicts in the same shape as `main`
     /// - `diagnostics`: list of dicts with `severity`, `code`, `message`, etc.
     ///
     /// Each `values` entry is a dict with:
@@ -182,8 +182,8 @@ impl PyQuill {
     /// This is a **read-only snapshot**. Call `form` again after any edits
     /// to the document to obtain an updated view.
     ///
-    /// Cards with unknown tags are excluded from `cards`; each produces a
-    /// diagnostic with code `"form::unknown_card_tag"`.
+    /// Leaves with unknown tags are excluded from `leaves`; each produces a
+    /// diagnostic with code `"form::unknown_leaf_kind"`.
     fn form<'py>(
         &self,
         py: Python<'py>,
@@ -192,7 +192,7 @@ impl PyQuill {
         let form = self.inner.form(&doc.inner);
 
         // Serialise through serde_json → Python dict to avoid writing bespoke
-        // conversion for every nested type (CardSchema, FormFieldValue, etc.).
+        // conversion for every nested type (LeafSchema, FormFieldValue, etc.).
         let json_value = serde_json::to_value(&form).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                 "form: serialization failed: {e}"
@@ -205,14 +205,14 @@ impl PyQuill {
         Ok(dict.clone())
     }
 
-    /// A blank form for the main card — no document values supplied.
+    /// A blank form for the main leaf — no document values supplied.
     ///
     /// Returns a dict shaped like one entry in `form()['main']`. Every
     /// declared field's `source` is `"default"` (when the schema declares a
     /// default) or `"missing"`.
     fn blank_main<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        let card = self.inner.blank_main();
-        let json_value = serde_json::to_value(&card).map_err(|e| {
+        let leaf = self.inner.blank_main();
+        let json_value = serde_json::to_value(&leaf).map_err(|e| {
             PyErr::new::<PyValueError, _>(format!("blank_main: serialization failed: {e}"))
         })?;
         let py_obj = json_to_py(py, &json_value)?;
@@ -222,24 +222,24 @@ impl PyQuill {
         Ok(dict.clone())
     }
 
-    /// A blank form for a card of the given type — no document values supplied.
+    /// A blank form for a leaf of the given type — no document values supplied.
     ///
-    /// Returns `None` if `card_type` is not declared in this quill's schema.
-    /// Otherwise returns a dict shaped like a single entry in `form()['cards']`.
-    fn blank_card<'py>(
+    /// Returns `None` if `leaf_kind` is not declared in this quill's schema.
+    /// Otherwise returns a dict shaped like a single entry in `form()['leaves']`.
+    fn blank_leaf<'py>(
         &self,
         py: Python<'py>,
-        card_type: &str,
+        leaf_kind: &str,
     ) -> PyResult<Option<Bound<'py, PyDict>>> {
-        let Some(card) = self.inner.blank_card(card_type) else {
+        let Some(leaf) = self.inner.blank_leaf(leaf_kind) else {
             return Ok(None);
         };
-        let json_value = serde_json::to_value(&card).map_err(|e| {
-            PyErr::new::<PyValueError, _>(format!("blank_card: serialization failed: {e}"))
+        let json_value = serde_json::to_value(&leaf).map_err(|e| {
+            PyErr::new::<PyValueError, _>(format!("blank_leaf: serialization failed: {e}"))
         })?;
         let py_obj = json_to_py(py, &json_value)?;
         let dict = py_obj.downcast::<PyDict>().map_err(|_| {
-            PyErr::new::<PyValueError, _>("blank_card: expected object at top level")
+            PyErr::new::<PyValueError, _>("blank_leaf: expected object at top level")
         })?;
         Ok(Some(dict.clone()))
     }
@@ -251,9 +251,9 @@ impl PyQuill {
 /// - `from_markdown(markdown)` — static constructor
 /// - `to_markdown()` — emit canonical Quillmark Markdown
 /// - `quill_ref()` — quill reference string
-/// - `frontmatter` — dict of typed YAML fields (no QUILL/BODY/CARDS)
+/// - `frontmatter` — dict of typed YAML fields (no QUILL/BODY/LEAVES)
 /// - `body` — global Markdown body (str, never None)
-/// - `cards` — list of `Card` dicts
+/// - `leaves` — list of `Leaf` dicts
 /// - `warnings` — list of `Diagnostic` objects
 #[pyclass(name = "Document")]
 pub struct PyDocument {
@@ -306,7 +306,7 @@ impl PyDocument {
             .collect()
     }
 
-    /// Main card's global Markdown body (str, never None).
+    /// Main leaf's global Markdown body (str, never None).
     ///
     /// Convenience accessor equivalent to `doc.main['body']`.
     #[getter]
@@ -314,7 +314,7 @@ impl PyDocument {
         self.inner.main().body()
     }
 
-    /// Typed YAML frontmatter fields on the main card (no QUILL, BODY, or CARDS keys).
+    /// Typed YAML frontmatter fields on the main leaf (no QUILL, BODY, or LEAVES keys).
     ///
     /// Convenience accessor equivalent to `doc.main['frontmatter']`.
     #[getter]
@@ -326,37 +326,37 @@ impl PyDocument {
         Ok(dict)
     }
 
-    /// The document's main (entry) card as a dict.
+    /// The document's main (entry) leaf as a dict.
     ///
     /// Keys: `tag` (str), `frontmatter` (dict), `frontmatter_items` (list),
     /// `fields` (dict — alias of `frontmatter`), `body` (str).
     #[getter]
     fn main<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        card_to_pydict(py, self.inner.main())
+        leaf_to_pydict(py, self.inner.main())
     }
 
-    /// Ordered list of composable card blocks.
+    /// Ordered list of composable leaf blocks.
     ///
-    /// Each card is a dict with keys: `tag` (str), `frontmatter` (dict),
+    /// Each leaf is a dict with keys: `tag` (str), `frontmatter` (dict),
     /// `frontmatter_items` (list), `fields` (dict), `body` (str).
     #[getter]
-    fn cards<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
+    fn leaves<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         let mut result = Vec::new();
-        for card in self.inner.cards() {
-            result.push(card_to_pydict(py, card)?);
+        for leaf in self.inner.leaves() {
+            result.push(leaf_to_pydict(py, leaf)?);
         }
         Ok(result)
     }
 
     // ── Mutators ──────────────────────────────────────────────────────────────
 
-    /// Set a frontmatter field by name on the main card.
+    /// Set a frontmatter field by name on the main leaf.
     ///
     /// Convenience method equivalent to `doc.main_mut().set_field(name, value)`.
     /// Clears any `!fill` marker on the field.
     ///
     /// Raises `quillmark.EditError` if `name` is a reserved sentinel
-    /// (`BODY`, `CARDS`, `QUILL`, `CARD`) or does not match `[a-z_][a-z0-9_]*`.
+    /// (`BODY`, `LEAVES`, `QUILL`, `KIND`) or does not match `[a-z_][a-z0-9_]*`.
     ///
     /// This method never modifies `warnings`.
     fn set_field(&mut self, name: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
@@ -367,7 +367,7 @@ impl PyDocument {
             .map_err(convert_edit_error)
     }
 
-    /// Set a frontmatter field on the main card AND mark it as `!fill`.
+    /// Set a frontmatter field on the main leaf AND mark it as `!fill`.
     ///
     /// Convenience method equivalent to `doc.main_mut().set_fill(name, value)`.
     fn set_fill(&mut self, name: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
@@ -378,10 +378,10 @@ impl PyDocument {
             .map_err(convert_edit_error)
     }
 
-    /// Remove a frontmatter field from the main card, returning the value or `None`.
+    /// Remove a frontmatter field from the main leaf, returning the value or `None`.
     ///
-    /// Raises `quillmark.EditError` if `name` is reserved (`BODY`, `CARDS`,
-    /// `QUILL`, `CARD`) or does not match `[a-z_][a-z0-9_]*`. Absence of an
+    /// Raises `quillmark.EditError` if `name` is reserved (`BODY`, `LEAVES`,
+    /// `QUILL`, `KIND`) or does not match `[a-z_][a-z0-9_]*`. Absence of an
     /// otherwise-valid name returns `None`.
     ///
     /// This method never modifies `warnings`.
@@ -410,114 +410,114 @@ impl PyDocument {
         Ok(())
     }
 
-    /// Replace the main card's body (the global Markdown body).
+    /// Replace the main leaf's body (the global Markdown body).
     ///
     /// This method never modifies `warnings`.
     fn replace_body(&mut self, body: &str) {
         self.inner.main_mut().replace_body(body);
     }
 
-    /// Append a card to the card list.
+    /// Append a leaf to the leaf list.
     ///
-    /// `card` must be a dict with a `tag` key (str) and optional `fields` (dict)
+    /// `leaf` must be a dict with a `tag` key (str) and optional `fields` (dict)
     /// and `body` (str).
     ///
-    /// Raises `quillmark.EditError` if `card["tag"]` is not a valid tag name or
+    /// Raises `quillmark.EditError` if `leaf["tag"]` is not a valid tag name or
     /// if any field name is invalid.
     ///
     /// This method never modifies `warnings`.
-    fn push_card(&mut self, card: Bound<'_, PyAny>) -> PyResult<()> {
-        let core_card = py_dict_to_card(&card)?;
-        self.inner.push_card(core_card);
+    fn push_leaf(&mut self, leaf: Bound<'_, PyAny>) -> PyResult<()> {
+        let core_leaf = py_dict_to_leaf(&leaf)?;
+        self.inner.push_leaf(core_leaf);
         Ok(())
     }
 
-    /// Insert a card at the given index.
+    /// Insert a leaf at the given index.
     ///
     /// `index` must be in `0..=len`. Out-of-range raises `quillmark.EditError`.
     ///
     /// This method never modifies `warnings`.
-    fn insert_card(&mut self, index: usize, card: Bound<'_, PyAny>) -> PyResult<()> {
-        let core_card = py_dict_to_card(&card)?;
+    fn insert_leaf(&mut self, index: usize, leaf: Bound<'_, PyAny>) -> PyResult<()> {
+        let core_leaf = py_dict_to_leaf(&leaf)?;
         self.inner
-            .insert_card(index, core_card)
+            .insert_leaf(index, core_leaf)
             .map_err(convert_edit_error)
     }
 
-    /// Remove and return the card at `index`, or `None` if out of range.
+    /// Remove and return the leaf at `index`, or `None` if out of range.
     ///
     /// This method never modifies `warnings`.
-    fn remove_card<'py>(
+    fn remove_leaf<'py>(
         &mut self,
         py: Python<'py>,
         index: usize,
     ) -> PyResult<Option<Bound<'py, PyDict>>> {
-        match self.inner.remove_card(index) {
-            Some(card) => Ok(Some(card_to_pydict(py, &card)?)),
+        match self.inner.remove_leaf(index) {
+            Some(leaf) => Ok(Some(leaf_to_pydict(py, &leaf)?)),
             None => Ok(None),
         }
     }
 
-    /// Move the card at `from_idx` to position `to_idx`.
+    /// Move the leaf at `from_idx` to position `to_idx`.
     ///
     /// `from_idx == to_idx` is a no-op. Both indices must be in `0..len`.
     /// Out-of-range raises `quillmark.EditError`.
     ///
     /// This method never modifies `warnings`.
-    fn move_card(&mut self, from_idx: usize, to_idx: usize) -> PyResult<()> {
+    fn move_leaf(&mut self, from_idx: usize, to_idx: usize) -> PyResult<()> {
         self.inner
-            .move_card(from_idx, to_idx)
+            .move_leaf(from_idx, to_idx)
             .map_err(convert_edit_error)
     }
 
-    /// Replace the tag of the composable card at `index`.
+    /// Replace the tag of the composable leaf at `index`.
     ///
-    /// Mutates only the sentinel — the card's frontmatter and body are
+    /// Mutates only the sentinel — the leaf's frontmatter and body are
     /// untouched. Schema-aware migration (clearing orphan fields, applying
-    /// new defaults) is the caller's responsibility; `set_card_tag` is a
+    /// new defaults) is the caller's responsibility; `set_leaf_tag` is a
     /// structural primitive.
     ///
     /// Raises `quillmark.EditError` if `index` is out of range or `new_tag`
     /// does not match `[a-z_][a-z0-9_]*`.
     ///
     /// This method never modifies `warnings`.
-    fn set_card_tag(&mut self, index: usize, new_tag: &str) -> PyResult<()> {
+    fn set_leaf_tag(&mut self, index: usize, new_tag: &str) -> PyResult<()> {
         self.inner
-            .set_card_tag(index, new_tag)
+            .set_leaf_tag(index, new_tag)
             .map_err(convert_edit_error)
     }
 
-    /// Update a field on the card at `index`.
+    /// Update a field on the leaf at `index`.
     ///
     /// Raises `quillmark.EditError` if `index` is out of range, `name` is
     /// reserved or invalid, or `value` cannot be converted.
     ///
     /// This method never modifies `warnings`.
-    fn update_card_field(
+    fn update_leaf_field(
         &mut self,
         index: usize,
         name: &str,
         value: Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let qv = py_to_quillvalue(&value)?;
-        let len = self.inner.cards().len();
-        let card = self.inner.card_mut(index).ok_or_else(|| {
+        let len = self.inner.leaves().len();
+        let leaf = self.inner.leaf_mut(index).ok_or_else(|| {
             convert_edit_error(quillmark_core::EditError::IndexOutOfRange { index, len })
         })?;
-        card.set_field(name, qv).map_err(convert_edit_error)
+        leaf.set_field(name, qv).map_err(convert_edit_error)
     }
 
-    /// Replace the body of the card at `index`.
+    /// Replace the body of the leaf at `index`.
     ///
     /// Raises `quillmark.EditError` if `index` is out of range.
     ///
     /// This method never modifies `warnings`.
-    fn update_card_body(&mut self, index: usize, body: &str) -> PyResult<()> {
-        let len = self.inner.cards().len();
-        let card = self.inner.card_mut(index).ok_or_else(|| {
+    fn update_leaf_body(&mut self, index: usize, body: &str) -> PyResult<()> {
+        let len = self.inner.leaves().len();
+        let leaf = self.inner.leaf_mut(index).ok_or_else(|| {
             convert_edit_error(quillmark_core::EditError::IndexOutOfRange { index, len })
         })?;
-        card.replace_body(body);
+        leaf.replace_body(body);
         Ok(())
     }
 }
@@ -662,7 +662,7 @@ impl PyDiagnostic {
         self.inner.hint.as_deref()
     }
 
-    /// Document-model path anchor (e.g. `"cards.indorsement[0].signature_block"`).
+    /// Document-model path anchor (e.g. `"leaves.indorsement[0].signature_block"`).
     ///
     /// Set on schema validation diagnostics; `None` otherwise. See the Rust
     /// `quillmark_core::error` module docs for the path grammar.
@@ -710,18 +710,18 @@ fn quillvalue_to_py<'py>(
     json_to_py(py, value.as_json())
 }
 
-// Helper: convert a typed Card into the Python dict shape exposed to callers.
-fn card_to_pydict<'py>(
+// Helper: convert a typed Leaf into the Python dict shape exposed to callers.
+fn leaf_to_pydict<'py>(
     py: Python<'py>,
-    card: &quillmark_core::Card,
+    leaf: &quillmark_core::Leaf,
 ) -> PyResult<Bound<'py, PyDict>> {
     let d = PyDict::new(py);
-    d.set_item("sentinel", if card.is_main() { "main" } else { "card" })?;
-    d.set_item("tag", card.tag())?;
+    d.set_item("sentinel", if leaf.is_main() { "main" } else { "leaf" })?;
+    d.set_item("tag", leaf.tag())?;
 
     // Map-keyed frontmatter view (values only, no comments).
     let fm = PyDict::new(py);
-    for (k, v) in card.frontmatter().iter() {
+    for (k, v) in leaf.frontmatter().iter() {
         fm.set_item(k, quillvalue_to_py(py, v)?)?;
     }
     d.set_item("frontmatter", fm.clone())?;
@@ -729,7 +729,7 @@ fn card_to_pydict<'py>(
 
     // Ordered item list with comments and fill flags.
     let items = pyo3::types::PyList::empty(py);
-    for item in card.frontmatter().items() {
+    for item in leaf.frontmatter().items() {
         let entry = PyDict::new(py);
         match item {
             quillmark_core::FrontmatterItem::Field { key, value, fill } => {
@@ -748,7 +748,7 @@ fn card_to_pydict<'py>(
     }
     d.set_item("frontmatter_items", items)?;
 
-    d.set_item("body", card.body())?;
+    d.set_item("body", leaf.body())?;
     Ok(d)
 }
 
@@ -841,35 +841,35 @@ fn py_to_json(value: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
 }
 
 /// Convert a Python dict `{"tag": str, "fields"?: dict, "body"?: str}` to a
-/// [`quillmark_core::Card`].  Raises `EditError` on invalid tag or field names.
-fn py_dict_to_card(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::Card> {
+/// [`quillmark_core::Leaf`].  Raises `EditError` on invalid tag or field names.
+fn py_dict_to_leaf(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::Leaf> {
     let dict = value
         .downcast::<PyDict>()
-        .map_err(|_| PyValueError::new_err("card must be a dict with a 'tag' key"))?;
+        .map_err(|_| PyValueError::new_err("leaf must be a dict with a 'tag' key"))?;
 
     let tag: String = dict
         .get_item("tag")?
-        .ok_or_else(|| PyValueError::new_err("card dict must have a 'tag' key"))?
+        .ok_or_else(|| PyValueError::new_err("leaf dict must have a 'tag' key"))?
         .extract()?;
 
-    let mut card = quillmark_core::Card::new(tag).map_err(convert_edit_error)?;
+    let mut leaf = quillmark_core::Leaf::new(tag).map_err(convert_edit_error)?;
 
     if let Some(fields_val) = dict.get_item("fields")? {
         let fields_dict = fields_val
             .downcast::<PyDict>()
-            .map_err(|_| PyValueError::new_err("card 'fields' must be a dict"))?;
+            .map_err(|_| PyValueError::new_err("leaf 'fields' must be a dict"))?;
         for (k, v) in fields_dict.iter() {
             let field_name: String = k.extract()?;
             let qv = py_to_quillvalue(&v)?;
-            card.set_field(&field_name, qv)
+            leaf.set_field(&field_name, qv)
                 .map_err(convert_edit_error)?;
         }
     }
 
     if let Some(body_val) = dict.get_item("body")? {
         let body: String = body_val.extract()?;
-        card.replace_body(body);
+        leaf.replace_body(body);
     }
 
-    Ok(card)
+    Ok(leaf)
 }
