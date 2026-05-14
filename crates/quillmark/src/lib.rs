@@ -21,7 +21,7 @@
 // Re-export core types for convenience. Note: `QuillSource` is not re-exported
 // at the crate root — Quillmark consumers work with the renderable `Quill`.
 pub use quillmark_core::{
-    Artifact, Backend, Leaf, Diagnostic, Document, Location, OutputFormat, ParseError, ParseOutput,
+    Artifact, Backend, Diagnostic, Document, Leaf, Location, OutputFormat, ParseError, ParseOutput,
     RenderError, RenderOptions, RenderResult, RenderSession, Severity,
 };
 
@@ -30,7 +30,7 @@ pub mod form;
 pub mod orchestration;
 
 // Re-export commonly-used form types at the crate root
-pub use form::{Form, FormLeaf, FormFieldSource, FormFieldValue};
+pub use form::{Form, FormFieldSource, FormFieldValue, FormLeaf};
 
 // Re-export types from orchestration module
 pub use orchestration::{Quill, Quillmark};

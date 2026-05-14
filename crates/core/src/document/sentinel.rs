@@ -108,7 +108,11 @@ pub(super) fn extract_sentinels(
         quill_str.parse::<QuillReference>().map_err(|e| {
             ParseError::InvalidStructure(format!("Invalid QUILL reference '{}': {}", quill_str, e))
         })?;
-        Ok((None, Some(quill_str.to_string()), strip_key(mapping, "QUILL")))
+        Ok((
+            None,
+            Some(quill_str.to_string()),
+            strip_key(mapping, "QUILL"),
+        ))
     } else if has_leaf {
         let field_name = mapping
             .get("KIND")

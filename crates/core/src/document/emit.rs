@@ -22,7 +22,7 @@ use serde_json::Value as JsonValue;
 
 use super::frontmatter::FrontmatterItem;
 use super::prescan::{CommentPathSegment, NestedComment};
-use super::{Leaf, Document, Sentinel};
+use super::{Document, Leaf, Sentinel};
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
