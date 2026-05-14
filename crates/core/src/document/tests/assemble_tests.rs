@@ -2209,3 +2209,101 @@ fn frontmatter_field_order_preserved_after_quill_removal() {
         "Frontmatter fields must preserve insertion order after QUILL removal"
     );
 }
+
+// ── Legacy `---/CARD:/---` migration path (LEAF_REWORK.md §7) ──────────────
+
+/// A legacy `---/CARD:/---` block parses as a leaf and surfaces a
+/// `parse::deprecated_leaf_syntax` warning.
+#[test]
+fn legacy_card_block_parses_as_leaf_with_deprecation_warning() {
+    let md = "---\nQUILL: q\n---\n\n---\nCARD: note\nauthor: Alice\n---\n\nLeaf body.\n";
+    let doc = Document::from_markdown(md).unwrap();
+
+    assert_eq!(doc.leaves().len(), 1, "legacy CARD block must parse as leaf");
+    let leaf = &doc.leaves()[0];
+    assert_eq!(leaf.tag(), "note");
+    assert_eq!(
+        leaf.frontmatter()
+            .get("author")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+        Some("Alice".to_string()),
+    );
+    assert!(leaf.body().contains("Leaf body."));
+
+    let warning_codes: Vec<_> = doc
+        .warnings()
+        .iter()
+        .filter_map(|w| w.code.as_deref())
+        .collect();
+    assert!(
+        warning_codes.contains(&"parse::deprecated_leaf_syntax"),
+        "expected parse::deprecated_leaf_syntax warning, got: {:?}",
+        warning_codes
+    );
+}
+
+/// `parse → to_markdown` rewrites legacy CARD blocks to canonical ` ```leaf `
+/// form. This is the consumer's one-step migration tool.
+#[test]
+fn legacy_card_round_trip_emits_canonical_leaf_fence() {
+    let legacy = "---\nQUILL: q\n---\n\n---\nCARD: note\nauthor: Alice\n---\n\nLeaf body.\n";
+    let doc = Document::from_markdown(legacy).unwrap();
+    let canonical = doc.to_markdown();
+
+    assert!(
+        canonical.contains("```leaf\nKIND: note"),
+        "emitted form must use canonical ```leaf / KIND: fence; got:\n{}",
+        canonical
+    );
+    assert!(
+        !canonical.contains("CARD:"),
+        "emitted form must not retain legacy CARD: sentinel; got:\n{}",
+        canonical
+    );
+
+    // Reparsing the canonical form yields the same leaf, with no
+    // deprecation warning this time.
+    let doc2 = Document::from_markdown(&canonical).unwrap();
+    assert_eq!(doc2.leaves().len(), 1);
+    assert_eq!(doc2.leaves()[0].tag(), "note");
+    let canonical_codes: Vec<_> = doc2
+        .warnings()
+        .iter()
+        .filter_map(|w| w.code.as_deref())
+        .collect();
+    assert!(
+        !canonical_codes.contains(&"parse::deprecated_leaf_syntax"),
+        "canonical re-emit must not re-trigger deprecation warning"
+    );
+}
+
+/// Mixed legacy and canonical leaves in the same document parse in source
+/// order; canonical re-emit normalises everything to ` ```leaf `.
+#[test]
+fn legacy_and_canonical_leaves_coexist_during_migration() {
+    let md = "---\nQUILL: q\n---\n\n---\nCARD: a\nx: 1\n---\n\nFirst body.\n\n```leaf\nKIND: b\ny: 2\n```\n\nSecond body.\n";
+    let doc = Document::from_markdown(md).unwrap();
+
+    assert_eq!(doc.leaves().len(), 2);
+    assert_eq!(doc.leaves()[0].tag(), "a");
+    assert_eq!(doc.leaves()[1].tag(), "b");
+
+    let canonical = doc.to_markdown();
+    assert!(canonical.contains("```leaf\nKIND: a"));
+    assert!(canonical.contains("```leaf\nKIND: b"));
+    assert!(!canonical.contains("CARD:"));
+}
+
+/// Legacy CARD blocks without F2 (no blank line above) are NOT leaves —
+/// they fall through to CommonMark thematic-break handling, same as today.
+#[test]
+fn legacy_card_without_f2_is_not_a_leaf() {
+    let md = "---\nQUILL: q\n---\n\nBody text directly above.\n---\nCARD: note\nauthor: Alice\n---\n";
+    let doc = Document::from_markdown(md).unwrap();
+    assert_eq!(
+        doc.leaves().len(),
+        0,
+        "F2 violation must prevent legacy-CARD recognition"
+    );
+}

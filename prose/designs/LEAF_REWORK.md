@@ -211,14 +211,15 @@ with the syntax:
 - Templates: `cards.X[i].field` → `leaves.X[i].field`.
 - Output data: `data.CARDS` → `data.LEAVES`.
 
-Vocabulary and syntax flip together in a single release (§7). There
-is no dual-parser deprecation window: legacy `---/CARD:---` is a hard
-parse error from day one, and the codebase carries no legacy code
-path. Document migration is the consumer's responsibility (§7).
-Bindings are pre-1.0 and acceptable to break; a syntax-only rename
-that preserved `CARDS`/`card_types` internally was considered and
-rejected — permanent author-vs-internal dual vocabulary would be a
-long-term translation tax.
+Vocabulary and syntax flip together in a single release (§7). Release
+N keeps a legacy parser path for `---/CARD:---` that exists solely
+for round-trip migration — parsing it surfaces a
+`parse::deprecated_leaf_syntax` warning, and the canonical emitter
+re-writes the document into ` ```leaf ` form. Release N+1 deletes the
+legacy parser path. Bindings are pre-1.0 and acceptable to break; a
+syntax-only rename that preserved `CARDS`/`card_types` internally was
+considered and rejected — permanent author-vs-internal dual
+vocabulary would be a long-term translation tax.
 
 ## 5. Reserved keys
 
@@ -267,21 +268,25 @@ the parser preserves document order within each kind, mirroring today's
 
 ## 7. Migration
 
-The entire migration ships in **one release**. The codebase carries
-no dual-parser path: legacy `---/CARD:---` is a hard parse error
-from the first commit of the new release, with a diagnostic naming
-the canonical syntax.
+Quillmark has a single primary consumer (the project's own
+application), so the migration policy is round-trip-driven, not
+calendar-driven.
 
-Quillmark ships only the canonical emitter; consumers handle their
-own legacy-document conversion. The emitter's existing round-trip
-guarantees (comments, ordering, `!fill` tags) carry forward
-unchanged, so a consumer that wants a one-shot converter can build
-one against a pinned snapshot of the previous-release parser plus
-the new emitter. In-repo fixtures and sample quills are converted by
-Quillmark contributors as part of the release PR, using whatever
-ad-hoc script they prefer — not a shipped tool.
+**Release N** ships ` ```leaf ` / `KIND:` as the canonical inline form
+and keeps a legacy parser path for `---/CARD: foo/---`. The legacy
+parser exists exclusively for round-trip migration: the consumer reads
+each existing `.md` document, parses it, and emits the new form.
+Comments, ordering, and `!fill` tags round-trip losslessly per today's
+emitter guarantee (carried forward unchanged). Every legacy block
+parsed surfaces a `parse::deprecated_leaf_syntax` warning naming the
+canonical ` ```leaf ` form, so consumers cannot fall through a
+migration without notice.
 
-All other surfaces flip in the same release, no dual support:
+**Release N+1** removes the legacy parser path entirely. Encountering
+`---/CARD: foo/---` becomes a hard parse error with a pointer to the
+migration tool.
+
+The non-syntax surfaces flip atomically in Release N, no dual support:
 
 | Surface | Change |
 |---|---|
@@ -311,16 +316,18 @@ diagnostic + reserved-key disambiguation.
 After this change:
 
 - **Frontmatter detection** keeps F2 (top-of-file or preceded by blank)
-  and F3 (zero-to-three space indent). When a top `---/---` block is
-  present, the F1 sentinel check simplifies to "first body key is
-  `QUILL:` — fail with a specific error if not." There is no
-  `CARD`-vs-`QUILL` branching because `---/---` only ever means
-  frontmatter now. Documents with no top `---/---` block at all parse
-  as quill-less (today's behaviour, unchanged).
-- **Leaf detection** delegates to CommonMark's existing fenced-code-block
-  rules (including the 0–3 space indent allowance and run-length
-  closure semantics). Quillmark only inspects fenced code blocks whose
-  info string's first token is `leaf`.
+  and F3 (zero-to-three space indent). The first F2-valid `---/---`
+  block whose first body key is `QUILL:` is the frontmatter; any prior
+  `---/---` pair is a thematic break (with a near-miss warning if the
+  first key looks like a typo for `QUILL`).
+- **Leaf detection** is two paths in Release N. The canonical path
+  delegates to CommonMark's fenced-code-block rules and routes blocks
+  whose info-string first token is `leaf` to leaf parsing. The legacy
+  path scans for `---/---` pairs after the frontmatter whose first
+  body key is `CARD:`; each one is parsed as a leaf and emits a
+  `parse::deprecated_leaf_syntax` warning. Round-trip through the
+  canonical emitter rewrites the document into ` ```leaf ` form.
+  Release N+1 deletes the legacy path.
 - **Near-miss-sentinel diagnostic** for inline records is gone. The
   closest analogue inside a `leaf` fence is "missing `KIND:` first key,"
   which is a hard error rather than a silent classification miss.
@@ -347,12 +354,16 @@ In the spirit of honest accounting:
   apply for leaf detection. Net rule count shifts from one custom system
   to (smaller custom system + already-implemented CommonMark rules) —
   net engineering win, but not a clean collapse.
-- **Migration burden lands on consumers.** The single-release plan
-  (§7) keeps Quillmark's codebase free of dual-support code, but
-  pushes legacy-document conversion entirely onto consumers in one
-  cliff. "Mechanical sweep" covers the renames inside Quillmark; the
-  binding-API breakage, backend contract updates, and downstream
-  template breakage land on consumers simultaneously.
+- **Migration burden is round-trip-shaped, not eliminated.** The
+  Release-N legacy parser converts documents on `parse → to_markdown`,
+  but the binding-API breakage (`Card*` → `Leaf*`, `data.CARDS` →
+  `data.LEAVES`), backend contract updates, and Quill.yaml /
+  template renames still land on consumers in one release. Only the
+  inline-syntax migration is automated.
+- **The legacy parser path is dead code in Release N+1.** Carrying it
+  for one release costs ~50 lines in `fences.rs`; the cost lands on
+  Quillmark, not the design's stated minimalism. Deleting it in N+1
+  is the back-half of the bargain.
 
 ## 10. What survives the design
 

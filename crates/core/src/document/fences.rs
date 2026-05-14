@@ -185,6 +185,7 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
                 content_end,
                 block_end,
                 0,
+                false,
             )?;
             blocks.push(block);
             post_frontmatter_k = cj + 1;
@@ -216,7 +217,15 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
         }
     }
 
-    // ── Step 2: leaf code fences ─────────────────────────────────────────────
+    // ── Step 2: leaves ───────────────────────────────────────────────────────
+    // Two paths interleave by source order:
+    //
+    // - **Canonical**: CommonMark fenced code block whose info-string first
+    //   token is `leaf`, body keyed by `KIND:`.
+    // - **Legacy (Release N only, LEAF_REWORK.md §7)**: `---/---` block (F2)
+    //   whose first body key is `CARD:`. Each occurrence emits a
+    //   `parse::deprecated_leaf_syntax` warning; the canonical emitter
+    //   rewrites it to ` ```leaf ` on round-trip.
     let mut k = post_frontmatter_k;
     let mut open_code_fence: Option<(u8, usize, usize)> = None;
     while k < lines.len() {
@@ -228,6 +237,46 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
             }
             k += 1;
             continue;
+        }
+
+        // Legacy `---/CARD: …/---` leaf — Release-N migration path.
+        if is_fence_marker_line(text) && (k == 0 || lines.is_blank(k - 1)) {
+            if let Some(cj) =
+                (k + 1..lines.len()).find(|&j| is_fence_marker_line(lines.line_text(j)))
+            {
+                let content_start = lines.line_end_inclusive(k);
+                let content_end = lines.line_start(cj);
+                let content = &markdown[content_start..content_end];
+                if first_content_key(content) == Some("CARD") {
+                    let abs_pos = lines.line_start(k);
+                    let block_end = lines.line_end_inclusive(cj);
+                    let block = super::assemble::build_block(
+                        markdown,
+                        abs_pos,
+                        content_start,
+                        content_end,
+                        block_end,
+                        blocks.len(),
+                        true,
+                    )?;
+                    blocks.push(block);
+                    warnings.push(
+                        Diagnostic::new(
+                            Severity::Warning,
+                            format!(
+                                "Legacy `---/CARD: …/---` leaf at line {} is deprecated; \
+                                 round-trip through `Document::to_markdown` to rewrite as \
+                                 the canonical ` ```leaf / KIND: … / ``` ` form. The legacy \
+                                 path will be removed in the next release.",
+                                k + 1
+                            ),
+                        )
+                        .with_code("parse::deprecated_leaf_syntax".to_string()),
+                    );
+                    k = cj + 1;
+                    continue;
+                }
+            }
         }
 
         if let Some((ch, run_len, _)) = code_fence_on_line(text, None) {
@@ -278,6 +327,7 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
                     content_end,
                     block_end,
                     blocks.len(),
+                    false,
                 )?;
                 blocks.push(block);
                 k = cj + 1;
