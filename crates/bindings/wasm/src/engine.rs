@@ -1,7 +1,7 @@
 //! Quillmark WASM Engine - Simplified API
 
 use crate::error::WasmError;
-use crate::types::{Leaf, Diagnostic, RenderOptions, RenderResult};
+use crate::types::{Diagnostic, Leaf, RenderOptions, RenderResult};
 use js_sys::{Array, Uint8Array};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

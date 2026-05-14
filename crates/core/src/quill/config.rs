@@ -12,7 +12,7 @@ use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
 use super::formats::DATE_FORMAT;
-use super::{BodyLeafSchema, LeafSchema, FieldSchema, FieldType, UiLeafSchema, UiFieldSchema};
+use super::{BodyLeafSchema, FieldSchema, FieldType, LeafSchema, UiFieldSchema, UiLeafSchema};
 
 /// Top-level configuration for a Quillmark project
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

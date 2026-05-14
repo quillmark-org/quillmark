@@ -160,8 +160,7 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
             k += 1;
             continue;
         }
-        let closer_k =
-            (k + 1..lines.len()).find(|&j| is_fence_marker_line(lines.line_text(j)));
+        let closer_k = (k + 1..lines.len()).find(|&j| is_fence_marker_line(lines.line_text(j)));
 
         let content_start = lines.line_end_inclusive(k);
         let content_end = closer_k

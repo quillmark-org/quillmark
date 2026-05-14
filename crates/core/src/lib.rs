@@ -45,7 +45,7 @@
 
 pub mod document;
 pub use document::{
-    Leaf, Document, EditError, Frontmatter, FrontmatterItem, ParseOutput, Sentinel,
+    Document, EditError, Frontmatter, FrontmatterItem, Leaf, ParseOutput, Sentinel,
 };
 
 pub mod backend;

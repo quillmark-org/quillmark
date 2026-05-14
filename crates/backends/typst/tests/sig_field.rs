@@ -98,7 +98,8 @@ fn regression_widget_dict_has_exactly_one_subtype() {
         .filter(|w| *w == b"/Subtype")
         .count();
     assert_eq!(
-        count, 1,
+        count,
+        1,
         "widget dict must declare /Subtype exactly once, got {count}:\n{}",
         String::from_utf8_lossy(body)
     );
@@ -150,10 +151,18 @@ Page 2.
     let page_refs: Vec<(u32, u16)> = pages.iter().map(|(_, &id)| (id.0, id.1)).collect();
 
     for f in fields {
-        let widget = doc.get_object(f.as_reference().unwrap()).unwrap().as_dict().unwrap();
-        let name = String::from_utf8_lossy(widget.get(b"T").unwrap().as_str().unwrap()).into_owned();
+        let widget = doc
+            .get_object(f.as_reference().unwrap())
+            .unwrap()
+            .as_dict()
+            .unwrap();
+        let name =
+            String::from_utf8_lossy(widget.get(b"T").unwrap().as_str().unwrap()).into_owned();
         assert_eq!(widget.get(b"FT").unwrap().as_name().unwrap(), b"Sig");
-        assert_eq!(widget.get(b"Subtype").unwrap().as_name().unwrap(), b"Widget");
+        assert_eq!(
+            widget.get(b"Subtype").unwrap().as_name().unwrap(),
+            b"Widget"
+        );
 
         let page_ref = widget.get(b"P").unwrap().as_reference().unwrap();
         let page_index = page_refs.iter().position(|&p| p == page_ref).unwrap();
@@ -161,11 +170,26 @@ Page 2.
         assert_eq!(page_index, expected, "field {name} on wrong page");
 
         let rect = widget.get(b"Rect").unwrap().as_array().unwrap();
-        let (llx, lly, urx, ury) = (to_f64(&rect[0]), to_f64(&rect[1]), to_f64(&rect[2]), to_f64(&rect[3]));
-        assert!((urx - llx - 200.0).abs() < 1.0, "field {name} width: {}", urx - llx);
-        assert!((ury - lly - 50.0).abs() < 1.0, "field {name} height: {}", ury - lly);
-        assert!(llx >= 0.0 && urx <= 600.0 && lly >= 0.0 && ury <= 400.0,
-            "field {name} rect outside page: [{llx}, {lly}, {urx}, {ury}]");
+        let (llx, lly, urx, ury) = (
+            to_f64(&rect[0]),
+            to_f64(&rect[1]),
+            to_f64(&rect[2]),
+            to_f64(&rect[3]),
+        );
+        assert!(
+            (urx - llx - 200.0).abs() < 1.0,
+            "field {name} width: {}",
+            urx - llx
+        );
+        assert!(
+            (ury - lly - 50.0).abs() < 1.0,
+            "field {name} height: {}",
+            ury - lly
+        );
+        assert!(
+            llx >= 0.0 && urx <= 600.0 && lly >= 0.0 && ury <= 400.0,
+            "field {name} rect outside page: [{llx}, {lly}, {urx}, {ury}]"
+        );
     }
 }
 
@@ -222,7 +246,12 @@ fn user_metadata_on_reserved_label_does_not_clobber() {
     let af_ref = cat.get(b"AcroForm").unwrap().as_reference().unwrap();
     let af = doc.get_object(af_ref).unwrap().as_dict().unwrap();
     let fields = af.get(b"Fields").unwrap().as_array().unwrap();
-    assert_eq!(fields.len(), 1, "expected exactly 1 real field, got {}", fields.len());
+    assert_eq!(
+        fields.len(),
+        1,
+        "expected exactly 1 real field, got {}",
+        fields.len()
+    );
     let widget = doc
         .get_object(fields[0].as_reference().unwrap())
         .unwrap()

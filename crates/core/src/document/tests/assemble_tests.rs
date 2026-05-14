@@ -1159,7 +1159,11 @@ fn test_extended_metadata_demo_file() {
     // 5 leaves total: 3 features + 2 use_cases
     assert_eq!(doc.leaves().len(), 5);
 
-    let features_count = doc.leaves().iter().filter(|c| c.tag() == "features").count();
+    let features_count = doc
+        .leaves()
+        .iter()
+        .filter(|c| c.tag() == "features")
+        .count();
     let use_cases_count = doc
         .leaves()
         .iter()
@@ -1843,7 +1847,8 @@ fn test_f2_strip_global_body_followed_by_leaf_crlf() {
 fn test_f2_strip_leaf_body_followed_by_leaf() {
     // First leaf body is followed by another fence → F2 stripped.
     // Last leaf body is at EOF → preserved verbatim.
-    let markdown = "---\nQUILL: q\n---\n\n```leaf\nKIND: a\n```\nfirst\n\n```leaf\nKIND: b\n```\nsecond\n";
+    let markdown =
+        "---\nQUILL: q\n---\n\n```leaf\nKIND: a\n```\nfirst\n\n```leaf\nKIND: b\n```\nsecond\n";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.leaves()[0].body(), "first\n");
     assert_eq!(doc.leaves()[1].body(), "second\n");
@@ -2219,7 +2224,11 @@ fn legacy_card_block_parses_as_leaf_with_deprecation_warning() {
     let md = "---\nQUILL: q\n---\n\n---\nCARD: note\nauthor: Alice\n---\n\nLeaf body.\n";
     let doc = Document::from_markdown(md).unwrap();
 
-    assert_eq!(doc.leaves().len(), 1, "legacy CARD block must parse as leaf");
+    assert_eq!(
+        doc.leaves().len(),
+        1,
+        "legacy CARD block must parse as leaf"
+    );
     let leaf = &doc.leaves()[0];
     assert_eq!(leaf.tag(), "note");
     assert_eq!(
@@ -2299,7 +2308,8 @@ fn legacy_and_canonical_leaves_coexist_during_migration() {
 /// they fall through to CommonMark thematic-break handling, same as today.
 #[test]
 fn legacy_card_without_f2_is_not_a_leaf() {
-    let md = "---\nQUILL: q\n---\n\nBody text directly above.\n---\nCARD: note\nauthor: Alice\n---\n";
+    let md =
+        "---\nQUILL: q\n---\n\nBody text directly above.\n---\nCARD: note\nauthor: Alice\n---\n";
     let doc = Document::from_markdown(md).unwrap();
     assert_eq!(
         doc.leaves().len(),

@@ -5,7 +5,7 @@ use time::{Date, OffsetDateTime};
 use crate::document::Document;
 use crate::error::{Diagnostic, Severity};
 use crate::quill::formats::DATE_FORMAT;
-use crate::quill::{LeafSchema, FieldSchema, FieldType, QuillConfig};
+use crate::quill::{FieldSchema, FieldType, LeafSchema, QuillConfig};
 use crate::value::QuillValue;
 
 /// Validation error with a structured field path.
@@ -144,11 +144,7 @@ pub fn validate_typed_document(
 
         let leaf_path = format!("leaves.{leaf_name}[{index}]");
         let leaf_fields = leaf.frontmatter().to_index_map();
-        errors.extend(validate_leaf_fields(
-            leaf_schema,
-            &leaf_fields,
-            &leaf_path,
-        ));
+        errors.extend(validate_leaf_fields(leaf_schema, &leaf_fields, &leaf_path));
 
         if !leaf_schema.body_enabled() && !leaf.body().trim().is_empty() {
             errors.push(ValidationError::BodyDisabled {
@@ -370,7 +366,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use crate::document::{Leaf, Document};
+    use crate::document::{Document, Leaf};
     use crate::version::QuillReference;
     use serde_json::json;
 

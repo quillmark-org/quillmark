@@ -1,7 +1,7 @@
 use crate::errors::{CliError, Result};
 use clap::Parser;
 use quillmark::Quillmark;
-use quillmark_core::quill::{LeafSchema, FieldSchema, FieldType, QuillConfig};
+use quillmark_core::quill::{FieldSchema, FieldType, LeafSchema, QuillConfig};
 use quillmark_core::QuillValue;
 use std::collections::BTreeMap;
 use std::fs;

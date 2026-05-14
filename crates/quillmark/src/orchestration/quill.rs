@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use quillmark_core::{
-    normalize::normalize_document, Backend, Leaf, Diagnostic, Document, Frontmatter, OutputFormat,
+    normalize::normalize_document, Backend, Diagnostic, Document, Frontmatter, Leaf, OutputFormat,
     QuillSource, QuillValue, RenderError, RenderOptions, RenderResult, RenderSession, Sentinel,
     Severity,
 };
@@ -80,7 +80,9 @@ impl Quill {
             .unwrap_or("")
             .to_string();
         let warnings: Vec<_> = self.ref_mismatch_warning(doc).into_iter().collect();
-        let session = self.backend.open(&plate_content, &self.source, &json_data)?;
+        let session = self
+            .backend
+            .open(&plate_content, &self.source, &json_data)?;
         Ok(session.with_warnings(warnings))
     }
 
@@ -109,8 +111,7 @@ impl Quill {
                     .leaf_kind(&leaf.tag())
                     .map(|c| c.defaults())
                     .unwrap_or_default();
-                let fields =
-                    apply_defaults(&leaf.frontmatter().to_index_map(), defaults);
+                let fields = apply_defaults(&leaf.frontmatter().to_index_map(), defaults);
                 Leaf::new_with_sentinel(
                     Sentinel::Leaf(leaf.tag()),
                     Frontmatter::from_index_map(fields),
@@ -249,7 +250,10 @@ impl Quill {
                 // the same invariant — assert it here so any future
                 // refactor of the underlying validator can't quietly
                 // produce an empty-diags error.
-                debug_assert!(!errors.is_empty(), "ValidationFailed must carry at least one diagnostic");
+                debug_assert!(
+                    !errors.is_empty(),
+                    "ValidationFailed must carry at least one diagnostic"
+                );
                 let diags: Vec<Diagnostic> = errors.iter().map(|e| e.to_diagnostic()).collect();
                 Err(RenderError::ValidationFailed { diags })
             }

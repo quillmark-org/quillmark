@@ -57,7 +57,8 @@ pub(super) fn parse_traditional_trailer(
         .ok_or_else(|| err(CODE_PARSE, "/Root missing or malformed in trailer"))?;
     let size = find_dict_value(dict, "Size")
         .and_then(parse_int)
-        .ok_or_else(|| err(CODE_PARSE, "/Size missing or malformed in trailer"))? as u32;
+        .ok_or_else(|| err(CODE_PARSE, "/Size missing or malformed in trailer"))?
+        as u32;
     let encrypted = find_dict_value(dict, "Encrypt").is_some();
     Ok((root_id, size, encrypted))
 }
@@ -117,10 +118,7 @@ pub(super) fn find_dict_value<'a>(dict_bytes: &'a [u8], key: &str) -> Option<&'a
                 depth_array -= 1;
                 i += 1;
             }
-            _ if depth_dict == 0
-                && depth_array == 0
-                && dict_bytes[i..].starts_with(km) =>
-            {
+            _ if depth_dict == 0 && depth_array == 0 && dict_bytes[i..].starts_with(km) => {
                 let next = dict_bytes.get(i + km.len()).copied();
                 if matches!(
                     next,
@@ -277,8 +275,10 @@ fn skip_pdf_hex_string(b: &[u8], start: usize) -> usize {
 }
 
 fn is_pdf_delim(c: u8) -> bool {
-    matches!(c, b' ' | b'\t' | b'\n' | b'\r' | b'\x0c'
-        | b'/' | b'[' | b']' | b'(' | b')' | b'<' | b'>')
+    matches!(
+        c,
+        b' ' | b'\t' | b'\n' | b'\r' | b'\x0c' | b'/' | b'[' | b']' | b'(' | b')' | b'<' | b'>'
+    )
 }
 
 pub(super) fn parse_indirect_ref(s: &[u8]) -> Option<(u32, u16)> {
@@ -381,16 +381,22 @@ pub(super) fn resolve_page_ids(pdf: &[u8], catalog_id: u32) -> Result<Vec<u32>, 
         }
         let (s, e) = find_object_bytes(pdf, node_id)
             .ok_or_else(|| err(CODE_PARSE, format!("page node {node_id} not found")))?;
-        let dict = extract_outer_dict(&pdf[s..e])
-            .ok_or_else(|| err(CODE_PARSE, format!("page node {node_id} dict not parseable")))?;
+        let dict = extract_outer_dict(&pdf[s..e]).ok_or_else(|| {
+            err(
+                CODE_PARSE,
+                format!("page node {node_id} dict not parseable"),
+            )
+        })?;
         let typ = find_dict_value(dict, "Type")
             .map(|b| String::from_utf8_lossy(b.trim_ascii()).into_owned())
             .unwrap_or_default();
         if typ.starts_with("/Pages") {
             let kids = find_dict_value(dict, "Kids")
                 .ok_or_else(|| err(CODE_PARSE, "/Pages node missing /Kids"))?;
-            let mut kid_ids: Vec<u32> =
-                parse_ref_array(kids).into_iter().map(|(id, _)| id).collect();
+            let mut kid_ids: Vec<u32> = parse_ref_array(kids)
+                .into_iter()
+                .map(|(id, _)| id)
+                .collect();
             kid_ids.reverse();
             stack.extend(kid_ids);
         } else {

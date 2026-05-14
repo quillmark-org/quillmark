@@ -24,7 +24,7 @@
 
 use std::collections::BTreeMap;
 
-use super::{LeafSchema, FieldSchema, FieldType, QuillConfig};
+use super::{FieldSchema, FieldType, LeafSchema, QuillConfig};
 use crate::document::emit::emit_double_quoted;
 use crate::value::QuillValue;
 
