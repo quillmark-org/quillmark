@@ -39,6 +39,44 @@ fn strip_f2_separator(body: &str) -> &str {
     }
 }
 
+/// Rewrite the first non-blank, non-comment line's `CARD:` prefix to `KIND:`.
+///
+/// Used by the Release-N legacy parser path (LEAF_REWORK.md §7) so that a
+/// document authored against the previous syntax (`---/CARD: foo/---`)
+/// produces the same `Leaf` as the canonical ` ```leaf / KIND: foo / ``` `
+/// form. The substitution is byte-for-byte length-preserving (both sentinels
+/// are four ASCII characters), so downstream offset bookkeeping is unaffected.
+/// Caller guarantees the first content key is `CARD:` before invoking.
+fn rewrite_first_card_to_kind(content: &str) -> String {
+    let mut out = String::with_capacity(content.len());
+    let mut rewrote = false;
+    for line in content.split_inclusive('\n') {
+        if rewrote {
+            out.push_str(line);
+            continue;
+        }
+        let leading = line.len() - line.trim_start_matches([' ', '\t']).len();
+        let body = &line[leading..];
+        if body.trim().is_empty() || body.starts_with('#') {
+            out.push_str(line);
+            continue;
+        }
+        if let Some(rest) = body.strip_prefix("CARD:") {
+            out.push_str(&line[..leading]);
+            out.push_str("KIND:");
+            out.push_str(rest);
+            rewrote = true;
+        } else {
+            // First non-blank, non-comment line is not `CARD:` — caller
+            // should never invoke us in this case, but stay verbatim
+            // rather than corrupt the slice.
+            out.push_str(line);
+            rewrote = true;
+        }
+    }
+    out
+}
+
 /// Which sentinel a metadata block carries. `Main` is the top frontmatter's
 /// `QUILL:` reference (raw string, parsed to `QuillReference` later); `Leaf`
 /// is a leaf fence's `KIND:` tag.
@@ -83,6 +121,14 @@ fn yaml_parse_options() -> serde_saphyr::Options {
 /// `MetadataBlock`. `content_start` is the byte position immediately after
 /// the opening fence line; `content_end` is the byte position at the start
 /// of the closing fence line. Returns errors per spec §9.
+///
+/// When `legacy_card_to_kind` is true, the first occurrence of the literal
+/// sentinel key `CARD:` in the raw content is rewritten to `KIND:` before
+/// parsing. This is the Release-N round-trip migration path (LEAF_REWORK.md
+/// §7): legacy `---/CARD: …/---` blocks are recognised as leaves so the
+/// canonical emitter can rewrite them to ` ```leaf ` form on the next
+/// `to_markdown()`. Caller is responsible for verifying the first content
+/// key is actually `CARD:` and for emitting the deprecation warning.
 pub(super) fn build_block(
     markdown: &str,
     abs_pos: usize,
@@ -90,8 +136,15 @@ pub(super) fn build_block(
     content_end: usize,
     block_end: usize,
     block_index: usize,
+    legacy_card_to_kind: bool,
 ) -> Result<MetadataBlock, ParseError> {
-    let raw_content = &markdown[content_start..content_end];
+    let raw_content_owned: String;
+    let raw_content: &str = if legacy_card_to_kind {
+        raw_content_owned = rewrite_first_card_to_kind(&markdown[content_start..content_end]);
+        &raw_content_owned
+    } else {
+        &markdown[content_start..content_end]
+    };
 
     // Check YAML size limit (spec §8)
     if raw_content.len() > crate::error::MAX_YAML_SIZE {

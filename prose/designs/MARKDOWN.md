@@ -172,6 +172,11 @@ The Gadget complements the Widget.
   not near-miss diagnostics.
 - **Missing `KIND:` in a leaf.** Hard parse error inside the leaf — the
   fence has been classified, so the diagnostic is specific.
+- **Legacy `---/CARD: …/---` block.** Accepted in this release as a
+  Release-N migration path: parsed as a leaf, surfaces a
+  `parse::deprecated_leaf_syntax` warning, and rewritten to ` ```leaf `
+  on `to_markdown()` round-trip. The legacy form will be a hard parse
+  error in the next release.
 
 ## 5. Data Model
 
