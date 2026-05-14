@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nibsbin/quillmark.git"
+    "url": "git+https://github.com/quillmark-org/quillmark.git"
   },
   "files": [
     "bundler/wasm_bg.wasm",
