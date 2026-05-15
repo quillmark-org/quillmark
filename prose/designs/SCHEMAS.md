@@ -54,7 +54,7 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
 - `ui` hints on fields and leaf kinds (`group`, `order`, `compact`, `multiline`, `title`)
 - `body` blocks on leaves (`enabled`, `description`)
 - A required `QUILL` sentinel prepended to `main.fields` (`const = "<name>@<version>"`)
-- A required `KIND` sentinel prepended to each `leaf_kinds.<name>.fields` (`const = "<name>"`)
+- A required `KIND` discriminator field prepended to each `leaf_kinds.<name>.fields` (`const = "<name>"`)
 
 `QuillConfig::schema_yaml()` is a YAML wrapper over the same value. The schema is pinned by serde attributes on `FieldSchema`, `LeafSchema`, `UiFieldSchema`, `UiLeafSchema`, and `BodyLeafSchema` — there is no parallel mirror struct.
 
@@ -75,7 +75,7 @@ Identity fields (`name`, `version`, `backend`, `author`, `description`) live on 
 
 ### `main.fields` and `leaf_kinds.<name>.fields` sentinels
 
-`schema()` prepends a synthetic field to each leaf's `fields` map so consumers know exactly which sentinel string to write:
+`schema()` prepends a synthetic field to each leaf's `fields` map so consumers know exactly which fixed value to write (`QUILL` as the frontmatter sentinel, `KIND` as the leaf fence's kind token):
 
 - `main.fields.QUILL` — `{ type: string, const: "<name>@<version>", required: true, description: ... }`
 - `leaf_kinds.<name>.fields.KIND` — `{ type: string, const: "<name>", required: true, description: ... }`

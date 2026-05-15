@@ -314,6 +314,7 @@ pub(super) fn decompose_with_warnings(
         &frontmatter_block.pre_items,
         &frontmatter_block.pre_nested_comments,
         &frontmatter_block.yaml_value,
+        true,
     )?;
     // Surface pre-scan warnings (nested-comment drops, unsupported tags).
     let mut warnings = warnings;
@@ -347,6 +348,7 @@ pub(super) fn decompose_with_warnings(
             &block.pre_items,
             &block.pre_nested_comments,
             &block.yaml_value,
+            false,
         )
         .map_err(|e| match e {
             ParseError::InvalidStructure(msg) => ParseError::InvalidStructure(format!(
@@ -385,7 +387,7 @@ pub(super) fn decompose_with_warnings(
 }
 
 /// Build a [`Frontmatter`] from the pre-scan items and the parsed YAML
-/// mapping (with sentinel keys already stripped).
+/// mapping.
 ///
 /// The pre-scan defined source order for fields and comments; the parsed
 /// YAML defined the typed value for each key. We walk pre-scan order,
@@ -393,10 +395,16 @@ pub(super) fn decompose_with_warnings(
 /// didn't catch (e.g. it used a YAML key form the pre-scan doesn't
 /// recognise — exotic identifier, flow-mapping syntax, etc.) is appended at
 /// the end of the item list in parsed-map order so we never drop values.
+///
+/// `is_frontmatter` selects which sentinel key `extract_sentinels` stripped
+/// from `yaml_value`: `QUILL` for the document frontmatter, nothing for a
+/// leaf (its kind lives in the info string). The stripped key is skipped
+/// from the item list; in a leaf, `QUILL` is an ordinary field and is kept.
 fn build_frontmatter_from_pre_and_parsed(
     pre_items: &[PreItem],
     pre_nested_comments: &[NestedComment],
     yaml_value: &Option<serde_json::Value>,
+    is_frontmatter: bool,
 ) -> Result<Frontmatter, ParseError> {
     let mapping = match yaml_value {
         Some(serde_json::Value::Object(map)) => map.clone(),
@@ -429,10 +437,11 @@ fn build_frontmatter_from_pre_and_parsed(
                 });
             }
             PreItem::Field { key, fill } => {
-                // The `QUILL` sentinel key is stripped from the parsed map by
-                // `extract_sentinels`; skip it in the item list. (A leaf's
-                // kind lives in the info string, never the body.)
-                if key == "QUILL" {
+                // In frontmatter the `QUILL` sentinel key is stripped from the
+                // parsed map by `extract_sentinels`; skip it in the item list.
+                // In a leaf, `QUILL` is an ordinary field (the kind lives in
+                // the info string) and must be kept.
+                if is_frontmatter && key == "QUILL" {
                     after_stripped_sentinel = true;
                     continue;
                 }

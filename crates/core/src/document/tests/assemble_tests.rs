@@ -1660,6 +1660,25 @@ id: 2
 }
 
 #[test]
+fn test_leaf_may_carry_quill_field() {
+    // `QUILL` is not reserved inside a leaf (MARKDOWN.md §3.2) — the kind
+    // lives in the info string, so a body `QUILL:` is an ordinary field and
+    // is kept in source position.
+    let markdown = "---\nQUILL: q\n---\n\n```leaf item\nQUILL: not-a-ref\nname: x\n```\n";
+    let doc = decompose(markdown).unwrap();
+    let leaf = &doc.leaves()[0];
+    assert_eq!(leaf.tag(), "item");
+    assert_eq!(
+        leaf.frontmatter().get("QUILL").and_then(|v| v.as_str()),
+        Some("not-a-ref")
+    );
+    let emitted = doc.to_markdown();
+    let q = emitted.find("QUILL: \"not-a-ref\"").expect("QUILL field kept");
+    let n = emitted.find("name:").expect("name field kept");
+    assert!(q < n, "QUILL field must stay before name; got:\n{}", emitted);
+}
+
+#[test]
 fn test_leaf_with_body_containing_dashes() {
     let markdown = r#"---
 QUILL: test_quill
