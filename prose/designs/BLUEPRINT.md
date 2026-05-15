@@ -13,7 +13,7 @@ free.
 
 ## Output shape
 
-```
+````
 ---
 # <description>
 QUILL: <name>@<version>  # sentinel; required, verbatim
@@ -26,14 +26,14 @@ field: value  # <type>; <role>
 
 Write main body here.
 
----
+```leaf
 # <leaf description>
 KIND: <leaf_kind>  # sentinel; composable (0..N)
 ...fields...
----
+```
 
 Write <leaf_kind> body here.
-```
+````
 
 When `body.example` is set, its text replaces the body marker entirely.
 When `body.enabled` is false the marker is omitted entirely.
@@ -102,7 +102,7 @@ Examples:
 | `published: ""  # datetime<ISO 8601>; required` | required datetime in ISO 8601 |
 | `level: low  # enum<low \| medium \| high>; optional` | optional enum, default is first value |
 | `QUILL: cmu_letter@0.1.0  # sentinel; required, verbatim` | quill binding, do not modify |
-| `KIND: skill  # sentinel; composable (0..N)` | repeat the entire `--- KIND ... ---` block per instance |
+| `KIND: skill  # sentinel; composable (0..N)` | repeat the entire ` ```leaf ... ``` ` block per instance |
 
 ## Placeholder value precedence
 
