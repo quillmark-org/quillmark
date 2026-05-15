@@ -9,22 +9,22 @@ quill:
 main:
   fields:
     author:
-      title: Author of document
+      description: Author of document
       type: string
     ice_cream:
-      title: favorite ice cream flavor
+      description: favorite ice cream flavor
       type: string
       default: taro
     title:
-      title: title of document
+      description: title of document
       type: string
 
 leaf_kinds:
   quotes:
-    title: Inspirational Quotes
     description: A collection of quotes about taro ice cream
+    ui:
+      title: Inspirational Quotes
     fields:
       author:
-        title: Quote author
-        type: string
         description: The person who said this quote
+        type: string
