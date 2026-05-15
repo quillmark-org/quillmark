@@ -15,10 +15,9 @@ Not published: `quillmark-fixtures`, `quillmark-fuzz`, `bindings/quillmark-pytho
 
 | Job | What it does |
 |-----|-------------|
-| `lint` | `cargo fmt --all -- --check` (Clippy commented out, not yet enforced) |
-| `test` | `cargo test --locked` in a matrix: default features and `--all-features` |
-| `docs` | `cargo doc --no-deps --locked` with `-Dwarnings` |
-| `wasm` | `cargo check --package quillmark-wasm --target wasm32-unknown-unknown --locked` |
+| `lint` | `cargo doc --no-deps --locked` with `-Dwarnings` (Clippy commented out, not yet enforced) |
+| `test` | `cargo test --workspace --all-features --locked` |
+| `wasm` | builds WASM via `scripts/build-wasm.sh --ci`, then runs the WASM test suite via `npx vitest run` |
 
 Excluded: multi-OS matrix, MSRV, security scanners, coverage, benchmarks.
 
