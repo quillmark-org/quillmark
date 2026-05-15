@@ -16,12 +16,12 @@ render on validity have to call `form` for its side effects. Expose a
 
 ## 2. Stringly-typed field types in the schema payload
 
-`crates/core/src/quill/types.rs:152` — `FieldType` serializes to bare strings
-(`"string"`, `"integer"`, `"array"`, `"dict"`, `"markdown"`). The wasm
+`crates/core/src/quill/types.rs:136` — `FieldType` serializes to bare strings
+(`"string"`, `"integer"`, `"array"`, `"object"`, `"markdown"`). The wasm
 `.d.ts` advertises return types via wasm-bindgen `unchecked_return_type =
-"Leaf"` (`crates/bindings/wasm/src/engine.rs:347`) but the named type isn't
-defined anywhere in the emitted declarations, so it collapses to `any` for
-TS consumers. Either ship a real discriminated-union type alongside the
+"Leaf"` (`crates/bindings/wasm/src/engine.rs:530,538`) but the named type
+isn't defined anywhere in the emitted declarations, so it collapses to `any`
+for TS consumers. Either ship a real discriminated-union type alongside the
 schema payload, or document that consumers must hand-write the TS interface.
 
 ## 3. `setField` / `setFill` are schema-blind

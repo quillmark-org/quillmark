@@ -30,8 +30,8 @@ see `body.enabled` and `body.description` below.
 
 `QuillConfig` exposes the entry-point document schema as `main: LeafSchema`
 and the additional named leaf kinds as `leaf_kinds: Vec<LeafSchema>`. Look
-up a named kind by name via `leaf_kind(name)` or get a name-keyed map via
-`leaf_kinds_map()`.
+up a named kind by name via `leaf_kind(name)`, or iterate `leaf_kinds`
+directly for the full list.
 
 ## Quill.yaml Configuration
 
