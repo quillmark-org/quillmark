@@ -14,8 +14,12 @@
 - **[SCHEMAS.md](SCHEMAS.md)** - `QuillConfig` schema model, native validation, and emission overview
 - **[BLUEPRINT.md](BLUEPRINT.md)** - Annotated Markdown blueprint for LLM/MCP authoring
 - **[LEAVES.md](LEAVES.md)** - Composable leaves with unified LEAVES array
-- **[LEAF_REWORK.md](LEAF_REWORK.md)** - Design rationale for the inline-leaf syntax
 - **[GLUE_METADATA.md](GLUE_METADATA.md)** - Plate data injection
+
+## Proposals
+
+- **[../proposals/LEAF_REWORK.md](../proposals/LEAF_REWORK.md)** - Design rationale for the inline-leaf syntax
+- **[../proposals/LEAF_KIND_INFOSTRING.md](../proposals/LEAF_KIND_INFOSTRING.md)** - Move the leaf kind discriminator into the info string
 
 ## Backends
 

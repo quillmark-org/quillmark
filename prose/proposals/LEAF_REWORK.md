@@ -1,7 +1,7 @@
 # LEAF Rework — Quillmark Markdown Inline Records
 
 > **Status**: Implemented
-> **See also**: [MARKDOWN.md](MARKDOWN.md) (spec), [LEAVES.md](LEAVES.md) (data model)
+> **See also**: [MARKDOWN.md](../designs/MARKDOWN.md) (spec), [LEAVES.md](../designs/LEAVES.md) (data model)
 > **Supersedes**: ad-hoc design-vector discussion
 
 ## 1. Core insight
@@ -406,9 +406,9 @@ proposition depends on at least the VSCode extension being real.
 
 ## 12. References
 
-- [MARKDOWN.md](MARKDOWN.md) — specification
-- [LEAVES.md](LEAVES.md) — data model
-- [SCHEMAS.md](SCHEMAS.md) — schema model, affected by §4 rename
+- [MARKDOWN.md](../designs/MARKDOWN.md) — specification
+- [LEAVES.md](../designs/LEAVES.md) — data model
+- [SCHEMAS.md](../designs/SCHEMAS.md) — schema model, affected by §4 rename
 - [CommonMark 0.31.2 §4.5](https://spec.commonmark.org/0.31.2/#fenced-code-blocks)
   — fenced code block rules this design relies on
 - `crates/core/src/document/fences.rs` — fence-detection implementation

@@ -1,7 +1,7 @@
 # Proposal — Move the Leaf Kind Discriminator into the Info String
 
 > **Status**: Proposed (for SWE planning & implementation)
-> **See also**: [MARKDOWN.md](MARKDOWN.md) (spec), [LEAF_REWORK.md](LEAF_REWORK.md) (current design), [LEAVES.md](LEAVES.md) (data model)
+> **See also**: [MARKDOWN.md](../designs/MARKDOWN.md) (spec), [LEAF_REWORK.md](LEAF_REWORK.md) (current design), [LEAVES.md](../designs/LEAVES.md) (data model)
 > **Amends**: LEAF_REWORK.md §3.2, §5; MARKDOWN.md §2, §3.2, §4.2, §4.4
 
 ## 1. Summary
@@ -121,8 +121,9 @@ task breakdown.
 | `crates/core/src/document/sentinel.rs` | `KIND` no longer read from body. Add `KIND` to the leaf output-only reserved-key check. |
 | `crates/core/src/document/assemble.rs` | `BlockKind::Leaf(kind)` sourced from the info string. |
 | Markdown emitter (`to_markdown`) | Emit `` ```leaf <kind> ``; stop emitting `KIND:` as the first body line. |
-| `prose/designs/MARKDOWN.md` | §2 grammar, §3.2 leaves, §4.2 detection, §4.4 failure modes, data-model prose. |
-| `prose/designs/LEAF_REWORK.md` | Reverse the §3.2 rejection; update §5 reserved-key tables (move `KIND` from Sentinel to output-only). |
+| `prose/designs/MARKDOWN.md` | The authoritative spec — must change in lockstep with the parser, not after. §2 document grammar (the `LeafFence` production), §3.2 leaves (info-string format, drop `KIND:` as a first body key, list `KIND` as output-only), §4.2 leaf detection (second-token extraction + validation), §4.4 failure modes (replace "missing `KIND:`" with "missing kind token"). Every `` ```leaf `` example in the doc gains a kind token. |
+| `prose/designs/LEAVES.md` | Data-model design doc — must be updated alongside the spec. The `Leaf` shape is unchanged (`KIND` still present), but any prose, examples, or diagrams that describe `KIND` as a *body key* / sentinel must be rewritten to describe it as an info-string token surfaced as an output-only field. Reconcile with the `KIND`-as-sentinel framing carried over from LEAF_REWORK. |
+| `prose/proposals/LEAF_REWORK.md` | Superseded in part: §3.2 (the rejection of this form) and §5 reserved-key tables (move `KIND` from Sentinel to output-only). Leave a forward-pointer to this proposal rather than silently editing rationale. |
 | Fixtures / golden files / conformance probes | All in-repo `.md` leaf examples and `spec_conformance_probe.rs` / `security_tests.rs` / `assemble_tests.rs` cases. |
 
 ## 5. Migration
