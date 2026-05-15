@@ -7,7 +7,7 @@ readme.workspace = true
 description = "Quillmark engine API"
 license.workspace = true
 documentation = "https://docs.rs/quillmark"
-homepage = "https://github.com/nibsbin/quillmark"
+homepage = "https://quillmark.readthedocs.io/"
 repository = "https://github.com/nibsbin/quillmark"
 
 [dependencies]
