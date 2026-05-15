@@ -26,9 +26,8 @@ field: value  # <type>; <role>
 
 Write main body here.
 
-```leaf
+```leaf <leaf_kind>
 # <leaf description>
-KIND: <leaf_kind>  # sentinel; composable (0..N)
 ...fields...
 ```
 
@@ -82,8 +81,9 @@ Form: **`# <type>[<format>]; <role>[, <extra>...]`**
   - `enum<a | b | c>`
   - omitted for `string`, `integer`, `number`, `boolean`, `object`,
     `markdown` (nothing meaningful to refine).
-- **Role slot** (mandatory, after `;`): `required`, `optional`, or
-  `composable (0..N)` (KIND-sentinel only).
+- **Role slot** (mandatory, after `;`): `required` or `optional`. (A
+  composable leaf is signalled by the `` ```leaf <kind> `` fence itself,
+  not by a role marker on a field line.)
 - **Extras** (optional, comma-separated, after the role): additional
   qualifiers. Currently used for `verbatim` on the QUILL sentinel,
   signaling that the rendered value is fixed and must not be modified.
@@ -102,7 +102,7 @@ Examples:
 | `published: ""  # datetime<ISO 8601>; required` | required datetime in ISO 8601 |
 | `level: low  # enum<low \| medium \| high>; optional` | optional enum, default is first value |
 | `QUILL: cmu_letter@0.1.0  # sentinel; required, verbatim` | quill binding, do not modify |
-| `KIND: skill  # sentinel; composable (0..N)` | repeat the entire ` ```leaf ... ``` ` block per instance |
+| ` ```leaf skill ` | composable leaf — repeat the entire ` ```leaf skill ... ``` ` block per instance |
 
 ## Placeholder value precedence
 

@@ -384,8 +384,8 @@ leaf_kinds:
 
 ### Using Leaves in Markdown
 
-Leaves appear as fenced code blocks with the info string `leaf`, each
-declaring `KIND:` as the first body key:
+Leaves appear as fenced code blocks with the info string `leaf <kind>`,
+where the kind names the leaf schema:
 
 ````markdown
 ---
@@ -396,8 +396,7 @@ subject: Example
 
 Main memo body text here.
 
-```leaf
-KIND: indorsement
+```leaf indorsement
 from: ORG/SYMBOL
 for: RECIPIENT/SYMBOL
 signature_block:
@@ -407,8 +406,7 @@ signature_block:
 
 Body of the first endorsement.
 
-```leaf
-KIND: indorsement
+```leaf indorsement
 from: ANOTHER/ORG
 for: FINAL/RECIPIENT
 format: informal

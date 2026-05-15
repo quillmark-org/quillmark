@@ -151,6 +151,12 @@ opener may sit anywhere in that range.
 
 ### 3.2 Why `KIND:` as a body key and not an info-string token
 
+> **Superseded** by [LEAF_KIND_INFOSTRING.md](LEAF_KIND_INFOSTRING.md): the
+> kind discriminator has since been moved into the info string
+> (` ```leaf <kind> `), for LLM-authoring robustness. The rationale below
+> records the original decision and is kept for history; the reserved-key
+> table in §5 reflects the current design.
+
 A natural alternative was ` ```leaf product ` — second-token in the info
 string carries the kind. Rejected because:
 
@@ -223,6 +229,10 @@ vocabulary would be a long-term translation tax.
 
 ## 5. Reserved keys
 
+> Updated per [LEAF_KIND_INFOSTRING.md](LEAF_KIND_INFOSTRING.md): `KIND`
+> is no longer a body sentinel — it is carried by the `` ```leaf <kind> ``
+> info string and joins the output-only set.
+
 Two categories, scoped to the fence they appear in:
 
 **Sentinels** — the user supplies these; the parser routes on them:
@@ -230,20 +240,21 @@ Two categories, scoped to the fence they appear in:
 | Position | Sentinel | Required position |
 |---|---|---|
 | Frontmatter body | `QUILL` | First body key |
-| Leaf body | `KIND` | First body key |
+
+The leaf kind is carried by the info string (`` ```leaf <kind> ``), not a
+body key.
 
 **Output-only** — the parser populates these on the output object (§6);
 supplying them as input keys is a hard parse error:
 
 | Position | Output-only keys |
 |---|---|
-| Frontmatter body | `BODY`, `LEAVES` |
-| Leaf body | `BODY` |
+| Frontmatter body | `BODY`, `LEAVES`, `KIND` |
+| Leaf body | `BODY`, `KIND` |
 
-`QUILL` is not reserved inside leaves; `KIND` is not reserved inside
-frontmatter. Sentinel keys (`QUILL`, `KIND`) may not carry YAML tags
-such as `!fill` — they are routing keys, not data, and must resolve
-at parse time.
+`QUILL` is not reserved inside leaves. The `QUILL` sentinel key may not
+carry YAML tags such as `!fill` — it is a routing key, not data, and must
+resolve at parse time.
 
 ## 6. Data model
 

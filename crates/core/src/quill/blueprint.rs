@@ -43,10 +43,10 @@ impl QuillConfig {
         write_fence_block(
             &mut out,
             &self.main,
-            &format!(
+            Some(&format!(
                 "QUILL: {}@{}  # sentinel; required, verbatim",
                 self.name, self.version
-            ),
+            )),
             main_desc,
             "---\n",
             "---\n",
@@ -57,14 +57,13 @@ impl QuillConfig {
             out.push_str(&format!("\n{}\n", text));
         }
         for leaf in &self.leaf_kinds {
-            let sentinel = format!("KIND: {}  # sentinel; composable (0..N)", leaf.name);
             out.push('\n');
             write_fence_block(
                 &mut out,
                 leaf,
-                &sentinel,
+                None,
                 leaf.description.as_deref(),
-                "```leaf\n",
+                &format!("```leaf {}\n", leaf.name),
                 "```\n",
             );
             if leaf.body_enabled() {
@@ -81,7 +80,7 @@ impl QuillConfig {
 fn write_fence_block(
     out: &mut String,
     leaf: &LeafSchema,
-    sentinel_line: &str,
+    sentinel_line: Option<&str>,
     description: Option<&str>,
     open_fence: &str,
     close_fence: &str,
@@ -91,8 +90,10 @@ fn write_fence_block(
         let clean = desc.split_whitespace().collect::<Vec<_>>().join(" ");
         out.push_str(&format!("# {}\n", clean));
     }
-    out.push_str(sentinel_line);
-    out.push('\n');
+    if let Some(sentinel) = sentinel_line {
+        out.push_str(sentinel);
+        out.push('\n');
+    }
     for (_, fields) in group_fields(leaf.fields.values()) {
         for field in fields {
             write_field(out, field, 0);
@@ -654,7 +655,7 @@ main:
     }
 
     #[test]
-    fn leaf_sentinel_line_is_composable() {
+    fn leaf_kind_is_in_the_info_string() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -668,7 +669,7 @@ leaf_kinds:
 "#)
         .blueprint();
         assert!(t.contains(
-            "# A short note appended to the document.\nKIND: note  # sentinel; composable (0..N)\n"
+            "```leaf note\n# A short note appended to the document.\n"
         ));
     }
 
@@ -686,7 +687,7 @@ leaf_kinds:
       items: { type: array, required: true }
 "#)
         .blueprint();
-        let after = &t[t.find("KIND: skills").unwrap()..];
+        let after = &t[t.find("```leaf skills").unwrap()..];
         assert!(!after.contains("skills body"));
     }
 
@@ -705,7 +706,7 @@ leaf_kinds:
       author: { type: string }
 "#)
         .blueprint();
-        let after = &t[t.find("KIND: note").unwrap()..];
+        let after = &t[t.find("```leaf note").unwrap()..];
         assert!(after.contains("\nThis is an example note.\n"));
         assert!(!after.contains("Write note body here."));
     }

@@ -36,10 +36,9 @@ Document = Frontmatter? Body (LeafFence LeafBody)*
 - **Body** — markdown content between the frontmatter close and the first
   leaf fence (or EOF).
 - **Leaf fence + leaf body** — zero or more. Each leaf fence is a
-  CommonMark fenced code block with the info string `leaf`; its body
-  declares a typed structured record (first key `KIND:`). Markdown prose
-  attached to the leaf follows the closing fence, up to the next leaf
-  fence or EOF.
+  CommonMark fenced code block whose info string is `leaf <kind>`; its
+  body declares a typed structured record. Markdown prose attached to the
+  leaf follows the closing fence, up to the next leaf fence or EOF.
 
 The two structures use *different* delimiters by design — `---/---` for
 frontmatter (universal across the markdown ecosystem) and `` ```leaf `` for
@@ -56,10 +55,10 @@ whitespace, 0–3 leading spaces of indentation). The first body key must be
 
 - **Position.** Line 1 of the document, or preceded by a blank line.
 - **Line endings.** `\n` and `\r\n` are equally accepted.
-- **Reserved keys.** `BODY` and `LEAVES` are **output-only** — the parser
-  populates them on the parsed object and supplying them as input keys is
-  a hard parse error. `QUILL` is the sentinel and must be the first body
-  key. `KIND` is not reserved in frontmatter.
+- **Reserved keys.** `BODY`, `LEAVES`, and `KIND` are **output-only** —
+  the parser populates them on the parsed object and supplying them as
+  input keys is a hard parse error. `QUILL` is the sentinel and must be
+  the first body key.
 - **YAML comments.** Own-line comments (`# …`) between the fence
   delimiters round-trip as first-class ordered items. Inline comments on
   value lines (`key: value  # note`) round-trip on the same line.
@@ -75,12 +74,11 @@ whitespace, 0–3 leading spaces of indentation). The first body key must be
 ### 3.2 Leaves
 
 A leaf is a [CommonMark fenced code block](https://spec.commonmark.org/0.31.2/#fenced-code-blocks)
-whose info string's first whitespace-delimited token is `leaf`. The body
-of the fence is parsed as YAML; the first key must be `KIND:`.
+whose info string is exactly two whitespace-delimited tokens: `leaf`
+followed by the **kind**. The body of the fence is parsed as YAML.
 
 ````markdown
-```leaf
-KIND: product
+```leaf product
 name: Widget
 price: 19.99
 ```
@@ -93,12 +91,15 @@ Body prose for this leaf, up to the next leaf or EOF.
   embed a fenced code block inside a leaf body, open the leaf with a
   longer fence (e.g. four backticks).
 - **Indent.** 0–3 leading spaces are permitted, matching CommonMark.
-- **`KIND:` value.** Matches `[a-z_][a-z0-9_]*`.
-- **Reserved keys.** `BODY` is output-only inside a leaf — supplying it as
-  an input key is a hard parse error. `KIND` is the sentinel and must be
-  the first body key. `QUILL` is not reserved inside leaves.
-- **The `!fill` tag.** Same rules as frontmatter (§3.1), and **forbidden
-  on the sentinel key `KIND`**.
+- **Info string.** Exactly `leaf <kind>`. The kind matches
+  `[a-z_][a-z0-9_]*`. A missing kind token, an invalid kind token, or any
+  extra info-string token is a hard parse error (§4.2).
+- **Reserved keys.** `BODY` and `KIND` are output-only inside a leaf —
+  supplying either as an input body key is a hard parse error. `KIND` is
+  populated from the info-string kind token. `QUILL` is not reserved
+  inside leaves.
+- **The `!fill` tag.** Same rules as frontmatter (§3.1). The kind lives in
+  the info string, not the body, so `!fill` cannot reach it.
 
 ## 4. Fence Detection
 
@@ -124,13 +125,15 @@ Only **one** frontmatter block is recognised — the first matching
 ### 4.2 Leaf detection
 
 A fenced code block is a leaf iff its info string's first token is `leaf`.
-Detection is purely lexical: the parser commits to leaf-handling on the
-info string alone, before reading any body content.
+Detection is purely lexical: the parser commits to leaf-handling on that
+first token alone, before reading any body content.
 
-After fence detection commits, parsing the leaf body is *routing*: the
-first body key (`KIND:`) selects the schema, and any malformed leaf
-(missing `KIND:`, invalid kind name, reserved-key collision) is a hard
-parse error — not a fence-classification ambiguity.
+Once committed, the rest of the info string is *routing*: the second
+token is the kind and selects the schema. A leaf info string that is not
+exactly `leaf <kind>` — a missing kind token, an invalid kind token (one
+not matching `[a-z_][a-z0-9_]*`), or any extra token — is a hard parse
+error, not a fence-classification ambiguity. Likewise any malformed leaf
+body (reserved-key collision, invalid YAML) is a hard error.
 
 ### 4.3 Worked example
 
@@ -144,16 +147,14 @@ title: Spring Catalog
 
 Welcome to the spring catalog.
 
-```leaf
-KIND: product
+```leaf product
 name: Widget
 price: 19.99
 ```
 
 The Widget is our flagship product.
 
-```leaf
-KIND: product
+```leaf product
 name: Gadget
 price: 29.99
 ```
@@ -170,13 +171,14 @@ The Gadget complements the Widget.
 - **Unknown info string.** ` ```leef ` is just a code block with an
   unknown language — silently passed through. Misspelt info strings are
   not near-miss diagnostics.
-- **Missing `KIND:` in a leaf.** Hard parse error inside the leaf — the
-  fence has been classified, so the diagnostic is specific.
+- **Missing kind token in a leaf.** A `` ```leaf `` fence with no kind
+  token (or an invalid/extra token) is a hard parse error — the fence has
+  been classified on the `leaf` token, so the diagnostic is specific.
 - **Legacy `---/CARD: …/---` block.** Accepted in this release as a
-  Release-N migration path: parsed as a leaf, surfaces a
-  `parse::deprecated_leaf_syntax` warning, and rewritten to ` ```leaf `
-  on `to_markdown()` round-trip. The legacy form will be a hard parse
-  error in the next release.
+  Release-N migration path: parsed as a leaf (the `CARD:` value becomes
+  the kind), surfaces a `parse::deprecated_leaf_syntax` warning, and
+  rewritten to ` ```leaf <kind> ` on `to_markdown()` round-trip. The
+  legacy form will be a hard parse error in the next release.
 
 ## 5. Data Model
 
@@ -292,11 +294,12 @@ Parse errors include:
   `---` before EOF.
 - Frontmatter missing the `QUILL` key (no valid frontmatter found).
 - Leaf fence opened but never closed.
-- Leaf body missing the `KIND:` key, or `KIND:` not the first body key.
-- Leaf `KIND:` value failing the `/^[a-z_][a-z0-9_]*$/` pattern.
-- Use of an output-only reserved key (`BODY`, `LEAVES` in frontmatter;
-  `BODY` in leaves) as a user-defined input field.
-- `!fill` tag applied to a sentinel key (`QUILL` or `KIND`).
+- Leaf info string that is not exactly `leaf <kind>` — a missing kind
+  token, a kind token failing the `/^[a-z_][a-z0-9_]*$/` pattern, or any
+  extra info-string token.
+- Use of an output-only reserved key (`BODY`, `LEAVES`, `KIND`) as a
+  user-defined input field.
+- `!fill` tag applied to the sentinel key `QUILL`.
 - Invalid YAML inside any fence.
 - Any §8 limit exceeded.
 

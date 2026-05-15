@@ -152,8 +152,8 @@ leaf_kinds:
     );
 
     let md = "---\nQUILL: unknown_leaf_test\ntitle: \"T\"\n---\n\n\
-              ```leaf\nKIND: known_leaf\nnote: \"A\"\n```\n\n\
-              ```leaf\nKIND: ghost_leaf\nnote: \"B\"\n```\n";
+              ```leaf known_leaf\nnote: \"A\"\n```\n\n\
+              ```leaf ghost_leaf\nnote: \"B\"\n```\n";
     let doc = Document::from_markdown(md).unwrap();
 
     let form = quill.form(&doc);
@@ -206,7 +206,7 @@ leaf_kinds:
 
     // signature_block present, office absent (has default), extra absent (no default)
     let md = "---\nQUILL: leaf_fields_test\ntitle: \"T\"\n---\n\n\
-              ```leaf\nKIND: indorsement\nsignature_block: \"Col Smith\"\n```\n";
+              ```leaf indorsement\nsignature_block: \"Col Smith\"\n```\n";
     let doc = Document::from_markdown(md).unwrap();
 
     let form = quill.form(&doc);

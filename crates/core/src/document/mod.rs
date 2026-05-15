@@ -12,7 +12,7 @@
 //! - [`Document`]: Typed in-memory Quillmark document — `main` leaf plus composable leaves.
 //! - [`Leaf`]: A single metadata fence block, main or composable, with a sentinel,
 //!   typed frontmatter, and a body.
-//! - [`Sentinel`]: Discriminates `QUILL:` main leaves from `KIND:` composable leaves.
+//! - [`Sentinel`]: Discriminates `QUILL:` main leaves from `` ```leaf <kind> `` composable leaves.
 //! - [`Frontmatter`]: Ordered list of items (fields + comments) parsed from a YAML fence.
 //!
 //! ## Examples
@@ -48,7 +48,7 @@
 //! ```
 //! use quillmark_core::Document;
 //!
-//! let markdown = "---\nQUILL: my_quill\ntitle: Catalog\n---\n\nIntro.\n\n```leaf\nKIND: product\nname: Widget\n```\n";
+//! let markdown = "---\nQUILL: my_quill\ntitle: Catalog\n---\n\nIntro.\n\n```leaf product\nname: Widget\n```\n";
 //! let doc = Document::from_markdown(markdown).unwrap();
 //! assert_eq!(doc.leaves().len(), 1);
 //! assert_eq!(doc.leaves()[0].tag(), "product");
@@ -75,7 +75,7 @@
 //! - Malformed YAML syntax
 //! - Unclosed frontmatter blocks
 //! - Multiple global frontmatter blocks
-//! - Both QUILL and KIND specified in the same block
+//! - A leaf fence with a missing, invalid, or extra info-string kind token
 //! - Reserved field name usage
 //! - Name collisions
 //!
@@ -117,14 +117,14 @@ pub struct ParseOutput {
 /// Discriminator for a [`Leaf`]'s metadata fence.
 ///
 /// The first fence in a Quillmark document carries `QUILL: <ref>` and is the
-/// document-level *main* leaf; every subsequent fence carries `KIND: <tag>`
-/// and is a composable leaf. `Sentinel` captures that distinction in the typed
-/// model so every fence is one uniform shape.
+/// document-level *main* leaf; every subsequent fence is a `` ```leaf <kind> ``
+/// code block and is a composable leaf. `Sentinel` captures that distinction
+/// in the typed model so every fence is one uniform shape.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Sentinel {
     /// `QUILL: <ref>` — the document entry leaf.
     Main(QuillReference),
-    /// `KIND: <tag>` — a composable leaf with the given tag.
+    /// `` ```leaf <tag> `` — a composable leaf with the given kind tag.
     Leaf(String),
 }
 
@@ -188,8 +188,8 @@ impl Leaf {
         &self.sentinel
     }
 
-    /// The leaf tag — the `KIND:` value for composable leaves, or the string
-    /// form of the quill reference for main leaves.
+    /// The leaf tag — the kind for composable leaves, or the string form of
+    /// the quill reference for main leaves.
     pub fn tag(&self) -> String {
         self.sentinel.as_str()
     }

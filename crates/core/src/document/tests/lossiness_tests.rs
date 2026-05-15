@@ -1,8 +1,8 @@
 //! Round-trip tests for comments, `!fill`, and custom tags.
 //!
 //! Both own-line and trailing inline YAML comments round-trip at their
-//! source position. Inline comments on sentinel lines (`QUILL: r # …` /
-//! `KIND: t # …`) also round-trip. Comments whose host disappears at emit
+//! source position. An inline comment on the frontmatter `QUILL: r # …`
+//! sentinel line also round-trips. Comments whose host disappears at emit
 //! time (empty-mapping omission, programmatic field removal) degrade to
 //! own-line comments at the same indent so the comment text is preserved
 //! even when its position shifts. `!fill` on scalars and sequences round-
@@ -468,16 +468,17 @@ fn sentinel_inline_comment_round_trips() {
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
 
-/// Inline comment on a KIND sentinel line round-trips on that line.
+/// Inline comment on a leaf body field round-trips on that field's line.
+/// (A leaf's kind lives in the info string, which cannot carry a comment.)
 #[test]
-fn leaf_sentinel_inline_comment_round_trips() {
-    let src = "---\nQUILL: q\n---\n\n```leaf\nKIND: foo # the foo leaf\nx: 1\n```\n";
+fn leaf_field_inline_comment_round_trips() {
+    let src = "---\nQUILL: q\n---\n\n```leaf foo\nx: 1 # the x field\n```\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
     assert!(
-        emitted.contains("KIND: foo # the foo leaf\n"),
-        "inline comment on a KIND sentinel must round-trip on the sentinel line\nGot:\n{}",
+        emitted.contains("x: 1 # the x field\n"),
+        "inline comment on a leaf field must round-trip on that line\nGot:\n{}",
         emitted
     );
 

@@ -106,7 +106,7 @@ impl QuillConfig {
                         &mut leaf_value,
                         "KIND",
                         &leaf.name,
-                        "Leaf kind name. Must be exactly this value as the KIND: sentinel in the leaf body.",
+                        "Leaf kind name. Must be exactly this value as the kind token in the leaf fence info string (```leaf <kind>).",
                     );
                     (leaf.name.clone(), leaf_value)
                 })

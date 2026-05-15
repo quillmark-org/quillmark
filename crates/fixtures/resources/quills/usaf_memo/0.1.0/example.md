@@ -42,8 +42,7 @@ The `usaf_memo` Quill package takes care of all 33-337 formatting details. Focus
 
 Do not include a complimentary close (e.g. "Respectfully,") in official memorandums.
 
-```leaf
-KIND: indorsement
+```leaf indorsement
 for: ORG/SYMBOL
 format: standard
 from: ORG/SYMBOL

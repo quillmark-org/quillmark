@@ -91,7 +91,7 @@ fn fence_marker_with_trailing_whitespace_is_accepted() {
 // §3 — `---` inside a fenced code block must be ignored.
 #[test]
 fn fences_inside_code_blocks_are_ignored() {
-    let md = "---\nQUILL: t\n---\n\n```\n```leaf\nKIND: x\n```\n```\n\nBody.";
+    let md = "---\nQUILL: t\n---\n\n```\n```leaf x\n```\n```\n\nBody.";
     let doc = Document::from_markdown(md).unwrap();
     assert!(
         doc.leaves().is_empty(),
@@ -121,36 +121,49 @@ fn leaves_is_always_present_even_when_empty() {
     assert!(doc.leaves().is_empty());
 }
 
-// §3.2 / §9 — A leaf-info-string fence missing `KIND:` first-key is a hard
-// parse error, not a silent fallthrough to body content. This is the central
-// "no silent classification miss" promise of LEAF_REWORK.md §3.3.
+// §3.2 / §4.2 — a `leaf`-prefixed fence commits to leaf parsing on that token
+// alone; a missing, invalid, or extra info-string kind token is a hard parse
+// error, not a silent fallthrough to body content. This is the central "no
+// silent classification miss" promise of LEAF_REWORK.md §3.3.
 #[test]
-fn leaf_fence_without_kind_first_key_is_rejected() {
+fn leaf_fence_with_bad_kind_token_is_rejected() {
     let cases = [
-        // Missing KIND entirely.
+        // Missing kind token.
         "---\nQUILL: t\n---\n\n```leaf\nname: Widget\n```\n",
-        // Empty leaf body.
+        // Empty leaf body, still missing the kind token.
         "---\nQUILL: t\n---\n\n```leaf\n```\n",
-        // KIND present but not first.
-        "---\nQUILL: t\n---\n\n```leaf\nname: Widget\nKIND: product\n```\n",
-        // QUILL inside a leaf fence (sentinel-mismatch).
-        "---\nQUILL: t\n---\n\n```leaf\nQUILL: other@1\n```\n",
+        // Invalid kind token (must match [a-z_][a-z0-9_]*).
+        "---\nQUILL: t\n---\n\n```leaf Widget\nname: x\n```\n",
+        // Extra info-string tokens.
+        "---\nQUILL: t\n---\n\n```leaf a b\n```\n",
     ];
     for md in cases {
         let err = Document::from_markdown(md).unwrap_err().to_string();
         assert!(
-            err.contains("KIND") && err.contains("Leaf fence"),
-            "expected hard KIND error for {md:?}, got: {err}"
+            err.contains("Leaf fence at line"),
+            "expected hard leaf-fence kind-token error for {md:?}, got: {err}"
         );
     }
 }
 
-// §5 — KIND value pattern.
+// §3.2 — `KIND` is an output-only reserved key; supplying it as an input body
+// key is a hard parse error.
+#[test]
+fn kind_as_leaf_body_key_is_rejected() {
+    let md = "---\nQUILL: t\n---\n\n```leaf product\nKIND: product\n```\n";
+    let err = Document::from_markdown(md).unwrap_err().to_string();
+    assert!(
+        err.contains("Reserved field name") && err.contains("KIND"),
+        "got: {err}"
+    );
+}
+
+// §3.2 — leaf kind-token pattern.
 #[test]
 fn leaf_name_pattern_enforced() {
-    let md = "---\nQUILL: t\n---\n\nB.\n\n```leaf\nKIND: ITEMS\n```\n\nX.";
+    let md = "---\nQUILL: t\n---\n\nB.\n\n```leaf ITEMS\n```\n\nX.";
     let err = Document::from_markdown(md).unwrap_err().to_string();
-    assert!(err.contains("Invalid leaf field name"), "got: {}", err);
+    assert!(err.contains("invalid kind token"), "got: {}", err);
 }
 
 // §7 — Body bidi stripped during normalize_document.
@@ -182,7 +195,7 @@ fn normalize_yaml_scalar_keeps_bidi() {
 // §7 — Leaf body normalization reaches nested leaves.
 #[test]
 fn normalize_reaches_leaf_body() {
-    let md = "---\nQUILL: t\n---\n\n```leaf\nKIND: x\n```\n\n<!-- c -->trailing\u{202D}text";
+    let md = "---\nQUILL: t\n---\n\n```leaf x\n```\n\n<!-- c -->trailing\u{202D}text";
     let doc = Document::from_markdown(md).unwrap();
     let doc = normalize_document(doc).unwrap();
     let body = doc.leaves()[0].body();
@@ -247,7 +260,7 @@ fn body_crlf_line_endings_are_normalized() {
 // §7 — CRLF normalization reaches leaf bodies.
 #[test]
 fn leaf_body_crlf_line_endings_are_normalized() {
-    let md = "---\nQUILL: t\n---\n\n```leaf\nKIND: x\n```\n\nLeaf line one.\r\nLeaf line two.\r\n";
+    let md = "---\nQUILL: t\n---\n\n```leaf x\n```\n\nLeaf line one.\r\nLeaf line two.\r\n";
     let doc = Document::from_markdown(md).unwrap();
     let doc = normalize_document(doc).unwrap();
     let body = doc.leaves()[0].body();
@@ -305,7 +318,7 @@ fn first_fence_out_of_order_error_is_specific() {
 fn unclosed_code_block_emits_warning() {
     // 4-backtick opener with no matching 4+-backtick closer → unclosed.
     // The 3-backtick `leaf` fence inside is shielded (3 < 4 cannot close).
-    let md = "---\nQUILL: t\n---\n\n````\ncode line\n\n```leaf\nKIND: x\n```\n\ntrailing body";
+    let md = "---\nQUILL: t\n---\n\n````\ncode line\n\n```leaf x\n```\n\ntrailing body";
     let out = Document::from_markdown_with_warnings(md).unwrap();
     assert!(
         out.warnings
@@ -341,7 +354,7 @@ fn per_fence_field_count_cap() {
 fn leaf_count_cap_is_per_leaf() {
     let mut s = String::from("---\nQUILL: t\n---\n");
     for _ in 0..1001 {
-        s.push_str("\n```leaf\nKIND: x\n```\n\nB.\n");
+        s.push_str("\n```leaf x\n```\n\nB.\n");
     }
     let err = Document::from_markdown(&s).unwrap_err().to_string();
     assert!(err.contains("Input too large"), "got: {}", err);

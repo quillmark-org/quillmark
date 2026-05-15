@@ -804,7 +804,7 @@ mod tests {
     fn test_normalize_document_leaf_body_bidi_stripped() {
         use crate::document::Document;
 
-        let md = "---\nQUILL: test\n---\n\nbody\n\n```leaf\nKIND: note\n```\nleaf\u{202D}body\n";
+        let md = "---\nQUILL: test\n---\n\nbody\n\n```leaf note\n```\nleaf\u{202D}body\n";
         let doc = Document::from_markdown(md).unwrap();
         assert_eq!(doc.leaves().len(), 1, "expected 1 leaf");
         let normalized = super::normalize_document(doc).unwrap();
@@ -815,7 +815,7 @@ mod tests {
     fn test_normalize_document_leaf_field_bidi_preserved() {
         use crate::document::Document;
 
-        let md = "---\nQUILL: test\n---\n\nbody\n\n```leaf\nKIND: note\nname: Ali\u{202D}ce\n```\n";
+        let md = "---\nQUILL: test\n---\n\nbody\n\n```leaf note\nname: Ali\u{202D}ce\n```\n";
         let doc = Document::from_markdown(md).unwrap();
         assert_eq!(doc.leaves().len(), 1, "expected 1 leaf");
         let normalized = super::normalize_document(doc).unwrap();
@@ -835,7 +835,7 @@ mod tests {
         use crate::document::Document;
 
         let md =
-            "---\nQUILL: test\n---\n\n```leaf\nKIND: note\n```\n<!-- comment -->Trailing text\n";
+            "---\nQUILL: test\n---\n\n```leaf note\n```\n<!-- comment -->Trailing text\n";
         let doc = Document::from_markdown(md).unwrap();
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(

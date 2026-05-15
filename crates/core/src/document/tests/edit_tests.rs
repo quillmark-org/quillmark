@@ -15,7 +15,7 @@ fn make_doc() -> Document {
 
 fn make_doc_with_leaves() -> Document {
     Document::from_markdown(
-        "---\nQUILL: test_quill\ntitle: Hello\n---\n\nBody.\n\n```leaf\nKIND: note\nfoo: bar\n```\n\nLeaf body.\n\n```leaf\nKIND: summary\n```\n",
+        "---\nQUILL: test_quill\ntitle: Hello\n---\n\nBody.\n\n```leaf note\nfoo: bar\n```\n\nLeaf body.\n\n```leaf summary\n```\n",
     )
     .unwrap()
 }

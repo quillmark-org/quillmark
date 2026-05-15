@@ -111,7 +111,7 @@ proptest! {
         leaf_value in "[a-zA-Z0-9 ]{0,50}"
     ) {
         let src = format!(
-            "---\nQUILL: {}\ntitle: \"test\"\n---\n\nBody here.\n\n```leaf\nKIND: {}\n{}: \"{}\"\n```\n\nLeaf body.\n",
+            "---\nQUILL: {}\ntitle: \"test\"\n---\n\nBody here.\n\n```leaf {}\n{}: \"{}\"\n```\n\nLeaf body.\n",
             quill, leaf_tag, leaf_key, leaf_value
         );
 
