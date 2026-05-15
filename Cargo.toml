@@ -24,6 +24,7 @@ edition = "2021"
 include = ["src/**", "Cargo.toml", "README*", "LICENSE*"]
 readme = "README.md"
 license = "Apache-2.0"
+homepage = "https://quillmark.readthedocs.io/"
 
 [workspace.dependencies]
 # Core dependencies
