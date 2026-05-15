@@ -7,7 +7,7 @@ readme.workspace = true
 description = "Core types and functionality for Quillmark"
 license.workspace = true
 documentation = "https://docs.rs/quillmark-core"
-homepage = "https://quillmark.readthedocs.io/"
+homepage.workspace = true
 repository = "https://github.com/nibsbin/quillmark"
 publish = true
 
