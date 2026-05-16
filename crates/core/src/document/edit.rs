@@ -4,7 +4,7 @@
 //!
 //! ## Invariants
 //!
-//! Every successful mutator call cards the document in a state that:
+//! Every successful mutator call leaves the document in a state that:
 //! - Contains no reserved key in any card's frontmatter (`BODY`, `CARDS`, `QUILL`, `KIND`).
 //! - Has every composable `card.tag()` passing `sentinel::is_valid_tag_name`.
 //! - Can be safely serialized via [`Document::to_plate_json`].
@@ -22,7 +22,7 @@
 use unicode_normalization::UnicodeNormalization;
 
 use crate::document::sentinel::is_valid_tag_name;
-use crate::document::{Document, Frontmatter, Card, Sentinel};
+use crate::document::{Card, Document, Frontmatter, Sentinel};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
 

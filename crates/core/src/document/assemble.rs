@@ -14,7 +14,7 @@ use super::fences::find_metadata_blocks;
 use super::frontmatter::{Frontmatter, FrontmatterItem};
 use super::prescan::{prescan_fence_content, NestedComment, PreItem};
 use super::sentinel::{extract_sentinels, is_valid_tag_name};
-use super::{Document, Card, Sentinel};
+use super::{Card, Document, Sentinel};
 
 /// Strip exactly one F2 structural separator from the tail of a body slice.
 ///
@@ -223,9 +223,9 @@ pub(super) fn build_block(
     let sentinel = match (card, quill_ref) {
         (Some(k), _) => BlockSentinel::Inline(k),
         (None, Some(r)) => BlockSentinel::Main(r),
-        (None, None) => unreachable!(
-            "find_metadata_blocks classifies every block before calling build_block"
-        ),
+        (None, None) => {
+            unreachable!("find_metadata_blocks classifies every block before calling build_block")
+        }
     };
 
     // Per-fence field-count check (spec §8, §6.1 of GAP analysis). Frontmatter

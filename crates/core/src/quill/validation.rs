@@ -5,7 +5,7 @@ use time::{Date, OffsetDateTime};
 use crate::document::Document;
 use crate::error::{Diagnostic, Severity};
 use crate::quill::formats::DATE_FORMAT;
-use crate::quill::{FieldSchema, FieldType, CardSchema, QuillConfig};
+use crate::quill::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
 
 /// Validation error with a structured field path.
@@ -34,9 +34,6 @@ pub enum ValidationError {
     #[error("unknown card type `{card}` at `{path}`")]
     UnknownCard { path: String, card: String },
 
-    #[error("card at `{path}` missing `KIND` discriminator")]
-    MissingKindDiscriminator { path: String },
-
     #[error(
         "card `{card}` at `{path}` has body content but the card type declares `body.enabled: false` — remove the body content or set `body.enabled: true` on the card type"
     )]
@@ -54,7 +51,6 @@ impl ValidationError {
             | ValidationError::EnumViolation { path, .. }
             | ValidationError::FormatViolation { path, .. }
             | ValidationError::UnknownCard { path, .. }
-            | ValidationError::MissingKindDiscriminator { path }
             | ValidationError::BodyDisabled { path, .. } => path,
         }
     }
@@ -68,9 +64,6 @@ impl ValidationError {
             ValidationError::EnumViolation { .. } => "validation::enum_violation",
             ValidationError::FormatViolation { .. } => "validation::format_violation",
             ValidationError::UnknownCard { .. } => "validation::unknown_card",
-            ValidationError::MissingKindDiscriminator { .. } => {
-                "validation::missing_kind_discriminator"
-            }
             ValidationError::BodyDisabled { .. } => "validation::body_disabled",
         }
     }
@@ -366,7 +359,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use crate::document::{Document, Card};
+    use crate::document::{Card, Document};
     use crate::version::QuillReference;
     use serde_json::json;
 
@@ -378,7 +371,13 @@ mod tests {
         // field blocks need two extra spaces of indentation.
         let main_fields: String = main_fields
             .lines()
-            .map(|l| if l.is_empty() { String::new() } else { format!("  {l}") })
+            .map(|l| {
+                if l.is_empty() {
+                    String::new()
+                } else {
+                    format!("  {l}")
+                }
+            })
             .collect::<Vec<_>>()
             .join("\n");
         let yaml = format!(

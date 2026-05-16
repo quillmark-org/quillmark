@@ -2511,7 +2511,7 @@ More text with `inline code`."#;
     #[test]
     fn test_mismatched_asterisks_graceful_degradation() {
         // `*lethality**` has mismatched asterisks — pulldown_cmark parses `*lethality*`
-        // as emphasis and cards the trailing `*` as literal text. Previously, the
+        // as emphasis and leaves the trailing `*` as literal text. Previously, the
         // MarkdownFixer incorrectly consumed the trailing `*` as a closing event,
         // producing an extra `]` bracket that caused a hard Typst compilation error.
         let result = mark_to_typst("Less formatting. More *lethality**.").unwrap();

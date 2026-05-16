@@ -2176,7 +2176,10 @@ cards:
     );
 
     let schema = config.schema();
-    assert_eq!(schema["cards"]["main"]["ui"]["title"].as_str(), Some("Memorandum"));
+    assert_eq!(
+        schema["cards"]["main"]["ui"]["title"].as_str(),
+        Some("Memorandum")
+    );
     assert_eq!(
         schema["cards"]["indorsement"]["ui"]["title"].as_str(),
         Some("{from} → {for}")

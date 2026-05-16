@@ -24,7 +24,7 @@
 
 use std::collections::BTreeMap;
 
-use super::{FieldSchema, FieldType, CardSchema, QuillConfig};
+use super::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::document::emit::emit_double_quoted;
 use crate::value::QuillValue;
 
@@ -679,9 +679,7 @@ cards:
       author: { type: string }
 "#)
         .blueprint();
-        assert!(t.contains(
-            "```card note\n# A short note appended to the document.\n"
-        ));
+        assert!(t.contains("```card note\n# A short note appended to the document.\n"));
     }
 
     #[test]

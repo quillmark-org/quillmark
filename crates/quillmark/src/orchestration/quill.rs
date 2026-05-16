@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use quillmark_core::{
-    normalize::normalize_document, Backend, Diagnostic, Document, Frontmatter, Card, OutputFormat,
+    normalize::normalize_document, Backend, Card, Diagnostic, Document, Frontmatter, OutputFormat,
     QuillSource, QuillValue, RenderError, RenderOptions, RenderResult, RenderSession, Sentinel,
     Severity,
 };
@@ -226,14 +226,14 @@ impl Quill {
         FormCard::blank(&self.source.config().main)
     }
 
-    /// A blank form for a card of the given type — no document values
-    /// supplied. Returns `None` if `card` is not declared in the
+    /// A blank form for a card of the given kind — no document values
+    /// supplied. Returns `None` if `kind` is not declared in the
     /// quill's schema.
     ///
     /// This is the "user is about to add a new card" view: the UI can render
     /// the form before the card is committed to the document.
-    pub fn blank_card(&self, card: &str) -> Option<FormCard> {
-        form::blank_card_for_kind(self, card)
+    pub fn blank_card(&self, kind: &str) -> Option<FormCard> {
+        form::blank_card_for_kind(self, kind)
     }
 
     fn validate_document(&self, doc: &Document) -> Result<(), RenderError> {

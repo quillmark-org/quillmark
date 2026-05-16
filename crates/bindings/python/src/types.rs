@@ -224,14 +224,10 @@ impl PyQuill {
 
     /// A blank form for a card of the given type — no document values supplied.
     ///
-    /// Returns `None` if `card` is not declared in this quill's schema.
+    /// Returns `None` if `kind` is not declared in this quill's schema.
     /// Otherwise returns a dict shaped like a single entry in `form()['cards']`.
-    fn blank_card<'py>(
-        &self,
-        py: Python<'py>,
-        card: &str,
-    ) -> PyResult<Option<Bound<'py, PyDict>>> {
-        let Some(card) = self.inner.blank_card(card) else {
+    fn blank_card<'py>(&self, py: Python<'py>, kind: &str) -> PyResult<Option<Bound<'py, PyDict>>> {
+        let Some(card) = self.inner.blank_card(kind) else {
             return Ok(None);
         };
         let json_value = serde_json::to_value(&card).map_err(|e| {

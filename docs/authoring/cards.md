@@ -32,7 +32,7 @@ price: 29.99
 Gadget description.
 ````
 
-Cards with the same `KIND` are collected into an ordered array under
+Cards of the same kind are collected into an ordered array under
 `cards.<kind>`. The two `products` cards above land at
 `cards.products[0]` and `cards.products[1]` (template-side) and as two
 entries in `data.CARDS` (backend wire shape).

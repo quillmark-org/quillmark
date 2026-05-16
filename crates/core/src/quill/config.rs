@@ -12,7 +12,7 @@ use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
 use super::formats::DATE_FORMAT;
-use super::{BodyCardSchema, FieldSchema, FieldType, CardSchema, UiFieldSchema, UiCardSchema};
+use super::{BodyCardSchema, CardSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
 
 /// Top-level configuration for a Quillmark project
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -967,9 +967,8 @@ impl QuillConfig {
         // and `main` get targeted hints since they are the most common shape mistakes.
         if let Some(top_obj) = quill_yaml_val.as_object() {
             for key in top_obj.keys() {
-                let is_known = key == "quill"
-                    || key == "cards"
-                    || (!backend.is_empty() && key == &backend);
+                let is_known =
+                    key == "quill" || key == "cards" || (!backend.is_empty() && key == &backend);
                 if is_known {
                     continue;
                 }
@@ -1045,9 +1044,12 @@ impl QuillConfig {
                 Ok(parsed) => Some(parsed),
                 Err(e) => {
                     errors.push(
-                        Diagnostic::new(Severity::Error, format!("Invalid 'cards.main.ui' block: {}", e))
-                            .with_code("quill::invalid_ui".to_string())
-                            .with_hint("Valid key under 'ui' is: title.".to_string()),
+                        Diagnostic::new(
+                            Severity::Error,
+                            format!("Invalid 'cards.main.ui' block: {}", e),
+                        )
+                        .with_code("quill::invalid_ui".to_string())
+                        .with_hint("Valid key under 'ui' is: title.".to_string()),
                     );
                     None
                 }
@@ -1101,7 +1103,8 @@ impl QuillConfig {
                     errors.push(
                         Diagnostic::new(
                             Severity::Error,
-                            "'cards' section must be an object (mapping of type names to schemas)".to_string(),
+                            "'cards' section must be an object (mapping of type names to schemas)"
+                                .to_string(),
                         )
                         .with_code("quill::invalid_cards".to_string()),
                     );
@@ -1135,10 +1138,7 @@ impl QuillConfig {
                                     errors.push(
                                         Diagnostic::new(
                                             Severity::Error,
-                                            format!(
-                                                "Failed to parse card '{}': {}",
-                                                card_name, e
-                                            ),
+                                            format!("Failed to parse card '{}': {}", card_name, e),
                                         )
                                         .with_code("quill::invalid_card_schema".to_string()),
                                     );
@@ -1241,8 +1241,7 @@ impl QuillConfig {
             errors.push(d);
         }
         for card in &cards {
-            if let Some(d) =
-                err_example_contains_fence(&format!("cards.{}", card.name), &card.body)
+            if let Some(d) = err_example_contains_fence(&format!("cards.{}", card.name), &card.body)
             {
                 errors.push(d);
             }

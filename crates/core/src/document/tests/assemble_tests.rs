@@ -1135,11 +1135,7 @@ fn test_extended_metadata_demo_file() {
     // 5 cards total: 3 features + 2 use_cases
     assert_eq!(doc.cards().len(), 5);
 
-    let features_count = doc
-        .cards()
-        .iter()
-        .filter(|c| c.tag() == "features")
-        .count();
+    let features_count = doc.cards().iter().filter(|c| c.tag() == "features").count();
     let use_cases_count = doc
         .cards()
         .iter()
@@ -1673,9 +1669,15 @@ fn test_card_may_carry_quill_field() {
         Some("not-a-ref")
     );
     let emitted = doc.to_markdown();
-    let q = emitted.find("QUILL: \"not-a-ref\"").expect("QUILL field kept");
+    let q = emitted
+        .find("QUILL: \"not-a-ref\"")
+        .expect("QUILL field kept");
     let n = emitted.find("name:").expect("name field kept");
-    assert!(q < n, "QUILL field must stay before name; got:\n{}", emitted);
+    assert!(
+        q < n,
+        "QUILL field must stay before name; got:\n{}",
+        emitted
+    );
 }
 
 #[test]
@@ -1837,8 +1839,7 @@ fn test_f2_strip_global_body_followed_by_card_crlf() {
 fn test_f2_strip_card_body_followed_by_card() {
     // First card body is followed by another fence → F2 stripped.
     // Last card body is at EOF → preserved verbatim.
-    let markdown =
-        "---\nQUILL: q\n---\n\n```card a\n```\nfirst\n\n```card b\n```\nsecond\n";
+    let markdown = "---\nQUILL: q\n---\n\n```card a\n```\nfirst\n\n```card b\n```\nsecond\n";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.cards()[0].body(), "first\n");
     assert_eq!(doc.cards()[1].body(), "second\n");
@@ -2210,11 +2211,7 @@ fn legacy_card_block_parses_as_card_with_deprecation_warning() {
     let md = "---\nQUILL: q\n---\n\n---\nCARD: note\nauthor: Alice\n---\n\nCard body.\n";
     let doc = Document::from_markdown(md).unwrap();
 
-    assert_eq!(
-        doc.cards().len(),
-        1,
-        "legacy CARD block must parse as card"
-    );
+    assert_eq!(doc.cards().len(), 1, "legacy CARD block must parse as card");
     let card = &doc.cards()[0];
     assert_eq!(card.tag(), "note");
     assert_eq!(
