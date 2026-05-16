@@ -34,10 +34,6 @@ pub struct QuillConfig {
     pub version: String,
     /// Author of the project
     pub author: String,
-    /// Example data file for preview
-    pub example_file: Option<String>,
-    /// Loaded markdown example content from `Quill.example`/`Quill.example_file`
-    pub example_markdown: Option<String>,
     /// Plate file (template)
     pub plate_file: Option<String>,
     /// Backend-specific configuration parsed from the top-level YAML section
@@ -79,8 +75,8 @@ impl QuillConfig {
     ///
     /// `main.fields` is prefixed with a required `QUILL` entry (`const = name@version`);
     /// each `card_types[<name>].fields` is prefixed with a required `CARD` entry
-    /// (`const = <name>`). Identity (`name`, `version`, etc.) and the bundled
-    /// example live elsewhere on the host's metadata surface.
+    /// (`const = <name>`). Identity (`name`, `version`, etc.) lives elsewhere
+    /// on the host's metadata surface.
     pub fn schema(&self) -> serde_json::Value {
         let canonical_ref = format!("{}@{}", self.name, self.version);
 
@@ -779,8 +775,6 @@ impl QuillConfig {
             "description",
             "version",
             "author",
-            "example",
-            "example_file",
             "plate_file",
             "ui",
         ];
@@ -932,17 +926,6 @@ impl QuillConfig {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .unwrap_or_else(|| "Unknown".to_string());
-
-        let example_file = quill_section
-            .get("example")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .or_else(|| {
-                quill_section
-                    .get("example_file")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            });
 
         let plate_file = quill_section
             .get("plate_file")
@@ -1265,8 +1248,6 @@ impl QuillConfig {
                 backend,
                 version,
                 author,
-                example_file,
-                example_markdown: None,
                 plate_file,
                 backend_config,
             },
