@@ -34,7 +34,9 @@ The `CARD` concept is gone. Cards are now a single uniform model addressed by
 + card.KIND == "products"
 ```
 
-There are **no compatibility aliases**. Every rename below is a hard break.
+The WASM API renames below (§2–§5) are **hard breaks** — there are no
+compatibility aliases. The Markdown card syntax (§1) is a *soft* break: the
+old `---/CARD: …/---` form still parses, with a deprecation warning.
 
 ---
 
@@ -72,9 +74,29 @@ Consequences for any Markdown your consumer generates or accepts:
   **hard parse error**.
 - Card fences obey CommonMark run-length closure — to embed a code block in a
   card body, open the card with a longer fence.
-- **Mid-document `---` is now a CommonMark thematic break**, not a metadata
-  fence. Only the top-of-document `---` frontmatter block is a metadata fence.
-  Documents that relied on `---` as a card delimiter must be regenerated.
+- A mid-document `---/…/---` block whose first body key is **not** `CARD:` is
+  now a plain CommonMark thematic break, not a metadata fence. Only the
+  top-of-document frontmatter block and legacy card blocks (below) are
+  metadata fences.
+
+### Legacy `---/CARD: …/---` blocks still parse
+
+Existing documents do **not** have to be regenerated. A `---/…/---` block
+whose first body key is `CARD:` is still parsed as a card (the `CARD:` value
+becomes the kind) and emits a `parse::deprecated_card_syntax` warning. Passing
+such a document through `doc.toMarkdown()` rewrites it to the canonical
+`` ```card <kind> `` form, so a parse-then-emit round-trip migrates documents
+for free:
+
+```js
+const doc = Document.fromMarkdown(legacyMarkdown);
+// doc.warnings includes a `parse::deprecated_card_syntax` entry per block
+const migrated = doc.toMarkdown();   // canonical ```card fences
+```
+
+Only the fence *shape* is deprecated — the `card` noun is unchanged. The
+legacy path is retained for existing documents; its removal is
+telemetry-driven, not pinned to a release.
 
 See [Cards](../authoring/cards.md) for the full syntax.
 
