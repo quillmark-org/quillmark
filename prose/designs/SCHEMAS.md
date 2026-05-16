@@ -65,7 +65,7 @@ For LLM/MCP authoring, see [BLUEPRINT.md](BLUEPRINT.md) — `blueprint()` emits 
 
 Top-level schema key: a single `cards` map keyed by card name. The reserved key `cards.main` is the entry-point card; every other entry is an inline card kind whose key is its `KIND` discriminator. `cards.main` and each inline card kind share the same `CardSchema` shape: `fields` (map keyed by field name), optional `description`, optional `ui`, optional `body`. Each `FieldSchema` includes `type`, optional `description`/`default`/`example`/`enum`/`properties`/`ui`, and optional `required` (omitted when false).
 
-Identity fields (`name`, `version`, `backend`, `author`, `description`) live on the parent metadata object (Wasm: `Quill.metadata`; Python: `Quill.metadata` plus dedicated getters). The bundled example markdown is exposed separately (Wasm: `Quill.example`; Python: `Quill.example`) so consumers choose whether to include it in a prompt.
+Identity fields (`name`, `version`, `backend`, `author`, `description`) live on the parent metadata object (Wasm: `Quill.metadata`; Python: `Quill.metadata` plus dedicated getters). For a document-shaped reference, consumers use the generated blueprint (Wasm: `Quill.blueprint`; Python: `Quill.blueprint`).
 
 ### Bindings surface
 

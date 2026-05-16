@@ -33,8 +33,9 @@ def test_quill_properties(taro_quill_dir):
     assert isinstance(schema, str)
     assert "fields:" in schema
 
-    example = quill.example
-    assert example is not None
+    blueprint = quill.blueprint
+    assert isinstance(blueprint, str)
+    assert len(blueprint) > 0
 
     supported_formats = quill.supported_formats
     assert isinstance(supported_formats, list)

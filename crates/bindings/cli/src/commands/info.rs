@@ -81,10 +81,6 @@ fn print_json(quill: &quillmark::Quill) -> Result<()> {
         "has_plate".to_string(),
         serde_json::Value::Bool(source.plate().is_some()),
     );
-    info.insert(
-        "has_example".to_string(),
-        serde_json::Value::Bool(source.example().is_some()),
-    );
 
     // Add any additional metadata (excluding the standard fields already included)
     let mut extra_metadata = serde_json::Map::new();
@@ -151,18 +147,10 @@ fn print_human_readable(quill: &quillmark::Quill) {
         println!("  Defaults:    {}", defaults_count);
     }
 
-    // Plate and example
+    // Plate
     println!(
         "  Has plate:   {}",
         if source.plate().is_some() {
-            "yes"
-        } else {
-            "no"
-        }
-    );
-    println!(
-        "  Has example: {}",
-        if source.example().is_some() {
             "yes"
         } else {
             "no"

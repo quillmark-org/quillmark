@@ -5,22 +5,22 @@
 //! ## Purpose
 //!
 //! This module provides common functionality used across multiple test files:
-//! - **`demo()` function** - Centralized example plumbing for rendering demos
+//! - **`demo()` function** - Centralized blueprint plumbing for rendering demos
 //!
 //! ## Usage
 //!
 //! The `demo()` helper simplifies the common pattern of:
 //! 1. Loading a quill from a path
-//! 2. Using the quill's example markdown
+//! 2. Using the quill's generated blueprint markdown
 //! 3. Rendering to final output
 //! 4. Writing outputs to example directory
 
 use quillmark_fixtures::{example_output_dir, quills_path, write_example_output};
 use std::error::Error;
 
-/// Demo helper that centralizes example plumbing.
+/// Demo helper that centralizes blueprint plumbing.
 ///
-/// It loads the quill and uses its markdown template, then renders it.
+/// It loads the quill and uses its generated blueprint, then renders it.
 pub fn demo(
     quill_dir: &str,
     render_output: &str,
@@ -38,12 +38,8 @@ pub fn demo(
         .quill_from_path(quill_path.clone())
         .expect("Failed to load quill");
 
-    // Load the markdown template from the quill
-    let markdown = quill
-        .source()
-        .example()
-        .ok_or("Quill does not have a markdown template")?
-        .to_string();
+    // Use the quill's generated blueprint as the markdown document.
+    let markdown = quill.source().config().blueprint();
 
     // Parse the markdown once
     let parsed = quillmark::Document::from_markdown(&markdown)?;

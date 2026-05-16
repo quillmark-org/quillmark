@@ -3,8 +3,6 @@ quill:
   version: 0.1.0
   backend: typst
   plate_file: plate.typ
-  example: examples/basic.md
-  example_file: example.md
   description: Typesetted USAF Official Memorandum
 
 cards:

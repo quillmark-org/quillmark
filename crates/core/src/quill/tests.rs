@@ -274,83 +274,10 @@ quill:
 }
 
 #[test]
-fn test_template_loading() {
-    let temp_dir = TempDir::new().unwrap();
-    let quill_dir = temp_dir.path();
-
-    // Create test files with example specified
-    let yaml_content = r#"quill:
-  name: "test_with_template"
-  version: "1.0"
-  backend: "typst"
-  plate_file: "plate.typ"
-  example_file: "example.md"
-  description: "Test quill with template"
-"#;
-    fs::write(quill_dir.join("Quill.yaml"), yaml_content).unwrap();
-    fs::write(quill_dir.join("plate.typ"), "plate content").unwrap();
-    fs::write(
-        quill_dir.join("example.md"),
-        "---\ntitle: Test\n---\n\nThis is a test template.",
-    )
-    .unwrap();
-
-    // Load quill
-    let quill = load_from_path(quill_dir).unwrap();
-
-    // Test that example content is loaded and includes some the text
-    assert!(quill.example.is_some());
-    let example = quill.example.unwrap();
-    assert!(example.contains("title: Test"));
-    assert!(example.contains("This is a test template"));
-    assert!(quill
-        .config
-        .example_markdown
-        .as_ref()
-        .is_some_and(|value| value.contains("title: Test")));
-
-    // Test that plate template is still loaded
-    assert_eq!(quill.plate.unwrap(), "plate content");
-}
-
-#[test]
-fn test_template_smart_default() {
-    let temp_dir = TempDir::new().unwrap();
-    let quill_dir = temp_dir.path();
-
-    // Create test files without example specified
-    let yaml_content = r#"quill:
-  name: "test_smart_default"
-  version: "1.0"
-  backend: "typst"
-  plate_file: "plate.typ"
-  description: "Test quill with smart default"
-"#;
-    fs::write(quill_dir.join("Quill.yaml"), yaml_content).unwrap();
-    fs::write(quill_dir.join("plate.typ"), "plate content").unwrap();
-    // Create example.md which should be picked up automatically
-    fs::write(
-        quill_dir.join("example.md"),
-        "---\ntitle: Smart Default\n---\n\nPicked up automatically.",
-    )
-    .unwrap();
-
-    // Load quill
-    let quill = load_from_path(quill_dir).unwrap();
-
-    // Test that example content is loaded
-    assert!(quill.example.is_some());
-    let example = quill.example.unwrap();
-    assert!(example.contains("title: Smart Default"));
-    assert!(example.contains("Picked up automatically"));
-}
-
-#[test]
 fn test_template_optional() {
     let temp_dir = TempDir::new().unwrap();
     let quill_dir = temp_dir.path();
 
-    // Create test files without example specified
     let yaml_content = r#"quill:
   name: "test_without_template"
   version: "1.0"
@@ -364,10 +291,7 @@ fn test_template_optional() {
     // Load quill
     let quill = load_from_path(quill_dir).unwrap();
 
-    // Test that example fields are None
-    assert_eq!(quill.example, None);
-
-    // Test that plate template is still loaded
+    // Test that plate template is loaded
     assert_eq!(quill.plate.unwrap(), "plate content");
 }
 
@@ -410,54 +334,6 @@ fn test_from_tree() {
     assert_eq!(quill.plate.unwrap(), plate_content);
     assert!(quill.metadata.contains_key("backend"));
     assert!(quill.metadata.contains_key("description"));
-}
-
-#[test]
-fn test_from_tree_with_template() {
-    let mut root_files = HashMap::new();
-
-    // Add Quill.yaml with example specified
-    // Add Quill.yaml with example specified
-    let quill_yaml = r#"
-quill:
-  name: test_tree_template
-  version: "1.0"
-  backend: typst
-  plate_file: plate.typ
-  example_file: template.md
-  description: Test tree with template
-"#;
-    root_files.insert(
-        "Quill.yaml".to_string(),
-        FileTreeNode::File {
-            contents: quill_yaml.as_bytes().to_vec(),
-        },
-    );
-
-    // Add plate file
-    root_files.insert(
-        "plate.typ".to_string(),
-        FileTreeNode::File {
-            contents: b"plate content".to_vec(),
-        },
-    );
-
-    // Add template file
-    let template_content = "# {{ title }}\n\n{{ body }}";
-    root_files.insert(
-        "template.md".to_string(),
-        FileTreeNode::File {
-            contents: template_content.as_bytes().to_vec(),
-        },
-    );
-
-    let root = FileTreeNode::Directory { files: root_files };
-
-    // Create Quill from tree
-    let quill = QuillSource::from_tree(root).unwrap();
-
-    // Validate template is loaded
-    assert_eq!(quill.example, Some(template_content.to_string()));
 }
 
 #[test]
@@ -619,7 +495,6 @@ fn test_field_schemas_parsing() {
   version: "1.0"
   backend: "typst"
   plate_file: "plate.typ"
-  example_file: "taro.md"
   description: "Test template for field schemas"
 
 cards:
@@ -648,14 +523,6 @@ cards:
         "plate.typ".to_string(),
         FileTreeNode::File {
             contents: plate_content.as_bytes().to_vec(),
-        },
-    );
-
-    // Add template file
-    root_files.insert(
-        "taro.md".to_string(),
-        FileTreeNode::File {
-            contents: b"# Template".to_vec(),
         },
     );
 
@@ -796,7 +663,6 @@ quill:
   description: Test configuration parsing
   author: Test Author
   plate_file: plate.typ
-  example_file: example.md
 
 typst:
   packages: 
@@ -828,7 +694,6 @@ cards:
     assert_eq!(config.version, "1.0");
     assert_eq!(config.author, "Test Author");
     assert_eq!(config.plate_file, Some("plate.typ".to_string()));
-    assert_eq!(config.example_file, Some("example.md".to_string()));
 
     // Verify backend-specific config (parsed from the [typst] section).
     assert!(config.backend_config.contains_key("packages"));
@@ -841,65 +706,6 @@ cards:
     let title_field = &config.main.fields["title"];
     assert_eq!(title_field.description, Some("Document title".to_string()));
     assert_eq!(title_field.r#type, FieldType::String);
-}
-
-#[test]
-fn test_quill_config_parses_example_alias() {
-    let yaml_content = r#"
-quill:
-  name: test_example_alias
-  version: "1.0"
-  backend: typst
-  description: Test example alias parsing
-  example: examples/basic.md
-"#;
-
-    let config = QuillConfig::from_yaml(yaml_content).unwrap();
-    assert_eq!(config.example_file, Some("examples/basic.md".to_string()));
-}
-
-#[test]
-fn test_quill_from_path_rejects_example_traversal() {
-    let temp_dir = TempDir::new().unwrap();
-    let quill_dir = temp_dir.path();
-
-    let yaml_content = r#"quill:
-  name: traversal_test
-  version: "1.0"
-  backend: typst
-  description: Traversal test
-  example: ../outside.md
-"#;
-    fs::write(quill_dir.join("Quill.yaml"), yaml_content).unwrap();
-
-    let result = load_from_path(quill_dir);
-    assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("outside the quill directory"));
-}
-
-#[test]
-fn test_quill_from_path_errors_when_explicit_example_missing() {
-    let temp_dir = TempDir::new().unwrap();
-    let quill_dir = temp_dir.path();
-
-    let yaml_content = r#"quill:
-  name: missing_example_test
-  version: "1.0"
-  backend: typst
-  description: Missing explicit example test
-  example: examples/missing.md
-"#;
-    fs::write(quill_dir.join("Quill.yaml"), yaml_content).unwrap();
-
-    let result = load_from_path(quill_dir);
-    assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("referenced in Quill.yaml not found"));
 }
 
 #[test]

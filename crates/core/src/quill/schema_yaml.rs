@@ -63,11 +63,9 @@ cards:
     }
 
     #[test]
-    fn omits_example_and_ref() {
-        let mut config = cfg(FULL);
-        config.example_markdown = Some("# x".to_string());
+    fn omits_ref() {
+        let config = cfg(FULL);
         let yaml = config.schema_yaml().unwrap();
-        assert!(!yaml.contains("example:"));
         assert!(!yaml.contains("ref:"));
     }
 

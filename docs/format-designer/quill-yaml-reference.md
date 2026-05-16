@@ -42,8 +42,6 @@ Every Quill.yaml must have a `quill` section with format metadata.
 | `version`        | string | yes      | Semantic version (`MAJOR.MINOR` or `MAJOR.MINOR.PATCH`) |
 | `author`         | string | no       | Creator of the Quill (defaults to `"Unknown"`) |
 | `plate_file`     | string | no       | Path to the plate file |
-| `example`        | string | no       | Path to an example Markdown document |
-| `example_file`   | string | no       | Alias for `example` |
 | `ui`             | object | no       | Document-level UI metadata |
 
 ```yaml
@@ -54,7 +52,6 @@ quill:
   description: Typesetted USAF Official Memorandum
   author: TongueToQuill
   plate_file: plate.typ
-  example: example.md
 ```
 
 ---
@@ -470,7 +467,6 @@ quill:
   description: Monthly project status report
   author: Engineering Team
   plate_file: plate.typ
-  example: example.md
 
 cards:
   main:

@@ -29,13 +29,13 @@ fn assert_round_trip(label: &str, src: &str) {
 
 // ── Fixture corpus round-trip ─────────────────────────────────────────────────
 
-/// All `.md` files in `crates/fixtures/resources/quills/**/example.md` and a
+/// All `.md` files under `crates/fixtures/resources/quills/**` and a
 /// curated set of the top-level resource markdowns that have a QUILL field.
 #[test]
 fn fixture_corpus_round_trip() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
 
-    // Quill example.md files — enumerate dynamically.
+    // Quill sample markdown files — enumerate dynamically.
     let quills_dir = std::path::Path::new(manifest_dir)
         .join("..") // crates/core → crates
         .join("fixtures")

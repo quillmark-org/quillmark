@@ -24,7 +24,6 @@ quill:
   version: "1.0.0"
   description: A simple letter format
   plate_file: plate.typ
-  example_file: example.md
 
 cards:
   main:
@@ -62,9 +61,9 @@ Sincerely,
 
 For data access patterns, helper package details, optional fields, and CARDS iteration, see the [Typst Backend](typst-backend.md) guide.
 
-## 4. Add `example.md`
+## 4. Write a document
 
-Create a document that matches the fields you defined:
+Create a document (`example.md`) that matches the fields you defined:
 
 ```markdown
 ---
@@ -84,6 +83,8 @@ From the same directory, render the document:
 ```bash
 quillmark render ./my-quill example.md
 ```
+
+Omitting the markdown file renders the quill's generated blueprint instead — a useful smoke test while authoring a format.
 
 For command options and output controls, see the [CLI Reference](../cli/reference.md).
 

@@ -199,16 +199,6 @@ fn validate_file_references(
         }
     }
 
-    // Check example_file reference
-    if let Some(ref example_file) = config.example_file {
-        let example_path = quill_path.join(example_file);
-        if !example_path.exists() {
-            result.add_warning(format!(
-                "Referenced example_file '{}' does not exist",
-                example_file
-            ));
-        }
-    }
 }
 
 fn validate_field_schemas(

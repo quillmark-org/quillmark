@@ -70,7 +70,7 @@ export interface QuillSchema {
 
 /**
  * Identity snapshot mirroring the `quill:` section of `Quill.yaml`.
- * The schema lives on `Quill.schema`; the example on `Quill.example`.
+ * The schema lives on `Quill.schema`; the blueprint on `Quill.blueprint`.
  * Extra `quill:` keys appear as `unknown`.
  */
 export interface QuillMetadata {
@@ -313,12 +313,6 @@ impl Quill {
     #[wasm_bindgen(getter, js_name = supportsCanvas)]
     pub fn supports_canvas(&self) -> bool {
         self.inner.backend_id() == CANVAS_BACKEND_ID
-    }
-
-    /// Bundled example document, or `undefined` if none was declared.
-    #[wasm_bindgen(getter, js_name = example)]
-    pub fn example(&self) -> Option<String> {
-        self.inner.source().config().example_markdown.clone()
     }
 
     /// Auto-generated annotated Markdown blueprint for LLM consumers.
