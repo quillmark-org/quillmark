@@ -48,9 +48,10 @@ impl Document {
     /// - Frontmatter: `---\n`, `QUILL: <ref>` first, remaining fields in
     ///   `IndexMap` insertion order, `---\n`, blank line.
     /// - Cards: one blank line before each, emitted as the canonical fenced
-    ///   block ```` ```card <tag>\n<fields>\n```\n ````<body>. The legacy
-    ///   `---\nCARD: <tag>\n…\n---` fence is accepted on input but never
-    ///   emitted — every card round-trips to the ```` ```card ```` form.
+    ///   block — a ```` ```card <tag> ```` opener, the card's YAML, a closing
+    ///   ```` ``` ````, then the card body. The legacy `---`/`CARD:` fence is
+    ///   accepted on input but never emitted — every card round-trips to the
+    ///   ```` ```card ```` form.
     /// - Body: emitted verbatim after frontmatter (and cards).
     /// - Mappings and sequences: **block style** at every nesting level.
     /// - Booleans: `true` / `false`.
