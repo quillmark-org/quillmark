@@ -2163,10 +2163,27 @@ fn test_to_plate_json_quill_first() {
     assert_eq!(keys[0], "QUILL");
 }
 
-/// Snapshot test against usaf_memo fixture example.md
+/// Snapshot test over a representative usaf_memo-shaped document.
 #[test]
 fn test_to_plate_json_fixture_snapshot() {
-    let markdown = include_str!("../../../../fixtures/resources/quills/usaf_memo/0.1.0/example.md");
+    let markdown = "\
+---
+QUILL: usaf_memo@0.1
+memo_for:
+  - ORG/SYMBOL
+date: 2504-10-05
+subject: Subject of the Memorandum
+---
+
+The body of the memorandum.
+
+```card indorsement
+for: ORG/SYMBOL
+from: ORG/SYMBOL
+```
+
+This body and the metadata above are an indorsement card.
+";
     let doc = Document::from_markdown(markdown).unwrap();
     let json = doc.to_plate_json();
 

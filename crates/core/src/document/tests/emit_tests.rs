@@ -29,46 +29,25 @@ fn assert_round_trip(label: &str, src: &str) {
 
 // ── Fixture corpus round-trip ─────────────────────────────────────────────────
 
-/// All `.md` files in `crates/fixtures/resources/quills/**/example.md` and a
-/// curated set of the top-level resource markdowns that have a QUILL field.
+/// Every top-level `.md` file under `crates/fixtures/resources` — files
+/// without a QUILL field are skipped at parse time.
 #[test]
 fn fixture_corpus_round_trip() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
 
-    // Quill example.md files — enumerate dynamically.
-    let quills_dir = std::path::Path::new(manifest_dir)
+    let resources_dir = std::path::Path::new(manifest_dir)
         .join("..") // crates/core → crates
         .join("fixtures")
-        .join("resources")
-        .join("quills");
+        .join("resources");
 
     let mut fixture_paths: Vec<std::path::PathBuf> = Vec::new();
 
-    // Walk the quills directory looking for *.md files (examples).
-    if let Ok(entries) = std::fs::read_dir(&quills_dir) {
-        for entry in entries.flatten() {
-            if entry.path().is_dir() {
-                // Each quill directory may have versioned subdirs.
-                collect_md_files(&entry.path(), &mut fixture_paths);
-            }
-        }
-    }
-
     // Top-level resource .md files that have a QUILL field.
-    let resources_dir = quills_dir.parent().unwrap();
-    for entry in std::fs::read_dir(resources_dir).unwrap().flatten() {
+    for entry in std::fs::read_dir(&resources_dir).unwrap().flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some("md") {
             fixture_paths.push(path);
         }
-    }
-
-    // Also add the appreciated_letter subdirectory.
-    let appreciated = resources_dir
-        .join("appreciated_letter")
-        .join("appreciated_letter.md");
-    if appreciated.exists() {
-        fixture_paths.push(appreciated);
     }
 
     assert!(
@@ -143,20 +122,6 @@ fn fixture_corpus_round_trip() {
         "fixture_corpus_round_trip: {} passed, {} skipped",
         passed, skipped
     );
-}
-
-/// Recursively collect all `.md` files under `dir`.
-fn collect_md_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                collect_md_files(&path, out);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
-                out.push(path);
-            }
-        }
-    }
 }
 
 // ── Stability smoke test ──────────────────────────────────────────────────────

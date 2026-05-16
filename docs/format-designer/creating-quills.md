@@ -9,8 +9,7 @@ Start with this layout:
 ```
 my-quill/
 ├── Quill.yaml
-├── plate.typ
-└── example.md
+└── plate.typ
 ```
 
 ## 2. Write `Quill.yaml`
@@ -60,9 +59,9 @@ Sincerely,
 
 For data access patterns, helper package details, optional fields, and CARDS iteration, see the [Typst Backend](typst-backend.md) guide.
 
-## 4. Add `example.md`
+## 4. Write a document
 
-Create a document that matches the fields you defined:
+Create a `document.md` that matches the fields you defined:
 
 ```markdown
 ---
@@ -80,7 +79,7 @@ Thank you for your time.
 From the same directory, render the document:
 
 ```bash
-quillmark render ./my-quill example.md
+quillmark render ./my-quill document.md
 ```
 
 For command options and output controls, see the [CLI Reference](../cli/reference.md).

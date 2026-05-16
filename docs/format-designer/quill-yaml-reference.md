@@ -453,7 +453,6 @@ quill:
   description: Monthly project status report
   author: Engineering Team
   plate_file: plate.typ
-  example: example.md
 
 main:
   fields:

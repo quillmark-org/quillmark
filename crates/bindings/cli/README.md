@@ -111,10 +111,11 @@ quillmark render [OPTIONS] <QUILL_PATH> [MARKDOWN_FILE]
 
 ### Example: Render USAF Memo
 
+Omitting the Markdown file renders the quill's generated blueprint:
+
 ```bash
 quillmark render \
   crates/fixtures/resources/quills/usaf_memo/0.1.0 \
-  crates/fixtures/resources/quills/usaf_memo/0.1.0/example.md \
   -o usaf_memo_output.pdf
 ```
 
@@ -168,7 +169,7 @@ cargo test
 ### Running Locally
 
 ```bash
-cargo run -- render path/to/quill example.md
+cargo run -- render path/to/quill document.md
 ```
 
 ## Design Documentation
