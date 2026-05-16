@@ -242,10 +242,9 @@ title: Test
 
 Body text.
 
----
-KIND: section
+```leaf section
 heading: Chapter 1
----
+```
 
 Leaf body here.
 ";
@@ -260,10 +259,9 @@ QUILL: q
 title: Test
 ---
 
----
-KIND: empty_body_leaf
+```leaf empty_body_leaf
 title: No body
----
+```
 ";
     assert_round_trip("leaf with empty body", src);
 }

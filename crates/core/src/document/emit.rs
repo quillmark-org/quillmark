@@ -47,7 +47,7 @@ impl Document {
     /// - Line endings: `\n` only.  CRLF normalization happens on import.
     /// - Frontmatter: `---\n`, `QUILL: <ref>` first, remaining fields in
     ///   `IndexMap` insertion order, `---\n`, blank line.
-    /// - Leaves: one blank line before each, fence `` ```leaf\nKIND: <tag>\n<fields>\n```\n<body> ``.
+    /// - Leaves: one blank line before each, fence `` ```leaf <tag>\n<fields>\n```\n<body> ``.
     /// - Body: emitted verbatim after frontmatter (and leaves).
     /// - Mappings and sequences: **block style** at every nesting level.
     /// - Booleans: `true` / `false`.
@@ -73,11 +73,11 @@ impl Document {
     /// # What is preserved
     ///
     /// - **YAML comments**: own-line and inline trailing comments round-trip
-    ///   at their source position. Inline comments on sentinel lines
-    ///   (`QUILL: r # …` / `KIND: t # …`) round-trip too. Comments whose
-    ///   host disappears at emit time (empty-mapping omission, programmatic
-    ///   field removal) degrade to own-line comments at the same indent so
-    ///   the comment text is preserved even when its position shifts.
+    ///   at their source position. An inline comment on the frontmatter
+    ///   `QUILL: r # …` sentinel line round-trips too. Comments whose host
+    ///   disappears at emit time (empty-mapping omission, programmatic field
+    ///   removal) degrade to own-line comments at the same indent so the
+    ///   comment text is preserved even when its position shifts.
     /// - **`!fill` tags**: round-trip via the `fill` flag on `FrontmatterItem::Field`.
     ///
     /// # What is lost
@@ -110,15 +110,18 @@ impl Document {
 
 // ── Leaf emission ─────────────────────────────────────────────────────────────
 
-/// Emit a leaf's metadata fence (between `---\n` markers), including the
-/// sentinel line and every frontmatter item.
+/// Emit a leaf's metadata fence — frontmatter (`---\n` markers, `QUILL:`
+/// sentinel line) or a composable leaf (` ```leaf <kind> ` info string) —
+/// followed by every frontmatter item.
 ///
 /// ## Inline-comment handling
 ///
-/// - **Sentinel-inline preview.** If `items[0]` is a `Comment{inline:true}`,
-///   its text is appended to the sentinel line (`QUILL: r # text` /
-///   `KIND: tag # text`) and the item is skipped. This is the only way to
-///   round-trip a source-level inline comment on the sentinel line.
+/// - **Sentinel-inline preview (frontmatter only).** If `items[0]` is a
+///   `Comment{inline:true}`, its text is appended to the `QUILL: r # text`
+///   sentinel line and the item is skipped. This is the only way to
+///   round-trip a source-level inline comment on the sentinel line. A leaf's
+///   kind lives in the info string, which cannot host a YAML comment, so a
+///   leading inline comment on a leaf falls through to the orphan path.
 /// - **Field + trailing inline.** When iterating items, a `Field` peeks at
 ///   its successor: if the next item is `Comment{inline:true}`, the comment
 ///   text is passed to `emit_field` as a trailer and consumed here. The
@@ -129,34 +132,34 @@ impl Document {
 ///   degrade path for empty-object fields (whose key is omitted) — the
 ///   trailer becomes an own-line comment at the same indent.
 fn emit_leaf_fence(out: &mut String, leaf: &Leaf) {
-    let (open_fence, close_fence) = match leaf.sentinel() {
-        Sentinel::Main(_) => ("---\n", "---\n"),
-        Sentinel::Leaf(_) => ("```leaf\n", "```\n"),
-    };
-    out.push_str(open_fence);
-
-    // Sentinel line.
-    match leaf.sentinel() {
+    let close_fence = match leaf.sentinel() {
         Sentinel::Main(r) => {
+            out.push_str("---\n");
             out.push_str("QUILL: ");
             out.push_str(&r.to_string());
             out.push('\n');
+            "---\n"
         }
-        Sentinel::Leaf(tag) => {
-            out.push_str("KIND: ");
-            out.push_str(tag);
+        Sentinel::Leaf(kind) => {
+            // The kind is carried by the info string; the body has no
+            // sentinel line.
+            out.push_str("```leaf ");
+            out.push_str(kind);
             out.push('\n');
+            "```\n"
         }
-    }
+    };
 
     let nested = leaf.frontmatter().nested_comments();
     let items = leaf.frontmatter().items();
     let mut i = 0;
 
-    // Sentinel-inline preview.
-    if let Some(FrontmatterItem::Comment { text, inline: true }) = items.first() {
-        attach_inline_to_last_line(out, text);
-        i = 1;
+    // Sentinel-inline preview — frontmatter only (see doc comment).
+    if leaf.is_main() {
+        if let Some(FrontmatterItem::Comment { text, inline: true }) = items.first() {
+            attach_inline_to_last_line(out, text);
+            i = 1;
+        }
     }
 
     while i < items.len() {

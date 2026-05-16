@@ -6,10 +6,11 @@
 ## Overview
 
 Leaves are structured metadata records inline within document content,
-encoded as CommonMark fenced code blocks with the info string `leaf`. All
-leaves are stored in a single `LEAVES` array, discriminated by the `KIND`
-field. See [MARKDOWN.md](MARKDOWN.md) §3.2 for the syntax-level
-specification.
+encoded as CommonMark fenced code blocks whose info string is
+`leaf <kind>`. All leaves are stored in a single `LEAVES` array,
+discriminated by `KIND` — an output-only field the parser populates from
+the info-string kind token. See [MARKDOWN.md](MARKDOWN.md) §3.2 for the
+syntax-level specification.
 
 ## Data Model
 
@@ -91,15 +92,16 @@ leaf_kinds:
 `QuillConfig::schema()` emits the schema (with `ui` and `body` hints
 retained) and `schema_yaml()` is the YAML wrapper. The output keeps the
 same `leaf_kinds.<name>.fields` shape as `Quill.yaml` and injects a
-required `KIND` sentinel field whose `const` value is the leaf kind name.
+required `KIND` discriminator field whose `const` value is the leaf kind
+name (the kind token authors write in the `` ```leaf <kind> `` info
+string).
 The `leaf_kinds` key is omitted entirely when no named kinds are defined.
 See `SCHEMAS.md` for the full surface.
 
 ## Markdown Syntax
 
 ````markdown
-```leaf
-KIND: indorsement
+```leaf indorsement
 from: ORG1/SYMBOL
 for: ORG2/SYMBOL
 signature_block:

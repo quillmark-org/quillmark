@@ -33,7 +33,7 @@ fn test_leaf_count_limit_attack() {
     // Generate more than MAX_LEAF_COUNT (1000) leaf blocks
     let mut markdown = String::from("---\nQUILL: test_quill\ntitle: Test\n---\n\nBody\n\n");
     for i in 0..1002 {
-        markdown.push_str(&format!("```leaf\nKIND: item{}\nvalue: {}\n```\n\n", i, i));
+        markdown.push_str(&format!("```leaf item{}\nvalue: {}\n```\n\n", i, i));
     }
     let result = Document::from_markdown(&markdown);
 
@@ -132,14 +132,14 @@ fn test_reserved_field_injection() {
     }
 }
 
-/// Test that KIND directive validation prevents invalid names
+/// Test that leaf kind-token validation prevents invalid names
 #[test]
 fn test_leaf_kind_name_validation() {
     let invalid_names = vec![
-        "---\nQUILL: test_quill\n---\n\n```leaf\nKIND: Invalid-Name\n```\n\n",
-        "---\nQUILL: test_quill\n---\n\n```leaf\nKIND: 123start\n```\n\n",
-        "---\nQUILL: test_quill\n---\n\n```leaf\nKIND: UPPERCASE\n```\n\n",
-        "---\nQUILL: test_quill\n---\n\n```leaf\nKIND: spaces here\n```\n\n",
+        "---\nQUILL: test_quill\n---\n\n```leaf Invalid-Name\n```\n\n",
+        "---\nQUILL: test_quill\n---\n\n```leaf 123start\n```\n\n",
+        "---\nQUILL: test_quill\n---\n\n```leaf UPPERCASE\n```\n\n",
+        "---\nQUILL: test_quill\n---\n\n```leaf spaces here\n```\n\n",
     ];
 
     for markdown in invalid_names {
@@ -156,7 +156,7 @@ fn test_leaf_kind_name_validation() {
 #[test]
 fn test_yaml_error_location() {
     let markdown =
-        "---\nQUILL: test_quill\ntitle: Test\n---\n\nBody\n\n```leaf\nKIND: test\ninvalid yaml: {\n```\n\n";
+        "---\nQUILL: test_quill\ntitle: Test\n---\n\nBody\n\n```leaf test\ninvalid yaml: {\n```\n\n";
     let result = Document::from_markdown(markdown);
 
     assert!(result.is_err(), "Should reject invalid YAML");
@@ -168,17 +168,17 @@ fn test_yaml_error_location() {
     );
 }
 
-/// Test both QUILL and KIND in same block is rejected
+/// Test that `KIND` as an input body key is rejected as a reserved key
 #[test]
 fn test_quill_leaf_conflict() {
     let markdown = "---\nQUILL: template\nKIND: item\n---\n\n";
     let result = Document::from_markdown(markdown);
 
-    assert!(result.is_err(), "Should reject QUILL + KIND in same block");
+    assert!(result.is_err(), "Should reject KIND as an input body key");
     let err_msg = result.unwrap_err().to_string();
     assert!(
-        err_msg.contains("QUILL") && err_msg.contains("KIND"),
-        "Error should mention both keys: {}",
+        err_msg.contains("Reserved field name") && err_msg.contains("KIND"),
+        "Error should flag KIND as a reserved key: {}",
         err_msg
     );
 }
@@ -187,7 +187,7 @@ fn test_quill_leaf_conflict() {
 #[test]
 fn test_strict_fence_detection() {
     let markdown =
-        "---\nQUILL: test_quill\ntitle: Test\n---\n\n````\n```leaf\nKIND: test\nvalue: 1\n```\n````";
+        "---\nQUILL: test_quill\ntitle: Test\n---\n\n````\n```leaf test\nvalue: 1\n```\n````";
     let result = Document::from_markdown(markdown);
 
     assert!(result.is_ok(), "Should parse successfully");
@@ -203,7 +203,7 @@ fn test_strict_fence_detection() {
 #[test]
 fn test_tilde_fence_hides_metadata() {
     let markdown =
-        "---\nQUILL: test_quill\ntitle: Test\n---\n\n~~~\n```leaf\nKIND: test\nvalue: 1\n```\n~~~";
+        "---\nQUILL: test_quill\ntitle: Test\n---\n\n~~~\n```leaf test\nvalue: 1\n```\n~~~";
     let result = Document::from_markdown(markdown);
 
     assert!(result.is_ok(), "Should parse successfully");

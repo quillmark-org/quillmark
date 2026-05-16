@@ -1,4 +1,4 @@
-//! QUILL / KIND sentinel extraction and reserved-name validation.
+//! QUILL sentinel extraction and reserved-name validation.
 //!
 //! Implements the sentinel rules from MARKDOWN.md §4.2 and the reserved-name
 //! checks from spec §3.
@@ -68,69 +68,45 @@ fn strip_key(
     (!m.is_empty()).then(|| serde_json::Value::Object(m))
 }
 
-/// Extract `QUILL` / `KIND` sentinels and remaining fields from a parsed-YAML
-/// mapping. Returns `(tag, quill_ref, yaml_without_sentinel)`.
-#[allow(clippy::type_complexity)]
+/// Extract the `QUILL` sentinel (frontmatter only) and the remaining fields
+/// from a parsed-YAML mapping. Returns `(quill_ref, yaml_without_sentinel)`.
+///
+/// A leaf's kind is carried by the fence info string (`MARKDOWN.md §3.2`), so
+/// `KIND` no longer participates in sentinel extraction: it joins `BODY` and
+/// `LEAVES` as an output-only reserved key, and supplying it as an input body
+/// key is a hard parse error in both frontmatter and leaves.
 pub(super) fn extract_sentinels(
     parsed: serde_json::Value,
-) -> Result<(Option<String>, Option<String>, Option<serde_json::Value>), ParseError> {
+    is_frontmatter: bool,
+) -> Result<(Option<String>, Option<serde_json::Value>), ParseError> {
     let Some(mapping) = parsed.as_object() else {
         // Non-mapping (scalar/sequence); pass through — upstream will reject
         // if a frontmatter/leaf mapping was expected.
-        return Ok((None, None, Some(parsed)));
+        return Ok((None, Some(parsed)));
     };
 
-    let has_quill = mapping.contains_key("QUILL");
-    let has_leaf = mapping.contains_key("KIND");
-
-    if has_quill && has_leaf {
-        return Err(ParseError::InvalidStructure(
-            "Cannot specify both QUILL and KIND in the same block".to_string(),
-        ));
-    }
-
-    // Reserved keys (BODY, LEAVES) — spec §3.
-    for reserved in ["BODY", "LEAVES"] {
+    // Output-only reserved keys (spec §3): the parser populates these, so an
+    // author supplying any of them as an input field is a hard parse error.
+    for reserved in ["BODY", "LEAVES", "KIND"] {
         if mapping.contains_key(reserved) {
             return Err(ParseError::InvalidStructure(format!(
-                "Reserved field name '{}' cannot be used in YAML frontmatter",
+                "Reserved field name '{}' cannot be used as an input field",
                 reserved
             )));
         }
     }
 
-    if has_quill {
-        let quill_str = mapping
-            .get("QUILL")
-            .unwrap()
-            .as_str()
-            .ok_or("QUILL value must be a string")?;
-        quill_str.parse::<QuillReference>().map_err(|e| {
-            ParseError::InvalidStructure(format!("Invalid QUILL reference '{}': {}", quill_str, e))
-        })?;
-        Ok((
-            None,
-            Some(quill_str.to_string()),
-            strip_key(mapping, "QUILL"),
-        ))
-    } else if has_leaf {
-        let field_name = mapping
-            .get("KIND")
-            .unwrap()
-            .as_str()
-            .ok_or("KIND value must be a string")?;
-        if !is_valid_tag_name(field_name) {
-            return Err(ParseError::InvalidStructure(format!(
-                "Invalid leaf field name '{}': must match pattern [a-z_][a-z0-9_]*",
-                field_name
-            )));
+    if is_frontmatter {
+        if let Some(quill_val) = mapping.get("QUILL") {
+            let quill_str = quill_val.as_str().ok_or("QUILL value must be a string")?;
+            quill_str.parse::<QuillReference>().map_err(|e| {
+                ParseError::InvalidStructure(format!(
+                    "Invalid QUILL reference '{}': {}",
+                    quill_str, e
+                ))
+            })?;
+            return Ok((Some(quill_str.to_string()), strip_key(mapping, "QUILL")));
         }
-        Ok((
-            Some(field_name.to_string()),
-            None,
-            strip_key(mapping, "KIND"),
-        ))
-    } else {
-        Ok((None, None, Some(parsed)))
     }
+    Ok((None, Some(parsed)))
 }

@@ -1,6 +1,6 @@
 # Proposal — Move the Leaf Kind Discriminator into the Info String
 
-> **Status**: Proposed (for SWE planning & implementation)
+> **Status**: Implemented
 > **See also**: [MARKDOWN.md](../designs/MARKDOWN.md) (spec), [LEAF_REWORK.md](LEAF_REWORK.md) (current design), [LEAVES.md](../designs/LEAVES.md) (data model)
 > **Amends**: LEAF_REWORK.md §3.2, §5; MARKDOWN.md §2, §3.2, §4.2, §4.4
 
@@ -162,13 +162,18 @@ planning (§8).
   moves from sentinel to output-only, so it is still a reserved body key an
   author can collide with.
 
-## 8. Open questions for the planner
+## 8. Open questions for the planner — resolved
 
-1. **Extra-token policy.** `` ```leaf a b `` — hard error (strict; catches
-   typos) or ignore trailing tokens (CommonMark-ish)? Recommendation: **hard
-   error** — leaf info strings are structural, not free-form.
-2. **`---/CARD:---` legacy path.** Is it still present in `fences.rs`? If so,
-   confirm its emitter target retargets to `` ```leaf <kind> `` and that no
-   additional work is implied.
-3. **Error code naming.** New diagnostics ("missing kind token", "invalid
-   kind token") need codes consistent with the existing `parse::*` scheme.
+1. **Extra-token policy.** `` ```leaf a b `` — **hard error** (`fences.rs`
+   `leaf_kind_from_tokens`): a leaf info string must be exactly `leaf <kind>`.
+2. **`---/CARD:---` legacy path.** Still present and **reworked**. Because
+   `KIND:` as a body key is now a hard error, the legacy path can no longer
+   rewrite `CARD:`→`KIND:` in the body. `assemble.rs::extract_legacy_card_leaf`
+   instead lifts the kind out of the `CARD:` line and drops that line, so the
+   block parses as a canonical leaf; the emitter retargets to
+   `` ```leaf <kind> `` as before.
+3. **Error code naming.** Hard parse errors in this codebase all collapse to
+   the single code `parse::invalid_structure` (distinguished by message);
+   there is no granular `parse::*` code per error. The new "missing/invalid/
+   extra kind token" errors are `ParseError::InvalidStructure`, matching the
+   former "missing `KIND:`" error exactly.

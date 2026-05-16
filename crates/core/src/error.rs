@@ -134,7 +134,7 @@ pub const MAX_NESTING_DEPTH: usize = 100;
 /// Re-exported from [`crate::document::limits::MAX_YAML_DEPTH`].
 pub use crate::document::limits::MAX_YAML_DEPTH;
 
-/// Maximum number of KIND blocks allowed per document
+/// Maximum number of leaf blocks allowed per document
 /// Prevents memory exhaustion from documents with excessive leaf blocks
 pub const MAX_LEAF_COUNT: usize = 1000;
 

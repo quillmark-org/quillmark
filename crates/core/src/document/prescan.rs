@@ -285,7 +285,7 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
                 if let Some(err) = fill_target_err {
                     out.fill_target_errors.push(err);
                 }
-                if fill && (key == "QUILL" || key == "KIND") {
+                if fill && key == "QUILL" {
                     out.fill_target_errors.push(format!(
                         "`!fill` cannot be applied to the sentinel key `{}` — sentinels are routing keys, not data, and must resolve at parse time",
                         key

@@ -200,8 +200,7 @@ title: Main Document
 
 Main body content.
 
-```leaf
-KIND: items
+```leaf items
 name: Item 1
 ```
 
@@ -240,16 +239,14 @@ fn test_multiple_tagged_blocks() {
 QUILL: test_quill
 ---
 
-```leaf
-KIND: items
+```leaf items
 name: Item 1
 tags: [a, b]
 ```
 
 First item body.
 
-```leaf
-KIND: items
+```leaf items
 name: Item 2
 tags: [c, d]
 ```
@@ -284,15 +281,13 @@ author: John Doe
 
 Global body.
 
-```leaf
-KIND: sections
+```leaf sections
 title: Section 1
 ```
 
 Section 1 content.
 
-```leaf
-KIND: sections
+```leaf sections
 title: Section 2
 ```
 
@@ -320,8 +315,7 @@ fn test_empty_tagged_metadata() {
 QUILL: test_quill
 ---
 
-```leaf
-KIND: items
+```leaf items
 ```
 
 Body without metadata."#;
@@ -340,8 +334,7 @@ fn test_tagged_block_without_body() {
 QUILL: test_quill
 ---
 
-```leaf
-KIND: items
+```leaf items
 name: Item
 ```"#;
 
@@ -361,8 +354,7 @@ items: "global value"
 
 Body
 
-```leaf
-KIND: items
+```leaf items
 name: Item
 ```
 
@@ -384,8 +376,7 @@ items:
 
 Global body
 
-```leaf
-KIND: items
+```leaf items
 name: Scope Item 1
 ```
 
@@ -407,8 +398,7 @@ items: []
 
 Global body
 
-```leaf
-KIND: items
+```leaf items
 name: Item 1
 ```
 
@@ -428,8 +418,7 @@ fn test_reserved_field_body_rejected() {
 QUILL: test_quill
 ---
 
-```leaf
-KIND: section
+```leaf section
 BODY: Test
 ```"#;
 
@@ -491,8 +480,7 @@ title: Test
 Here is some code:
 
 ~~~yaml
-```leaf
-KIND: code_example
+```leaf code_example
 fake: frontmatter
 ```
 ~~~
@@ -514,8 +502,7 @@ title: Test
 Here is some code:
 
 ````yaml
-```leaf
-KIND: code_example
+```leaf code_example
 fake: frontmatter
 ```
 ````
@@ -534,8 +521,7 @@ fn test_invalid_tag_syntax() {
 QUILL: test_quill
 ---
 
-```leaf
-KIND: Invalid-Name
+```leaf Invalid-Name
 title: Test
 ```"#;
 
@@ -544,7 +530,7 @@ title: Test
     assert!(result
         .unwrap_err()
         .to_string()
-        .contains("Invalid leaf field name"));
+        .contains("invalid kind token"));
 }
 
 #[test]
@@ -579,15 +565,13 @@ fn test_adjacent_blocks_different_tags() {
 QUILL: test_quill
 ---
 
-```leaf
-KIND: items
+```leaf items
 name: Item 1
 ```
 
 Item 1 body
 
-```leaf
-KIND: sections
+```leaf sections
 title: Section 1
 ```
 
@@ -617,22 +601,19 @@ fn test_order_preservation() {
 QUILL: test_quill
 ---
 
-```leaf
-KIND: items
+```leaf items
 id: 1
 ```
 
 First
 
-```leaf
-KIND: items
+```leaf items
 id: 2
 ```
 
 Second
 
-```leaf
-KIND: items
+```leaf items
 id: 3
 ```
 
@@ -659,8 +640,7 @@ date: 2024-01-01
 
 This is the main catalog description.
 
-```leaf
-KIND: products
+```leaf products
 name: Widget A
 price: 19.99
 sku: WID-001
@@ -668,8 +648,7 @@ sku: WID-001
 
 The **Widget A** is our most popular product.
 
-```leaf
-KIND: products
+```leaf products
 name: Gadget B
 price: 29.99
 sku: GAD-002
@@ -677,16 +656,14 @@ sku: GAD-002
 
 The **Gadget B** is perfect for professionals.
 
-```leaf
-KIND: reviews
+```leaf reviews
 product: Widget A
 rating: 5
 ```
 
 "Excellent product! Highly recommended."
 
-```leaf
-KIND: reviews
+```leaf reviews
 product: Gadget B
 rating: 4
 ```
@@ -822,8 +799,7 @@ title: Test Document
 
 Main body.
 
-```leaf
-KIND: sections
+```leaf sections
 name: Section 1
 ```
 
@@ -897,8 +873,7 @@ fn test_leaf_wrong_value_type() {
 QUILL: test_quill
 ---
 
-```leaf
-KIND: 123
+```leaf 123
 ```"#;
 
     let result = decompose(markdown);
@@ -906,11 +881,13 @@ KIND: 123
     assert!(result
         .unwrap_err()
         .to_string()
-        .contains("KIND value must be a string"));
+        .contains("invalid kind token"));
 }
 
 #[test]
-fn test_both_quill_and_kind_error() {
+fn test_kind_rejected_as_frontmatter_key() {
+    // `KIND` is an output-only reserved key — supplying it as an input body
+    // key is a hard parse error, in frontmatter and leaves alike.
     let markdown = r#"---
 QUILL: test
 KIND: items
@@ -921,7 +898,7 @@ KIND: items
     assert!(result
         .unwrap_err()
         .to_string()
-        .contains("Cannot specify both QUILL and KIND"));
+        .contains("Reserved field name 'KIND'"));
 }
 
 #[test]
@@ -986,8 +963,7 @@ fn test_blank_lines_in_scope_blocks() {
 QUILL: test_quill
 ---
 
-```leaf
-KIND: items
+```leaf items
 name: Item 1
 
 price: 19.99
@@ -1292,8 +1268,7 @@ metadata:
 
 `<<inline code>>` and <<plain>>
 
-```leaf
-KIND: items
+```leaf items
 description: "<<leaf yaml>>"
 ```
 
@@ -1656,8 +1631,7 @@ fn test_leaf_with_empty_body() {
 QUILL: test_quill
 ---
 
-```leaf
-KIND: items
+```leaf items
 name: Item
 ```"#;
     let doc = decompose(markdown).unwrap();
@@ -1672,13 +1646,11 @@ fn test_leaf_consecutive_blocks() {
 QUILL: test_quill
 ---
 
-```leaf
-KIND: a
+```leaf a
 id: 1
 ```
 
-```leaf
-KIND: a
+```leaf a
 id: 2
 ```"#;
     let doc = decompose(markdown).unwrap();
@@ -1688,13 +1660,31 @@ id: 2
 }
 
 #[test]
+fn test_leaf_may_carry_quill_field() {
+    // `QUILL` is not reserved inside a leaf (MARKDOWN.md §3.2) — the kind
+    // lives in the info string, so a body `QUILL:` is an ordinary field and
+    // is kept in source position.
+    let markdown = "---\nQUILL: q\n---\n\n```leaf item\nQUILL: not-a-ref\nname: x\n```\n";
+    let doc = decompose(markdown).unwrap();
+    let leaf = &doc.leaves()[0];
+    assert_eq!(leaf.tag(), "item");
+    assert_eq!(
+        leaf.frontmatter().get("QUILL").and_then(|v| v.as_str()),
+        Some("not-a-ref")
+    );
+    let emitted = doc.to_markdown();
+    let q = emitted.find("QUILL: \"not-a-ref\"").expect("QUILL field kept");
+    let n = emitted.find("name:").expect("name field kept");
+    assert!(q < n, "QUILL field must stay before name; got:\n{}", emitted);
+}
+
+#[test]
 fn test_leaf_with_body_containing_dashes() {
     let markdown = r#"---
 QUILL: test_quill
 ---
 
-```leaf
-KIND: items
+```leaf items
 name: Item
 ```
 
@@ -1755,25 +1745,25 @@ Body content."#;
 
 #[test]
 fn test_invalid_scope_name_uppercase() {
-    let markdown = "---\nQUILL: test_quill\n---\n\n```leaf\nKIND: ITEMS\n```\n\nBody.";
+    let markdown = "---\nQUILL: test_quill\n---\n\n```leaf ITEMS\n```\n\nBody.";
     let result = decompose(markdown);
     assert!(result.is_err());
     assert!(result
         .unwrap_err()
         .to_string()
-        .contains("Invalid leaf field name"));
+        .contains("invalid kind token"));
 }
 
 #[test]
 fn test_invalid_scope_name_starts_with_number() {
-    let markdown = "```leaf\nKIND: 123items\n```\n\nBody.";
+    let markdown = "```leaf 123items\n```\n\nBody.";
     let result = decompose(markdown);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_invalid_scope_name_with_hyphen() {
-    let markdown = "```leaf\nKIND: my-items\n```\n\nBody.";
+    let markdown = "```leaf my-items\n```\n\nBody.";
     let result = decompose(markdown);
     assert!(result.is_err());
 }
@@ -1826,7 +1816,7 @@ fn test_f2_strip_global_body_followed_by_leaf_lf() {
     // Global body followed by a KIND fence: the source's tail `\n\n` is
     // (content line terminator) + (F2 blank line). Strip exactly the F2 `\n`,
     // leaving `\n` as the content terminator.
-    let markdown = "---\nQUILL: q\n---\n\nbody\n\n```leaf\nKIND: x\n```\n";
+    let markdown = "---\nQUILL: q\n---\n\nbody\n\n```leaf x\n```\n";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.main().body(), "\nbody\n");
 }
@@ -1834,7 +1824,7 @@ fn test_f2_strip_global_body_followed_by_leaf_lf() {
 #[test]
 fn test_f2_strip_global_body_followed_by_leaf_crlf() {
     // CRLF line endings: strip exactly one `\r\n` as the F2 separator.
-    let markdown = "---\r\nQUILL: q\r\n---\r\n\r\nbody\r\n\r\n---\r\nKIND: x\r\n---\r\n";
+    let markdown = "---\r\nQUILL: q\r\n---\r\n\r\nbody\r\n\r\n```leaf x\r\n```\r\n";
     let doc = decompose(markdown).unwrap();
     assert!(
         doc.main().body().ends_with('\n') && !doc.main().body().ends_with("\n\n"),
@@ -1848,7 +1838,7 @@ fn test_f2_strip_leaf_body_followed_by_leaf() {
     // First leaf body is followed by another fence → F2 stripped.
     // Last leaf body is at EOF → preserved verbatim.
     let markdown =
-        "---\nQUILL: q\n---\n\n```leaf\nKIND: a\n```\nfirst\n\n```leaf\nKIND: b\n```\nsecond\n";
+        "---\nQUILL: q\n---\n\n```leaf a\n```\nfirst\n\n```leaf b\n```\nsecond\n";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.leaves()[0].body(), "first\n");
     assert_eq!(doc.leaves()[1].body(), "second\n");
@@ -1858,7 +1848,7 @@ fn test_f2_strip_leaf_body_followed_by_leaf() {
 fn test_f2_strip_preserves_author_blank_lines() {
     // Author wrote two blank lines after the body. Only the F2 blank (last
     // `\n`) is stripped; the author's blank line is preserved.
-    let markdown = "---\nQUILL: q\n---\n\nbody\n\n\n```leaf\nKIND: x\n```\n";
+    let markdown = "---\nQUILL: q\n---\n\nbody\n\n\n```leaf x\n```\n";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.main().body(), "\nbody\n\n");
 }
@@ -1868,7 +1858,7 @@ fn test_f2_strip_does_not_overstrip_content_newlines() {
     // Content-fidelity: a body whose authored content ends with multiple
     // newlines (e.g. a code block with trailing blank lines) must survive
     // round-trip. The previous WASM-binding `trim_body` over-stripped this.
-    let markdown = "---\nQUILL: q\n---\n\n```\ncode\n```\n\n\n```leaf\nKIND: x\n```\n";
+    let markdown = "---\nQUILL: q\n---\n\n```\ncode\n```\n\n\n```leaf x\n```\n";
     let doc = decompose(markdown).unwrap();
     let emitted = doc.to_markdown();
     let reparsed = Document::from_markdown(&emitted).unwrap();
@@ -1968,8 +1958,7 @@ QUILL: test_quill
 my_leaf: "some global value"
 ---
 
-```leaf
-KIND: my_leaf
+```leaf my_leaf
 title: "My Leaf"
 ```
 Body
@@ -2041,14 +2030,12 @@ Main document body.
 
 More content after horizontal rule.
 
-```leaf
-KIND: section
+```leaf section
 heading: Introduction
 ```
 Introduction content.
 
-```leaf
-KIND: section
+```leaf section
 heading: Conclusion
 ```
 Conclusion content.
@@ -2134,8 +2121,7 @@ title: Test
 
 Global body.
 
-```leaf
-KIND: indorsement
+```leaf indorsement
 for: ORG
 ```
 
@@ -2261,8 +2247,8 @@ fn legacy_card_round_trip_emits_canonical_leaf_fence() {
     let canonical = doc.to_markdown();
 
     assert!(
-        canonical.contains("```leaf\nKIND: note"),
-        "emitted form must use canonical ```leaf / KIND: fence; got:\n{}",
+        canonical.contains("```leaf note\n"),
+        "emitted form must use canonical ```leaf <kind> fence; got:\n{}",
         canonical
     );
     assert!(
@@ -2291,7 +2277,7 @@ fn legacy_card_round_trip_emits_canonical_leaf_fence() {
 /// order; canonical re-emit normalises everything to ` ```leaf `.
 #[test]
 fn legacy_and_canonical_leaves_coexist_during_migration() {
-    let md = "---\nQUILL: q\n---\n\n---\nCARD: a\nx: 1\n---\n\nFirst body.\n\n```leaf\nKIND: b\ny: 2\n```\n\nSecond body.\n";
+    let md = "---\nQUILL: q\n---\n\n---\nCARD: a\nx: 1\n---\n\nFirst body.\n\n```leaf b\ny: 2\n```\n\nSecond body.\n";
     let doc = Document::from_markdown(md).unwrap();
 
     assert_eq!(doc.leaves().len(), 2);
@@ -2299,8 +2285,8 @@ fn legacy_and_canonical_leaves_coexist_during_migration() {
     assert_eq!(doc.leaves()[1].tag(), "b");
 
     let canonical = doc.to_markdown();
-    assert!(canonical.contains("```leaf\nKIND: a"));
-    assert!(canonical.contains("```leaf\nKIND: b"));
+    assert!(canonical.contains("```leaf a\n"));
+    assert!(canonical.contains("```leaf b\n"));
     assert!(!canonical.contains("CARD:"));
 }
 

@@ -150,7 +150,9 @@ leaf_kinds:
       KIND:
         type: string
         const: indorsement
-        description: "Leaf kind name. Must be exactly this value as the KIND: sentinel in the leaf body."
+        description: >-
+          Leaf kind name. Must be exactly this value as the kind token in the leaf fence
+          info string (```leaf <kind>).
         required: true
       attachments:
         type: array
