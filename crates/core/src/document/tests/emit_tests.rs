@@ -305,7 +305,7 @@ fn empty_map_omitted_from_emit() {
         QuillValue::from_json(serde_json::json!("hello")),
     );
 
-    use crate::document::{Frontmatter, Card, Sentinel};
+    use crate::document::{Card, Frontmatter, Sentinel};
     use crate::version::{QuillReference, VersionSelector};
     let main = Card::new_with_sentinel(
         Sentinel::Main(QuillReference::new(

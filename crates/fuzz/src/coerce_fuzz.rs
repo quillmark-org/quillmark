@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use indexmap::IndexMap;
 use proptest::prelude::*;
-use quillmark_core::quill::{CoercionError, FieldSchema, FieldType, CardSchema, QuillConfig};
+use quillmark_core::quill::{CardSchema, CoercionError, FieldSchema, FieldType, QuillConfig};
 use quillmark_core::QuillValue;
 
 // -- Generators ---------------------------------------------------------------

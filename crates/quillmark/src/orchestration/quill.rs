@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use quillmark_core::{
-    normalize::normalize_document, Backend, Diagnostic, Document, Frontmatter, Card, OutputFormat,
+    normalize::normalize_document, Backend, Card, Diagnostic, Document, Frontmatter, OutputFormat,
     QuillSource, QuillValue, RenderError, RenderOptions, RenderResult, RenderSession, Sentinel,
     Severity,
 };

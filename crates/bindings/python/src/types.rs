@@ -226,11 +226,7 @@ impl PyQuill {
     ///
     /// Returns `None` if `kind` is not declared in this quill's schema.
     /// Otherwise returns a dict shaped like a single entry in `form()['cards']`.
-    fn blank_card<'py>(
-        &self,
-        py: Python<'py>,
-        kind: &str,
-    ) -> PyResult<Option<Bound<'py, PyDict>>> {
+    fn blank_card<'py>(&self, py: Python<'py>, kind: &str) -> PyResult<Option<Bound<'py, PyDict>>> {
         let Some(card) = self.inner.blank_card(kind) else {
             return Ok(None);
         };

@@ -2,7 +2,7 @@
 
 use crate::document::edit::{is_reserved_name, is_valid_field_name, EditError, RESERVED_NAMES};
 use crate::document::sentinel::is_valid_tag_name;
-use crate::document::{Document, Card};
+use crate::document::{Card, Document};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
 use std::str::FromStr;

@@ -22,7 +22,7 @@
 use unicode_normalization::UnicodeNormalization;
 
 use crate::document::sentinel::is_valid_tag_name;
-use crate::document::{Document, Frontmatter, Card, Sentinel};
+use crate::document::{Card, Document, Frontmatter, Sentinel};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
 

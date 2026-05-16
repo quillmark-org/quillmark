@@ -834,8 +834,7 @@ mod tests {
     fn test_normalize_document_card_body_html_comment_repair() {
         use crate::document::Document;
 
-        let md =
-            "---\nQUILL: test\n---\n\n```card note\n```\n<!-- comment -->Trailing text\n";
+        let md = "---\nQUILL: test\n---\n\n```card note\n```\n<!-- comment -->Trailing text\n";
         let doc = Document::from_markdown(md).unwrap();
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(
