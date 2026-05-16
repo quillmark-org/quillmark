@@ -28,9 +28,6 @@ The package includes:
   - `quills/classic_resume/` - Classic resume template
   - `quills/cmu_letter/` - CMU letter template
 
-- **Legacy Quill Template** (unversioned, directly under `resources/`)
-  - `appreciated_letter/` - A formal letter template (uses `glue.typ` instead of `plate.typ`)
-
 - **Sample Markdown Files**: Example markdown files for testing
   - `sample.md` - Basic markdown example
   - `frontmatter_demo.md` - Demonstrates YAML frontmatter

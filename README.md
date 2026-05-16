@@ -61,7 +61,6 @@ let pdf_bytes = &result.artifacts[0].bytes;
 ## Examples
 
 ```bash
-cargo run --example appreciated_letter
 cargo run --example usaf_memo
 cargo run --example taro
 ```
