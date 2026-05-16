@@ -12,7 +12,7 @@ create_exception!(_quillmark, TemplateError, QuillmarkError);
 create_exception!(_quillmark, CompilationError, QuillmarkError);
 
 // Python exception for editor-surface errors.
-// Raised by `Document` and `Leaf` mutators when an invariant is violated.
+// Raised by `Document` and `Card` mutators when an invariant is violated.
 // The exception message includes the `EditError` variant name and details.
 create_exception!(_quillmark, PyEditError, QuillmarkError);
 

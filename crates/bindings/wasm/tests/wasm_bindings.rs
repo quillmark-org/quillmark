@@ -206,7 +206,7 @@ fn test_quill_metadata_and_schemas() {
         .quill(common::tree(&[
             (
                 "Quill.yaml",
-                b"quill:\n  name: meta_quill\n  backend: typst\n  version: \"0.2.1\"\n  plate_file: plate.typ\n  description: Metadata quill\nmain:\n  fields:\n    title:\n      type: string\n      ui:\n        group: Header\nleaf_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n",
+                b"quill:\n  name: meta_quill\n  backend: typst\n  version: \"0.2.1\"\n  plate_file: plate.typ\n  description: Metadata quill\nmain:\n  fields:\n    title:\n      type: string\n      ui:\n        group: Header\ncards:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n",
             ),
             ("plate.typ", b"= Title"),
         ]))
@@ -233,9 +233,9 @@ fn test_quill_metadata_and_schemas() {
         get_str(&get(&main_fields, "QUILL"), "const").as_deref(),
         Some("meta_quill@0.2.1")
     );
-    let leaf_fields = get(&get(&get(&schema, "leaf_kinds"), "indorsement"), "fields");
+    let card_fields = get(&get(&get(&schema, "cards"), "indorsement"), "fields");
     assert_eq!(
-        get_str(&get(&leaf_fields, "KIND"), "const").as_deref(),
+        get_str(&get(&card_fields, "KIND"), "const").as_deref(),
         Some("indorsement")
     );
 }

@@ -56,19 +56,19 @@
   ..if "attachments" in data { (attachments: data.attachments) },
 )
 
-// Indorsements - iterate through LEAVES array and filter by KIND type
-#for leaf in data.LEAVES {
-  if leaf.KIND == "indorsement" {
+// Indorsements - iterate through CARDS array and filter by KIND type
+#for card in data.CARDS {
+  if card.KIND == "indorsement" {
     indorsement(
-      from: leaf.at("from", default: ""),
-      to: leaf.at("for", default: ""),
-      signature_block: leaf.signature_block,
-      ..if "attachments" in leaf { (attachments: leaf.attachments) },
-      ..if "cc" in leaf { (cc: leaf.cc) },
-      format: leaf.at("format", default: "standard"),
-      ..if "date" in leaf { (date: leaf.date) },
+      from: card.at("from", default: ""),
+      to: card.at("for", default: ""),
+      signature_block: card.signature_block,
+      ..if "attachments" in card { (attachments: card.attachments) },
+      ..if "cc" in card { (cc: card.cc) },
+      format: card.at("format", default: "standard"),
+      ..if "date" in card { (date: card.date) },
     )[
-      #leaf.BODY
+      #card.BODY
     ]
   }
 }

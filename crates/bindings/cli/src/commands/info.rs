@@ -70,11 +70,11 @@ fn print_json(quill: &quillmark::Quill) -> Result<()> {
         "field_count".to_string(),
         serde_json::Value::Number(source.config().main.fields.len().into()),
     );
-    let leaf_count = source.config().leaf_kinds.len();
-    if leaf_count > 0 {
+    let card_count = source.config().cards.len();
+    if card_count > 0 {
         info.insert(
-            "leaf_count".to_string(),
-            serde_json::Value::Number(leaf_count.into()),
+            "card_count".to_string(),
+            serde_json::Value::Number(card_count.into()),
         );
     }
     info.insert(
@@ -139,10 +139,10 @@ fn print_human_readable(quill: &quillmark::Quill) {
     let field_count = config.main.fields.len();
     println!("  Fields:      {}", field_count);
 
-    // Leaf count from schema $defs
-    let leaf_count = config.leaf_kinds.len();
-    if leaf_count > 0 {
-        println!("  Leaves:       {}", leaf_count);
+    // Card count from schema $defs
+    let card_count = config.cards.len();
+    if card_count > 0 {
+        println!("  Cards:       {}", card_count);
     }
 
     // Defaults and examples

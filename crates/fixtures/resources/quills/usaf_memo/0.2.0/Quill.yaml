@@ -6,130 +6,129 @@ quill:
   example_file: example.md
   description: Typesetted USAF Official Memorandum
 
-main:
-  fields:
-    memo_for:
-      type: array
-      required: true
-      example:
-        - ORG1/SYMBOL
-        - ORG2/SYMBOL
-      ui:
-        group: Addressing
-      description: "Organization/office symbol in UPPERCASE. To address a specific person, add their rank and name in parentheses (e.g., 'ORG/SYMBOL (LT COL JANE DOE)'). For numerous recipients, use 'DISTRIBUTION'."
+cards:
+  main:
+    fields:
+      memo_for:
+        type: array
+        required: true
+        example:
+          - ORG1/SYMBOL
+          - ORG2/SYMBOL
+        ui:
+          group: Addressing
+        description: "Organization/office symbol in UPPERCASE. To address a specific person, add their rank and name in parentheses (e.g., 'ORG/SYMBOL (LT COL JANE DOE)'). For numerous recipients, use 'DISTRIBUTION'."
 
-    memo_from:
-      type: array
-      required: true
-      example:
-        - ORG/SYMBOL
-        - Organization Name
-        - 123 Street Ave
-        - City ST 12345-6789
-      ui:
-        group: Addressing
-      description: If recipients are on the same installation, use only the office symbol. For recipients on other installations, include the full mailing address to enable return correspondence.
+      memo_from:
+        type: array
+        required: true
+        example:
+          - ORG/SYMBOL
+          - Organization Name
+          - 123 Street Ave
+          - City ST 12345-6789
+        ui:
+          group: Addressing
+        description: If recipients are on the same installation, use only the office symbol. For recipients on other installations, include the full mailing address to enable return correspondence.
 
-    subject:
-      type: string
-      required: true
-      example: Subject of the Memorandum
-      ui:
-        group: Addressing
-      description: Be brief and clear. Capitalize the first letter of each word except articles, prepositions, and conjunctions. Include suspense dates in parentheses if applicable.
+      subject:
+        type: string
+        required: true
+        example: Subject of the Memorandum
+        ui:
+          group: Addressing
+        description: Be brief and clear. Capitalize the first letter of each word except articles, prepositions, and conjunctions. Include suspense dates in parentheses if applicable.
 
-    signature_block:
-      type: array
-      required: true
-      example:
-        - "FIRST M. LAST, Rank, USSF"
-        - Duty Title
-      ui:
-        group: Addressing
-      description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title. Spell out 'Colonel' and general officer ranks."
+      signature_block:
+        type: array
+        required: true
+        example:
+          - "FIRST M. LAST, Rank, USSF"
+          - Duty Title
+        ui:
+          group: Addressing
+        description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title. Spell out 'Colonel' and general officer ranks."
 
-    letterhead_title:
-      type: string
-      default: DEPARTMENT OF THE AIR FORCE
-      ui:
-        group: Letterhead
-      description: Standard title. Only change for Joint Commands or DoW Agencies.
+      letterhead_title:
+        type: string
+        default: DEPARTMENT OF THE AIR FORCE
+        ui:
+          group: Letterhead
+        description: Standard title. Only change for Joint Commands or DoW Agencies.
 
-    letterhead_caption:
-      type: array
-      default:
-        - HEADQUARTERS [UNIT NAME]
-      ui:
-        group: Letterhead
-      description: The full organization name of your unit.
+      letterhead_caption:
+        type: array
+        default:
+          - HEADQUARTERS [UNIT NAME]
+        ui:
+          group: Letterhead
+        description: The full organization name of your unit.
 
-    tag_line:
-      type: string
-      default: ""
-      ui:
-        group: Letterhead
-      description: Organizational motto at the bottom of the page.
+      tag_line:
+        type: string
+        default: ""
+        ui:
+          group: Letterhead
+        description: Organizational motto at the bottom of the page.
 
-    date:
-      type: string
-      default: ""
-      ui:
-        group: Additional
-      description: YYYY-MM-DD. Leave blank to use today's date.
+      date:
+        type: string
+        default: ""
+        ui:
+          group: Additional
+        description: YYYY-MM-DD. Leave blank to use today's date.
 
-    references:
-      type: array
-      default: []
-      example:
-        - "AFM 33-326, 31 July 2019, Preparing Official Communications"
-      ui:
-        group: Additional
-      description: "Cite by organization, type, date, and title."
+      references:
+        type: array
+        default: []
+        example:
+          - "AFM 33-326, 31 July 2019, Preparing Official Communications"
+        ui:
+          group: Additional
+        description: "Cite by organization, type, date, and title."
 
-    cc:
-      type: array
-      default: []
-      example:
-        - Rank and Name, ORG/SYMBOL
-      ui:
-        group: Additional
-      description: List office symbols of recipients to receive copies.
+      cc:
+        type: array
+        default: []
+        example:
+          - Rank and Name, ORG/SYMBOL
+        ui:
+          group: Additional
+        description: List office symbols of recipients to receive copies.
 
-    distribution:
-      type: array
-      default: []
-      example:
-        - ORG1/SYMBOL
-        - ORG2/SYMBOL
-      ui:
-        group: Additional
-      description: Complete list of recipients if 'SEE DISTRIBUTION' is used in the 'Memo For' field.
+      distribution:
+        type: array
+        default: []
+        example:
+          - ORG1/SYMBOL
+          - ORG2/SYMBOL
+        ui:
+          group: Additional
+        description: Complete list of recipients if 'SEE DISTRIBUTION' is used in the 'Memo For' field.
 
-    attachments:
-      type: array
-      default: []
-      example:
-        - Attachment description, YYYY MMM DD
-      ui:
-        group: Additional
-      description: List attachments in the order they are mentioned in the memo. Briefly describe each; do not use 'as stated' or abbreviations.
+      attachments:
+        type: array
+        default: []
+        example:
+          - Attachment description, YYYY MMM DD
+        ui:
+          group: Additional
+        description: List attachments in the order they are mentioned in the memo. Briefly describe each; do not use 'as stated' or abbreviations.
 
-    classification:
-      type: string
-      default: ""
-      example: CONFIDENTIAL
-      ui:
-        group: Additional
-      description: Follow AFI 31-401 and applicable DoD guidance for classification markings. Leave blank for unclassified.
+      classification:
+        type: string
+        default: ""
+        example: CONFIDENTIAL
+        ui:
+          group: Additional
+        description: Follow AFI 31-401 and applicable DoD guidance for classification markings. Leave blank for unclassified.
 
-    font_size:
-      type: number
-      default: 11
-      ui:
-        group: Additional
-      description: Font size for the memo text (pt).
-
-leaf_kinds:
+      font_size:
+        type: number
+        default: 11
+        ui:
+          group: Additional
+        description: Font size for the memo text (pt).
   indorsement:
     description: Chain of routing endorsements. Each endorsement block adds an official response or forwarding action to the original memo.
     ui:
@@ -193,3 +192,4 @@ leaf_kinds:
         ui:
           group: Additional
         description: Date of the endorsement. Leave blank to omit.
+

@@ -101,11 +101,13 @@ tags: !fill []
 
 ## Reserved Field Names
 
-`BODY` and `LEAVES` are reserved as **output-only** fields: the parser
-populates them, and supplying them as input keys is a hard parse error.
-`BODY` holds the document's Markdown body; `LEAVES` holds the ordered list
-of leaf records. `QUILL` is also reserved — it's the sentinel that names the
-quill format. YAML tags such as `!fill` cannot decorate `QUILL` or `KIND`.
+`BODY`, `CARDS`, and `KIND` are reserved as **output-only** fields: the
+parser populates them, and supplying them as input keys is a hard parse
+error. `BODY` holds the document's Markdown body; `CARDS` holds the
+ordered list of card records; `KIND` holds a card's kind (sourced from the
+`` ```card <kind> `` info string). `QUILL` is also reserved — it's the
+sentinel that names the quill format. YAML tags such as `!fill` cannot
+decorate `QUILL`.
 
 ## Rules Summary
 
@@ -116,13 +118,12 @@ quill format. YAML tags such as `!fill` cannot decorate `QUILL` or `KIND`.
 - Mid-document `---/---` is a CommonMark thematic break, not a metadata
   fence.
 
-## Leaves
+## Cards
 
-Inline structured records — *leaves* — use a `` ```leaf `` fenced code block
-with `KIND:` as the first body key. See [Leaves](leaves.md) for the full
-syntax.
+Inline structured records — *cards* — use a `` ```card <kind> `` fenced
+code block. See [Cards](cards.md) for the full syntax.
 
 Frontmatter is coerced and validated against the schema declared in the
-Quill's `Quill.yaml` (`main.fields`). See the
+Quill's `Quill.yaml` (`cards.main.fields`). See the
 [Quill.yaml Reference](../format-designer/quill-yaml-reference.md) for field
 types and constraints.

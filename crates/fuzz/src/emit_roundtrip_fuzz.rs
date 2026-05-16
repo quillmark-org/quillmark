@@ -102,17 +102,17 @@ proptest! {
         );
     }
 
-    /// Documents with leaf blocks.
+    /// Documents with card blocks.
     #[test]
-    fn fuzz_emit_roundtrip_with_leaves(
+    fn fuzz_emit_roundtrip_with_cards(
         quill in "[a-z][a-z0-9_]{0,20}",
-        leaf_tag in "[a-z][a-z0-9_]{0,15}",
-        leaf_key in "[a-z][a-z0-9_]{0,15}",
-        leaf_value in "[a-zA-Z0-9 ]{0,50}"
+        card_tag in "[a-z][a-z0-9_]{0,15}",
+        card_key in "[a-z][a-z0-9_]{0,15}",
+        card_value in "[a-zA-Z0-9 ]{0,50}"
     ) {
         let src = format!(
-            "---\nQUILL: {}\ntitle: \"test\"\n---\n\nBody here.\n\n```leaf\nKIND: {}\n{}: \"{}\"\n```\n\nLeaf body.\n",
-            quill, leaf_tag, leaf_key, leaf_value
+            "---\nQUILL: {}\ntitle: \"test\"\n---\n\nBody here.\n\n```card {}\n{}: \"{}\"\n```\n\nCard body.\n",
+            quill, card_tag, card_key, card_value
         );
 
         let doc_a = match Document::from_markdown(&src) {
@@ -124,7 +124,7 @@ proptest! {
 
         let doc_b = Document::from_markdown(&emit1).unwrap_or_else(|e| {
             panic!(
-                "fuzz with-leaves: re-parse failed.\nError: {}\nEmitted:\n{}",
+                "fuzz with-cards: re-parse failed.\nError: {}\nEmitted:\n{}",
                 e, emit1
             )
         });

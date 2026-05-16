@@ -47,7 +47,7 @@ Options:
 quillmark info <QUILL_PATH> [--json]
 ```
 
-Displays quill metadata (name, version, description, backend, field/leaf counts).
+Displays quill metadata (name, version, description, backend, field/card counts).
 
 ## Project Structure
 

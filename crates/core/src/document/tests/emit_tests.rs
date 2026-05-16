@@ -233,7 +233,7 @@ fn round_trip_empty_sequence() {
 }
 
 #[test]
-fn round_trip_leaves() {
+fn round_trip_cards() {
     let src = "\
 ---
 QUILL: q
@@ -242,30 +242,28 @@ title: Test
 
 Body text.
 
----
-KIND: section
+```card section
 heading: Chapter 1
----
+```
 
-Leaf body here.
+Card body here.
 ";
-    assert_round_trip("leaves", src);
+    assert_round_trip("cards", src);
 }
 
 #[test]
-fn round_trip_leaf_empty_body() {
+fn round_trip_card_empty_body() {
     let src = "\
 ---
 QUILL: q
 title: Test
 ---
 
----
-KIND: empty_body_leaf
+```card empty_body_card
 title: No body
----
+```
 ";
-    assert_round_trip("leaf with empty body", src);
+    assert_round_trip("card with empty body", src);
 }
 
 #[test]
@@ -307,9 +305,9 @@ fn empty_map_omitted_from_emit() {
         QuillValue::from_json(serde_json::json!("hello")),
     );
 
-    use crate::document::{Frontmatter, Leaf, Sentinel};
+    use crate::document::{Card, Frontmatter, Sentinel};
     use crate::version::{QuillReference, VersionSelector};
-    let main = Leaf::new_with_sentinel(
+    let main = Card::new_with_sentinel(
         Sentinel::Main(QuillReference::new(
             "test".to_string(),
             VersionSelector::Latest,
@@ -317,7 +315,7 @@ fn empty_map_omitted_from_emit() {
         Frontmatter::from_index_map(frontmatter),
         String::new(),
     );
-    let doc = crate::document::Document::from_main_and_leaves(main, vec![], vec![]);
+    let doc = crate::document::Document::from_main_and_cards(main, vec![], vec![]);
 
     let md = doc.to_markdown();
     assert!(

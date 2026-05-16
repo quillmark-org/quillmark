@@ -52,18 +52,18 @@ Use Typst's `in` operator to check for optional fields:
 )
 ```
 
-### Body, arrays, and leaves
+### Body, arrays, and cards
 
-The document body is at `data.BODY`. Arrays come through as Typst arrays. Leaves live under `data.LEAVES`, each carrying its own `KIND` discriminator, fields, and `BODY`:
+The document body is at `data.BODY`. Arrays come through as Typst arrays. Cards live under `data.CARDS`, each carrying its own `KIND` discriminator, fields, and `BODY`:
 
 ```typst
 #data.at("BODY", default: "")
 
 #for author in data.authors [- #author]
 
-#for leaf in data.at("LEAVES", default: ()) {
-  if leaf.KIND == "product" {
-    [Product: #leaf.name — #leaf.BODY]
+#for card in data.at("CARDS", default: ()) {
+  if card.KIND == "product" {
+    [Product: #card.name — #card.BODY]
   }
 }
 ```

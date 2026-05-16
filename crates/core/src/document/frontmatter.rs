@@ -37,8 +37,8 @@ pub enum FrontmatterItem {
     /// inline comment attaches to the field that immediately precedes it
     /// in the items vector; if no such field exists at emit time (orphan)
     /// it degrades to an own-line comment. A `Comment { inline: true }` at
-    /// `items[0]` instead attaches to the sentinel line (`QUILL: …` /
-    /// `KIND: …`).
+    /// `items[0]` of frontmatter instead attaches to the `QUILL: …`
+    /// sentinel line.
     Comment {
         text: String,
         #[serde(default)]
@@ -337,7 +337,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_leaves_comments_alone() {
+    fn remove_cards_comments_alone() {
         let items = vec![
             FrontmatterItem::comment("header"),
             FrontmatterItem::field("a", qv("1")),

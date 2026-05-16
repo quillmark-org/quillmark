@@ -1,14 +1,14 @@
 //! Line-oriented fence scanner for Quillmark Markdown.
 //!
 //! Detects the document's frontmatter (`---/---` at top, with `QUILL:` first
-//! key) and leaf fences (CommonMark fenced code blocks with the info string
-//! `leaf`, body starting with `KIND:`).
+//! key) and card fences (CommonMark fenced code blocks whose info string is
+//! `card <kind>`).
 
 use crate::error::ParseError;
 use crate::{Diagnostic, Severity};
 
-use super::assemble::{BlockSentinel, MetadataBlock};
-use super::sentinel::first_content_key;
+use super::assemble::{BlockSentinel, BlockSource, MetadataBlock};
+use super::sentinel::{first_content_key, is_valid_tag_name};
 
 /// Line-oriented view of the source.
 pub(super) struct Lines<'a> {
@@ -111,32 +111,64 @@ pub(super) fn code_fence_on_line(
     }
 }
 
-/// First whitespace-delimited token of a fence opener's info string, or
-/// `None` for non-opener lines and empty info strings.
-fn fence_info_first_token(line: &str) -> Option<&str> {
+/// Whitespace-delimited tokens of a fence opener's info string. Empty for
+/// non-opener lines and empty info strings.
+fn fence_info_tokens(line: &str) -> Vec<&str> {
     let line = line.strip_suffix('\r').unwrap_or(line);
     let indent = line.as_bytes().iter().take_while(|&&b| b == b' ').count();
     let trimmed = &line[indent..];
-    let &first = trimmed.as_bytes().first()?;
+    let Some(&first) = trimmed.as_bytes().first() else {
+        return Vec::new();
+    };
     if first != b'`' && first != b'~' {
-        return None;
+        return Vec::new();
     }
     let run_len = trimmed
         .as_bytes()
         .iter()
         .take_while(|&&b| b == first)
         .count();
-    trimmed[run_len..].split_whitespace().next()
+    trimmed[run_len..].split_whitespace().collect()
+}
+
+/// Validate a card fence's info string and extract its kind token.
+///
+/// The info string of a card fence is exactly `card <kind>` (`MARKDOWN.md
+/// §3.2`). The caller has already confirmed the first token is `card`;
+/// `tokens` is the full token list. Missing, malformed, or extra tokens are
+/// hard errors — the fence is committed to card-handling on the `card` token
+/// alone, so these are routing failures, not classification misses.
+fn card_from_tokens(tokens: &[&str], opener_line: usize) -> Result<String, ParseError> {
+    match tokens {
+        [_, kind] => {
+            if is_valid_tag_name(kind) {
+                Ok((*kind).to_string())
+            } else {
+                Err(ParseError::InvalidStructure(format!(
+                    "Card fence at line {} has an invalid kind token `{}` — the kind must match pattern [a-z_][a-z0-9_]*.",
+                    opener_line, kind
+                )))
+            }
+        }
+        [_] => Err(ParseError::InvalidStructure(format!(
+            "Card fence at line {} is missing its kind token — the info string must be `card <kind>`.",
+            opener_line
+        ))),
+        _ => Err(ParseError::InvalidStructure(format!(
+            "Card fence at line {} has extra info-string tokens — the info string must be exactly `card <kind>`.",
+            opener_line
+        ))),
+    }
 }
 
 /// Outcome of the fence-detection pass: the recognised metadata blocks
-/// (block 0 is frontmatter if present, the rest are leaves in source order),
+/// (block 0 is frontmatter if present, the rest are cards in source order),
 /// any non-fatal diagnostics, and (if applicable) a first-fence F1 failure
 /// captured so the top-level error can be specific.
 pub(super) type FenceScan = (Vec<MetadataBlock>, Vec<Diagnostic>, Option<(String, usize)>);
 
-/// Find frontmatter (top `---/---` with `QUILL:`) and leaf code fences
-/// (` ```leaf ` info string).
+/// Find frontmatter (top `---/---` with `QUILL:`) and card code fences
+/// (` ```card ` info string).
 pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseError> {
     let lines = Lines::new(markdown);
     let mut blocks: Vec<MetadataBlock> = Vec::new();
@@ -184,7 +216,7 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
                 content_end,
                 block_end,
                 0,
-                false,
+                BlockSource::Frontmatter,
             )?;
             blocks.push(block);
             post_frontmatter_k = cj + 1;
@@ -216,15 +248,15 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
         }
     }
 
-    // ── Step 2: leaves ───────────────────────────────────────────────────────
+    // ── Step 2: cards ───────────────────────────────────────────────────────
     // Two paths interleave by source order:
     //
-    // - **Canonical**: CommonMark fenced code block whose info-string first
-    //   token is `leaf`, body keyed by `KIND:`.
-    // - **Legacy (Release N only, LEAF_REWORK.md §7)**: `---/---` block (F2)
+    // - **Canonical**: CommonMark fenced code block whose info string is
+    //   `card <kind>`.
+    // - **Legacy (`MARKDOWN.md §4.4`)**: `---/---` block (F2)
     //   whose first body key is `CARD:`. Each occurrence emits a
-    //   `parse::deprecated_leaf_syntax` warning; the canonical emitter
-    //   rewrites it to ` ```leaf ` on round-trip.
+    //   `parse::deprecated_card_syntax` warning; the canonical emitter
+    //   rewrites it to ` ```card <kind> ` on round-trip.
     let mut k = post_frontmatter_k;
     let mut open_code_fence: Option<(u8, usize, usize)> = None;
     while k < lines.len() {
@@ -238,7 +270,7 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
             continue;
         }
 
-        // Legacy `---/CARD: …/---` leaf — Release-N migration path.
+        // Legacy `---/CARD: …/---` card — Release-N migration path.
         if is_fence_marker_line(text) && (k == 0 || lines.is_blank(k - 1)) {
             if let Some(cj) =
                 (k + 1..lines.len()).find(|&j| is_fence_marker_line(lines.line_text(j)))
@@ -256,21 +288,23 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
                         content_end,
                         block_end,
                         blocks.len(),
-                        true,
+                        BlockSource::LegacyCard,
                     )?;
                     blocks.push(block);
                     warnings.push(
                         Diagnostic::new(
                             Severity::Warning,
                             format!(
-                                "Legacy `---/CARD: …/---` leaf at line {} is deprecated; \
-                                 round-trip through `Document::to_markdown` to rewrite as \
-                                 the canonical ` ```leaf / KIND: … / ``` ` form. The legacy \
-                                 path will be removed in the next release.",
+                                "Legacy `---/CARD: …/---` card at line {} uses the \
+                                 deprecated fence shape; round-trip through \
+                                 `Document::to_markdown` to rewrite it as the canonical \
+                                 ` ```card <kind> ` form. Only the fence shape is \
+                                 deprecated — the `card` noun is unchanged. The legacy \
+                                 path is retained for existing documents.",
                                 k + 1
                             ),
                         )
-                        .with_code("parse::deprecated_leaf_syntax".to_string()),
+                        .with_code("parse::deprecated_card_syntax".to_string()),
                     );
                     k = cj + 1;
                     continue;
@@ -279,8 +313,15 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
         }
 
         if let Some((ch, run_len, _)) = code_fence_on_line(text, None) {
-            if fence_info_first_token(text) == Some("leaf") {
+            let info_tokens = fence_info_tokens(text);
+            if info_tokens.first() == Some(&"card") {
                 let opener_k = k;
+
+                // Spec §3.2/§4.2: a `card`-prefixed fence commits to card
+                // parsing on that token alone. The kind lives in the info
+                // string; missing/invalid/extra tokens are hard errors.
+                let kind = card_from_tokens(&info_tokens, opener_k + 1)?;
+
                 let Some(cj) = (k + 1..lines.len()).find(|&j| {
                     matches!(
                         code_fence_on_line(lines.line_text(j), Some((ch, run_len))),
@@ -288,7 +329,7 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
                     )
                 }) else {
                     return Err(ParseError::InvalidStructure(format!(
-                        "Leaf fence opened at line {} but never closed",
+                        "Card fence opened at line {} but never closed",
                         opener_k + 1
                     )));
                 };
@@ -298,27 +339,6 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
                 let content_end = lines.line_start(cj);
                 let block_end = lines.line_end_inclusive(cj);
 
-                // Spec §3.2/§9, LEAF_REWORK.md §3.3: leaf-info-string fence
-                // commits to leaf parsing; missing or misplaced `KIND:` is a
-                // hard error, not a silent classification miss.
-                let content = &markdown[content_start..content_end];
-                match first_content_key(content) {
-                    Some("KIND") => {}
-                    Some(other) => {
-                        return Err(ParseError::InvalidStructure(format!(
-                            "Leaf fence at line {} must have `KIND:` as its first body key (found `{}:`).",
-                            opener_k + 1,
-                            other
-                        )));
-                    }
-                    None => {
-                        return Err(ParseError::InvalidStructure(format!(
-                            "Leaf fence at line {} is missing required `KIND:` first body key.",
-                            opener_k + 1
-                        )));
-                    }
-                }
-
                 let block = super::assemble::build_block(
                     markdown,
                     abs_pos,
@@ -326,13 +346,13 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
                     content_end,
                     block_end,
                     blocks.len(),
-                    false,
+                    BlockSource::Inline(kind),
                 )?;
                 blocks.push(block);
                 k = cj + 1;
                 continue;
             }
-            // Non-leaf fence — shield its contents.
+            // Non-card fence — shield its contents.
             open_code_fence = Some((ch, run_len, k));
             k += 1;
             continue;
@@ -341,14 +361,14 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
         k += 1;
     }
 
-    let leaf_count = blocks
+    let card_count = blocks
         .iter()
-        .filter(|b| matches!(b.sentinel, BlockSentinel::Leaf(_)))
+        .filter(|b| matches!(b.sentinel, BlockSentinel::Inline(_)))
         .count();
-    if leaf_count > crate::error::MAX_LEAF_COUNT {
+    if card_count > crate::error::MAX_CARD_COUNT {
         return Err(ParseError::InputTooLarge {
-            size: leaf_count,
-            max: crate::error::MAX_LEAF_COUNT,
+            size: card_count,
+            max: crate::error::MAX_CARD_COUNT,
         });
     }
 

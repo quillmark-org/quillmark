@@ -19,7 +19,7 @@ render on validity have to call `form` for its side effects. Expose a
 `crates/core/src/quill/types.rs:136` — `FieldType` serializes to bare strings
 (`"string"`, `"integer"`, `"array"`, `"object"`, `"markdown"`). The wasm
 `.d.ts` advertises return types via wasm-bindgen `unchecked_return_type =
-"Leaf"` (`crates/bindings/wasm/src/engine.rs:530,538`) but the named type
+"Card"` (`crates/bindings/wasm/src/engine.rs:530,538`) but the named type
 isn't defined anywhere in the emitted declarations, so it collapses to `any`
 for TS consumers. Either ship a real discriminated-union type alongside the
 schema payload, or document that consumers must hand-write the TS interface.
@@ -36,8 +36,8 @@ boundary.
 
 ## 4. Diagnostic codes are unstable, undocumented strings
 
-`crates/quillmark/src/form.rs:167,178` use bare literals
-(`"form::unknown_leaf_kind"`, `"form::validation_error"`); edit errors
+`crates/quillmark/src/form.rs:167,177` use bare literals
+(`"form::unknown_card"`, `"form::validation_error"`); edit errors
 surface Rust variant names like `"ReservedName"`
 (`crates/bindings/wasm/src/engine.rs:571-577`). No exported enum, no
 constants, no stability guarantee. Consumers that key behavior off

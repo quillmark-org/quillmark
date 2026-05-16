@@ -12,10 +12,10 @@
 //!   `# <type>[<format>]; <role>[, <extras>...]`. Type is mandatory on every
 //!   field. Format slot uses angle brackets (`array<string>`,
 //!   `date<YYYY-MM-DD>`, `enum<a | b | c>`). Role is `required`, `optional`,
-//!   or `composable (0..N)` for leaves. The QUILL sentinel adds a `verbatim`
+//!   or `composable (0..N)` for cards. The QUILL sentinel adds a `verbatim`
 //!   extra signaling that the value must not be modified.
 //! - **Body regions** are signalled by `Write main body here.` after the main
-//!   fence and `Write <leaf name> body here.` after each leaf fence. When
+//!   fence and `Write <card name> body here.` after each card fence. When
 //!   `body.example` is set, the example text is embedded verbatim instead.
 //!   Absent when `body.enabled` is false.
 //!
@@ -24,7 +24,7 @@
 
 use std::collections::BTreeMap;
 
-use super::{FieldSchema, FieldType, LeafSchema, QuillConfig};
+use super::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::document::emit::emit_double_quoted;
 use crate::value::QuillValue;
 
@@ -43,10 +43,10 @@ impl QuillConfig {
         write_fence_block(
             &mut out,
             &self.main,
-            &format!(
+            Some(&format!(
                 "QUILL: {}@{}  # sentinel; required, verbatim",
                 self.name, self.version
-            ),
+            )),
             main_desc,
             "---\n",
             "---\n",
@@ -56,20 +56,19 @@ impl QuillConfig {
             let text = example.unwrap_or("Write main body here.");
             out.push_str(&format!("\n{}\n", text));
         }
-        for leaf in &self.leaf_kinds {
-            let sentinel = format!("KIND: {}  # sentinel; composable (0..N)", leaf.name);
+        for card in &self.cards {
             out.push('\n');
             write_fence_block(
                 &mut out,
-                leaf,
-                &sentinel,
-                leaf.description.as_deref(),
-                "```leaf\n",
+                card,
+                None,
+                card.description.as_deref(),
+                &format!("```card {}\n", card.name),
                 "```\n",
             );
-            if leaf.body_enabled() {
-                let example = leaf.body.as_ref().and_then(|b| b.example.as_deref());
-                let fallback = format!("Write {} body here.", leaf.name);
+            if card.body_enabled() {
+                let example = card.body.as_ref().and_then(|b| b.example.as_deref());
+                let fallback = format!("Write {} body here.", card.name);
                 let text = example.unwrap_or(fallback.as_str());
                 out.push_str(&format!("\n{}\n", text));
             }
@@ -80,8 +79,8 @@ impl QuillConfig {
 
 fn write_fence_block(
     out: &mut String,
-    leaf: &LeafSchema,
-    sentinel_line: &str,
+    card: &CardSchema,
+    sentinel_line: Option<&str>,
     description: Option<&str>,
     open_fence: &str,
     close_fence: &str,
@@ -91,9 +90,11 @@ fn write_fence_block(
         let clean = desc.split_whitespace().collect::<Vec<_>>().join(" ");
         out.push_str(&format!("# {}\n", clean));
     }
-    out.push_str(sentinel_line);
-    out.push('\n');
-    for (_, fields) in group_fields(leaf.fields.values()) {
+    if let Some(sentinel) = sentinel_line {
+        out.push_str(sentinel);
+        out.push('\n');
+    }
+    for (_, fields) in group_fields(card.fields.values()) {
         for field in fields {
             write_field(out, field, 0);
         }
@@ -491,9 +492,10 @@ mod tests {
     fn required_string_renders_empty_with_required_role() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    author: { type: string, required: true }
+cards:
+  main:
+    fields:
+      author: { type: string, required: true }
 "#)
         .blueprint();
         assert!(t.contains("author: \"\"  # string; required\n"));
@@ -504,9 +506,10 @@ main:
         // Examples never render as values — they always surface in `# e.g.`.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    status: { type: string, required: true, default: draft, example: final }
+cards:
+  main:
+    fields:
+      status: { type: string, required: true, default: draft, example: final }
 "#)
         .blueprint();
         assert!(t.contains("# e.g. final\nstatus: draft  # string; required\n"));
@@ -516,9 +519,10 @@ main:
     fn optional_field_default_renders_as_value_with_eg_line() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    classification: { type: string, default: "", example: CONFIDENTIAL }
+cards:
+  main:
+    fields:
+      classification: { type: string, default: "", example: CONFIDENTIAL }
 "#)
         .blueprint();
         assert!(t.contains("# e.g. CONFIDENTIAL\nclassification: \"\"  # string; optional\n"));
@@ -528,14 +532,15 @@ main:
     fn optional_array_example_renders_as_flow_sequence_with_context_quoting() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    recipient:
-      type: array
-      example:
-        - Mr. John Doe
-        - 123 Main St
-        - "Anytown, USA"
+cards:
+  main:
+    fields:
+      recipient:
+        type: array
+        example:
+          - Mr. John Doe
+          - 123 Main St
+          - "Anytown, USA"
 "#)
         .blueprint();
         assert!(t.contains(
@@ -547,9 +552,10 @@ main:
     fn enum_field_uses_enum_format_slot_and_no_eg() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    format: { type: string, enum: [standard, informal], default: standard }
+cards:
+  main:
+    fields:
+      format: { type: string, enum: [standard, informal], default: standard }
 "#)
         .blueprint();
         assert!(t.contains("format: standard  # enum<standard | informal>; optional\n"));
@@ -562,14 +568,15 @@ main:
         // example surfaces in the leading `# e.g.` line.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    memo_from:
-      type: array
-      required: true
-      example:
-        - ORG/SYMBOL
-        - City ST 12345
+cards:
+  main:
+    fields:
+      memo_from:
+        type: array
+        required: true
+        example:
+          - ORG/SYMBOL
+          - City ST 12345
 "#)
         .blueprint();
         assert!(t.contains(
@@ -581,12 +588,13 @@ main:
     fn description_emitted_as_single_line() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    subject:
-      type: string
-      required: true
-      description: Be brief and clear.
+cards:
+  main:
+    fields:
+      subject:
+        type: string
+        required: true
+        description: Be brief and clear.
 "#)
         .blueprint();
         assert!(t.contains("# Be brief and clear.\nsubject: \"\"  # string; required\n"));
@@ -596,14 +604,15 @@ main:
     fn every_field_carries_inline_type_and_role() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    title: { type: string }
-    size: { type: number, default: 11 }
-    flag: { type: boolean, default: false }
-    issued: { type: date }
-    published: { type: datetime }
-    refs: { type: array }
+cards:
+  main:
+    fields:
+      title: { type: string }
+      size: { type: number, default: 11 }
+      flag: { type: boolean, default: false }
+      issued: { type: date }
+      published: { type: datetime }
+      refs: { type: array }
 "#)
         .blueprint();
         assert!(t.contains("title: \"\"  # string; optional\n"));
@@ -618,9 +627,10 @@ main:
     fn markdown_field_renders_as_block_scalar() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    bio: { type: markdown }
+cards:
+  main:
+    fields:
+      bio: { type: markdown }
 "#)
         .blueprint();
         assert!(t.contains("bio: |-  # markdown; optional\n  \n"));
@@ -630,11 +640,12 @@ main:
     fn markdown_field_with_default_fills_block() {
         let t = cfg(r###"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    bio:
-      type: markdown
-      default: "## About me\n\nHello."
+cards:
+  main:
+    fields:
+      bio:
+        type: markdown
+        default: "## About me\n\nHello."
 "###)
         .blueprint();
         assert!(t.contains("bio: |-  # markdown; optional\n  ## About me\n  \n  Hello.\n"));
@@ -644,9 +655,10 @@ main:
     fn quill_sentinel_line_is_required_verbatim() {
         let t = cfg(r#"
 quill: { name: taro, version: 0.1.0, backend: typst, description: x }
-main:
-  fields:
-    flavor: { type: string, default: taro }
+cards:
+  main:
+    fields:
+      flavor: { type: string, default: taro }
 "#)
         .blueprint();
         assert!(t.starts_with("---\n# x\nQUILL: taro@0.1.0  # sentinel; required, verbatim\n"));
@@ -654,39 +666,37 @@ main:
     }
 
     #[test]
-    fn leaf_sentinel_line_is_composable() {
+    fn card_is_in_the_info_string() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    title: { type: string }
-leaf_kinds:
+cards:
+  main:
+    fields:
+      title: { type: string }
   note:
     description: A short note appended to the document.
     fields:
       author: { type: string }
 "#)
         .blueprint();
-        assert!(t.contains(
-            "# A short note appended to the document.\nKIND: note  # sentinel; composable (0..N)\n"
-        ));
+        assert!(t.contains("```card note\n# A short note appended to the document.\n"));
     }
 
     #[test]
-    fn body_disabled_leaf_omits_body_placeholder() {
+    fn body_disabled_card_omits_body_placeholder() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    title: { type: string }
-leaf_kinds:
+cards:
+  main:
+    fields:
+      title: { type: string }
   skills:
     body: { enabled: false }
     fields:
       items: { type: array, required: true }
 "#)
         .blueprint();
-        let after = &t[t.find("KIND: skills").unwrap()..];
+        let after = &t[t.find("```card skills").unwrap()..];
         assert!(!after.contains("skills body"));
     }
 
@@ -694,10 +704,10 @@ leaf_kinds:
     fn body_example_appears_verbatim() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    title: { type: string }
-leaf_kinds:
+cards:
+  main:
+    fields:
+      title: { type: string }
   note:
     body:
       example: "This is an example note."
@@ -705,7 +715,7 @@ leaf_kinds:
       author: { type: string }
 "#)
         .blueprint();
-        let after = &t[t.find("KIND: note").unwrap()..];
+        let after = &t[t.find("```card note").unwrap()..];
         assert!(after.contains("\nThis is an example note.\n"));
         assert!(!after.contains("Write note body here."));
     }
@@ -714,11 +724,12 @@ leaf_kinds:
     fn main_body_example_appears_verbatim() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  body:
-    example: "Dear Sir or Madam,\n\nI am writing to..."
-  fields:
-    to: { type: string }
+cards:
+  main:
+    body:
+      example: "Dear Sir or Madam,\n\nI am writing to..."
+    fields:
+      to: { type: string }
 "#)
         .blueprint();
         assert!(t.contains("\nDear Sir or Madam,\n\nI am writing to...\n"));
@@ -726,13 +737,13 @@ main:
     }
 
     #[test]
-    fn leaf_body_placeholder_uses_leaf_name() {
+    fn card_body_placeholder_uses_card_name() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    title: { type: string }
-leaf_kinds:
+cards:
+  main:
+    fields:
+      title: { type: string }
   indorsement:
     fields:
       from: { type: string }
@@ -745,12 +756,13 @@ leaf_kinds:
     fn ui_groups_cluster_fields_without_emitting_banner() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    memo_for: { type: array, required: true, ui: { group: Addressing } }
-    subject: { type: string, required: true, ui: { group: Addressing } }
-    letterhead_title: { type: string, default: HQ, ui: { group: Letterhead } }
-    notes: { type: string }
+cards:
+  main:
+    fields:
+      memo_for: { type: array, required: true, ui: { group: Addressing } }
+      subject: { type: string, required: true, ui: { group: Addressing } }
+      letterhead_title: { type: string, default: HQ, ui: { group: Letterhead } }
+      notes: { type: string }
 "#)
         .blueprint();
         let after_quill = &t[t.find("QUILL:").unwrap()..];
@@ -768,14 +780,15 @@ main:
     fn typed_table_emits_synthetic_row_when_no_example() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    references:
-      type: array
-      description: Cited works.
-      properties:
-        org: { type: string, required: true, description: Citing organization. }
-        year: { type: integer, description: Publication year. }
+cards:
+  main:
+    fields:
+      references:
+        type: array
+        description: Cited works.
+        properties:
+          org: { type: string, required: true, description: Citing organization. }
+          year: { type: integer, description: Publication year. }
 "#)
         .blueprint();
         assert!(t.contains("# Cited works.\nreferences:  # array<object>; optional\n  -\n"));
@@ -787,15 +800,16 @@ main:
     fn typed_table_with_example_renders_example_rows_no_eg_line() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    refs:
-      type: array
-      example:
-        - { org: ACME, year: 2020 }
-      properties:
-        org: { type: string, required: true }
-        year: { type: integer }
+cards:
+  main:
+    fields:
+      refs:
+        type: array
+        example:
+          - { org: ACME, year: 2020 }
+        properties:
+          org: { type: string, required: true }
+          year: { type: integer }
 "#)
         .blueprint();
         assert!(t.contains("refs:  # array<object>; optional\n  - org: ACME\n"));
@@ -807,14 +821,15 @@ main:
     fn typed_table_with_default_renders_default_rows() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    refs:
-      type: array
-      default:
-        - { org: ACME }
-      properties:
-        org: { type: string, required: true }
+cards:
+  main:
+    fields:
+      refs:
+        type: array
+        default:
+          - { org: ACME }
+        properties:
+          org: { type: string, required: true }
 "#)
         .blueprint();
         assert!(t.contains("refs:  # array<object>; optional\n  - org: ACME\n"));
@@ -825,13 +840,14 @@ main:
     fn typed_table_with_empty_default_falls_through_to_synthetic_row() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    refs:
-      type: array
-      default: []
-      properties:
-        org: { type: string, required: true }
+cards:
+  main:
+    fields:
+      refs:
+        type: array
+        default: []
+        properties:
+          org: { type: string, required: true }
 "#)
         .blueprint();
         assert!(t.contains(
@@ -843,15 +859,16 @@ main:
     fn typed_dict_emits_per_property_annotations() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    address:
-      type: object
-      description: Mailing address.
-      properties:
-        street: { type: string, required: true, description: Street line. }
-        city:   { type: string, required: true }
-        zip:    { type: string }
+cards:
+  main:
+    fields:
+      address:
+        type: object
+        description: Mailing address.
+        properties:
+          street: { type: string, required: true, description: Street line. }
+          city:   { type: string, required: true }
+          zip:    { type: string }
 "#)
         .blueprint();
         assert!(t.contains("# Mailing address.\naddress:  # object; optional\n"));
@@ -864,13 +881,14 @@ main:
     fn typed_dict_required_carries_role() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    address:
-      type: object
-      required: true
-      properties:
-        street: { type: string, required: true }
+cards:
+  main:
+    fields:
+      address:
+        type: object
+        required: true
+        properties:
+          street: { type: string, required: true }
 "#)
         .blueprint();
         assert!(t.contains("address:  # object; required\n"));
@@ -880,14 +898,15 @@ main:
     fn typed_dict_with_default_renders_block_mapping_no_annotations() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    address:
-      type: object
-      default: { street: "5000 Forbes Ave", city: Pittsburgh }
-      properties:
-        street: { type: string, required: true }
-        city:   { type: string, required: true }
+cards:
+  main:
+    fields:
+      address:
+        type: object
+        default: { street: "5000 Forbes Ave", city: Pittsburgh }
+        properties:
+          street: { type: string, required: true }
+          city:   { type: string, required: true }
 "#)
         .blueprint();
         assert!(t.contains("address:  # object; optional\n"));
@@ -904,14 +923,15 @@ main:
     fn typed_dict_with_example_suppresses_eg_line() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    address:
-      type: object
-      example: { street: "1 Infinite Loop", city: Cupertino }
-      properties:
-        street: { type: string, required: true }
-        city:   { type: string }
+cards:
+  main:
+    fields:
+      address:
+        type: object
+        example: { street: "1 Infinite Loop", city: Cupertino }
+        properties:
+          street: { type: string, required: true }
+          city:   { type: string }
 "#)
         .blueprint();
         assert!(t.contains("address:  # object; optional\n"));
@@ -922,26 +942,26 @@ main:
 
     const LETTER_QUILL: &str = r#"
 quill: { name: letter, version: 1.0.0, backend: typst, description: A formal letter. }
-main:
-  fields:
-    to:
-      type: string
-      required: true
-      description: Recipient name.
-    subject:
-      type: string
-      required: true
-    date:
-      type: date
-    priority:
-      type: string
-      enum: [normal, urgent]
-      default: normal
-    attachments:
-      type: array
-      example:
-        - report.pdf
-leaf_kinds:
+cards:
+  main:
+    fields:
+      to:
+        type: string
+        required: true
+        description: Recipient name.
+      subject:
+        type: string
+        required: true
+      date:
+        type: date
+      priority:
+        type: string
+        enum: [normal, urgent]
+        default: normal
+      attachments:
+        type: array
+        example:
+          - report.pdf
   enclosure:
     description: An enclosure attached to the letter.
     fields:
@@ -953,15 +973,15 @@ leaf_kinds:
     fn blueprint_round_trips_idempotently() {
         let bp = cfg(LETTER_QUILL).blueprint();
         let doc1 = Document::from_markdown(&bp).expect("blueprint must parse");
-        // The blueprint declares one leaf kind (`enclosure`). It must survive
-        // parsing — earlier the leaf was emitted as `---/KIND/---`, which the
-        // parser silently dropped into body prose. See LEAF_REWORK.md §3.3.
+        // The blueprint declares one card kind (`enclosure`). It must survive
+        // parsing — earlier the card was emitted as `---/KIND/---`, which the
+        // parser silently dropped into body prose.
         assert_eq!(
-            doc1.leaves().len(),
+            doc1.cards().len(),
             1,
-            "blueprint emits one leaf; parser must recognise it"
+            "blueprint emits one card; parser must recognise it"
         );
-        assert_eq!(doc1.leaves()[0].tag(), "enclosure");
+        assert_eq!(doc1.cards()[0].tag(), "enclosure");
         let md2 = doc1.to_markdown();
         let doc2 = Document::from_markdown(&md2).expect("round-tripped markdown must parse");
         assert_eq!(

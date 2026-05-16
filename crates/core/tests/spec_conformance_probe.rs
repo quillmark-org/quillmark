@@ -45,16 +45,16 @@ fn f1_yaml_comment_banners_above_sentinel_are_accepted() {
     );
 }
 
-// Inline `---/.../---` blocks are no longer leaf candidates — they are
+// Inline `---/.../---` blocks are no longer card candidates — they are
 // CommonMark thematic breaks (and the content between them is body prose).
 // No near-miss warning is emitted for arbitrary YAML-looking content.
 #[test]
-fn inline_dash_blocks_are_body_not_leaves() {
+fn inline_dash_blocks_are_body_not_cards() {
     let md = "---\nQUILL: t\n---\n\nB.\n\n---\n# banner\nCard: oops\nname: X\n---\n\nTrailing.";
     let out = Document::from_markdown_with_warnings(md).unwrap();
     assert!(
-        out.document.leaves().is_empty(),
-        "inline ---/--- block must not register as a leaf"
+        out.document.cards().is_empty(),
+        "inline ---/--- block must not register as a card"
     );
     assert!(out.document.main().body().contains("Card: oops"));
 }
@@ -91,18 +91,18 @@ fn fence_marker_with_trailing_whitespace_is_accepted() {
 // §3 — `---` inside a fenced code block must be ignored.
 #[test]
 fn fences_inside_code_blocks_are_ignored() {
-    let md = "---\nQUILL: t\n---\n\n```\n```leaf\nKIND: x\n```\n```\n\nBody.";
+    let md = "---\nQUILL: t\n---\n\n```\n```card x\n```\n```\n\nBody.";
     let doc = Document::from_markdown(md).unwrap();
     assert!(
-        doc.leaves().is_empty(),
+        doc.cards().is_empty(),
         "fences inside code blocks must not parse"
     );
 }
 
-// §3 — Reserved keys BODY/LEAVES cannot be user-defined.
+// §3 — Reserved keys BODY/CARDS cannot be user-defined.
 #[test]
 fn reserved_keys_in_frontmatter_are_rejected() {
-    for reserved in ["BODY", "LEAVES"] {
+    for reserved in ["BODY", "CARDS"] {
         let md = format!("---\nQUILL: t\n{}: nope\n---\n\nBody.", reserved);
         let err = Document::from_markdown(&md).unwrap_err().to_string();
         assert!(
@@ -114,43 +114,56 @@ fn reserved_keys_in_frontmatter_are_rejected() {
     }
 }
 
-// §5 — LEAVES is always accessible, even when empty.
+// §5 — CARDS is always accessible, even when empty.
 #[test]
-fn leaves_is_always_present_even_when_empty() {
+fn cards_is_always_present_even_when_empty() {
     let doc = Document::from_markdown("---\nQUILL: t\n---\n\nBody.").unwrap();
-    assert!(doc.leaves().is_empty());
+    assert!(doc.cards().is_empty());
 }
 
-// §3.2 / §9 — A leaf-info-string fence missing `KIND:` first-key is a hard
-// parse error, not a silent fallthrough to body content. This is the central
-// "no silent classification miss" promise of LEAF_REWORK.md §3.3.
+// §3.2 / §4.2 — a `card`-prefixed fence commits to card parsing on that token
+// alone; a missing, invalid, or extra info-string kind token is a hard parse
+// error, not a silent fallthrough to body content — a hard error, not a
+// silent classification miss.
 #[test]
-fn leaf_fence_without_kind_first_key_is_rejected() {
+fn card_fence_with_bad_kind_token_is_rejected() {
     let cases = [
-        // Missing KIND entirely.
-        "---\nQUILL: t\n---\n\n```leaf\nname: Widget\n```\n",
-        // Empty leaf body.
-        "---\nQUILL: t\n---\n\n```leaf\n```\n",
-        // KIND present but not first.
-        "---\nQUILL: t\n---\n\n```leaf\nname: Widget\nKIND: product\n```\n",
-        // QUILL inside a leaf fence (sentinel-mismatch).
-        "---\nQUILL: t\n---\n\n```leaf\nQUILL: other@1\n```\n",
+        // Missing kind token.
+        "---\nQUILL: t\n---\n\n```card\nname: Widget\n```\n",
+        // Empty card body, still missing the kind token.
+        "---\nQUILL: t\n---\n\n```card\n```\n",
+        // Invalid kind token (must match [a-z_][a-z0-9_]*).
+        "---\nQUILL: t\n---\n\n```card Widget\nname: x\n```\n",
+        // Extra info-string tokens.
+        "---\nQUILL: t\n---\n\n```card a b\n```\n",
     ];
     for md in cases {
         let err = Document::from_markdown(md).unwrap_err().to_string();
         assert!(
-            err.contains("KIND") && err.contains("Leaf fence"),
-            "expected hard KIND error for {md:?}, got: {err}"
+            err.contains("Card fence at line"),
+            "expected hard card-fence kind-token error for {md:?}, got: {err}"
         );
     }
 }
 
-// §5 — KIND value pattern.
+// §3.2 — `KIND` is an output-only reserved key; supplying it as an input body
+// key is a hard parse error.
 #[test]
-fn leaf_name_pattern_enforced() {
-    let md = "---\nQUILL: t\n---\n\nB.\n\n```leaf\nKIND: ITEMS\n```\n\nX.";
+fn kind_as_card_body_key_is_rejected() {
+    let md = "---\nQUILL: t\n---\n\n```card product\nKIND: product\n```\n";
     let err = Document::from_markdown(md).unwrap_err().to_string();
-    assert!(err.contains("Invalid leaf field name"), "got: {}", err);
+    assert!(
+        err.contains("Reserved field name") && err.contains("KIND"),
+        "got: {err}"
+    );
+}
+
+// §3.2 — card kind-token pattern.
+#[test]
+fn card_name_pattern_enforced() {
+    let md = "---\nQUILL: t\n---\n\nB.\n\n```card ITEMS\n```\n\nX.";
+    let err = Document::from_markdown(md).unwrap_err().to_string();
+    assert!(err.contains("invalid kind token"), "got: {}", err);
 }
 
 // §7 — Body bidi stripped during normalize_document.
@@ -179,16 +192,16 @@ fn normalize_yaml_scalar_keeps_bidi() {
     );
 }
 
-// §7 — Leaf body normalization reaches nested leaves.
+// §7 — Card body normalization reaches nested cards.
 #[test]
-fn normalize_reaches_leaf_body() {
-    let md = "---\nQUILL: t\n---\n\n```leaf\nKIND: x\n```\n\n<!-- c -->trailing\u{202D}text";
+fn normalize_reaches_card_body() {
+    let md = "---\nQUILL: t\n---\n\n```card x\n```\n\n<!-- c -->trailing\u{202D}text";
     let doc = Document::from_markdown(md).unwrap();
     let doc = normalize_document(doc).unwrap();
-    let body = doc.leaves()[0].body();
+    let body = doc.cards()[0].body();
     assert!(
         body.contains("<!-- c -->\ntrailingtext"),
-        "leaf body missing repair/bidi-strip, got: {:?}",
+        "card body missing repair/bidi-strip, got: {:?}",
         body
     );
 }
@@ -199,7 +212,7 @@ fn f3_indented_four_spaces_is_not_a_fence() {
     let md = "---\nQUILL: t\n---\n\n    ---\n    KIND: x\n    ---\n\nafter.";
     let doc = Document::from_markdown(md).unwrap();
     assert!(
-        doc.leaves().is_empty(),
+        doc.cards().is_empty(),
         "indented `---` must not register as a fence"
     );
     let body = doc.main().body();
@@ -224,7 +237,7 @@ fn f3_tab_indented_is_not_a_fence() {
     let md = "---\nQUILL: t\n---\n\n\t---\n\tKIND: x\n\t---\n\nafter.";
     let doc = Document::from_markdown(md).unwrap();
     assert!(
-        doc.leaves().is_empty(),
+        doc.cards().is_empty(),
         "tab-indented `---` must not register as a fence"
     );
 }
@@ -244,16 +257,16 @@ fn body_crlf_line_endings_are_normalized() {
     assert!(body.contains("Line one.\nLine two."));
 }
 
-// §7 — CRLF normalization reaches leaf bodies.
+// §7 — CRLF normalization reaches card bodies.
 #[test]
-fn leaf_body_crlf_line_endings_are_normalized() {
-    let md = "---\nQUILL: t\n---\n\n```leaf\nKIND: x\n```\n\nLeaf line one.\r\nLeaf line two.\r\n";
+fn card_body_crlf_line_endings_are_normalized() {
+    let md = "---\nQUILL: t\n---\n\n```card x\n```\n\nCard line one.\r\nCard line two.\r\n";
     let doc = Document::from_markdown(md).unwrap();
     let doc = normalize_document(doc).unwrap();
-    let body = doc.leaves()[0].body();
+    let body = doc.cards()[0].body();
     assert!(
         !body.contains('\r'),
-        "leaf body must not contain bare \\r after normalization, got: {:?}",
+        "card body must not contain bare \\r after normalization, got: {:?}",
         body
     );
 }
@@ -304,8 +317,8 @@ fn first_fence_out_of_order_error_is_specific() {
 #[test]
 fn unclosed_code_block_emits_warning() {
     // 4-backtick opener with no matching 4+-backtick closer → unclosed.
-    // The 3-backtick `leaf` fence inside is shielded (3 < 4 cannot close).
-    let md = "---\nQUILL: t\n---\n\n````\ncode line\n\n```leaf\nKIND: x\n```\n\ntrailing body";
+    // The 3-backtick `card` fence inside is shielded (3 < 4 cannot close).
+    let md = "---\nQUILL: t\n---\n\n````\ncode line\n\n```card x\n```\n\ntrailing body";
     let out = Document::from_markdown_with_warnings(md).unwrap();
     assert!(
         out.warnings
@@ -317,10 +330,10 @@ fn unclosed_code_block_emits_warning() {
             .map(|w| (w.code.clone(), w.message.clone()))
             .collect::<Vec<_>>()
     );
-    // And the shielded leaf fence must NOT have registered.
+    // And the shielded card fence must NOT have registered.
     assert!(
-        out.document.leaves().is_empty(),
-        "shielded leaf fence must not have been parsed"
+        out.document.cards().is_empty(),
+        "shielded card fence must not have been parsed"
     );
 }
 
@@ -336,12 +349,12 @@ fn per_fence_field_count_cap() {
     assert!(err.contains("Input too large"), "got: {}", err);
 }
 
-// §8 — Leaf count cap counts leaves only.
+// §8 — Card count cap counts cards only.
 #[test]
-fn leaf_count_cap_is_per_leaf() {
+fn card_count_cap_is_per_card() {
     let mut s = String::from("---\nQUILL: t\n---\n");
     for _ in 0..1001 {
-        s.push_str("\n```leaf\nKIND: x\n```\n\nB.\n");
+        s.push_str("\n```card x\n```\n\nB.\n");
     }
     let err = Document::from_markdown(&s).unwrap_err().to_string();
     assert!(err.contains("Input too large"), "got: {}", err);

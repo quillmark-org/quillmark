@@ -9,7 +9,7 @@
 use super::{FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
 
-/// Build a JSON-Schema-shaped descriptor of a [`QuillConfig`]'s main + leaf fields.
+/// Build a JSON-Schema-shaped descriptor of a [`QuillConfig`]'s main + card fields.
 ///
 /// The descriptor marks markdown fields with `contentMediaType: "text/markdown"`
 /// and date/date-time fields with the corresponding JSON Schema `format`.
@@ -117,20 +117,20 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
     );
 
     let mut defs = serde_json::Map::new();
-    for leaf in &config.leaf_kinds {
-        let mut leaf_properties = serde_json::Map::new();
-        for (name, field) in &leaf.fields {
-            leaf_properties.insert(name.clone(), field_to_schema(field));
+    for card in &config.cards {
+        let mut card_properties = serde_json::Map::new();
+        for (name, field) in &card.fields {
+            card_properties.insert(name.clone(), field_to_schema(field));
         }
-        leaf_properties.insert(
+        card_properties.insert(
             "BODY".to_string(),
             serde_json::json!({ "type": "string", "contentMediaType": "text/markdown" }),
         );
         defs.insert(
-            format!("{}_leaf", leaf.name),
+            format!("{}_card", card.name),
             serde_json::json!({
                 "type": "object",
-                "properties": leaf_properties,
+                "properties": card_properties,
             }),
         );
     }
@@ -159,13 +159,14 @@ quill:
   version: 1.0.0
   backend: typst
   description: x
-main:
-  fields:
-    refs:
-      type: array
-      properties:
-        org: { type: string, required: true }
-        year: { type: integer }
+cards:
+  main:
+    fields:
+      refs:
+        type: array
+        properties:
+          org: { type: string, required: true }
+          year: { type: integer }
 "#;
         let schema = build_from_yaml(yaml);
         let json = schema.as_json();
@@ -184,13 +185,14 @@ quill:
   version: 1.0.0
   backend: typst
   description: x
-main:
-  fields:
-    address:
-      type: object
-      properties:
-        street: { type: string, required: true }
-        city: { type: string }
+cards:
+  main:
+    fields:
+      address:
+        type: object
+        properties:
+          street: { type: string, required: true }
+          city: { type: string }
 "#;
         let schema = build_from_yaml(yaml);
         let json = schema.as_json();
@@ -201,7 +203,7 @@ main:
     }
 
     #[test]
-    fn injects_body_as_markdown_for_main_and_each_leaf_kind() {
+    fn injects_body_as_markdown_for_main_and_each_card() {
         let yaml = r#"
 quill:
   name: example
@@ -209,12 +211,11 @@ quill:
   backend: typst
   description: example
 
-main:
-  fields:
-    title:
-      type: string
-
-leaf_kinds:
+cards:
+  main:
+    fields:
+      title:
+        type: string
   indorsement:
     fields:
       signature_block:
@@ -223,6 +224,7 @@ leaf_kinds:
     fields:
       author:
         type: string
+
 "#;
 
         let schema = build_from_yaml(yaml);
@@ -232,14 +234,14 @@ leaf_kinds:
         assert_eq!(main_body["type"], "string");
         assert_eq!(main_body["contentMediaType"], "text/markdown");
 
-        for def_name in ["indorsement_leaf", "note_leaf"] {
-            let leaf_body = &json["$defs"][def_name]["properties"]["BODY"];
+        for def_name in ["indorsement_card", "note_card"] {
+            let card_body = &json["$defs"][def_name]["properties"]["BODY"];
             assert_eq!(
-                leaf_body["type"], "string",
+                card_body["type"], "string",
                 "{def_name} BODY type should be string"
             );
             assert_eq!(
-                leaf_body["contentMediaType"], "text/markdown",
+                card_body["contentMediaType"], "text/markdown",
                 "{def_name} BODY should be markdown"
             );
         }

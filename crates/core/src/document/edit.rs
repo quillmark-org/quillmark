@@ -1,12 +1,12 @@
 //! # Document Editor Surface
 //!
-//! Typed mutators for [`Document`] and [`Leaf`] with invariant enforcement.
+//! Typed mutators for [`Document`] and [`Card`] with invariant enforcement.
 //!
 //! ## Invariants
 //!
 //! Every successful mutator call leaves the document in a state that:
-//! - Contains no reserved key in any leaf's frontmatter (`BODY`, `LEAVES`, `QUILL`, `KIND`).
-//! - Has every composable `leaf.tag()` passing `sentinel::is_valid_tag_name`.
+//! - Contains no reserved key in any card's frontmatter (`BODY`, `CARDS`, `QUILL`, `KIND`).
+//! - Has every composable `card.tag()` passing `sentinel::is_valid_tag_name`.
 //! - Can be safely serialized via [`Document::to_plate_json`].
 //!
 //! **Mutators never modify `warnings`.**  Warnings are parse-time observations
@@ -14,24 +14,24 @@
 //!
 //! ## Surface
 //!
-//! Frontmatter and body mutators live on [`Leaf`]:
+//! Frontmatter and body mutators live on [`Card`]:
 //! `doc.main_mut().set_field(…)`, `doc.main_mut().replace_body(…)`,
-//! `doc.leaves_mut()[i].set_field(…)`. [`Document`] keeps only document-level
-//! operations (quill-ref, push/insert/remove/move leaf).
+//! `doc.cards_mut()[i].set_field(…)`. [`Document`] keeps only document-level
+//! operations (quill-ref, push/insert/remove/move card).
 
 use unicode_normalization::UnicodeNormalization;
 
 use crate::document::sentinel::is_valid_tag_name;
-use crate::document::{Document, Frontmatter, Leaf, Sentinel};
+use crate::document::{Card, Document, Frontmatter, Sentinel};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
 
 // ── Reserved names ──────────────────────────────────────────────────────────
 
-/// Reserved field names that may not appear in any `Leaf`'s frontmatter.
+/// Reserved field names that may not appear in any `Card`'s frontmatter.
 /// These are the sentinel keys whose presence in user-visible fields would
 /// corrupt the plate wire format or the parser's structural invariants.
-pub const RESERVED_NAMES: &[&str] = &["BODY", "LEAVES", "QUILL", "KIND"];
+pub const RESERVED_NAMES: &[&str] = &["BODY", "CARDS", "QUILL", "KIND"];
 
 /// Returns `true` if `name` is one of the four reserved sentinel names.
 #[inline]
@@ -41,11 +41,11 @@ pub fn is_reserved_name(name: &str) -> bool {
 
 // ── Field name validation ───────────────────────────────────────────────────
 
-/// Returns `true` if `name` is a valid frontmatter / leaf field name.
+/// Returns `true` if `name` is a valid frontmatter / card field name.
 ///
 /// A valid field name matches `[a-z_][a-z0-9_]*` after NFC normalisation.
 /// Upper-case identifiers are intentionally excluded; they are reserved for
-/// sentinel keys (`QUILL`, `KIND`, `BODY`, `LEAVES`).
+/// sentinel keys (`QUILL`, `KIND`, `BODY`, `CARDS`).
 pub fn is_valid_field_name(name: &str) -> bool {
     // NFC-normalize first so that, e.g., composed vs decomposed forms compare equal.
     let normalized: String = name.nfc().collect();
@@ -67,14 +67,14 @@ pub fn is_valid_field_name(name: &str) -> bool {
 
 // ── EditError ────────────────────────────────────────────────────────────────
 
-/// Errors returned by document and leaf mutators.
+/// Errors returned by document and card mutators.
 ///
 /// `EditError` is distinct from [`crate::error::ParseError`]: it carries no
 /// source-location information because edits happen after parsing.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum EditError {
     /// The supplied name is one of the four reserved sentinel keys
-    /// (`BODY`, `LEAVES`, `QUILL`, `KIND`).
+    /// (`BODY`, `CARDS`, `QUILL`, `KIND`).
     #[error("reserved name '{0}' cannot be used as a field name")]
     ReservedName(String),
 
@@ -86,7 +86,7 @@ pub enum EditError {
     #[error("invalid tag name '{0}': must match [a-z_][a-z0-9_]*")]
     InvalidTagName(String),
 
-    /// A leaf index was out of the valid range.
+    /// A card index was out of the valid range.
     #[error("index {index} is out of range (len = {len})")]
     IndexOutOfRange { index: usize, len: usize },
 }
@@ -94,7 +94,7 @@ pub enum EditError {
 // ── impl Document ────────────────────────────────────────────────────────────
 
 impl Document {
-    /// Replace the QUILL reference on the main leaf's sentinel.
+    /// Replace the QUILL reference on the main card's sentinel.
     ///
     /// # Invariants enforced
     ///
@@ -108,37 +108,37 @@ impl Document {
         self.main_mut().replace_sentinel(Sentinel::Main(reference));
     }
 
-    // ── Leaf mutators ────────────────────────────────────────────────────────
+    // ── Card mutators ────────────────────────────────────────────────────────
 
-    /// Return a mutable reference to the composable leaf at `index`, or `None`
+    /// Return a mutable reference to the composable card at `index`, or `None`
     /// if out of range.
     ///
     /// # Warnings
     ///
     /// This method never modifies `warnings`.
-    pub fn leaf_mut(&mut self, index: usize) -> Option<&mut Leaf> {
-        self.leaves_mut().get_mut(index)
+    pub fn card_mut(&mut self, index: usize) -> Option<&mut Card> {
+        self.cards_mut().get_mut(index)
     }
 
-    /// Append a composable leaf to the end of the leaf list.
+    /// Append a composable card to the end of the card list.
     ///
     /// # Invariants
     ///
-    /// `leaf.sentinel()` must be [`Sentinel::Leaf`]; a main leaf cannot be
-    /// appended as a composable leaf. Debug assert.
+    /// `card.sentinel()` must be [`Sentinel::Inline`]; a main card cannot be
+    /// appended as a composable card. Debug assert.
     ///
     /// # Warnings
     ///
     /// This method never modifies `warnings`.
-    pub fn push_leaf(&mut self, leaf: Leaf) {
+    pub fn push_card(&mut self, card: Card) {
         debug_assert!(
-            !leaf.sentinel().is_main(),
-            "cannot push a Main-sentinel leaf as a composable leaf"
+            !card.sentinel().is_main(),
+            "cannot push a Main-sentinel card as a composable card"
         );
-        self.leaves_vec_mut().push(leaf);
+        self.cards_vec_mut().push(card);
     }
 
-    /// Insert a composable leaf at `index`.
+    /// Insert a composable card at `index`.
     ///
     /// # Invariants enforced
     ///
@@ -148,34 +148,34 @@ impl Document {
     /// # Warnings
     ///
     /// This method never modifies `warnings`.
-    pub fn insert_leaf(&mut self, index: usize, leaf: Leaf) -> Result<(), EditError> {
+    pub fn insert_card(&mut self, index: usize, card: Card) -> Result<(), EditError> {
         debug_assert!(
-            !leaf.sentinel().is_main(),
-            "cannot insert a Main-sentinel leaf as a composable leaf"
+            !card.sentinel().is_main(),
+            "cannot insert a Main-sentinel card as a composable card"
         );
-        let len = self.leaves().len();
+        let len = self.cards().len();
         if index > len {
             return Err(EditError::IndexOutOfRange { index, len });
         }
-        self.leaves_vec_mut().insert(index, leaf);
+        self.cards_vec_mut().insert(index, card);
         Ok(())
     }
 
-    /// Remove and return the composable leaf at `index`, or `None` if out of range.
+    /// Remove and return the composable card at `index`, or `None` if out of range.
     ///
     /// # Warnings
     ///
     /// This method never modifies `warnings`.
-    pub fn remove_leaf(&mut self, index: usize) -> Option<Leaf> {
-        if index >= self.leaves().len() {
+    pub fn remove_card(&mut self, index: usize) -> Option<Card> {
+        if index >= self.cards().len() {
             return None;
         }
-        Some(self.leaves_vec_mut().remove(index))
+        Some(self.cards_vec_mut().remove(index))
     }
 
-    /// Replace the tag (sentinel) of the composable leaf at `index`.
+    /// Replace the tag (sentinel) of the composable card at `index`.
     ///
-    /// **Field-bag semantics.** This mutates only the sentinel; the leaf's
+    /// **Field-bag semantics.** This mutates only the sentinel; the card's
     /// frontmatter and body are untouched. After the call:
     ///
     /// - Fields valid under both old and new schemas round-trip unchanged.
@@ -187,7 +187,7 @@ impl Document {
     ///   `validate_document`.
     ///
     /// Schema-aware migration (clearing orphans, applying defaults, etc.) is
-    /// the caller's responsibility — `set_leaf_tag` is a structural primitive.
+    /// the caller's responsibility — `set_card_tag` is a structural primitive.
     ///
     /// # Invariants enforced
     ///
@@ -199,7 +199,7 @@ impl Document {
     /// # Warnings
     ///
     /// This method never modifies `warnings`.
-    pub fn set_leaf_tag(
+    pub fn set_card_tag(
         &mut self,
         index: usize,
         new_tag: impl Into<String>,
@@ -208,15 +208,15 @@ impl Document {
         if !is_valid_tag_name(&new_tag) {
             return Err(EditError::InvalidTagName(new_tag));
         }
-        let len = self.leaves().len();
-        let leaf = self
-            .leaf_mut(index)
+        let len = self.cards().len();
+        let card = self
+            .card_mut(index)
             .ok_or(EditError::IndexOutOfRange { index, len })?;
-        leaf.replace_sentinel(Sentinel::Leaf(new_tag));
+        card.replace_sentinel(Sentinel::Inline(new_tag));
         Ok(())
     }
 
-    /// Move the composable leaf at `from` to position `to`.
+    /// Move the composable card at `from` to position `to`.
     ///
     /// If `from == to`, this is a no-op and returns `Ok(())`.
     ///
@@ -228,8 +228,8 @@ impl Document {
     /// # Warnings
     ///
     /// This method never modifies `warnings`.
-    pub fn move_leaf(&mut self, from: usize, to: usize) -> Result<(), EditError> {
-        let len = self.leaves().len();
+    pub fn move_card(&mut self, from: usize, to: usize) -> Result<(), EditError> {
+        let len = self.cards().len();
         if from >= len {
             return Err(EditError::IndexOutOfRange { index: from, len });
         }
@@ -239,30 +239,30 @@ impl Document {
         if from == to {
             return Ok(());
         }
-        let leaf = self.leaves_vec_mut().remove(from);
-        self.leaves_vec_mut().insert(to, leaf);
+        let card = self.cards_vec_mut().remove(from);
+        self.cards_vec_mut().insert(to, card);
         Ok(())
     }
 }
 
-// ── impl Leaf ────────────────────────────────────────────────────────────────
+// ── impl Card ────────────────────────────────────────────────────────────────
 
-impl Leaf {
-    /// Create a new, empty composable leaf with the given tag.
+impl Card {
+    /// Create a new, empty composable card with the given tag.
     ///
     /// # Invariants enforced
     ///
     /// `tag` must match `[a-z_][a-z0-9_]*`.  An invalid tag returns
     /// [`EditError::InvalidTagName`].
     ///
-    /// The new leaf has no fields and an empty body.
+    /// The new card has no fields and an empty body.
     pub fn new(tag: impl Into<String>) -> Result<Self, EditError> {
         let tag = tag.into();
         if !is_valid_tag_name(&tag) {
             return Err(EditError::InvalidTagName(tag));
         }
-        Ok(Leaf::new_with_sentinel(
-            Sentinel::Leaf(tag),
+        Ok(Card::new_with_sentinel(
+            Sentinel::Inline(tag),
             Frontmatter::new(),
             String::new(),
         ))
@@ -280,12 +280,12 @@ impl Leaf {
     ///
     /// # Validity
     ///
-    /// After a successful call the leaf remains valid: `frontmatter`
+    /// After a successful call the card remains valid: `frontmatter`
     /// contains no reserved key and the value is stored at the correct key.
     ///
     /// # Warnings
     ///
-    /// Leaf mutators never modify the parent document's `warnings`.
+    /// Card mutators never modify the parent document's `warnings`.
     pub fn set_field(&mut self, name: &str, value: QuillValue) -> Result<(), EditError> {
         if is_reserved_name(name) {
             return Err(EditError::ReservedName(name.to_string()));
@@ -303,11 +303,11 @@ impl Leaf {
     ///
     /// # Invariants enforced
     ///
-    /// Same as [`Leaf::set_field`].
+    /// Same as [`Card::set_field`].
     ///
     /// # Warnings
     ///
-    /// Leaf mutators never modify the parent document's `warnings`.
+    /// Card mutators never modify the parent document's `warnings`.
     pub fn set_fill(&mut self, name: &str, value: QuillValue) -> Result<(), EditError> {
         if is_reserved_name(name) {
             return Err(EditError::ReservedName(name.to_string()));
@@ -332,7 +332,7 @@ impl Leaf {
     ///
     /// # Warnings
     ///
-    /// Leaf mutators never modify the parent document's `warnings`.
+    /// Card mutators never modify the parent document's `warnings`.
     pub fn remove_field(&mut self, name: &str) -> Result<Option<QuillValue>, EditError> {
         if is_reserved_name(name) {
             return Err(EditError::ReservedName(name.to_string()));
@@ -343,11 +343,11 @@ impl Leaf {
         Ok(self.frontmatter_mut().remove(name))
     }
 
-    /// Replace the leaf's Markdown body.
+    /// Replace the card's Markdown body.
     ///
     /// # Warnings
     ///
-    /// Leaf mutators never modify the parent document's `warnings`.
+    /// Card mutators never modify the parent document's `warnings`.
     pub fn replace_body(&mut self, body: impl Into<String>) {
         self.overwrite_body(body.into());
     }
