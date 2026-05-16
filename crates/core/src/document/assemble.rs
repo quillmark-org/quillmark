@@ -23,7 +23,7 @@ use super::{Document, Leaf, Sentinel};
 /// slice ends with that blank line's terminator — exactly one `\n` or
 /// `\r\n`. This helper strips that single line ending so stored bodies
 /// contain only authored content. The emitter re-adds the separator on
-/// output via `ensure_blank_line_before_fence`.
+/// output via `ensure_f2_before_fence`.
 ///
 /// Stripping more than one line ending (as the WASM binding's former
 /// `trim_body` did) would silently drop content-meaningful trailing
@@ -41,7 +41,7 @@ fn strip_f2_separator(body: &str) -> &str {
 
 /// Parse a legacy `---/CARD: …/---` leaf body.
 ///
-/// Used by the Release-N legacy parser path (LEAF_REWORK.md §7). The previous
+/// Used by the legacy `---/CARD: …/---` parser path (CARD_MODEL.md §9). The previous
 /// leaf syntax carried the kind as a `CARD:` first body key; the canonical
 /// syntax carries it in the fence info string (`MARKDOWN.md §3.2`). To produce
 /// the same `Leaf` from a legacy block, the kind must be lifted *out* of the
@@ -88,6 +88,21 @@ pub(super) enum BlockSentinel {
     Leaf(String),
 }
 
+/// How `find_metadata_blocks` classified a fence before handing it to
+/// `build_block`. Replaces the former `leaf_kind: Option<String>` +
+/// `legacy_card: bool` pair, which together encoded these three cases but
+/// also admitted the impossible `Some(kind)` + legacy combination.
+#[derive(Debug)]
+pub(super) enum BlockSource {
+    /// Document frontmatter (`---/---` with a `QUILL:` first key).
+    Frontmatter,
+    /// Canonical leaf fence; the kind comes from the `leaf <kind>` info string.
+    Leaf(String),
+    /// Legacy `---/CARD: …/---` leaf — the kind is lifted from the `CARD:`
+    /// first body key (`CARD_MODEL.md §9`).
+    LegacyCard,
+}
+
 /// An intermediate representation of one parsed metadata fence (frontmatter
 /// or leaf).
 #[derive(Debug)]
@@ -124,17 +139,14 @@ fn yaml_parse_options() -> serde_saphyr::Options {
 /// the opening fence line; `content_end` is the byte position at the start
 /// of the closing fence line. Returns errors per spec §9.
 ///
-/// `leaf_kind` carries the kind for a canonical leaf fence — extracted from
-/// the `leaf <kind>` info string by `find_metadata_blocks` — and is `None`
-/// for the document frontmatter.
-///
-/// When `legacy_card` is true the block is a legacy `---/CARD: …/---` leaf
-/// (Release-N migration path, LEAF_REWORK.md §7): the kind is lifted out of
-/// the `CARD:` first body key, and that line is dropped before YAML parsing,
-/// so the resulting `Leaf` matches the canonical ` ```leaf <kind> ` form.
-/// Caller verifies the first content key is `CARD:` and emits the
-/// deprecation warning.
-#[allow(clippy::too_many_arguments)]
+/// `source` is how `find_metadata_blocks` classified the fence:
+/// `Frontmatter` for the document frontmatter, `Leaf(kind)` for a canonical
+/// leaf fence (kind from the `leaf <kind>` info string), or `LegacyCard` for
+/// a legacy `---/CARD: …/---` leaf (`CARD_MODEL.md §9`). For `LegacyCard` the
+/// kind is lifted out of the `CARD:` first body key and that line is dropped
+/// before YAML parsing, so the resulting `Leaf` matches the canonical
+/// ` ```leaf <kind> ` form; the caller verifies the first content key is
+/// `CARD:` and emits the deprecation warning.
 pub(super) fn build_block(
     markdown: &str,
     abs_pos: usize,
@@ -142,29 +154,30 @@ pub(super) fn build_block(
     content_end: usize,
     block_end: usize,
     block_index: usize,
-    leaf_kind: Option<String>,
-    legacy_card: bool,
+    source: BlockSource,
 ) -> Result<MetadataBlock, ParseError> {
     let raw_slice = &markdown[content_start..content_end];
     let legacy_owned: String;
-    let (raw_content, leaf_kind): (&str, Option<String>) = if legacy_card {
-        let line = markdown[..abs_pos].lines().count() + 1;
-        let (kind, stripped) = extract_legacy_card_leaf(raw_slice).ok_or_else(|| {
-            ParseError::InvalidStructure(format!(
-                "Legacy leaf at line {} is missing its `CARD:` first body key.",
-                line
-            ))
-        })?;
-        if !is_valid_tag_name(&kind) {
-            return Err(ParseError::InvalidStructure(format!(
-                "Legacy leaf at line {} has an invalid `CARD:` value `{}` — the kind must match pattern [a-z_][a-z0-9_]*.",
-                line, kind
-            )));
+    let (raw_content, leaf_kind): (&str, Option<String>) = match source {
+        BlockSource::LegacyCard => {
+            let line = markdown[..abs_pos].lines().count() + 1;
+            let (kind, stripped) = extract_legacy_card_leaf(raw_slice).ok_or_else(|| {
+                ParseError::InvalidStructure(format!(
+                    "Legacy leaf at line {} is missing its `CARD:` first body key.",
+                    line
+                ))
+            })?;
+            if !is_valid_tag_name(&kind) {
+                return Err(ParseError::InvalidStructure(format!(
+                    "Legacy leaf at line {} has an invalid `CARD:` value `{}` — the kind must match pattern [a-z_][a-z0-9_]*.",
+                    line, kind
+                )));
+            }
+            legacy_owned = stripped;
+            (legacy_owned.as_str(), Some(kind))
         }
-        legacy_owned = stripped;
-        (legacy_owned.as_str(), Some(kind))
-    } else {
-        (raw_slice, leaf_kind)
+        BlockSource::Leaf(kind) => (raw_slice, Some(kind)),
+        BlockSource::Frontmatter => (raw_slice, None),
     };
 
     // Check YAML size limit (spec §8)

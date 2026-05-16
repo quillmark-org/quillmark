@@ -7,7 +7,7 @@
 use crate::error::ParseError;
 use crate::{Diagnostic, Severity};
 
-use super::assemble::{BlockSentinel, MetadataBlock};
+use super::assemble::{BlockSentinel, BlockSource, MetadataBlock};
 use super::sentinel::{first_content_key, is_valid_tag_name};
 
 /// Line-oriented view of the source.
@@ -216,8 +216,7 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
                 content_end,
                 block_end,
                 0,
-                None,
-                false,
+                BlockSource::Frontmatter,
             )?;
             blocks.push(block);
             post_frontmatter_k = cj + 1;
@@ -254,7 +253,7 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
     //
     // - **Canonical**: CommonMark fenced code block whose info string is
     //   `leaf <kind>`.
-    // - **Legacy (Release N only, LEAF_REWORK.md §7)**: `---/---` block (F2)
+    // - **Legacy (`CARD_MODEL.md §9`)**: `---/---` block (F2)
     //   whose first body key is `CARD:`. Each occurrence emits a
     //   `parse::deprecated_leaf_syntax` warning; the canonical emitter
     //   rewrites it to ` ```leaf <kind> ` on round-trip.
@@ -289,8 +288,7 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
                         content_end,
                         block_end,
                         blocks.len(),
-                        None,
-                        true,
+                        BlockSource::LegacyCard,
                     )?;
                     blocks.push(block);
                     warnings.push(
@@ -346,8 +344,7 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
                     content_end,
                     block_end,
                     blocks.len(),
-                    Some(kind),
-                    false,
+                    BlockSource::Leaf(kind),
                 )?;
                 blocks.push(block);
                 k = cj + 1;
