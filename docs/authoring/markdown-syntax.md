@@ -58,12 +58,13 @@ The following are recognised by the parser (so they will not corrupt surrounding
 
 Some constructs (like link titles) are accepted by the parser but may be dropped during rendering when the active backend has no target for them. Those losses are backend-specific — see each backend's documentation.
 
-## The `---` marker delimits frontmatter only
+## The `---` marker is reserved
 
-Quillmark uses `---` to delimit [frontmatter](yaml-frontmatter.md) at the top
-of a document. Mid-document `---` is a CommonMark thematic break — it no
-longer opens a metadata fence. Inline structured records use a different
-syntax; see [Cards](cards.md).
+Quillmark uses `---` to delimit [frontmatter](yaml-frontmatter.md). A `---` line that follows the fence-detection rules opens or closes the frontmatter fence; otherwise it falls through to CommonMark and behaves as a thematic break or setext heading underline as usual. The full detection rules are in [§4 of the spec](https://github.com/nibsbin/quillmark/blob/main/prose/designs/MARKDOWN.md#4-fence-detection-rules).
+
+In practice: use `***` or `___` if you want a thematic break inside body content, and reserve `---` for the frontmatter.
+
+[Cards](cards.md) use a fenced code block with the info string `card <kind>`. The legacy `---`/`CARD:` card fence is still accepted on input but `---` is no longer the canonical card delimiter.
 
 ## Next steps
 

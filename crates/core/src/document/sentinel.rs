@@ -1,4 +1,4 @@
-//! QUILL sentinel extraction and reserved-name validation.
+//! QUILL / CARD sentinel extraction and reserved-name validation.
 //!
 //! Implements the sentinel rules from MARKDOWN.md §4.2 and the reserved-name
 //! checks from spec §3.
@@ -7,7 +7,7 @@ use crate::error::ParseError;
 use crate::version::QuillReference;
 
 /// Validate tag name follows pattern [a-z_][a-z0-9_]*
-pub(crate) fn is_valid_tag_name(name: &str) -> bool {
+pub(super) fn is_valid_tag_name(name: &str) -> bool {
     if name.is_empty() {
         return false;
     }
@@ -53,60 +53,105 @@ pub(super) fn first_content_key(content: &str) -> Option<&str> {
     }
 }
 
-/// Clone `mapping`, strip `key`, return the remainder (or `None` if empty).
+/// Validate the YAML body of a `card`-fenced composable card.
 ///
-/// `serde_json::Map` with the `preserve_order` feature (enabled in this
-/// workspace) is backed by `indexmap::IndexMap`; its default `remove` is
-/// `swap_remove` (O(1) but order-disrupting). We use `shift_remove` so that
-/// the surviving keys keep their source order.
-fn strip_key(
-    mapping: &serde_json::Map<String, serde_json::Value>,
-    key: &str,
-) -> Option<serde_json::Value> {
-    let mut m = mapping.clone();
-    m.shift_remove(key);
-    (!m.is_empty()).then(|| serde_json::Value::Object(m))
+/// A `card` fence carries its kind in the info string (```` ```card <kind> ````),
+/// so there is no sentinel key inside the YAML body. This check only rejects
+/// the reserved sentinel keys (`QUILL`, `CARD`, `BODY`, `CARDS`) appearing as
+/// user-defined fields. The parsed value is returned unchanged.
+pub(super) fn validate_card_fence_yaml(
+    parsed: serde_json::Value,
+) -> Result<Option<serde_json::Value>, ParseError> {
+    if let Some(mapping) = parsed.as_object() {
+        for reserved in ["QUILL", "CARD", "BODY", "CARDS"] {
+            if mapping.contains_key(reserved) {
+                return Err(ParseError::InvalidStructure(format!(
+                    "Reserved field name '{}' cannot be used in a card block",
+                    reserved
+                )));
+            }
+        }
+    }
+    Ok(Some(parsed))
 }
 
-/// Extract the `QUILL` sentinel (frontmatter only) and the remaining fields
-/// from a parsed-YAML mapping. Returns `(quill_ref, yaml_without_sentinel)`.
-///
-/// A card's kind is carried by the fence info string (`MARKDOWN.md §3.2`), so
-/// `KIND` no longer participates in sentinel extraction: it joins `BODY` and
-/// `CARDS` as an output-only reserved key, and supplying it as an input body
-/// key is a hard parse error in both frontmatter and cards.
+/// Extract `QUILL` / `CARD` sentinels and remaining fields from a parsed-YAML
+/// mapping. Returns `(tag, quill_ref, yaml_without_sentinel)`.
+#[allow(clippy::type_complexity)]
 pub(super) fn extract_sentinels(
     parsed: serde_json::Value,
-    is_frontmatter: bool,
-) -> Result<(Option<String>, Option<serde_json::Value>), ParseError> {
+    _markdown: &str,
+    _abs_pos: usize,
+    _block_index: usize,
+) -> Result<(Option<String>, Option<String>, Option<serde_json::Value>), ParseError> {
     let Some(mapping) = parsed.as_object() else {
-        // Non-mapping (scalar/sequence); pass through — upstream will reject
-        // if a frontmatter/card mapping was expected.
-        return Ok((None, Some(parsed)));
+        // Non-mapping (scalar/sequence); keep as-is — upstream will reject if
+        // it's a frontmatter/card mapping was expected.
+        return Ok((None, None, Some(parsed)));
     };
 
-    // Output-only reserved keys (spec §3): the parser populates these, so an
-    // author supplying any of them as an input field is a hard parse error.
-    for reserved in ["BODY", "CARDS", "KIND"] {
+    let has_quill = mapping.contains_key("QUILL");
+    let has_card = mapping.contains_key("CARD");
+
+    if has_quill && has_card {
+        return Err(ParseError::InvalidStructure(
+            "Cannot specify both QUILL and CARD in the same block".to_string(),
+        ));
+    }
+
+    // Reserved keys (BODY, CARDS) — spec §3
+    for reserved in ["BODY", "CARDS"] {
         if mapping.contains_key(reserved) {
             return Err(ParseError::InvalidStructure(format!(
-                "Reserved field name '{}' cannot be used as an input field",
+                "Reserved field name '{}' cannot be used in YAML frontmatter",
                 reserved
             )));
         }
     }
 
-    if is_frontmatter {
-        if let Some(quill_val) = mapping.get("QUILL") {
-            let quill_str = quill_val.as_str().ok_or("QUILL value must be a string")?;
-            quill_str.parse::<QuillReference>().map_err(|e| {
-                ParseError::InvalidStructure(format!(
-                    "Invalid QUILL reference '{}': {}",
-                    quill_str, e
-                ))
-            })?;
-            return Ok((Some(quill_str.to_string()), strip_key(mapping, "QUILL")));
+    if has_quill {
+        let quill_str = mapping
+            .get("QUILL")
+            .unwrap()
+            .as_str()
+            .ok_or("QUILL value must be a string")?;
+        quill_str.parse::<QuillReference>().map_err(|e| {
+            ParseError::InvalidStructure(format!("Invalid QUILL reference '{}': {}", quill_str, e))
+        })?;
+        let mut new_map = mapping.clone();
+        // Use `shift_remove` (order-preserving, O(n)) rather than the
+        // default `remove` which is `swap_remove` (O(1), disrupts order).
+        // serde_json::Map with `preserve_order` uses indexmap internally;
+        // its `.remove()` calls `swap_remove`, not `shift_remove`, so we
+        // call `shift_remove` explicitly to maintain insertion order.
+        new_map.shift_remove("QUILL");
+        let new_val = if new_map.is_empty() {
+            None
+        } else {
+            Some(serde_json::Value::Object(new_map))
+        };
+        Ok((None, Some(quill_str.to_string()), new_val))
+    } else if has_card {
+        let field_name = mapping
+            .get("CARD")
+            .unwrap()
+            .as_str()
+            .ok_or("CARD value must be a string")?;
+        if !is_valid_tag_name(field_name) {
+            return Err(ParseError::InvalidStructure(format!(
+                "Invalid card field name '{}': must match pattern [a-z_][a-z0-9_]*",
+                field_name
+            )));
         }
+        let mut new_map = mapping.clone();
+        new_map.shift_remove("CARD");
+        let new_val = if new_map.is_empty() {
+            None
+        } else {
+            Some(serde_json::Value::Object(new_map))
+        };
+        Ok((Some(field_name.to_string()), None, new_val))
+    } else {
+        Ok((None, None, Some(parsed)))
     }
-    Ok((None, Some(parsed)))
 }

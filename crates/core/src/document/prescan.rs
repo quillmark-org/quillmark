@@ -285,12 +285,6 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
                 if let Some(err) = fill_target_err {
                     out.fill_target_errors.push(err);
                 }
-                if fill && key == "QUILL" {
-                    out.fill_target_errors.push(format!(
-                        "`!fill` cannot be applied to the sentinel key `{}` — sentinels are routing keys, not data, and must resolve at parse time",
-                        key
-                    ));
-                }
 
                 out.items.push(PreItem::Field {
                     key: key.clone(),
@@ -744,7 +738,7 @@ mod tests {
 
     #[test]
     fn deep_nested_comment_path() {
-        let input = "outer:\n  inner:\n    # deep\n    card: 1\n";
+        let input = "outer:\n  inner:\n    # deep\n    leaf: 1\n";
         let out = prescan_fence_content(input);
         assert_eq!(
             out.nested_comments,

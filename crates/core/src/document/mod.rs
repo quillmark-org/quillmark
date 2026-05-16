@@ -10,9 +10,9 @@
 //! ## Key Types
 //!
 //! - [`Document`]: Typed in-memory Quillmark document — `main` card plus composable cards.
-//! - [`Card`]: A single metadata fence block, main or composable, with a sentinel,
+//! - [`Card`]: A single card block, main or composable, with a sentinel,
 //!   typed frontmatter, and a body.
-//! - [`Sentinel`]: Discriminates `QUILL:` main cards from `` ```card <kind> `` composable cards.
+//! - [`Sentinel`]: Discriminates the `QUILL:` frontmatter from composable card blocks.
 //! - [`Frontmatter`]: Ordered list of items (fields + comments) parsed from a YAML fence.
 //!
 //! ## Examples
@@ -43,17 +43,6 @@
 //! assert_eq!(doc.cards().len(), 0);
 //! ```
 //!
-//! ### Document with cards
-//!
-//! ```
-//! use quillmark_core::Document;
-//!
-//! let markdown = "---\nQUILL: my_quill\ntitle: Catalog\n---\n\nIntro.\n\n```card product\nname: Widget\n```\n";
-//! let doc = Document::from_markdown(markdown).unwrap();
-//! assert_eq!(doc.cards().len(), 1);
-//! assert_eq!(doc.cards()[0].tag(), "product");
-//! ```
-//!
 //! ### Accessing the plate wire format
 //!
 //! ```
@@ -75,7 +64,7 @@
 //! - Malformed YAML syntax
 //! - Unclosed frontmatter blocks
 //! - Multiple global frontmatter blocks
-//! - A card fence with a missing, invalid, or extra info-string kind token
+//! - Both QUILL and CARD specified in the same block
 //! - Reserved field name usage
 //! - Name collisions
 //!
@@ -114,18 +103,19 @@ pub struct ParseOutput {
     pub warnings: Vec<Diagnostic>,
 }
 
-/// Discriminator for a [`Card`]'s metadata fence.
+/// Discriminator for a [`Card`].
 ///
-/// The first fence in a Quillmark document carries `QUILL: <ref>` and is the
-/// document-level *main* card; every subsequent fence is a `` ```card <kind> ``
-/// code block and is a composable card. `Sentinel` captures that distinction
-/// in the typed model so every fence is one uniform shape.
+/// The document frontmatter carries `QUILL: <ref>` and is the document-level
+/// *main* card; every composable card carries a kind — written as the
+/// ```` ```card <kind> ```` info string (canonical) or a legacy `CARD: <kind>`
+/// sentinel. `Sentinel` captures that distinction in the typed model so every
+/// card is one uniform shape.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Sentinel {
-    /// `QUILL: <ref>` — the document entry card.
+    /// The document entry card, carrying the `QUILL` reference.
     Main(QuillReference),
-    /// `` ```card <tag> `` — a composable card with the given kind tag.
-    Inline(String),
+    /// A composable card with the given kind tag.
+    Card(String),
 }
 
 impl Sentinel {
@@ -134,7 +124,7 @@ impl Sentinel {
     pub fn as_str(&self) -> String {
         match self {
             Sentinel::Main(r) => r.to_string(),
-            Sentinel::Inline(t) => t.clone(),
+            Sentinel::Card(t) => t.clone(),
         }
     }
 
@@ -150,7 +140,7 @@ impl Sentinel {
 /// composable card fences. `sentinel` distinguishes the two.
 ///
 /// Every card has:
-/// - `sentinel` — the `QUILL` reference (for main) or `KIND` tag (for composable).
+/// - `sentinel` — the `QUILL` reference (for main) or `CARD` tag (for composable).
 /// - `frontmatter` — ordered items parsed from the YAML fence body (with the
 ///   sentinel key already removed).
 /// - `body` — the Markdown text that follows the closing fence, up to the next
@@ -188,8 +178,8 @@ impl Card {
         &self.sentinel
     }
 
-    /// The card tag — the kind for composable cards, or the string form of
-    /// the quill reference for main cards.
+    /// The card tag — the card kind for composable cards, or the string
+    /// form of the quill reference for main cards.
     pub fn tag(&self) -> String {
         self.sentinel.as_str()
     }
@@ -237,7 +227,7 @@ impl Card {
 /// ## Structure
 ///
 /// - `main` — the entry `Card` (sentinel is `Sentinel::Main(reference)`).
-/// - `cards` — ordered composable cards (each with `Sentinel::Inline(tag)`).
+/// - `cards` — ordered composable cards (each with `Sentinel::Card(tag)`).
 ///
 /// Backend plates consume the flat JSON wire shape produced by
 /// [`Document::to_plate_json`]. That method is the **only** place in core
@@ -264,12 +254,12 @@ impl Document {
     /// Create a `Document` from a pre-built main `Card` and composable cards.
     ///
     /// The caller must guarantee that `main.sentinel` is `Sentinel::Main(_)`
-    /// and every card in `cards` has `sentinel` = `Sentinel::Inline(_)`.
+    /// and every card in `cards` has `sentinel` = `Sentinel::Card(_)`.
     pub fn from_main_and_cards(main: Card, cards: Vec<Card>, warnings: Vec<Diagnostic>) -> Self {
         debug_assert!(main.sentinel.is_main(), "main card must be Sentinel::Main");
         debug_assert!(
             cards.iter().all(|c| !c.sentinel.is_main()),
-            "composable cards must be Sentinel::Inline"
+            "composable cards must be Sentinel::Card"
         );
         Self {
             main,
@@ -306,7 +296,7 @@ impl Document {
     pub fn quill_reference(&self) -> &QuillReference {
         match &self.main.sentinel {
             Sentinel::Main(r) => r,
-            Sentinel::Inline(_) => {
+            Sentinel::Card(_) => {
                 unreachable!("main card must carry Sentinel::Main by construction")
             }
         }
@@ -348,7 +338,7 @@ impl Document {
     ///   ...
     ///   "BODY": "<global-body>",
     ///   "CARDS": [
-    ///     { "KIND": "<tag>", "<field>": <value>, ..., "BODY": "<card-body>" },
+    ///     { "CARD": "<tag>", "<field>": <value>, ..., "BODY": "<card-body>" },
     ///     ...
     ///   ]
     /// }
@@ -383,7 +373,7 @@ impl Document {
             .iter()
             .map(|card| {
                 let mut card_map = serde_json::Map::new();
-                card_map.insert("KIND".to_string(), serde_json::Value::String(card.tag()));
+                card_map.insert("CARD".to_string(), serde_json::Value::String(card.tag()));
                 for (key, value) in card.frontmatter.iter() {
                     card_map.insert(key.clone(), value.as_json().clone());
                 }

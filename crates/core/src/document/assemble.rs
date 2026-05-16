@@ -13,7 +13,7 @@ use crate::Diagnostic;
 use super::fences::find_metadata_blocks;
 use super::frontmatter::{Frontmatter, FrontmatterItem};
 use super::prescan::{prescan_fence_content, NestedComment, PreItem};
-use super::sentinel::{extract_sentinels, is_valid_tag_name};
+use super::sentinel::extract_sentinels;
 use super::{Card, Document, Sentinel};
 
 /// Strip exactly one F2 structural separator from the tail of a body slice.
@@ -23,7 +23,7 @@ use super::{Card, Document, Sentinel};
 /// slice ends with that blank line's terminator — exactly one `\n` or
 /// `\r\n`. This helper strips that single line ending so stored bodies
 /// contain only authored content. The emitter re-adds the separator on
-/// output via `ensure_f2_before_fence`.
+/// output via `ensure_blank_line_before_fence`.
 ///
 /// Stripping more than one line ending (as the WASM binding's former
 /// `trim_body` did) would silently drop content-meaningful trailing
@@ -39,78 +39,14 @@ fn strip_f2_separator(body: &str) -> &str {
     }
 }
 
-/// Parse a legacy `---/CARD: …/---` card body.
-///
-/// Used by the legacy `---/CARD: …/---` parser path (MARKDOWN.md §4.4). The previous
-/// card syntax carried the kind as a `CARD:` first body key; the canonical
-/// syntax carries it in the fence info string (`MARKDOWN.md §3.2`). To produce
-/// the same `Card` from a legacy block, the kind must be lifted *out* of the
-/// body — leaving `CARD:` (or `KIND:`) in place would now be a reserved-key
-/// hard error.
-///
-/// Returns `(kind, body_without_card_line)`: the trimmed value of the first
-/// `CARD:` line, and the body content with that line removed. Returns `None`
-/// if the first non-blank, non-comment line is not a `CARD:` key — the caller
-/// guarantees this never happens, but we stay defensive rather than corrupt
-/// the slice.
-fn extract_legacy_card(content: &str) -> Option<(String, String)> {
-    let mut kind: Option<String> = None;
-    let mut out = String::with_capacity(content.len());
-    for line in content.split_inclusive('\n') {
-        if kind.is_some() {
-            out.push_str(line);
-            continue;
-        }
-        let leading = line.len() - line.trim_start_matches([' ', '\t']).len();
-        let body = line[leading..].trim_end_matches(['\n', '\r']);
-        if body.trim().is_empty() || body.starts_with('#') {
-            out.push_str(line);
-            continue;
-        }
-        let rest = body.strip_prefix("CARD:")?;
-        // Drop a trailing inline `# …` comment, then trim surrounding space.
-        let value = match rest.find(" #") {
-            Some(idx) => &rest[..idx],
-            None => rest,
-        };
-        kind = Some(value.trim().to_string());
-        // The `CARD:` line itself is dropped — not pushed to `out`.
-    }
-    kind.map(|k| (k, out))
-}
-
-/// Which sentinel a metadata block carries. `Main` is the top frontmatter's
-/// `QUILL:` reference (raw string, parsed to `QuillReference` later); `Card`
-/// is a card fence's kind, from its `card <kind>` info string.
-#[derive(Debug)]
-pub(super) enum BlockSentinel {
-    Main(String),
-    Inline(String),
-}
-
-/// How `find_metadata_blocks` classified a fence before handing it to
-/// `build_block`. Replaces the former `card: Option<String>` +
-/// `legacy_card: bool` pair, which together encoded these three cases but
-/// also admitted the impossible `Some(kind)` + legacy combination.
-#[derive(Debug)]
-pub(super) enum BlockSource {
-    /// Document frontmatter (`---/---` with a `QUILL:` first key).
-    Frontmatter,
-    /// Canonical card fence; the kind comes from the `card <kind>` info string.
-    Inline(String),
-    /// Legacy `---/CARD: …/---` card — the kind is lifted from the `CARD:`
-    /// first body key (`MARKDOWN.md §4.4`).
-    LegacyCard,
-}
-
-/// An intermediate representation of one parsed metadata fence (frontmatter
-/// or card).
+/// An intermediate representation of one `---…---` metadata block.
 #[derive(Debug)]
 pub(super) struct MetadataBlock {
-    pub(super) start: usize,                          // Position of opening fence
-    pub(super) end: usize,                            // Position after closing fence
-    pub(super) yaml_value: Option<serde_json::Value>, // Parsed YAML (None when fence body is empty)
-    pub(super) sentinel: BlockSentinel,
+    pub(super) start: usize,                          // Position of opening "---"
+    pub(super) end: usize,                            // Position after closing "---\n"
+    pub(super) yaml_value: Option<serde_json::Value>, // Parsed YAML as JSON (None if empty or parse failed)
+    pub(super) tag: Option<String>,                   // Field name from CARD key
+    pub(super) quill_ref: Option<String>,             // Quill reference from QUILL key
     /// Pre-scan items (comments + fill-tagged field keys) in source order.
     pub(super) pre_items: Vec<PreItem>,
     /// Pre-scan nested comments (with structural paths).
@@ -134,51 +70,29 @@ fn yaml_parse_options() -> serde_saphyr::Options {
     }
 }
 
-/// Process YAML content for a recognized metadata fence and build a
-/// `MetadataBlock`. `content_start` is the byte position immediately after
-/// the opening fence line; `content_end` is the byte position at the start
-/// of the closing fence line. Returns errors per spec §9.
+/// Process the YAML content of a recognized metadata block and build a
+/// `MetadataBlock`. Returns errors per spec §9.
 ///
-/// `source` is how `find_metadata_blocks` classified the fence:
-/// `Frontmatter` for the document frontmatter, `Inline(kind)` for a canonical
-/// card fence (kind from the `card <kind>` info string), or `LegacyCard` for
-/// a legacy `---/CARD: …/---` card (`MARKDOWN.md §4.4`). For `LegacyCard` the
-/// kind is lifted out of the `CARD:` first body key and that line is dropped
-/// before YAML parsing, so the resulting `Card` matches the canonical
-/// ` ```card <kind> ` form; the caller verifies the first content key is
-/// `CARD:` and emits the deprecation warning.
+/// `block_start` / `block_end` bound the whole block (used to slice card
+/// bodies). `yaml_start` / `yaml_end` bound just the YAML content — between the
+/// `---` markers for a legacy fence, or between the ```` ```card ```` opener and
+/// its closer for a fenced card.
+///
+/// `card_kind` discriminates the two syntaxes:
+/// - `None` — a legacy `---` fence; the `QUILL` / `CARD` sentinel is extracted
+///   from the first YAML key.
+/// - `Some(kind)` — a ```` ```card <kind> ```` fence; the kind comes from the
+///   info string and the YAML body carries no sentinel.
 pub(super) fn build_block(
     markdown: &str,
-    abs_pos: usize,
-    content_start: usize,
-    content_end: usize,
+    block_start: usize,
+    yaml_start: usize,
+    yaml_end: usize,
     block_end: usize,
     block_index: usize,
-    source: BlockSource,
+    card_kind: Option<&str>,
 ) -> Result<MetadataBlock, ParseError> {
-    let raw_slice = &markdown[content_start..content_end];
-    let legacy_owned: String;
-    let (raw_content, card): (&str, Option<String>) = match source {
-        BlockSource::LegacyCard => {
-            let line = markdown[..abs_pos].lines().count() + 1;
-            let (kind, stripped) = extract_legacy_card(raw_slice).ok_or_else(|| {
-                ParseError::InvalidStructure(format!(
-                    "Legacy card at line {} is missing its `CARD:` first body key.",
-                    line
-                ))
-            })?;
-            if !is_valid_tag_name(&kind) {
-                return Err(ParseError::InvalidStructure(format!(
-                    "Legacy card at line {} has an invalid `CARD:` value `{}` — the kind must match pattern [a-z_][a-z0-9_]*.",
-                    line, kind
-                )));
-            }
-            legacy_owned = stripped;
-            (legacy_owned.as_str(), Some(kind))
-        }
-        BlockSource::Inline(kind) => (raw_slice, Some(kind)),
-        BlockSource::Frontmatter => (raw_slice, None),
-    };
+    let raw_content = &markdown[yaml_start..yaml_end];
 
     // Check YAML size limit (spec §8)
     if raw_content.len() > crate::error::MAX_YAML_SIZE {
@@ -197,55 +111,59 @@ pub(super) fn build_block(
     }
 
     let content = pre.cleaned_yaml.trim().to_string();
-    let is_frontmatter = card.is_none();
-    let (quill_ref, yaml_value) = if content.is_empty() {
-        (None, None)
+    let (tag, quill_ref, yaml_value) = if content.is_empty() {
+        (card_kind.map(str::to_string), None, None)
     } else {
-        match serde_saphyr::from_str_with_options::<serde_json::Value>(
+        let parsed = match serde_saphyr::from_str_with_options::<serde_json::Value>(
             &content,
             yaml_parse_options(),
         ) {
-            Ok(parsed) => extract_sentinels(parsed, is_frontmatter)?,
+            Ok(parsed) => parsed,
             Err(e) => {
-                let line = markdown[..abs_pos].lines().count() + 1;
+                let line = markdown[..block_start].lines().count() + 1;
                 return Err(ParseError::YamlErrorWithLocation {
                     message: e.to_string(),
                     line,
                     block_index,
                 });
             }
+        };
+        match card_kind {
+            // `card`-fenced block: kind from the info string, body carries no
+            // sentinel — only reject reserved keys.
+            Some(kind) => {
+                let yaml = super::sentinel::validate_card_fence_yaml(parsed)?;
+                (Some(kind.to_string()), None, yaml)
+            }
+            // Legacy `---` fence: extract the QUILL / CARD sentinel.
+            None => extract_sentinels(parsed, markdown, block_start, block_index)?,
         }
     };
 
-    // `find_metadata_blocks` classifies every block lexically before calling
-    // build_block — frontmatter carries `card = None` and a `QUILL:`
-    // first key; a card carries `card = Some(kind)` from its info string.
-    let sentinel = match (card, quill_ref) {
-        (Some(k), _) => BlockSentinel::Inline(k),
-        (None, Some(r)) => BlockSentinel::Main(r),
-        (None, None) => {
-            unreachable!("find_metadata_blocks classifies every block before calling build_block")
-        }
-    };
-
-    // Per-fence field-count check (spec §8, §6.1 of GAP analysis). Frontmatter
-    // adds +1 for the stripped `QUILL` sentinel so the cap matches what the
-    // user wrote; a card's kind is not a body field, so it adds nothing.
+    // Per-fence field-count check (spec §8, §6.1 of GAP analysis)
     if let Some(serde_json::Value::Object(ref map)) = yaml_value {
-        let size = map.len() + usize::from(is_frontmatter);
-        if size > crate::error::MAX_FIELD_COUNT {
+        // Add +1 for a stripped legacy sentinel (`QUILL` / `CARD`) so the cap
+        // matches what the user wrote. A `card` fence carries its kind in the
+        // info string, so nothing was stripped from its field set.
+        let sentinel_extra = if card_kind.is_none() && (quill_ref.is_some() || tag.is_some()) {
+            1
+        } else {
+            0
+        };
+        if map.len() + sentinel_extra > crate::error::MAX_FIELD_COUNT {
             return Err(ParseError::InputTooLarge {
-                size,
+                size: map.len() + sentinel_extra,
                 max: crate::error::MAX_FIELD_COUNT,
             });
         }
     }
 
     Ok(MetadataBlock {
-        start: abs_pos,
+        start: block_start,
         end: block_end,
         yaml_value,
-        sentinel,
+        tag,
+        quill_ref,
         pre_items: pre.items,
         pre_nested_comments: pre.nested_comments,
         pre_warnings: pre.warnings,
@@ -304,30 +222,33 @@ pub(super) fn decompose_with_warnings(
         });
     }
 
-    // Find all metadata blocks. `find_metadata_blocks` guarantees that
-    // block 0 (if present) carries `BlockSentinel::Main` and every block
-    // after it carries `BlockSentinel::Inline`.
+    // Find all metadata blocks. F1/F2 already guarantee that block 0 carries
+    // QUILL and that every subsequent block carries CARD.
     let (blocks, warnings, first_fence_issue) = find_metadata_blocks(markdown)?;
 
-    let frontmatter_block = match blocks.first() {
-        Some(b) if matches!(b.sentinel, BlockSentinel::Main(_)) => b,
-        _ => {
-            return Err(crate::error::ParseError::MissingQuillField(
-                missing_quill_message(first_fence_issue),
-            ))
-        }
-    };
-    let BlockSentinel::Main(ref quill_tag) = frontmatter_block.sentinel else {
-        unreachable!("matched above")
-    };
+    if blocks.is_empty() {
+        return Err(crate::error::ParseError::MissingQuillField(
+            missing_quill_message(first_fence_issue),
+        ));
+    }
 
-    // Build frontmatter item list (YAML content with QUILL stripped). The
-    // pre-scan defined source order; serde_saphyr produced typed values.
+    // Block 0 is always the QUILL frontmatter (F1 guarantee).
+    let frontmatter_block = &blocks[0];
+    let quill_tag = frontmatter_block.quill_ref.clone().ok_or_else(|| {
+        ParseError::MissingQuillField(
+            "Missing required QUILL field. Add `QUILL: <name>` to the frontmatter.".to_string(),
+        )
+    })?;
+
+    // Build frontmatter item list (YAML content with QUILL stripped).
+    //
+    // The pre-scan captured top-level comments and `!fill` markers in source
+    // order; serde_saphyr produced the parsed values. We iterate the pre-scan
+    // order and pull each field's value from the parsed map.
     let frontmatter = build_frontmatter_from_pre_and_parsed(
         &frontmatter_block.pre_items,
         &frontmatter_block.pre_nested_comments,
         &frontmatter_block.yaml_value,
-        true,
     )?;
     // Surface pre-scan warnings (nested-comment drops, unsupported tags).
     let mut warnings = warnings;
@@ -336,11 +257,15 @@ pub(super) fn decompose_with_warnings(
     }
 
     // Global body: between end of frontmatter (block 0) and start of the
-    // first card (or EOF). When a fence follows, the raw slice ends with
-    // the F2 blank-line terminator — strip it so stored bodies hold only
-    // authored content. The emitter re-derives the separator on output.
-    let body_start = frontmatter_block.end;
-    let (body_end, body_is_followed_by_fence) = match blocks.get(1) {
+    // first CARD block (or EOF).
+    //
+    // When a fence follows, the body slice ends with the F2 blank-line
+    // terminator — strip it so stored bodies contain only authored content.
+    // The emitter re-derives the separator on output (see `emit.rs`'s
+    // `ensure_blank_line_before_fence`).
+    let body_start = blocks[0].end;
+    let first_card_block = blocks.iter().skip(1).find(|b| b.tag.is_some());
+    let (body_end, body_is_followed_by_fence) = match first_card_block {
         Some(b) => (b.start, true),
         None => (markdown.len(), false),
     };
@@ -351,45 +276,51 @@ pub(super) fn decompose_with_warnings(
         global_body_raw.to_string()
     };
 
-    // Parse card blocks into typed Cards.
+    // Parse tagged blocks (CARD blocks) into typed Cards.
     let mut cards: Vec<Card> = Vec::new();
-    for (idx, block) in blocks.iter().enumerate().skip(1) {
-        let BlockSentinel::Inline(ref tag_name) = block.sentinel else {
-            unreachable!("blocks[1..] are cards by construction")
-        };
-        let card_frontmatter = build_frontmatter_from_pre_and_parsed(
-            &block.pre_items,
-            &block.pre_nested_comments,
-            &block.yaml_value,
-            false,
-        )
-        .map_err(|e| match e {
-            ParseError::InvalidStructure(msg) => ParseError::InvalidStructure(format!(
-                "Invalid YAML in card block '{}': {}",
-                tag_name, msg
-            )),
-            other => other,
-        })?;
-        for w in &block.pre_warnings {
-            warnings.push(w.clone());
+    for (idx, block) in blocks.iter().enumerate() {
+        if let Some(ref tag_name) = block.tag {
+            // Build the card's typed frontmatter from pre-scan + parsed YAML.
+            let card_frontmatter = build_frontmatter_from_pre_and_parsed(
+                &block.pre_items,
+                &block.pre_nested_comments,
+                &block.yaml_value,
+            )
+            .map_err(|e| match e {
+                ParseError::InvalidStructure(msg) => ParseError::InvalidStructure(format!(
+                    "Invalid YAML in card block '{}': {}",
+                    tag_name, msg
+                )),
+                other => other,
+            })?;
+            for w in &block.pre_warnings {
+                warnings.push(w.clone());
+            }
+
+            // Card body: between this block's end and the next block's start (or EOF).
+            let card_body_start = block.end;
+            let has_next_block = idx + 1 < blocks.len();
+            let card_body_end = if has_next_block {
+                blocks[idx + 1].start
+            } else {
+                markdown.len()
+            };
+            let card_body_raw = &markdown[card_body_start..card_body_end];
+            let card_body = if has_next_block {
+                strip_f2_separator(card_body_raw).to_string()
+            } else {
+                card_body_raw.to_string()
+            };
+
+            cards.push(Card::new_with_sentinel(
+                Sentinel::Card(tag_name.clone()),
+                card_frontmatter,
+                card_body,
+            ));
         }
-
-        // Card body: from this block's end to the next block's start (or EOF).
-        // If another fence follows, the body slice ends with the F2 blank-line
-        // terminator — strip it so stored bodies hold only authored content.
-        let card_body = match blocks.get(idx + 1) {
-            Some(next) => strip_f2_separator(&markdown[block.end..next.start]).to_string(),
-            None => markdown[block.end..].to_string(),
-        };
-
-        cards.push(Card::new_with_sentinel(
-            Sentinel::Inline(tag_name.clone()),
-            card_frontmatter,
-            card_body,
-        ));
     }
 
-    let quill_ref = QuillReference::from_str(quill_tag).map_err(|e| {
+    let quill_ref = QuillReference::from_str(&quill_tag).map_err(|e| {
         ParseError::InvalidStructure(format!("Invalid QUILL tag '{}': {}", quill_tag, e))
     })?;
 
@@ -400,7 +331,7 @@ pub(super) fn decompose_with_warnings(
 }
 
 /// Build a [`Frontmatter`] from the pre-scan items and the parsed YAML
-/// mapping.
+/// mapping (with sentinel keys already stripped).
 ///
 /// The pre-scan defined source order for fields and comments; the parsed
 /// YAML defined the typed value for each key. We walk pre-scan order,
@@ -408,16 +339,10 @@ pub(super) fn decompose_with_warnings(
 /// didn't catch (e.g. it used a YAML key form the pre-scan doesn't
 /// recognise — exotic identifier, flow-mapping syntax, etc.) is appended at
 /// the end of the item list in parsed-map order so we never drop values.
-///
-/// `is_frontmatter` selects which sentinel key `extract_sentinels` stripped
-/// from `yaml_value`: `QUILL` for the document frontmatter, nothing for a
-/// card (its kind lives in the info string). The stripped key is skipped
-/// from the item list; in a card, `QUILL` is an ordinary field and is kept.
 fn build_frontmatter_from_pre_and_parsed(
     pre_items: &[PreItem],
     pre_nested_comments: &[NestedComment],
     yaml_value: &Option<serde_json::Value>,
-    is_frontmatter: bool,
 ) -> Result<Frontmatter, ParseError> {
     let mapping = match yaml_value {
         Some(serde_json::Value::Object(map)) => map.clone(),
@@ -431,7 +356,7 @@ fn build_frontmatter_from_pre_and_parsed(
 
     let mut items: Vec<FrontmatterItem> = Vec::new();
     let mut consumed: std::collections::HashSet<String> = std::collections::HashSet::new();
-    // When the QUILL sentinel field is skipped, its trailing inline comment
+    // When a QUILL/CARD sentinel field is skipped, its trailing inline comment
     // loses its host field. The emitter can only round-trip an inline comment
     // on the sentinel line when it sits at items[0] (sentinel-preview path).
     // If other items already precede it, it will never reach items[0] and will
@@ -450,11 +375,9 @@ fn build_frontmatter_from_pre_and_parsed(
                 });
             }
             PreItem::Field { key, fill } => {
-                // In frontmatter the `QUILL` sentinel key is stripped from the
-                // parsed map by `extract_sentinels`; skip it in the item list.
-                // In a card, `QUILL` is an ordinary field (the kind lives in
-                // the info string) and must be kept.
-                if is_frontmatter && key == "QUILL" {
+                // QUILL / CARD sentinel keys are stripped from the parsed
+                // map by `extract_sentinels`; skip them in the item list.
+                if key == "QUILL" || key == "CARD" {
                     after_stripped_sentinel = true;
                     continue;
                 }

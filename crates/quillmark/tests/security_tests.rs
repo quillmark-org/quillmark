@@ -132,14 +132,14 @@ fn test_reserved_field_injection() {
     }
 }
 
-/// Test that card kind-token validation prevents invalid names
+/// Test that CARD directive validation prevents invalid names
 #[test]
 fn test_card_name_validation() {
     let invalid_names = vec![
-        "---\nQUILL: test_quill\n---\n\n```card Invalid-Name\n```\n\n",
-        "---\nQUILL: test_quill\n---\n\n```card 123start\n```\n\n",
-        "---\nQUILL: test_quill\n---\n\n```card UPPERCASE\n```\n\n",
-        "---\nQUILL: test_quill\n---\n\n```card spaces here\n```\n\n",
+        "---\nQUILL: test_quill\n---\n\n---\nCARD: Invalid-Name\n---\n\n",
+        "---\nQUILL: test_quill\n---\n\n---\nCARD: 123start\n---\n\n",
+        "---\nQUILL: test_quill\n---\n\n---\nCARD: UPPERCASE\n---\n\n",
+        "---\nQUILL: test_quill\n---\n\n---\nCARD: spaces here\n---\n\n",
     ];
 
     for markdown in invalid_names {
@@ -168,17 +168,17 @@ fn test_yaml_error_location() {
     );
 }
 
-/// Test that `KIND` as an input body key is rejected as a reserved key
+/// Test both QUILL and CARD in same block is rejected
 #[test]
 fn test_quill_card_conflict() {
-    let markdown = "---\nQUILL: template\nKIND: item\n---\n\n";
+    let markdown = "---\nQUILL: template\nCARD: item\n---\n\n";
     let result = Document::from_markdown(markdown);
 
-    assert!(result.is_err(), "Should reject KIND as an input body key");
+    assert!(result.is_err(), "Should reject QUILL + CARD in same block");
     let err_msg = result.unwrap_err().to_string();
     assert!(
-        err_msg.contains("Reserved field name") && err_msg.contains("KIND"),
-        "Error should flag KIND as a reserved key: {}",
+        err_msg.contains("QUILL") && err_msg.contains("CARD"),
+        "Error should mention both keys: {}",
         err_msg
     );
 }
@@ -187,7 +187,7 @@ fn test_quill_card_conflict() {
 #[test]
 fn test_strict_fence_detection() {
     let markdown =
-        "---\nQUILL: test_quill\ntitle: Test\n---\n\n````\n```card test\nvalue: 1\n```\n````";
+        "---\nQUILL: test_quill\ntitle: Test\n---\n\n````\n---\nCARD: test\nvalue: 1\n---\n````";
     let result = Document::from_markdown(markdown);
 
     assert!(result.is_ok(), "Should parse successfully");
@@ -203,7 +203,7 @@ fn test_strict_fence_detection() {
 #[test]
 fn test_tilde_fence_hides_metadata() {
     let markdown =
-        "---\nQUILL: test_quill\ntitle: Test\n---\n\n~~~\n```card test\nvalue: 1\n```\n~~~";
+        "---\nQUILL: test_quill\ntitle: Test\n---\n\n~~~\n---\nCARD: test\nvalue: 1\n---\n~~~";
     let result = Document::from_markdown(markdown);
 
     assert!(result.is_ok(), "Should parse successfully");

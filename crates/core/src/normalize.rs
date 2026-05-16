@@ -282,7 +282,7 @@ pub fn normalize_markdown(markdown: &str) -> String {
 ///
 /// YAML parsing already normalizes line endings inside scalar values, but the
 /// Markdown body is passed through verbatim. Authoring on Windows or pasting
-/// from some clipboard sources cards `\r` bytes in the body which some
+/// from some clipboard sources leaves `\r` bytes in the body which some
 /// backends render as visible garbage. This canonicalization is performed
 /// only on the Markdown body (see §7); YAML scalars are unaffected.
 fn normalize_line_endings(s: &str) -> String {
@@ -422,7 +422,7 @@ pub fn normalize_document(
                 .collect();
             let normalized_card_body = normalize_markdown(card.body());
             Card::new_with_sentinel(
-                Sentinel::Inline(card.tag()),
+                Sentinel::Card(card.tag()),
                 crate::document::Frontmatter::from_index_map(normalized_card_fields),
                 normalized_card_body,
             )

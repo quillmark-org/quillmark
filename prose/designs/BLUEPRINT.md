@@ -21,18 +21,22 @@ QUILL: <name>@<version>  # sentinel; required, verbatim
 # <field description>
 # e.g. <example value>
 field: value  # <type>; <role>
-
 ---
 
 Write main body here.
 
 ```card <card_kind>
+# composable (0..N)
 # <card description>
 ...fields...
 ```
 
 Write <card_kind> body here.
 ````
+
+The frontmatter is a `---` fence; each composable card is a fenced code
+block with the info string `card <kind>` (the canonical card syntax — see
+[MARKDOWN.md](MARKDOWN.md) §3.2).
 
 When `body.example` is set, its text replaces the body marker entirely.
 When `body.enabled` is false the marker is omitted entirely.
@@ -81,12 +85,15 @@ Form: **`# <type>[<format>]; <role>[, <extra>...]`**
   - `enum<a | b | c>`
   - omitted for `string`, `integer`, `number`, `boolean`, `object`,
     `markdown` (nothing meaningful to refine).
-- **Role slot** (mandatory, after `;`): `required` or `optional`. (A
-  composable card is signalled by the `` ```card <kind> `` fence itself,
-  not by a role marker on a field line.)
+- **Role slot** (mandatory, after `;`): `required` or `optional`.
 - **Extras** (optional, comma-separated, after the role): additional
   qualifiers. Currently used for `verbatim` on the QUILL sentinel,
   signaling that the rendered value is fixed and must not be modified.
+
+A composable card has no inline-annotation slot — its kind is carried in
+the ```` ```card <kind> ```` info string. Its `composable (0..N)` role is
+emitted as an own-line `# composable (0..N)` comment directly under the
+opener, ahead of the card description.
 
 Examples:
 
@@ -102,7 +109,7 @@ Examples:
 | `published: ""  # datetime<ISO 8601>; required` | required datetime in ISO 8601 |
 | `level: low  # enum<low \| medium \| high>; optional` | optional enum, default is first value |
 | `QUILL: cmu_letter@0.1.0  # sentinel; required, verbatim` | quill binding, do not modify |
-| ` ```card skill ` | composable card — repeat the entire ` ```card skill ... ``` ` block per instance |
+| ```` ```card skill ```` followed by `# composable (0..N)` | repeat the entire ```` ```card … ``` ```` block per instance |
 
 ## Placeholder value precedence
 
@@ -238,16 +245,17 @@ within the same `ui.group` still cluster together via `ui.order`.
 ## Body markers
 
 - `Write main body here.` after the main fence
-- `Write <card_kind> body here.` after each inline card fence
+- `Write <card_name> body here.` after each card fence
 - When `body.example` is set, its text replaces the marker verbatim.
 
 `body.enabled: false` suppresses the marker entirely for body-less cards
 (e.g., a `skills` card whose data is purely structured).
 
-A `body.example` whose text contains a line that would parse as a
-metadata fence (`---`, with up to three leading spaces) is rejected at
-`Quill.yaml` parse time (`quill::body_example_contains_fence`) to
-prevent corrupting the blueprint's document structure.
+A `body.example` whose text contains a line that would parse as a card
+fence — a ```` ```card ```` opener or a legacy `---` metadata fence, with
+up to three leading spaces — is rejected at `Quill.yaml` parse time
+(`quill::body_example_contains_fence`) to prevent corrupting the
+blueprint's document structure.
 
 ## Worked example
 

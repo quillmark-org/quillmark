@@ -19,7 +19,7 @@
 
 // Present each sub-document programatically
 #for card in data.CARDS {
-  if card.KIND == "quotes" [
+  if card.CARD == "quotes" [
     *#card.author*: _#card.BODY _
   ]
 }

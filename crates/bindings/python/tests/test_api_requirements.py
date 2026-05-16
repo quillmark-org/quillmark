@@ -36,7 +36,7 @@ def test_quill_properties(taro_quill_dir):
     example = quill.example
     assert example is not None
 
-    supported_formats = quill.supported_formats
+    supported_formats = quill.supported_formats()
     assert isinstance(supported_formats, list)
     assert OutputFormat.PDF in supported_formats
 
@@ -53,7 +53,7 @@ def test_full_workflow():
 
     assert "taro" in quill.quill_ref
     assert quill.backend == "typst"
-    assert OutputFormat.PDF in quill.supported_formats
+    assert OutputFormat.PDF in quill.supported_formats()
 
     result = quill.render(parsed, OutputFormat.PDF)
     assert len(result.artifacts) > 0
@@ -104,7 +104,7 @@ def test_set_field_updates():
 
 def test_set_field_reserved_name_matrix():
     """set_field raises EditError for all four reserved names."""
-    for name in ("BODY", "CARDS", "QUILL", "KIND"):
+    for name in ("BODY", "CARDS", "QUILL", "CARD"):
         doc = Document.from_markdown(SIMPLE_MD)
         with pytest.raises(EditError, match="ReservedName"):
             doc.set_field(name, "value")
@@ -112,7 +112,7 @@ def test_set_field_reserved_name_matrix():
 
 def test_card_set_field_reserved_name_matrix():
     """Card set_field raises EditError for all four reserved names."""
-    for name in ("BODY", "CARDS", "QUILL", "KIND"):
+    for name in ("BODY", "CARDS", "QUILL", "CARD"):
         doc = Document.from_markdown(MD_WITH_CARDS)
         with pytest.raises(EditError, match="ReservedName"):
             doc.update_card_field(0, name, "value")
@@ -139,11 +139,10 @@ def test_remove_field_absent():
     assert doc.remove_field("nonexistent") is None
 
 
-def test_remove_field_reserved_raises():
-    """remove_field raises EditError for reserved names."""
+def test_remove_field_reserved_returns_none():
+    """remove_field returns None for reserved names (they can't be in frontmatter)."""
     doc = Document.from_markdown(SIMPLE_MD)
-    with pytest.raises(EditError, match="ReservedName"):
-        doc.remove_field("BODY")
+    assert doc.remove_field("BODY") is None
 
 
 def test_set_quill_ref():
@@ -293,7 +292,7 @@ def test_invariants_after_mutation_sequence():
     doc.remove_field("extra_author")
 
     # Assertions: no reserved key in frontmatter
-    RESERVED = {"BODY", "CARDS", "QUILL", "KIND"}
+    RESERVED = {"BODY", "CARDS", "QUILL", "CARD"}
     for key in doc.frontmatter:
         assert key not in RESERVED, f"reserved key '{key}' found in frontmatter"
 
@@ -329,9 +328,7 @@ def test_to_markdown_general_round_trip():
     # Re-parse and assert structure survives
     doc2 = Document.from_markdown(emitted)
     assert doc2.frontmatter["title"] == "New Title"
-    # The body is followed by a card fence, so emit re-adds the F2 separator;
-    # one line terminator survives the round-trip.
-    assert doc2.body == "Updated body\n"
+    assert doc2.body == "Updated body"
     assert len(doc2.cards) == original_card_count + 1
     assert doc2.cards[0]["tag"] == "note"
     assert doc2.cards[0]["fields"]["author"] == "Alice"

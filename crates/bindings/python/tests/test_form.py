@@ -31,14 +31,15 @@ QUILL_YAML_CONTENT = """quill:
   backend: typst
   description: Python form smoke test
 
-cards:
-  main:
-    fields:
-      title:
-        type: string
-        default: Untitled
-      count:
-        type: integer
+main:
+  fields:
+    title:
+      type: string
+      default: Untitled
+    count:
+      type: integer
+
+card_types:
   note:
     fields:
       body:
@@ -149,8 +150,8 @@ def test_form_unknown_card_diagnostic(tmp_path):
 
     assert form["cards"] == [], "unknown-tag card must be excluded"
     diag_codes = [d.get("code") for d in form["diagnostics"]]
-    assert "form::unknown_card" in diag_codes, (
-        f"expected form::unknown_card diagnostic; got: {diag_codes}"
+    assert "form::unknown_card_tag" in diag_codes, (
+        f"expected form::unknown_card_tag diagnostic; got: {diag_codes}"
     )
 
 
@@ -176,7 +177,7 @@ def test_blank_main_returns_card_with_no_document_values(tmp_path):
     assert values["count"]["default"] is None
 
 
-def test_blank_card_known_kind(tmp_path):
+def test_blank_card_known_type(tmp_path):
     """blank_card returns a dict for a known card type."""
     quill = make_quill(tmp_path)
 
@@ -189,7 +190,7 @@ def test_blank_card_known_kind(tmp_path):
     assert values["tag"]["source"] == "missing"
 
 
-def test_blank_card_unknown_kind(tmp_path):
+def test_blank_card_unknown_type(tmp_path):
     """blank_card returns None for an unknown card type."""
     quill = make_quill(tmp_path)
 

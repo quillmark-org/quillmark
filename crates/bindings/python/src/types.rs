@@ -183,7 +183,7 @@ impl PyQuill {
     /// to the document to obtain an updated view.
     ///
     /// Cards with unknown tags are excluded from `cards`; each produces a
-    /// diagnostic with code `"form::unknown_card"`.
+    /// diagnostic with code `"form::unknown_card_tag"`.
     fn form<'py>(
         &self,
         py: Python<'py>,
@@ -224,10 +224,14 @@ impl PyQuill {
 
     /// A blank form for a card of the given type — no document values supplied.
     ///
-    /// Returns `None` if `kind` is not declared in this quill's schema.
+    /// Returns `None` if `card_type` is not declared in this quill's schema.
     /// Otherwise returns a dict shaped like a single entry in `form()['cards']`.
-    fn blank_card<'py>(&self, py: Python<'py>, kind: &str) -> PyResult<Option<Bound<'py, PyDict>>> {
-        let Some(card) = self.inner.blank_card(kind) else {
+    fn blank_card<'py>(
+        &self,
+        py: Python<'py>,
+        card_type: &str,
+    ) -> PyResult<Option<Bound<'py, PyDict>>> {
+        let Some(card) = self.inner.blank_card(card_type) else {
             return Ok(None);
         };
         let json_value = serde_json::to_value(&card).map_err(|e| {
@@ -352,7 +356,7 @@ impl PyDocument {
     /// Clears any `!fill` marker on the field.
     ///
     /// Raises `quillmark.EditError` if `name` is a reserved sentinel
-    /// (`BODY`, `CARDS`, `QUILL`, `KIND`) or does not match `[a-z_][a-z0-9_]*`.
+    /// (`BODY`, `CARDS`, `QUILL`, `CARD`) or does not match `[a-z_][a-z0-9_]*`.
     ///
     /// This method never modifies `warnings`.
     fn set_field(&mut self, name: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
@@ -377,7 +381,7 @@ impl PyDocument {
     /// Remove a frontmatter field from the main card, returning the value or `None`.
     ///
     /// Raises `quillmark.EditError` if `name` is reserved (`BODY`, `CARDS`,
-    /// `QUILL`, `KIND`) or does not match `[a-z_][a-z0-9_]*`. Absence of an
+    /// `QUILL`, `CARD`) or does not match `[a-z_][a-z0-9_]*`. Absence of an
     /// otherwise-valid name returns `None`.
     ///
     /// This method never modifies `warnings`.

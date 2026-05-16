@@ -10,19 +10,20 @@ A `Quill.yaml` has these top-level sections:
 quill:        # Required — format metadata
   ...
 
-cards:        # Optional — the map of card schemas
-  main:       # the entry-point card: field schemas and optional ui/body
-    fields:
-      ...
-    ui:       # optional UI hints (e.g. title)
-    body:     # optional body-region config (e.g. enabled, description)
-  ...         # additional composable inline card kinds
+main:         # Optional — main entry-point card: field schemas and optional ui/body
+  fields:
+    ...
+  ui:         # optional UI hints (e.g. title)
+  body:       # optional body-region config (e.g. enabled, description)
+
+card_types:   # Optional — additional composable card types
+  ...
 
 typst:        # Optional — backend-specific configuration
   ...
 ```
 
-Root-level `fields:` is not supported; define the main document's field schemas under `cards.main.fields`.
+Root-level `fields:` is not supported; define the main document's field schemas under `main.fields`.
 
 `Quill.yaml` is parsed strictly. Unknown keys in the `quill:` section, unknown top-level sections, malformed `ui:` blocks, and field schemas that can't be parsed all produce errors — they are never silently dropped. Every error is collected in a single pass, so authors see all problems at once. Run `quillmark validate <quill_dir>` to surface them.
 
@@ -38,7 +39,7 @@ Every Quill.yaml must have a `quill` section with format metadata.
 |------------------|--------|----------|-------------|
 | `name`           | string | yes      | Unique identifier for the Quill |
 | `backend`        | string | yes      | Rendering backend (e.g. `typst`) |
-| `description`    | string | yes      | Human-readable description of the quill itself (non-empty). Independent of `cards.main.description`, which is the optional schema description authored under `cards.main:`. |
+| `description`    | string | yes      | Human-readable description of the quill itself (non-empty). Independent of `main.description`, which is the optional schema description authored under `main:`. |
 | `version`        | string | yes      | Semantic version (`MAJOR.MINOR` or `MAJOR.MINOR.PATCH`) |
 | `author`         | string | no       | Creator of the Quill (defaults to `"Unknown"`) |
 | `plate_file`     | string | no       | Path to the plate file |
@@ -59,24 +60,21 @@ quill:
 
 ---
 
-## `cards` Section and the `main` Card
+## `main` Section
 
-The `cards:` map is a flat namespace of card schemas. The reserved `cards.main` entry is the entry-point card; every other key is an inline card kind (see [`cards` map and inline kinds](#cards-map-and-inline-kinds)).
+The main document card holds **frontmatter field schemas** under `main.fields`. Optional `main.description` describes the schema itself (independent of `quill.description`, which describes the quill package). Optional `main.ui` sets container-level UI for that card. `quill.ui` is merged with `main.ui` when building the main card.
 
-The main card holds **frontmatter field schemas** under `cards.main.fields`. Optional `cards.main.description` describes the schema itself (independent of `quill.description`, which describes the quill package). Optional `cards.main.ui` sets container-level UI for that card. `quill.ui` is merged with `cards.main.ui` when building the main card.
-
-Field order under `cards.main.fields` determines display order in UIs — the first field gets `order: 0`, the second gets `order: 1`, and so on.
+Field order under `main.fields` determines display order in UIs — the first field gets `order: 0`, the second gets `order: 1`, and so on.
 
 Field keys must be `snake_case` (`^[a-z][a-z0-9_]*$`). Capitalized field keys are reserved.
 
 ```yaml
-cards:
-  main:
-    fields:
-      subject:          # Field name (used as the YAML frontmatter key)
-        type: string
-        required: true
-        description: Be brief and clear.
+main:
+  fields:
+    subject:          # Field name (used as the YAML frontmatter key)
+      type: string
+      required: true
+      description: Be brief and clear.
 ```
 
 ### Field Properties
@@ -113,17 +111,16 @@ Use `type: array` with `properties:` when you need a **list** of structured rows
 Restrict a string field to specific values:
 
 ```yaml
-cards:
-  main:
-    fields:
-      format:
-        type: string
-        enum:
-          - standard
-          - informal
-          - separate_page
-        default: standard
-        description: "Format style for the endorsement."
+main:
+  fields:
+    format:
+      type: string
+      enum:
+        - standard
+        - informal
+        - separate_page
+      default: standard
+      description: "Format style for the endorsement."
 ```
 
 ### Typed Arrays and Typed Dictionaries
@@ -131,33 +128,31 @@ cards:
 Add `properties:` to a `type: array` field to define a typed table — each element is a structured object. Coercion recurses into each element and converts property values to their declared types:
 
 ```yaml
-cards:
-  main:
-    fields:
-      cells:
-        type: array
-        properties:
-          category:
-            type: string
-            required: true
-          score:
-            type: number
+main:
+  fields:
+    cells:
+      type: array
+      properties:
+        category:
+          type: string
+          required: true
+        score:
+          type: number
 ```
 
 Use `type: object` with `properties:` for a single structured mapping:
 
 ```yaml
-cards:
-  main:
-    fields:
-      address:
-        type: object
-        properties:
-          street:
-            type: string
-            required: true
-          city:
-            type: string
+main:
+  fields:
+    address:
+      type: object
+      properties:
+        street:
+          type: string
+          required: true
+        city:
+          type: string
 ```
 
 ---
@@ -171,13 +166,12 @@ The `ui` property on fields controls how form builders and wizards render the fi
 Overrides the display label shown next to the input. Form builders derive a label automatically from the snake_case field key (`memo_for` → "Memo For"), so `ui.title` is only needed when that automatic label is wrong or misleading:
 
 ```yaml
-cards:
-  main:
-    fields:
-      memo_for:
-        type: array
-        ui:
-          title: To       # "Memo For" would confuse users unfamiliar with memo conventions
+main:
+  fields:
+    memo_for:
+      type: array
+      ui:
+        title: To       # "Memo For" would confuse users unfamiliar with memo conventions
 ```
 
 Most fields don't need `ui.title`. Prefer clear field names over fixing a bad key with a title override.
@@ -189,23 +183,22 @@ Most fields don't need `ui.title`. Prefer clear field names over fixing a bad ke
 Organizes fields into visual sections:
 
 ```yaml
-cards:
-  main:
-    fields:
-      memo_for:
-        type: array
-        ui:
-          group: Addressing
+main:
+  fields:
+    memo_for:
+      type: array
+      ui:
+        group: Addressing
 
-      memo_from:
-        type: array
-        ui:
-          group: Addressing
+    memo_from:
+      type: array
+      ui:
+        group: Addressing
 
-      letterhead_title:
-        type: string
-        ui:
-          group: Letterhead
+    letterhead_title:
+      type: string
+      ui:
+        group: Letterhead
 ```
 
 Fields with the same `group` value are rendered together. The group name becomes the section heading.
@@ -217,14 +210,13 @@ Auto-assigned based on field position in the YAML file. You rarely need to set t
 If you do need to override:
 
 ```yaml
-cards:
-  main:
-    fields:
-      # Will get order: 0 from position, but we force it to 5
-      special_field:
-        type: string
-        ui:
-          order: 5
+main:
+  fields:
+    # Will get order: 0 from position, but we force it to 5
+    special_field:
+      type: string
+      ui:
+        order: 5
 ```
 
 ### `compact`
@@ -232,13 +224,12 @@ cards:
 When `true`, the UI renders this field in a compact style (smaller vertical footprint). UI hint only — no effect on validation or rendering.
 
 ```yaml
-cards:
-  main:
-    fields:
-      tag:
-        type: string
-        ui:
-          compact: true
+main:
+  fields:
+    tag:
+      type: string
+      ui:
+        compact: true
 ```
 
 ### `multiline`
@@ -246,43 +237,39 @@ cards:
 Controls the initial size of the text input for `string` and `markdown` fields. When `true`, the UI starts with a larger text box instead of a single-line input:
 
 ```yaml
-cards:
-  main:
-    fields:
-      summary:
-        type: markdown
-        description: Executive summary
-        ui:
-          multiline: true   # start as a larger text box
+main:
+  fields:
+    summary:
+      type: markdown
+      description: Executive summary
+      ui:
+        multiline: true   # start as a larger text box
 
-      notes:
-        type: string
-        description: Free-form notes
-        ui:
-          multiline: true
+    notes:
+      type: string
+      description: Free-form notes
+      ui:
+        multiline: true
 
-      tagline:
-        type: markdown
-        description: One-sentence tagline
-        # no multiline — single-line input that expands on demand
+    tagline:
+      type: markdown
+      description: One-sentence tagline
+      # no multiline — single-line input that expands on demand
 ```
 
 `multiline` is a UI hint only — it has no effect on validation or backend processing. It is meaningful on `string` and `markdown` fields; ignored on other types.
 
 ---
 
-## `cards` Map and Inline Kinds
+## `card_types` Section
 
-Beyond the reserved `cards.main` entry, every other key under `cards:` defines a composable, repeatable inline card kind (the *types* — a document can then carry zero or more *instances* of each type, interleaved with body content). Each entry is shaped exactly like `main:` (`fields`, optional `description`, `ui`, `body`); think of `main` as the single mandatory entry-point card for the document body, and the other `cards:` entries as the library of additional types that may attach to it.
+`card_types` define composable, repeatable content blocks (the *types* — a document can then carry zero or more *instances* of each type, interleaved with body content). Each entry is shaped exactly like `main:` (`fields`, optional `description`, `ui`, `body`); think of `main:` as the single mandatory card-type for the document body, and `card_types:` as the library of additional types that may attach to it.
 
-Inline card-kind names (the keys under `cards`, other than `main`) must match `[a-z_][a-z0-9_]*` (leading underscore is allowed). The reserved name `main` may not be used for an inline kind.
+Card-type names (the keys under `card_types`) must match `[a-z_][a-z0-9_]*` (leading underscore is allowed).
 
 ```yaml
-cards:
-  main:
-    fields:
-      ...
-  indorsement:                    # Inline card-kind name
+card_types:
+  indorsement:                    # Card-type name
     description: Chain of routing endorsements.
     fields:
       from:
@@ -295,7 +282,7 @@ cards:
         default: standard
 ```
 
-Invalid card-kind names include:
+Invalid card-type names include:
 
 - `BadCard` (uppercase letters)
 - `my-card` (hyphen)
@@ -314,27 +301,27 @@ Invalid card-kind names include:
 
 | Property | Type   | Description |
 |----------|--------|-------------|
-| `title`  | string | Display label for the card kind. Literal string or `{field}` template |
+| `title`  | string | Display label for the card type. Literal string or `{field}` template |
 
 ### Card-level `body`
 
 | Property  | Type   | Description |
 |-----------|--------|-------------|
-| `enabled`     | bool   | Whether the body editor is enabled (default: true). When false, consumers must not accept or store body content for this card kind. |
+| `enabled`     | bool   | Whether the body editor is enabled (default: true). When false, consumers must not accept or store body content for this card type. |
 | `description` | string | Description shown in the body editor placeholder when the body is empty. |
 
 #### `title`
 
-A human-readable display label for the card kind. UI consumers should prefer it over the snake_case map key when rendering section headers, chips, picker entries, or per-instance titles in a list.
+A human-readable display label for the card type. UI consumers should prefer it over the snake_case map key when rendering section headers, chips, picker entries, or per-instance titles in a list.
 
-The label is decoupled from the map key (e.g. `indorsement`), which is the on-the-wire `KIND` discriminator. Authors can rename the label freely without invalidating stored documents.
+The label is decoupled from the map key (e.g. `indorsement`), which is the on-the-wire `CARD` discriminator. Authors can rename the label freely without invalidating stored documents.
 
 **Two flavors:**
 
 A literal string serves as a static type label:
 
 ```yaml
-cards:
+card_types:
   indorsement:
     ui:
       title: Routing Endorsement
@@ -346,7 +333,7 @@ cards:
 A template containing `{field_name}` tokens lets UI consumers produce a per-instance title by interpolating live field values:
 
 ```yaml
-cards:
+card_types:
   endorsement:
     ui:
       title: "{from} → {for}"
@@ -369,10 +356,10 @@ With the template form, a UI rendering a list of cards can title each instance (
 
 #### `body.enabled`
 
-When `false`, the card kind has no body/content area. Consumers must not accept or store body content for instances of this card kind. The validator enforces this: a document instance that provides body content for a `body.enabled: false` card kind is rejected with a `BodyDisabled` error.
+When `false`, the card type has no body/content area. Consumers must not accept or store body content for instances of this card type. The validator enforces this: a document instance that provides body content for a `body.enabled: false` card type is rejected with a `BodyDisabled` error.
 
 ```yaml
-cards:
+card_types:
   metadata_block:
     body:
       enabled: false    # Card has fields only, no body/content area
@@ -386,7 +373,7 @@ cards:
 Optional description displayed in the body editor placeholder area when the body is empty. Has no effect when `body.enabled` is false.
 
 ```yaml
-cards:
+card_types:
   experience:
     body:
       description: Describe your role, responsibilities, and key achievements.
@@ -397,8 +384,7 @@ cards:
 
 ### Using Cards in Markdown
 
-Cards appear as fenced code blocks with the info string `card <kind>`,
-where the kind names the card schema:
+Cards appear as fenced code blocks with the info string `card <kind>` in the document body:
 
 ````markdown
 ---
@@ -472,44 +458,44 @@ quill:
   plate_file: plate.typ
   example: example.md
 
-cards:
-  main:
-    fields:
-      project_name:
-        type: string
-        required: true
-        ui:
-          group: Header
+main:
+  fields:
+    project_name:
+      type: string
+      required: true
+      ui:
+        group: Header
 
-      status:
-        type: string
-        required: true
-        enum: [on_track, at_risk, blocked]
-        ui:
-          group: Header
+    status:
+      type: string
+      required: true
+      enum: [on_track, at_risk, blocked]
+      ui:
+        group: Header
 
-      risk_description:
-        type: string
-        ui:
-          group: Header
-        description: Describe the risk or blocker. Only needed when status is not on_track.
+    risk_description:
+      type: string
+      ui:
+        group: Header
+      description: Describe the risk or blocker. Only needed when status is not on_track.
 
-      date:
-        type: date
-        ui:
-          group: Header
+    date:
+      type: date
+      ui:
+        group: Header
 
-      team_members:
-        type: array
-        ui:
-          group: Team
+    team_members:
+      type: array
+      ui:
+        group: Team
 
-      budget:
-        type: number
-        default: 0
-        ui:
-          group: Financials
+    budget:
+      type: number
+      default: 0
+      ui:
+        group: Financials
 
+card_types:
   milestone:
     description: A project milestone with target date and status.
     fields:

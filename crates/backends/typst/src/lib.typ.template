@@ -82,11 +82,11 @@
     }
   }
 
-  // Auto-eval content fields within each KIND
+  // Auto-eval content fields within each CARD
   if "CARDS" in d {
     let cards = ()
     for card in d.at("CARDS") {
-      let card-type = card.at("KIND", default: none)
+      let card-type = card.at("CARD", default: none)
       let fields = meta.card_content_fields.at(card-type, default: ())
       for key in fields {
         if key in card {

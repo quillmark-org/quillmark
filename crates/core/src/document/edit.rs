@@ -5,7 +5,7 @@
 //! ## Invariants
 //!
 //! Every successful mutator call leaves the document in a state that:
-//! - Contains no reserved key in any card's frontmatter (`BODY`, `CARDS`, `QUILL`, `KIND`).
+//! - Contains no reserved key in any card's frontmatter (`BODY`, `CARDS`, `QUILL`, `CARD`).
 //! - Has every composable `card.tag()` passing `sentinel::is_valid_tag_name`.
 //! - Can be safely serialized via [`Document::to_plate_json`].
 //!
@@ -31,7 +31,7 @@ use crate::version::QuillReference;
 /// Reserved field names that may not appear in any `Card`'s frontmatter.
 /// These are the sentinel keys whose presence in user-visible fields would
 /// corrupt the plate wire format or the parser's structural invariants.
-pub const RESERVED_NAMES: &[&str] = &["BODY", "CARDS", "QUILL", "KIND"];
+pub const RESERVED_NAMES: &[&str] = &["BODY", "CARDS", "QUILL", "CARD"];
 
 /// Returns `true` if `name` is one of the four reserved sentinel names.
 #[inline]
@@ -45,7 +45,7 @@ pub fn is_reserved_name(name: &str) -> bool {
 ///
 /// A valid field name matches `[a-z_][a-z0-9_]*` after NFC normalisation.
 /// Upper-case identifiers are intentionally excluded; they are reserved for
-/// sentinel keys (`QUILL`, `KIND`, `BODY`, `CARDS`).
+/// sentinel keys (`QUILL`, `CARD`, `BODY`, `CARDS`).
 pub fn is_valid_field_name(name: &str) -> bool {
     // NFC-normalize first so that, e.g., composed vs decomposed forms compare equal.
     let normalized: String = name.nfc().collect();
@@ -74,7 +74,7 @@ pub fn is_valid_field_name(name: &str) -> bool {
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum EditError {
     /// The supplied name is one of the four reserved sentinel keys
-    /// (`BODY`, `CARDS`, `QUILL`, `KIND`).
+    /// (`BODY`, `CARDS`, `QUILL`, `CARD`).
     #[error("reserved name '{0}' cannot be used as a field name")]
     ReservedName(String),
 
@@ -124,7 +124,7 @@ impl Document {
     ///
     /// # Invariants
     ///
-    /// `card.sentinel()` must be [`Sentinel::Inline`]; a main card cannot be
+    /// `card.sentinel()` must be [`Sentinel::Card`]; a main card cannot be
     /// appended as a composable card. Debug assert.
     ///
     /// # Warnings
@@ -212,7 +212,7 @@ impl Document {
         let card = self
             .card_mut(index)
             .ok_or(EditError::IndexOutOfRange { index, len })?;
-        card.replace_sentinel(Sentinel::Inline(new_tag));
+        card.replace_sentinel(Sentinel::Card(new_tag));
         Ok(())
     }
 
@@ -262,7 +262,7 @@ impl Card {
             return Err(EditError::InvalidTagName(tag));
         }
         Ok(Card::new_with_sentinel(
-            Sentinel::Inline(tag),
+            Sentinel::Card(tag),
             Frontmatter::new(),
             String::new(),
         ))

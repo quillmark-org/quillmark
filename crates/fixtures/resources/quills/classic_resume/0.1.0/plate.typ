@@ -13,7 +13,7 @@
     section-header(card.title)
   }
 
-  if card.KIND == "experience_section" {
+  if card.CARD == "experience_section" {
     timeline-entry(
       heading-left: card.at("headingLeft", default: ""),
       heading-right: card.at("headingRight", default: ""),
@@ -21,7 +21,7 @@
       subheading-right: card.at("subheadingRight", default: none),
       body: card.at("BODY", default: ""),
     )
-  } else if card.KIND == "skills_section" {
+  } else if card.CARD == "skills_section" {
     table(
       columns: 2,
       items: card.cells.map(item => (
@@ -29,13 +29,13 @@
         text: item.skills,
       ))
     )
-  } else if card.KIND == "projects_section" {
+  } else if card.CARD == "projects_section" {
     project-entry(
       name: card.name,
       url: card.at("url", default: none),
       body: card.at("BODY", default: ""),
     )
-  } else if card.KIND == "certifications_section" {
+  } else if card.CARD == "certifications_section" {
     table(
       columns: 2,
       items: card.cells

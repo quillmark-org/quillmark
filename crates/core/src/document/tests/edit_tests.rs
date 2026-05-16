@@ -60,7 +60,7 @@ fn test_reserved_names_constant() {
     assert!(RESERVED_NAMES.contains(&"BODY"));
     assert!(RESERVED_NAMES.contains(&"CARDS"));
     assert!(RESERVED_NAMES.contains(&"QUILL"));
-    assert!(RESERVED_NAMES.contains(&"KIND"));
+    assert!(RESERVED_NAMES.contains(&"CARD"));
     assert_eq!(RESERVED_NAMES.len(), 4);
 }
 
@@ -69,7 +69,7 @@ fn test_is_reserved_name() {
     assert!(is_reserved_name("BODY"));
     assert!(is_reserved_name("CARDS"));
     assert!(is_reserved_name("QUILL"));
-    assert!(is_reserved_name("KIND"));
+    assert!(is_reserved_name("CARD"));
     assert!(!is_reserved_name("body")); // case-sensitive
     assert!(!is_reserved_name("title"));
     assert!(!is_reserved_name(""));
@@ -205,7 +205,7 @@ fn test_document_remove_field_reserved_throws() {
     // Symmetric with set_field: reserved names are programmer errors and
     // throw, rather than silently returning None.
     let mut doc = make_doc();
-    for reserved in ["BODY", "CARDS", "QUILL", "KIND"] {
+    for reserved in ["BODY", "CARDS", "QUILL", "CARD"] {
         match doc.main_mut().remove_field(reserved) {
             Err(EditError::ReservedName(name)) => assert_eq!(name, reserved),
             other => panic!("expected ReservedName for {reserved}, got {other:?}"),
@@ -474,7 +474,7 @@ fn test_card_remove_field_absent() {
 #[test]
 fn test_card_remove_field_reserved_throws() {
     let mut card = Card::new("note").unwrap();
-    for reserved in ["BODY", "CARDS", "QUILL", "KIND"] {
+    for reserved in ["BODY", "CARDS", "QUILL", "CARD"] {
         match card.remove_field(reserved) {
             Err(EditError::ReservedName(name)) => assert_eq!(name, reserved),
             other => panic!("expected ReservedName for {reserved}, got {other:?}"),

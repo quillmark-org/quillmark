@@ -28,17 +28,16 @@ fn test_default_values_applied_via_dry_run() {
   plate_file: "plate.typ"
   description: "Test quill with defaults"
 
-cards:
-  main:
-    fields:
-      title:
-        type: "string"
-      status:
-        type: "string"
-        default: "draft"
-      version:
-        type: "number"
-        default: 1
+main:
+  fields:
+    title:
+      type: "string"
+    status:
+      type: "string"
+      default: "draft"
+    version:
+      type: "number"
+      default: 1
 "#,
     );
 
@@ -69,14 +68,13 @@ fn test_default_values_not_overriding_existing_fields() {
   plate_file: "plate.typ"
   description: "Test quill with defaults"
 
-cards:
-  main:
-    fields:
-      title:
-        type: "string"
-      status:
-        type: "string"
-        default: "draft"
+main:
+  fields:
+    title:
+      type: "string"
+    status:
+      type: "string"
+      default: "draft"
 "#,
     );
 
@@ -108,15 +106,14 @@ fn test_validation_with_defaults() {
   plate_file: "plate.typ"
   description: "Test quill with optional fields"
 
-cards:
-  main:
-    fields:
-      title:
-        type: "string"
-        default: "Untitled"
-      status:
-        type: "string"
-        default: "draft"
+main:
+  fields:
+    title:
+      type: "string"
+      default: "Untitled"
+    status:
+      type: "string"
+      default: "draft"
 "#,
     );
 
@@ -147,15 +144,14 @@ fn test_validation_fails_without_defaults() {
   plate_file: "plate.typ"
   description: "Test quill with required field"
 
-cards:
-  main:
-    fields:
-      title:
-        type: "string"
-        required: true
-      status:
-        type: "string"
-        default: "draft"
+main:
+  fields:
+    title:
+      type: "string"
+      required: true
+    status:
+      type: "string"
+      default: "draft"
 "#,
     );
 
@@ -198,18 +194,17 @@ fn test_extract_defaults_from_quill() {
   backend: "typst"
   description: "Test"
 
-cards:
-  main:
-    fields:
-      author:
-        type: "string"
-        default: "Anonymous"
-      priority:
-        type: "number"
-        default: 5
-      draft:
-        type: "boolean"
-        default: true
+main:
+  fields:
+    author:
+      type: "string"
+      default: "Anonymous"
+    priority:
+      type: "number"
+      default: 5
+    draft:
+      type: "boolean"
+      default: true
 "#,
     )
     .unwrap();

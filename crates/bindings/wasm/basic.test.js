@@ -339,9 +339,9 @@ describe('Document editor surface — setField / removeField', () => {
     expect(() => doc.setField('QUILL', 'x')).toThrow(/ReservedName/)
   })
 
-  it('setField throws EditError::ReservedName for KIND', () => {
+  it('setField throws EditError::ReservedName for CARD', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.setField('KIND', 'x')).toThrow(/ReservedName/)
+    expect(() => doc.setField('CARD', 'x')).toThrow(/ReservedName/)
   })
 
   it('setField throws EditError::InvalidFieldName for uppercase name', () => {
@@ -366,9 +366,9 @@ describe('Document editor surface — setField / removeField', () => {
     expect(() => doc.removeField('QUILL')).toThrow(/ReservedName/)
   })
 
-  it('removeField throws EditError::ReservedName for BODY/CARDS/KIND', () => {
+  it('removeField throws EditError::ReservedName for BODY/CARDS/CARD', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    for (const reserved of ['BODY', 'CARDS', 'KIND']) {
+    for (const reserved of ['BODY', 'CARDS', 'CARD']) {
       expect(() => doc.removeField(reserved)).toThrow(/ReservedName/)
     }
   })
@@ -474,24 +474,24 @@ Card two.
     expect(() => doc.moveCard(5, 0)).toThrow(/IndexOutOfRange/)
   })
 
-  it('setCardKind renames the tag in place', () => {
+  it('setCardTag renames the tag in place', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARDS)
-    doc.setCardKind(0, 'annotation')
+    doc.setCardTag(0, 'annotation')
     expect(doc.cards[0].tag).toBe('annotation')
     // Frontmatter preserved across rename.
     expect(doc.cards[0].frontmatter).toBeDefined()
   })
 
-  it('setCardKind throws InvalidTagName for empty/uppercase/dashed tags', () => {
+  it('setCardTag throws InvalidTagName for empty/uppercase/dashed tags', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARDS)
     for (const bad of ['', 'BadTag', 'with-dash']) {
-      expect(() => doc.setCardKind(0, bad)).toThrow(/InvalidTagName/)
+      expect(() => doc.setCardTag(0, bad)).toThrow(/InvalidTagName/)
     }
   })
 
-  it('setCardKind throws IndexOutOfRange when index >= len', () => {
+  it('setCardTag throws IndexOutOfRange when index >= len', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARDS) // 2 cards
-    expect(() => doc.setCardKind(5, 'annotation')).toThrow(/IndexOutOfRange/)
+    expect(() => doc.setCardTag(5, 'annotation')).toThrow(/IndexOutOfRange/)
   })
 
   it('cardCount reports composable card count without allocating', () => {
@@ -692,13 +692,14 @@ describe('quill.metadata', () => {
   plate_file: plate.typ
   description: Metadata test
 
-cards:
-  main:
-    description: The main card schema
-    fields:
-      title:
-        type: string
-        description: The title
+main:
+  description: The main card schema
+  fields:
+    title:
+      type: string
+      description: The title
+
+card_types:
   indorsement:
     description: Indorsement
     fields:
@@ -724,16 +725,14 @@ cards:
     expect(meta.supportedFormats.length).toBeGreaterThan(0)
     expect(meta.schema).toBeUndefined()
 
-    // schema: structure + ui hints. QUILL/KIND sentinels with const values.
-    // The schema is a single `cards` map that includes the `main` entry.
+    // schema: structure + ui hints. QUILL/CARD sentinels with const values.
     const schema = quill.schema
-    expect(schema.cards.main).toBeDefined()
-    expect(schema.cards.main.fields).toBeDefined()
-    expect(schema.cards.main.description).toBe('The main card schema')
-    expect(schema.cards.main.fields.title).toBeDefined()
-    expect(schema.cards.main.fields.QUILL.const).toBe('meta_test_quill@0.2.1')
-    expect(schema.cards.indorsement.fields.signature_block).toBeDefined()
-    expect(schema.cards.indorsement.fields.KIND.const).toBe('indorsement')
+    expect(schema.main.description).toBe('The main card schema')
+    expect(schema.main.fields.title).toBeDefined()
+    expect(schema.main.fields.QUILL.const).toBe('meta_test_quill@0.2.1')
+    expect(schema.card_types.main).toBeUndefined()
+    expect(schema.card_types.indorsement.fields.signature_block).toBeDefined()
+    expect(schema.card_types.indorsement.fields.CARD.const).toBe('indorsement')
   })
 
   it('metadata and schema are JSON.stringify-able (plain objects)', () => {
@@ -744,7 +743,7 @@ cards:
     const meta = JSON.parse(JSON.stringify(quill.metadata))
     expect(meta.name).toBe('meta_test_quill')
     const schema = JSON.parse(JSON.stringify(quill.schema))
-    expect(schema.cards.main.fields.QUILL.const).toBe('meta_test_quill@0.2.1')
+    expect(schema.main.fields.QUILL.const).toBe('meta_test_quill@0.2.1')
   })
 })
 
@@ -792,14 +791,15 @@ describe('quill.form', () => {
   backend: typst
   description: Smoke test for form
 
-cards:
-  main:
-    fields:
-      title:
-        type: string
-        default: "Untitled"
-      count:
-        type: integer
+main:
+  fields:
+    title:
+      type: string
+      default: "Untitled"
+    count:
+      type: integer
+
+card_types:
   note:
     fields:
       body:

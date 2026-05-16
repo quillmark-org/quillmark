@@ -117,7 +117,7 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
     );
 
     let mut defs = serde_json::Map::new();
-    for card in &config.cards {
+    for card in &config.card_types {
         let mut card_properties = serde_json::Map::new();
         for (name, field) in &card.fields {
             card_properties.insert(name.clone(), field_to_schema(field));
@@ -159,14 +159,13 @@ quill:
   version: 1.0.0
   backend: typst
   description: x
-cards:
-  main:
-    fields:
-      refs:
-        type: array
-        properties:
-          org: { type: string, required: true }
-          year: { type: integer }
+main:
+  fields:
+    refs:
+      type: array
+      properties:
+        org: { type: string, required: true }
+        year: { type: integer }
 "#;
         let schema = build_from_yaml(yaml);
         let json = schema.as_json();
@@ -185,14 +184,13 @@ quill:
   version: 1.0.0
   backend: typst
   description: x
-cards:
-  main:
-    fields:
-      address:
-        type: object
-        properties:
-          street: { type: string, required: true }
-          city: { type: string }
+main:
+  fields:
+    address:
+      type: object
+      properties:
+        street: { type: string, required: true }
+        city: { type: string }
 "#;
         let schema = build_from_yaml(yaml);
         let json = schema.as_json();
@@ -203,7 +201,7 @@ cards:
     }
 
     #[test]
-    fn injects_body_as_markdown_for_main_and_each_card() {
+    fn injects_body_as_markdown_for_main_and_each_card_type() {
         let yaml = r#"
 quill:
   name: example
@@ -211,11 +209,12 @@ quill:
   backend: typst
   description: example
 
-cards:
-  main:
-    fields:
-      title:
-        type: string
+main:
+  fields:
+    title:
+      type: string
+
+card_types:
   indorsement:
     fields:
       signature_block:
@@ -224,7 +223,6 @@ cards:
     fields:
       author:
         type: string
-
 "#;
 
         let schema = build_from_yaml(yaml);

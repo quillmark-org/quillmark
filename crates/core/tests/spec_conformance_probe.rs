@@ -45,31 +45,45 @@ fn f1_yaml_comment_banners_above_sentinel_are_accepted() {
     );
 }
 
-// Inline `---/.../---` blocks are no longer card candidates — they are
-// CommonMark thematic breaks (and the content between them is body prose).
-// No near-miss warning is emitted for arbitrary YAML-looking content.
+// §4.2 — near-miss detection also ignores `#` comment banners.
 #[test]
-fn inline_dash_blocks_are_body_not_cards() {
+fn near_miss_sentinel_sees_past_comment_banners() {
     let md = "---\nQUILL: t\n---\n\nB.\n\n---\n# banner\nCard: oops\nname: X\n---\n\nTrailing.";
     let out = Document::from_markdown_with_warnings(md).unwrap();
     assert!(
-        out.document.cards().is_empty(),
-        "inline ---/--- block must not register as a card"
+        out.warnings.iter().any(
+            |w| w.message.contains("Near-miss metadata sentinel") && w.message.contains("Card")
+        ),
+        "expected near-miss warning even with leading comment, got: {:?}",
+        out.warnings
+            .iter()
+            .map(|w| w.message.clone())
+            .collect::<Vec<_>>()
     );
-    assert!(out.document.main().body().contains("Card: oops"));
 }
 
-// Frontmatter F1: a typo'd lowercase `quill:` at the document head emits a
-// near-miss warning and surfaces in the MissingQuillField error.
+// §4.2 — Near-miss sentinel warning.
 #[test]
-fn frontmatter_quill_typo_emits_near_miss() {
-    let md = "---\nquill: t\ntitle: T\n---\n\nBody.";
-    let err = Document::from_markdown(md).unwrap_err().to_string();
+fn near_miss_sentinel_emits_warning_and_delegates() {
+    let md = "---\nQUILL: t\n---\n\nBody.\n\n---\nCard: oops\nname: X\n---\n\nTrailing.";
+    let out = Document::from_markdown_with_warnings(md).unwrap();
     assert!(
-        err.contains("expected `QUILL:`") || err.contains("Missing required QUILL"),
-        "expected QUILL ordering hint, got: {}",
-        err
+        out.warnings.iter().any(
+            |w| w.message.contains("Near-miss metadata sentinel") && w.message.contains("Card")
+        ),
+        "expected near-miss warning, got: {:?}",
+        out.warnings
+            .iter()
+            .map(|w| w.message.clone())
+            .collect::<Vec<_>>()
     );
+    // The `Card:` fence must NOT have registered as a card.
+    assert!(
+        out.document.cards().is_empty(),
+        "near-miss CARD must be delegated, not registered"
+    );
+    // Body must contain the delegated content.
+    assert!(out.document.main().body().contains("Card: oops"));
 }
 
 // §3 — Trailing whitespace on the fence marker must be accepted.
@@ -91,7 +105,7 @@ fn fence_marker_with_trailing_whitespace_is_accepted() {
 // §3 — `---` inside a fenced code block must be ignored.
 #[test]
 fn fences_inside_code_blocks_are_ignored() {
-    let md = "---\nQUILL: t\n---\n\n```\n```card x\n```\n```\n\nBody.";
+    let md = "---\nQUILL: t\n---\n\n```\n---\nCARD: x\n---\n```\n\nBody.";
     let doc = Document::from_markdown(md).unwrap();
     assert!(
         doc.cards().is_empty(),
@@ -121,49 +135,12 @@ fn cards_is_always_present_even_when_empty() {
     assert!(doc.cards().is_empty());
 }
 
-// §3.2 / §4.2 — a `card`-prefixed fence commits to card parsing on that token
-// alone; a missing, invalid, or extra info-string kind token is a hard parse
-// error, not a silent fallthrough to body content — a hard error, not a
-// silent classification miss.
-#[test]
-fn card_fence_with_bad_kind_token_is_rejected() {
-    let cases = [
-        // Missing kind token.
-        "---\nQUILL: t\n---\n\n```card\nname: Widget\n```\n",
-        // Empty card body, still missing the kind token.
-        "---\nQUILL: t\n---\n\n```card\n```\n",
-        // Invalid kind token (must match [a-z_][a-z0-9_]*).
-        "---\nQUILL: t\n---\n\n```card Widget\nname: x\n```\n",
-        // Extra info-string tokens.
-        "---\nQUILL: t\n---\n\n```card a b\n```\n",
-    ];
-    for md in cases {
-        let err = Document::from_markdown(md).unwrap_err().to_string();
-        assert!(
-            err.contains("Card fence at line"),
-            "expected hard card-fence kind-token error for {md:?}, got: {err}"
-        );
-    }
-}
-
-// §3.2 — `KIND` is an output-only reserved key; supplying it as an input body
-// key is a hard parse error.
-#[test]
-fn kind_as_card_body_key_is_rejected() {
-    let md = "---\nQUILL: t\n---\n\n```card product\nKIND: product\n```\n";
-    let err = Document::from_markdown(md).unwrap_err().to_string();
-    assert!(
-        err.contains("Reserved field name") && err.contains("KIND"),
-        "got: {err}"
-    );
-}
-
-// §3.2 — card kind-token pattern.
+// §5 — CARD value pattern.
 #[test]
 fn card_name_pattern_enforced() {
-    let md = "---\nQUILL: t\n---\n\nB.\n\n```card ITEMS\n```\n\nX.";
+    let md = "---\nQUILL: t\n---\n\nB.\n\n---\nCARD: ITEMS\n---\n\nX.";
     let err = Document::from_markdown(md).unwrap_err().to_string();
-    assert!(err.contains("invalid kind token"), "got: {}", err);
+    assert!(err.contains("Invalid card field name"), "got: {}", err);
 }
 
 // §7 — Body bidi stripped during normalize_document.
@@ -209,7 +186,7 @@ fn normalize_reaches_card_body() {
 // §4 F3 — A `---` line indented by four or more spaces is indented code.
 #[test]
 fn f3_indented_four_spaces_is_not_a_fence() {
-    let md = "---\nQUILL: t\n---\n\n    ---\n    KIND: x\n    ---\n\nafter.";
+    let md = "---\nQUILL: t\n---\n\n    ---\n    CARD: x\n    ---\n\nafter.";
     let doc = Document::from_markdown(md).unwrap();
     assert!(
         doc.cards().is_empty(),
@@ -217,7 +194,7 @@ fn f3_indented_four_spaces_is_not_a_fence() {
     );
     let body = doc.main().body();
     assert!(
-        body.contains("    ---") && body.contains("KIND: x"),
+        body.contains("    ---") && body.contains("CARD: x"),
         "indented fence content must be delegated to CommonMark, body was: {:?}",
         body
     );
@@ -234,7 +211,7 @@ fn f3_three_leading_spaces_is_still_a_fence() {
 // §4 F3 — Tab indentation disqualifies a line from being a fence marker.
 #[test]
 fn f3_tab_indented_is_not_a_fence() {
-    let md = "---\nQUILL: t\n---\n\n\t---\n\tKIND: x\n\t---\n\nafter.";
+    let md = "---\nQUILL: t\n---\n\n\t---\n\tCARD: x\n\t---\n\nafter.";
     let doc = Document::from_markdown(md).unwrap();
     assert!(
         doc.cards().is_empty(),
@@ -316,9 +293,7 @@ fn first_fence_out_of_order_error_is_specific() {
 // §3 — Unclosed fenced code block at end-of-document emits a warning.
 #[test]
 fn unclosed_code_block_emits_warning() {
-    // 4-backtick opener with no matching 4+-backtick closer → unclosed.
-    // The 3-backtick `card` fence inside is shielded (3 < 4 cannot close).
-    let md = "---\nQUILL: t\n---\n\n````\ncode line\n\n```card x\n```\n\ntrailing body";
+    let md = "---\nQUILL: t\n---\n\n```\ncode line\n\n---\nCARD: x\n---\n\ntrailing body";
     let out = Document::from_markdown_with_warnings(md).unwrap();
     assert!(
         out.warnings
@@ -330,10 +305,10 @@ fn unclosed_code_block_emits_warning() {
             .map(|w| (w.code.clone(), w.message.clone()))
             .collect::<Vec<_>>()
     );
-    // And the shielded card fence must NOT have registered.
+    // And the shielded CARD fence must NOT have registered.
     assert!(
         out.document.cards().is_empty(),
-        "shielded card fence must not have been parsed"
+        "shielded CARD must not have been parsed as a fence"
     );
 }
 

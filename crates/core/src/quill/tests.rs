@@ -622,18 +622,17 @@ fn test_field_schemas_parsing() {
   example_file: "taro.md"
   description: "Test template for field schemas"
 
-cards:
-  main:
-    fields:
-      author:
-        type: "string"
-        description: "Author of document"
-      ice_cream:
-        type: "string"
-        description: "favorite ice cream flavor"
-      title:
-        type: "string"
-        description: "title of document"
+main:
+  fields:
+    author:
+      type: "string"
+      description: "Author of document"
+    ice_cream:
+      type: "string"
+      description: "favorite ice cream flavor"
+    title:
+      type: "string"
+      description: "title of document"
 "#;
     root_files.insert(
         "Quill.yaml".to_string(),
@@ -802,15 +801,14 @@ typst:
   packages: 
     - "@preview/bubble:0.2.2"
 
-cards:
-  main:
-    fields:
-      title:
-        description: Document title
-        type: string
-      author:
-        type: string
-        description: Document author
+main:
+  fields:
+    title:
+      description: Document title
+      type: string
+    author:
+      type: string
+      description: Document author
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1021,7 +1019,7 @@ quill:
   backend: typst
   description: Bad card name
 
-cards:
+card_types:
   BadCard:
     fields:
       title:
@@ -1044,7 +1042,7 @@ quill:
   backend: typst
   description: Leading underscore card name
 
-cards:
+card_types:
   _private_card:
     fields:
       title:
@@ -1064,11 +1062,10 @@ quill:
   backend: typst
   description: Bad main field key
 
-cards:
-  main:
-    fields:
-      BadField:
-        type: string
+main:
+  fields:
+    BadField:
+      type: string
 "#;
 
     let result = QuillConfig::from_yaml(yaml);
@@ -1087,7 +1084,7 @@ quill:
   backend: typst
   description: Bad card field key
 
-cards:
+card_types:
   profile:
     fields:
       DisplayName:
@@ -1154,17 +1151,16 @@ typst:
   packages:
     - "@preview/bubble:0.2.2"
 
-cards:
-  main:
-    fields:
-      author:
-        type: string
-        default: Anonymous
-      status:
-        type: string
-        default: draft
-      title:
-        type: string
+main:
+  fields:
+    author:
+      type: string
+      default: Anonymous
+    status:
+      type: string
+      default: draft
+    title:
+      type: string
 "#;
     root_files.insert(
         "Quill.yaml".to_string(),
@@ -1199,18 +1195,17 @@ quill:
   backend: typst
   description: Defaults test
 
-cards:
-  main:
-    fields:
-      author:
-        type: string
-        default: Anonymous
-        example: Alice
-      status:
-        type: string
-        default: draft
-      title:
-        type: string
+main:
+  fields:
+    author:
+      type: string
+      default: Anonymous
+      example: Alice
+    status:
+      type: string
+      default: draft
+    title:
+      type: string
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1235,7 +1230,7 @@ quill:
   backend: typst
   description: Card defaults test
 
-cards:
+card_types:
   indorsement:
     fields:
       signature_block:
@@ -1248,7 +1243,7 @@ cards:
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
 
-    let card = config.card("indorsement").unwrap();
+    let card = config.card_type("indorsement").unwrap();
     let card_defaults = card.defaults();
     assert_eq!(card_defaults.len(), 1);
     assert_eq!(
@@ -1259,7 +1254,7 @@ cards:
     let sig_example = card.fields.get("signature_block").unwrap().example.as_ref();
     assert_eq!(sig_example.and_then(|v| v.as_str()), Some("Col Smith"));
 
-    assert!(config.card("unknown").is_none());
+    assert!(config.card_type("unknown").is_none());
 }
 
 #[test]
@@ -1271,23 +1266,22 @@ quill:
   backend: typst
   description: Test field order
 
-cards:
-  main:
-    fields:
-      first:
-        type: string
-        description: First field
-      second:
-        type: string
-        description: Second field
-      third:
-        type: string
-        description: Third field
-        ui:
-          group: Test Group
-      fourth:
-        type: string
-        description: Fourth field
+main:
+  fields:
+    first:
+      type: string
+      description: First field
+    second:
+      type: string
+      description: Second field
+    third:
+      type: string
+      description: Third field
+      ui:
+        group: Test Group
+    fourth:
+      type: string
+      description: Fourth field
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1321,14 +1315,13 @@ quill:
   backend: typst
   description: Test all UI properties
 
-cards:
-  main:
-    fields:
-      author:
-        description: The full name of the document author
-        type: string
-        ui:
-          group: Author Info
+main:
+  fields:
+    author:
+      description: The full name of the document author
+      type: string
+      ui:
+        group: Author Info
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1392,7 +1385,7 @@ quill:
   backend: typst
   description: Test [cards.X.fields.Y] syntax
 
-cards:
+card_types:
   endorsements:
     description: Chain of endorsements
     fields:
@@ -1408,9 +1401,9 @@ cards:
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
 
-    // Verify the card-type was parsed into config.cards
-    assert!(config.card("endorsements").is_some());
-    let card = config.card("endorsements").unwrap();
+    // Verify the card-type was parsed into config.card_types
+    assert!(config.card_type("endorsements").is_some());
+    let card = config.card_type("endorsements").unwrap();
 
     assert_eq!(card.name, "endorsements");
     assert_eq!(card.description, Some("Chain of endorsements".to_string()));
@@ -1465,19 +1458,19 @@ quill:
   backend: typst
   description: Test [cards] section
 
-cards:
-  main:
-    fields:
-      regular:
-        description: Regular field
-        type: string
+main:
+  fields:
+    regular:
+      description: Regular field
+      type: string
+
+card_types:
   indorsements:
     description: Chain of endorsements
     fields:
       name:
         type: string
         description: Name field
-
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1487,9 +1480,9 @@ cards:
     let regular = config.main.fields.get("regular").unwrap();
     assert_eq!(regular.r#type, FieldType::String);
 
-    // Check card-type is in config.cards (not config.main.fields)
-    assert!(config.card("indorsements").is_some());
-    let card = config.card("indorsements").unwrap();
+    // Check card-type is in config.card_types (not config.main.fields)
+    assert!(config.card_type("indorsements").is_some());
+    let card = config.card_type("indorsements").unwrap();
     assert_eq!(card.description, Some("Chain of endorsements".to_string()));
     assert!(card.fields.contains_key("name"));
 }
@@ -1504,13 +1497,13 @@ quill:
   backend: typst
   description: Test cards without fields
 
-cards:
+card_types:
   myscope:
     description: My scope
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
-    let card = config.card("myscope").unwrap();
+    let card = config.card_type("myscope").unwrap();
     assert_eq!(card.name, "myscope");
     assert_eq!(card.description, Some("My scope".to_string()));
     assert!(card.fields.is_empty());
@@ -1526,15 +1519,15 @@ quill:
   backend: typst
   description: Test collision
 
-cards:
-  main:
-    fields:
-      conflict:
-        description: Field
-        type: string
+main:
+  fields:
+    conflict:
+      description: Field
+      type: string
+
+card_types:
   conflict:
     description: Card
-
 "#;
 
     let result = QuillConfig::from_yaml(yaml_content);
@@ -1548,7 +1541,7 @@ cards:
 
     let config = result.unwrap();
     assert!(config.main.fields.contains_key("conflict"));
-    assert!(config.card("conflict").is_some());
+    assert!(config.card_type("conflict").is_some());
 }
 
 #[test]
@@ -1561,29 +1554,29 @@ quill:
   backend: typst
   description: Test ordering
 
-cards:
-  main:
-    fields:
-      first:
-        type: string
-        description: First
-      zero:
-        type: string
-        description: Zero
+main:
+  fields:
+    first:
+      type: string
+      description: First
+    zero:
+      type: string
+      description: Zero
+
+card_types:
   second:
     description: Second
     fields:
       card_field:
         type: string
         description: A card field
-
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
 
     let first = config.main.fields.get("first").unwrap();
     let zero = config.main.fields.get("zero").unwrap();
-    let second = config.card("second").unwrap();
+    let second = config.card_type("second").unwrap();
 
     // Check field ordering
     let ord_first = first.ui.as_ref().unwrap().order.unwrap();
@@ -1611,7 +1604,7 @@ quill:
   backend: typst
   description: Test card field order
 
-cards:
+card_types:
   mycard:
     description: Test card
     fields:
@@ -1624,7 +1617,7 @@ cards:
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
-    let card = config.card("mycard").unwrap();
+    let card = config.card_type("mycard").unwrap();
 
     let z_first = card.fields.get("z_first").unwrap();
     let a_second = card.fields.get("a_second").unwrap();
@@ -1647,19 +1640,18 @@ quill:
   backend: typst
   description: Test nested elements
 
-cards:
-  main:
-    fields:
-      my_list:
-        type: array
-        description: List of objects
-        properties:
-          sub_a:
-            type: string
-            description: Subfield A
-          sub_b:
-            type: number
-            description: Subfield B
+main:
+  fields:
+    my_list:
+      type: array
+      description: List of objects
+      properties:
+        sub_a:
+          type: string
+          description: Subfield A
+        sub_b:
+          type: number
+          description: Subfield B
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1684,22 +1676,21 @@ quill:
   backend: typst
   description: Test typed dictionary acceptance
 
-cards:
-  main:
-    fields:
-      valid_field:
-        type: string
-        description: A normal field
-      address:
-        type: object
-        description: Typed dictionary with properties
-        properties:
-          street:
-            type: string
-            required: true
-          city:
-            type: string
-            required: true
+main:
+  fields:
+    valid_field:
+      type: string
+      description: A normal field
+    address:
+      type: object
+      description: Typed dictionary with properties
+      properties:
+        street:
+          type: string
+          required: true
+        city:
+          type: string
+          required: true
 "#;
 
     let (config, warnings) = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap();
@@ -1718,11 +1709,10 @@ quill:
   backend: typst
   description: Test freeform object rejection
 
-cards:
-  main:
-    fields:
-      metadata:
-        type: object
+main:
+  fields:
+    metadata:
+      type: object
 "#;
 
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
@@ -1745,19 +1735,18 @@ quill:
   backend: typst
   description: Test nested object in typed table rejection
 
-cards:
-  main:
-    fields:
-      rows:
-        type: array
-        properties:
-          score:
-            type: number
-          nested:
-            type: object
-            properties:
-              inner:
-                type: string
+main:
+  fields:
+    rows:
+      type: array
+      properties:
+        score:
+          type: number
+        nested:
+          type: object
+          properties:
+            inner:
+              type: string
 "#;
 
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
@@ -1780,18 +1769,17 @@ quill:
   backend: typst
   description: Test recursive coercion for array items
 
-cards:
-  main:
-    fields:
-      scores:
-        type: array
-        properties:
-          name:
-            type: string
-          value:
-            type: number
-          active:
-            type: boolean
+main:
+  fields:
+    scores:
+      type: array
+      properties:
+        name:
+          type: string
+        value:
+          type: number
+        active:
+          type: boolean
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1828,17 +1816,16 @@ quill:
   backend: typst
   description: Coerce success
 
-cards:
-  main:
-    fields:
-      count:
-        type: number
-      active:
-        type: boolean
-      signed_on:
-        type: date
-      created_at:
-        type: datetime
+main:
+  fields:
+    count:
+      type: number
+    active:
+      type: boolean
+    signed_on:
+      type: date
+    created_at:
+      type: datetime
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1882,11 +1869,10 @@ quill:
   backend: typst
   description: Coerce integer success
 
-cards:
-  main:
-    fields:
-      count:
-        type: integer
+main:
+  fields:
+    count:
+      type: integer
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1909,11 +1895,10 @@ quill:
   backend: typst
   description: Coerce integer errors
 
-cards:
-  main:
-    fields:
-      count:
-        type: integer
+main:
+  fields:
+    count:
+      type: integer
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1940,16 +1925,15 @@ quill:
   backend: typst
   description: Coerce arrays
 
-cards:
-  main:
-    fields:
-      items:
-        type: array
-        properties:
-          score:
-            type: number
-          active:
-            type: boolean
+main:
+  fields:
+    items:
+      type: array
+      properties:
+        score:
+          type: number
+        active:
+          type: boolean
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1981,7 +1965,7 @@ quill:
   backend: typst
   description: Coerce cards
 
-cards:
+card_types:
   indorsement:
     fields:
       score:
@@ -2015,11 +1999,10 @@ quill:
   backend: typst
   description: Coerce date errors
 
-cards:
-  main:
-    fields:
-      signed_on:
-        type: date
+main:
+  fields:
+    signed_on:
+      type: date
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -2046,11 +2029,10 @@ quill:
   backend: typst
   description: Coerce number errors
 
-cards:
-  main:
-    fields:
-      count:
-        type: number
+main:
+  fields:
+    count:
+      type: number
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -2077,17 +2059,16 @@ quill:
   backend: typst
   description: Test multiline ui hint
 
-cards:
-  main:
-    fields:
-      summary:
-        type: markdown
-        description: Document summary
-        ui:
-          multiline: true
-      notes:
-        type: markdown
-        description: Short notes
+main:
+  fields:
+    summary:
+      type: markdown
+      description: Document summary
+      ui:
+        multiline: true
+    notes:
+      type: markdown
+      description: Short notes
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -2110,17 +2091,16 @@ quill:
   backend: typst
   description: Test multiline ui hint on string field
 
-cards:
-  main:
-    fields:
-      address:
-        type: string
-        description: Mailing address
-        ui:
-          multiline: true
-      name:
-        type: string
-        description: Full name
+main:
+  fields:
+    address:
+      type: string
+      description: Mailing address
+      ui:
+        multiline: true
+    name:
+      type: string
+      description: Full name
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -2143,13 +2123,14 @@ quill:
   backend: typst
   description: Test ui.title on cards
 
-cards:
-  main:
-    ui:
-      title: Memorandum
-    fields:
-      subject:
-        type: string
+main:
+  ui:
+    title: Memorandum
+  fields:
+    subject:
+      type: string
+
+card_types:
   indorsement:
     ui:
       title: "{from} → {for}"
@@ -2158,7 +2139,6 @@ cards:
         type: string
       for:
         type: string
-
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -2168,7 +2148,7 @@ cards:
         Some("Memorandum"),
         "literal main.ui.title"
     );
-    let indorsement = config.card("indorsement").unwrap();
+    let indorsement = config.card_type("indorsement").unwrap();
     assert_eq!(
         indorsement.ui.as_ref().unwrap().title.as_deref(),
         Some("{from} → {for}"),
@@ -2176,12 +2156,9 @@ cards:
     );
 
     let schema = config.schema();
+    assert_eq!(schema["main"]["ui"]["title"].as_str(), Some("Memorandum"));
     assert_eq!(
-        schema["cards"]["main"]["ui"]["title"].as_str(),
-        Some("Memorandum")
-    );
-    assert_eq!(
-        schema["cards"]["indorsement"]["ui"]["title"].as_str(),
+        schema["card_types"]["indorsement"]["ui"]["title"].as_str(),
         Some("{from} → {for}")
     );
 }
@@ -2195,11 +2172,10 @@ quill:
   backend: typst
   description: ui.title omitted when not declared
 
-cards:
-  main:
-    fields:
-      subject:
-        type: string
+main:
+  fields:
+    subject:
+      type: string
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -2219,14 +2195,13 @@ quill:
   backend: typst
   description: Error on invalid field test
 
-cards:
-  main:
-    fields:
-      valid_field:
-        type: string
-        description: Valid
-      broken_field:
-        description: Missing required type
+main:
+  fields:
+    valid_field:
+      type: string
+      description: Valid
+    broken_field:
+      description: Missing required type
 "#;
 
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
@@ -2259,7 +2234,7 @@ quill:
 
 #[test]
 fn test_unknown_top_level_section_errors() {
-    // 'card' is a common typo for 'cards'. Must not be silently ignored.
+    // 'card_type' is a common typo for 'card_types'. Must not be silently ignored.
     let yaml_content = r#"
 quill:
   name: unk_section
@@ -2267,7 +2242,7 @@ quill:
   backend: typst
   description: Unknown section test
 
-card:
+card_type:
   foo:
     description: Should not silently disappear
     fields:
@@ -2278,7 +2253,7 @@ card:
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
 
     assert!(err.iter().any(|d| {
-        d.code.as_deref() == Some("quill::unknown_section") && d.message.contains("card")
+        d.code.as_deref() == Some("quill::unknown_section") && d.message.contains("card_type")
     }));
 }
 
@@ -2334,13 +2309,12 @@ quill:
   description: Multi-error test
   platefile: foo.typ
 
-cards:
-  main:
-    fields:
-      BadFieldName:
-        type: string
-      legit:
-        title: Bad legacy key
+main:
+  fields:
+    BadFieldName:
+      type: string
+    legit:
+      title: Bad legacy key
 "#;
 
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
@@ -2385,10 +2359,9 @@ quill:
   backend: typst
   description: Bad UI test
 
-cards:
-  main:
-    ui:
-      bogus_key: nope
+main:
+  ui:
+    bogus_key: nope
 "#;
 
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
@@ -2409,12 +2382,11 @@ quill:
   backend: typst
   description: Hint test
 
-cards:
-  main:
-    fields:
-      author:
-        type: string
-        title: The document author
+main:
+  fields:
+    author:
+      type: string
+      title: The document author
 "#;
 
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
@@ -2436,13 +2408,12 @@ quill:
   backend: typst
   description: ui.title is valid on individual fields
 
-cards:
-  main:
-    fields:
-      status:
-        type: string
-        ui:
-          title: Status Label
+main:
+  fields:
+    status:
+      type: string
+      ui:
+        title: Status Label
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).expect("ui.title on field should parse");
@@ -2456,7 +2427,7 @@ cards:
         Some("Status Label")
     );
     assert_eq!(
-        config.schema()["cards"]["main"]["fields"]["status"]["ui"]["title"].as_str(),
+        config.schema()["main"]["fields"]["status"]["ui"]["title"].as_str(),
         Some("Status Label")
     );
 }
@@ -2483,12 +2454,8 @@ fn check_schema_snapshot(
 
     let parsed: serde_json::Value = serde_saphyr::from_str(&yaml).expect("parse yaml");
     assert_eq!(json_of(&quill.config), parsed, "{golden} json/yaml parity");
-    assert!(parsed
-        .get("cards")
-        .and_then(|c| c.get("main"))
-        .and_then(|v| v.get("fields"))
-        .is_some());
-    assert!(parsed.get("cards").is_some());
+    assert!(parsed.get("main").and_then(|v| v.get("fields")).is_some());
+    assert!(parsed.get("card_types").is_some());
     assert!(parsed.get("ref").is_none() && parsed.get("example").is_none());
     assert!(yaml.contains("ui:"), "{golden} must include ui hints");
 }
@@ -2502,10 +2469,10 @@ fn schema_snapshot_usaf_memo_0_1_0() {
 fn body_example_with_body_disabled_emits_warning() {
     let yaml = r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      title: { type: string }
+main:
+  fields:
+    title: { type: string }
+card_types:
   skills:
     body:
       enabled: false
@@ -2529,12 +2496,11 @@ cards:
 fn body_example_with_bare_fence_line_is_an_error() {
     let yaml = r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    body:
-      example: "Opening paragraph.\n\n---\n\nClosing paragraph."
-    fields:
-      title: { type: string }
+main:
+  body:
+    example: "Opening paragraph.\n\n---\n\nClosing paragraph."
+  fields:
+    title: { type: string }
 "#;
     let result = QuillConfig::from_yaml_with_warnings(yaml);
     let errors = result.unwrap_err();
@@ -2554,12 +2520,11 @@ fn body_example_fence_line_with_leading_spaces_is_an_error() {
     // Up to 3 leading spaces still counts as a fence marker.
     let yaml = r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    body:
-      example: "text\n   ---\nmore text"
-    fields:
-      title: { type: string }
+main:
+  body:
+    example: "text\n   ---\nmore text"
+  fields:
+    title: { type: string }
 "#;
     let result = QuillConfig::from_yaml_with_warnings(yaml);
     assert!(result.is_err());
@@ -2570,12 +2535,11 @@ fn body_example_four_leading_spaces_is_not_a_fence() {
     // Four leading spaces = indented code block, not a fence marker.
     let yaml = r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    body:
-      example: "text\n    ---\nmore text"
-    fields:
-      title: { type: string }
+main:
+  body:
+    example: "text\n    ---\nmore text"
+  fields:
+    title: { type: string }
 "#;
     let result = QuillConfig::from_yaml_with_warnings(yaml);
     assert!(
@@ -2586,13 +2550,37 @@ cards:
 
 #[test]
 fn body_example_card_fence_line_is_an_error() {
+    // A ```card <kind> opener in a body example would be parsed as a card.
+    let yaml = r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  body:
+    example: "Intro.\n\n```card note\nauthor: x\n```"
+  fields:
+    title: { type: string }
+"#;
+    let result = QuillConfig::from_yaml_with_warnings(yaml);
+    let errors = result.unwrap_err();
+    assert!(
+        errors.iter().any(|d| d
+            .code
+            .as_deref()
+            .map(|c| c == "quill::body_example_contains_fence")
+            .unwrap_or(false)),
+        "expected body_example_contains_fence error for card fence, got: {:?}",
+        errors
+    );
+}
+
+#[test]
+fn body_example_card_type_fence_line_is_an_error() {
     // The fence check applies to card-type body examples too.
     let yaml = r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      title: { type: string }
+main:
+  fields:
+    title: { type: string }
+card_types:
   note:
     body:
       example: "See below:\n---\nEnd."

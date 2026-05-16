@@ -6,19 +6,20 @@ quill:
   example_file: example.md
   description: A simple document template for testing
 
-cards:
-  main:
-    fields:
-      author:
-        description: Author of document
-        type: string
-      ice_cream:
-        description: favorite ice cream flavor
-        type: string
-        default: taro
-      title:
-        description: title of document
-        type: string
+main:
+  fields:
+    author:
+      description: Author of document
+      type: string
+    ice_cream:
+      description: favorite ice cream flavor
+      type: string
+      default: taro
+    title:
+      description: title of document
+      type: string
+
+card_types:
   quotes:
     description: A collection of quotes about taro ice cream
     ui:
@@ -27,4 +28,3 @@ cards:
       author:
         description: The person who said this quote
         type: string
-

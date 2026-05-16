@@ -51,4 +51,4 @@ signature_block:
   - Duty Title
 ```
 
-This body and the metdata above are an indorsement card. Multiple or no indorsement cards can be used.
+This body and the metdata above are an indorsement card. Multiple or no indorsements cards can be used.

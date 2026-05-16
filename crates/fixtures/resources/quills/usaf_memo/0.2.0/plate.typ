@@ -56,9 +56,9 @@
   ..if "attachments" in data { (attachments: data.attachments) },
 )
 
-// Indorsements - iterate through CARDS array and filter by KIND type
+// Indorsements - iterate through CARDS array and filter by CARD type
 #for card in data.CARDS {
-  if card.KIND == "indorsement" {
+  if card.CARD == "indorsement" {
     indorsement(
       from: card.at("from", default: ""),
       to: card.at("for", default: ""),

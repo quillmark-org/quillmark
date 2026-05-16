@@ -136,7 +136,7 @@ pub fn execute(args: ValidateArgs) -> Result<()> {
         println!("  Quill name: {}", config.name);
         println!("  Backend: {}", config.backend);
         println!("  Fields: {}", config.main.fields.len());
-        println!("  Cards: {}", config.cards.len());
+        println!("  Cards: {}", config.card_types.len());
     }
 
     // Step 2: Validate file references
@@ -146,7 +146,7 @@ pub fn execute(args: ValidateArgs) -> Result<()> {
     validate_field_schemas(&config.main.fields, &mut result, "field");
 
     // Step 4: Validate card-type schemas
-    for card_schema in &config.cards {
+    for card_schema in &config.card_types {
         validate_card_schema(&card_schema.name, card_schema, &mut result);
     }
 

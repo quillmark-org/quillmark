@@ -70,7 +70,7 @@ fn print_json(quill: &quillmark::Quill) -> Result<()> {
         "field_count".to_string(),
         serde_json::Value::Number(source.config().main.fields.len().into()),
     );
-    let card_count = source.config().cards.len();
+    let card_count = source.config().card_types.len();
     if card_count > 0 {
         info.insert(
             "card_count".to_string(),
@@ -140,7 +140,7 @@ fn print_human_readable(quill: &quillmark::Quill) {
     println!("  Fields:      {}", field_count);
 
     // Card count from schema $defs
-    let card_count = config.cards.len();
+    let card_count = config.card_types.len();
     if card_count > 0 {
         println!("  Cards:       {}", card_count);
     }

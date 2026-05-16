@@ -193,7 +193,7 @@ fn test_quill_from_object_tree() {
     assert_eq!(r_map.artifacts.len(), r_obj.artifacts.len());
 }
 
-/// `metadata` is identity only; `schema` keeps ui hints and injects QUILL/KIND sentinels.
+/// `metadata` is identity only; `schema` keeps ui hints and injects QUILL/CARD sentinels.
 #[wasm_bindgen_test]
 fn test_quill_metadata_and_schemas() {
     use js_sys::Reflect;
@@ -206,7 +206,7 @@ fn test_quill_metadata_and_schemas() {
         .quill(common::tree(&[
             (
                 "Quill.yaml",
-                b"quill:\n  name: meta_quill\n  backend: typst\n  version: \"0.2.1\"\n  plate_file: plate.typ\n  description: Metadata quill\nmain:\n  fields:\n    title:\n      type: string\n      ui:\n        group: Header\ncards:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n",
+                b"quill:\n  name: meta_quill\n  backend: typst\n  version: \"0.2.1\"\n  plate_file: plate.typ\n  description: Metadata quill\nmain:\n  fields:\n    title:\n      type: string\n      ui:\n        group: Header\ncard_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n",
             ),
             ("plate.typ", b"= Title"),
         ]))
@@ -225,7 +225,7 @@ fn test_quill_metadata_and_schemas() {
     assert!(js_sys::Array::from(&get(&meta, "supportedFormats")).length() > 0);
     assert!(get(&meta, "schema").is_undefined());
 
-    // schema: QUILL/KIND sentinels with const values, ui hints included.
+    // schema: QUILL/CARD sentinels with const values, ui hints included.
     let schema = quill.schema();
     let main_fields = get(&get(&schema, "main"), "fields");
     assert!(get(&get(&main_fields, "title"), "ui").is_object());
@@ -233,9 +233,9 @@ fn test_quill_metadata_and_schemas() {
         get_str(&get(&main_fields, "QUILL"), "const").as_deref(),
         Some("meta_quill@0.2.1")
     );
-    let card_fields = get(&get(&get(&schema, "cards"), "indorsement"), "fields");
+    let card_fields = get(&get(&get(&schema, "card_types"), "indorsement"), "fields");
     assert_eq!(
-        get_str(&get(&card_fields, "KIND"), "const").as_deref(),
+        get_str(&get(&card_fields, "CARD"), "const").as_deref(),
         Some("indorsement")
     );
 }

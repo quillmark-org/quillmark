@@ -61,7 +61,7 @@ Validation rules:
 
 ## `Quill.yaml` Structure
 
-Required top-level sections: `Quill` (bundle metadata). Optional: `cards` (the card schema map — `cards.main` for document fields, every other key an inline card kind), `typst` (backend config).
+Required top-level sections: `Quill` (bundle metadata). Optional: `main` (document fields), `card_types` (card type definitions), `typst` (backend config).
 
 ```yaml
 quill:
@@ -73,16 +73,16 @@ quill:
   plate_file: plate.typ   # optional; path to Typst template
   example_file: example.md  # optional; example document for preview
 
-cards:
-  main:
-    fields:
-      title:
-        type: string
-        description: Document title
-      count:
-        type: integer
-        description: Whole-number count
+main:
+  fields:
+    title:
+      type: string
+      description: Document title
+    count:
+      type: integer
+      description: Whole-number count
 
+card_types:
   quote:
     description: A single pull quote
     ui:
@@ -99,10 +99,10 @@ typst:
     - "@preview/some-package:1.0.0"
 ```
 
-Field names must be `snake_case`. Capitalized keys (e.g. `BODY`, `CARDS`, `KIND`) are reserved by the engine. Standalone `object` fields require a `properties` map; use `type: array` with `properties:` for a list of objects.
+Field names must be `snake_case`. Capitalized keys (e.g. `BODY`, `CARDS`, `CARD`) are reserved by the engine. Standalone `object` fields require a `properties` map; use `type: array` with `properties:` for a list of objects.
 
 Metadata resolution:
-- `name`, `description`, `backend`, `version`, `author` are direct struct fields on `QuillConfig`. `description` (required, non-empty in the `quill:` section) describes the quill itself; it is independent of `QuillConfig`'s `cards.main` description, which is the optional schema description authored under `cards.main:` like any other card kind.
+- `name`, `description`, `backend`, `version`, `author` are direct struct fields on `QuillConfig`. `description` (required, non-empty in the `quill:` section) describes the quill itself; it is independent of `QuillConfig.main.description`, which is the optional schema description authored under `main:` like any other card type.
 - `metadata` on `Quill` stores `backend`, `description`, `version`, `author`, and `typst_*` keys from the `[typst]` section. The `quill:` section accepts only the documented keys; unknown keys produce a `quill::unknown_key` error rather than landing in `metadata`.
 - `example_file` also accepts the alias `example` in YAML
 
@@ -111,11 +111,11 @@ Metadata resolution:
 `Quill.yaml` is parsed strictly: every problem the parser can detect is collected and reported in one pass as a `Vec<Diagnostic>`, rather than failing on the first error or silently dropping unsupported shapes. Specifically:
 
 - Unknown keys in the `quill:` section error with `quill::unknown_key` (typos like `platefile` are not silently captured).
-- Unknown top-level sections error with `quill::unknown_section` (typos like `card:` are not silently ignored). Root-level `fields:` gets a targeted hint pointing to `cards.main.fields:`.
+- Unknown top-level sections error with `quill::unknown_section` (typos like `card_type:` are not silently ignored). Root-level `fields:` gets a targeted hint pointing to `main.fields:`.
 - Field schemas that fail to parse (e.g. legacy `title:`, missing `type:`) error with `quill::field_parse_error` and an actionable hint where applicable, rather than being dropped from the schema.
 - Standalone `object` fields and disallowed nested-object shapes error with `quill::standalone_object_not_supported` / `quill::nested_object_not_supported`.
-- Malformed `quill.ui` / `cards.main.ui` blocks error with `quill::invalid_ui` rather than being silently discarded.
-- Malformed `cards.main.body` / `cards.<name>.body` blocks error with `quill::invalid_body`.
+- Malformed `quill.ui` / `main.ui` blocks error with `quill::invalid_ui` rather than being silently discarded.
+- Malformed `main.body` / `card_types.<name>.body` blocks error with `quill::invalid_body`.
 - A `body.description` set together with `body.enabled: false` warns with `quill::body_description_unused` (the description has no effect).
 
 Errors flow through `RenderError::QuillConfig { diags: Vec<Diagnostic> }` and surface to bindings as a structured array (`err.diagnostics` in WASM, `.diagnostics` attribute in Python).

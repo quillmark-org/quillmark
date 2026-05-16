@@ -20,15 +20,14 @@ pub struct QuillConfig {
     /// Quill package name
     pub name: String,
     /// Human-readable description of the quill itself (parsed from
-    /// `quill.description`). Distinct from `cards.main.description`, which
-    /// describes the main card's schema.
+    /// `quill.description`). Distinct from `main.description`, which describes
+    /// the main card's schema.
     pub description: String,
-    /// The entry-point card schema (parsed from the Quill.yaml `cards.main:`
-    /// entry).
+    /// The entry-point card schema (parsed from the Quill.yaml `main:` section).
     pub main: CardSchema,
-    /// Named, inline card-kind schemas (parsed from the Quill.yaml `cards:`
-    /// map). Does not include `main`.
-    pub cards: Vec<CardSchema>,
+    /// Named, composable card-type schemas (parsed from the Quill.yaml
+    /// `card_types:` section). Does not include `main`.
+    pub card_types: Vec<CardSchema>,
     /// Backend to use for rendering (e.g., "typst", "html")
     pub backend: String,
     /// Version of the Quillmark spec
@@ -72,21 +71,20 @@ pub enum CoercionError {
 
 impl QuillConfig {
     /// Returns a named card-type schema by name.
-    pub fn card(&self, name: &str) -> Option<&CardSchema> {
-        self.cards.iter().find(|card| card.name == name)
+    pub fn card_type(&self, name: &str) -> Option<&CardSchema> {
+        self.card_types.iter().find(|card| card.name == name)
     }
 
     /// Full schema including `ui` hints.
     ///
-    /// The schema is a single `cards` map. `cards.main.fields` is prefixed with
-    /// a required `QUILL` entry (`const = name@version`); each
-    /// `cards.<name>.fields` is prefixed with a required `KIND` entry
+    /// `main.fields` is prefixed with a required `QUILL` entry (`const = name@version`);
+    /// each `card_types[<name>].fields` is prefixed with a required `CARD` entry
     /// (`const = <name>`). Identity (`name`, `version`, etc.) and the bundled
     /// example live elsewhere on the host's metadata surface.
     pub fn schema(&self) -> serde_json::Value {
         let canonical_ref = format!("{}@{}", self.name, self.version);
 
-        let mut cards = serde_json::Map::new();
+        let mut obj = serde_json::Map::new();
 
         let mut main_value = serde_json::to_value(&self.main).unwrap_or(serde_json::Value::Null);
         Self::prepend_sentinel_field(
@@ -95,25 +93,34 @@ impl QuillConfig {
             &canonical_ref,
             "Canonical quill reference. Must be exactly this value as the QUILL: sentinel in the document frontmatter.",
         );
-        cards.insert("main".to_string(), main_value);
+        obj.insert("main".to_string(), main_value);
 
-        for card in &self.cards {
-            let mut card_value = serde_json::to_value(card).unwrap_or(serde_json::Value::Null);
-            Self::prepend_sentinel_field(
-                &mut card_value,
-                "KIND",
-                &card.name,
-                "Card kind name. Must be exactly this value as the kind token in the card fence info string (```card <kind>).",
+        if !self.card_types.is_empty() {
+            let card_types: BTreeMap<String, serde_json::Value> = self
+                .card_types
+                .iter()
+                .map(|card| {
+                    let mut card_value =
+                        serde_json::to_value(card).unwrap_or(serde_json::Value::Null);
+                    Self::prepend_sentinel_field(
+                        &mut card_value,
+                        "CARD",
+                        &card.name,
+                        "Card type name. Must match the card kind in the card block's ```card <kind>``` info string.",
+                    );
+                    (card.name.clone(), card_value)
+                })
+                .collect();
+            obj.insert(
+                "card_types".to_string(),
+                serde_json::to_value(&card_types).unwrap_or(serde_json::Value::Null),
             );
-            cards.insert(card.name.clone(), card_value);
         }
 
-        let mut obj = serde_json::Map::new();
-        obj.insert("cards".to_string(), serde_json::Value::Object(cards));
         serde_json::Value::Object(obj)
     }
 
-    /// Insert a `QUILL`/`KIND` sentinel as the first entry of a card's `fields`.
+    /// Insert a `QUILL`/`CARD` sentinel as the first entry of a card's `fields`.
     fn prepend_sentinel_field(
         card_value: &mut serde_json::Value,
         key: &str,
@@ -153,7 +160,7 @@ impl QuillConfig {
         Ok(coerced)
     }
 
-    /// Coerce typed fields for a single card (IndexMap, no KIND/BODY keys).
+    /// Coerce typed fields for a single card (IndexMap, no CARD/BODY keys).
     ///
     /// Returns the input unchanged when the card tag is unknown.
     pub fn coerce_card(
@@ -161,13 +168,13 @@ impl QuillConfig {
         card_tag: &str,
         fields: &IndexMap<String, QuillValue>,
     ) -> Result<IndexMap<String, QuillValue>, CoercionError> {
-        let Some(card_schema) = self.card(card_tag) else {
+        let Some(card_schema) = self.card_type(card_tag) else {
             return Ok(fields.clone());
         };
         let mut coerced: IndexMap<String, QuillValue> = IndexMap::new();
         for (field_name, field_value) in fields {
             if let Some(field_schema) = card_schema.fields.get(field_name) {
-                let path = format!("cards.{card_tag}.{field_name}");
+                let path = format!("card_types.{card_tag}.{field_name}");
                 coerced.insert(
                     field_name.clone(),
                     Self::coerce_value_strict(field_value, field_schema, &path)?,
@@ -695,6 +702,16 @@ impl QuillConfig {
         chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
     }
 
+    fn is_valid_card_identifier(name: &str) -> bool {
+        let mut chars = name.chars();
+        match chars.next() {
+            Some(c) if c.is_ascii_lowercase() || c == '_' => {}
+            _ => return false,
+        }
+
+        chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    }
+
     fn is_valid_quill_name(name: &str) -> bool {
         name == "__default__" || Self::is_snake_case_identifier(name)
     }
@@ -962,13 +979,15 @@ impl QuillConfig {
             }
         }
 
-        // Reject unknown top-level sections. Known sections are: quill, cards,
-        // and the backend name (e.g. typst). Everything else is a mistake. `fields`
-        // and `main` get targeted hints since they are the most common shape mistakes.
+        // Reject unknown top-level sections. Known sections are: quill, main, card_types,
+        // and the backend name (e.g. typst). Everything else is a mistake. `fields` gets
+        // a targeted hint since it's the most common shape mistake.
         if let Some(top_obj) = quill_yaml_val.as_object() {
             for key in top_obj.keys() {
-                let is_known =
-                    key == "quill" || key == "cards" || (!backend.is_empty() && key == &backend);
+                let is_known = key == "quill"
+                    || key == "main"
+                    || key == "card_types"
+                    || (!backend.is_empty() && key == &backend);
                 if is_known {
                     continue;
                 }
@@ -981,17 +1000,12 @@ impl QuillConfig {
 
                 diag = if key == "fields" {
                     diag.with_hint(
-                        "Root-level `fields` is not supported; use `cards.main.fields` instead."
-                            .to_string(),
-                    )
-                } else if key == "main" {
-                    diag.with_hint(
-                        "The main card is now defined under the `cards:` map; use `cards.main:` instead."
+                        "Root-level `fields` is not supported; use `main.fields` instead."
                             .to_string(),
                     )
                 } else {
                     diag.with_hint(format!(
-                        "Valid top-level sections are: quill, cards{}",
+                        "Valid top-level sections are: quill, main, card_types{}",
                         if backend.is_empty() {
                             String::new()
                         } else {
@@ -1004,12 +1018,7 @@ impl QuillConfig {
             }
         }
 
-        // The unified `cards:` map. The reserved key `main` is the entry-point
-        // card; every other key is an inline card kind.
-        let cards_obj_opt = quill_yaml_val.get("cards").and_then(|v| v.as_object());
-        let main_obj_opt = cards_obj_opt
-            .and_then(|m| m.get("main"))
-            .and_then(|v| v.as_object());
+        let main_obj_opt = quill_yaml_val.get("main").and_then(|v| v.as_object());
 
         // Extract main.fields (optional)
         let fields = if let Some(main_obj) = main_obj_opt {
@@ -1044,12 +1053,9 @@ impl QuillConfig {
                 Ok(parsed) => Some(parsed),
                 Err(e) => {
                     errors.push(
-                        Diagnostic::new(
-                            Severity::Error,
-                            format!("Invalid 'cards.main.ui' block: {}", e),
-                        )
-                        .with_code("quill::invalid_ui".to_string())
-                        .with_hint("Valid key under 'ui' is: title.".to_string()),
+                        Diagnostic::new(Severity::Error, format!("Invalid 'main.ui' block: {}", e))
+                            .with_code("quill::invalid_ui".to_string())
+                            .with_hint("Valid key under 'ui' is: title.".to_string()),
                     );
                     None
                 }
@@ -1068,7 +1074,7 @@ impl QuillConfig {
                     errors.push(
                         Diagnostic::new(
                             Severity::Error,
-                            format!("Invalid 'cards.main.body' block: {}", e),
+                            format!("Invalid 'main.body' block: {}", e),
                         )
                         .with_code("quill::invalid_body".to_string())
                         .with_hint("Valid keys under 'body' are: enabled, example.".to_string()),
@@ -1078,8 +1084,8 @@ impl QuillConfig {
             },
         };
 
-        // Extract main.description (optional, authored under `cards.main:` like
-        // any other card kind). This is independent of `quill.description`.
+        // Extract main.description (optional, authored under `main:` like any
+        // other card type). This is independent of `quill.description`.
         let main_description = main_obj_opt
             .and_then(|main_obj| main_obj.get("description"))
             .and_then(|v| v.as_str())
@@ -1095,27 +1101,22 @@ impl QuillConfig {
             body: main_body,
         };
 
-        // Extract [cards] section (optional)
-        let mut cards: Vec<CardSchema> = Vec::new();
-        if let Some(cards_val) = quill_yaml_val.get("cards") {
-            match cards_val.as_object() {
+        // Extract [card_types] section (optional)
+        let mut card_types: Vec<CardSchema> = Vec::new();
+        if let Some(card_types_val) = quill_yaml_val.get("card_types") {
+            match card_types_val.as_object() {
                 None => {
                     errors.push(
                         Diagnostic::new(
                             Severity::Error,
-                            "'cards' section must be an object (mapping of type names to schemas)"
-                                .to_string(),
+                            "'card_types' section must be an object (mapping of type names to schemas)".to_string(),
                         )
-                        .with_code("quill::invalid_cards".to_string()),
+                        .with_code("quill::invalid_card_types".to_string()),
                     );
                 }
-                Some(cards_table) => {
-                    for (card_name, card_value) in cards_table {
-                        // `main` is the reserved entry-point card, parsed above.
-                        if card_name == "main" {
-                            continue;
-                        }
-                        if !crate::document::sentinel::is_valid_tag_name(card_name) {
+                Some(card_types_table) => {
+                    for (card_name, card_value) in card_types_table {
+                        if !Self::is_valid_card_identifier(card_name) {
                             errors.push(
                                 Diagnostic::new(
                                     Severity::Error,
@@ -1138,7 +1139,10 @@ impl QuillConfig {
                                     errors.push(
                                         Diagnostic::new(
                                             Severity::Error,
-                                            format!("Failed to parse card '{}': {}", card_name, e),
+                                            format!(
+                                                "Failed to parse card_type '{}': {}",
+                                                card_name, e
+                                            ),
                                         )
                                         .with_code("quill::invalid_card_schema".to_string()),
                                     );
@@ -1155,7 +1159,7 @@ impl QuillConfig {
                             Self::parse_fields_with_order(
                                 card_fields_table,
                                 &card_field_order,
-                                &format!("card '{}' field", card_name),
+                                &format!("card_type '{}' field", card_name),
                                 &mut errors,
                             )
                         } else {
@@ -1164,10 +1168,10 @@ impl QuillConfig {
 
                         Self::validate_description_singleline(
                             card_def.description.as_deref(),
-                            &format!("card '{}'", card_name),
+                            &format!("card_type '{}'", card_name),
                             &mut errors,
                         );
-                        cards.push(CardSchema {
+                        card_types.push(CardSchema {
                             name: card_name.clone(),
                             description: card_def.description,
                             fields: card_fields,
@@ -1206,8 +1210,8 @@ impl QuillConfig {
         if let Some(d) = warn_example_unused("main", &main.body) {
             warnings.push(d);
         }
-        for card in &cards {
-            if let Some(d) = warn_example_unused(&format!("cards.{}", card.name), &card.body) {
+        for card in &card_types {
+            if let Some(d) = warn_example_unused(&format!("card_types.{}", card.name), &card.body) {
                 warnings.push(d);
             }
         }
@@ -1240,8 +1244,9 @@ impl QuillConfig {
         if let Some(d) = err_example_contains_fence("main", &main.body) {
             errors.push(d);
         }
-        for card in &cards {
-            if let Some(d) = err_example_contains_fence(&format!("cards.{}", card.name), &card.body)
+        for card in &card_types {
+            if let Some(d) =
+                err_example_contains_fence(&format!("card_types.{}", card.name), &card.body)
             {
                 errors.push(d);
             }
@@ -1256,7 +1261,7 @@ impl QuillConfig {
                 name,
                 description,
                 main,
-                cards,
+                card_types,
                 backend,
                 version,
                 author,
@@ -1270,9 +1275,16 @@ impl QuillConfig {
     }
 }
 
-/// Returns true if any line in `text` would be parsed as a metadata-fence
-/// marker by the document parser. Mirrors `document::fences::is_fence_marker_line`:
-/// up to 3 leading spaces (no leading tab), then `---`, then only whitespace.
+/// Returns true if any line in `text` would be parsed as a card-fence or
+/// metadata-fence marker by the document parser — either of which would
+/// corrupt the blueprint's document structure when the example is embedded
+/// verbatim as body content.
+///
+/// Two markers are flagged, both after up to 3 leading spaces (no leading
+/// tab):
+/// - a legacy `---` metadata fence marker (`---` then only whitespace);
+/// - a canonical ```` ```card ```` fenced-card opener (3+ backticks or tildes
+///   followed by an info string whose first token is `card`).
 fn example_contains_fence_line(text: &str) -> bool {
     text.lines().any(|line| {
         let line = line.strip_suffix('\r').unwrap_or(line);
@@ -1280,9 +1292,20 @@ fn example_contains_fence_line(text: &str) -> bool {
         if indent > 3 || line.as_bytes().first() == Some(&b'\t') {
             return false;
         }
-        matches!(
-            line[indent..].strip_prefix("---"),
-            Some(rest) if rest.chars().all(|c| c == ' ' || c == '\t')
-        )
+        let rest = &line[indent..];
+        // Legacy `---` metadata fence marker.
+        if matches!(rest.strip_prefix("---"), Some(r) if r.chars().all(|c| c == ' ' || c == '\t')) {
+            return true;
+        }
+        // Canonical ```card <kind> fenced-card opener.
+        if let Some(&fence) = rest.as_bytes().first() {
+            if fence == b'`' || fence == b'~' {
+                let run = rest.bytes().take_while(|&b| b == fence).count();
+                if run >= 3 && rest[run..].split_whitespace().next() == Some("card") {
+                    return true;
+                }
+            }
+        }
+        false
     })
 }

@@ -108,12 +108,12 @@ impl Quill {
                 let defaults = self
                     .source
                     .config()
-                    .card(&card.tag())
+                    .card_type(&card.tag())
                     .map(|c| c.defaults())
                     .unwrap_or_default();
                 let fields = apply_defaults(&card.frontmatter().to_index_map(), defaults);
                 Card::new_with_sentinel(
-                    Sentinel::Inline(card.tag()),
+                    Sentinel::Card(card.tag()),
                     Frontmatter::from_index_map(fields),
                     card.body().to_string(),
                 )
@@ -156,7 +156,7 @@ impl Quill {
                 .coerce_card(&card.tag(), &card.frontmatter().to_index_map())
                 .map_err(coercion_error)?;
             coerced_cards.push(Card::new_with_sentinel(
-                Sentinel::Inline(card.tag()),
+                Sentinel::Card(card.tag()),
                 Frontmatter::from_index_map(coerced_fields),
                 card.body().to_string(),
             ));
@@ -209,7 +209,7 @@ impl Quill {
     /// after editing `doc`.
     ///
     /// **Unknown card tags** are dropped from [`Form::cards`] and surface as
-    /// `form::unknown_card` diagnostics. Validation errors are appended
+    /// `form::unknown_card_tag` diagnostics. Validation errors are appended
     /// as `form::validation_error` diagnostics; the view itself is never
     /// altered or filtered by validation failures.
     pub fn form(&self, doc: &Document) -> Form {
@@ -226,14 +226,14 @@ impl Quill {
         FormCard::blank(&self.source.config().main)
     }
 
-    /// A blank form for a card of the given kind — no document values
-    /// supplied. Returns `None` if `kind` is not declared in the
+    /// A blank form for a card of the given type — no document values
+    /// supplied. Returns `None` if `card_type` is not declared in the
     /// quill's schema.
     ///
     /// This is the "user is about to add a new card" view: the UI can render
     /// the form before the card is committed to the document.
-    pub fn blank_card(&self, kind: &str) -> Option<FormCard> {
-        form::blank_card_for_kind(self, kind)
+    pub fn blank_card(&self, card_type: &str) -> Option<FormCard> {
+        form::blank_card_for_tag(self, card_type)
     }
 
     fn validate_document(&self, doc: &Document) -> Result<(), RenderError> {

@@ -34,6 +34,9 @@ pub enum ValidationError {
     #[error("unknown card type `{card}` at `{path}`")]
     UnknownCard { path: String, card: String },
 
+    #[error("card at `{path}` missing `CARD` discriminator")]
+    MissingCardDiscriminator { path: String },
+
     #[error(
         "card `{card}` at `{path}` has body content but the card type declares `body.enabled: false` — remove the body content or set `body.enabled: true` on the card type"
     )]
@@ -51,6 +54,7 @@ impl ValidationError {
             | ValidationError::EnumViolation { path, .. }
             | ValidationError::FormatViolation { path, .. }
             | ValidationError::UnknownCard { path, .. }
+            | ValidationError::MissingCardDiscriminator { path }
             | ValidationError::BodyDisabled { path, .. } => path,
         }
     }
@@ -64,6 +68,9 @@ impl ValidationError {
             ValidationError::EnumViolation { .. } => "validation::enum_violation",
             ValidationError::FormatViolation { .. } => "validation::format_violation",
             ValidationError::UnknownCard { .. } => "validation::unknown_card",
+            ValidationError::MissingCardDiscriminator { .. } => {
+                "validation::missing_card_discriminator"
+            }
             ValidationError::BodyDisabled { .. } => "validation::body_disabled",
         }
     }
@@ -108,7 +115,7 @@ pub fn validate_typed_document(
     doc: &Document,
 ) -> Result<(), Vec<ValidationError>> {
     let main_fields = doc.main().frontmatter().to_index_map();
-    let mut errors = validate_card_fields(&config.main, &main_fields, "");
+    let mut errors = validate_fields_for_card_indexmap(&config.main, &main_fields, "");
 
     // Enforce body.enabled on the main card. Whitespace-only bodies are
     // treated as empty — only meaningful prose triggers the diagnostic.
@@ -124,10 +131,10 @@ pub fn validate_typed_document(
         let item_path = format!("cards[{index}]");
         // NOTE: `cards[N]` is the document-instance-side path (the cards
         // array on a Document). Card-type definitions live under
-        // `cards:` in Quill.yaml, but instances on a document are
+        // `card_types:` in Quill.yaml, but instances on a document are
         // still a `cards` list.
 
-        let Some(card_schema) = config.card(card_name.as_str()) else {
+        let Some(card_schema) = config.card_type(card_name.as_str()) else {
             errors.push(ValidationError::UnknownCard {
                 path: item_path,
                 card: card_name,
@@ -137,7 +144,11 @@ pub fn validate_typed_document(
 
         let card_path = format!("cards.{card_name}[{index}]");
         let card_fields = card.frontmatter().to_index_map();
-        errors.extend(validate_card_fields(card_schema, &card_fields, &card_path));
+        errors.extend(validate_fields_for_card_indexmap(
+            card_schema,
+            &card_fields,
+            &card_path,
+        ));
 
         if !card_schema.body_enabled() && !card.body().trim().is_empty() {
             errors.push(ValidationError::BodyDisabled {
@@ -154,7 +165,7 @@ pub fn validate_typed_document(
     }
 }
 
-fn validate_card_fields(
+fn validate_fields_for_card_indexmap(
     card: &CardSchema,
     fields: &IndexMap<String, QuillValue>,
     base_path: &str,
@@ -364,22 +375,6 @@ mod tests {
     use serde_json::json;
 
     fn config_with(main_fields: &str, cards: &str) -> QuillConfig {
-        // Callers pass inline kinds as a `cards:`-rooted block; the unified
-        // `cards:` map already hosts `main`, so drop the redundant header.
-        let inline = cards.strip_prefix("cards:\n").unwrap_or(cards);
-        // `main` is now nested two levels deeper under `cards:`, so caller
-        // field blocks need two extra spaces of indentation.
-        let main_fields: String = main_fields
-            .lines()
-            .map(|l| {
-                if l.is_empty() {
-                    String::new()
-                } else {
-                    format!("  {l}")
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
         let yaml = format!(
             r#"
 quill:
@@ -387,11 +382,10 @@ quill:
   backend: typst
   description: Native validator tests
   version: 1.0.0
-cards:
-  main:
-    fields:
+main:
+  fields:
 {main_fields}
-{inline}
+{cards}
 "#
         );
         let (config, warnings) = QuillConfig::from_yaml_with_warnings(&yaml).unwrap();
@@ -620,7 +614,7 @@ cards:
     fn validates_card_with_valid_discriminator() {
         let config = config_with(
             "    title:\n      type: string",
-            "cards:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
+            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
         );
         let doc = doc_with_typed_cards(
             &[],
@@ -636,7 +630,7 @@ cards:
     fn rejects_unknown_card_discriminator() {
         let config = config_with(
             "    title:\n      type: string",
-            "cards:\n  indorsement:\n    fields:\n      signature_block:\n        type: string",
+            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string",
         );
         let doc = doc_with_typed_cards(&[], vec![typed_card("unknown", &[])]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
@@ -646,10 +640,10 @@ cards:
     }
 
     #[test]
-    fn validates_multiple_card_instances_same_kind() {
+    fn validates_multiple_card_instances_same_type() {
         let config = config_with(
             "    title:\n      type: string",
-            "cards:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
+            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
         );
         let doc = doc_with_typed_cards(
             &[],
@@ -662,10 +656,10 @@ cards:
     }
 
     #[test]
-    fn validates_multiple_cards_mixed() {
+    fn validates_multiple_card_types_mixed() {
         let config = config_with(
             "    title:\n      type: string",
-            "cards:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true\n  routing:\n    fields:\n      office:\n        type: string\n        required: true",
+            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true\n  routing:\n    fields:\n      office:\n        type: string\n        required: true",
         );
         let doc = doc_with_typed_cards(
             &[],
@@ -681,7 +675,7 @@ cards:
     fn reports_card_field_paths_with_card_name_and_index() {
         let config = config_with(
             "    title:\n      type: string",
-            "cards:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
+            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
         );
         let doc = doc_with_typed_cards(&[], vec![typed_card("indorsement", &[])]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
@@ -694,7 +688,7 @@ cards:
     fn body_disabled_card_enforces_trim_boundary() {
         let config = config_with(
             "    title:\n      type: string",
-            "cards:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        required: true",
+            "card_types:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        required: true",
         );
         // Prose triggers the error; whitespace-only does not.
         let mut prose_card = typed_card("skills", &[("items", json!(["Rust"]))]);
@@ -736,13 +730,12 @@ quill:
   backend: typst
   description: Native validator tests
   version: 1.0.0
-cards:
-  main:
-    body:
-      enabled: false
-    fields:
-      title:
-        type: string
+main:
+  body:
+    enabled: false
+  fields:
+    title:
+      type: string
 "#,
         )
         .unwrap();

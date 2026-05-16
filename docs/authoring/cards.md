@@ -1,11 +1,13 @@
 # Cards
 
-Quillmark supports inline structured-data records — *cards* — for repeated
-sections like product cards, indorsement chains, or experience entries. Each
-card is a [CommonMark fenced code block](https://spec.commonmark.org/0.31.2/#fenced-code-blocks)
-whose info string is `card <kind>` and which carries a YAML body.
+Quillmark supports inline metadata blocks for repeated structures called
+*cards*.
 
-## Card syntax
+## Card Block Syntax
+
+A card is a fenced code block whose info string is `card <kind>`. The block's
+content is the card's YAML data; the markdown after the closing fence is the
+card's body.
 
 ````markdown
 ---
@@ -22,7 +24,7 @@ name: Widget
 price: 19.99
 ```
 
-Widget description goes here, as Markdown prose, up to the next card or EOF.
+Widget description.
 
 ```card products
 name: Gadget
@@ -32,48 +34,39 @@ price: 29.99
 Gadget description.
 ````
 
-Cards of the same kind are collected into an ordered array under
-`cards.<kind>`. The two `products` cards above land at
-`cards.products[0]` and `cards.products[1]` (template-side) and as two
-entries in `data.CARDS` (backend wire shape).
+All card blocks are collected into the `CARDS` array.
 
-## Fence closure and nesting
+## Legacy Syntax
 
-Card fences follow CommonMark's run-length closure rules: the closer must
-have at least as many backticks as the opener. To embed a fenced code block
-inside a card body, open the card with a longer fence:
+The older metadata-fence syntax — a `CARD:` key inside a `---`/`---` pair — is
+still accepted on input:
 
-`````markdown
-````card example
-caption: Hello world in Python
-````
+```markdown
+---
+CARD: products
+name: Widget
+price: 19.99
+---
 
-```python
-print("hello")
+Widget description.
 ```
 
-More body prose for this card.
-`````
-
-Indented fences (0–3 leading spaces) are permitted, matching CommonMark.
+Both syntaxes parse identically. Round-tripping a document through
+`toMarkdown` always emits the canonical ```` ```card ```` form, so legacy
+fences are rewritten to fenced cards on the next save.
 
 ## Rules
 
-- The info string must be exactly `card <kind>`. The kind matches the
-  pattern `[a-z_][a-z0-9_]*`. A missing kind token, an invalid kind
-  token, or any extra info-string token is a hard parse error.
-- `BODY` and `KIND` are reserved inside a card — the parser populates them
-  (`BODY` with the attached prose, `KIND` from the info-string kind
-  token), and supplying either as an input body key is a hard error.
-- `QUILL` is *not* reserved inside cards — it's only meaningful in
-  frontmatter.
-- YAML tags such as `!fill` cannot decorate the `QUILL` sentinel key.
-- Misspelt info strings (e.g. ` ```caard `) are just unknown-language code
-  blocks; the parser ignores them. A `` ```card `` fence with a missing or
-  malformed kind token, however, is a hard parse error.
+- The card kind (`card <kind>`) must match `[a-z_][a-z0-9_]*`.
+- `QUILL`, `CARD`, `BODY`, and `CARDS` are reserved and cannot be used as
+  field names inside a card.
+- A `card` fenced block must have a blank line above it to be recognized as a
+  card; without one it is treated as an ordinary code block.
+- `---` is reserved for metadata delimiters and cannot be used as a thematic
+  break in body content.
+- Invalid card-kind examples: `BadCard`, `my-card`, `2nd_card`.
 
-## Card body
+## Card Body Content
 
-Each card gets a `BODY` field containing the Markdown prose between the
-card's closing fence and the next card's opening fence (or end of file).
-The body is verbatim — no further fence detection happens inside it.
+Each card includes a `BODY` field containing the Markdown between that card's
+closing fence and the next card (or document end).

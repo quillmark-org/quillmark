@@ -5,9 +5,9 @@ author: Quillmark Team
 version: 1.0
 ---
 
-This document demonstrates the **extended YAML metadata standard** for Quillmark.
+This document demonstrates the new **extended YAML metadata standard** for Quillmark.
 
-The extended standard allows you to define inline metadata records throughout your document using `` ```card `` fenced code blocks.
+The extended standard allows you to define inline metadata sections throughout your document using reserved keys.
 
 ## Features Demonstrated
 
@@ -16,7 +16,7 @@ name: Tag Directives
 status: implemented
 ```
 
-Use `` ```card <name> `` fenced code blocks to create collections of related items. Each block creates an entry in an array keyed by its kind.
+Use the ```` ```card tag_name ```` fenced syntax to create collections of related items. Each card block creates an entry in an array.
 
 ```card features
 name: Structured Content
@@ -30,7 +30,7 @@ name: Backward Compatible
 status: stable
 ```
 
-Documents without card blocks continue to work exactly as before.
+Documents without tag directives continue to work exactly as before. No breaking changes!
 
 ## Use Cases
 
@@ -50,7 +50,8 @@ Ideal for content-heavy sites where each item needs its own metadata (price, cat
 
 ## Technical Details
 
-- **Kind pattern**: `[a-z_][a-z0-9_]*`
-- **Fence shape**: CommonMark fenced code block with info string `card`
-- **Reserved names**: `BODY`, `CARDS` are populated by the parser and forbidden as input keys
-- **Collections**: Same `KIND` value groups blocks into an ordered array under `cards.<kind>`
+- **Card kind pattern**: `[a-z_][a-z0-9_]*`
+- **Blank lines**: Allowed within card blocks
+- **Card syntax**: a fenced code block with the info string `card <kind>`, preceded by a blank line
+- **Reserved names**: Cannot use `QUILL`, `CARD`, `BODY`, or `CARDS` as field names
+- **Collections**: The same card kind creates an array of objects

@@ -16,10 +16,6 @@
 - **[CARDS.md](CARDS.md)** - Composable cards with unified CARDS array
 - **[GLUE_METADATA.md](GLUE_METADATA.md)** - Plate data injection
 
-## Proposals
-
-- **[../proposals/CARD_MODEL.md](../proposals/CARD_MODEL.md)** - Unified "card" vocabulary; supersedes the deleted LEAF_REWORK / LEAF_KIND_INFOSTRING proposals
-
 ## Backends
 
 - Typst backend: see `crates/backends/typst/` rustdoc

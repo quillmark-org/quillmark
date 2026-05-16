@@ -59,13 +59,13 @@ export interface QuillCardSchema {
 /**
  * Document schema returned by `Quill.schema`. Includes optional `ui` keys.
  *
- * `main.fields.QUILL` and `cards[name].fields.KIND` are required
+ * `main.fields.QUILL` and `card_types[name].fields.CARD` are required
  * sentinels with `const` values telling consumers what to write.
  */
 export interface QuillSchema {
     main: QuillCardSchema;
     /** Present only when the quill declares at least one named card type. */
-    cards?: Record<string, QuillCardSchema>;
+    card_types?: Record<string, QuillCardSchema>;
 }
 
 /**
@@ -451,14 +451,14 @@ impl Quill {
 
     /// A blank form for a card of the given type — no document values supplied.
     ///
-    /// Returns `null` if `cardKind` is not declared in this quill's schema.
+    /// Returns `null` if `cardType` is not declared in this quill's schema.
     /// Otherwise returns a plain JS object shaped like a single entry in
     /// [`Form::cards`].
     ///
     /// [`Form::cards`]: quillmark::form::Form::cards
     #[wasm_bindgen(js_name = blankCard, unchecked_return_type = "FormCard | null")]
-    pub fn blank_card(&self, kind: &str) -> Result<JsValue, JsValue> {
-        match self.inner.blank_card(kind) {
+    pub fn blank_card(&self, card_type: &str) -> Result<JsValue, JsValue> {
+        match self.inner.blank_card(card_type) {
             Some(card) => {
                 let serializer = serde_wasm_bindgen::Serializer::new()
                     .serialize_maps_as_objects(true)
@@ -585,7 +585,7 @@ impl Document {
     /// Clears any existing `!fill` marker on the field.
     ///
     /// Throws an `Error` whose message includes the `EditError` variant name and
-    /// details if `name` is reserved (`BODY`, `CARDS`, `QUILL`, `KIND`) or does
+    /// details if `name` is reserved (`BODY`, `CARDS`, `QUILL`, `CARD`) or does
     /// not match `[a-z_][a-z0-9_]*`.
     ///
     /// Mutators never modify `warnings`.
@@ -622,7 +622,7 @@ impl Document {
     /// Remove a frontmatter field on the main card, returning the removed value or `undefined`.
     ///
     /// Throws an `Error` whose message includes the `EditError` variant name
-    /// and details if `name` is reserved (`BODY`, `CARDS`, `QUILL`, `KIND`)
+    /// and details if `name` is reserved (`BODY`, `CARDS`, `QUILL`, `CARD`)
     /// or does not match `[a-z_][a-z0-9_]*`. Absence of an otherwise-valid
     /// name returns `undefined`.
     ///
@@ -740,14 +740,14 @@ impl Document {
     ///
     /// Mutates only the sentinel — the card's frontmatter and body are
     /// untouched. Schema-aware migration (clearing orphan fields, applying
-    /// new defaults) is the caller's responsibility; `setCardKind` is a
+    /// new defaults) is the caller's responsibility; `setCardTag` is a
     /// structural primitive.
     ///
     /// Throws if `index` is out of range or if `newTag` does not match
     /// `[a-z_][a-z0-9_]*`.
     ///
     /// Mutators never modify `warnings`.
-    #[wasm_bindgen(js_name = setCardKind)]
+    #[wasm_bindgen(js_name = setCardTag)]
     pub fn set_card_tag(&mut self, index: usize, new_tag: &str) -> Result<(), JsValue> {
         self.inner
             .set_card_tag(index, new_tag)

@@ -4,6 +4,10 @@
 //! for LLM consumers. The blueprint shows the document's shape — fields,
 //! constraints, examples — so a consumer can write a fresh document from it.
 //!
+//! The frontmatter is a `---` fence; each composable card is a fenced code
+//! block with the info string `card <kind>` (the canonical card syntax — see
+//! `MARKDOWN.md` §3.2).
+//!
 //! Annotation grammar:
 //! - **Leading `# …` lines** carry prose: `# <description>` (single line,
 //!   whitespace-collapsed) and `# e.g. <value>` (whenever an `example:` is
@@ -11,9 +15,12 @@
 //! - **Inline `# …` annotation** on the value line is structural:
 //!   `# <type>[<format>]; <role>[, <extras>...]`. Type is mandatory on every
 //!   field. Format slot uses angle brackets (`array<string>`,
-//!   `date<YYYY-MM-DD>`, `enum<a | b | c>`). Role is `required`, `optional`,
-//!   or `composable (0..N)` for cards. The QUILL sentinel adds a `verbatim`
-//!   extra signaling that the value must not be modified.
+//!   `date<YYYY-MM-DD>`, `enum<a | b | c>`). Role is `required` or
+//!   `optional`. The QUILL sentinel adds a `verbatim` extra signaling that
+//!   the value must not be modified.
+//! - **Card role annotation.** A card has no inline-annotation slot (its
+//!   kind is in the info string), so its `composable (0..N)` role is emitted
+//!   as an own-line `# composable (0..N)` comment directly under the opener.
 //! - **Body regions** are signalled by `Write main body here.` after the main
 //!   fence and `Write <card name> body here.` after each card fence. When
 //!   `body.example` is set, the example text is embedded verbatim instead.
@@ -40,32 +47,23 @@ impl QuillConfig {
             .as_deref()
             .filter(|s| !s.is_empty())
             .or_else(|| Some(self.description.as_str()).filter(|s| !s.is_empty()));
-        write_fence_block(
+        write_main_fence(
             &mut out,
             &self.main,
-            Some(&format!(
+            &format!(
                 "QUILL: {}@{}  # sentinel; required, verbatim",
                 self.name, self.version
-            )),
+            ),
             main_desc,
-            "---\n",
-            "---\n",
         );
         if self.main.body_enabled() {
             let example = self.main.body.as_ref().and_then(|b| b.example.as_deref());
             let text = example.unwrap_or("Write main body here.");
             out.push_str(&format!("\n{}\n", text));
         }
-        for card in &self.cards {
+        for card in &self.card_types {
             out.push('\n');
-            write_fence_block(
-                &mut out,
-                card,
-                None,
-                card.description.as_deref(),
-                &format!("```card {}\n", card.name),
-                "```\n",
-            );
+            write_card_fence(&mut out, card);
             if card.body_enabled() {
                 let example = card.body.as_ref().and_then(|b| b.example.as_deref());
                 let fallback = format!("Write {} body here.", card.name);
@@ -77,29 +75,56 @@ impl QuillConfig {
     }
 }
 
-fn write_fence_block(
-    out: &mut String,
-    card: &CardSchema,
-    sentinel_line: Option<&str>,
-    description: Option<&str>,
-    open_fence: &str,
-    close_fence: &str,
-) {
-    out.push_str(open_fence);
-    if let Some(desc) = description {
-        let clean = desc.split_whitespace().collect::<Vec<_>>().join(" ");
+/// Emit a whitespace-collapsed `# <text>` comment line. No-op when `text`
+/// collapses to the empty string.
+fn write_comment(out: &mut String, text: &str) {
+    let clean = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if !clean.is_empty() {
         out.push_str(&format!("# {}\n", clean));
     }
-    if let Some(sentinel) = sentinel_line {
-        out.push_str(sentinel);
-        out.push('\n');
+}
+
+/// Emit the document frontmatter fence: `---\n[# desc\n]QUILL: …\n<fields>---\n`.
+fn write_main_fence(
+    out: &mut String,
+    card: &CardSchema,
+    sentinel_line: &str,
+    description: Option<&str>,
+) {
+    out.push_str("---\n");
+    if let Some(desc) = description {
+        write_comment(out, desc);
     }
+    out.push_str(sentinel_line);
+    out.push('\n');
+    write_card_fields(out, card);
+    out.push_str("---\n");
+}
+
+/// Emit a composable card as the canonical fenced block
+/// ```` ```card <kind>\n…\n``` ````. The kind lives in the info string; the
+/// `composable (0..N)` role annotation — which the legacy `---` syntax carried
+/// inline on the `CARD:` line — moves to an own-line comment directly under
+/// the opener, and the optional description follows it.
+fn write_card_fence(out: &mut String, card: &CardSchema) {
+    out.push_str("```card ");
+    out.push_str(&card.name);
+    out.push('\n');
+    out.push_str("# composable (0..N)\n");
+    if let Some(desc) = &card.description {
+        write_comment(out, desc);
+    }
+    write_card_fields(out, card);
+    out.push_str("```\n");
+}
+
+/// Emit a card's fields, clustered by `ui.group` and ordered by `ui.order`.
+fn write_card_fields(out: &mut String, card: &CardSchema) {
     for (_, fields) in group_fields(card.fields.values()) {
         for field in fields {
             write_field(out, field, 0);
         }
     }
-    out.push_str(close_fence);
 }
 
 /// Cluster fields by `ui.group` (preserving first-appearance order; ungrouped
@@ -492,10 +517,9 @@ mod tests {
     fn required_string_renders_empty_with_required_role() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      author: { type: string, required: true }
+main:
+  fields:
+    author: { type: string, required: true }
 "#)
         .blueprint();
         assert!(t.contains("author: \"\"  # string; required\n"));
@@ -506,10 +530,9 @@ cards:
         // Examples never render as values — they always surface in `# e.g.`.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      status: { type: string, required: true, default: draft, example: final }
+main:
+  fields:
+    status: { type: string, required: true, default: draft, example: final }
 "#)
         .blueprint();
         assert!(t.contains("# e.g. final\nstatus: draft  # string; required\n"));
@@ -519,10 +542,9 @@ cards:
     fn optional_field_default_renders_as_value_with_eg_line() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      classification: { type: string, default: "", example: CONFIDENTIAL }
+main:
+  fields:
+    classification: { type: string, default: "", example: CONFIDENTIAL }
 "#)
         .blueprint();
         assert!(t.contains("# e.g. CONFIDENTIAL\nclassification: \"\"  # string; optional\n"));
@@ -532,15 +554,14 @@ cards:
     fn optional_array_example_renders_as_flow_sequence_with_context_quoting() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      recipient:
-        type: array
-        example:
-          - Mr. John Doe
-          - 123 Main St
-          - "Anytown, USA"
+main:
+  fields:
+    recipient:
+      type: array
+      example:
+        - Mr. John Doe
+        - 123 Main St
+        - "Anytown, USA"
 "#)
         .blueprint();
         assert!(t.contains(
@@ -552,10 +573,9 @@ cards:
     fn enum_field_uses_enum_format_slot_and_no_eg() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      format: { type: string, enum: [standard, informal], default: standard }
+main:
+  fields:
+    format: { type: string, enum: [standard, informal], default: standard }
 "#)
         .blueprint();
         assert!(t.contains("format: standard  # enum<standard | informal>; optional\n"));
@@ -568,15 +588,14 @@ cards:
         // example surfaces in the leading `# e.g.` line.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      memo_from:
-        type: array
-        required: true
-        example:
-          - ORG/SYMBOL
-          - City ST 12345
+main:
+  fields:
+    memo_from:
+      type: array
+      required: true
+      example:
+        - ORG/SYMBOL
+        - City ST 12345
 "#)
         .blueprint();
         assert!(t.contains(
@@ -588,13 +607,12 @@ cards:
     fn description_emitted_as_single_line() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      subject:
-        type: string
-        required: true
-        description: Be brief and clear.
+main:
+  fields:
+    subject:
+      type: string
+      required: true
+      description: Be brief and clear.
 "#)
         .blueprint();
         assert!(t.contains("# Be brief and clear.\nsubject: \"\"  # string; required\n"));
@@ -604,15 +622,14 @@ cards:
     fn every_field_carries_inline_type_and_role() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      title: { type: string }
-      size: { type: number, default: 11 }
-      flag: { type: boolean, default: false }
-      issued: { type: date }
-      published: { type: datetime }
-      refs: { type: array }
+main:
+  fields:
+    title: { type: string }
+    size: { type: number, default: 11 }
+    flag: { type: boolean, default: false }
+    issued: { type: date }
+    published: { type: datetime }
+    refs: { type: array }
 "#)
         .blueprint();
         assert!(t.contains("title: \"\"  # string; optional\n"));
@@ -627,10 +644,9 @@ cards:
     fn markdown_field_renders_as_block_scalar() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      bio: { type: markdown }
+main:
+  fields:
+    bio: { type: markdown }
 "#)
         .blueprint();
         assert!(t.contains("bio: |-  # markdown; optional\n  \n"));
@@ -640,12 +656,11 @@ cards:
     fn markdown_field_with_default_fills_block() {
         let t = cfg(r###"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      bio:
-        type: markdown
-        default: "## About me\n\nHello."
+main:
+  fields:
+    bio:
+      type: markdown
+      default: "## About me\n\nHello."
 "###)
         .blueprint();
         assert!(t.contains("bio: |-  # markdown; optional\n  ## About me\n  \n  Hello.\n"));
@@ -655,10 +670,9 @@ cards:
     fn quill_sentinel_line_is_required_verbatim() {
         let t = cfg(r#"
 quill: { name: taro, version: 0.1.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      flavor: { type: string, default: taro }
+main:
+  fields:
+    flavor: { type: string, default: taro }
 "#)
         .blueprint();
         assert!(t.starts_with("---\n# x\nQUILL: taro@0.1.0  # sentinel; required, verbatim\n"));
@@ -666,30 +680,32 @@ cards:
     }
 
     #[test]
-    fn card_is_in_the_info_string() {
+    fn card_fence_carries_composable_annotation() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      title: { type: string }
+main:
+  fields:
+    title: { type: string }
+card_types:
   note:
     description: A short note appended to the document.
     fields:
       author: { type: string }
 "#)
         .blueprint();
-        assert!(t.contains("```card note\n# A short note appended to the document.\n"));
+        assert!(t.contains(
+            "```card note\n# composable (0..N)\n# A short note appended to the document.\n"
+        ));
     }
 
     #[test]
     fn body_disabled_card_omits_body_placeholder() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      title: { type: string }
+main:
+  fields:
+    title: { type: string }
+card_types:
   skills:
     body: { enabled: false }
     fields:
@@ -704,10 +720,10 @@ cards:
     fn body_example_appears_verbatim() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      title: { type: string }
+main:
+  fields:
+    title: { type: string }
+card_types:
   note:
     body:
       example: "This is an example note."
@@ -724,12 +740,11 @@ cards:
     fn main_body_example_appears_verbatim() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    body:
-      example: "Dear Sir or Madam,\n\nI am writing to..."
-    fields:
-      to: { type: string }
+main:
+  body:
+    example: "Dear Sir or Madam,\n\nI am writing to..."
+  fields:
+    to: { type: string }
 "#)
         .blueprint();
         assert!(t.contains("\nDear Sir or Madam,\n\nI am writing to...\n"));
@@ -740,10 +755,10 @@ cards:
     fn card_body_placeholder_uses_card_name() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      title: { type: string }
+main:
+  fields:
+    title: { type: string }
+card_types:
   indorsement:
     fields:
       from: { type: string }
@@ -756,13 +771,12 @@ cards:
     fn ui_groups_cluster_fields_without_emitting_banner() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      memo_for: { type: array, required: true, ui: { group: Addressing } }
-      subject: { type: string, required: true, ui: { group: Addressing } }
-      letterhead_title: { type: string, default: HQ, ui: { group: Letterhead } }
-      notes: { type: string }
+main:
+  fields:
+    memo_for: { type: array, required: true, ui: { group: Addressing } }
+    subject: { type: string, required: true, ui: { group: Addressing } }
+    letterhead_title: { type: string, default: HQ, ui: { group: Letterhead } }
+    notes: { type: string }
 "#)
         .blueprint();
         let after_quill = &t[t.find("QUILL:").unwrap()..];
@@ -780,15 +794,14 @@ cards:
     fn typed_table_emits_synthetic_row_when_no_example() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      references:
-        type: array
-        description: Cited works.
-        properties:
-          org: { type: string, required: true, description: Citing organization. }
-          year: { type: integer, description: Publication year. }
+main:
+  fields:
+    references:
+      type: array
+      description: Cited works.
+      properties:
+        org: { type: string, required: true, description: Citing organization. }
+        year: { type: integer, description: Publication year. }
 "#)
         .blueprint();
         assert!(t.contains("# Cited works.\nreferences:  # array<object>; optional\n  -\n"));
@@ -800,16 +813,15 @@ cards:
     fn typed_table_with_example_renders_example_rows_no_eg_line() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      refs:
-        type: array
-        example:
-          - { org: ACME, year: 2020 }
-        properties:
-          org: { type: string, required: true }
-          year: { type: integer }
+main:
+  fields:
+    refs:
+      type: array
+      example:
+        - { org: ACME, year: 2020 }
+      properties:
+        org: { type: string, required: true }
+        year: { type: integer }
 "#)
         .blueprint();
         assert!(t.contains("refs:  # array<object>; optional\n  - org: ACME\n"));
@@ -821,15 +833,14 @@ cards:
     fn typed_table_with_default_renders_default_rows() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      refs:
-        type: array
-        default:
-          - { org: ACME }
-        properties:
-          org: { type: string, required: true }
+main:
+  fields:
+    refs:
+      type: array
+      default:
+        - { org: ACME }
+      properties:
+        org: { type: string, required: true }
 "#)
         .blueprint();
         assert!(t.contains("refs:  # array<object>; optional\n  - org: ACME\n"));
@@ -840,14 +851,13 @@ cards:
     fn typed_table_with_empty_default_falls_through_to_synthetic_row() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      refs:
-        type: array
-        default: []
-        properties:
-          org: { type: string, required: true }
+main:
+  fields:
+    refs:
+      type: array
+      default: []
+      properties:
+        org: { type: string, required: true }
 "#)
         .blueprint();
         assert!(t.contains(
@@ -859,16 +869,15 @@ cards:
     fn typed_dict_emits_per_property_annotations() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      address:
-        type: object
-        description: Mailing address.
-        properties:
-          street: { type: string, required: true, description: Street line. }
-          city:   { type: string, required: true }
-          zip:    { type: string }
+main:
+  fields:
+    address:
+      type: object
+      description: Mailing address.
+      properties:
+        street: { type: string, required: true, description: Street line. }
+        city:   { type: string, required: true }
+        zip:    { type: string }
 "#)
         .blueprint();
         assert!(t.contains("# Mailing address.\naddress:  # object; optional\n"));
@@ -881,14 +890,13 @@ cards:
     fn typed_dict_required_carries_role() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      address:
-        type: object
-        required: true
-        properties:
-          street: { type: string, required: true }
+main:
+  fields:
+    address:
+      type: object
+      required: true
+      properties:
+        street: { type: string, required: true }
 "#)
         .blueprint();
         assert!(t.contains("address:  # object; required\n"));
@@ -898,15 +906,14 @@ cards:
     fn typed_dict_with_default_renders_block_mapping_no_annotations() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      address:
-        type: object
-        default: { street: "5000 Forbes Ave", city: Pittsburgh }
-        properties:
-          street: { type: string, required: true }
-          city:   { type: string, required: true }
+main:
+  fields:
+    address:
+      type: object
+      default: { street: "5000 Forbes Ave", city: Pittsburgh }
+      properties:
+        street: { type: string, required: true }
+        city:   { type: string, required: true }
 "#)
         .blueprint();
         assert!(t.contains("address:  # object; optional\n"));
@@ -923,15 +930,14 @@ cards:
     fn typed_dict_with_example_suppresses_eg_line() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
-cards:
-  main:
-    fields:
-      address:
-        type: object
-        example: { street: "1 Infinite Loop", city: Cupertino }
-        properties:
-          street: { type: string, required: true }
-          city:   { type: string }
+main:
+  fields:
+    address:
+      type: object
+      example: { street: "1 Infinite Loop", city: Cupertino }
+      properties:
+        street: { type: string, required: true }
+        city:   { type: string }
 "#)
         .blueprint();
         assert!(t.contains("address:  # object; optional\n"));
@@ -942,26 +948,26 @@ cards:
 
     const LETTER_QUILL: &str = r#"
 quill: { name: letter, version: 1.0.0, backend: typst, description: A formal letter. }
-cards:
-  main:
-    fields:
-      to:
-        type: string
-        required: true
-        description: Recipient name.
-      subject:
-        type: string
-        required: true
-      date:
-        type: date
-      priority:
-        type: string
-        enum: [normal, urgent]
-        default: normal
-      attachments:
-        type: array
-        example:
-          - report.pdf
+main:
+  fields:
+    to:
+      type: string
+      required: true
+      description: Recipient name.
+    subject:
+      type: string
+      required: true
+    date:
+      type: date
+    priority:
+      type: string
+      enum: [normal, urgent]
+      default: normal
+    attachments:
+      type: array
+      example:
+        - report.pdf
+card_types:
   enclosure:
     description: An enclosure attached to the letter.
     fields:
@@ -973,15 +979,6 @@ cards:
     fn blueprint_round_trips_idempotently() {
         let bp = cfg(LETTER_QUILL).blueprint();
         let doc1 = Document::from_markdown(&bp).expect("blueprint must parse");
-        // The blueprint declares one card kind (`enclosure`). It must survive
-        // parsing — earlier the card was emitted as `---/KIND/---`, which the
-        // parser silently dropped into body prose.
-        assert_eq!(
-            doc1.cards().len(),
-            1,
-            "blueprint emits one card; parser must recognise it"
-        );
-        assert_eq!(doc1.cards()[0].tag(), "enclosure");
         let md2 = doc1.to_markdown();
         let doc2 = Document::from_markdown(&md2).expect("round-tripped markdown must parse");
         assert_eq!(

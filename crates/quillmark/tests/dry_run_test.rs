@@ -9,7 +9,7 @@ fn make_test_quill_path(temp_dir: &TempDir, with_required_field: bool) -> std::p
     fs::create_dir_all(&quill_path).unwrap();
 
     let fields_section = if with_required_field {
-        "cards:\n  main:\n    fields:\n      title:\n        type: \"string\"\n        required: true\n      author:\n        type: \"string\"\n        required: false\n"
+        "main:\n  fields:\n    title:\n      type: \"string\"\n      required: true\n    author:\n      type: \"string\"\n      required: false\n"
     } else {
         ""
     };

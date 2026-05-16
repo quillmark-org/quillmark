@@ -101,29 +101,30 @@ tags: !fill []
 
 ## Reserved Field Names
 
-`BODY`, `CARDS`, and `KIND` are reserved as **output-only** fields: the
-parser populates them, and supplying them as input keys is a hard parse
-error. `BODY` holds the document's Markdown body; `CARDS` holds the
-ordered list of card records; `KIND` holds a card's kind (sourced from the
-`` ```card <kind> `` info string). `QUILL` is also reserved — it's the
-sentinel that names the quill format. YAML tags such as `!fill` cannot
-decorate `QUILL`.
+`BODY` and `CARDS` are reserved and cannot be used in frontmatter — the parser rejects documents that include them. `BODY` holds the document's Markdown body; `CARDS` holds the array of card blocks.
 
 ## Rules Summary
 
-- `QUILL` is required and must be the first body key in the frontmatter
-  block.
-- The frontmatter block sits at the top of the document (after optional
-  blank lines).
-- Mid-document `---/---` is a CommonMark thematic break, not a metadata
-  fence.
+- `QUILL` can only appear in the first (global) metadata block.
+- `QUILL` and `CARD` cannot both appear in the same block.
+- A document can have only one global metadata block.
+- All metadata blocks after the first must carry a `CARD` directive (see below).
 
-## Cards
+## Card Blocks
 
-Inline structured records — *cards* — use a `` ```card <kind> `` fenced
-code block. See [Cards](cards.md) for the full syntax.
+Fenced code blocks with the info string `card <type>` embedded in the document body are **card blocks**, where `<type>` matches `[a-z_][a-z0-9_]*`. All card blocks are collected into the `CARDS` array available to templates.
 
-Frontmatter is coerced and validated against the schema declared in the
-Quill's `Quill.yaml` (`cards.main.fields`). See the
-[Quill.yaml Reference](../format-designer/quill-yaml-reference.md) for field
-types and constraints.
+````markdown
+```card indorsement
+from: ORG/SYMBOL
+for: ORG2/SYMBOL
+```
+
+Indorsement body text here.
+````
+
+The legacy `---`-delimited form with a `CARD: <type>` key is still accepted on input.
+
+See [Cards](cards.md) for details on card syntax and usage.
+
+Frontmatter is coerced and validated against the schema declared in the Quill's `Quill.yaml` (`main.fields`). See the [Quill.yaml Reference](../format-designer/quill-yaml-reference.md) for field types and constraints.

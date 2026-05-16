@@ -34,14 +34,13 @@ quill:
   backend: typst
   description: Form view test
 
-cards:
-  main:
-    fields:
-      title:
-        type: string
-      status:
-        type: string
-        default: draft
+main:
+  fields:
+    title:
+      type: string
+    status:
+      type: string
+      default: draft
 "#,
     );
 
@@ -83,17 +82,16 @@ quill:
   backend: typst
   description: Missing fields use defaults
 
-cards:
-  main:
-    fields:
-      title:
-        type: string
-        required: true
-      status:
-        type: string
-        default: draft
-      notes:
-        type: string
+main:
+  fields:
+    title:
+      type: string
+      required: true
+    status:
+      type: string
+      default: draft
+    notes:
+      type: string
 "#,
     );
 
@@ -131,25 +129,25 @@ cards:
 }
 
 #[test]
-fn form_unknown_card_drops_card_and_emits_diagnostic() {
+fn form_unknown_card_tag_drops_card_and_emits_diagnostic() {
     let quill = quill_from_yaml(
         r#"
 quill:
   name: unknown_card_test
   version: "1.0"
   backend: typst
-  description: Unknown card kind test
+  description: Unknown card tag test
 
-cards:
-  main:
-    fields:
-      title:
-        type: string
+main:
+  fields:
+    title:
+      type: string
+
+card_types:
   known_card:
     fields:
       note:
         type: string
-
 "#,
     );
 
@@ -168,8 +166,8 @@ cards:
     let unknown_diag = form
         .diagnostics
         .iter()
-        .find(|d| d.code.as_deref() == Some("form::unknown_card"))
-        .expect("expected unknown_card diagnostic");
+        .find(|d| d.code.as_deref() == Some("form::unknown_card_tag"))
+        .expect("expected unknown_card_tag diagnostic");
     assert!(
         unknown_diag.message.contains("ghost_card"),
         "diagnostic should name the tag: {:?}",
@@ -187,11 +185,12 @@ quill:
   backend: typst
   description: Card field source test
 
-cards:
-  main:
-    fields:
-      title:
-        type: string
+main:
+  fields:
+    title:
+      type: string
+
+card_types:
   indorsement:
     fields:
       signature_block:
@@ -202,7 +201,6 @@ cards:
         default: HQ
       extra:
         type: string
-
 "#,
     );
 
@@ -243,12 +241,11 @@ quill:
   backend: typst
   description: Validation diagnostics test
 
-cards:
-  main:
-    fields:
-      count:
-        type: integer
-        required: true
+main:
+  fields:
+    count:
+      type: integer
+      required: true
 "#,
     );
 
@@ -281,14 +278,13 @@ quill:
   backend: typst
   description: Serialization smoke test
 
-cards:
-  main:
-    fields:
-      title:
-        type: string
-        default: Untitled
-      count:
-        type: integer
+main:
+  fields:
+    title:
+      type: string
+      default: Untitled
+    count:
+      type: integer
 "#,
     );
 
@@ -390,14 +386,13 @@ quill:
   backend: typst
   description: Blank main test
 
-cards:
-  main:
-    fields:
-      title:
-        type: string
-        default: Untitled
-      count:
-        type: integer
+main:
+  fields:
+    title:
+      type: string
+      default: Untitled
+    count:
+      type: integer
 "#,
     );
 
@@ -418,7 +413,7 @@ cards:
 }
 
 #[test]
-fn blank_card_returns_form_card_for_known_kind() {
+fn blank_card_returns_form_card_for_known_type() {
     let quill = quill_from_yaml(
         r#"
 quill:
@@ -427,11 +422,12 @@ quill:
   backend: typst
   description: Blank card test
 
-cards:
-  main:
-    fields:
-      title:
-        type: string
+main:
+  fields:
+    title:
+      type: string
+
+card_types:
   indorsement:
     fields:
       office:
@@ -439,7 +435,6 @@ cards:
         default: HQ
       from:
         type: string
-
 "#,
     );
 
@@ -461,7 +456,7 @@ cards:
 }
 
 #[test]
-fn blank_card_returns_none_for_unknown_kind() {
+fn blank_card_returns_none_for_unknown_type() {
     let quill = quill_from_yaml(
         r#"
 quill:
@@ -470,16 +465,16 @@ quill:
   backend: typst
   description: Blank unknown card test
 
-cards:
-  main:
-    fields:
-      title:
-        type: string
+main:
+  fields:
+    title:
+      type: string
+
+card_types:
   known:
     fields:
       x:
         type: string
-
 "#,
     );
 

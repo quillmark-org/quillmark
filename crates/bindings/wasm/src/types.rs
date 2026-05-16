@@ -194,7 +194,7 @@ pub enum FrontmatterItem {
 ///
 /// Exposed as a plain JS object via `Document.main`, `Document.cards`, etc.
 /// Carries a sentinel that distinguishes the document entry (main) card from
-/// composable cards, a `tag` string (the QUILL reference or KIND tag), typed
+/// composable cards, a `tag` string (the QUILL reference or CARD tag), typed
 /// frontmatter (map view under `frontmatter`, ordered item list under
 /// `frontmatterItems`), and the body.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
@@ -203,10 +203,10 @@ pub enum FrontmatterItem {
 pub struct Card {
     /// `"main"` for the document entry (QUILL) card; `"card"` for composable cards.
     pub sentinel: String,
-    /// The KIND sentinel value (e.g. `"indorsement"`) or the QUILL reference
+    /// The CARD sentinel value (e.g. `"indorsement"`) or the QUILL reference
     /// string for the main card.
     pub tag: String,
-    /// Map-keyed view of frontmatter values (no `KIND`/`QUILL` key, comments invisible).
+    /// Map-keyed view of frontmatter values (no `CARD`/`QUILL` key, comments invisible).
     #[tsify(type = "Record<string, unknown>")]
     pub frontmatter: serde_json::Value,
     /// Ordered frontmatter item list — fields and comments, in source order.

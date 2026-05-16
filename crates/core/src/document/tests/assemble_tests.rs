@@ -200,15 +200,16 @@ title: Main Document
 
 Main body content.
 
-```card items
+---
+CARD: items
 name: Item 1
-```
+---
 
 Body of item 1."#;
 
     let doc = decompose(markdown).unwrap();
 
-    // Global body is followed by a KIND fence: F2 separator stripped, so the
+    // Global body is followed by a CARD fence: F2 separator stripped, so the
     // trailing `\n\n` from the source becomes a single `\n` (content's line
     // terminator preserved).
     assert_eq!(doc.main().body(), "\nMain body content.\n");
@@ -239,17 +240,19 @@ fn test_multiple_tagged_blocks() {
 QUILL: test_quill
 ---
 
-```card items
+---
+CARD: items
 name: Item 1
 tags: [a, b]
-```
+---
 
 First item body.
 
-```card items
+---
+CARD: items
 name: Item 2
 tags: [c, d]
-```
+---
 
 Second item body."#;
 
@@ -281,15 +284,17 @@ author: John Doe
 
 Global body.
 
-```card sections
+---
+CARD: sections
 title: Section 1
-```
+---
 
 Section 1 content.
 
-```card sections
+---
+CARD: sections
 title: Section 2
-```
+---
 
 Section 2 content."#;
 
@@ -315,8 +320,9 @@ fn test_empty_tagged_metadata() {
 QUILL: test_quill
 ---
 
-```card items
-```
+---
+CARD: items
+---
 
 Body without metadata."#;
 
@@ -334,9 +340,10 @@ fn test_tagged_block_without_body() {
 QUILL: test_quill
 ---
 
-```card items
+---
+CARD: items
 name: Item
-```"#;
+---"#;
 
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.cards().len(), 1);
@@ -354,9 +361,10 @@ items: "global value"
 
 Body
 
-```card items
+---
+CARD: items
 name: Item
-```
+---
 
 Item body"#;
 
@@ -366,7 +374,7 @@ Item body"#;
 
 #[test]
 fn test_card_name_collision_with_array_field() {
-    // KIND type names CAN now conflict with frontmatter field names
+    // CARD type names CAN now conflict with frontmatter field names
     let markdown = r#"---
 QUILL: test_quill
 items:
@@ -376,9 +384,10 @@ items:
 
 Global body
 
-```card items
+---
+CARD: items
 name: Scope Item 1
-```
+---
 
 Scope item 1 body"#;
 
@@ -398,9 +407,10 @@ items: []
 
 Global body
 
-```card items
+---
+CARD: items
 name: Item 1
-```
+---
 
 Item 1 body"#;
 
@@ -413,14 +423,15 @@ Item 1 body"#;
 
 #[test]
 fn test_reserved_field_body_rejected() {
-    // BODY reserved inside a KIND block (requires prior QUILL fence per spec §4 F1).
+    // BODY reserved inside a CARD block (requires prior QUILL fence per spec §4 F1).
     let markdown = r#"---
 QUILL: test_quill
 ---
 
-```card section
+---
+CARD: section
 BODY: Test
-```"#;
+---"#;
 
     let result = decompose(markdown);
     assert!(result.is_err(), "BODY is a reserved field name");
@@ -480,9 +491,10 @@ title: Test
 Here is some code:
 
 ~~~yaml
-```card code_example
+---
+CARD: code_example
 fake: frontmatter
-```
+---
 ~~~
 
 More content.
@@ -502,9 +514,10 @@ title: Test
 Here is some code:
 
 ````yaml
-```card code_example
+---
+CARD: code_example
 fake: frontmatter
-```
+---
 ````
 
 More content.
@@ -521,21 +534,22 @@ fn test_invalid_tag_syntax() {
 QUILL: test_quill
 ---
 
-```card Invalid-Name
+---
+CARD: Invalid-Name
 title: Test
-```"#;
+---"#;
 
     let result = decompose(markdown);
     assert!(result.is_err());
     assert!(result
         .unwrap_err()
         .to_string()
-        .contains("invalid kind token"));
+        .contains("Invalid card field name"));
 }
 
 #[test]
 fn test_multiple_global_frontmatter_blocks() {
-    // Two `---/---` blocks without QUILL/KIND sentinels both fail F1
+    // Two `---/---` blocks without QUILL/CARD sentinels both fail F1
     // and are delegated to CommonMark, so the document has no metadata
     // blocks and parsing fails with the missing-QUILL error.
     let markdown = r#"---
@@ -565,15 +579,17 @@ fn test_adjacent_blocks_different_tags() {
 QUILL: test_quill
 ---
 
-```card items
+---
+CARD: items
 name: Item 1
-```
+---
 
 Item 1 body
 
-```card sections
+---
+CARD: sections
 title: Section 1
-```
+---
 
 Section 1 body"#;
 
@@ -601,21 +617,24 @@ fn test_order_preservation() {
 QUILL: test_quill
 ---
 
-```card items
+---
+CARD: items
 id: 1
-```
+---
 
 First
 
-```card items
+---
+CARD: items
 id: 2
-```
+---
 
 Second
 
-```card items
+---
+CARD: items
 id: 3
-```
+---
 
 Third"#;
 
@@ -640,33 +659,37 @@ date: 2024-01-01
 
 This is the main catalog description.
 
-```card products
+---
+CARD: products
 name: Widget A
 price: 19.99
 sku: WID-001
-```
+---
 
 The **Widget A** is our most popular product.
 
-```card products
+---
+CARD: products
 name: Gadget B
 price: 29.99
 sku: GAD-002
-```
+---
 
 The **Gadget B** is perfect for professionals.
 
-```card reviews
+---
+CARD: reviews
 product: Widget A
 rating: 5
-```
+---
 
 "Excellent product! Highly recommended."
 
-```card reviews
+---
+CARD: reviews
 product: Gadget B
 rating: 4
-```
+---
 
 "Very good, but a bit pricey.""#;
 
@@ -799,9 +822,10 @@ title: Test Document
 
 Main body.
 
-```card sections
+---
+CARD: sections
 name: Section 1
-```
+---
 
 Section 1 body."#;
 
@@ -822,10 +846,7 @@ Section 1 body."#;
 }
 
 #[test]
-fn test_second_quill_block_is_body() {
-    // With cards moved to ```card code-fences, a second `---/QUILL:.../---`
-    // block mid-document is just CommonMark thematic breaks around the YAML
-    // text — no duplicate-frontmatter error, no warning.
+fn test_multiple_quill_directives_error() {
     let markdown = r#"---
 QUILL: first
 ---
@@ -835,7 +856,11 @@ QUILL: second
 ---"#;
 
     let output = Document::from_markdown_with_warnings(markdown).unwrap();
-    assert_eq!(output.document.quill_reference().name, "first");
+    assert!(output
+        .warnings
+        .iter()
+        .any(|w| w.code.as_deref() == Some("parse::near_miss_sentinel")
+            && w.message.contains("QUILL")));
     assert!(output.document.main().body().contains("QUILL: second"));
 }
 
@@ -873,24 +898,8 @@ fn test_card_wrong_value_type() {
 QUILL: test_quill
 ---
 
-```card 123
-```"#;
-
-    let result = decompose(markdown);
-    assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("invalid kind token"));
-}
-
-#[test]
-fn test_kind_rejected_as_frontmatter_key() {
-    // `KIND` is an output-only reserved key — supplying it as an input body
-    // key is a hard parse error, in frontmatter and cards alike.
-    let markdown = r#"---
-QUILL: test
-KIND: items
+---
+CARD: 123
 ---"#;
 
     let result = decompose(markdown);
@@ -898,7 +907,22 @@ KIND: items
     assert!(result
         .unwrap_err()
         .to_string()
-        .contains("Reserved field name 'KIND'"));
+        .contains("CARD value must be a string"));
+}
+
+#[test]
+fn test_both_quill_and_card_error() {
+    let markdown = r#"---
+QUILL: test
+CARD: items
+---"#;
+
+    let result = decompose(markdown);
+    assert!(result.is_err());
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("Cannot specify both QUILL and CARD"));
 }
 
 #[test]
@@ -963,7 +987,8 @@ fn test_blank_lines_in_scope_blocks() {
 QUILL: test_quill
 ---
 
-```card items
+---
+CARD: items
 name: Item 1
 
 price: 19.99
@@ -971,7 +996,7 @@ price: 19.99
 tags:
   - electronics
   - gadgets
-```
+---
 
 Body of item 1."#;
 
@@ -1201,10 +1226,10 @@ fn test_yaml_within_size_limit() {
 
 #[test]
 fn test_yaml_depth_limit() {
-    let mut yaml_content = String::from("QUILL: test\nnested:\n");
+    let mut yaml_content = String::new();
     for i in 0..110 {
-        yaml_content.push_str(&"  ".repeat(i + 1));
-        yaml_content.push_str(&format!("level{}:\n", i));
+        yaml_content.push_str(&"  ".repeat(i));
+        yaml_content.push_str(&format!("level{}: value\n", i));
     }
 
     let markdown = format!("---\n{}---\n\nBody", yaml_content);
@@ -1264,9 +1289,10 @@ metadata:
 
 `<<inline code>>` and <<plain>>
 
-```card items
+---
+CARD: items
 description: "<<card yaml>>"
-```
+---
 
 Use <<card body>> here."#;
 
@@ -1619,7 +1645,7 @@ Body."#;
     assert_eq!(db.get("port").unwrap().as_i64().unwrap(), 5432);
 }
 
-// KIND block edge cases
+// CARD block edge cases
 
 #[test]
 fn test_card_with_empty_body() {
@@ -1627,9 +1653,10 @@ fn test_card_with_empty_body() {
 QUILL: test_quill
 ---
 
-```card items
+---
+CARD: items
 name: Item
-```"#;
+---"#;
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.cards().len(), 1);
     assert_eq!(doc.cards()[0].tag(), "items");
@@ -1642,42 +1669,19 @@ fn test_card_consecutive_blocks() {
 QUILL: test_quill
 ---
 
-```card a
+---
+CARD: a
 id: 1
-```
+---
 
-```card a
+---
+CARD: a
 id: 2
-```"#;
+---"#;
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.cards().len(), 2);
     assert_eq!(doc.cards()[0].tag(), "a");
     assert_eq!(doc.cards()[1].tag(), "a");
-}
-
-#[test]
-fn test_card_may_carry_quill_field() {
-    // `QUILL` is not reserved inside a card (MARKDOWN.md §3.2) — the kind
-    // lives in the info string, so a body `QUILL:` is an ordinary field and
-    // is kept in source position.
-    let markdown = "---\nQUILL: q\n---\n\n```card item\nQUILL: not-a-ref\nname: x\n```\n";
-    let doc = decompose(markdown).unwrap();
-    let card = &doc.cards()[0];
-    assert_eq!(card.tag(), "item");
-    assert_eq!(
-        card.frontmatter().get("QUILL").and_then(|v| v.as_str()),
-        Some("not-a-ref")
-    );
-    let emitted = doc.to_markdown();
-    let q = emitted
-        .find("QUILL: \"not-a-ref\"")
-        .expect("QUILL field kept");
-    let n = emitted.find("name:").expect("name field kept");
-    assert!(
-        q < n,
-        "QUILL field must stay before name; got:\n{}",
-        emitted
-    );
 }
 
 #[test]
@@ -1686,9 +1690,10 @@ fn test_card_with_body_containing_dashes() {
 QUILL: test_quill
 ---
 
-```card items
+---
+CARD: items
 name: Item
-```
+---
 
 Some text with --- dashes in it."#;
     let doc = decompose(markdown).unwrap();
@@ -1747,25 +1752,25 @@ Body content."#;
 
 #[test]
 fn test_invalid_scope_name_uppercase() {
-    let markdown = "---\nQUILL: test_quill\n---\n\n```card ITEMS\n```\n\nBody.";
+    let markdown = "---\nQUILL: test_quill\n---\n\n---\nCARD: ITEMS\n---\n\nBody.";
     let result = decompose(markdown);
     assert!(result.is_err());
     assert!(result
         .unwrap_err()
         .to_string()
-        .contains("invalid kind token"));
+        .contains("Invalid card field name"));
 }
 
 #[test]
 fn test_invalid_scope_name_starts_with_number() {
-    let markdown = "```card 123items\n```\n\nBody.";
+    let markdown = "---\nCARD: 123items\n---\n\nBody.";
     let result = decompose(markdown);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_invalid_scope_name_with_hyphen() {
-    let markdown = "```card my-items\n```\n\nBody.";
+    let markdown = "---\nCARD: my-items\n---\n\nBody.";
     let result = decompose(markdown);
     assert!(result.is_err());
 }
@@ -1815,10 +1820,10 @@ fn test_body_with_trailing_newlines() {
 
 #[test]
 fn test_f2_strip_global_body_followed_by_card_lf() {
-    // Global body followed by a KIND fence: the source's tail `\n\n` is
+    // Global body followed by a CARD fence: the source's tail `\n\n` is
     // (content line terminator) + (F2 blank line). Strip exactly the F2 `\n`,
     // leaving `\n` as the content terminator.
-    let markdown = "---\nQUILL: q\n---\n\nbody\n\n```card x\n```\n";
+    let markdown = "---\nQUILL: q\n---\n\nbody\n\n---\nCARD: x\n---\n";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.main().body(), "\nbody\n");
 }
@@ -1826,7 +1831,7 @@ fn test_f2_strip_global_body_followed_by_card_lf() {
 #[test]
 fn test_f2_strip_global_body_followed_by_card_crlf() {
     // CRLF line endings: strip exactly one `\r\n` as the F2 separator.
-    let markdown = "---\r\nQUILL: q\r\n---\r\n\r\nbody\r\n\r\n```card x\r\n```\r\n";
+    let markdown = "---\r\nQUILL: q\r\n---\r\n\r\nbody\r\n\r\n---\r\nCARD: x\r\n---\r\n";
     let doc = decompose(markdown).unwrap();
     assert!(
         doc.main().body().ends_with('\n') && !doc.main().body().ends_with("\n\n"),
@@ -1839,7 +1844,7 @@ fn test_f2_strip_global_body_followed_by_card_crlf() {
 fn test_f2_strip_card_body_followed_by_card() {
     // First card body is followed by another fence → F2 stripped.
     // Last card body is at EOF → preserved verbatim.
-    let markdown = "---\nQUILL: q\n---\n\n```card a\n```\nfirst\n\n```card b\n```\nsecond\n";
+    let markdown = "---\nQUILL: q\n---\n\n---\nCARD: a\n---\nfirst\n\n---\nCARD: b\n---\nsecond\n";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.cards()[0].body(), "first\n");
     assert_eq!(doc.cards()[1].body(), "second\n");
@@ -1849,7 +1854,7 @@ fn test_f2_strip_card_body_followed_by_card() {
 fn test_f2_strip_preserves_author_blank_lines() {
     // Author wrote two blank lines after the body. Only the F2 blank (last
     // `\n`) is stripped; the author's blank line is preserved.
-    let markdown = "---\nQUILL: q\n---\n\nbody\n\n\n```card x\n```\n";
+    let markdown = "---\nQUILL: q\n---\n\nbody\n\n\n---\nCARD: x\n---\n";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.main().body(), "\nbody\n\n");
 }
@@ -1859,7 +1864,7 @@ fn test_f2_strip_does_not_overstrip_content_newlines() {
     // Content-fidelity: a body whose authored content ends with multiple
     // newlines (e.g. a code block with trailing blank lines) must survive
     // round-trip. The previous WASM-binding `trim_body` over-stripped this.
-    let markdown = "---\nQUILL: q\n---\n\n```\ncode\n```\n\n\n```card x\n```\n";
+    let markdown = "---\nQUILL: q\n---\n\n```\ncode\n```\n\n\n---\nCARD: x\n---\n";
     let doc = decompose(markdown).unwrap();
     let emitted = doc.to_markdown();
     let reparsed = Document::from_markdown(&emitted).unwrap();
@@ -1959,9 +1964,10 @@ QUILL: test_quill
 my_card: "some global value"
 ---
 
-```card my_card
+---
+CARD: my_card
 title: "My Card"
-```
+---
 Body
 "#;
     let doc = decompose(markdown).unwrap();
@@ -2031,14 +2037,16 @@ Main document body.
 
 More content after horizontal rule.
 
-```card section
+---
+CARD: section
 heading: Introduction
-```
+---
 Introduction content.
 
-```card section
+---
+CARD: section
 heading: Conclusion
-```
+---
 Conclusion content.
 "#;
 
@@ -2112,7 +2120,7 @@ fn test_to_plate_json_simple() {
     assert_eq!(json["CARDS"].as_array().unwrap().len(), 0);
 }
 
-/// to_plate_json with cards produces CARDS array with KIND, fields, BODY.
+/// to_plate_json with cards produces CARDS array with CARD, fields, BODY.
 #[test]
 fn test_to_plate_json_with_cards() {
     let markdown = r#"---
@@ -2122,9 +2130,10 @@ title: Test
 
 Global body.
 
-```card indorsement
+---
+CARD: indorsement
 for: ORG
-```
+---
 
 Card body here.
 "#;
@@ -2139,7 +2148,7 @@ Card body here.
 
     let cards = json["CARDS"].as_array().unwrap();
     assert_eq!(cards.len(), 1);
-    assert_eq!(cards[0]["KIND"], "indorsement");
+    assert_eq!(cards[0]["CARD"], "indorsement");
     assert_eq!(cards[0]["for"], "ORG");
     assert_eq!(cards[0]["BODY"], "\nCard body here.\n");
 }
@@ -2172,7 +2181,7 @@ fn test_to_plate_json_fixture_snapshot() {
     // One indorsement card
     let cards = json["CARDS"].as_array().unwrap();
     assert_eq!(cards.len(), 1);
-    assert_eq!(cards[0]["KIND"], "indorsement");
+    assert_eq!(cards[0]["CARD"], "indorsement");
     // Card has BODY
     assert!(cards[0].get("BODY").is_some());
 }
@@ -2199,104 +2208,5 @@ fn frontmatter_field_order_preserved_after_quill_removal() {
         keys,
         vec!["sender", "recipient", "date", "subject"],
         "Frontmatter fields must preserve insertion order after QUILL removal"
-    );
-}
-
-// ── Legacy `---/CARD:/---` migration path (MARKDOWN.md §4.4) ───────────────
-
-/// A legacy `---/CARD:/---` block parses as a card and surfaces a
-/// `parse::deprecated_card_syntax` warning.
-#[test]
-fn legacy_card_block_parses_as_card_with_deprecation_warning() {
-    let md = "---\nQUILL: q\n---\n\n---\nCARD: note\nauthor: Alice\n---\n\nCard body.\n";
-    let doc = Document::from_markdown(md).unwrap();
-
-    assert_eq!(doc.cards().len(), 1, "legacy CARD block must parse as card");
-    let card = &doc.cards()[0];
-    assert_eq!(card.tag(), "note");
-    assert_eq!(
-        card.frontmatter()
-            .get("author")
-            .and_then(|v| v.as_str())
-            .map(str::to_string),
-        Some("Alice".to_string()),
-    );
-    assert!(card.body().contains("Card body."));
-
-    let warning_codes: Vec<_> = doc
-        .warnings()
-        .iter()
-        .filter_map(|w| w.code.as_deref())
-        .collect();
-    assert!(
-        warning_codes.contains(&"parse::deprecated_card_syntax"),
-        "expected parse::deprecated_card_syntax warning, got: {:?}",
-        warning_codes
-    );
-}
-
-/// `parse → to_markdown` rewrites legacy CARD blocks to canonical ` ```card `
-/// form. This is the consumer's one-step migration tool.
-#[test]
-fn legacy_card_round_trip_emits_canonical_card_fence() {
-    let legacy = "---\nQUILL: q\n---\n\n---\nCARD: note\nauthor: Alice\n---\n\nCard body.\n";
-    let doc = Document::from_markdown(legacy).unwrap();
-    let canonical = doc.to_markdown();
-
-    assert!(
-        canonical.contains("```card note\n"),
-        "emitted form must use canonical ```card <kind> fence; got:\n{}",
-        canonical
-    );
-    assert!(
-        !canonical.contains("CARD:"),
-        "emitted form must not retain legacy CARD: sentinel; got:\n{}",
-        canonical
-    );
-
-    // Reparsing the canonical form yields the same card, with no
-    // deprecation warning this time.
-    let doc2 = Document::from_markdown(&canonical).unwrap();
-    assert_eq!(doc2.cards().len(), 1);
-    assert_eq!(doc2.cards()[0].tag(), "note");
-    let canonical_codes: Vec<_> = doc2
-        .warnings()
-        .iter()
-        .filter_map(|w| w.code.as_deref())
-        .collect();
-    assert!(
-        !canonical_codes.contains(&"parse::deprecated_card_syntax"),
-        "canonical re-emit must not re-trigger deprecation warning"
-    );
-}
-
-/// Mixed legacy and canonical cards in the same document parse in source
-/// order; canonical re-emit normalises everything to ` ```card `.
-#[test]
-fn legacy_and_canonical_cards_coexist_during_migration() {
-    let md = "---\nQUILL: q\n---\n\n---\nCARD: a\nx: 1\n---\n\nFirst body.\n\n```card b\ny: 2\n```\n\nSecond body.\n";
-    let doc = Document::from_markdown(md).unwrap();
-
-    assert_eq!(doc.cards().len(), 2);
-    assert_eq!(doc.cards()[0].tag(), "a");
-    assert_eq!(doc.cards()[1].tag(), "b");
-
-    let canonical = doc.to_markdown();
-    assert!(canonical.contains("```card a\n"));
-    assert!(canonical.contains("```card b\n"));
-    assert!(!canonical.contains("CARD:"));
-}
-
-/// Legacy CARD blocks without F2 (no blank line above) are NOT cards —
-/// they fall through to CommonMark thematic-break handling, same as today.
-#[test]
-fn legacy_card_without_f2_is_not_a_card() {
-    let md =
-        "---\nQUILL: q\n---\n\nBody text directly above.\n---\nCARD: note\nauthor: Alice\n---\n";
-    let doc = Document::from_markdown(md).unwrap();
-    assert_eq!(
-        doc.cards().len(),
-        0,
-        "F2 violation must prevent legacy-CARD recognition"
     );
 }

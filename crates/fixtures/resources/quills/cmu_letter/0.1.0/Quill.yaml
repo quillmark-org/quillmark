@@ -6,53 +6,52 @@ quill:
   example_file: example.md
   description: Typeset letters that comply with Carnegie Mellon University letterhead standards.
 
-cards:
-  main:
-    fields:
-      recipient:
-        type: array
-        example:
-          - Mr. John Doe
-          - 123 Main St
-          - Anytown, USA
-        ui:
-          group: Essentials
-        description: The recipient's name and full mailing address.
+main:
+  fields:
+    recipient:
+      type: array
+      example:
+        - Mr. John Doe
+        - 123 Main St
+        - Anytown, USA
+      ui:
+        group: Essentials
+      description: The recipient's name and full mailing address.
 
-      signature_block:
-        type: array
-        example:
-          - First M. Last
-          - Title
-        ui:
-          group: Essentials
-        description: "The signer's information. Line 1: Name. Line 2: Title."
+    signature_block:
+      type: array
+      example:
+        - First M. Last
+        - Title
+      ui:
+        group: Essentials
+      description: "The signer's information. Line 1: Name. Line 2: Title."
 
-      department:
-        type: string
-        example: Department of Electrical and Computer Engineering
-        ui:
-          group: Letterhead
-        description: The department or organizational unit name for the letterhead.
+    department:
+      type: string
+      example: Department of Electrical and Computer Engineering
+      ui:
+        group: Letterhead
+      description: The department or organizational unit name for the letterhead.
 
-      address:
-        type: array
-        example:
-          - 5000 Forbes Avenue
-          - Pittsburgh, PA 15213-3890
-        ui:
-          group: Letterhead
-        description: The sender's institutional mailing address.
+    address:
+      type: array
+      example:
+        - 5000 Forbes Avenue
+        - Pittsburgh, PA 15213-3890
+      ui:
+        group: Letterhead
+      description: The sender's institutional mailing address.
 
-      url:
-        type: string
-        example: www.ece.cmu.edu
-        ui:
-          group: Letterhead
-        description: The department or university website URL.
+    url:
+      type: string
+      example: www.ece.cmu.edu
+      ui:
+        group: Letterhead
+      description: The department or university website URL.
 
-      date:
-        type: date
-        ui:
-          group: Advanced
-        description: The date to appear on the letter.
+    date:
+      type: date
+      ui:
+        group: Advanced
+      description: The date to appear on the letter.

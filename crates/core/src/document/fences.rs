@@ -1,19 +1,18 @@
 //! Line-oriented fence scanner for Quillmark Markdown.
 //!
-//! Detects the document's frontmatter (`---/---` at top, with `QUILL:` first
-//! key) and card fences (CommonMark fenced code blocks whose info string is
-//! `card <kind>`).
+//! Implements the F1 (sentinel) and F2 (leading blank) rules from MARKDOWN.md §3–§4,
+//! and detects CommonMark fenced code blocks so that `---` inside them is ignored.
 
 use crate::error::ParseError;
 use crate::{Diagnostic, Severity};
 
-use super::assemble::{BlockSentinel, BlockSource, MetadataBlock};
-use super::sentinel::{first_content_key, is_valid_tag_name};
+use super::assemble::MetadataBlock;
+use super::sentinel::first_content_key;
 
-/// Line-oriented view of the source.
+/// Line-oriented view of the source, used for F1/F2 fence detection.
 pub(super) struct Lines<'a> {
     pub(super) source: &'a str,
-    pub(super) starts: Vec<usize>,
+    pub(super) starts: Vec<usize>, // byte offset of each line's first character
 }
 
 impl<'a> Lines<'a> {
@@ -33,6 +32,8 @@ impl<'a> Lines<'a> {
     pub(super) fn line_start(&self, k: usize) -> usize {
         self.starts[k]
     }
+    /// Byte position immediately after line k's trailing `\n` (or end-of-source
+    /// if no newline follows).
     pub(super) fn line_end_inclusive(&self, k: usize) -> usize {
         if k + 1 < self.starts.len() {
             self.starts[k + 1]
@@ -40,6 +41,7 @@ impl<'a> Lines<'a> {
             self.source.len()
         }
     }
+    /// Line text without its trailing line ending.
     pub(super) fn line_text(&self, k: usize) -> &'a str {
         let start = self.starts[k];
         let mut end = self.line_end_inclusive(k);
@@ -56,11 +58,15 @@ impl<'a> Lines<'a> {
     }
 }
 
-/// Returns true if `line` is a `---` frontmatter-fence marker:
-/// exactly three hyphens preceded by 0–3 spaces, followed by optional
-/// trailing whitespace.
+/// Returns true if `line` (without its line ending) is a `---` metadata-fence
+/// marker per MARKDOWN.md §3: exactly three hyphens followed by optional
+/// trailing whitespace (spaces or tabs).
 pub(super) fn is_fence_marker_line(line: &str) -> bool {
     let line = line.strip_suffix('\r').unwrap_or(line);
+    // F3 (spec §4): the fence marker is preceded by zero to three spaces of
+    // indentation. Four or more leading spaces (or any leading tab — a tab
+    // counts as four columns of indentation) make the line indented code per
+    // CommonMark §4.4, not a metadata fence.
     let indent = line.bytes().take_while(|&b| b == b' ').count();
     if indent > 3 {
         return false;
@@ -75,7 +81,8 @@ pub(super) fn is_fence_marker_line(line: &str) -> bool {
 }
 
 /// Detect a CommonMark fenced code-block marker line. Returns `Some((char,
-/// run_len, is_closing))` if matched.
+/// run_len))` if the line opens a fence, or `Some` with `is_closing=true` if
+/// it closes one matching `open_fence`.
 pub(super) fn code_fence_on_line(
     line: &str,
     open_fence: Option<(u8, usize)>,
@@ -111,260 +118,247 @@ pub(super) fn code_fence_on_line(
     }
 }
 
-/// Whitespace-delimited tokens of a fence opener's info string. Empty for
-/// non-opener lines and empty info strings.
-fn fence_info_tokens(line: &str) -> Vec<&str> {
-    let line = line.strip_suffix('\r').unwrap_or(line);
-    let indent = line.as_bytes().iter().take_while(|&&b| b == b' ').count();
-    let trimmed = &line[indent..];
-    let Some(&first) = trimmed.as_bytes().first() else {
-        return Vec::new();
-    };
-    if first != b'`' && first != b'~' {
-        return Vec::new();
-    }
-    let run_len = trimmed
-        .as_bytes()
-        .iter()
-        .take_while(|&&b| b == first)
-        .count();
-    trimmed[run_len..].split_whitespace().collect()
-}
-
-/// Validate a card fence's info string and extract its kind token.
+/// Extract the info string of a CommonMark fenced code-block opener line.
 ///
-/// The info string of a card fence is exactly `card <kind>` (`MARKDOWN.md
-/// §3.2`). The caller has already confirmed the first token is `card`;
-/// `tokens` is the full token list. Missing, malformed, or extra tokens are
-/// hard errors — the fence is committed to card-handling on the `card` token
-/// alone, so these are routing failures, not classification misses.
-fn card_from_tokens(tokens: &[&str], opener_line: usize) -> Result<String, ParseError> {
-    match tokens {
-        [_, kind] => {
-            if is_valid_tag_name(kind) {
-                Ok((*kind).to_string())
-            } else {
-                Err(ParseError::InvalidStructure(format!(
-                    "Card fence at line {} has an invalid kind token `{}` — the kind must match pattern [a-z_][a-z0-9_]*.",
-                    opener_line, kind
-                )))
-            }
-        }
-        [_] => Err(ParseError::InvalidStructure(format!(
-            "Card fence at line {} is missing its kind token — the info string must be `card <kind>`.",
-            opener_line
-        ))),
-        _ => Err(ParseError::InvalidStructure(format!(
-            "Card fence at line {} has extra info-string tokens — the info string must be exactly `card <kind>`.",
-            opener_line
-        ))),
-    }
+/// `run_len` is the fence-marker run length reported by [`code_fence_on_line`].
+/// The returned slice is the text after the run, trimmed of surrounding
+/// whitespace — e.g. for `` ```card indorsement `` it returns `card indorsement`.
+pub(super) fn code_fence_info(line: &str, run_len: usize) -> &str {
+    let indent = line.as_bytes().iter().take_while(|&&b| b == b' ').count();
+    line[indent + run_len..].trim()
 }
 
-/// Outcome of the fence-detection pass: the recognised metadata blocks
-/// (block 0 is frontmatter if present, the rest are cards in source order),
-/// any non-fatal diagnostics, and (if applicable) a first-fence F1 failure
-/// captured so the top-level error can be specific.
+/// Outcome of inspecting a fenced code-block info string for the `card` lead.
+pub(super) enum CardFenceInfo {
+    /// `card <kind>` with a valid kind.
+    Card(String),
+    /// The info string's first token is `card` but the rest is malformed.
+    /// Carries a ready-to-surface error message.
+    Malformed(String),
+    /// Not a `card` fence — an ordinary fenced code block.
+    NotCard,
+}
+
+/// Classify a fenced code-block info string. A composable `card` fence has the
+/// info string `card <kind>` where `<kind>` matches `[a-z_][a-z0-9_]*`.
+pub(super) fn classify_card_info(info: &str) -> CardFenceInfo {
+    let mut tokens = info.split_whitespace();
+    if tokens.next() != Some("card") {
+        return CardFenceInfo::NotCard;
+    }
+    let Some(kind) = tokens.next() else {
+        return CardFenceInfo::Malformed(
+            "Card fence is missing a card kind — expected ```card <kind>```".to_string(),
+        );
+    };
+    if tokens.next().is_some() {
+        return CardFenceInfo::Malformed(format!(
+            "Card fence info string must be exactly ```card <kind>``` (found extra text after '{}')",
+            kind
+        ));
+    }
+    if !super::sentinel::is_valid_tag_name(kind) {
+        return CardFenceInfo::Malformed(format!(
+            "Invalid card kind '{}': must match pattern [a-z_][a-z0-9_]*",
+            kind
+        ));
+    }
+    CardFenceInfo::Card(kind.to_string())
+}
+
+/// Outcome of the fence-detection pass: the recognised metadata blocks, any
+/// non-fatal diagnostics accumulated along the way, and (if applicable) the
+/// first-fence F1 failure captured so the top-level error can be specific.
 pub(super) type FenceScan = (Vec<MetadataBlock>, Vec<Diagnostic>, Option<(String, usize)>);
 
-/// Find frontmatter (top `---/---` with `QUILL:`) and card code fences
-/// (` ```card ` info string).
+/// Find all metadata fences in the document per MARKDOWN.md §3–§4.
+///
+/// Implements fence rules F1 (sentinel) and F2 (leading blank). Returns
+/// successfully detected blocks plus any lint warnings emitted for
+/// near-miss sentinels (§4.2).
 pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseError> {
     let lines = Lines::new(markdown);
     let mut blocks: Vec<MetadataBlock> = Vec::new();
     let mut warnings: Vec<Diagnostic> = Vec::new();
+    // (char, min_run_len, opener_line_index)
+    let mut open_code_fence: Option<(u8, usize, usize)> = None;
+    // First-fence F1 failure context, captured for a clearer top-level error
+    // if no valid QUILL fence is ever found. (actual_key, 1-based line).
     let mut first_fence_issue: Option<(String, usize)> = None;
 
-    // ── Step 1: frontmatter ──────────────────────────────────────────────────
-    // Scan all F2-valid `---/---` blocks; the first with `QUILL:` first key is
-    // the frontmatter. Any prior `---/---` blocks are CommonMark thematic
-    // breaks (with a near-miss warning if the first key looks like a typo).
-    let mut post_frontmatter_k: usize = 0;
     let mut k: usize = 0;
     while k < lines.len() {
         let text = lines.line_text(k);
-        if !is_fence_marker_line(text) {
-            k += 1;
-            continue;
-        }
-        let f2_ok = k == 0 || lines.is_blank(k - 1);
-        if !f2_ok {
-            k += 1;
-            continue;
-        }
-        let closer_k = (k + 1..lines.len()).find(|&j| is_fence_marker_line(lines.line_text(j)));
 
-        let content_start = lines.line_end_inclusive(k);
-        let content_end = closer_k
-            .map(|cj| lines.line_start(cj))
-            .unwrap_or(markdown.len());
-        let content = &markdown[content_start..content_end];
-        let key = first_content_key(content);
-
-        if key == Some("QUILL") {
-            let Some(cj) = closer_k else {
-                return Err(ParseError::InvalidStructure(
-                    "Frontmatter block started but not closed with ---".to_string(),
-                ));
-            };
-            let abs_pos = lines.line_start(k);
-            let block_end = lines.line_end_inclusive(cj);
-            let block = super::assemble::build_block(
-                markdown,
-                abs_pos,
-                content_start,
-                content_end,
-                block_end,
-                0,
-                BlockSource::Frontmatter,
-            )?;
-            blocks.push(block);
-            post_frontmatter_k = cj + 1;
-            break;
-        }
-        // Record the first non-QUILL first-key candidate so the top-level
-        // MissingQuillField error can be specific (case-hint vs ordering-hint).
-        if let Some(actual) = key {
-            if first_fence_issue.is_none() {
-                if actual.eq_ignore_ascii_case("QUILL") {
-                    warnings.push(
-                        Diagnostic::new(
-                            Severity::Warning,
-                            format!(
-                                "Near-miss frontmatter sentinel `{}:` at line {} — expected `QUILL:` (uppercase).",
-                                actual, k + 1
-                            ),
-                        )
-                        .with_code("parse::near_miss_sentinel".to_string()),
-                    );
-                }
-                first_fence_issue = Some((actual.to_string(), k + 1));
-            }
-        }
-        // Not frontmatter — skip past this opener (and closer if present).
-        match closer_k {
-            Some(cj) => k = cj + 1,
-            None => break,
-        }
-    }
-
-    // ── Step 2: cards ───────────────────────────────────────────────────────
-    // Two paths interleave by source order:
-    //
-    // - **Canonical**: CommonMark fenced code block whose info string is
-    //   `card <kind>`.
-    // - **Legacy (`MARKDOWN.md §4.4`)**: `---/---` block (F2)
-    //   whose first body key is `CARD:`. Each occurrence emits a
-    //   `parse::deprecated_card_syntax` warning; the canonical emitter
-    //   rewrites it to ` ```card <kind> ` on round-trip.
-    let mut k = post_frontmatter_k;
-    let mut open_code_fence: Option<(u8, usize, usize)> = None;
-    while k < lines.len() {
-        let text = lines.line_text(k);
-
-        if let Some((ch, min, _)) = open_code_fence {
+        // Track open CommonMark fenced-code-block state so that `---` inside
+        // them is ignored (spec §3 "Fences inside fenced code blocks").
+        if let Some((ch, min, _opener)) = open_code_fence {
             if let Some((_, _, true)) = code_fence_on_line(text, Some((ch, min))) {
                 open_code_fence = None;
             }
             k += 1;
             continue;
         }
-
-        // Legacy `---/CARD: …/---` card — Release-N migration path.
-        if is_fence_marker_line(text) && (k == 0 || lines.is_blank(k - 1)) {
-            if let Some(cj) =
-                (k + 1..lines.len()).find(|&j| is_fence_marker_line(lines.line_text(j)))
-            {
-                let content_start = lines.line_end_inclusive(k);
-                let content_end = lines.line_start(cj);
-                let content = &markdown[content_start..content_end];
-                if first_content_key(content) == Some("CARD") {
-                    let abs_pos = lines.line_start(k);
-                    let block_end = lines.line_end_inclusive(cj);
+        if let Some((ch, run_len, _)) = code_fence_on_line(text, None) {
+            let classification = classify_card_info(code_fence_info(text, run_len));
+            // A `card` fence is a block-level construct: like a `---` fence it
+            // requires a blank line above (F2) so body round-tripping stays
+            // stable. Without F2 it is delegated to CommonMark as an ordinary
+            // fenced code block.
+            let f2_ok = k == 0 || lines.is_blank(k - 1);
+            match classification {
+                CardFenceInfo::Card(kind) if f2_ok => {
+                    // Scan for the matching closing code fence.
+                    let mut closer_k: Option<usize> = None;
+                    let mut j = k + 1;
+                    while j < lines.len() {
+                        if let Some((_, _, true)) =
+                            code_fence_on_line(lines.line_text(j), Some((ch, run_len)))
+                        {
+                            closer_k = Some(j);
+                            break;
+                        }
+                        j += 1;
+                    }
+                    let Some(cj) = closer_k else {
+                        return Err(ParseError::InvalidStructure(format!(
+                            "Card block ```card {}``` started but not closed with ```",
+                            kind
+                        )));
+                    };
                     let block = super::assemble::build_block(
                         markdown,
-                        abs_pos,
-                        content_start,
-                        content_end,
-                        block_end,
+                        lines.line_start(k),
+                        lines.line_end_inclusive(k),
+                        lines.line_start(cj),
+                        lines.line_end_inclusive(cj),
                         blocks.len(),
-                        BlockSource::LegacyCard,
+                        Some(&kind),
                     )?;
                     blocks.push(block);
+                    k = cj + 1;
+                    continue;
+                }
+                CardFenceInfo::Malformed(msg) if f2_ok => {
+                    return Err(ParseError::InvalidStructure(msg));
+                }
+                CardFenceInfo::Card(_) | CardFenceInfo::Malformed(_) => {
+                    // Info string leads with `card` but F2 failed — surface a
+                    // near-miss lint and treat it as an ordinary code fence.
                     warnings.push(
                         Diagnostic::new(
                             Severity::Warning,
                             format!(
-                                "Legacy `---/CARD: …/---` card at line {} uses the \
-                                 deprecated fence shape; round-trip through \
-                                 `Document::to_markdown` to rewrite it as the canonical \
-                                 ` ```card <kind> ` form. Only the fence shape is \
-                                 deprecated — the `card` noun is unchanged. The legacy \
-                                 path is retained for existing documents.",
+                                "`card` fenced block at line {} has no blank line above it — it is treated as an ordinary code block, not a composable card. Insert a blank line before it to register it as a card.",
                                 k + 1
                             ),
                         )
-                        .with_code("parse::deprecated_card_syntax".to_string()),
+                        .with_code("parse::card_fence_missing_blank".to_string()),
                     );
-                    k = cj + 1;
+                    open_code_fence = Some((ch, run_len, k));
+                    k += 1;
+                    continue;
+                }
+                CardFenceInfo::NotCard => {
+                    open_code_fence = Some((ch, run_len, k));
+                    k += 1;
                     continue;
                 }
             }
         }
 
-        if let Some((ch, run_len, _)) = code_fence_on_line(text, None) {
-            let info_tokens = fence_info_tokens(text);
-            if info_tokens.first() == Some(&"card") {
-                let opener_k = k;
-
-                // Spec §3.2/§4.2: a `card`-prefixed fence commits to card
-                // parsing on that token alone. The kind lives in the info
-                // string; missing/invalid/extra tokens are hard errors.
-                let kind = card_from_tokens(&info_tokens, opener_k + 1)?;
-
-                let Some(cj) = (k + 1..lines.len()).find(|&j| {
-                    matches!(
-                        code_fence_on_line(lines.line_text(j), Some((ch, run_len))),
-                        Some((_, _, true))
-                    )
-                }) else {
-                    return Err(ParseError::InvalidStructure(format!(
-                        "Card fence opened at line {} but never closed",
-                        opener_k + 1
-                    )));
-                };
-
-                let abs_pos = lines.line_start(opener_k);
-                let content_start = lines.line_end_inclusive(opener_k);
-                let content_end = lines.line_start(cj);
-                let block_end = lines.line_end_inclusive(cj);
-
-                let block = super::assemble::build_block(
-                    markdown,
-                    abs_pos,
-                    content_start,
-                    content_end,
-                    block_end,
-                    blocks.len(),
-                    BlockSource::Inline(kind),
-                )?;
-                blocks.push(block);
-                k = cj + 1;
-                continue;
-            }
-            // Non-card fence — shield its contents.
-            open_code_fence = Some((ch, run_len, k));
+        // Candidate fence opener?
+        if !is_fence_marker_line(text) {
             k += 1;
             continue;
         }
 
-        k += 1;
+        // F2 — Leading blank rule
+        let f2_ok = k == 0 || lines.is_blank(k - 1);
+        if !f2_ok {
+            k += 1;
+            continue;
+        }
+
+        // Scan ahead for the closer. Inside a metadata fence, YAML content is
+        // opaque — don't update code-block state.
+        let mut closer_k: Option<usize> = None;
+        let mut j = k + 1;
+        while j < lines.len() {
+            if is_fence_marker_line(lines.line_text(j)) {
+                closer_k = Some(j);
+                break;
+            }
+            j += 1;
+        }
+
+        let content_start = lines.line_end_inclusive(k);
+        let (content_end, block_end) = match closer_k {
+            Some(cj) => (lines.line_start(cj), lines.line_end_inclusive(cj)),
+            None => (markdown.len(), markdown.len()),
+        };
+        let content = &markdown[content_start..content_end];
+
+        // F1 — Sentinel rule. First non-blank line of content must match the
+        // expected sentinel (`QUILL` for the first fence, `CARD` thereafter).
+        let expected = if blocks.is_empty() { "QUILL" } else { "CARD" };
+        let key = first_content_key(content);
+        let f1_ok = key == Some(expected);
+
+        if !f1_ok {
+            // Near-miss lint (spec §4.2): first key looked like an identifier
+            // but wasn't the expected sentinel.
+            if let Some(actual) = key {
+                if actual != expected {
+                    warnings.push(
+                        Diagnostic::new(
+                            Severity::Warning,
+                            format!(
+                                "Near-miss metadata sentinel `{}:` at line {} — expected `{}:`. This `---/---` pair is treated as literal Markdown; if you intended a metadata fence, change the key to `{}`.",
+                                actual, k + 1, expected, expected
+                            ),
+                        )
+                        .with_code("parse::near_miss_sentinel".to_string()),
+                    );
+                    // Capture the first-fence F1 failure so the top-level
+                    // "Missing required QUILL field" error can be specific
+                    // about the actual key found.
+                    if blocks.is_empty() && first_fence_issue.is_none() {
+                        first_fence_issue = Some((actual.to_string(), k + 1));
+                    }
+                }
+            }
+            // Delegate this opener to CommonMark — advance past the opener
+            // line only; the closer (if any) may become its own candidate
+            // opener on a later iteration (it will fail F2 and be skipped).
+            k += 1;
+            continue;
+        }
+
+        // F1 passed — a legitimate fence. If the closer was missing, this is
+        // a hard error (spec §9).
+        let Some(cj) = closer_k else {
+            return Err(ParseError::InvalidStructure(
+                "Metadata block started but not closed with ---".to_string(),
+            ));
+        };
+
+        let block = super::assemble::build_block(
+            markdown,
+            lines.line_start(k),
+            content_start,
+            content_end,
+            block_end,
+            blocks.len(),
+            None,
+        )?;
+        blocks.push(block);
+
+        k = cj + 1;
     }
 
-    let card_count = blocks
-        .iter()
-        .filter(|b| matches!(b.sentinel, BlockSentinel::Inline(_)))
-        .count();
+    // Card-count check counts only blocks carrying a CARD sentinel (spec §8).
+    let card_count = blocks.iter().filter(|b| b.tag.is_some()).count();
     if card_count > crate::error::MAX_CARD_COUNT {
         return Err(ParseError::InputTooLarge {
             size: card_count,
@@ -372,12 +366,15 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
         });
     }
 
+    // Unclosed fenced code block at end-of-document: any metadata fences below
+    // the unclosed opener were silently shielded, which is almost never what
+    // the author intended. Surface it as a non-fatal warning.
     if let Some((_, _, opener_line)) = open_code_fence {
         warnings.push(
             Diagnostic::new(
                 Severity::Warning,
                 format!(
-                    "Unclosed fenced code block opened at line {} — end-of-document reached without a matching closing fence.",
+                    "Unclosed fenced code block opened at line {} — end-of-document reached without a matching closing fence. Any `---/---` pairs after this line were treated as code and not parsed as metadata fences.",
                     opener_line + 1
                 ),
             )
