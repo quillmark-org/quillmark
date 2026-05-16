@@ -136,7 +136,7 @@ def test_form_json_serializable(tmp_path):
     assert parsed["main"]["values"]["title"]["source"] == "document"
 
 
-def test_form_unknown_card_kind_diagnostic(tmp_path):
+def test_form_unknown_card_diagnostic(tmp_path):
     """Unknown card tags produce a diagnostic and are excluded from cards."""
     quill = make_quill(tmp_path)
     md = (
