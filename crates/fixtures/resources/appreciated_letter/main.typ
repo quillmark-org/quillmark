@@ -1,11 +1,26 @@
-#import "@preview/appreciated-letter:0.1.0": letter
+#import "@local/quillmark-helper:0.1.0": data
 
-#show: letter.with(
-  sender: {{ sender | String }},
-  recipient: {{ recipient | String }},
-  date: {{ date | String }},
-  subject: {{ subject | String }},
-  name: {{ name | String }},
-)
+#set page(margin: 1.5in)
+#set par(justify: true, leading: 0.75em)
 
-#{{ body | Content }}
+#data.sender
+
+#v(1em)
+
+#data.date
+
+#v(1em)
+
+#data.recipient
+
+#v(2em)
+
+#text(weight: "bold")[#data.subject]
+
+#v(1em)
+
+#data.BODY
+
+#v(2em)
+
+#data.name

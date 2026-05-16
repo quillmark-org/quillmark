@@ -6,19 +6,21 @@ quill:
   example_file: appreciated_letter.md
   description: Professional letter template with appreciation styling
 
-typst:
-  packages: 
-    - "@preview/appreciated-letter:0.1.0"
-
-main:
-  fields:
-    sender:
-      description: Sender of letter
-    recipient:
-      description: Recipient of letter
-    date:
-      description: Date of letter
-    subject:
-      description: Subject of letter
-    name:
-      description: Name of sender
+cards:
+  main:
+    fields:
+      sender:
+        description: Sender of letter
+        type: string
+      recipient:
+        description: Recipient of letter
+        type: string
+      date:
+        description: Date of letter
+        type: string
+      subject:
+        description: Subject of letter
+        type: string
+      name:
+        description: Name of sender
+        type: string
