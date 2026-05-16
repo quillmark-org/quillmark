@@ -71,10 +71,9 @@ QUILL: test_quill
 
 Global body.
 
----
-CARD: note
+\`\`\`card note
 foo: bar
----
+\`\`\`
 
 Card body.
 `
@@ -406,16 +405,14 @@ QUILL: test_quill
 
 Body.
 
----
-CARD: note
+\`\`\`card note
 foo: bar
----
+\`\`\`
 
 Card one.
 
----
-CARD: summary
----
+\`\`\`card summary
+\`\`\`
 
 Card two.
 `
@@ -558,10 +555,9 @@ QUILL: test_quill
 
 Body.
 
----
-CARD: note
+\`\`\`card note
 foo: bar
----
+\`\`\`
 
 Card body.
 `

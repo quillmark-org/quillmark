@@ -142,7 +142,7 @@ def test_form_unknown_card_diagnostic(tmp_path):
     quill = make_quill(tmp_path)
     md = (
         "---\nQUILL: py_form_smoke\ntitle: \"T\"\n---\n\n"
-        "---\nCARD: ghost_card\nnote: \"B\"\n---\n"
+        "```card ghost_card\nnote: \"B\"\n```\n"
     )
     doc = Document.from_markdown(md)
 

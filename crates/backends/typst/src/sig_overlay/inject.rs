@@ -99,7 +99,12 @@ pub(crate) fn inject(
         chunk_bytes
             .windows(marker.len())
             .position(|w| w == marker.as_bytes())
-            .ok_or_else(|| err(CODE_PARSE, format!("emitted object {id} not located in chunk")))
+            .ok_or_else(|| {
+                err(
+                    CODE_PARSE,
+                    format!("emitted object {id} not located in chunk"),
+                )
+            })
     };
 
     let (cs, ce) =
@@ -109,9 +114,8 @@ pub(crate) fn inject(
     let mut updated_catalog: Vec<u8> = Vec::new();
     updated_catalog.extend_from_slice(format!("{} 0 obj\n<< ", catalog_id).as_bytes());
     updated_catalog.extend_from_slice(cat_dict);
-    updated_catalog.extend_from_slice(
-        format!(" /AcroForm {} 0 R >>\nendobj\n", acroform_id.get()).as_bytes(),
-    );
+    updated_catalog
+        .extend_from_slice(format!(" /AcroForm {} 0 R >>\nendobj\n", acroform_id.get()).as_bytes());
 
     let mut updated_pages: Vec<(u32, Vec<u8>)> = Vec::new();
     for (page_idx, widget_refs) in widgets_by_page.iter().enumerate() {
@@ -122,7 +126,10 @@ pub(crate) fn inject(
         let (s, e) = find_object_bytes(&pdf, page_obj_id)
             .ok_or_else(|| err(CODE_PARSE, format!("page node {page_obj_id} not found")))?;
         let pg_dict = extract_outer_dict(&pdf[s..e]).ok_or_else(|| {
-            err(CODE_PARSE, format!("page node {page_obj_id} dict not parseable"))
+            err(
+                CODE_PARSE,
+                format!("page node {page_obj_id} dict not parseable"),
+            )
         })?;
         let updated = rewrite_page_with_annots(pg_dict, widget_refs)?;
         let mut buf = Vec::new();
@@ -141,7 +148,10 @@ pub(crate) fn inject(
 
     let mut entries: Vec<(u32, usize)> = Vec::new();
     for wref in &widget_ids {
-        entries.push((wref.get() as u32, widget_chunk_off + offset_in_chunk(wref.get())?));
+        entries.push((
+            wref.get() as u32,
+            widget_chunk_off + offset_in_chunk(wref.get())?,
+        ));
     }
     entries.push((
         acroform_id.get() as u32,
@@ -206,8 +216,11 @@ fn rewrite_page_with_annots(pg_dict: &[u8], widget_refs: &[Ref]) -> Result<Vec<u
                     .rposition(|&b| b == b']')
                     .ok_or_else(|| err(CODE_PARSE, "/Annots array missing ]"))?;
                 let inner = &trimmed[1..end];
-                let merged =
-                    format!("[{} {}]", String::from_utf8_lossy(inner).trim(), widgets_str);
+                let merged = format!(
+                    "[{} {}]",
+                    String::from_utf8_lossy(inner).trim(),
+                    widgets_str
+                );
                 let key = b"/Annots";
                 let key_at = pg_dict
                     .windows(key.len())

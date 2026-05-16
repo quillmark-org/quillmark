@@ -60,7 +60,7 @@ def test_cards_access():
     """Test accessing typed cards list."""
     md = (
         "---\nQUILL: my_quill\ntitle: Main\n---\n\nGlobal body.\n\n"
-        "---\nCARD: note\nfoo: bar\n---\n\nCard body.\n"
+        "```card note\nfoo: bar\n```\n\nCard body.\n"
     )
     doc = Document.from_markdown(md)
     assert len(doc.cards) == 1

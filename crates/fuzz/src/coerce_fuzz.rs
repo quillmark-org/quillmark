@@ -21,9 +21,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use indexmap::IndexMap;
 use proptest::prelude::*;
-use quillmark_core::quill::{
-    CardSchema, CoercionError, FieldSchema, FieldType, QuillConfig,
-};
+use quillmark_core::quill::{CardSchema, CoercionError, FieldSchema, FieldType, QuillConfig};
 use quillmark_core::QuillValue;
 
 // -- Generators ---------------------------------------------------------------
@@ -49,18 +47,16 @@ fn arb_leaf_field_type() -> impl Strategy<Value = FieldType> {
 /// `properties` map applied to object-shaped children (the same way
 /// `coerce_value_strict` consumes it).
 fn arb_field_schema(max_depth: u32) -> impl Strategy<Value = FieldSchema> {
-    let leaf = arb_leaf_field_type()
-        .prop_map(|ty| FieldSchema::new(String::new(), ty, None));
+    let leaf = arb_leaf_field_type().prop_map(|ty| FieldSchema::new(String::new(), ty, None));
     leaf.prop_recursive(max_depth, 24, 3, |inner| {
-        let props_map = prop::collection::btree_map(PROP_NAME_RE, inner, 1..=3)
-            .prop_map(|m| {
-                let mut props: BTreeMap<String, Box<FieldSchema>> = BTreeMap::new();
-                for (k, mut v) in m {
-                    v.name = k.clone();
-                    props.insert(k, Box::new(v));
-                }
-                props
-            });
+        let props_map = prop::collection::btree_map(PROP_NAME_RE, inner, 1..=3).prop_map(|m| {
+            let mut props: BTreeMap<String, Box<FieldSchema>> = BTreeMap::new();
+            for (k, mut v) in m {
+                v.name = k.clone();
+                props.insert(k, Box::new(v));
+            }
+            props
+        });
         prop_oneof![
             // Object with 1-3 properties
             props_map.clone().prop_map(|props| {
@@ -164,10 +160,7 @@ fn validate_path_grammar(path: &str) -> bool {
             }
             rest = &after_dot[end..];
         } else if let Some(after_lbrack) = rest.strip_prefix('[') {
-            let end = after_lbrack
-                .bytes()
-                .take_while(u8::is_ascii_digit)
-                .count();
+            let end = after_lbrack.bytes().take_while(u8::is_ascii_digit).count();
             if end == 0 {
                 return false;
             }

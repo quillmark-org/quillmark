@@ -47,11 +47,18 @@ fn card_fence_tilde_fence_accepted() {
 
 #[test]
 fn card_fence_multiple_cards() {
-    let src = "---\nQUILL: q\n---\n\n```card product\nname: A\n```\n\n```card product\nname: B\n```\n";
+    let src =
+        "---\nQUILL: q\n---\n\n```card product\nname: A\n```\n\n```card product\nname: B\n```\n";
     let doc = Document::from_markdown(src).unwrap();
     assert_eq!(doc.cards().len(), 2);
-    assert_eq!(doc.cards()[0].frontmatter().get("name").unwrap().as_str(), Some("A"));
-    assert_eq!(doc.cards()[1].frontmatter().get("name").unwrap().as_str(), Some("B"));
+    assert_eq!(
+        doc.cards()[0].frontmatter().get("name").unwrap().as_str(),
+        Some("A")
+    );
+    assert_eq!(
+        doc.cards()[1].frontmatter().get("name").unwrap().as_str(),
+        Some("B")
+    );
 }
 
 // ── Equivalence with the legacy syntax ────────────────────────────────────────
@@ -69,7 +76,8 @@ fn new_and_legacy_syntax_parse_to_equal_documents() {
 
 #[test]
 fn mixed_new_and_legacy_cards_in_one_document() {
-    let src = "---\nQUILL: q\n---\n\n```card product\nname: A\n```\n\n---\nCARD: product\nname: B\n---\n";
+    let src =
+        "---\nQUILL: q\n---\n\n```card product\nname: A\n```\n\n---\nCARD: product\nname: B\n---\n";
     let doc = Document::from_markdown(src).unwrap();
     assert_eq!(doc.cards().len(), 2);
     assert_eq!(doc.cards()[0].tag(), "product");
@@ -95,7 +103,10 @@ fn legacy_syntax_round_trips_to_canonical_card_fence() {
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
     // The legacy `---\nCARD:` fence is never emitted — only the canonical form.
-    assert!(!emitted.contains("CARD:"), "legacy fence must not survive emit:\n{emitted}");
+    assert!(
+        !emitted.contains("CARD:"),
+        "legacy fence must not survive emit:\n{emitted}"
+    );
     assert!(emitted.contains("```card product\n"), "emit:\n{emitted}");
     assert_eq!(
         emitted,
@@ -114,7 +125,8 @@ fn emit_is_idempotent_for_card_fences() {
 
 #[test]
 fn card_fence_body_round_trips() {
-    let src = "---\nQUILL: q\n---\n\nMain body.\n\n```card product\nname: Widget\n```\n\nCard body.\n";
+    let src =
+        "---\nQUILL: q\n---\n\nMain body.\n\n```card product\nname: Widget\n```\n\nCard body.\n";
     let a = Document::from_markdown(src).unwrap();
     let b = Document::from_markdown(&a.to_markdown()).unwrap();
     assert_eq!(a, b);
@@ -127,7 +139,10 @@ fn card_fence_preserves_yaml_comments() {
     let src = "---\nQUILL: q\n---\n\n```card product\n# a banner\nname: Widget\n```\n";
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
-    assert!(emitted.contains("```card product\n# a banner\nname: \"Widget\"\n```\n"), "emit:\n{emitted}");
+    assert!(
+        emitted.contains("```card product\n# a banner\nname: \"Widget\"\n```\n"),
+        "emit:\n{emitted}"
+    );
     let reparsed = Document::from_markdown(&emitted).unwrap();
     assert_eq!(doc, reparsed);
 }

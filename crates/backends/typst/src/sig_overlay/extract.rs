@@ -21,8 +21,12 @@ const CODE_INTERNAL: &str = "typst::sig_overlay_internal";
 
 pub(crate) fn extract(doc: &PagedDocument) -> Result<Vec<SigPlacement>, RenderError> {
     let intro = doc.introspector();
-    let label = Label::new(PicoStr::intern(SIG_LABEL))
-        .ok_or_else(|| err(CODE_INTERNAL, "SIG_LABEL must be a non-empty interned string"))?;
+    let label = Label::new(PicoStr::intern(SIG_LABEL)).ok_or_else(|| {
+        err(
+            CODE_INTERNAL,
+            "SIG_LABEL must be a non-empty interned string",
+        )
+    })?;
     let elems = intro.query(&Selector::Label(label));
     if elems.is_empty() {
         return Ok(Vec::new());

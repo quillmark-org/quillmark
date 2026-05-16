@@ -75,16 +75,14 @@ title: Hello
 
 Body.
 
----
-CARD: note
+```card note
 foo: bar
----
+```
 
 Card one.
 
----
-CARD: summary
----
+```card summary
+```
 
 Card two.
 """
