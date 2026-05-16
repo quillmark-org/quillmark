@@ -457,8 +457,8 @@ impl Quill {
     ///
     /// [`Form::cards`]: quillmark::form::Form::cards
     #[wasm_bindgen(js_name = blankCard, unchecked_return_type = "FormCard | null")]
-    pub fn blank_card(&self, card: &str) -> Result<JsValue, JsValue> {
-        match self.inner.blank_card(card) {
+    pub fn blank_card(&self, kind: &str) -> Result<JsValue, JsValue> {
+        match self.inner.blank_card(kind) {
             Some(card) => {
                 let serializer = serde_wasm_bindgen::Serializer::new()
                     .serialize_maps_as_objects(true)

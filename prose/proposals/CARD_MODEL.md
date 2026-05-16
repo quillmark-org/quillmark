@@ -1,8 +1,8 @@
 # Card Model — Unified Card Vocabulary
 
-> **Status**: Proposed
+> **Status**: Implemented
 > **Supersedes**: `LEAF_REWORK.md`, `LEAF_KIND_INFOSTRING.md` — both deleted; this proposal consolidates and revises them.
-> **Affects**: [MARKDOWN.md](../designs/MARKDOWN.md), [LEAVES.md](../designs/LEAVES.md), [SCHEMAS.md](../designs/SCHEMAS.md), [BLUEPRINT.md](../designs/BLUEPRINT.md), [QUILL.md](../designs/QUILL.md)
+> **Affects**: [MARKDOWN.md](../designs/MARKDOWN.md), [CARDS.md](../designs/CARDS.md), [SCHEMAS.md](../designs/SCHEMAS.md), [BLUEPRINT.md](../designs/BLUEPRINT.md), [QUILL.md](../designs/QUILL.md)
 
 ## 1. Core insight
 
@@ -219,7 +219,7 @@ preserving document order within each kind.
 | Templates | `leaves.<kind>[i]` | `cards.<kind>[i]` |
 | Runtime API | `Document::leaves()` | `Document::cards()` |
 | Limits / error codes | `MAX_LEAF_COUNT`, `leaf_*` | `MAX_CARD_COUNT`, `card_*` |
-| Diagnostic codes | `parse::deprecated_leaf_syntax`, `form::unknown_leaf_kind` | `parse::deprecated_card_syntax`, `form::unknown_card_kind` |
+| Diagnostic codes | `parse::deprecated_leaf_syntax`, `form::unknown_leaf_kind` | `parse::deprecated_card_syntax`, `form::unknown_card` |
 | Design doc | `LEAVES.md` | `CARDS.md` |
 
 `KIND`, `BODY`, and `QUILL` keep their names. `is_main()` survives as an
@@ -321,7 +321,6 @@ files, and conformance probes. Specific structural work:
 ## 14. References
 
 - [MARKDOWN.md](../designs/MARKDOWN.md) — markdown specification
-- [LEAVES.md](../designs/LEAVES.md) — current data-model design (to become
-  `CARDS.md`)
+- [CARDS.md](../designs/CARDS.md) — data-model design (formerly `LEAVES.md`)
 - [SCHEMAS.md](../designs/SCHEMAS.md) — `QuillConfig` schema model
 - [CommonMark 0.31.2 §4.5](https://spec.commonmark.org/0.31.2/#fenced-code-blocks)

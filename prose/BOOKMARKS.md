@@ -36,8 +36,8 @@ boundary.
 
 ## 4. Diagnostic codes are unstable, undocumented strings
 
-`crates/quillmark/src/form.rs:167,178` use bare literals
-(`"form::unknown_card_kind"`, `"form::validation_error"`); edit errors
+`crates/quillmark/src/form.rs:167,177` use bare literals
+(`"form::unknown_card"`, `"form::validation_error"`); edit errors
 surface Rust variant names like `"ReservedName"`
 (`crates/bindings/wasm/src/engine.rs:571-577`). No exported enum, no
 constants, no stability guarantee. Consumers that key behavior off

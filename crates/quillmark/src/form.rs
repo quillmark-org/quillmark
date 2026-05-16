@@ -186,13 +186,13 @@ pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
     }
 }
 
-/// Build a blank [`FormCard`] for a card type by tag, or `None` if the tag
-/// isn't declared in the quill's schema.
-pub(crate) fn blank_card_for_kind(quill: &Quill, card: &str) -> Option<FormCard> {
+/// Build a blank [`FormCard`] for a card kind, or `None` if the kind isn't
+/// declared in the quill's schema.
+pub(crate) fn blank_card_for_kind(quill: &Quill, kind: &str) -> Option<FormCard> {
     quill
         .source()
         .config()
-        .card(card)
+        .card(kind)
         .map(FormCard::blank)
 }
 
