@@ -384,9 +384,9 @@ card_types:
 
 ### Using Cards in Markdown
 
-Cards appear as additional `---`-delimited metadata blocks in the document body, each declaring a `CARD:` directive:
+Cards appear as fenced code blocks with the info string `card <kind>` in the document body:
 
-```markdown
+````markdown
 ---
 QUILL: usaf_memo
 subject: Example
@@ -395,29 +395,27 @@ subject: Example
 
 Main memo body text here.
 
----
-CARD: indorsement
+```card indorsement
 from: ORG/SYMBOL
 for: RECIPIENT/SYMBOL
 signature_block:
   - JANE A. DOE, Colonel, USAF
   - Commander
----
+```
 
 Body of the first endorsement.
 
----
-CARD: indorsement
+```card indorsement
 from: ANOTHER/ORG
 for: FINAL/RECIPIENT
 format: informal
 signature_block:
   - JOHN B. SMITH, Lt Col, USAF
   - Deputy Commander
----
+```
 
 Body of the second endorsement.
-```
+````
 
 ---
 

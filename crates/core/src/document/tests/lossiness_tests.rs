@@ -468,7 +468,9 @@ fn sentinel_inline_comment_round_trips() {
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
 
-/// Inline comment on a CARD sentinel line round-trips on that line.
+/// An inline comment on a legacy `CARD:` sentinel has no sentinel line in the
+/// canonical ```` ```card ```` form, so it degrades to an own-line comment as
+/// the first body line — preserving its text — and round-trips stably.
 #[test]
 fn card_sentinel_inline_comment_round_trips() {
     let src = "---\nQUILL: q\n---\n\n---\nCARD: foo # the foo card\nx: 1\n---\n";
@@ -476,8 +478,8 @@ fn card_sentinel_inline_comment_round_trips() {
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
     assert!(
-        emitted.contains("CARD: foo # the foo card\n"),
-        "inline comment on a CARD sentinel must round-trip on the sentinel line\nGot:\n{}",
+        emitted.contains("```card foo\n# the foo card\n"),
+        "inline comment on a legacy CARD sentinel degrades to an own-line comment\nGot:\n{}",
         emitted
     );
 

@@ -1,5 +1,6 @@
 mod ambiguous_strings_tests;
 mod assemble_tests;
+mod card_fence_tests;
 mod edit_tests;
 mod emit_idempotence_tests;
 mod emit_stability_tests;

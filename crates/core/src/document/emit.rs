@@ -47,7 +47,10 @@ impl Document {
     /// - Line endings: `\n` only.  CRLF normalization happens on import.
     /// - Frontmatter: `---\n`, `QUILL: <ref>` first, remaining fields in
     ///   `IndexMap` insertion order, `---\n`, blank line.
-    /// - Cards: one blank line before each, fence `---\nCARD: <tag>\n<fields>\n---\n<body>`.
+    /// - Cards: one blank line before each, emitted as the canonical fenced
+    ///   block ```` ```card <tag>\n<fields>\n```\n ````<body>. The legacy
+    ///   `---\nCARD: <tag>\n…\n---` fence is accepted on input but never
+    ///   emitted — every card round-trips to the ```` ```card ```` form.
     /// - Body: emitted verbatim after frontmatter (and cards).
     /// - Mappings and sequences: **block style** at every nesting level.
     /// - Booleans: `true` / `false`.
@@ -89,16 +92,18 @@ impl Document {
     pub fn to_markdown(&self) -> String {
         let mut out = String::new();
 
-        // ── Main card (first fence + global body) ─────────────────────────────
-        emit_card_fence(&mut out, self.main());
+        // ── Main card (frontmatter fence + global body) ───────────────────────
+        emit_main_fence(&mut out, self.main());
         out.push_str(self.main().body());
 
         // ── Composable cards ──────────────────────────────────────────────────
-        // `emit_card` normalises the separator before each fence, so edited
-        // bodies (which may lack a trailing blank line) still round-trip.
+        // `ensure_f2_before_fence` normalises the separator before each fence,
+        // so edited bodies (which may lack a trailing blank line) still
+        // round-trip. Every card emits as the canonical ```` ```card ```` block
+        // regardless of whether it was authored with the legacy `---` syntax.
         for card in self.cards() {
             ensure_f2_before_fence(&mut out);
-            emit_card_fence(&mut out, card);
+            emit_card_block(&mut out, card);
             if !card.body().is_empty() {
                 out.push_str(card.body());
             }
@@ -110,51 +115,81 @@ impl Document {
 
 // ── Card emission ─────────────────────────────────────────────────────────────
 
-/// Emit a card's metadata fence (between `---\n` markers), including the
-/// sentinel line and every frontmatter item.
+/// Emit the document frontmatter fence: `---\nQUILL: <ref>\n<items>\n---\n`.
 ///
 /// ## Inline-comment handling
 ///
 /// - **Sentinel-inline preview.** If `items[0]` is a `Comment{inline:true}`,
-///   its text is appended to the sentinel line (`QUILL: r # text` /
-///   `CARD: tag # text`) and the item is skipped. This is the only way to
-///   round-trip a source-level inline comment on the sentinel line.
-/// - **Field + trailing inline.** When iterating items, a `Field` peeks at
-///   its successor: if the next item is `Comment{inline:true}`, the comment
-///   text is passed to `emit_field` as a trailer and consumed here. The
-///   trailer lands on the field's key/value line.
-/// - **Orphan inline.** A `Comment{inline:true}` that is *not* consumed by
-///   either the sentinel preview or a field's lookahead has no host. It is
-///   emitted as an own-line `# text` comment instead. This is also the
-///   degrade path for empty-object fields (whose key is omitted) — the
-///   trailer becomes an own-line comment at the same indent.
-fn emit_card_fence(out: &mut String, card: &Card) {
+///   its text is appended to the `QUILL:` line and the item is skipped. This
+///   is the only way to round-trip a source-level inline comment on the
+///   `QUILL:` line.
+/// - The remaining items are emitted by [`emit_fence_items`].
+fn emit_main_fence(out: &mut String, card: &Card) {
     out.push_str("---\n");
 
-    // Sentinel line.
     match card.sentinel() {
         Sentinel::Main(r) => {
             out.push_str("QUILL: ");
             out.push_str(&r.to_string());
             out.push('\n');
         }
-        Sentinel::Card(tag) => {
-            out.push_str("CARD: ");
-            out.push_str(tag);
-            out.push('\n');
-        }
+        Sentinel::Card(_) => unreachable!("main card must carry Sentinel::Main"),
     }
 
-    let nested = card.frontmatter().nested_comments();
     let items = card.frontmatter().items();
-    let mut i = 0;
+    let nested = card.frontmatter().nested_comments();
 
     // Sentinel-inline preview.
-    if let Some(FrontmatterItem::Comment { text, inline: true }) = items.first() {
+    let start = if let Some(FrontmatterItem::Comment { text, inline: true }) = items.first() {
         attach_inline_to_last_line(out, text);
-        i = 1;
-    }
+        1
+    } else {
+        0
+    };
 
+    emit_fence_items(out, &items[start..], nested);
+
+    out.push_str("---\n");
+}
+
+/// Emit a composable card as the canonical fenced block:
+/// ```` ```card <tag>\n<items>\n``` ````.
+///
+/// The card kind lives in the info string, so — unlike the legacy `---`
+/// fence — there is no sentinel line for an inline comment to attach to. An
+/// inline comment carried over at `items[0]` (from a legacy `CARD: tag # note`
+/// source) degrades to an own-line comment as the first body line, preserving
+/// its text. Three backticks are always a safe fence length: canonically
+/// emitted YAML never produces a line that begins with a backtick (keys are
+/// identifiers, sequence items start with `-`, strings are double-quoted), so
+/// the fence can never be closed early.
+fn emit_card_block(out: &mut String, card: &Card) {
+    out.push_str("```card ");
+    out.push_str(&card.tag());
+    out.push('\n');
+
+    emit_fence_items(
+        out,
+        card.frontmatter().items(),
+        card.frontmatter().nested_comments(),
+    );
+
+    out.push_str("```\n");
+}
+
+/// Emit the ordered YAML items (fields and comments) of a fence body.
+///
+/// ## Inline-comment handling
+///
+/// - **Field + trailing inline.** A `Field` peeks at its successor: if the
+///   next item is `Comment{inline:true}`, the comment text is passed to
+///   [`emit_field`] as a trailer and consumed here. The trailer lands on the
+///   field's key/value line.
+/// - **Own-line / orphan.** A `Comment` that is not consumed by a field's
+///   lookahead — own-line, or an inline orphan — renders as an own-line
+///   `# text` comment.
+fn emit_fence_items(out: &mut String, items: &[FrontmatterItem], nested: &[NestedComment]) {
+    let mut i = 0;
     while i < items.len() {
         match &items[i] {
             FrontmatterItem::Field { key, value, fill } => {
@@ -167,9 +202,6 @@ fn emit_card_fence(out: &mut String, card: &Card) {
                 i += if trailer.is_some() { 2 } else { 1 };
             }
             FrontmatterItem::Comment { text, .. } => {
-                // Either own-line, or an inline orphan (lookahead would have
-                // consumed any inline whose predecessor was a Field). Both
-                // render as own-line.
                 out.push_str("# ");
                 out.push_str(text);
                 out.push('\n');
@@ -177,8 +209,6 @@ fn emit_card_fence(out: &mut String, card: &Card) {
             }
         }
     }
-
-    out.push_str("---\n");
 }
 
 /// Ensures `out` ends with a `\n\n` suffix suitable for the F2 precondition

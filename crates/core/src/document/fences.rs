@@ -118,22 +118,52 @@ pub(super) fn code_fence_on_line(
     }
 }
 
-/// Number of bytes occupied by the opener `---[ \t]*\n` or `---[ \t]*\r\n`
-/// starting at `abs_pos`. Only called on a line that already matched
-/// `is_fence_marker_line`.
-pub(super) fn fence_opener_len(markdown: &str, abs_pos: usize) -> usize {
-    let bytes = markdown.as_bytes();
-    let mut i = abs_pos + 3; // past the "---"
-    while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
-        i += 1;
+/// Extract the info string of a CommonMark fenced code-block opener line.
+///
+/// `run_len` is the fence-marker run length reported by [`code_fence_on_line`].
+/// The returned slice is the text after the run, trimmed of surrounding
+/// whitespace — e.g. for `` ```card indorsement `` it returns `card indorsement`.
+pub(super) fn code_fence_info(line: &str, run_len: usize) -> &str {
+    let indent = line.as_bytes().iter().take_while(|&&b| b == b' ').count();
+    line[indent + run_len..].trim()
+}
+
+/// Outcome of inspecting a fenced code-block info string for the `card` lead.
+pub(super) enum CardFenceInfo {
+    /// `card <kind>` with a valid kind.
+    Card(String),
+    /// The info string's first token is `card` but the rest is malformed.
+    /// Carries a ready-to-surface error message.
+    Malformed(String),
+    /// Not a `card` fence — an ordinary fenced code block.
+    NotCard,
+}
+
+/// Classify a fenced code-block info string. A composable `card` fence has the
+/// info string `card <kind>` where `<kind>` matches `[a-z_][a-z0-9_]*`.
+pub(super) fn classify_card_info(info: &str) -> CardFenceInfo {
+    let mut tokens = info.split_whitespace();
+    if tokens.next() != Some("card") {
+        return CardFenceInfo::NotCard;
     }
-    if i < bytes.len() && bytes[i] == b'\r' {
-        i += 1;
+    let Some(kind) = tokens.next() else {
+        return CardFenceInfo::Malformed(
+            "Card fence is missing a card kind — expected ```card <kind>```".to_string(),
+        );
+    };
+    if tokens.next().is_some() {
+        return CardFenceInfo::Malformed(format!(
+            "Card fence info string must be exactly ```card <kind>``` (found extra text after '{}')",
+            kind
+        ));
     }
-    if i < bytes.len() && bytes[i] == b'\n' {
-        i += 1;
+    if !super::sentinel::is_valid_tag_name(kind) {
+        return CardFenceInfo::Malformed(format!(
+            "Invalid card kind '{}': must match pattern [a-z_][a-z0-9_]*",
+            kind
+        ));
     }
-    i - abs_pos
+    CardFenceInfo::Card(kind.to_string())
 }
 
 /// Outcome of the fence-detection pass: the recognised metadata blocks, any
@@ -170,9 +200,71 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
             continue;
         }
         if let Some((ch, run_len, _)) = code_fence_on_line(text, None) {
-            open_code_fence = Some((ch, run_len, k));
-            k += 1;
-            continue;
+            let classification = classify_card_info(code_fence_info(text, run_len));
+            // A `card` fence is a block-level construct: like a `---` fence it
+            // requires a blank line above (F2) so body round-tripping stays
+            // stable. Without F2 it is delegated to CommonMark as an ordinary
+            // fenced code block.
+            let f2_ok = k == 0 || lines.is_blank(k - 1);
+            match classification {
+                CardFenceInfo::Card(kind) if f2_ok => {
+                    // Scan for the matching closing code fence.
+                    let mut closer_k: Option<usize> = None;
+                    let mut j = k + 1;
+                    while j < lines.len() {
+                        if let Some((_, _, true)) =
+                            code_fence_on_line(lines.line_text(j), Some((ch, run_len)))
+                        {
+                            closer_k = Some(j);
+                            break;
+                        }
+                        j += 1;
+                    }
+                    let Some(cj) = closer_k else {
+                        return Err(ParseError::InvalidStructure(format!(
+                            "Card block ```card {}``` started but not closed with ```",
+                            kind
+                        )));
+                    };
+                    let block = super::assemble::build_block(
+                        markdown,
+                        lines.line_start(k),
+                        lines.line_end_inclusive(k),
+                        lines.line_start(cj),
+                        lines.line_end_inclusive(cj),
+                        blocks.len(),
+                        Some(&kind),
+                    )?;
+                    blocks.push(block);
+                    k = cj + 1;
+                    continue;
+                }
+                CardFenceInfo::Malformed(msg) if f2_ok => {
+                    return Err(ParseError::InvalidStructure(msg));
+                }
+                CardFenceInfo::Card(_) | CardFenceInfo::Malformed(_) => {
+                    // Info string leads with `card` but F2 failed — surface a
+                    // near-miss lint and treat it as an ordinary code fence.
+                    warnings.push(
+                        Diagnostic::new(
+                            Severity::Warning,
+                            format!(
+                                "`card` fenced block at line {} has no blank line above it — it is treated as an ordinary code block, not a composable card. Insert a blank line before it to register it as a card.",
+                                k + 1
+                            ),
+                        )
+                        .with_code("parse::card_fence_missing_blank".to_string()),
+                    );
+                    open_code_fence = Some((ch, run_len, k));
+                    k += 1;
+                    continue;
+                }
+                CardFenceInfo::NotCard => {
+                    open_code_fence = Some((ch, run_len, k));
+                    k += 1;
+                    continue;
+                }
+            }
         }
 
         // Candidate fence opener?
@@ -251,14 +343,14 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
             ));
         };
 
-        let abs_pos = lines.line_start(k);
-        let abs_closing_pos = lines.line_start(cj);
         let block = super::assemble::build_block(
             markdown,
-            abs_pos,
-            abs_closing_pos,
+            lines.line_start(k),
+            content_start,
+            content_end,
             block_end,
             blocks.len(),
+            None,
         )?;
         blocks.push(block);
 

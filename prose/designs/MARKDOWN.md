@@ -27,10 +27,11 @@ CommonMark, parsed as such.
 A document is a sequence of three kinds of regions, in order:
 
 ```
-Document = Frontmatter Body (CardFence CardBody)*
+Document  = Frontmatter Body (CardFence CardBody)*
+CardFence = FencedCard | LegacyCardFence
 ```
 
-- **Frontmatter** — required. One metadata fence at the top of the
+- **Frontmatter** — required. One `---` metadata fence at the top of the
   document, carrying `QUILL` plus any document-level fields.
 - **Body** — markdown content between the frontmatter close and the first
   card fence (or EOF).
@@ -38,14 +39,29 @@ Document = Frontmatter Body (CardFence CardBody)*
   typed structured record with its own fields; its body is the markdown
   that follows, up to the next card fence or EOF.
 
-Frontmatter and card fences share the same delimiter (`---`) and detection
-rules (§4). They differ only in role: frontmatter is the document's
-entrypoint and must carry `QUILL`; cards must carry `CARD`.
+A composable card may be written in either of two interchangeable syntaxes:
 
-## 3. Metadata Fences
+- **`FencedCard`** — the canonical syntax: a CommonMark fenced code block
+  whose info string is `card <kind>` (§3.2).
+- **`LegacyCardFence`** — a `---` metadata fence carrying a `CARD:` sentinel
+  (§3.1). Accepted on input for backwards compatibility.
+
+Both parse to the same in-memory card. `toMarkdown` always emits the
+canonical `FencedCard` form — a document authored with `LegacyCardFence`
+cards round-trips to `FencedCard` cards.
+
+The frontmatter is always a `---` fence and must carry `QUILL`; it has no
+fenced-code-block form.
+
+## 3. Card and Frontmatter Fences
+
+### 3.1 The `---` Metadata Fence
 
 A metadata fence is a pair of lines each containing exactly `---` (with
-optional trailing whitespace). The content between is parsed as YAML.
+optional trailing whitespace). The content between is parsed as YAML. The
+frontmatter is always a metadata fence; a composable card may also be
+written as a metadata fence carrying a `CARD:` sentinel (the
+`LegacyCardFence` form — see §3.2 for the canonical `FencedCard` form).
 
 - **Line endings.** `\n` and `\r\n` are equally accepted.
 - **Whitespace-only content.** A fence whose content is only whitespace
@@ -75,7 +91,52 @@ optional trailing whitespace). The content between is parsed as YAML.
   `parse::unsupported_yaml_tag` warning; the scalar value is kept but
   the tag does not round-trip.
 
+### 3.2 The Canonical Card Fence
+
+The canonical syntax for a composable card is a CommonMark fenced code
+block whose info string is `card <kind>`:
+
+````markdown
+```card indorsement
+from: ORG1/SYMBOL
+for: ORG2/SYMBOL
+signature_block:
+  - "JOHN DOE, Lt Col, USAF"
+  - "Commander"
+```
+
+Indorsement body content.
+````
+
+- **Info string.** The info string is exactly two whitespace-separated
+  tokens: the literal `card`, then the card `<kind>`. The kind takes the
+  place of the `CARD:` sentinel and must match `/^[a-z_][a-z0-9_]*$/`.
+- **Fence markers.** The opening and closing markers follow CommonMark
+  fenced-code-block rules (§4.5 of CommonMark): three or more backticks or
+  tildes, indented zero to three spaces. The closing fence uses the same
+  character, is at least as long as the opener, and carries no info string.
+- **Body content.** The text between the fence markers is parsed as YAML,
+  with the same comment, `!fill`, reserved-key, and limit rules as a `---`
+  metadata fence (§3.1, §8). The kind lives in the info string, so the
+  YAML body carries no sentinel key; `QUILL`, `CARD`, `BODY`, and `CARDS`
+  are all rejected as user-defined fields.
+- **Card body.** As with a `---` card fence, the card's body is the
+  markdown that follows the closing fence, up to the next card fence or
+  EOF.
+- **Canonical emission.** `toMarkdown` always emits cards with three
+  backticks. Canonically emitted YAML never produces a line beginning with
+  a backtick (keys are identifiers, sequence items begin with `-`, strings
+  are double-quoted), so a three-backtick fence is never closed early. An
+  inline comment carried over from a legacy `CARD: <kind> # note` source
+  has no sentinel line to attach to and degrades to an own-line comment as
+  the first body line.
+
 ## 4. Fence Detection Rules
+
+Two detectors run over the line stream. A fenced code block whose info
+string leads with `card` is tested for the card-fence rules (§4.3); a
+`---` line is tested for the metadata-fence rules (F1–F3 below). YAML
+content between recognised fence markers is opaque to detection.
 
 A `---` line opens a metadata fence **iff both** of the following hold:
 
@@ -145,6 +206,57 @@ two thematic breaks with literal YAML between. Implementations **should**
 emit a lint warning when they encounter a `---`/`---` pair whose content's
 first non-blank, non-comment line matches `[A-Za-z][A-Za-z0-9_]*:` but whose
 key is not the expected sentinel.
+
+### 4.3 Card-Fence Detection
+
+A fenced code block opens a composable card **iff both** of the following
+hold:
+
+**C1 — Info string.** The opener's info string is `card <kind>` — exactly
+the literal `card` followed by one more whitespace-separated token. The
+`<kind>` token must match `/^[a-z_][a-z0-9_]*$/`.
+
+**C2 — Leading blank.** The opener is on line 1 of the document, or the
+line immediately above it is blank. This mirrors F2: a card is a
+block-level construct, and requiring the blank line keeps body
+round-tripping stable.
+
+A fenced code block whose info string does **not** lead with `card` is an
+ordinary CommonMark fenced code block. A `card`-leading opener that
+satisfies C1 but fails C2 is delegated to CommonMark as an ordinary code
+block, with a `parse::card_fence_missing_blank` lint warning.
+
+A `card`-leading opener that satisfies C2 but fails C1 is a hard parse
+error (§9): the author clearly intended a card. The error distinguishes a
+missing kind (```` ```card ````), an invalid kind, and a multi-token info
+string.
+
+The card fence is closed by the matching CommonMark closing fence (same
+character, length at least the opener's, no info string). An opener with
+no matching closer before EOF is a hard parse error.
+
+### 4.4 Worked Card-Fence Examples
+
+````markdown
+---
+QUILL: resume
+---
+
+```card job             # FencedCard — C1 + C2 hold
+title: Senior Engineer
+```
+
+Job body.
+
+```rust                  # Ordinary code block — C1 fails (not `card`)
+let x = 1;
+```
+
+---
+CARD: job                # LegacyCardFence — accepted, emits as FencedCard
+title: Staff Engineer
+---
+````
 
 ## 5. Data Model
 
@@ -259,11 +371,16 @@ Parse errors include:
 - Missing frontmatter (no opening `---` on line 1, or no closing `---`
   before EOF).
 - Frontmatter missing the `QUILL` key.
-- Card fence missing the `CARD` key.
+- Legacy card fence missing the `CARD` key.
+- A `card`-fenced block satisfying C2 but with a malformed info string:
+  missing kind, multi-token info string, or a kind failing
+  `/^[a-z_][a-z0-9_]*$/`.
+- A `card` fence opened but not closed before EOF.
 - `QUILL` appearing outside the frontmatter.
-- Card `CARD` value failing the `/^[a-z_][a-z0-9_]*$/` pattern.
+- Card kind / `CARD` value failing the `/^[a-z_][a-z0-9_]*$/` pattern.
 - Invalid YAML inside any fence.
-- Use of a reserved key (`BODY`, `CARDS`) as a user-defined field.
+- Use of a reserved key (`QUILL`, `CARD`, `BODY`, `CARDS`) as a
+  user-defined field.
 - Any §8 limit exceeded.
 
 ## 10. References

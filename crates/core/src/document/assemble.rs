@@ -10,7 +10,7 @@ use crate::value::QuillValue;
 use crate::version::QuillReference;
 use crate::Diagnostic;
 
-use super::fences::{fence_opener_len, find_metadata_blocks};
+use super::fences::find_metadata_blocks;
 use super::frontmatter::{Frontmatter, FrontmatterItem};
 use super::prescan::{prescan_fence_content, NestedComment, PreItem};
 use super::sentinel::extract_sentinels;
@@ -70,17 +70,29 @@ fn yaml_parse_options() -> serde_saphyr::Options {
     }
 }
 
-/// Process YAML content for a recognized metadata fence and build a
-/// `MetadataBlock`. The `is_first_block` flag governs whether `QUILL` is
-/// expected (vs. `CARD`). Returns errors per spec §9.
+/// Process the YAML content of a recognized metadata block and build a
+/// `MetadataBlock`. Returns errors per spec §9.
+///
+/// `block_start` / `block_end` bound the whole block (used to slice card
+/// bodies). `yaml_start` / `yaml_end` bound just the YAML content — between the
+/// `---` markers for a legacy fence, or between the ```` ```card ```` opener and
+/// its closer for a fenced card.
+///
+/// `card_kind` discriminates the two syntaxes:
+/// - `None` — a legacy `---` fence; the `QUILL` / `CARD` sentinel is extracted
+///   from the first YAML key.
+/// - `Some(kind)` — a ```` ```card <kind> ```` fence; the kind comes from the
+///   info string and the YAML body carries no sentinel.
 pub(super) fn build_block(
     markdown: &str,
-    abs_pos: usize,
-    abs_closing_pos: usize,
+    block_start: usize,
+    yaml_start: usize,
+    yaml_end: usize,
     block_end: usize,
     block_index: usize,
+    card_kind: Option<&str>,
 ) -> Result<MetadataBlock, ParseError> {
-    let raw_content = &markdown[abs_pos + fence_opener_len(markdown, abs_pos)..abs_closing_pos];
+    let raw_content = &markdown[yaml_start..yaml_end];
 
     // Check YAML size limit (spec §8)
     if raw_content.len() > crate::error::MAX_YAML_SIZE {
@@ -100,29 +112,40 @@ pub(super) fn build_block(
 
     let content = pre.cleaned_yaml.trim().to_string();
     let (tag, quill_ref, yaml_value) = if content.is_empty() {
-        (None, None, None)
+        (card_kind.map(str::to_string), None, None)
     } else {
-        match serde_saphyr::from_str_with_options::<serde_json::Value>(
+        let parsed = match serde_saphyr::from_str_with_options::<serde_json::Value>(
             &content,
             yaml_parse_options(),
         ) {
-            Ok(parsed) => extract_sentinels(parsed, markdown, abs_pos, block_index)?,
+            Ok(parsed) => parsed,
             Err(e) => {
-                let line = markdown[..abs_pos].lines().count() + 1;
+                let line = markdown[..block_start].lines().count() + 1;
                 return Err(ParseError::YamlErrorWithLocation {
                     message: e.to_string(),
                     line,
                     block_index,
                 });
             }
+        };
+        match card_kind {
+            // `card`-fenced block: kind from the info string, body carries no
+            // sentinel — only reject reserved keys.
+            Some(kind) => {
+                let yaml = super::sentinel::validate_card_fence_yaml(parsed)?;
+                (Some(kind.to_string()), None, yaml)
+            }
+            // Legacy `---` fence: extract the QUILL / CARD sentinel.
+            None => extract_sentinels(parsed, markdown, block_start, block_index)?,
         }
     };
 
     // Per-fence field-count check (spec §8, §6.1 of GAP analysis)
     if let Some(serde_json::Value::Object(ref map)) = yaml_value {
-        // Add +1 for QUILL (stripped) or CARD (stripped) so the cap matches
-        // what the user wrote, not what's left after sentinel extraction.
-        let sentinel_extra = if quill_ref.is_some() || tag.is_some() {
+        // Add +1 for a stripped legacy sentinel (`QUILL` / `CARD`) so the cap
+        // matches what the user wrote. A `card` fence carries its kind in the
+        // info string, so nothing was stripped from its field set.
+        let sentinel_extra = if card_kind.is_none() && (quill_ref.is_some() || tag.is_some()) {
             1
         } else {
             0
@@ -136,7 +159,7 @@ pub(super) fn build_block(
     }
 
     Ok(MetadataBlock {
-        start: abs_pos,
+        start: block_start,
         end: block_end,
         yaml_value,
         tag,

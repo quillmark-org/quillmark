@@ -76,18 +76,39 @@ card_types:
 
 ## Markdown Syntax
 
-```markdown
----
-CARD: indorsement
+The canonical syntax for a composable card is a fenced code block whose info
+string is `card <kind>`. The kind is the on-the-wire `CARD` discriminator;
+the fenced block's content is the card's YAML data, and the markdown after
+the closing fence is the card's body.
+
+````markdown
+```card indorsement
 from: ORG1/SYMBOL
 for: ORG2/SYMBOL
 signature_block:
   - "JOHN DOE, Lt Col, USAF"
   - "Commander"
+```
+
+Indorsement body content.
+````
+
+The legacy `---` metadata-fence syntax (a `CARD:` sentinel inside a
+`---`/`---` pair) is still accepted on input:
+
+```markdown
+---
+CARD: indorsement
+from: ORG1/SYMBOL
 ---
 
 Indorsement body content.
 ```
+
+Both syntaxes parse to the same card. `Document::to_markdown` only ever
+emits the canonical fenced form, so a document authored with legacy fences
+round-trips to fenced cards. See [`MARKDOWN.md`](./MARKDOWN.md) §3 for the
+full syntax specification.
 
 ## Backend Consumption
 

@@ -53,6 +53,28 @@ pub(super) fn first_content_key(content: &str) -> Option<&str> {
     }
 }
 
+/// Validate the YAML body of a `card`-fenced composable card.
+///
+/// A `card` fence carries its kind in the info string (```` ```card <kind> ````),
+/// so there is no sentinel key inside the YAML body. This check only rejects
+/// the reserved sentinel keys (`QUILL`, `CARD`, `BODY`, `CARDS`) appearing as
+/// user-defined fields. The parsed value is returned unchanged.
+pub(super) fn validate_card_fence_yaml(
+    parsed: serde_json::Value,
+) -> Result<Option<serde_json::Value>, ParseError> {
+    if let Some(mapping) = parsed.as_object() {
+        for reserved in ["QUILL", "CARD", "BODY", "CARDS"] {
+            if mapping.contains_key(reserved) {
+                return Err(ParseError::InvalidStructure(format!(
+                    "Reserved field name '{}' cannot be used in a card block",
+                    reserved
+                )));
+            }
+        }
+    }
+    Ok(Some(parsed))
+}
+
 /// Extract `QUILL` / `CARD` sentinels and remaining fields from a parsed-YAML
 /// mapping. Returns `(tag, quill_ref, yaml_without_sentinel)`.
 #[allow(clippy::type_complexity)]
