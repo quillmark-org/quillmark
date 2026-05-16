@@ -60,7 +60,7 @@ def test_cards_access():
     """Test accessing typed cards list."""
     md = (
         "---\nQUILL: my_quill\ntitle: Main\n---\n\nGlobal body.\n\n"
-        "```card\nKIND: note\nfoo: bar\n```\n\nCard body.\n"
+        "```card note\nfoo: bar\n```\n\nCard body.\n"
     )
     doc = Document.from_markdown(md)
     assert len(doc.cards) == 1
@@ -80,7 +80,7 @@ def test_cards_empty_when_none():
 def test_quill_ref(taro_md):
     """Test that quill_ref returns the QUILL field value."""
     doc = Document.from_markdown(taro_md)
-    assert doc.quill_ref() == "taro"
+    assert doc.quill_ref() == "taro@0.1"
 
 
 def test_warnings_empty_on_clean_doc(taro_md):
@@ -89,8 +89,9 @@ def test_warnings_empty_on_clean_doc(taro_md):
     assert doc.warnings == []
 
 
-def test_to_markdown_is_stub(taro_md):
-    """Test that to_markdown raises NotImplementedError (phase 4 stub)."""
+def test_to_markdown_round_trips(taro_md):
+    """to_markdown emits canonical Quillmark Markdown."""
     doc = Document.from_markdown(taro_md)
-    with pytest.raises(NotImplementedError):
-        doc.to_markdown()
+    emitted = doc.to_markdown()
+    assert isinstance(emitted, str)
+    assert "QUILL: taro" in emitted

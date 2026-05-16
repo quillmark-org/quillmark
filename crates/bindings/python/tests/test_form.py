@@ -141,7 +141,7 @@ def test_form_unknown_card_kind_diagnostic(tmp_path):
     quill = make_quill(tmp_path)
     md = (
         "---\nQUILL: py_form_smoke\ntitle: \"T\"\n---\n\n"
-        "```card\nKIND: ghost_card\nnote: \"B\"\n```\n"
+        "```card ghost_card\nnote: \"B\"\n```\n"
     )
     doc = Document.from_markdown(md)
 
@@ -149,8 +149,8 @@ def test_form_unknown_card_kind_diagnostic(tmp_path):
 
     assert form["cards"] == [], "unknown-tag card must be excluded"
     diag_codes = [d.get("code") for d in form["diagnostics"]]
-    assert "form::unknown_card_kind" in diag_codes, (
-        f"expected form::unknown_card_kind diagnostic; got: {diag_codes}"
+    assert "form::unknown_card" in diag_codes, (
+        f"expected form::unknown_card diagnostic; got: {diag_codes}"
     )
 
 

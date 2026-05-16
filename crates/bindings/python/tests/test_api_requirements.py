@@ -36,7 +36,7 @@ def test_quill_properties(taro_quill_dir):
     example = quill.example
     assert example is not None
 
-    supported_formats = quill.supported_formats()
+    supported_formats = quill.supported_formats
     assert isinstance(supported_formats, list)
     assert OutputFormat.PDF in supported_formats
 
@@ -53,7 +53,7 @@ def test_full_workflow():
 
     assert "taro" in quill.quill_ref
     assert quill.backend == "typst"
-    assert OutputFormat.PDF in quill.supported_formats()
+    assert OutputFormat.PDF in quill.supported_formats
 
     result = quill.render(parsed, OutputFormat.PDF)
     assert len(result.artifacts) > 0
@@ -75,15 +75,13 @@ title: Hello
 
 Body.
 
-```card
-KIND: note
+```card note
 foo: bar
 ```
 
 Card one.
 
-```card
-KIND: summary
+```card summary
 ```
 
 Card two.
@@ -141,10 +139,11 @@ def test_remove_field_absent():
     assert doc.remove_field("nonexistent") is None
 
 
-def test_remove_field_reserved_returns_none():
-    """remove_field returns None for reserved names (they can't be in frontmatter)."""
+def test_remove_field_reserved_raises():
+    """remove_field raises EditError for reserved names."""
     doc = Document.from_markdown(SIMPLE_MD)
-    assert doc.remove_field("BODY") is None
+    with pytest.raises(EditError, match="ReservedName"):
+        doc.remove_field("BODY")
 
 
 def test_set_quill_ref():
@@ -330,7 +329,9 @@ def test_to_markdown_general_round_trip():
     # Re-parse and assert structure survives
     doc2 = Document.from_markdown(emitted)
     assert doc2.frontmatter["title"] == "New Title"
-    assert doc2.body == "Updated body"
+    # The body is followed by a card fence, so emit re-adds the F2 separator;
+    # one line terminator survives the round-trip.
+    assert doc2.body == "Updated body\n"
     assert len(doc2.cards) == original_card_count + 1
     assert doc2.cards[0]["tag"] == "note"
     assert doc2.cards[0]["fields"]["author"] == "Alice"
