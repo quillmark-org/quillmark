@@ -112,7 +112,7 @@ tags: !fill []
 
 ## Card Blocks
 
-Fenced code blocks with the info string `card <type>` embedded in the document body are **card blocks**, where `<type>` matches `[a-z_][a-z0-9_]*`. All card blocks are collected into the `CARDS` array available to templates.
+Fenced code blocks with the info string `card <kind>` embedded in the document body are **card blocks**, where `<kind>` matches `[a-z_][a-z0-9_]*`. All card blocks are collected into the `CARDS` array available to templates.
 
 ````markdown
 ```card indorsement
@@ -123,7 +123,7 @@ for: ORG2/SYMBOL
 Indorsement body text here.
 ````
 
-The legacy `---`-delimited form with a `CARD: <type>` key is still accepted on input.
+The legacy `---`-delimited form with a `CARD: <kind>` key is still accepted on input.
 
 See [Cards](cards.md) for details on card syntax and usage.
 

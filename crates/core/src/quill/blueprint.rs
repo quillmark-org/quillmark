@@ -22,7 +22,7 @@
 //!   kind is in the info string), so its `composable (0..N)` role is emitted
 //!   as an own-line `# composable (0..N)` comment directly under the opener.
 //! - **Body regions** are signalled by `Write main body here.` after the main
-//!   fence and `Write <card name> body here.` after each card fence. When
+//!   fence and `Write <card kind> body here.` after each card fence. When
 //!   `body.example` is set, the example text is embedded verbatim instead.
 //!   Absent when `body.enabled` is false.
 //!

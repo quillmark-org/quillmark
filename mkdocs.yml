@@ -47,7 +47,7 @@ nav:
   - CLI:
       - Reference: cli/reference.md
   - Migration:
-      - WASM 0.77 → 0.79: migrations/wasm-0.77-to-0.79.md
+      - WASM 0.77 → 0.80: migrations/wasm-0.77-to-0.80.md
 
 markdown_extensions:
   - pymdownx.highlight:

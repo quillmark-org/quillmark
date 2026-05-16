@@ -377,7 +377,7 @@ fn transform_cards_array(
     for card in cards_array {
         if let Some(card_obj) = card.as_object() {
             if let Some(card_kind) = card_obj.get("CARD").and_then(|v| v.as_str()) {
-                // Construct the definition name: {type}_card
+                // Construct the definition name: {kind}_card
                 let def_name = format!("{}_card", card_kind);
 
                 // Look up the schema for this card kind

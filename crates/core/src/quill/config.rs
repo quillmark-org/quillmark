@@ -1092,7 +1092,7 @@ impl QuillConfig {
                     errors.push(
                         Diagnostic::new(
                             Severity::Error,
-                            "'card_kinds' section must be an object (mapping of type names to schemas)".to_string(),
+                            "'card_kinds' section must be an object (mapping of kind names to schemas)".to_string(),
                         )
                         .with_code("quill::invalid_card_kinds".to_string()),
                     );

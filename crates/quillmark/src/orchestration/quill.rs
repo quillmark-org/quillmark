@@ -226,7 +226,7 @@ impl Quill {
         FormCard::blank(&self.source.config().main)
     }
 
-    /// A blank form for a card of the given type — no document values
+    /// A blank form for a card of the given kind — no document values
     /// supplied. Returns `None` if `card_kind` is not declared in the
     /// quill's schema.
     ///

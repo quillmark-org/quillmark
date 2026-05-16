@@ -443,7 +443,7 @@ impl Quill {
         })
     }
 
-    /// A blank form for a card of the given type — no document values supplied.
+    /// A blank form for a card of the given kind — no document values supplied.
     ///
     /// Returns `null` if `cardKind` is not declared in this quill's schema.
     /// Otherwise returns a plain JS object shaped like a single entry in

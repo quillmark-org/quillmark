@@ -217,7 +217,7 @@ impl PyQuill {
         Ok(dict.clone())
     }
 
-    /// A blank form for a card of the given type — no document values supplied.
+    /// A blank form for a card of the given kind — no document values supplied.
     ///
     /// Returns `None` if `card_kind` is not declared in this quill's schema.
     /// Otherwise returns a dict shaped like a single entry in `form()['cards']`.
