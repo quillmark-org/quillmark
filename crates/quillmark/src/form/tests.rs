@@ -313,21 +313,16 @@ main:
 
 #[test]
 fn form_over_usaf_memo_fixture() {
-    // Integration test: load the usaf_memo fixture quill and view the
-    // bundled example.  Checks that every required field gets a deterministic
-    // FormFieldSource and no projection panics.
+    // Integration test: load the usaf_memo fixture quill and view its
+    // generated blueprint.  Checks that every required field gets a
+    // deterministic FormFieldSource and no projection panics.
     let quill_path = quillmark_fixtures::resource_path("quills/usaf_memo/0.1.0");
     let quill = Quillmark::new()
         .quill_from_path(quill_path)
         .expect("failed to load usaf_memo fixture");
 
-    let example_md = quill.source().example().unwrap_or("");
-    // If the example can't parse, skip gracefully (it uses YAML comments that
-    // are valid but the field values may not match the schema exactly).
-    let doc = match Document::from_markdown(example_md) {
-        Ok(d) => d,
-        Err(_) => return,
-    };
+    let blueprint = quill.source().config().blueprint();
+    let doc = Document::from_markdown(&blueprint).expect("blueprint must parse");
 
     let form = quill.form(&doc);
 

@@ -42,12 +42,26 @@ def taro_quill_dir():
     return fixture_path
 
 
+TARO_MARKDOWN = '''---
+QUILL: taro@0.1
+author: Nibs
+ice_cream: Taro
+title: "My Favorite Ice Cream Flavor"
+---
+
+I love Taro ice cream for its subtly sweet, nutty flavor and creamy, earthy undertones.
+
+```card quotes
+author: Albert Einstein
+```
+Without taro ice cream, life would be a mistake.
+'''
+
+
 @pytest.fixture
 def taro_md():
-    """Return the example taro markdown."""
-    sample_path = _latest_version(QUILLS_PATH / "taro") / "example.md"
+    """Return a sample taro markdown document.
 
-    if sample_path.exists():
-        return sample_path.read_text()
-    else:
-        raise FileNotFoundError(f"Markdown example not found: {sample_path}")
+    The test owns its input — it does not depend on a bundled fixture file.
+    """
+    return TARO_MARKDOWN

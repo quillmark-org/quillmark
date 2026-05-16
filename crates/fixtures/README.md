@@ -35,7 +35,6 @@ The package includes:
   - `sample.md` - Basic markdown example
   - `frontmatter_demo.md` - Demonstrates YAML frontmatter
   - `extended_metadata_demo.md` - Extended metadata examples
-  - `appreciated_letter/appreciated_letter.md` - Example content for the appreciated_letter template
   - `*.md` - Various markdown test files
 
 ## License

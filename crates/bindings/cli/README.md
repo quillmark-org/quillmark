@@ -64,9 +64,9 @@ quillmark render ./quills/usaf_memo memo.md -o output/final.pdf
 quillmark render ./quills/usaf_memo memo.md --format svg
 ```
 
-### Using quill example content
+### Rendering the generated blueprint
 
-If you omit `MARKDOWN_FILE`, the quill's bundled example content is rendered:
+If you omit `MARKDOWN_FILE`, the quill's generated blueprint is rendered:
 
 ```bash
 quillmark render ./quills/usaf_memo
@@ -98,7 +98,7 @@ quillmark render [OPTIONS] <QUILL_PATH> [MARKDOWN_FILE]
 
 **Arguments:**
 - `<QUILL_PATH>` - Path to quill directory
-- `[MARKDOWN_FILE]` - Path to markdown file with YAML frontmatter (optional; when omitted, quill example content is used)
+- `[MARKDOWN_FILE]` - Path to markdown file with YAML frontmatter (optional; when omitted, the quill's generated blueprint is used)
 
 **Options:**
 - `-o, --output <FILE>` - Output file path (default: derived from input filename)
@@ -111,10 +111,11 @@ quillmark render [OPTIONS] <QUILL_PATH> [MARKDOWN_FILE]
 
 ### Example: Render USAF Memo
 
+Omitting the Markdown file renders the quill's generated blueprint:
+
 ```bash
 quillmark render \
   crates/fixtures/resources/quills/usaf_memo/0.1.0 \
-  crates/fixtures/resources/quills/usaf_memo/0.1.0/example.md \
   -o usaf_memo_output.pdf
 ```
 
@@ -168,7 +169,7 @@ cargo test
 ### Running Locally
 
 ```bash
-cargo run -- render path/to/quill example.md
+cargo run -- render path/to/quill document.md
 ```
 
 ## Design Documentation

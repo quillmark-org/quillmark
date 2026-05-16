@@ -28,7 +28,6 @@ pub struct QuillSource {
     pub name: String,
     pub backend_id: String,
     pub plate: Option<String>,
-    pub example: Option<String>,
     pub config: QuillConfig,
     pub files: FileTreeNode,
 }
@@ -71,7 +70,6 @@ quill:
   description: A beautiful format  # required; non-empty
   author: Jane Doe        # optional; defaults to "Unknown"
   plate_file: plate.typ   # optional; path to Typst template
-  example_file: example.md  # optional; example document for preview
 
 main:
   fields:
@@ -104,7 +102,6 @@ Field names must be `snake_case`. Capitalized keys (e.g. `BODY`, `CARDS`, `CARD`
 Metadata resolution:
 - `name`, `description`, `backend`, `version`, `author` are direct struct fields on `QuillConfig`. `description` (required, non-empty in the `quill:` section) describes the quill itself; it is independent of `QuillConfig.main.description`, which is the optional schema description authored under `main:` like any other card type.
 - `metadata` on `Quill` stores `backend`, `description`, `version`, `author`, and `typst_*` keys from the `[typst]` section. The `quill:` section accepts only the documented keys; unknown keys produce a `quill::unknown_key` error rather than landing in `metadata`.
-- `example_file` also accepts the alias `example` in YAML
 
 ## Strict Parsing
 

@@ -75,11 +75,6 @@ impl PyQuill {
     }
 
     #[getter]
-    fn example(&self) -> Option<String> {
-        self.inner.source().example().map(str::to_string)
-    }
-
-    #[getter]
     fn quill_ref(&self) -> String {
         let source = self.inner.source();
         let version = source
