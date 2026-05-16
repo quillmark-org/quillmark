@@ -75,7 +75,7 @@ Identity fields (`name`, `version`, `backend`, `author`, `description`) live on 
 
 ### `main.fields` and `card_types.<name>.fields` sentinels
 
-`schema()` prepends a synthetic field to each card's `fields` map so consumers know exactly which sentinel string to write:
+`schema()` prepends a synthetic discriminator field to each card's `fields` map so consumers know exactly which discriminator value to use — the `QUILL` reference for the main card, and the card kind (the ```` ```card <kind> ```` info-string token) for each card type:
 
 - `main.fields.QUILL` — `{ type: string, const: "<name>@<version>", required: true, description: ... }`
 - `card_types.<name>.fields.CARD` — `{ type: string, const: "<name>", required: true, description: ... }`
