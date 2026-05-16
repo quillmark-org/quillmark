@@ -15,7 +15,7 @@ fn make_doc() -> Document {
 
 fn make_doc_with_cards() -> Document {
     Document::from_markdown(
-        "---\nQUILL: test_quill\ntitle: Hello\n---\n\nBody.\n\n---\nCARD: note\nfoo: bar\n---\n\nCard body.\n\n---\nCARD: summary\n---\n",
+        "---\nQUILL: test_quill\ntitle: Hello\n---\n\nBody.\n\n```card note\nfoo: bar\n```\n\nCard body.\n\n```card summary\n```\n",
     )
     .unwrap()
 }

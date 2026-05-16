@@ -106,7 +106,7 @@ impl QuillConfig {
                         &mut card_value,
                         "CARD",
                         &card.name,
-                        "Card type name. Must be exactly this value as the CARD: sentinel in the card frontmatter.",
+                        "Card type name. Must match the card kind in the card block's ```card <kind>``` info string.",
                     );
                     (card.name.clone(), card_value)
                 })
@@ -1275,9 +1275,16 @@ impl QuillConfig {
     }
 }
 
-/// Returns true if any line in `text` would be parsed as a metadata-fence
-/// marker by the document parser. Mirrors `document::fences::is_fence_marker_line`:
-/// up to 3 leading spaces (no leading tab), then `---`, then only whitespace.
+/// Returns true if any line in `text` would be parsed as a card-fence or
+/// metadata-fence marker by the document parser — either of which would
+/// corrupt the blueprint's document structure when the example is embedded
+/// verbatim as body content.
+///
+/// Two markers are flagged, both after up to 3 leading spaces (no leading
+/// tab):
+/// - a legacy `---` metadata fence marker (`---` then only whitespace);
+/// - a canonical ```` ```card ```` fenced-card opener (3+ backticks or tildes
+///   followed by an info string whose first token is `card`).
 fn example_contains_fence_line(text: &str) -> bool {
     text.lines().any(|line| {
         let line = line.strip_suffix('\r').unwrap_or(line);
@@ -1285,9 +1292,20 @@ fn example_contains_fence_line(text: &str) -> bool {
         if indent > 3 || line.as_bytes().first() == Some(&b'\t') {
             return false;
         }
-        matches!(
-            line[indent..].strip_prefix("---"),
-            Some(rest) if rest.chars().all(|c| c == ' ' || c == '\t')
-        )
+        let rest = &line[indent..];
+        // Legacy `---` metadata fence marker.
+        if matches!(rest.strip_prefix("---"), Some(r) if r.chars().all(|c| c == ' ' || c == '\t')) {
+            return true;
+        }
+        // Canonical ```card <kind> fenced-card opener.
+        if let Some(&fence) = rest.as_bytes().first() {
+            if fence == b'`' || fence == b'~' {
+                let run = rest.bytes().take_while(|&b| b == fence).count();
+                if run >= 3 && rest[run..].split_whitespace().next() == Some("card") {
+                    return true;
+                }
+            }
+        }
+        false
     })
 }

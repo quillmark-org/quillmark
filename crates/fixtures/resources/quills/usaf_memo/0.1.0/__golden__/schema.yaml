@@ -150,7 +150,9 @@ card_types:
       CARD:
         type: string
         const: indorsement
-        description: "Card type name. Must be exactly this value as the CARD: sentinel in the card frontmatter."
+        description: >-
+          Card type name. Must match the card kind in the card block's ```card <kind>```
+          info string.
         required: true
       attachments:
         type: array

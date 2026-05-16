@@ -33,7 +33,7 @@ fn test_card_count_limit_attack() {
     // Generate more than MAX_CARD_COUNT (1000) card blocks
     let mut markdown = String::from("---\nQUILL: test_quill\ntitle: Test\n---\n\nBody\n\n");
     for i in 0..1002 {
-        markdown.push_str(&format!("---\nCARD: item{}\nvalue: {}\n---\n\n", i, i));
+        markdown.push_str(&format!("```card item{}\nvalue: {}\n```\n\n", i, i));
     }
     let result = Document::from_markdown(&markdown);
 
@@ -156,7 +156,7 @@ fn test_card_name_validation() {
 #[test]
 fn test_yaml_error_location() {
     let markdown =
-        "---\nQUILL: test_quill\ntitle: Test\n---\n\nBody\n\n---\nCARD: test\ninvalid yaml: {\n---\n\n";
+        "---\nQUILL: test_quill\ntitle: Test\n---\n\nBody\n\n```card test\ninvalid yaml: {\n```\n\n";
     let result = Document::from_markdown(markdown);
 
     assert!(result.is_err(), "Should reject invalid YAML");

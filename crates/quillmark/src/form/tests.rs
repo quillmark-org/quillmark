@@ -152,8 +152,8 @@ card_types:
     );
 
     let md = "---\nQUILL: unknown_card_test\ntitle: \"T\"\n---\n\n\
-              ---\nCARD: known_card\nnote: \"A\"\n---\n\n\
-              ---\nCARD: ghost_card\nnote: \"B\"\n---\n";
+              ```card known_card\nnote: \"A\"\n```\n\n\
+              ```card ghost_card\nnote: \"B\"\n```\n";
     let doc = Document::from_markdown(md).unwrap();
 
     let form = quill.form(&doc);
@@ -206,7 +206,7 @@ card_types:
 
     // signature_block present, office absent (has default), extra absent (no default)
     let md = "---\nQUILL: card_fields_test\ntitle: \"T\"\n---\n\n\
-              ---\nCARD: indorsement\nsignature_block: \"Col Smith\"\n---\n";
+              ```card indorsement\nsignature_block: \"Col Smith\"\n```\n";
     let doc = Document::from_markdown(md).unwrap();
 
     let form = quill.form(&doc);

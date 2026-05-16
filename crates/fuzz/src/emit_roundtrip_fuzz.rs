@@ -111,7 +111,7 @@ proptest! {
         card_value in "[a-zA-Z0-9 ]{0,50}"
     ) {
         let src = format!(
-            "---\nQUILL: {}\ntitle: \"test\"\n---\n\nBody here.\n\n---\nCARD: {}\n{}: \"{}\"\n---\n\nCard body.\n",
+            "---\nQUILL: {}\ntitle: \"test\"\n---\n\nBody here.\n\n```card {}\n{}: \"{}\"\n```\n\nCard body.\n",
             quill, card_tag, card_key, card_value
         );
 

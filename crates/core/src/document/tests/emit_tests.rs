@@ -242,10 +242,9 @@ title: Test
 
 Body text.
 
----
-CARD: section
+```card section
 heading: Chapter 1
----
+```
 
 Card body here.
 ";
@@ -260,10 +259,9 @@ QUILL: q
 title: Test
 ---
 
----
-CARD: empty_body_card
+```card empty_body_card
 title: No body
----
+```
 ";
     assert_round_trip("card with empty body", src);
 }

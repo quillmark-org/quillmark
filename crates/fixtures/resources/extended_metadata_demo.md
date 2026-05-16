@@ -11,52 +11,47 @@ The extended standard allows you to define inline metadata sections throughout y
 
 ## Features Demonstrated
 
----
-CARD: features
+```card features
 name: Tag Directives
 status: implemented
----
+```
 
-Use `CARD: tag_name` syntax to create collections of related items. Each tagged block creates an entry in an array.
+Use the ```` ```card tag_name ```` fenced syntax to create collections of related items. Each card block creates an entry in an array.
 
----
-CARD: features
+```card features
 name: Structured Content
 status: implemented
----
+```
 
 Break your document into logical sections with their own metadata. Perfect for catalogs, lists, and structured documents.
 
----
-CARD: features
+```card features
 name: Backward Compatible
 status: stable
----
+```
 
 Documents without tag directives continue to work exactly as before. No breaking changes!
 
 ## Use Cases
 
----
-CARD: use_cases
+```card use_cases
 category: Documentation
 example: Technical specifications with multiple sections
----
+```
 
 Perfect for API documentation, user manuals, and technical guides where you need structured metadata for each section.
 
----
-CARD: use_cases
+```card use_cases
 category: Content Management
 example: Product catalogs, blog posts, portfolios
----
+```
 
 Ideal for content-heavy sites where each item needs its own metadata (price, category, tags, etc.).
 
 ## Technical Details
 
-- **Tag pattern**: `[a-z_][a-z0-9_]*`
-- **Blank lines**: Allowed within metadata blocks
-- **Horizontal rules**: `---` with blank lines both above and below
-- **Reserved names**: Cannot use `body` as tag directive
-- **Collections**: Same tag name creates array of objects
+- **Card kind pattern**: `[a-z_][a-z0-9_]*`
+- **Blank lines**: Allowed within card blocks
+- **Card syntax**: a fenced code block with the info string `card <kind>`, preceded by a blank line
+- **Reserved names**: Cannot use `QUILL`, `CARD`, `BODY`, or `CARDS` as field names
+- **Collections**: The same card kind creates an array of objects

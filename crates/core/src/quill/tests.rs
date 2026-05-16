@@ -2549,6 +2549,30 @@ main:
 }
 
 #[test]
+fn body_example_card_fence_line_is_an_error() {
+    // A ```card <kind> opener in a body example would be parsed as a card.
+    let yaml = r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  body:
+    example: "Intro.\n\n```card note\nauthor: x\n```"
+  fields:
+    title: { type: string }
+"#;
+    let result = QuillConfig::from_yaml_with_warnings(yaml);
+    let errors = result.unwrap_err();
+    assert!(
+        errors.iter().any(|d| d
+            .code
+            .as_deref()
+            .map(|c| c == "quill::body_example_contains_fence")
+            .unwrap_or(false)),
+        "expected body_example_contains_fence error for card fence, got: {:?}",
+        errors
+    );
+}
+
+#[test]
 fn body_example_card_type_fence_line_is_an_error() {
     // The fence check applies to card-type body examples too.
     let yaml = r#"

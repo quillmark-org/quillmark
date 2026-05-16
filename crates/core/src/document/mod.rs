@@ -10,9 +10,9 @@
 //! ## Key Types
 //!
 //! - [`Document`]: Typed in-memory Quillmark document — `main` card plus composable cards.
-//! - [`Card`]: A single metadata fence block, main or composable, with a sentinel,
+//! - [`Card`]: A single card block, main or composable, with a sentinel,
 //!   typed frontmatter, and a body.
-//! - [`Sentinel`]: Discriminates `QUILL:` main cards from `CARD:` composable cards.
+//! - [`Sentinel`]: Discriminates the `QUILL:` frontmatter from composable card blocks.
 //! - [`Frontmatter`]: Ordered list of items (fields + comments) parsed from a YAML fence.
 //!
 //! ## Examples
@@ -103,17 +103,18 @@ pub struct ParseOutput {
     pub warnings: Vec<Diagnostic>,
 }
 
-/// Discriminator for a [`Card`]'s metadata fence.
+/// Discriminator for a [`Card`].
 ///
-/// The first fence in a Quillmark document carries `QUILL: <ref>` and is the
-/// document-level *main* card; every subsequent fence carries `CARD: <tag>`
-/// and is a composable card. `Sentinel` captures that distinction in the typed
-/// model so every fence is one uniform shape.
+/// The document frontmatter carries `QUILL: <ref>` and is the document-level
+/// *main* card; every composable card carries a kind — written as the
+/// ```` ```card <kind> ```` info string (canonical) or a legacy `CARD: <kind>`
+/// sentinel. `Sentinel` captures that distinction in the typed model so every
+/// card is one uniform shape.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Sentinel {
-    /// `QUILL: <ref>` — the document entry card.
+    /// The document entry card, carrying the `QUILL` reference.
     Main(QuillReference),
-    /// `CARD: <tag>` — a composable card with the given tag.
+    /// A composable card with the given kind tag.
     Card(String),
 }
 
@@ -177,7 +178,7 @@ impl Card {
         &self.sentinel
     }
 
-    /// The card tag — the `CARD:` value for composable cards, or the string
+    /// The card tag — the card kind for composable cards, or the string
     /// form of the quill reference for main cards.
     pub fn tag(&self) -> String {
         self.sentinel.as_str()

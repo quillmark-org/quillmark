@@ -4,6 +4,10 @@
 //! for LLM consumers. The blueprint shows the document's shape — fields,
 //! constraints, examples — so a consumer can write a fresh document from it.
 //!
+//! The frontmatter is a `---` fence; each composable card is a fenced code
+//! block with the info string `card <kind>` (the canonical card syntax — see
+//! `MARKDOWN.md` §3.2).
+//!
 //! Annotation grammar:
 //! - **Leading `# …` lines** carry prose: `# <description>` (single line,
 //!   whitespace-collapsed) and `# e.g. <value>` (whenever an `example:` is
@@ -11,9 +15,12 @@
 //! - **Inline `# …` annotation** on the value line is structural:
 //!   `# <type>[<format>]; <role>[, <extras>...]`. Type is mandatory on every
 //!   field. Format slot uses angle brackets (`array<string>`,
-//!   `date<YYYY-MM-DD>`, `enum<a | b | c>`). Role is `required`, `optional`,
-//!   or `composable (0..N)` for cards. The QUILL sentinel adds a `verbatim`
-//!   extra signaling that the value must not be modified.
+//!   `date<YYYY-MM-DD>`, `enum<a | b | c>`). Role is `required` or
+//!   `optional`. The QUILL sentinel adds a `verbatim` extra signaling that
+//!   the value must not be modified.
+//! - **Card role annotation.** A card has no inline-annotation slot (its
+//!   kind is in the info string), so its `composable (0..N)` role is emitted
+//!   as an own-line `# composable (0..N)` comment directly under the opener.
 //! - **Body regions** are signalled by `Write main body here.` after the main
 //!   fence and `Write <card name> body here.` after each card fence. When
 //!   `body.example` is set, the example text is embedded verbatim instead.
@@ -40,7 +47,7 @@ impl QuillConfig {
             .as_deref()
             .filter(|s| !s.is_empty())
             .or_else(|| Some(self.description.as_str()).filter(|s| !s.is_empty()));
-        write_card_frontmatter(
+        write_main_fence(
             &mut out,
             &self.main,
             &format!(
@@ -55,9 +62,8 @@ impl QuillConfig {
             out.push_str(&format!("\n{}\n", text));
         }
         for card in &self.card_types {
-            let sentinel = format!("CARD: {}  # sentinel; composable (0..N)", card.name);
             out.push('\n');
-            write_card_frontmatter(&mut out, card, &sentinel, card.description.as_deref());
+            write_card_fence(&mut out, card);
             if card.body_enabled() {
                 let example = card.body.as_ref().and_then(|b| b.example.as_deref());
                 let fallback = format!("Write {} body here.", card.name);
@@ -69,7 +75,17 @@ impl QuillConfig {
     }
 }
 
-fn write_card_frontmatter(
+/// Emit a whitespace-collapsed `# <text>` comment line. No-op when `text`
+/// collapses to the empty string.
+fn write_comment(out: &mut String, text: &str) {
+    let clean = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if !clean.is_empty() {
+        out.push_str(&format!("# {}\n", clean));
+    }
+}
+
+/// Emit the document frontmatter fence: `---\n[# desc\n]QUILL: …\n<fields>---\n`.
+fn write_main_fence(
     out: &mut String,
     card: &CardSchema,
     sentinel_line: &str,
@@ -77,17 +93,38 @@ fn write_card_frontmatter(
 ) {
     out.push_str("---\n");
     if let Some(desc) = description {
-        let clean = desc.split_whitespace().collect::<Vec<_>>().join(" ");
-        out.push_str(&format!("# {}\n", clean));
+        write_comment(out, desc);
     }
     out.push_str(sentinel_line);
     out.push('\n');
+    write_card_fields(out, card);
+    out.push_str("---\n");
+}
+
+/// Emit a composable card as the canonical fenced block
+/// ```` ```card <kind>\n…\n``` ````. The kind lives in the info string; the
+/// `composable (0..N)` role annotation — which the legacy `---` syntax carried
+/// inline on the `CARD:` line — moves to an own-line comment directly under
+/// the opener, and the optional description follows it.
+fn write_card_fence(out: &mut String, card: &CardSchema) {
+    out.push_str("```card ");
+    out.push_str(&card.name);
+    out.push('\n');
+    out.push_str("# composable (0..N)\n");
+    if let Some(desc) = &card.description {
+        write_comment(out, desc);
+    }
+    write_card_fields(out, card);
+    out.push_str("```\n");
+}
+
+/// Emit a card's fields, clustered by `ui.group` and ordered by `ui.order`.
+fn write_card_fields(out: &mut String, card: &CardSchema) {
     for (_, fields) in group_fields(card.fields.values()) {
         for field in fields {
             write_field(out, field, 0);
         }
     }
-    out.push_str("---\n");
 }
 
 /// Cluster fields by `ui.group` (preserving first-appearance order; ungrouped
@@ -643,7 +680,7 @@ main:
     }
 
     #[test]
-    fn card_sentinel_line_is_composable() {
+    fn card_fence_carries_composable_annotation() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -657,7 +694,7 @@ card_types:
 "#)
         .blueprint();
         assert!(t.contains(
-            "# A short note appended to the document.\nCARD: note  # sentinel; composable (0..N)\n"
+            "```card note\n# composable (0..N)\n# A short note appended to the document.\n"
         ));
     }
 
@@ -675,7 +712,7 @@ card_types:
       items: { type: array, required: true }
 "#)
         .blueprint();
-        let after = &t[t.find("CARD: skills").unwrap()..];
+        let after = &t[t.find("```card skills").unwrap()..];
         assert!(!after.contains("skills body"));
     }
 
@@ -694,7 +731,7 @@ card_types:
       author: { type: string }
 "#)
         .blueprint();
-        let after = &t[t.find("CARD: note").unwrap()..];
+        let after = &t[t.find("```card note").unwrap()..];
         assert!(after.contains("\nThis is an example note.\n"));
         assert!(!after.contains("Write note body here."));
     }

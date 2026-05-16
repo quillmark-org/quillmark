@@ -172,7 +172,7 @@ fn normalize_yaml_scalar_keeps_bidi() {
 // §7 — Card body normalization reaches nested cards.
 #[test]
 fn normalize_reaches_card_body() {
-    let md = "---\nQUILL: t\n---\n\n---\nCARD: x\n---\n\n<!-- c -->trailing\u{202D}text";
+    let md = "---\nQUILL: t\n---\n\n```card x\n```\n\n<!-- c -->trailing\u{202D}text";
     let doc = Document::from_markdown(md).unwrap();
     let doc = normalize_document(doc).unwrap();
     let body = doc.cards()[0].body();
@@ -237,7 +237,7 @@ fn body_crlf_line_endings_are_normalized() {
 // §7 — CRLF normalization reaches card bodies.
 #[test]
 fn card_body_crlf_line_endings_are_normalized() {
-    let md = "---\nQUILL: t\n---\n\n---\nCARD: x\n---\n\nCard line one.\r\nCard line two.\r\n";
+    let md = "---\nQUILL: t\n---\n\n```card x\n```\n\nCard line one.\r\nCard line two.\r\n";
     let doc = Document::from_markdown(md).unwrap();
     let doc = normalize_document(doc).unwrap();
     let body = doc.cards()[0].body();
@@ -329,7 +329,7 @@ fn per_fence_field_count_cap() {
 fn card_count_cap_is_per_card() {
     let mut s = String::from("---\nQUILL: t\n---\n");
     for _ in 0..1001 {
-        s.push_str("\n---\nCARD: x\n---\n\nB.\n");
+        s.push_str("\n```card x\n```\n\nB.\n");
     }
     let err = Document::from_markdown(&s).unwrap_err().to_string();
     assert!(err.contains("Input too large"), "got: {}", err);

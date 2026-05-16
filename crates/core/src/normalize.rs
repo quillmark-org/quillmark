@@ -804,7 +804,7 @@ mod tests {
     fn test_normalize_document_card_body_bidi_stripped() {
         use crate::document::Document;
 
-        let md = "---\nQUILL: test\n---\n\nbody\n\n---\nCARD: note\n---\ncard\u{202D}body\n";
+        let md = "---\nQUILL: test\n---\n\nbody\n\n```card note\n```\ncard\u{202D}body\n";
         let doc = Document::from_markdown(md).unwrap();
         assert_eq!(doc.cards().len(), 1, "expected 1 card");
         let normalized = super::normalize_document(doc).unwrap();
@@ -815,7 +815,7 @@ mod tests {
     fn test_normalize_document_card_field_bidi_preserved() {
         use crate::document::Document;
 
-        let md = "---\nQUILL: test\n---\n\nbody\n\n---\nCARD: note\nname: Ali\u{202D}ce\n---\n";
+        let md = "---\nQUILL: test\n---\n\nbody\n\n```card note\nname: Ali\u{202D}ce\n```\n";
         let doc = Document::from_markdown(md).unwrap();
         assert_eq!(doc.cards().len(), 1, "expected 1 card");
         let normalized = super::normalize_document(doc).unwrap();
@@ -834,7 +834,7 @@ mod tests {
     fn test_normalize_document_card_body_html_comment_repair() {
         use crate::document::Document;
 
-        let md = "---\nQUILL: test\n---\n\n---\nCARD: note\n---\n<!-- comment -->Trailing text\n";
+        let md = "---\nQUILL: test\n---\n\n```card note\n```\n<!-- comment -->Trailing text\n";
         let doc = Document::from_markdown(md).unwrap();
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(
