@@ -3,7 +3,6 @@ quill:
   version: "0.1"
   backend: typst
   plate_file: plate.typ
-  example_file: appreciated_letter.md
   description: Professional letter template with appreciation styling
 
 typst:

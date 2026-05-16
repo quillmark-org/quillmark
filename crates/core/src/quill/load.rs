@@ -1,6 +1,4 @@
 //! QuillSource loading and construction routines.
-use std::path::{Component, Path};
-
 use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
@@ -25,8 +23,8 @@ impl QuillSource {
     ///
     /// Returns a non-empty `Vec<Diagnostic>` describing every problem found.
     /// When `Quill.yaml` itself contains multiple errors they are all
-    /// reported together; subsequent failures (missing plate, malformed
-    /// example) surface as single-element vectors.
+    /// reported together; subsequent failures (missing plate) surface as
+    /// single-element vectors.
     pub fn from_tree(root: FileTreeNode) -> Result<Self, Vec<Diagnostic>> {
         let quill_yaml_bytes = root.get_file("Quill.yaml").ok_or_else(|| {
             vec![diag(
@@ -50,7 +48,7 @@ impl QuillSource {
     }
 
     /// Create a QuillSource from a QuillConfig and file tree.
-    fn from_config(mut config: QuillConfig, root: FileTreeNode) -> Result<Self, Vec<Diagnostic>> {
+    fn from_config(config: QuillConfig, root: FileTreeNode) -> Result<Self, Vec<Diagnostic>> {
         let mut metadata: std::collections::HashMap<String, QuillValue> =
             std::collections::HashMap::new();
 
@@ -99,66 +97,11 @@ impl QuillSource {
             None
         };
 
-        // Read the markdown example content if specified, or check for default "example.md"
-        let example_content = if let Some(ref example_file_name) = config.example_file {
-            let example_path = Path::new(example_file_name);
-            if example_path.is_absolute()
-                || example_path
-                    .components()
-                    .any(|c| matches!(c, Component::ParentDir | Component::Prefix(_)))
-            {
-                return Err(vec![diag(
-                    format!(
-                        "Example file '{}' is outside the quill directory",
-                        example_file_name
-                    ),
-                    "quill::example_path_traversal",
-                )]);
-            }
-
-            let bytes = root.get_file(example_file_name).ok_or_else(|| {
-                vec![diag(
-                    format!(
-                        "Example file '{}' referenced in Quill.yaml not found",
-                        example_file_name
-                    ),
-                    "quill::example_missing",
-                )]
-            })?;
-            Some(String::from_utf8(bytes.to_vec()).map_err(|e| {
-                vec![diag(
-                    format!(
-                        "Example file '{}' is not valid UTF-8: {}",
-                        example_file_name, e
-                    ),
-                    "quill::invalid_utf8",
-                )]
-            })?)
-        } else if root.file_exists("example.md") {
-            let bytes = root
-                .get_file("example.md")
-                .expect("invariant violation: file_exists(example.md) but get_file returned None");
-            Some(String::from_utf8(bytes.to_vec()).map_err(|e| {
-                vec![diag(
-                    format!(
-                        "Default example file 'example.md' is not valid UTF-8: {}",
-                        e
-                    ),
-                    "quill::invalid_utf8",
-                )]
-            })?)
-        } else {
-            None
-        };
-
-        config.example_markdown = example_content.clone();
-
         let source = QuillSource {
             metadata,
             name: config.name.clone(),
             backend_id: config.backend.clone(),
             plate: plate_content,
-            example: example_content,
             config,
             files: root,
         };

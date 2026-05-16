@@ -36,7 +36,6 @@ pub struct QuillSource {
     pub(crate) name: String,
     pub(crate) backend_id: String,
     pub(crate) plate: Option<String>,
-    pub(crate) example: Option<String>,
     pub(crate) config: QuillConfig,
     pub(crate) files: FileTreeNode,
 }
@@ -62,11 +61,6 @@ impl QuillSource {
         self.plate.as_deref()
     }
 
-    /// The example Markdown content, if the quill ships one.
-    pub fn example(&self) -> Option<&str> {
-        self.example.as_deref()
-    }
-
     /// The parsed schema configuration.
     pub fn config(&self) -> &QuillConfig {
         &self.config
@@ -87,7 +81,6 @@ impl std::fmt::Debug for QuillSource {
                 "plate",
                 &self.plate.as_ref().map(|s| format!("<{} bytes>", s.len())),
             )
-            .field("example", &self.example.is_some())
             .field("files", &"<FileTreeNode>")
             .finish()
     }

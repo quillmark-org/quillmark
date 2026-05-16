@@ -292,7 +292,7 @@ Write main body here.
 | Rust | `QuillConfig::blueprint() -> String` |
 | Wasm | `Quill.blueprint` getter |
 | Python | `Quill.blueprint` property |
-| CLI | not yet exposed |
+| CLI | `quillmark specs <QUILL_PATH> [-o <FILE>]` |
 
 The Rust example `cargo run -p quillmark-core --example print_blueprint
 -- <quill_name> [<version>]` prints the blueprint for any bundled

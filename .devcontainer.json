@@ -8,12 +8,14 @@
       "installZsh": false
     },
     "ghcr.io/devcontainers/features/node:1": { "version": "22" },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
   },
 
   "overrideFeatureInstallOrder": [
     "ghcr.io/devcontainers/features/common-utils",
     "ghcr.io/devcontainers/features/node",
+    "ghcr.io/devcontainers/features/github-cli",
     "ghcr.io/anthropics/devcontainer-features/claude-code"
   ],
 

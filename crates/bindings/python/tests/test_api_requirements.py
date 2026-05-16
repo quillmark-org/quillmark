@@ -33,9 +33,6 @@ def test_quill_properties(taro_quill_dir):
     assert isinstance(schema, str)
     assert "fields:" in schema
 
-    example = quill.example
-    assert example is not None
-
     supported_formats = quill.supported_formats
     assert isinstance(supported_formats, list)
     assert OutputFormat.PDF in supported_formats

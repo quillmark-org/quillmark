@@ -23,7 +23,7 @@ use super::{Card, Document, Sentinel};
 /// slice ends with that blank line's terminator — exactly one `\n` or
 /// `\r\n`. This helper strips that single line ending so stored bodies
 /// contain only authored content. The emitter re-adds the separator on
-/// output via `ensure_blank_line_before_fence`.
+/// output via `ensure_f2_before_fence`.
 ///
 /// Stripping more than one line ending (as the WASM binding's former
 /// `trim_body` did) would silently drop content-meaningful trailing
@@ -136,7 +136,7 @@ pub(super) fn build_block(
                 (Some(kind.to_string()), None, yaml)
             }
             // Legacy `---` fence: extract the QUILL / CARD sentinel.
-            None => extract_sentinels(parsed, markdown, block_start, block_index)?,
+            None => extract_sentinels(parsed)?,
         }
     };
 
@@ -262,7 +262,7 @@ pub(super) fn decompose_with_warnings(
     // When a fence follows, the body slice ends with the F2 blank-line
     // terminator — strip it so stored bodies contain only authored content.
     // The emitter re-derives the separator on output (see `emit.rs`'s
-    // `ensure_blank_line_before_fence`).
+    // `ensure_f2_before_fence`).
     let body_start = blocks[0].end;
     let first_card_block = blocks.iter().skip(1).find(|b| b.tag.is_some());
     let (body_end, body_is_followed_by_fence) = match first_card_block {
