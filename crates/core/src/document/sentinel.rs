@@ -80,13 +80,10 @@ pub(super) fn validate_card_fence_yaml(
 #[allow(clippy::type_complexity)]
 pub(super) fn extract_sentinels(
     parsed: serde_json::Value,
-    _markdown: &str,
-    _abs_pos: usize,
-    _block_index: usize,
 ) -> Result<(Option<String>, Option<String>, Option<serde_json::Value>), ParseError> {
     let Some(mapping) = parsed.as_object() else {
         // Non-mapping (scalar/sequence); keep as-is — upstream will reject if
-        // it's a frontmatter/card mapping was expected.
+        // a frontmatter/card mapping was expected.
         return Ok((None, None, Some(parsed)));
     };
 
@@ -103,7 +100,7 @@ pub(super) fn extract_sentinels(
     for reserved in ["BODY", "CARDS"] {
         if mapping.contains_key(reserved) {
             return Err(ParseError::InvalidStructure(format!(
-                "Reserved field name '{}' cannot be used in YAML frontmatter",
+                "Reserved field name '{}' cannot be used as an input field",
                 reserved
             )));
         }
