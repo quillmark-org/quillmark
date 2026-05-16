@@ -6,12 +6,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use quillmark_core::{
-    normalize::normalize_document, Backend, Diagnostic, Document, Frontmatter, Leaf, OutputFormat,
+    normalize::normalize_document, Backend, Diagnostic, Document, Frontmatter, Card, OutputFormat,
     QuillSource, QuillValue, RenderError, RenderOptions, RenderResult, RenderSession, Sentinel,
     Severity,
 };
 
-use crate::form::{self, Form, FormLeaf};
+use crate::form::{self, Form, FormCard};
 
 /// Renderable quill. Composes an [`Arc<QuillSource>`] with a resolved
 /// [`Backend`]. Constructed by the engine; immutable once created.
@@ -96,38 +96,38 @@ impl Quill {
         // Normalize: strip bidi + fix HTML comment fences in body regions.
         let normalized = normalize_document(coerced)?;
 
-        // Apply schema defaults to main + per-leaf frontmatter.
+        // Apply schema defaults to main + per-card frontmatter.
         let main_with_defaults = apply_defaults(
             &normalized.main().frontmatter().to_index_map(),
             self.source.config().main.defaults(),
         );
-        let leaves_with_defaults: Vec<Leaf> = normalized
-            .leaves()
+        let cards_with_defaults: Vec<Card> = normalized
+            .cards()
             .iter()
-            .map(|leaf| {
+            .map(|card| {
                 let defaults = self
                     .source
                     .config()
-                    .leaf_kind(&leaf.tag())
+                    .card(&card.tag())
                     .map(|c| c.defaults())
                     .unwrap_or_default();
-                let fields = apply_defaults(&leaf.frontmatter().to_index_map(), defaults);
-                Leaf::new_with_sentinel(
-                    Sentinel::Leaf(leaf.tag()),
+                let fields = apply_defaults(&card.frontmatter().to_index_map(), defaults);
+                Card::new_with_sentinel(
+                    Sentinel::Inline(card.tag()),
                     Frontmatter::from_index_map(fields),
-                    leaf.body().to_string(),
+                    card.body().to_string(),
                 )
             })
             .collect();
 
-        let final_main = Leaf::new_with_sentinel(
+        let final_main = Card::new_with_sentinel(
             Sentinel::Main(normalized.quill_reference().clone()),
             Frontmatter::from_index_map(main_with_defaults),
             normalized.main().body().to_string(),
         );
-        let final_doc = Document::from_main_and_leaves(
+        let final_doc = Document::from_main_and_cards(
             final_main,
-            leaves_with_defaults,
+            cards_with_defaults,
             normalized.warnings().to_vec(),
         );
 
@@ -139,7 +139,7 @@ impl Quill {
         self.coerce_and_validate(doc).map(|_| ())
     }
 
-    /// Coerce main + leaf fields against their schemas, then validate the
+    /// Coerce main + card fields against their schemas, then validate the
     /// resulting document. Shared entry point for [`Self::compile_data`]
     /// (which then normalizes and applies defaults) and [`Self::dry_run`]
     /// (which stops here).
@@ -150,25 +150,25 @@ impl Quill {
             .coerce_frontmatter(&doc.main().frontmatter().to_index_map())
             .map_err(coercion_error)?;
 
-        let mut coerced_leaves: Vec<Leaf> = Vec::with_capacity(doc.leaves().len());
-        for leaf in doc.leaves() {
+        let mut coerced_cards: Vec<Card> = Vec::with_capacity(doc.cards().len());
+        for card in doc.cards() {
             let coerced_fields = config
-                .coerce_leaf(&leaf.tag(), &leaf.frontmatter().to_index_map())
+                .coerce_card(&card.tag(), &card.frontmatter().to_index_map())
                 .map_err(coercion_error)?;
-            coerced_leaves.push(Leaf::new_with_sentinel(
-                Sentinel::Leaf(leaf.tag()),
+            coerced_cards.push(Card::new_with_sentinel(
+                Sentinel::Inline(card.tag()),
                 Frontmatter::from_index_map(coerced_fields),
-                leaf.body().to_string(),
+                card.body().to_string(),
             ));
         }
 
-        let coerced_main = Leaf::new_with_sentinel(
+        let coerced_main = Card::new_with_sentinel(
             Sentinel::Main(doc.quill_reference().clone()),
             Frontmatter::from_index_map(coerced_frontmatter),
             doc.main().body().to_string(),
         );
         let coerced_doc =
-            Document::from_main_and_leaves(coerced_main, coerced_leaves, doc.warnings().to_vec());
+            Document::from_main_and_cards(coerced_main, coerced_cards, doc.warnings().to_vec());
 
         self.validate_document(&coerced_doc)?;
 
@@ -201,39 +201,39 @@ impl Quill {
     /// The schema-aware form view of `doc` — the whole-document snapshot
     /// rendered through this quill's schema.
     ///
-    /// For each schema-declared field on the main leaf and on every
-    /// recognised leaf, the returned [`Form`] records the current value, the
+    /// For each schema-declared field on the main card and on every
+    /// recognised card, the returned [`Form`] records the current value, the
     /// schema default, and a [`form::FormFieldSource`] label.
     ///
     /// **Snapshot semantics.** The result is a read-only snapshot — re-call
     /// after editing `doc`.
     ///
-    /// **Unknown leaf tags** are dropped from [`Form::leaves`] and surface as
-    /// `form::unknown_leaf_kind` diagnostics. Validation errors are appended
+    /// **Unknown card tags** are dropped from [`Form::cards`] and surface as
+    /// `form::unknown_card` diagnostics. Validation errors are appended
     /// as `form::validation_error` diagnostics; the view itself is never
     /// altered or filtered by validation failures.
     pub fn form(&self, doc: &Document) -> Form {
         form::build_form(self, doc)
     }
 
-    /// A blank form for the main leaf — no document values supplied. Every
+    /// A blank form for the main card — no document values supplied. Every
     /// declared field's source is [`form::FormFieldSource::Default`] (when
     /// the schema declares a default) or [`form::FormFieldSource::Missing`].
     ///
     /// Useful as a starting state for a fresh document, or for previewing the
-    /// main-leaf form without a document in hand.
-    pub fn blank_main(&self) -> FormLeaf {
-        FormLeaf::blank(&self.source.config().main)
+    /// main-card form without a document in hand.
+    pub fn blank_main(&self) -> FormCard {
+        FormCard::blank(&self.source.config().main)
     }
 
-    /// A blank form for a leaf of the given type — no document values
-    /// supplied. Returns `None` if `leaf_kind` is not declared in the
+    /// A blank form for a card of the given type — no document values
+    /// supplied. Returns `None` if `card` is not declared in the
     /// quill's schema.
     ///
-    /// This is the "user is about to add a new leaf" view: the UI can render
-    /// the form before the leaf is committed to the document.
-    pub fn blank_leaf(&self, leaf_kind: &str) -> Option<FormLeaf> {
-        form::blank_leaf_for_kind(self, leaf_kind)
+    /// This is the "user is about to add a new card" view: the UI can render
+    /// the form before the card is committed to the document.
+    pub fn blank_card(&self, card: &str) -> Option<FormCard> {
+        form::blank_card_for_kind(self, card)
     }
 
     fn validate_document(&self, doc: &Document) -> Result<(), RenderError> {
@@ -262,7 +262,7 @@ impl Quill {
 }
 
 /// Wrap a coercion error from `QuillConfig::coerce_frontmatter` /
-/// `coerce_leaf` into a `RenderError::ValidationFailed` with a uniform hint.
+/// `coerce_card` into a `RenderError::ValidationFailed` with a uniform hint.
 ///
 /// Coercion happens before validation walks the typed document, so we don't
 /// have a structured `path` here — `Diagnostic::path` is left unset.

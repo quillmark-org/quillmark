@@ -36,7 +36,7 @@ pub mod ui_key {
     pub const GROUP: &str = "group";
     /// Display order within the UI
     pub const ORDER: &str = "order";
-    /// Display label for a leaf type. May be a literal string or a template
+    /// Display label for a card type. May be a literal string or a template
     /// containing `{field_name}` tokens interpolated per-instance by UI consumers.
     pub const TITLE: &str = "title";
     /// Compact rendering hint for UI consumers
@@ -67,17 +67,17 @@ pub struct UiFieldSchema {
     pub multiline: Option<bool>,
 }
 
-/// Body namespace configuration for a leaf type
+/// Body namespace configuration for a card type
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct BodyLeafSchema {
-    /// Whether the body editor is enabled for this leaf (default: true).
+pub struct BodyCardSchema {
+    /// Whether the body editor is enabled for this card (default: true).
     /// When false, consumers must not accept or store body content for instances
-    /// of this leaf type.
+    /// of this card type.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
     /// Example body content embedded verbatim in the blueprint body region.
-    /// When absent, the blueprint falls back to `Write <leaf> body here.`.
+    /// When absent, the blueprint falls back to `Write <card> body here.`.
     /// Has no effect when `enabled` is false.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub example: Option<String>,
@@ -85,36 +85,36 @@ pub struct BodyLeafSchema {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct UiLeafSchema {
-    /// Display label for the leaf type — literal string or `{field_name}`
+pub struct UiCardSchema {
+    /// Display label for the card type — literal string or `{field_name}`
     /// template. See `docs/format-designer/quill-yaml-reference.md`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
 }
 
-/// Schema definition for a leaf type (composable content blocks)
+/// Schema definition for a card type (composable content blocks)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LeafSchema {
-    /// Leaf type name (e.g., "indorsements"). The map key carries this on the
+pub struct CardSchema {
+    /// Card type name (e.g., "indorsements"). The map key carries this on the
     /// wire; skipped during serialization to avoid duplication.
     #[serde(skip_serializing, default)]
     pub name: String,
-    /// Detailed description of this leaf type
+    /// Detailed description of this card type
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    /// List of fields in the leaf
+    /// List of fields in the card
     pub fields: BTreeMap<String, FieldSchema>,
     /// UI layout hints
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ui: Option<UiLeafSchema>,
+    pub ui: Option<UiCardSchema>,
     /// Body namespace: controls whether a body editor is shown and provides
     /// optional guide text.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub body: Option<BodyLeafSchema>,
+    pub body: Option<BodyCardSchema>,
 }
 
-impl LeafSchema {
-    /// Default values declared on this leaf's fields, keyed by field name.
+impl CardSchema {
+    /// Default values declared on this card's fields, keyed by field name.
     /// Fields with no `default` are omitted.
     pub fn defaults(&self) -> HashMap<String, QuillValue> {
         self.fields
@@ -123,7 +123,7 @@ impl LeafSchema {
             .collect()
     }
 
-    /// Returns true if body content is permitted for instances of this leaf.
+    /// Returns true if body content is permitted for instances of this card.
     /// Defaults to true when no `body` namespace is declared.
     pub fn body_enabled(&self) -> bool {
         self.body.as_ref().and_then(|b| b.enabled).unwrap_or(true)

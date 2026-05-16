@@ -26,20 +26,21 @@ quill:
   plate_file: plate.typ
   example_file: example.md
 
-main:
-  fields:
-    sender:
-      type: string
-      description: Name of the sender
-    recipient:
-      type: string
-      description: Name of the recipient
-    date:
-      type: date
-      description: Letter date
+cards:
+  main:
+    fields:
+      sender:
+        type: string
+        description: Name of the sender
+      recipient:
+        type: string
+        description: Name of the recipient
+      date:
+        type: date
+        description: Letter date
 ```
 
-`name`, `backend`, `version`, and `description` are all required. `name` must be `snake_case`. Define your document's expected frontmatter fields under `main.fields`. Each field has a `type`, optional `default`, `description`, and validation constraints. Use `integer` for whole numbers only and `number` for values that may include decimals. For the full list of field types, UI hints, typed arrays, and enum constraints, see the [Quill.yaml Reference](quill-yaml-reference.md).
+`name`, `backend`, `version`, and `description` are all required. `name` must be `snake_case`. Define your document's expected frontmatter fields under `cards.main.fields`. Each field has a `type`, optional `default`, `description`, and validation constraints. Use `integer` for whole numbers only and `number` for values that may include decimals. For the full list of field types, UI hints, typed arrays, and enum constraints, see the [Quill.yaml Reference](quill-yaml-reference.md).
 
 ## 3. Write `plate.typ`
 
@@ -59,7 +60,7 @@ Sincerely,
 #data.sender
 ```
 
-For data access patterns, helper package details, optional fields, and LEAVES iteration, see the [Typst Backend](typst-backend.md) guide.
+For data access patterns, helper package details, optional fields, and CARDS iteration, see the [Typst Backend](typst-backend.md) guide.
 
 ## 4. Add `example.md`
 
@@ -88,8 +89,8 @@ For command options and output controls, see the [CLI Reference](../cli/referenc
 
 ## 6. Next steps
 
-- [Quill.yaml Reference](quill-yaml-reference.md) — full field types, UI hints, `leaf_kinds`, `typst` section
-- [Typst Backend](typst-backend.md) — data access patterns, LEAVES iteration, helper package
+- [Quill.yaml Reference](quill-yaml-reference.md) — full field types, UI hints, the `cards` map, `typst` section
+- [Typst Backend](typst-backend.md) — data access patterns, CARDS iteration, helper package
 - [Quill Versioning](versioning.md)
 
 **Tip:** To exclude files (fonts, build artifacts) from the bundle when loading from disk, add a `.quillignore` file at the bundle root using gitignore syntax.

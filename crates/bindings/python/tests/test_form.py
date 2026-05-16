@@ -1,4 +1,4 @@
-"""Smoke tests for quill.form / blank_main / blank_leaf.
+"""Smoke tests for quill.form / blank_main / blank_card.
 
 NOTE: These tests cannot run in the devcontainer because the Python binding
 is not built with `maturin develop` in this environment.  They are written
@@ -31,15 +31,14 @@ QUILL_YAML_CONTENT = """quill:
   backend: typst
   description: Python form smoke test
 
-main:
-  fields:
-    title:
-      type: string
-      default: Untitled
-    count:
-      type: integer
-
-leaf_kinds:
+cards:
+  main:
+    fields:
+      title:
+        type: string
+        default: Untitled
+      count:
+        type: integer
   note:
     fields:
       body:
@@ -67,7 +66,7 @@ def make_quill(tmp_path, yaml_content=QUILL_YAML_CONTENT):
 # ---------------------------------------------------------------------------
 
 def test_form_returns_dict(tmp_path):
-    """form returns a dict with main, leaves, diagnostics."""
+    """form returns a dict with main, cards, diagnostics."""
     quill = make_quill(tmp_path)
     doc = Document.from_markdown(MD_WITH_TITLE)
 
@@ -75,9 +74,9 @@ def test_form_returns_dict(tmp_path):
 
     assert isinstance(form, dict)
     assert "main" in form
-    assert "leaves" in form
+    assert "cards" in form
     assert "diagnostics" in form
-    assert isinstance(form["leaves"], list)
+    assert isinstance(form["cards"], list)
     assert isinstance(form["diagnostics"], list)
 
 
@@ -137,30 +136,30 @@ def test_form_json_serializable(tmp_path):
     assert parsed["main"]["values"]["title"]["source"] == "document"
 
 
-def test_form_unknown_leaf_kind_diagnostic(tmp_path):
-    """Unknown leaf tags produce a diagnostic and are excluded from leaves."""
+def test_form_unknown_card_kind_diagnostic(tmp_path):
+    """Unknown card tags produce a diagnostic and are excluded from cards."""
     quill = make_quill(tmp_path)
     md = (
         "---\nQUILL: py_form_smoke\ntitle: \"T\"\n---\n\n"
-        "```leaf\nKIND: ghost_leaf\nnote: \"B\"\n```\n"
+        "```card ghost_card\nnote: \"B\"\n```\n"
     )
     doc = Document.from_markdown(md)
 
     form = quill.form(doc)
 
-    assert form["leaves"] == [], "unknown-tag leaf must be excluded"
+    assert form["cards"] == [], "unknown-tag card must be excluded"
     diag_codes = [d.get("code") for d in form["diagnostics"]]
-    assert "form::unknown_leaf_kind" in diag_codes, (
-        f"expected form::unknown_leaf_kind diagnostic; got: {diag_codes}"
+    assert "form::unknown_card" in diag_codes, (
+        f"expected form::unknown_card diagnostic; got: {diag_codes}"
     )
 
 
 # ---------------------------------------------------------------------------
-# Tests: blank_main / blank_leaf
+# Tests: blank_main / blank_card
 # ---------------------------------------------------------------------------
 
-def test_blank_main_returns_leaf_with_no_document_values(tmp_path):
-    """blank_main returns a leaf with every value at default or missing."""
+def test_blank_main_returns_card_with_no_document_values(tmp_path):
+    """blank_main returns a card with every value at default or missing."""
     quill = make_quill(tmp_path)
 
     blank = quill.blank_main()
@@ -177,11 +176,11 @@ def test_blank_main_returns_leaf_with_no_document_values(tmp_path):
     assert values["count"]["default"] is None
 
 
-def test_blank_leaf_known_kind(tmp_path):
-    """blank_leaf returns a dict for a known leaf type."""
+def test_blank_card_known_kind(tmp_path):
+    """blank_card returns a dict for a known card type."""
     quill = make_quill(tmp_path)
 
-    blank = quill.blank_leaf("note")
+    blank = quill.blank_card("note")
 
     assert blank is not None
     values = blank["values"]
@@ -190,8 +189,8 @@ def test_blank_leaf_known_kind(tmp_path):
     assert values["tag"]["source"] == "missing"
 
 
-def test_blank_leaf_unknown_kind(tmp_path):
-    """blank_leaf returns None for an unknown leaf type."""
+def test_blank_card_unknown_kind(tmp_path):
+    """blank_card returns None for an unknown card type."""
     quill = make_quill(tmp_path)
 
-    assert quill.blank_leaf("does_not_exist") is None
+    assert quill.blank_card("does_not_exist") is None

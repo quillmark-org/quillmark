@@ -57,9 +57,9 @@
   // Read and consume __meta__ (injected by transform_fields)
   let meta = d.remove("__meta__", default: (
     content_fields: (),
-    leaf_content_fields: (:),
+    card_content_fields: (:),
     date_fields: (),
-    leaf_date_fields: (:),
+    card_date_fields: (:),
   ))
 
   // Auto-eval top-level content fields
@@ -83,34 +83,34 @@
   }
 
   // Auto-eval content fields within each KIND
-  if "LEAVES" in d {
-    let leaves = ()
-    for leaf in d.at("LEAVES") {
-      let leaf-type = leaf.at("KIND", default: none)
-      let fields = meta.leaf_content_fields.at(leaf-type, default: ())
+  if "CARDS" in d {
+    let cards = ()
+    for card in d.at("CARDS") {
+      let card-type = card.at("KIND", default: none)
+      let fields = meta.card_content_fields.at(card-type, default: ())
       for key in fields {
-        if key in leaf {
-          let val = leaf.at(key)
+        if key in card {
+          let val = card.at(key)
           if type(val) == str and val != "" {
-            leaf.insert(key, eval(val, mode: "markup"))
+            card.insert(key, eval(val, mode: "markup"))
           }
         }
       }
 
-      // Auto-convert date fields for this leaf type
-      let date-fields = meta.leaf_date_fields.at(leaf-type, default: ())
+      // Auto-convert date fields for this card type
+      let date-fields = meta.card_date_fields.at(card-type, default: ())
       for key in date-fields {
-        if key in leaf {
-          let val = leaf.at(key)
+        if key in card {
+          let val = card.at(key)
           if val != none {
-            leaf.insert(key, _parse-date(val))
+            card.insert(key, _parse-date(val))
           }
         }
       }
 
-      leaves.push(leaf)
+      cards.push(card)
     }
-    d.insert("LEAVES", leaves)
+    d.insert("CARDS", cards)
   }
 
   d

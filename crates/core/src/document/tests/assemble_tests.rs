@@ -100,7 +100,7 @@ This is the body."#;
         "Test Author"
     );
     assert_eq!(doc.main().frontmatter().len(), 2); // title, author
-    assert_eq!(doc.leaves().len(), 0);
+    assert_eq!(doc.cards().len(), 0);
     assert_eq!(doc.quill_reference().name, "test_quill");
 }
 
@@ -200,7 +200,7 @@ title: Main Document
 
 Main body content.
 
-```leaf items
+```card items
 name: Item 1
 ```
 
@@ -222,15 +222,15 @@ Body of item 1."#;
         "Main Document"
     );
 
-    assert_eq!(doc.leaves().len(), 1);
-    let leaf = &doc.leaves()[0];
-    assert_eq!(leaf.tag(), "items");
+    assert_eq!(doc.cards().len(), 1);
+    let card = &doc.cards()[0];
+    assert_eq!(card.tag(), "items");
     assert_eq!(
-        leaf.frontmatter().get("name").unwrap().as_str().unwrap(),
+        card.frontmatter().get("name").unwrap().as_str().unwrap(),
         "Item 1"
     );
-    // Last leaf body at EOF: no F2 separator to strip.
-    assert_eq!(leaf.body(), "\nBody of item 1.");
+    // Last card body at EOF: no F2 separator to strip.
+    assert_eq!(card.body(), "\nBody of item 1.");
 }
 
 #[test]
@@ -239,14 +239,14 @@ fn test_multiple_tagged_blocks() {
 QUILL: test_quill
 ---
 
-```leaf items
+```card items
 name: Item 1
 tags: [a, b]
 ```
 
 First item body.
 
-```leaf items
+```card items
 name: Item 2
 tags: [c, d]
 ```
@@ -254,19 +254,19 @@ tags: [c, d]
 Second item body."#;
 
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.leaves().len(), 2);
+    assert_eq!(doc.cards().len(), 2);
 
-    let leaf1 = &doc.leaves()[0];
-    assert_eq!(leaf1.tag(), "items");
+    let card1 = &doc.cards()[0];
+    assert_eq!(card1.tag(), "items");
     assert_eq!(
-        leaf1.frontmatter().get("name").unwrap().as_str().unwrap(),
+        card1.frontmatter().get("name").unwrap().as_str().unwrap(),
         "Item 1"
     );
 
-    let leaf2 = &doc.leaves()[1];
-    assert_eq!(leaf2.tag(), "items");
+    let card2 = &doc.cards()[1];
+    assert_eq!(card2.tag(), "items");
     assert_eq!(
-        leaf2.frontmatter().get("name").unwrap().as_str().unwrap(),
+        card2.frontmatter().get("name").unwrap().as_str().unwrap(),
         "Item 2"
     );
 }
@@ -281,13 +281,13 @@ author: John Doe
 
 Global body.
 
-```leaf sections
+```card sections
 title: Section 1
 ```
 
 Section 1 content.
 
-```leaf sections
+```card sections
 title: Section 2
 ```
 
@@ -305,8 +305,8 @@ Section 2 content."#;
         "Global"
     );
     assert_eq!(doc.main().body(), "\nGlobal body.\n");
-    assert_eq!(doc.leaves().len(), 2);
-    assert_eq!(doc.leaves()[0].tag(), "sections");
+    assert_eq!(doc.cards().len(), 2);
+    assert_eq!(doc.cards()[0].tag(), "sections");
 }
 
 #[test]
@@ -315,17 +315,17 @@ fn test_empty_tagged_metadata() {
 QUILL: test_quill
 ---
 
-```leaf items
+```card items
 ```
 
 Body without metadata."#;
 
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.leaves().len(), 1);
-    let leaf = &doc.leaves()[0];
-    assert_eq!(leaf.tag(), "items");
-    assert!(leaf.frontmatter().is_empty());
-    assert_eq!(leaf.body(), "\nBody without metadata.");
+    assert_eq!(doc.cards().len(), 1);
+    let card = &doc.cards()[0];
+    assert_eq!(card.tag(), "items");
+    assert!(card.frontmatter().is_empty());
+    assert_eq!(card.body(), "\nBody without metadata.");
 }
 
 #[test]
@@ -334,15 +334,15 @@ fn test_tagged_block_without_body() {
 QUILL: test_quill
 ---
 
-```leaf items
+```card items
 name: Item
 ```"#;
 
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.leaves().len(), 1);
-    let leaf = &doc.leaves()[0];
-    assert_eq!(leaf.tag(), "items");
-    assert_eq!(leaf.body(), ""); // empty, not absent
+    assert_eq!(doc.cards().len(), 1);
+    let card = &doc.cards()[0];
+    assert_eq!(card.tag(), "items");
+    assert_eq!(card.body(), ""); // empty, not absent
 }
 
 #[test]
@@ -354,7 +354,7 @@ items: "global value"
 
 Body
 
-```leaf items
+```card items
 name: Item
 ```
 
@@ -365,7 +365,7 @@ Item body"#;
 }
 
 #[test]
-fn test_leaf_kind_name_collision_with_array_field() {
+fn test_card_name_collision_with_array_field() {
     // KIND type names CAN now conflict with frontmatter field names
     let markdown = r#"---
 QUILL: test_quill
@@ -376,7 +376,7 @@ items:
 
 Global body
 
-```leaf items
+```card items
 name: Scope Item 1
 ```
 
@@ -390,7 +390,7 @@ Scope item 1 body"#;
 }
 
 #[test]
-fn test_empty_global_array_with_leaf() {
+fn test_empty_global_array_with_card() {
     let markdown = r#"---
 QUILL: test_quill
 items: []
@@ -398,7 +398,7 @@ items: []
 
 Global body
 
-```leaf items
+```card items
 name: Item 1
 ```
 
@@ -418,7 +418,7 @@ fn test_reserved_field_body_rejected() {
 QUILL: test_quill
 ---
 
-```leaf section
+```card section
 BODY: Test
 ```"#;
 
@@ -431,16 +431,16 @@ BODY: Test
 }
 
 #[test]
-fn test_reserved_field_leaves_rejected() {
-    // LEAVES reserved inside the QUILL frontmatter.
+fn test_reserved_field_cards_rejected() {
+    // CARDS reserved inside the QUILL frontmatter.
     let markdown = r#"---
 QUILL: test_quill
 title: Test
-LEAVES: []
+CARDS: []
 ---"#;
 
     let result = decompose(markdown);
-    assert!(result.is_err(), "LEAVES is a reserved field name");
+    assert!(result.is_err(), "CARDS is a reserved field name");
     assert!(result
         .unwrap_err()
         .to_string()
@@ -480,7 +480,7 @@ title: Test
 Here is some code:
 
 ~~~yaml
-```leaf code_example
+```card code_example
 fake: frontmatter
 ```
 ~~~
@@ -502,7 +502,7 @@ title: Test
 Here is some code:
 
 ````yaml
-```leaf code_example
+```card code_example
 fake: frontmatter
 ```
 ````
@@ -521,7 +521,7 @@ fn test_invalid_tag_syntax() {
 QUILL: test_quill
 ---
 
-```leaf Invalid-Name
+```card Invalid-Name
 title: Test
 ```"#;
 
@@ -565,32 +565,32 @@ fn test_adjacent_blocks_different_tags() {
 QUILL: test_quill
 ---
 
-```leaf items
+```card items
 name: Item 1
 ```
 
 Item 1 body
 
-```leaf sections
+```card sections
 title: Section 1
 ```
 
 Section 1 body"#;
 
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.leaves().len(), 2);
+    assert_eq!(doc.cards().len(), 2);
 
-    let leaf0 = &doc.leaves()[0];
-    assert_eq!(leaf0.tag(), "items");
+    let card0 = &doc.cards()[0];
+    assert_eq!(card0.tag(), "items");
     assert_eq!(
-        leaf0.frontmatter().get("name").unwrap().as_str().unwrap(),
+        card0.frontmatter().get("name").unwrap().as_str().unwrap(),
         "Item 1"
     );
 
-    let leaf1 = &doc.leaves()[1];
-    assert_eq!(leaf1.tag(), "sections");
+    let card1 = &doc.cards()[1];
+    assert_eq!(card1.tag(), "sections");
     assert_eq!(
-        leaf1.frontmatter().get("title").unwrap().as_str().unwrap(),
+        card1.frontmatter().get("title").unwrap().as_str().unwrap(),
         "Section 1"
     );
 }
@@ -601,30 +601,30 @@ fn test_order_preservation() {
 QUILL: test_quill
 ---
 
-```leaf items
+```card items
 id: 1
 ```
 
 First
 
-```leaf items
+```card items
 id: 2
 ```
 
 Second
 
-```leaf items
+```card items
 id: 3
 ```
 
 Third"#;
 
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.leaves().len(), 3);
+    assert_eq!(doc.cards().len(), 3);
 
-    for (i, leaf) in doc.leaves().iter().enumerate() {
-        assert_eq!(leaf.tag(), "items");
-        let id = leaf.frontmatter().get("id").unwrap().as_i64().unwrap();
+    for (i, card) in doc.cards().iter().enumerate() {
+        assert_eq!(card.tag(), "items");
+        let id = card.frontmatter().get("id").unwrap().as_i64().unwrap();
         assert_eq!(id, (i + 1) as i64);
     }
 }
@@ -640,7 +640,7 @@ date: 2024-01-01
 
 This is the main catalog description.
 
-```leaf products
+```card products
 name: Widget A
 price: 19.99
 sku: WID-001
@@ -648,7 +648,7 @@ sku: WID-001
 
 The **Widget A** is our most popular product.
 
-```leaf products
+```card products
 name: Gadget B
 price: 29.99
 sku: GAD-002
@@ -656,14 +656,14 @@ sku: GAD-002
 
 The **Gadget B** is perfect for professionals.
 
-```leaf reviews
+```card reviews
 product: Widget A
 rating: 5
 ```
 
 "Excellent product! Highly recommended."
 
-```leaf reviews
+```card reviews
 product: Gadget B
 rating: 4
 ```
@@ -704,13 +704,13 @@ rating: 4
     // Verify global body
     assert!(doc.main().body().contains("main catalog description"));
 
-    // 4 leaves total
-    assert_eq!(doc.leaves().len(), 4);
+    // 4 cards total
+    assert_eq!(doc.cards().len(), 4);
 
     // First 2 are products
-    assert_eq!(doc.leaves()[0].tag(), "products");
+    assert_eq!(doc.cards()[0].tag(), "products");
     assert_eq!(
-        doc.leaves()[0]
+        doc.cards()[0]
             .frontmatter()
             .get("name")
             .unwrap()
@@ -719,7 +719,7 @@ rating: 4
         "Widget A"
     );
     assert_eq!(
-        doc.leaves()[0]
+        doc.cards()[0]
             .frontmatter()
             .get("price")
             .unwrap()
@@ -728,9 +728,9 @@ rating: 4
         19.99
     );
 
-    assert_eq!(doc.leaves()[1].tag(), "products");
+    assert_eq!(doc.cards()[1].tag(), "products");
     assert_eq!(
-        doc.leaves()[1]
+        doc.cards()[1]
             .frontmatter()
             .get("name")
             .unwrap()
@@ -740,9 +740,9 @@ rating: 4
     );
 
     // Last 2 are reviews
-    assert_eq!(doc.leaves()[2].tag(), "reviews");
+    assert_eq!(doc.cards()[2].tag(), "reviews");
     assert_eq!(
-        doc.leaves()[2]
+        doc.cards()[2]
             .frontmatter()
             .get("product")
             .unwrap()
@@ -751,7 +751,7 @@ rating: 4
         "Widget A"
     );
     assert_eq!(
-        doc.leaves()[2]
+        doc.cards()[2]
             .frontmatter()
             .get("rating")
             .unwrap()
@@ -791,7 +791,7 @@ This is the memo body."#;
 }
 
 #[test]
-fn test_quill_with_leaf_blocks() {
+fn test_quill_with_card_blocks() {
     let markdown = r#"---
 QUILL: document
 title: Test Document
@@ -799,7 +799,7 @@ title: Test Document
 
 Main body.
 
-```leaf sections
+```card sections
 name: Section 1
 ```
 
@@ -816,14 +816,14 @@ Section 1 body."#;
             .unwrap(),
         "Test Document"
     );
-    assert_eq!(doc.leaves().len(), 1);
-    assert_eq!(doc.leaves()[0].tag(), "sections");
+    assert_eq!(doc.cards().len(), 1);
+    assert_eq!(doc.cards()[0].tag(), "sections");
     assert_eq!(doc.main().body(), "\nMain body.\n");
 }
 
 #[test]
 fn test_second_quill_block_is_body() {
-    // With leaves moved to ```leaf code-fences, a second `---/QUILL:.../---`
+    // With cards moved to ```card code-fences, a second `---/QUILL:.../---`
     // block mid-document is just CommonMark thematic breaks around the YAML
     // text — no duplicate-frontmatter error, no warning.
     let markdown = r#"---
@@ -868,12 +868,12 @@ QUILL: 123
 }
 
 #[test]
-fn test_leaf_wrong_value_type() {
+fn test_card_wrong_value_type() {
     let markdown = r#"---
 QUILL: test_quill
 ---
 
-```leaf 123
+```card 123
 ```"#;
 
     let result = decompose(markdown);
@@ -887,7 +887,7 @@ QUILL: test_quill
 #[test]
 fn test_kind_rejected_as_frontmatter_key() {
     // `KIND` is an output-only reserved key — supplying it as an input body
-    // key is a hard parse error, in frontmatter and leaves alike.
+    // key is a hard parse error, in frontmatter and cards alike.
     let markdown = r#"---
 QUILL: test
 KIND: items
@@ -963,7 +963,7 @@ fn test_blank_lines_in_scope_blocks() {
 QUILL: test_quill
 ---
 
-```leaf items
+```card items
 name: Item 1
 
 price: 19.99
@@ -976,18 +976,18 @@ tags:
 Body of item 1."#;
 
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.leaves().len(), 1);
-    let leaf = &doc.leaves()[0];
-    assert_eq!(leaf.tag(), "items");
+    assert_eq!(doc.cards().len(), 1);
+    let card = &doc.cards()[0];
+    assert_eq!(card.tag(), "items");
     assert_eq!(
-        leaf.frontmatter().get("name").unwrap().as_str().unwrap(),
+        card.frontmatter().get("name").unwrap().as_str().unwrap(),
         "Item 1"
     );
     assert_eq!(
-        leaf.frontmatter().get("price").unwrap().as_f64().unwrap(),
+        card.frontmatter().get("price").unwrap().as_f64().unwrap(),
         19.99
     );
-    let tags = leaf.frontmatter().get("tags").unwrap().as_array().unwrap();
+    let tags = card.frontmatter().get("tags").unwrap().as_array().unwrap();
     assert_eq!(tags.len(), 2);
 }
 
@@ -1132,26 +1132,26 @@ fn test_extended_metadata_demo_file() {
         .body()
         .contains("extended YAML metadata standard"));
 
-    // 5 leaves total: 3 features + 2 use_cases
-    assert_eq!(doc.leaves().len(), 5);
+    // 5 cards total: 3 features + 2 use_cases
+    assert_eq!(doc.cards().len(), 5);
 
     let features_count = doc
-        .leaves()
+        .cards()
         .iter()
         .filter(|c| c.tag() == "features")
         .count();
     let use_cases_count = doc
-        .leaves()
+        .cards()
         .iter()
         .filter(|c| c.tag() == "use_cases")
         .count();
     assert_eq!(features_count, 3);
     assert_eq!(use_cases_count, 2);
 
-    // Check first leaf is a feature
-    assert_eq!(doc.leaves()[0].tag(), "features");
+    // Check first card is a feature
+    assert_eq!(doc.cards()[0].tag(), "features");
     assert_eq!(
-        doc.leaves()[0]
+        doc.cards()[0]
             .frontmatter()
             .get("name")
             .unwrap()
@@ -1246,7 +1246,7 @@ Body content"#;
 
 /// Guillemet/chevron sequences (`<<...>>`) must survive parsing unmodified in
 /// every context — body, YAML string values, YAML arrays, nested maps, code
-/// blocks, inline code, and leaf bodies/fields. A single integrative document
+/// blocks, inline code, and card bodies/fields. A single integrative document
 /// exercises all of these.
 #[test]
 fn test_chevrons_preserved_in_all_contexts() {
@@ -1268,11 +1268,11 @@ metadata:
 
 `<<inline code>>` and <<plain>>
 
-```leaf items
-description: "<<leaf yaml>>"
+```card items
+description: "<<card yaml>>"
 ```
 
-Use <<leaf body>> here."#;
+Use <<card body>> here."#;
 
     let doc = decompose(markdown).unwrap();
 
@@ -1314,17 +1314,17 @@ Use <<leaf body>> here."#;
     assert!(body.contains("`<<inline code>>`"));
     assert!(body.contains("<<plain>>"));
 
-    // Leaf yaml and body.
-    let leaf = &doc.leaves()[0];
+    // Card yaml and body.
+    let card = &doc.cards()[0];
     assert_eq!(
-        leaf.frontmatter()
+        card.frontmatter()
             .get("description")
             .unwrap()
             .as_str()
             .unwrap(),
-        "<<leaf yaml>>"
+        "<<card yaml>>"
     );
-    assert!(leaf.body().contains("<<leaf body>>"));
+    assert!(card.body().contains("<<card body>>"));
 }
 
 #[test]
@@ -1626,50 +1626,50 @@ Body."#;
 // KIND block edge cases
 
 #[test]
-fn test_leaf_with_empty_body() {
+fn test_card_with_empty_body() {
     let markdown = r#"---
 QUILL: test_quill
 ---
 
-```leaf items
+```card items
 name: Item
 ```"#;
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.leaves().len(), 1);
-    assert_eq!(doc.leaves()[0].tag(), "items");
-    assert_eq!(doc.leaves()[0].body(), "");
+    assert_eq!(doc.cards().len(), 1);
+    assert_eq!(doc.cards()[0].tag(), "items");
+    assert_eq!(doc.cards()[0].body(), "");
 }
 
 #[test]
-fn test_leaf_consecutive_blocks() {
+fn test_card_consecutive_blocks() {
     let markdown = r#"---
 QUILL: test_quill
 ---
 
-```leaf a
+```card a
 id: 1
 ```
 
-```leaf a
+```card a
 id: 2
 ```"#;
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.leaves().len(), 2);
-    assert_eq!(doc.leaves()[0].tag(), "a");
-    assert_eq!(doc.leaves()[1].tag(), "a");
+    assert_eq!(doc.cards().len(), 2);
+    assert_eq!(doc.cards()[0].tag(), "a");
+    assert_eq!(doc.cards()[1].tag(), "a");
 }
 
 #[test]
-fn test_leaf_may_carry_quill_field() {
-    // `QUILL` is not reserved inside a leaf (MARKDOWN.md §3.2) — the kind
+fn test_card_may_carry_quill_field() {
+    // `QUILL` is not reserved inside a card (MARKDOWN.md §3.2) — the kind
     // lives in the info string, so a body `QUILL:` is an ordinary field and
     // is kept in source position.
-    let markdown = "---\nQUILL: q\n---\n\n```leaf item\nQUILL: not-a-ref\nname: x\n```\n";
+    let markdown = "---\nQUILL: q\n---\n\n```card item\nQUILL: not-a-ref\nname: x\n```\n";
     let doc = decompose(markdown).unwrap();
-    let leaf = &doc.leaves()[0];
-    assert_eq!(leaf.tag(), "item");
+    let card = &doc.cards()[0];
+    assert_eq!(card.tag(), "item");
     assert_eq!(
-        leaf.frontmatter().get("QUILL").and_then(|v| v.as_str()),
+        card.frontmatter().get("QUILL").and_then(|v| v.as_str()),
         Some("not-a-ref")
     );
     let emitted = doc.to_markdown();
@@ -1679,19 +1679,19 @@ fn test_leaf_may_carry_quill_field() {
 }
 
 #[test]
-fn test_leaf_with_body_containing_dashes() {
+fn test_card_with_body_containing_dashes() {
     let markdown = r#"---
 QUILL: test_quill
 ---
 
-```leaf items
+```card items
 name: Item
 ```
 
 Some text with --- dashes in it."#;
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.leaves().len(), 1);
-    assert!(doc.leaves()[0].body().contains("--- dashes"));
+    assert_eq!(doc.cards().len(), 1);
+    assert!(doc.cards()[0].body().contains("--- dashes"));
 }
 
 // QUILL directive edge cases
@@ -1745,7 +1745,7 @@ Body content."#;
 
 #[test]
 fn test_invalid_scope_name_uppercase() {
-    let markdown = "---\nQUILL: test_quill\n---\n\n```leaf ITEMS\n```\n\nBody.";
+    let markdown = "---\nQUILL: test_quill\n---\n\n```card ITEMS\n```\n\nBody.";
     let result = decompose(markdown);
     assert!(result.is_err());
     assert!(result
@@ -1756,14 +1756,14 @@ fn test_invalid_scope_name_uppercase() {
 
 #[test]
 fn test_invalid_scope_name_starts_with_number() {
-    let markdown = "```leaf 123items\n```\n\nBody.";
+    let markdown = "```card 123items\n```\n\nBody.";
     let result = decompose(markdown);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_invalid_scope_name_with_hyphen() {
-    let markdown = "```leaf my-items\n```\n\nBody.";
+    let markdown = "```card my-items\n```\n\nBody.";
     let result = decompose(markdown);
     assert!(result.is_err());
 }
@@ -1812,19 +1812,19 @@ fn test_body_with_trailing_newlines() {
 // See `assemble.rs::strip_f2_separator` and `MARKDOWN.md §3 F2`.
 
 #[test]
-fn test_f2_strip_global_body_followed_by_leaf_lf() {
+fn test_f2_strip_global_body_followed_by_card_lf() {
     // Global body followed by a KIND fence: the source's tail `\n\n` is
     // (content line terminator) + (F2 blank line). Strip exactly the F2 `\n`,
     // leaving `\n` as the content terminator.
-    let markdown = "---\nQUILL: q\n---\n\nbody\n\n```leaf x\n```\n";
+    let markdown = "---\nQUILL: q\n---\n\nbody\n\n```card x\n```\n";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.main().body(), "\nbody\n");
 }
 
 #[test]
-fn test_f2_strip_global_body_followed_by_leaf_crlf() {
+fn test_f2_strip_global_body_followed_by_card_crlf() {
     // CRLF line endings: strip exactly one `\r\n` as the F2 separator.
-    let markdown = "---\r\nQUILL: q\r\n---\r\n\r\nbody\r\n\r\n```leaf x\r\n```\r\n";
+    let markdown = "---\r\nQUILL: q\r\n---\r\n\r\nbody\r\n\r\n```card x\r\n```\r\n";
     let doc = decompose(markdown).unwrap();
     assert!(
         doc.main().body().ends_with('\n') && !doc.main().body().ends_with("\n\n"),
@@ -1834,21 +1834,21 @@ fn test_f2_strip_global_body_followed_by_leaf_crlf() {
 }
 
 #[test]
-fn test_f2_strip_leaf_body_followed_by_leaf() {
-    // First leaf body is followed by another fence → F2 stripped.
-    // Last leaf body is at EOF → preserved verbatim.
+fn test_f2_strip_card_body_followed_by_card() {
+    // First card body is followed by another fence → F2 stripped.
+    // Last card body is at EOF → preserved verbatim.
     let markdown =
-        "---\nQUILL: q\n---\n\n```leaf a\n```\nfirst\n\n```leaf b\n```\nsecond\n";
+        "---\nQUILL: q\n---\n\n```card a\n```\nfirst\n\n```card b\n```\nsecond\n";
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.leaves()[0].body(), "first\n");
-    assert_eq!(doc.leaves()[1].body(), "second\n");
+    assert_eq!(doc.cards()[0].body(), "first\n");
+    assert_eq!(doc.cards()[1].body(), "second\n");
 }
 
 #[test]
 fn test_f2_strip_preserves_author_blank_lines() {
     // Author wrote two blank lines after the body. Only the F2 blank (last
     // `\n`) is stripped; the author's blank line is preserved.
-    let markdown = "---\nQUILL: q\n---\n\nbody\n\n\n```leaf x\n```\n";
+    let markdown = "---\nQUILL: q\n---\n\nbody\n\n\n```card x\n```\n";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.main().body(), "\nbody\n\n");
 }
@@ -1858,7 +1858,7 @@ fn test_f2_strip_does_not_overstrip_content_newlines() {
     // Content-fidelity: a body whose authored content ends with multiple
     // newlines (e.g. a code block with trailing blank lines) must survive
     // round-trip. The previous WASM-binding `trim_body` over-stripped this.
-    let markdown = "---\nQUILL: q\n---\n\n```\ncode\n```\n\n\n```leaf x\n```\n";
+    let markdown = "---\nQUILL: q\n---\n\n```\ncode\n```\n\n\n```card x\n```\n";
     let doc = decompose(markdown).unwrap();
     let emitted = doc.to_markdown();
     let reparsed = Document::from_markdown(&emitted).unwrap();
@@ -1952,14 +1952,14 @@ fn test_guillemet_double_conversion_prevention() {
 }
 
 #[test]
-fn test_allowed_leaf_field_collision() {
+fn test_allowed_card_field_collision() {
     let markdown = r#"---
 QUILL: test_quill
-my_leaf: "some global value"
+my_card: "some global value"
 ---
 
-```leaf my_leaf
-title: "My Leaf"
+```card my_card
+title: "My Card"
 ```
 Body
 "#;
@@ -1967,22 +1967,22 @@ Body
     assert_eq!(
         doc.main()
             .frontmatter()
-            .get("my_leaf")
+            .get("my_card")
             .unwrap()
             .as_str()
             .unwrap(),
         "some global value"
     );
-    assert_eq!(doc.leaves().len(), 1);
-    assert_eq!(doc.leaves()[0].tag(), "my_leaf");
+    assert_eq!(doc.cards().len(), 1);
+    assert_eq!(doc.cards()[0].tag(), "my_card");
     assert_eq!(
-        doc.leaves()[0]
+        doc.cards()[0]
             .frontmatter()
             .get("title")
             .unwrap()
             .as_str()
             .unwrap(),
-        "My Leaf"
+        "My Card"
     );
 }
 
@@ -2030,12 +2030,12 @@ Main document body.
 
 More content after horizontal rule.
 
-```leaf section
+```card section
 heading: Introduction
 ```
 Introduction content.
 
-```leaf section
+```card section
 heading: Conclusion
 ```
 Conclusion content.
@@ -2059,10 +2059,10 @@ Conclusion content.
     assert!(body.contains("***"));
     assert!(body.contains("More content after horizontal rule."));
 
-    assert_eq!(doc.leaves().len(), 2);
-    assert_eq!(doc.leaves()[0].tag(), "section");
+    assert_eq!(doc.cards().len(), 2);
+    assert_eq!(doc.cards()[0].tag(), "section");
     assert_eq!(
-        doc.leaves()[0]
+        doc.cards()[0]
             .frontmatter()
             .get("heading")
             .unwrap()
@@ -2070,10 +2070,10 @@ Conclusion content.
             .unwrap(),
         "Introduction"
     );
-    assert_eq!(doc.leaves()[0].body(), "Introduction content.\n");
-    assert_eq!(doc.leaves()[1].tag(), "section");
+    assert_eq!(doc.cards()[0].body(), "Introduction content.\n");
+    assert_eq!(doc.cards()[1].tag(), "section");
     assert_eq!(
-        doc.leaves()[1]
+        doc.cards()[1]
             .frontmatter()
             .get("heading")
             .unwrap()
@@ -2081,7 +2081,7 @@ Conclusion content.
             .unwrap(),
         "Conclusion"
     );
-    assert_eq!(doc.leaves()[1].body(), "Conclusion content.\n");
+    assert_eq!(doc.cards()[1].body(), "Conclusion content.\n");
 }
 
 #[test]
@@ -2107,13 +2107,13 @@ fn test_to_plate_json_simple() {
     assert_eq!(json["QUILL"], "my_quill");
     assert_eq!(json["title"], "Hello");
     assert_eq!(json["BODY"], "\nBody text.\n");
-    assert!(json["LEAVES"].is_array());
-    assert_eq!(json["LEAVES"].as_array().unwrap().len(), 0);
+    assert!(json["CARDS"].is_array());
+    assert_eq!(json["CARDS"].as_array().unwrap().len(), 0);
 }
 
-/// to_plate_json with leaves produces LEAVES array with KIND, fields, BODY.
+/// to_plate_json with cards produces CARDS array with KIND, fields, BODY.
 #[test]
-fn test_to_plate_json_with_leaves() {
+fn test_to_plate_json_with_cards() {
     let markdown = r#"---
 QUILL: usaf_memo
 title: Test
@@ -2121,11 +2121,11 @@ title: Test
 
 Global body.
 
-```leaf indorsement
+```card indorsement
 for: ORG
 ```
 
-Leaf body here.
+Card body here.
 "#;
     let doc = Document::from_markdown(markdown).unwrap();
     let json = doc.to_plate_json();
@@ -2136,11 +2136,11 @@ Leaf body here.
     // content-only string as `Document::body()`.
     assert_eq!(json["BODY"], "\nGlobal body.\n");
 
-    let leaves = json["LEAVES"].as_array().unwrap();
-    assert_eq!(leaves.len(), 1);
-    assert_eq!(leaves[0]["KIND"], "indorsement");
-    assert_eq!(leaves[0]["for"], "ORG");
-    assert_eq!(leaves[0]["BODY"], "\nLeaf body here.\n");
+    let cards = json["CARDS"].as_array().unwrap();
+    assert_eq!(cards.len(), 1);
+    assert_eq!(cards[0]["KIND"], "indorsement");
+    assert_eq!(cards[0]["for"], "ORG");
+    assert_eq!(cards[0]["BODY"], "\nCard body here.\n");
 }
 
 /// to_plate_json parity: the QUILL key appears first.
@@ -2165,15 +2165,15 @@ fn test_to_plate_json_fixture_snapshot() {
     // frontmatter fields are present at top level
     assert!(json.get("memo_for").is_some());
     assert!(json.get("date").is_some());
-    // BODY and LEAVES present
+    // BODY and CARDS present
     assert!(json.get("BODY").is_some());
-    assert!(json["LEAVES"].is_array());
-    // One indorsement leaf
-    let leaves = json["LEAVES"].as_array().unwrap();
-    assert_eq!(leaves.len(), 1);
-    assert_eq!(leaves[0]["KIND"], "indorsement");
-    // Leaf has BODY
-    assert!(leaves[0].get("BODY").is_some());
+    assert!(json["CARDS"].is_array());
+    // One indorsement card
+    let cards = json["CARDS"].as_array().unwrap();
+    assert_eq!(cards.len(), 1);
+    assert_eq!(cards[0]["KIND"], "indorsement");
+    // Card has BODY
+    assert!(cards[0].get("BODY").is_some());
 }
 
 /// Regression test for the `serde_json::Map::remove` / `shift_remove` bug.
@@ -2203,28 +2203,28 @@ fn frontmatter_field_order_preserved_after_quill_removal() {
 
 // ── Legacy `---/CARD:/---` migration path (MARKDOWN.md §4.4) ───────────────
 
-/// A legacy `---/CARD:/---` block parses as a leaf and surfaces a
-/// `parse::deprecated_leaf_syntax` warning.
+/// A legacy `---/CARD:/---` block parses as a card and surfaces a
+/// `parse::deprecated_card_syntax` warning.
 #[test]
-fn legacy_card_block_parses_as_leaf_with_deprecation_warning() {
-    let md = "---\nQUILL: q\n---\n\n---\nCARD: note\nauthor: Alice\n---\n\nLeaf body.\n";
+fn legacy_card_block_parses_as_card_with_deprecation_warning() {
+    let md = "---\nQUILL: q\n---\n\n---\nCARD: note\nauthor: Alice\n---\n\nCard body.\n";
     let doc = Document::from_markdown(md).unwrap();
 
     assert_eq!(
-        doc.leaves().len(),
+        doc.cards().len(),
         1,
-        "legacy CARD block must parse as leaf"
+        "legacy CARD block must parse as card"
     );
-    let leaf = &doc.leaves()[0];
-    assert_eq!(leaf.tag(), "note");
+    let card = &doc.cards()[0];
+    assert_eq!(card.tag(), "note");
     assert_eq!(
-        leaf.frontmatter()
+        card.frontmatter()
             .get("author")
             .and_then(|v| v.as_str())
             .map(str::to_string),
         Some("Alice".to_string()),
     );
-    assert!(leaf.body().contains("Leaf body."));
+    assert!(card.body().contains("Card body."));
 
     let warning_codes: Vec<_> = doc
         .warnings()
@@ -2232,23 +2232,23 @@ fn legacy_card_block_parses_as_leaf_with_deprecation_warning() {
         .filter_map(|w| w.code.as_deref())
         .collect();
     assert!(
-        warning_codes.contains(&"parse::deprecated_leaf_syntax"),
-        "expected parse::deprecated_leaf_syntax warning, got: {:?}",
+        warning_codes.contains(&"parse::deprecated_card_syntax"),
+        "expected parse::deprecated_card_syntax warning, got: {:?}",
         warning_codes
     );
 }
 
-/// `parse → to_markdown` rewrites legacy CARD blocks to canonical ` ```leaf `
+/// `parse → to_markdown` rewrites legacy CARD blocks to canonical ` ```card `
 /// form. This is the consumer's one-step migration tool.
 #[test]
-fn legacy_card_round_trip_emits_canonical_leaf_fence() {
-    let legacy = "---\nQUILL: q\n---\n\n---\nCARD: note\nauthor: Alice\n---\n\nLeaf body.\n";
+fn legacy_card_round_trip_emits_canonical_card_fence() {
+    let legacy = "---\nQUILL: q\n---\n\n---\nCARD: note\nauthor: Alice\n---\n\nCard body.\n";
     let doc = Document::from_markdown(legacy).unwrap();
     let canonical = doc.to_markdown();
 
     assert!(
-        canonical.contains("```leaf note\n"),
-        "emitted form must use canonical ```leaf <kind> fence; got:\n{}",
+        canonical.contains("```card note\n"),
+        "emitted form must use canonical ```card <kind> fence; got:\n{}",
         canonical
     );
     assert!(
@@ -2257,48 +2257,48 @@ fn legacy_card_round_trip_emits_canonical_leaf_fence() {
         canonical
     );
 
-    // Reparsing the canonical form yields the same leaf, with no
+    // Reparsing the canonical form yields the same card, with no
     // deprecation warning this time.
     let doc2 = Document::from_markdown(&canonical).unwrap();
-    assert_eq!(doc2.leaves().len(), 1);
-    assert_eq!(doc2.leaves()[0].tag(), "note");
+    assert_eq!(doc2.cards().len(), 1);
+    assert_eq!(doc2.cards()[0].tag(), "note");
     let canonical_codes: Vec<_> = doc2
         .warnings()
         .iter()
         .filter_map(|w| w.code.as_deref())
         .collect();
     assert!(
-        !canonical_codes.contains(&"parse::deprecated_leaf_syntax"),
+        !canonical_codes.contains(&"parse::deprecated_card_syntax"),
         "canonical re-emit must not re-trigger deprecation warning"
     );
 }
 
-/// Mixed legacy and canonical leaves in the same document parse in source
-/// order; canonical re-emit normalises everything to ` ```leaf `.
+/// Mixed legacy and canonical cards in the same document parse in source
+/// order; canonical re-emit normalises everything to ` ```card `.
 #[test]
-fn legacy_and_canonical_leaves_coexist_during_migration() {
-    let md = "---\nQUILL: q\n---\n\n---\nCARD: a\nx: 1\n---\n\nFirst body.\n\n```leaf b\ny: 2\n```\n\nSecond body.\n";
+fn legacy_and_canonical_cards_coexist_during_migration() {
+    let md = "---\nQUILL: q\n---\n\n---\nCARD: a\nx: 1\n---\n\nFirst body.\n\n```card b\ny: 2\n```\n\nSecond body.\n";
     let doc = Document::from_markdown(md).unwrap();
 
-    assert_eq!(doc.leaves().len(), 2);
-    assert_eq!(doc.leaves()[0].tag(), "a");
-    assert_eq!(doc.leaves()[1].tag(), "b");
+    assert_eq!(doc.cards().len(), 2);
+    assert_eq!(doc.cards()[0].tag(), "a");
+    assert_eq!(doc.cards()[1].tag(), "b");
 
     let canonical = doc.to_markdown();
-    assert!(canonical.contains("```leaf a\n"));
-    assert!(canonical.contains("```leaf b\n"));
+    assert!(canonical.contains("```card a\n"));
+    assert!(canonical.contains("```card b\n"));
     assert!(!canonical.contains("CARD:"));
 }
 
-/// Legacy CARD blocks without F2 (no blank line above) are NOT leaves —
+/// Legacy CARD blocks without F2 (no blank line above) are NOT cards —
 /// they fall through to CommonMark thematic-break handling, same as today.
 #[test]
-fn legacy_card_without_f2_is_not_a_leaf() {
+fn legacy_card_without_f2_is_not_a_card() {
     let md =
         "---\nQUILL: q\n---\n\nBody text directly above.\n---\nCARD: note\nauthor: Alice\n---\n";
     let doc = Document::from_markdown(md).unwrap();
     assert_eq!(
-        doc.leaves().len(),
+        doc.cards().len(),
         0,
         "F2 violation must prevent legacy-CARD recognition"
     );

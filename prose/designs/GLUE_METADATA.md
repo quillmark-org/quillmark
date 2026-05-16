@@ -12,7 +12,7 @@ Quillmark does not use a template engine for plates. Data flows in two stages:
 
 ### Data Shape
 
-- Keys mirror normalized frontmatter fields (including `BODY` and `LEAVES`)
+- Keys mirror normalized frontmatter fields (including `BODY` and `CARDS`)
 - Defaults from the Quill schema are applied before serialization in stage 1
 - Markdown-to-Typst conversion and date parsing happen in stage 2, inside the backend
 

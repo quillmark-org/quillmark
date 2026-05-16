@@ -10,10 +10,11 @@ quill:
   backend: typst
   description: markdown schema test
 
-main:
-  fields:
-    description:
-      type: markdown
+cards:
+  main:
+    fields:
+      description:
+        type: markdown
 "#,
     )
     .unwrap();
@@ -23,7 +24,8 @@ main:
 
     assert_eq!(
         value
-            .get("main")
+            .get("cards")
+            .and_then(|v| v.get("main"))
             .and_then(|v| v.get("fields"))
             .and_then(|v| v.get("description"))
             .and_then(|v| v.get("type"))

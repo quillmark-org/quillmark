@@ -1,14 +1,16 @@
-# Composable Leaves Architecture
+# Composable Cards Architecture
 
-> **Status**: Implemented — describes the current `leaf` vocabulary.
-> **Pending rework**: [CARD_MODEL.md](../proposals/CARD_MODEL.md) renames "leaf" → "card" across this design (this doc will become `CARDS.md`).
+> **Status**: Implemented — describes the `card` vocabulary.
+> **Design basis**: [CARD_MODEL.md](../proposals/CARD_MODEL.md) defines the unified "card" model this design reflects (this document was formerly `LEAVES.md`).
 > **Related**: [SCHEMAS.md](SCHEMAS.md), [QUILL.md](QUILL.md), [MARKDOWN.md](MARKDOWN.md)
 
 ## Overview
 
-Leaves are structured metadata records inline within document content,
-encoded as CommonMark fenced code blocks whose info string is
-`leaf <kind>`. All leaves are stored in a single `LEAVES` array,
+A document is composed of **cards**. It has exactly one **main card** —
+the top-of-document frontmatter — and zero or more **inline cards**.
+Inline cards are structured metadata records inline within document
+content, encoded as CommonMark fenced code blocks whose info string is
+`card <kind>`. All inline cards are stored in a single `CARDS` array,
 discriminated by `KIND` — an output-only field the parser populates from
 the info-string kind token. See [MARKDOWN.md](MARKDOWN.md) §3.2 for the
 syntax-level specification.
@@ -16,33 +18,34 @@ syntax-level specification.
 ## Data Model
 
 ```rust
-pub struct LeafSchema {
+pub struct CardSchema {
     pub name: String,
     pub description: Option<String>,
     pub fields: HashMap<String, FieldSchema>,
-    pub ui: Option<UiLeafSchema>,
-    pub body: Option<BodyLeafSchema>,
+    pub ui: Option<UiCardSchema>,
+    pub body: Option<BodyCardSchema>,
 }
 ```
 
-The static display label for a leaf kind lives on `UiLeafSchema::title`,
-not on `LeafSchema` directly — see `ui.title` below. Body behavior (whether
+The static display label for a card kind lives on `UiCardSchema::title`,
+not on `CardSchema` directly — see `ui.title` below. Body behavior (whether
 body content is permitted and optional guide text) lives under `body` —
 see `body.enabled` and `body.description` below.
 
-`QuillConfig` exposes the entry-point document schema as `main: LeafSchema`
-and the additional named leaf kinds as `leaf_kinds: Vec<LeafSchema>`. Look
-up a named kind by name via `leaf_kind(name)`, or iterate `leaf_kinds`
-directly for the full list.
+`QuillConfig` exposes every card schema through a single `cards` map. The
+reserved key `cards.main` is the entry-point document schema (`CardSchema`,
+no `KIND`); every other key under `cards` is a named inline card kind
+(`CardSchema`) whose key is its `KIND` discriminator. Look up a named kind
+by name, or iterate the `cards` map directly for the full list.
 
 ## Quill.yaml Configuration
 
 ```yaml
-main:
-  fields:
-    # ... main-document fields ...
+cards:
+  main:
+    fields:
+      # ... main-document fields ...
 
-leaf_kinds:
   indorsement:
     description: Chain of routing endorsements for multi-level correspondence.
     ui:
@@ -62,6 +65,10 @@ leaf_kinds:
         description: Name, grade, and duty title.
 ```
 
+`cards` is a single flat namespace of card schemas. The reserved key `main`
+is the entry-point card (no `KIND`); every other key is an inline card kind
+whose key is its `KIND` discriminator.
+
 `ui.title` is the display label for UI consumers (section headers, chips,
 picker entries, per-instance list titles). It may be a literal string or a
 template containing `{field_name}` tokens that consumers interpolate with
@@ -73,7 +80,11 @@ documents.
 ## Public Schema YAML Output
 
 ```yaml
-leaf_kinds:
+cards:
+  main:
+    fields:
+      # ... main-document fields ...
+
   indorsement:
     description: Chain of routing endorsements for multi-level correspondence.
     ui:
@@ -92,17 +103,16 @@ leaf_kinds:
 
 `QuillConfig::schema()` emits the schema (with `ui` and `body` hints
 retained) and `schema_yaml()` is the YAML wrapper. The output keeps the
-same `leaf_kinds.<name>.fields` shape as `Quill.yaml` and injects a
-required `KIND` discriminator field whose `const` value is the leaf kind
-name (the kind token authors write in the `` ```leaf <kind> `` info
+same `cards.<name>.fields` shape as `Quill.yaml` and injects a
+required `KIND` discriminator field whose `const` value is the card kind
+name (the kind token authors write in the `` ```card <kind> `` info
 string).
-The `leaf_kinds` key is omitted entirely when no named kinds are defined.
 See `SCHEMAS.md` for the full surface.
 
 ## Markdown Syntax
 
 ````markdown
-```leaf indorsement
+```card indorsement
 from: ORG1/SYMBOL
 for: ORG2/SYMBOL
 signature_block:
@@ -115,8 +125,8 @@ Indorsement body content.
 
 ## Backend Consumption
 
-- **All backends**: leaves are delivered as `data.LEAVES`, an array of
-  objects each containing a `KIND` discriminator field, the leaf's
-  metadata fields, and a `BODY` field with the leaf's body Markdown.
+- **All backends**: inline cards are delivered as `data.CARDS`, an array of
+  objects each containing a `KIND` discriminator field, the card's
+  metadata fields, and a `BODY` field with the card's body Markdown.
 - **`Quill::compile_data()`** returns the fully coerced and validated
-  JSON, including `LEAVES`.
+  JSON, including `CARDS`.

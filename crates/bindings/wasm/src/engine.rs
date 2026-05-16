@@ -1,7 +1,7 @@
 //! Quillmark WASM Engine - Simplified API
 
 use crate::error::WasmError;
-use crate::types::{Diagnostic, Leaf, RenderOptions, RenderResult};
+use crate::types::{Diagnostic, Card, RenderOptions, RenderResult};
 use js_sys::{Array, Uint8Array};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -22,16 +22,16 @@ export interface QuillFieldUi {
     multiline?: boolean;
 }
 
-/** UI layout hints for a leaf (main or named leaf type). */
-export interface QuillLeafUi {
+/** UI layout hints for a card (main or named card type). */
+export interface QuillCardUi {
     title?: string;
 }
 
-/** Body namespace for a leaf (main or named leaf type). */
-export interface QuillLeafBody {
-    /** When false, consumers must not accept or store body content for this leaf type. Defaults to true. */
+/** Body namespace for a card (main or named card type). */
+export interface QuillCardBody {
+    /** When false, consumers must not accept or store body content for this card type. Defaults to true. */
     enabled?: boolean;
-    /** Example body content embedded verbatim in the blueprint body region. Fallback is "Write <leaf> body here." */
+    /** Example body content embedded verbatim in the blueprint body region. Fallback is "Write <card> body here." */
     example?: string;
 }
 
@@ -48,24 +48,24 @@ export interface QuillFieldSchema {
     items?: QuillFieldSchema;
 }
 
-/** Schema entry for the main leaf or a named leaf type. */
-export interface QuillLeafSchema {
+/** Schema entry for the main card or a named card type. */
+export interface QuillCardSchema {
     description?: string;
     fields: Record<string, QuillFieldSchema>;
-    ui?: QuillLeafUi;
-    body?: QuillLeafBody;
+    ui?: QuillCardUi;
+    body?: QuillCardBody;
 }
 
 /**
  * Document schema returned by `Quill.schema`. Includes optional `ui` keys.
  *
- * `main.fields.QUILL` and `leaf_kinds[name].fields.KIND` are required
+ * `main.fields.QUILL` and `cards[name].fields.KIND` are required
  * sentinels with `const` values telling consumers what to write.
  */
 export interface QuillSchema {
-    main: QuillLeafSchema;
-    /** Present only when the quill declares at least one named leaf type. */
-    leaf_kinds?: Record<string, QuillLeafSchema>;
+    main: QuillCardSchema;
+    /** Present only when the quill declares at least one named card type. */
+    cards?: Record<string, QuillCardSchema>;
 }
 
 /**
@@ -87,7 +87,7 @@ export interface QuillMetadata {
 export type FormFieldSource = "document" | "default" | "missing";
 
 /**
- * A single field's view within a `FormLeaf`.
+ * A single field's view within a `FormCard`.
  *
  * - `value` — the document-supplied value (`null` when absent).
  * - `default` — the schema default (`null` when no default is declared).
@@ -100,42 +100,42 @@ export interface FormFieldValue {
 }
 
 /**
- * A leaf viewed through its schema, as returned by `Quill.form`,
- * `Quill.blankMain`, and `Quill.blankLeaf`.
+ * A card viewed through its schema, as returned by `Quill.form`,
+ * `Quill.blankMain`, and `Quill.blankCard`.
  */
-export interface FormLeaf {
-    schema: QuillLeafSchema;
+export interface FormCard {
+    schema: QuillCardSchema;
     values: Record<string, FormFieldValue>;
 }
 
 /**
  * Schema-aware form view of a document, returned by `Quill.form`.
  *
- * - `main` — the main leaf viewed through the quill's main schema.
- * - `leaves` — composable leaf blocks, in document order (unknown tags excluded).
- * - `diagnostics` — diagnostics from unknown leaf tags and validation.
+ * - `main` — the main card viewed through the quill's main schema.
+ * - `cards` — composable card blocks, in document order (unknown tags excluded).
+ * - `diagnostics` — diagnostics from unknown card tags and validation.
  */
 export interface Form {
-    main: FormLeaf;
-    leaves: FormLeaf[];
+    main: FormCard;
+    cards: FormCard[];
     diagnostics: Diagnostic[];
 }
 "#;
 
-/// TypeScript declaration for the `pushLeaf` / `insertLeaf` input shape.
+/// TypeScript declaration for the `pushCard` / `insertCard` input shape.
 ///
 /// `tag` is required; `fields` and `body` are optional (defaulted by serde).
 /// Emitted via `typescript_custom_section` so it lands in the generated
 /// `.d.ts` without forcing consumers to import a nominal type — the
 /// `unchecked_param_type` attribute on each method references it by name.
 #[wasm_bindgen(typescript_custom_section)]
-const LEAF_INPUT_TS: &'static str = r#"
+const CARD_INPUT_TS: &'static str = r#"
 /**
- * Input shape for `Document.pushLeaf` and `Document.insertLeaf`.
+ * Input shape for `Document.pushCard` and `Document.insertCard`.
  *
  * Only `tag` is required. `fields` defaults to `{}`, `body` to `""`.
  */
-export interface LeafInput {
+export interface CardInput {
     tag: string;
     fields?: Record<string, unknown>;
     body?: string;
@@ -211,7 +211,7 @@ pub struct RenderSession {
 /// - `quillRef` (string)
 /// - `frontmatter` (JS object/Record)
 /// - `body` (string)
-/// - `leaves` (array of Leaf objects)
+/// - `cards` (array of Card objects)
 /// - `warnings` (array of Diagnostic objects)
 ///
 /// `toMarkdown()` emits canonical Quillmark Markdown that round-trips back to
@@ -412,7 +412,7 @@ impl Quill {
     /// ```json
     /// {
     ///   "main":  { "schema": {...}, "values": { "field": {...} } },
-    ///   "leaves": [ ... ],
+    ///   "cards": [ ... ],
     ///   "diagnostics": [ ... ]
     /// }
     /// ```
@@ -431,40 +431,40 @@ impl Quill {
             .map_err(|e| WasmError::from(format!("form: serialization failed: {e}")).to_js_value())
     }
 
-    /// A blank form for the main leaf — no document values supplied.
+    /// A blank form for the main card — no document values supplied.
     ///
     /// Returns a plain JS object with the same shape as one entry in
     /// [`Form::main`]. Every declared field's `source` is `"default"` (when
     /// the schema declares a default) or `"missing"`.
     ///
     /// [`Form::main`]: quillmark::form::Form::main
-    #[wasm_bindgen(js_name = blankMain, unchecked_return_type = "FormLeaf")]
+    #[wasm_bindgen(js_name = blankMain, unchecked_return_type = "FormCard")]
     pub fn blank_main(&self) -> Result<JsValue, JsValue> {
-        let leaf = self.inner.blank_main();
+        let card = self.inner.blank_main();
         let serializer = serde_wasm_bindgen::Serializer::new()
             .serialize_maps_as_objects(true)
             .serialize_missing_as_null(true);
-        leaf.serialize(&serializer).map_err(|e| {
+        card.serialize(&serializer).map_err(|e| {
             WasmError::from(format!("blankMain: serialization failed: {e}")).to_js_value()
         })
     }
 
-    /// A blank form for a leaf of the given type — no document values supplied.
+    /// A blank form for a card of the given type — no document values supplied.
     ///
-    /// Returns `null` if `leafKind` is not declared in this quill's schema.
+    /// Returns `null` if `cardKind` is not declared in this quill's schema.
     /// Otherwise returns a plain JS object shaped like a single entry in
-    /// [`Form::leaves`].
+    /// [`Form::cards`].
     ///
-    /// [`Form::leaves`]: quillmark::form::Form::leaves
-    #[wasm_bindgen(js_name = blankLeaf, unchecked_return_type = "FormLeaf | null")]
-    pub fn blank_leaf(&self, leaf_kind: &str) -> Result<JsValue, JsValue> {
-        match self.inner.blank_leaf(leaf_kind) {
-            Some(leaf) => {
+    /// [`Form::cards`]: quillmark::form::Form::cards
+    #[wasm_bindgen(js_name = blankCard, unchecked_return_type = "FormCard | null")]
+    pub fn blank_card(&self, card: &str) -> Result<JsValue, JsValue> {
+        match self.inner.blank_card(card) {
+            Some(card) => {
                 let serializer = serde_wasm_bindgen::Serializer::new()
                     .serialize_maps_as_objects(true)
                     .serialize_missing_as_null(true);
-                leaf.serialize(&serializer).map_err(|e| {
-                    WasmError::from(format!("blankLeaf: serialization failed: {e}")).to_js_value()
+                card.serialize(&serializer).map_err(|e| {
+                    WasmError::from(format!("blankCard: serialization failed: {e}")).to_js_value()
                 })
             }
             None => Ok(JsValue::NULL),
@@ -520,40 +520,40 @@ impl Document {
         self.inner.quill_reference().to_string()
     }
 
-    /// The document's main (entry) leaf.
+    /// The document's main (entry) card.
     ///
     /// Carries the QUILL sentinel, the document-level frontmatter, and the
     /// global body. Frontmatter/body reads and mutations go through this
     /// handle — there are no document-level shortcuts after the rework.
     ///
     /// Allocates and serializes on each call — cache locally if read in a hot loop.
-    #[wasm_bindgen(getter, js_name = main, unchecked_return_type = "Leaf")]
+    #[wasm_bindgen(getter, js_name = main, unchecked_return_type = "Card")]
     pub fn main(&self) -> JsValue {
-        let leaf = Leaf::from(self.inner.main());
+        let card = Card::from(self.inner.main());
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-        leaf.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
+        card.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
     }
 
-    /// Ordered list of composable leaf blocks as typed `Leaf` objects.
-    #[wasm_bindgen(getter, js_name = leaves, unchecked_return_type = "Leaf[]")]
-    pub fn leaves(&self) -> JsValue {
-        let leaves: Vec<Leaf> = self.inner.leaves().iter().map(Leaf::from).collect();
+    /// Ordered list of composable card blocks as typed `Card` objects.
+    #[wasm_bindgen(getter, js_name = cards, unchecked_return_type = "Card[]")]
+    pub fn cards(&self) -> JsValue {
+        let cards: Vec<Card> = self.inner.cards().iter().map(Card::from).collect();
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-        leaves.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
+        cards.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
     }
 
-    /// Number of composable leaves (excludes the main leaf).
+    /// Number of composable cards (excludes the main card).
     ///
-    /// O(1). Use this to validate indices before calling leaf mutators
-    /// instead of allocating the full `leaves` array.
-    #[wasm_bindgen(getter, js_name = leafCount)]
-    pub fn leaf_count(&self) -> usize {
-        self.inner.leaves().len()
+    /// O(1). Use this to validate indices before calling card mutators
+    /// instead of allocating the full `cards` array.
+    #[wasm_bindgen(getter, js_name = cardCount)]
+    pub fn card_count(&self) -> usize {
+        self.inner.cards().len()
     }
 
     /// Structural equality against another `Document`.
     ///
-    /// Compares `main` and `leaves` by value (matching core's [`PartialEq`]).
+    /// Compares `main` and `cards` by value (matching core's [`PartialEq`]).
     /// Parse-time `warnings` are intentionally excluded — they describe the
     /// source text, not the document's content.
     ///
@@ -579,13 +579,13 @@ impl Document {
 
     // ── Mutators ──────────────────────────────────────────────────────────────
 
-    /// Update a frontmatter field on the main leaf.
+    /// Update a frontmatter field on the main card.
     ///
     /// Convenience method: equivalent to `doc.mainMut().setField(name, value)`.
     /// Clears any existing `!fill` marker on the field.
     ///
     /// Throws an `Error` whose message includes the `EditError` variant name and
-    /// details if `name` is reserved (`BODY`, `LEAVES`, `QUILL`, `KIND`) or does
+    /// details if `name` is reserved (`BODY`, `CARDS`, `QUILL`, `KIND`) or does
     /// not match `[a-z_][a-z0-9_]*`.
     ///
     /// Mutators never modify `warnings`.
@@ -601,7 +601,7 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Update a frontmatter field on the main leaf AND mark it as `!fill`.
+    /// Update a frontmatter field on the main card AND mark it as `!fill`.
     ///
     /// Convenience method: equivalent to `doc.mainMut().setFill(name, value)`.
     ///
@@ -619,10 +619,10 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Remove a frontmatter field on the main leaf, returning the removed value or `undefined`.
+    /// Remove a frontmatter field on the main card, returning the removed value or `undefined`.
     ///
     /// Throws an `Error` whose message includes the `EditError` variant name
-    /// and details if `name` is reserved (`BODY`, `LEAVES`, `QUILL`, `KIND`)
+    /// and details if `name` is reserved (`BODY`, `CARDS`, `QUILL`, `KIND`)
     /// or does not match `[a-z_][a-z0-9_]*`. Absence of an otherwise-valid
     /// name returns `undefined`.
     ///
@@ -664,7 +664,7 @@ impl Document {
         Ok(())
     }
 
-    /// Replace the main leaf's body (the global Markdown body).
+    /// Replace the main card's body (the global Markdown body).
     ///
     /// Mutators never modify `warnings`.
     #[wasm_bindgen(js_name = replaceBody)]
@@ -672,128 +672,128 @@ impl Document {
         self.inner.main_mut().replace_body(body);
     }
 
-    /// Append a leaf to the end of the leaf list.
+    /// Append a card to the end of the card list.
     ///
-    /// `leaf` must be a JS object with a `tag` string field and optional
+    /// `card` must be a JS object with a `tag` string field and optional
     /// `fields` (object) and `body` (string).
     ///
-    /// Throws an `Error` if `leaf.tag` is not a valid tag name.
+    /// Throws an `Error` if `card.tag` is not a valid tag name.
     ///
     /// Mutators never modify `warnings`.
-    #[wasm_bindgen(js_name = pushLeaf)]
-    pub fn push_leaf(
+    #[wasm_bindgen(js_name = pushCard)]
+    pub fn push_card(
         &mut self,
-        #[wasm_bindgen(unchecked_param_type = "LeafInput")] leaf: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "CardInput")] card: JsValue,
     ) -> Result<(), JsValue> {
-        let core_leaf = js_value_to_leaf(&leaf)?;
-        self.inner.push_leaf(core_leaf);
+        let core_card = js_value_to_card(&card)?;
+        self.inner.push_card(core_card);
         Ok(())
     }
 
-    /// Insert a leaf at the given index.
+    /// Insert a card at the given index.
     ///
-    /// `index` must be in `0..=leaves.length`. Out-of-range throws an `Error`.
+    /// `index` must be in `0..=cards.length`. Out-of-range throws an `Error`.
     ///
     /// Mutators never modify `warnings`.
-    #[wasm_bindgen(js_name = insertLeaf)]
-    pub fn insert_leaf(
+    #[wasm_bindgen(js_name = insertCard)]
+    pub fn insert_card(
         &mut self,
         index: usize,
-        #[wasm_bindgen(unchecked_param_type = "LeafInput")] leaf: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "CardInput")] card: JsValue,
     ) -> Result<(), JsValue> {
-        let core_leaf = js_value_to_leaf(&leaf)?;
+        let core_card = js_value_to_card(&card)?;
         self.inner
-            .insert_leaf(index, core_leaf)
+            .insert_card(index, core_card)
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Remove the leaf at `index` and return it, or `undefined` if out of range.
+    /// Remove the card at `index` and return it, or `undefined` if out of range.
     ///
     /// Mutators never modify `warnings`.
-    #[wasm_bindgen(js_name = removeLeaf, unchecked_return_type = "Leaf | undefined")]
-    pub fn remove_leaf(&mut self, index: usize) -> JsValue {
-        match self.inner.remove_leaf(index) {
-            Some(core_leaf) => {
-                let leaf = Leaf::from(&core_leaf);
+    #[wasm_bindgen(js_name = removeCard, unchecked_return_type = "Card | undefined")]
+    pub fn remove_card(&mut self, index: usize) -> JsValue {
+        match self.inner.remove_card(index) {
+            Some(core_card) => {
+                let card = Card::from(&core_card);
                 let serializer =
                     serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-                leaf.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
+                card.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
             }
             None => JsValue::UNDEFINED,
         }
     }
 
-    /// Move the leaf at `from` to position `to`.
+    /// Move the card at `from` to position `to`.
     ///
-    /// `from == to` is a no-op. Both indices must be in `0..leaves.length`.
+    /// `from == to` is a no-op. Both indices must be in `0..cards.length`.
     /// Out-of-range throws an `Error`.
     ///
     /// Mutators never modify `warnings`.
-    #[wasm_bindgen(js_name = moveLeaf)]
-    pub fn move_leaf(&mut self, from: usize, to: usize) -> Result<(), JsValue> {
+    #[wasm_bindgen(js_name = moveCard)]
+    pub fn move_card(&mut self, from: usize, to: usize) -> Result<(), JsValue> {
         self.inner
-            .move_leaf(from, to)
+            .move_card(from, to)
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Replace the tag of the composable leaf at `index`.
+    /// Replace the tag of the composable card at `index`.
     ///
-    /// Mutates only the sentinel — the leaf's frontmatter and body are
+    /// Mutates only the sentinel — the card's frontmatter and body are
     /// untouched. Schema-aware migration (clearing orphan fields, applying
-    /// new defaults) is the caller's responsibility; `setLeafKind` is a
+    /// new defaults) is the caller's responsibility; `setCardKind` is a
     /// structural primitive.
     ///
     /// Throws if `index` is out of range or if `newTag` does not match
     /// `[a-z_][a-z0-9_]*`.
     ///
     /// Mutators never modify `warnings`.
-    #[wasm_bindgen(js_name = setLeafKind)]
-    pub fn set_leaf_tag(&mut self, index: usize, new_tag: &str) -> Result<(), JsValue> {
+    #[wasm_bindgen(js_name = setCardKind)]
+    pub fn set_card_tag(&mut self, index: usize, new_tag: &str) -> Result<(), JsValue> {
         self.inner
-            .set_leaf_tag(index, new_tag)
+            .set_card_tag(index, new_tag)
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Update a field on the leaf at `index`.
+    /// Update a field on the card at `index`.
     ///
-    /// Convenience method: equivalent to `doc.leaf_mut(index)?.set_field(name, value)`.
+    /// Convenience method: equivalent to `doc.card_mut(index)?.set_field(name, value)`.
     ///
     /// Throws if `index` is out of range, `name` is reserved or invalid, or
     /// `value` cannot be serialized.
     ///
     /// Mutators never modify `warnings`.
-    #[wasm_bindgen(js_name = updateLeafField)]
-    pub fn update_leaf_field(
+    #[wasm_bindgen(js_name = updateCardField)]
+    pub fn update_card_field(
         &mut self,
         index: usize,
         name: &str,
         value: JsValue,
     ) -> Result<(), JsValue> {
-        let len = self.inner.leaves().len();
-        let leaf = self.inner.leaf_mut(index).ok_or_else(|| {
+        let len = self.inner.cards().len();
+        let card = self.inner.card_mut(index).ok_or_else(|| {
             edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
         })?;
         let json: serde_json::Value = serde_wasm_bindgen::from_value(value).map_err(|e| {
-            WasmError::from(format!("updateLeafField: invalid value: {}", e)).to_js_value()
+            WasmError::from(format!("updateCardField: invalid value: {}", e)).to_js_value()
         })?;
         let qv = quillmark_core::QuillValue::from_json(json);
-        leaf.set_field(name, qv).map_err(|e| edit_error_to_js(&e))
+        card.set_field(name, qv).map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Remove a frontmatter field on the leaf at `index`, returning the
+    /// Remove a frontmatter field on the card at `index`, returning the
     /// removed value or `undefined` if the field was absent.
     ///
     /// Throws if `index` is out of range, `name` is reserved, or `name` does
     /// not match `[a-z_][a-z0-9_]*`.
     ///
     /// Mutators never modify `warnings`.
-    #[wasm_bindgen(js_name = removeLeafField)]
-    pub fn remove_leaf_field(&mut self, index: usize, name: &str) -> Result<JsValue, JsValue> {
-        let len = self.inner.leaves().len();
-        let leaf = self.inner.leaf_mut(index).ok_or_else(|| {
+    #[wasm_bindgen(js_name = removeCardField)]
+    pub fn remove_card_field(&mut self, index: usize, name: &str) -> Result<JsValue, JsValue> {
+        let len = self.inner.cards().len();
+        let card = self.inner.card_mut(index).ok_or_else(|| {
             edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
         })?;
-        let removed = leaf.remove_field(name).map_err(|e| edit_error_to_js(&e))?;
+        let removed = card.remove_field(name).map_err(|e| edit_error_to_js(&e))?;
         Ok(match removed {
             Some(v) => {
                 let serializer =
@@ -806,18 +806,18 @@ impl Document {
         })
     }
 
-    /// Replace the body of the leaf at `index`.
+    /// Replace the body of the card at `index`.
     ///
     /// Throws if `index` is out of range.
     ///
     /// Mutators never modify `warnings`.
-    #[wasm_bindgen(js_name = updateLeafBody)]
-    pub fn update_leaf_body(&mut self, index: usize, body: &str) -> Result<(), JsValue> {
-        let len = self.inner.leaves().len();
-        let leaf = self.inner.leaf_mut(index).ok_or_else(|| {
+    #[wasm_bindgen(js_name = updateCardBody)]
+    pub fn update_card_body(&mut self, index: usize, body: &str) -> Result<(), JsValue> {
+        let len = self.inner.cards().len();
+        let card = self.inner.card_mut(index).ok_or_else(|| {
             edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
         })?;
-        leaf.replace_body(body);
+        card.replace_body(body);
         Ok(())
     }
 }
@@ -837,10 +837,10 @@ fn edit_error_to_js(err: &quillmark_core::EditError) -> JsValue {
 }
 
 /// Deserialise a JS object `{ tag: string, fields?: object, body?: string }`
-/// into a [`quillmark_core::Leaf`].  Throws on invalid tag.
-fn js_value_to_leaf(value: &JsValue) -> Result<quillmark_core::Leaf, JsValue> {
+/// into a [`quillmark_core::Card`].  Throws on invalid tag.
+fn js_value_to_card(value: &JsValue) -> Result<quillmark_core::Card, JsValue> {
     #[derive(Deserialize)]
-    struct LeafInput {
+    struct CardInput {
         tag: String,
         #[serde(default)]
         fields: serde_json::Map<String, serde_json::Value>,
@@ -848,19 +848,19 @@ fn js_value_to_leaf(value: &JsValue) -> Result<quillmark_core::Leaf, JsValue> {
         body: String,
     }
 
-    let input: LeafInput = serde_wasm_bindgen::from_value(value.clone()).map_err(|e| {
-        WasmError::from(format!("leaf must be {{ tag, fields?, body? }}: {}", e)).to_js_value()
+    let input: CardInput = serde_wasm_bindgen::from_value(value.clone()).map_err(|e| {
+        WasmError::from(format!("card must be {{ tag, fields?, body? }}: {}", e)).to_js_value()
     })?;
 
-    // Validate tag via Leaf::new, then upgrade with fields and body.
-    let mut leaf = quillmark_core::Leaf::new(input.tag).map_err(|e| edit_error_to_js(&e))?;
+    // Validate tag via Card::new, then upgrade with fields and body.
+    let mut card = quillmark_core::Card::new(input.tag).map_err(|e| edit_error_to_js(&e))?;
 
     for (k, v) in input.fields {
         let qv = quillmark_core::QuillValue::from_json(v);
-        leaf.set_field(&k, qv).map_err(|e| edit_error_to_js(&e))?;
+        card.set_field(&k, qv).map_err(|e| edit_error_to_js(&e))?;
     }
-    leaf.replace_body(input.body);
-    Ok(leaf)
+    card.replace_body(input.body);
+    Ok(card)
 }
 
 fn file_tree_from_js_tree(tree: &JsValue) -> Result<quillmark_core::FileTreeNode, JsValue> {

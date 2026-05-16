@@ -337,7 +337,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_leaves_comments_alone() {
+    fn remove_cards_comments_alone() {
         let items = vec![
             FrontmatterItem::comment("header"),
             FrontmatterItem::field("a", qv("1")),

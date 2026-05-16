@@ -71,23 +71,23 @@ fn strip_key(
 /// Extract the `QUILL` sentinel (frontmatter only) and the remaining fields
 /// from a parsed-YAML mapping. Returns `(quill_ref, yaml_without_sentinel)`.
 ///
-/// A leaf's kind is carried by the fence info string (`MARKDOWN.md §3.2`), so
+/// A card's kind is carried by the fence info string (`MARKDOWN.md §3.2`), so
 /// `KIND` no longer participates in sentinel extraction: it joins `BODY` and
-/// `LEAVES` as an output-only reserved key, and supplying it as an input body
-/// key is a hard parse error in both frontmatter and leaves.
+/// `CARDS` as an output-only reserved key, and supplying it as an input body
+/// key is a hard parse error in both frontmatter and cards.
 pub(super) fn extract_sentinels(
     parsed: serde_json::Value,
     is_frontmatter: bool,
 ) -> Result<(Option<String>, Option<serde_json::Value>), ParseError> {
     let Some(mapping) = parsed.as_object() else {
         // Non-mapping (scalar/sequence); pass through — upstream will reject
-        // if a frontmatter/leaf mapping was expected.
+        // if a frontmatter/card mapping was expected.
         return Ok((None, Some(parsed)));
     };
 
     // Output-only reserved keys (spec §3): the parser populates these, so an
     // author supplying any of them as an input field is a hard parse error.
-    for reserved in ["BODY", "LEAVES", "KIND"] {
+    for reserved in ["BODY", "CARDS", "KIND"] {
         if mapping.contains_key(reserved) {
             return Err(ParseError::InvalidStructure(format!(
                 "Reserved field name '{}' cannot be used as an input field",

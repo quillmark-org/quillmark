@@ -744,7 +744,7 @@ mod tests {
 
     #[test]
     fn deep_nested_comment_path() {
-        let input = "outer:\n  inner:\n    # deep\n    leaf: 1\n";
+        let input = "outer:\n  inner:\n    # deep\n    card: 1\n";
         let out = prescan_fence_content(input);
         assert_eq!(
             out.nested_comments,

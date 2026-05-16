@@ -468,17 +468,17 @@ fn sentinel_inline_comment_round_trips() {
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
 
-/// Inline comment on a leaf body field round-trips on that field's line.
-/// (A leaf's kind lives in the info string, which cannot carry a comment.)
+/// Inline comment on a card body field round-trips on that field's line.
+/// (A card's kind lives in the info string, which cannot carry a comment.)
 #[test]
-fn leaf_field_inline_comment_round_trips() {
-    let src = "---\nQUILL: q\n---\n\n```leaf foo\nx: 1 # the x field\n```\n";
+fn card_field_inline_comment_round_trips() {
+    let src = "---\nQUILL: q\n---\n\n```card foo\nx: 1 # the x field\n```\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
     assert!(
         emitted.contains("x: 1 # the x field\n"),
-        "inline comment on a leaf field must round-trip on that line\nGot:\n{}",
+        "inline comment on a card field must round-trip on that line\nGot:\n{}",
         emitted
     );
 
