@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-pub struct SchemaArgs {
+pub struct SpecsArgs {
     /// Path to quill directory
     #[arg(value_name = "QUILL_PATH")]
     quill: PathBuf,
@@ -15,7 +15,7 @@ pub struct SchemaArgs {
     output: Option<PathBuf>,
 }
 
-pub fn execute(args: SchemaArgs) -> Result<()> {
+pub fn execute(args: SpecsArgs) -> Result<()> {
     // Validate quill path exists
     if !args.quill.exists() {
         return Err(CliError::InvalidArgument(format!(
@@ -28,16 +28,13 @@ pub fn execute(args: SchemaArgs) -> Result<()> {
     let engine = Quillmark::new();
     let quill = engine.quill_from_path(&args.quill)?;
 
-    let config = quill.source().config();
-    let schema_yaml = config
-        .schema_yaml()
-        .map_err(|e| CliError::InvalidArgument(format!("Failed to serialize schema: {}", e)))?;
+    let blueprint = quill.source().config().blueprint();
 
     // Output
     if let Some(output_path) = args.output {
-        fs::write(&output_path, schema_yaml).map_err(CliError::Io)?;
+        fs::write(&output_path, blueprint).map_err(CliError::Io)?;
     } else {
-        println!("{}", schema_yaml);
+        println!("{}", blueprint);
     }
 
     Ok(())
