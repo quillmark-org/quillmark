@@ -49,7 +49,6 @@ Supported selectors:
 2. Increase versions on every format change, even if small.
 3. Treat field renames/removals as breaking (`MAJOR`) changes.
 4. Prefer additive changes (new optional fields/cards) to reduce migration work.
-5. Keep example documents updated for the latest major/minor versions.
 
 ## Related Pages
 

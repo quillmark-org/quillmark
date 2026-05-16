@@ -198,7 +198,6 @@ fn validate_file_references(
             ));
         }
     }
-
 }
 
 fn validate_field_schemas(
