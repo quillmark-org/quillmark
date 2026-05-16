@@ -3,7 +3,6 @@ quill:
   version: 0.1.0
   backend: typst
   plate_file: plate.typ
-  example_file: example.md
   description: Typeset letters that comply with Carnegie Mellon University letterhead standards.
 
 main:

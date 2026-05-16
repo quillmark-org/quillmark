@@ -24,7 +24,6 @@ quill:
   version: "1.0.0"
   description: A simple letter format
   plate_file: plate.typ
-  example_file: example.md
 
 main:
   fields:

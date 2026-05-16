@@ -62,7 +62,7 @@ pub fn execute(args: RenderArgs) -> Result<()> {
         println!("Quill loaded: {}", quill.source().name());
     }
 
-    // Determine if we have a markdown file or need to use example content
+    // Determine if we have a markdown file or need to use the generated blueprint
     let (parse_output, markdown_path_for_output) =
         if let Some(ref markdown_path) = args.markdown_file {
             // Validate markdown file exists
@@ -88,27 +88,18 @@ pub fn execute(args: RenderArgs) -> Result<()> {
             }
             (output, Some(markdown_path.clone()))
         } else {
-            // Get example content
-            let markdown = quill
-                .source()
-                .example()
-                .map(|s| s.to_string())
-                .ok_or_else(|| {
-                    CliError::InvalidArgument(format!(
-                        "Quill '{}' does not have example content",
-                        quill.source().name()
-                    ))
-                })?;
+            // Fall back to the quill's generated blueprint.
+            let markdown = quill.source().config().blueprint();
 
             if args.verbose {
-                println!("Using example content from quill");
+                println!("Using generated blueprint from quill");
             }
 
             // Parse markdown
             let output = Document::from_markdown_with_warnings(&markdown)?;
 
             if args.verbose {
-                println!("Example markdown parsed successfully");
+                println!("Blueprint parsed successfully");
             }
 
             (output, None)
@@ -194,7 +185,7 @@ pub fn execute(args: RenderArgs) -> Result<()> {
             if let Some(ref path) = markdown_path_for_output {
                 derive_output_path(path, &args.format)
             } else {
-                PathBuf::from(format!("example.{}", args.format))
+                PathBuf::from(format!("blueprint.{}", args.format))
             }
         }))
     };

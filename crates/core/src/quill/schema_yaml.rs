@@ -61,11 +61,8 @@ main:
     }
 
     #[test]
-    fn omits_example_and_ref() {
-        let mut config = cfg(FULL);
-        config.example_markdown = Some("# x".to_string());
-        let yaml = config.schema_yaml().unwrap();
-        assert!(!yaml.contains("example:"));
+    fn omits_ref() {
+        let yaml = cfg(FULL).schema_yaml().unwrap();
         assert!(!yaml.contains("ref:"));
     }
 
