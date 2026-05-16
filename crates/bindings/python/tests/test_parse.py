@@ -31,14 +31,14 @@ Content
 
 
 def test_frontmatter_access(taro_md):
-    """Test accessing typed frontmatter (no BODY/LEAVES/QUILL)."""
+    """Test accessing typed frontmatter (no BODY/CARDS/QUILL)."""
     doc = Document.from_markdown(taro_md)
     fm = doc.frontmatter
     assert "title" in fm
     assert "Ice Cream" in fm["title"]
-    # BODY, LEAVES, QUILL must NOT appear in frontmatter
+    # BODY, CARDS, QUILL must NOT appear in frontmatter
     assert "BODY" not in fm
-    assert "LEAVES" not in fm
+    assert "CARDS" not in fm
     assert "QUILL" not in fm
 
 
@@ -56,25 +56,25 @@ def test_body_empty_when_absent():
     assert doc.body == ""
 
 
-def test_leaves_access():
-    """Test accessing typed leaves list."""
+def test_cards_access():
+    """Test accessing typed cards list."""
     md = (
         "---\nQUILL: my_quill\ntitle: Main\n---\n\nGlobal body.\n\n"
-        "```leaf\nKIND: note\nfoo: bar\n```\n\nLeaf body.\n"
+        "```card\nKIND: note\nfoo: bar\n```\n\nCard body.\n"
     )
     doc = Document.from_markdown(md)
-    assert len(doc.leaves) == 1
-    leaf = doc.leaves[0]
-    assert leaf["tag"] == "note"
-    assert leaf["fields"]["foo"] == "bar"
-    assert "Leaf body." in leaf["body"]
+    assert len(doc.cards) == 1
+    card = doc.cards[0]
+    assert card["tag"] == "note"
+    assert card["fields"]["foo"] == "bar"
+    assert "Card body." in card["body"]
 
 
-def test_leaves_empty_when_none():
-    """Test that leaves is an empty list when no leaves present."""
+def test_cards_empty_when_none():
+    """Test that cards is an empty list when no cards present."""
     md = "---\nQUILL: taro\nauthor: Test\ntitle: Test\nice_cream: Vanilla\n---\n\nBody.\n"
     doc = Document.from_markdown(md)
-    assert doc.leaves == []
+    assert doc.cards == []
 
 
 def test_quill_ref(taro_md):

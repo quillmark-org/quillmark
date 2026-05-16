@@ -6,7 +6,7 @@ For the authoritative grammar, fence-detection rules, normalization, and limits,
 
 ## Foundation
 
-Body content (the prose between frontmatter and any [leaf](leaves.md), and inside each leaf) is parsed as CommonMark 0.31.2. Headings, emphasis, links, lists, code blocks, blockquotes, thematic breaks, and inline code all behave exactly as the [CommonMark spec](https://spec.commonmark.org/0.31.2/) defines them.
+Body content (the prose between frontmatter and any [card](cards.md), and inside each card) is parsed as CommonMark 0.31.2. Headings, emphasis, links, lists, code blocks, blockquotes, thematic breaks, and inline code all behave exactly as the [CommonMark spec](https://spec.commonmark.org/0.31.2/) defines them.
 
 For the conventional syntax of these elements, refer to:
 
@@ -63,9 +63,9 @@ Some constructs (like link titles) are accepted by the parser but may be dropped
 Quillmark uses `---` to delimit [frontmatter](yaml-frontmatter.md) at the top
 of a document. Mid-document `---` is a CommonMark thematic break — it no
 longer opens a metadata fence. Inline structured records use a different
-syntax; see [Leaves](leaves.md).
+syntax; see [Cards](cards.md).
 
 ## Next steps
 
 - [YAML Frontmatter](yaml-frontmatter.md)
-- [Leaves](leaves.md)
+- [Cards](cards.md)

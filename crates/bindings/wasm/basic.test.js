@@ -37,17 +37,17 @@ describe('Document.fromMarkdown', () => {
     expect(doc.quillRef).toBe('test_quill')
   })
 
-  it('should expose typed frontmatter (no QUILL/BODY/LEAVES)', () => {
+  it('should expose typed frontmatter (no QUILL/BODY/CARDS)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
     expect(doc.main.frontmatter).toBeDefined()
     expect(doc.main.frontmatter instanceof Object).toBe(true)
     expect(doc.main.frontmatter.title).toBe('Test Document')
     expect(doc.main.frontmatter.author).toBe('Test Author')
-    // QUILL, BODY, LEAVES must NOT appear in frontmatter
+    // QUILL, BODY, CARDS must NOT appear in frontmatter
     expect(doc.main.frontmatter.QUILL).toBeUndefined()
     expect(doc.main.frontmatter.BODY).toBeUndefined()
-    expect(doc.main.frontmatter.LEAVES).toBeUndefined()
+    expect(doc.main.frontmatter.CARDS).toBeUndefined()
   })
 
   it('should expose body as a string', () => {
@@ -57,33 +57,33 @@ describe('Document.fromMarkdown', () => {
     expect(doc.main.body).toContain('Hello World')
   })
 
-  it('should expose leaves as an array', () => {
+  it('should expose cards as an array', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
-    expect(Array.isArray(doc.leaves)).toBe(true)
-    expect(doc.leaves.length).toBe(0)
+    expect(Array.isArray(doc.cards)).toBe(true)
+    expect(doc.cards.length).toBe(0)
   })
 
-  it('should expose leaf fields and body', () => {
+  it('should expose card fields and body', () => {
     const md = `---
 QUILL: test_quill
 ---
 
 Global body.
 
-\`\`\`leaf
+\`\`\`card
 KIND: note
 foo: bar
 \`\`\`
 
-Leaf body.
+Card body.
 `
     const doc = Document.fromMarkdown(md)
 
-    expect(doc.leaves.length).toBe(1)
-    expect(doc.leaves[0].tag).toBe('note')
-    expect(doc.leaves[0].frontmatter.foo).toBe('bar')
-    expect(doc.leaves[0].body).toContain('Leaf body.')
+    expect(doc.cards.length).toBe(1)
+    expect(doc.cards[0].tag).toBe('note')
+    expect(doc.cards[0].frontmatter.foo).toBe('bar')
+    expect(doc.cards[0].body).toContain('Card body.')
   })
 
   it('should expose warnings array', () => {
@@ -145,11 +145,11 @@ This document has no QUILL tag.`
 describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse', () => {
   it('general round-trip: mutated document survives emit → re-parse', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    const originalLeafCount = doc.leaves.length  // 0 for TEST_MARKDOWN
+    const originalCardCount = doc.cards.length  // 0 for TEST_MARKDOWN
 
     // Mutate
     doc.setField('title', 'New Title')
-    doc.pushLeaf({ tag: 'note', fields: { author: 'Alice' }, body: 'Hello' })
+    doc.pushCard({ tag: 'note', fields: { author: 'Alice' }, body: 'Hello' })
     doc.replaceBody('Updated body')
 
     // Emit
@@ -159,18 +159,18 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
 
     // Re-parse and assert structure survives.
     //
-    // Note on trailing newlines: the global body is followed by a leaf fence,
+    // Note on trailing newlines: the global body is followed by a card fence,
     // so the wire format inserts a line terminator + F2 blank line between
     // them (`Updated body\n\n---`). On re-parse the F2 blank is stripped but
-    // the terminator stays, so `doc2.main.body === 'Updated body\n'`. The leaf
+    // the terminator stays, so `doc2.main.body === 'Updated body\n'`. The card
     // body is at EOF and has no F2 separator, so it survives byte-for-byte.
     const doc2 = Document.fromMarkdown(emitted)
     expect(doc2.main.frontmatter.title).toBe('New Title')
     expect(doc2.main.body).toBe('Updated body\n')
-    expect(doc2.leaves.length).toBe(originalLeafCount + 1)
-    expect(doc2.leaves[0].tag).toBe('note')
-    expect(doc2.leaves[0].frontmatter.author).toBe('Alice')
-    expect(doc2.leaves[0].body).toBe('Hello')
+    expect(doc2.cards.length).toBe(originalCardCount + 1)
+    expect(doc2.cards[0].tag).toBe('note')
+    expect(doc2.cards[0].frontmatter.author).toBe('Alice')
+    expect(doc2.cards[0].body).toBe('Hello')
   })
 
   it('ambiguous-string survival: YAML-keyword values are preserved as strings', () => {
@@ -330,9 +330,9 @@ describe('Document editor surface — setField / removeField', () => {
     expect(() => doc.setField('BODY', 'x')).toThrow(/ReservedName/)
   })
 
-  it('setField throws EditError::ReservedName for LEAVES', () => {
+  it('setField throws EditError::ReservedName for CARDS', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.setField('LEAVES', [])).toThrow(/ReservedName/)
+    expect(() => doc.setField('CARDS', [])).toThrow(/ReservedName/)
   })
 
   it('setField throws EditError::ReservedName for QUILL', () => {
@@ -367,9 +367,9 @@ describe('Document editor surface — setField / removeField', () => {
     expect(() => doc.removeField('QUILL')).toThrow(/ReservedName/)
   })
 
-  it('removeField throws EditError::ReservedName for BODY/LEAVES/KIND', () => {
+  it('removeField throws EditError::ReservedName for BODY/CARDS/KIND', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    for (const reserved of ['BODY', 'LEAVES', 'KIND']) {
+    for (const reserved of ['BODY', 'CARDS', 'KIND']) {
       expect(() => doc.removeField(reserved)).toThrow(/ReservedName/)
     }
   })
@@ -399,114 +399,114 @@ describe('Document editor surface — setQuillRef / replaceBody', () => {
   })
 })
 
-describe('Document editor surface — leaf mutations', () => {
-  const MD_WITH_LEAVES = `---
+describe('Document editor surface — card mutations', () => {
+  const MD_WITH_CARDS = `---
 QUILL: test_quill
 ---
 
 Body.
 
-\`\`\`leaf
+\`\`\`card
 KIND: note
 foo: bar
 \`\`\`
 
-Leaf one.
+Card one.
 
-\`\`\`leaf
+\`\`\`card
 KIND: summary
 \`\`\`
 
-Leaf two.
+Card two.
 `
 
-  it('pushLeaf appends a leaf', () => {
+  it('pushCard appends a card', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.pushLeaf({ tag: 'note', fields: {}, body: 'My leaf.' })
-    expect(doc.leaves.length).toBe(1)
-    expect(doc.leaves[0].tag).toBe('note')
-    expect(doc.leaves[0].body).toBe('My leaf.')
+    doc.pushCard({ tag: 'note', fields: {}, body: 'My card.' })
+    expect(doc.cards.length).toBe(1)
+    expect(doc.cards[0].tag).toBe('note')
+    expect(doc.cards[0].body).toBe('My card.')
   })
 
-  it('pushLeaf throws on invalid tag', () => {
+  it('pushCard throws on invalid tag', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.pushLeaf({ tag: 'BadTag' })).toThrow(/InvalidTagName/)
+    expect(() => doc.pushCard({ tag: 'BadTag' })).toThrow(/InvalidTagName/)
   })
 
-  it('insertLeaf inserts at specified index', () => {
-    const doc = Document.fromMarkdown(MD_WITH_LEAVES)
-    doc.insertLeaf(0, { tag: 'intro' })
-    expect(doc.leaves[0].tag).toBe('intro')
-    expect(doc.leaves[1].tag).toBe('note')
+  it('insertCard inserts at specified index', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARDS)
+    doc.insertCard(0, { tag: 'intro' })
+    expect(doc.cards[0].tag).toBe('intro')
+    expect(doc.cards[1].tag).toBe('note')
   })
 
-  it('insertLeaf throws IndexOutOfRange when index > len', () => {
-    const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 leaves
-    expect(() => doc.insertLeaf(5, { tag: 'note' })).toThrow(/IndexOutOfRange/)
+  it('insertCard throws IndexOutOfRange when index > len', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
+    expect(() => doc.insertCard(5, { tag: 'note' })).toThrow(/IndexOutOfRange/)
   })
 
-  it('removeLeaf removes and returns the leaf', () => {
-    const doc = Document.fromMarkdown(MD_WITH_LEAVES)
-    const removed = doc.removeLeaf(0)
+  it('removeCard removes and returns the card', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARDS)
+    const removed = doc.removeCard(0)
     expect(removed).toBeDefined()
     expect(removed.tag).toBe('note')
-    expect(doc.leaves.length).toBe(1)
-    expect(doc.leaves[0].tag).toBe('summary')
+    expect(doc.cards.length).toBe(1)
+    expect(doc.cards[0].tag).toBe('summary')
   })
 
-  it('removeLeaf returns undefined when out of range', () => {
+  it('removeCard returns undefined when out of range', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(doc.removeLeaf(0)).toBeUndefined()
+    expect(doc.removeCard(0)).toBeUndefined()
   })
 
-  it('moveLeaf swaps positions correctly', () => {
-    const doc = Document.fromMarkdown(MD_WITH_LEAVES)
-    doc.moveLeaf(1, 0) // summary → front
-    expect(doc.leaves[0].tag).toBe('summary')
-    expect(doc.leaves[1].tag).toBe('note')
+  it('moveCard swaps positions correctly', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARDS)
+    doc.moveCard(1, 0) // summary → front
+    expect(doc.cards[0].tag).toBe('summary')
+    expect(doc.cards[1].tag).toBe('note')
   })
 
-  it('moveLeaf no-op when from == to', () => {
-    const doc = Document.fromMarkdown(MD_WITH_LEAVES)
-    doc.moveLeaf(0, 0)
-    expect(doc.leaves[0].tag).toBe('note')
+  it('moveCard no-op when from == to', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARDS)
+    doc.moveCard(0, 0)
+    expect(doc.cards[0].tag).toBe('note')
   })
 
-  it('moveLeaf throws IndexOutOfRange on out-of-range index', () => {
-    const doc = Document.fromMarkdown(MD_WITH_LEAVES) // 2 leaves
-    expect(() => doc.moveLeaf(5, 0)).toThrow(/IndexOutOfRange/)
+  it('moveCard throws IndexOutOfRange on out-of-range index', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARDS) // 2 cards
+    expect(() => doc.moveCard(5, 0)).toThrow(/IndexOutOfRange/)
   })
 
-  it('setLeafKind renames the tag in place', () => {
-    const doc = Document.fromMarkdown(MD_WITH_LEAVES)
-    doc.setLeafKind(0, 'annotation')
-    expect(doc.leaves[0].tag).toBe('annotation')
+  it('setCardKind renames the tag in place', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARDS)
+    doc.setCardKind(0, 'annotation')
+    expect(doc.cards[0].tag).toBe('annotation')
     // Frontmatter preserved across rename.
-    expect(doc.leaves[0].frontmatter).toBeDefined()
+    expect(doc.cards[0].frontmatter).toBeDefined()
   })
 
-  it('setLeafKind throws InvalidTagName for empty/uppercase/dashed tags', () => {
-    const doc = Document.fromMarkdown(MD_WITH_LEAVES)
+  it('setCardKind throws InvalidTagName for empty/uppercase/dashed tags', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARDS)
     for (const bad of ['', 'BadTag', 'with-dash']) {
-      expect(() => doc.setLeafKind(0, bad)).toThrow(/InvalidTagName/)
+      expect(() => doc.setCardKind(0, bad)).toThrow(/InvalidTagName/)
     }
   })
 
-  it('setLeafKind throws IndexOutOfRange when index >= len', () => {
-    const doc = Document.fromMarkdown(MD_WITH_LEAVES) // 2 leaves
-    expect(() => doc.setLeafKind(5, 'annotation')).toThrow(/IndexOutOfRange/)
+  it('setCardKind throws IndexOutOfRange when index >= len', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARDS) // 2 cards
+    expect(() => doc.setCardKind(5, 'annotation')).toThrow(/IndexOutOfRange/)
   })
 
-  it('leafCount reports composable leaf count without allocating', () => {
+  it('cardCount reports composable card count without allocating', () => {
     const empty = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(empty.leafCount).toBe(0)
+    expect(empty.cardCount).toBe(0)
 
-    const two = Document.fromMarkdown(MD_WITH_LEAVES)
-    expect(two.leafCount).toBe(2)
-    two.pushLeaf({ tag: 'extra' })
-    expect(two.leafCount).toBe(3)
-    two.removeLeaf(0)
-    expect(two.leafCount).toBe(2)
+    const two = Document.fromMarkdown(MD_WITH_CARDS)
+    expect(two.cardCount).toBe(2)
+    two.pushCard({ tag: 'extra' })
+    expect(two.cardCount).toBe(3)
+    two.removeCard(0)
+    expect(two.cardCount).toBe(2)
   })
 })
 
@@ -537,10 +537,10 @@ describe('Document.equals', () => {
     expect(a.equals(b)).toBe(false)
   })
 
-  it('returns false after pushing a leaf', () => {
+  it('returns false after pushing a card', () => {
     const a = Document.fromMarkdown(TEST_MARKDOWN)
     const b = Document.fromMarkdown(TEST_MARKDOWN)
-    b.pushLeaf({ tag: 'note' })
+    b.pushCard({ tag: 'note' })
     expect(a.equals(b)).toBe(false)
   })
 
@@ -551,63 +551,63 @@ describe('Document.equals', () => {
   })
 })
 
-describe('Document editor surface — updateLeafField / updateLeafBody', () => {
-  const MD_WITH_LEAF = `---
+describe('Document editor surface — updateCardField / updateCardBody', () => {
+  const MD_WITH_CARD = `---
 QUILL: test_quill
 ---
 
 Body.
 
-\`\`\`leaf
+\`\`\`card
 KIND: note
 foo: bar
 \`\`\`
 
-Leaf body.
+Card body.
 `
 
-  it('updateLeafField sets a field on a leaf', () => {
-    const doc = Document.fromMarkdown(MD_WITH_LEAF)
-    doc.updateLeafField(0, 'content', 'hello')
-    expect(doc.leaves[0].frontmatter.content).toBe('hello')
+  it('updateCardField sets a field on a card', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARD)
+    doc.updateCardField(0, 'content', 'hello')
+    expect(doc.cards[0].frontmatter.content).toBe('hello')
   })
 
-  it('updateLeafField throws EditError::ReservedName for BODY', () => {
-    const doc = Document.fromMarkdown(MD_WITH_LEAF)
-    expect(() => doc.updateLeafField(0, 'BODY', 'x')).toThrow(/ReservedName/)
+  it('updateCardField throws EditError::ReservedName for BODY', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARD)
+    expect(() => doc.updateCardField(0, 'BODY', 'x')).toThrow(/ReservedName/)
   })
 
-  it('updateLeafField throws IndexOutOfRange when leaf absent', () => {
-    const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 leaves
-    expect(() => doc.updateLeafField(0, 'title', 'x')).toThrow(/IndexOutOfRange/)
+  it('updateCardField throws IndexOutOfRange when card absent', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
+    expect(() => doc.updateCardField(0, 'title', 'x')).toThrow(/IndexOutOfRange/)
   })
 
-  it('removeLeafField returns the removed value and deletes the key', () => {
-    const doc = Document.fromMarkdown(MD_WITH_LEAF)
-    const removed = doc.removeLeafField(0, 'foo')
+  it('removeCardField returns the removed value and deletes the key', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARD)
+    const removed = doc.removeCardField(0, 'foo')
     expect(removed).toBe('bar')
-    expect('foo' in doc.leaves[0].frontmatter).toBe(false)
+    expect('foo' in doc.cards[0].frontmatter).toBe(false)
   })
 
-  it('removeLeafField returns undefined when field absent', () => {
-    const doc = Document.fromMarkdown(MD_WITH_LEAF)
-    expect(doc.removeLeafField(0, 'nonexistent')).toBeUndefined()
+  it('removeCardField returns undefined when field absent', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARD)
+    expect(doc.removeCardField(0, 'nonexistent')).toBeUndefined()
   })
 
-  it('removeLeafField throws IndexOutOfRange when leaf absent', () => {
-    const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 leaves
-    expect(() => doc.removeLeafField(0, 'foo')).toThrow(/IndexOutOfRange/)
+  it('removeCardField throws IndexOutOfRange when card absent', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
+    expect(() => doc.removeCardField(0, 'foo')).toThrow(/IndexOutOfRange/)
   })
 
-  it('updateLeafBody replaces leaf body', () => {
-    const doc = Document.fromMarkdown(MD_WITH_LEAF)
-    doc.updateLeafBody(0, 'New leaf body.')
-    expect(doc.leaves[0].body).toBe('New leaf body.')
+  it('updateCardBody replaces card body', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARD)
+    doc.updateCardBody(0, 'New card body.')
+    expect(doc.cards[0].body).toBe('New card body.')
   })
 
-  it('updateLeafBody throws IndexOutOfRange when leaf absent', () => {
-    const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 leaves
-    expect(() => doc.updateLeafBody(0, 'x')).toThrow(/IndexOutOfRange/)
+  it('updateCardBody throws IndexOutOfRange when card absent', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
+    expect(() => doc.updateCardBody(0, 'x')).toThrow(/IndexOutOfRange/)
   })
 })
 
@@ -618,15 +618,15 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
     // Mutate
     doc.setField('author', 'Bob')
     doc.replaceBody('New body text.')
-    doc.pushLeaf({ tag: 'note', body: 'Leaf content.' })
+    doc.pushCard({ tag: 'note', body: 'Card content.' })
     doc.setQuillRef('updated_quill')
 
     // Assert state
     expect(doc.main.frontmatter.author).toBe('Bob')
     expect(doc.main.body).toBe('New body text.')
-    expect(doc.leaves.length).toBe(1)
-    expect(doc.leaves[0].tag).toBe('note')
-    expect(doc.leaves[0].body).toBe('Leaf content.')
+    expect(doc.cards.length).toBe(1)
+    expect(doc.cards[0].tag).toBe('note')
+    expect(doc.cards[0].body).toBe('Card content.')
     expect(doc.quillRef).toBe('updated_quill')
 
     // Original title still present
@@ -696,14 +696,13 @@ describe('quill.metadata', () => {
   plate_file: plate.typ
   description: Metadata test
 
-main:
-  description: The main leaf schema
-  fields:
-    title:
-      type: string
-      description: The title
-
-leaf_kinds:
+cards:
+  main:
+    description: The main card schema
+    fields:
+      title:
+        type: string
+        description: The title
   indorsement:
     description: Indorsement
     fields:
@@ -730,13 +729,15 @@ leaf_kinds:
     expect(meta.schema).toBeUndefined()
 
     // schema: structure + ui hints. QUILL/KIND sentinels with const values.
+    // The schema is a single `cards` map that includes the `main` entry.
     const schema = quill.schema
-    expect(schema.main.description).toBe('The main leaf schema')
-    expect(schema.main.fields.title).toBeDefined()
-    expect(schema.main.fields.QUILL.const).toBe('meta_test_quill@0.2.1')
-    expect(schema.leaf_kinds.main).toBeUndefined()
-    expect(schema.leaf_kinds.indorsement.fields.signature_block).toBeDefined()
-    expect(schema.leaf_kinds.indorsement.fields.KIND.const).toBe('indorsement')
+    expect(schema.cards.main).toBeDefined()
+    expect(schema.cards.main.fields).toBeDefined()
+    expect(schema.cards.main.description).toBe('The main card schema')
+    expect(schema.cards.main.fields.title).toBeDefined()
+    expect(schema.cards.main.fields.QUILL.const).toBe('meta_test_quill@0.2.1')
+    expect(schema.cards.indorsement.fields.signature_block).toBeDefined()
+    expect(schema.cards.indorsement.fields.KIND.const).toBe('indorsement')
   })
 
   it('metadata and schema are JSON.stringify-able (plain objects)', () => {
@@ -747,7 +748,7 @@ leaf_kinds:
     const meta = JSON.parse(JSON.stringify(quill.metadata))
     expect(meta.name).toBe('meta_test_quill')
     const schema = JSON.parse(JSON.stringify(quill.schema))
-    expect(schema.main.fields.QUILL.const).toBe('meta_test_quill@0.2.1')
+    expect(schema.cards.main.fields.QUILL.const).toBe('meta_test_quill@0.2.1')
   })
 })
 
@@ -782,7 +783,7 @@ describe('Document.clone', () => {
 })
 
 // ---------------------------------------------------------------------------
-// quill.form / blank_main / blank_leaf — schema-aware form view
+// quill.form / blank_main / blank_card — schema-aware form view
 // NOTE: These tests cannot run in the devcontainer (no wasm-pack / browser
 //       runtime available).  They are written to run in CI where the WASM
 //       bundle is built by wasm-pack and loaded into a vitest/jsdom context.
@@ -795,15 +796,14 @@ describe('quill.form', () => {
   backend: typst
   description: Smoke test for form
 
-main:
-  fields:
-    title:
-      type: string
-      default: "Untitled"
-    count:
-      type: integer
-
-leaf_kinds:
+cards:
+  main:
+    fields:
+      title:
+        type: string
+        default: "Untitled"
+      count:
+        type: integer
   note:
     fields:
       body:
@@ -819,7 +819,7 @@ title: "Hello"
 ---
 `
 
-  it('form returns a plain object with main, leaves, diagnostics', () => {
+  it('form returns a plain object with main, cards, diagnostics', () => {
     const engine = new Quillmark()
     const quill = engine.quill(makeQuill({ name: 'form_smoke_test', quillYaml: QUILL_YAML }))
     const doc = Document.fromMarkdown(MD_WITH_TITLE)
@@ -829,9 +829,9 @@ title: "Hello"
     expect(typeof form).toBe('object')
     expect(form).not.toBeNull()
     expect('main' in form).toBe(true)
-    expect('leaves' in form).toBe(true)
+    expect('cards' in form).toBe(true)
     expect('diagnostics' in form).toBe(true)
-    expect(Array.isArray(form.leaves)).toBe(true)
+    expect(Array.isArray(form.cards)).toBe(true)
     expect(Array.isArray(form.diagnostics)).toBe(true)
   })
 
@@ -868,7 +868,7 @@ title: "Hello"
     expect(parsed.main.values.title.source).toBe('document')
   })
 
-  it('blankMain returns a leaf with no document values', () => {
+  it('blankMain returns a card with no document values', () => {
     const engine = new Quillmark()
     const quill = engine.quill(makeQuill({ name: 'form_smoke_test', quillYaml: QUILL_YAML }))
 
@@ -886,11 +886,11 @@ title: "Hello"
     expect(blank.values.count.default).toBeNull()
   })
 
-  it('blankLeaf returns a leaf for a known type', () => {
+  it('blankCard returns a card for a known type', () => {
     const engine = new Quillmark()
     const quill = engine.quill(makeQuill({ name: 'form_smoke_test', quillYaml: QUILL_YAML }))
 
-    const blank = quill.blankLeaf('note')
+    const blank = quill.blankCard('note')
 
     expect(blank).not.toBeNull()
     expect(blank.values.body.source).toBe('default')
@@ -898,10 +898,10 @@ title: "Hello"
     expect(blank.values.tag.source).toBe('missing')
   })
 
-  it('blankLeaf returns null for an unknown type', () => {
+  it('blankCard returns null for an unknown type', () => {
     const engine = new Quillmark()
     const quill = engine.quill(makeQuill({ name: 'form_smoke_test', quillYaml: QUILL_YAML }))
 
-    expect(quill.blankLeaf('does_not_exist')).toBeNull()
+    expect(quill.blankCard('does_not_exist')).toBeNull()
   })
 })
