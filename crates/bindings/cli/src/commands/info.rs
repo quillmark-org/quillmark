@@ -1,6 +1,6 @@
+use crate::commands::load_quill;
 use crate::errors::{CliError, Result};
 use clap::Parser;
-use quillmark::Quillmark;
 use std::path::PathBuf;
 
 /// Standard metadata keys that are surfaced as top-level fields in the output.
@@ -19,17 +19,7 @@ pub struct InfoArgs {
 }
 
 pub fn execute(args: InfoArgs) -> Result<()> {
-    // Validate quill path exists
-    if !args.quill_path.exists() {
-        return Err(CliError::InvalidArgument(format!(
-            "Quill directory not found: {}",
-            args.quill_path.display()
-        )));
-    }
-
-    // Load Quill
-    let engine = Quillmark::new();
-    let quill = engine.quill_from_path(&args.quill_path)?;
+    let quill = load_quill(&args.quill_path)?;
 
     if args.json {
         print_json(&quill)?;

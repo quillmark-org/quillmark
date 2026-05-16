@@ -99,8 +99,6 @@ impl QuillSource {
 
         let source = QuillSource {
             metadata,
-            name: config.name.clone(),
-            backend_id: config.backend.clone(),
             plate: plate_content,
             config,
             files: root,

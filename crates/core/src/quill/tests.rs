@@ -247,7 +247,7 @@ quill:
     let quill = load_from_path(quill_dir).unwrap();
 
     // Test that name comes from YAML, not directory
-    assert_eq!(quill.name, "my_custom_quill");
+    assert_eq!(quill.name(), "my_custom_quill");
 
     // Test that backend is in metadata
     assert!(quill.metadata.contains_key("backend"));
@@ -308,7 +308,7 @@ fn test_from_tree() {
     let quill = QuillSource::from_tree(root).unwrap();
 
     // Validate the quill
-    assert_eq!(quill.name, "test_from_tree");
+    assert_eq!(quill.name(), "test_from_tree");
     assert_eq!(quill.plate.unwrap(), plate_content);
     assert!(quill.metadata.contains_key("backend"));
     assert!(quill.metadata.contains_key("description"));
@@ -353,7 +353,7 @@ fn test_from_tree_structure_direct() {
 
     let quill = QuillSource::from_tree(root).unwrap();
 
-    assert_eq!(quill.name, "direct_tree");
+    assert_eq!(quill.name(), "direct_tree");
     assert!(quill.file_exists("src/main.rs"));
     assert!(quill.file_exists("plate.typ"));
 }
@@ -626,7 +626,7 @@ fn test_quill_without_plate_file() {
 
     // Validate that plate is null (will use auto plate)
     assert!(quill.plate.clone().is_none());
-    assert_eq!(quill.name, "test_no_plate");
+    assert_eq!(quill.name(), "test_no_plate");
 }
 
 #[test]

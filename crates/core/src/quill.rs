@@ -33,8 +33,6 @@ use crate::value::QuillValue;
 #[derive(Clone)]
 pub struct QuillSource {
     pub(crate) metadata: HashMap<String, QuillValue>,
-    pub(crate) name: String,
-    pub(crate) backend_id: String,
     pub(crate) plate: Option<String>,
     pub(crate) config: QuillConfig,
     pub(crate) files: FileTreeNode,
@@ -43,12 +41,12 @@ pub struct QuillSource {
 impl QuillSource {
     /// The quill's declared name.
     pub fn name(&self) -> &str {
-        &self.name
+        &self.config.name
     }
 
     /// The backend identifier declared in Quill.yaml (e.g. `"typst"`).
     pub fn backend_id(&self) -> &str {
-        &self.backend_id
+        &self.config.backend
     }
 
     /// Quill-specific metadata parsed from Quill.yaml.
@@ -75,8 +73,8 @@ impl QuillSource {
 impl std::fmt::Debug for QuillSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("QuillSource")
-            .field("name", &self.name)
-            .field("backend_id", &self.backend_id)
+            .field("name", &self.config.name)
+            .field("backend_id", &self.config.backend)
             .field(
                 "plate",
                 &self.plate.as_ref().map(|s| format!("<{} bytes>", s.len())),

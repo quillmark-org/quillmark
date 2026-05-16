@@ -1,6 +1,6 @@
+use crate::commands::load_quill;
 use crate::errors::{CliError, Result};
 use clap::Parser;
-use quillmark::Quillmark;
 use std::fs;
 use std::path::PathBuf;
 
@@ -16,17 +16,7 @@ pub struct SchemaArgs {
 }
 
 pub fn execute(args: SchemaArgs) -> Result<()> {
-    // Validate quill path exists
-    if !args.quill.exists() {
-        return Err(CliError::InvalidArgument(format!(
-            "Quill directory not found: {}",
-            args.quill.display()
-        )));
-    }
-
-    // Load Quill
-    let engine = Quillmark::new();
-    let quill = engine.quill_from_path(&args.quill)?;
+    let quill = load_quill(&args.quill)?;
 
     let config = quill.source().config();
     let schema_yaml = config
