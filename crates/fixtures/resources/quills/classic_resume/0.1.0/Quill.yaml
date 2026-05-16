@@ -25,7 +25,7 @@ main:
         group: Personal Info
       description: List of contact details (email, phone, links, etc.)
 
-card_types:
+card_kinds:
   experience_section:
     description: An entry with a heading, subheading, and bullet points.
     ui:

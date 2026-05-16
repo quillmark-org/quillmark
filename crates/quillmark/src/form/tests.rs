@@ -143,7 +143,7 @@ main:
     title:
       type: string
 
-card_types:
+card_kinds:
   known_card:
     fields:
       note:
@@ -190,7 +190,7 @@ main:
     title:
       type: string
 
-card_types:
+card_kinds:
   indorsement:
     fields:
       signature_block:
@@ -422,7 +422,7 @@ main:
     title:
       type: string
 
-card_types:
+card_kinds:
   indorsement:
     fields:
       office:
@@ -435,7 +435,7 @@ card_types:
 
     let blank = quill
         .blank_card("indorsement")
-        .expect("known card type should yield a FormCard");
+        .expect("known card kind should yield a FormCard");
 
     assert_eq!(blank.schema.name, "indorsement");
 
@@ -465,7 +465,7 @@ main:
     title:
       type: string
 
-card_types:
+card_kinds:
   known:
     fields:
       x:

@@ -25,9 +25,9 @@ pub struct QuillConfig {
     pub description: String,
     /// The entry-point card schema (parsed from the Quill.yaml `main:` section).
     pub main: CardSchema,
-    /// Named, composable card-type schemas (parsed from the Quill.yaml
-    /// `card_types:` section). Does not include `main`.
-    pub card_types: Vec<CardSchema>,
+    /// Named, composable card-kind schemas (parsed from the Quill.yaml
+    /// `card_kinds:` section). Does not include `main`.
+    pub card_kinds: Vec<CardSchema>,
     /// Backend to use for rendering (e.g., "typst", "html")
     pub backend: String,
     /// Version of the Quillmark spec
@@ -66,15 +66,15 @@ pub enum CoercionError {
 }
 
 impl QuillConfig {
-    /// Returns a named card-type schema by name.
-    pub fn card_type(&self, name: &str) -> Option<&CardSchema> {
-        self.card_types.iter().find(|card| card.name == name)
+    /// Returns a named card-kind schema by name.
+    pub fn card_kind(&self, name: &str) -> Option<&CardSchema> {
+        self.card_kinds.iter().find(|card| card.name == name)
     }
 
     /// Full schema including `ui` hints.
     ///
     /// `main.fields` is prefixed with a required `QUILL` entry (`const = name@version`);
-    /// each `card_types[<name>].fields` is prefixed with a required `CARD` entry
+    /// each `card_kinds[<name>].fields` is prefixed with a required `CARD` entry
     /// (`const = <name>`). Identity (`name`, `version`, etc.) lives elsewhere
     /// on the host's metadata surface.
     pub fn schema(&self) -> serde_json::Value {
@@ -91,9 +91,9 @@ impl QuillConfig {
         );
         obj.insert("main".to_string(), main_value);
 
-        if !self.card_types.is_empty() {
-            let card_types: BTreeMap<String, serde_json::Value> = self
-                .card_types
+        if !self.card_kinds.is_empty() {
+            let card_kinds: BTreeMap<String, serde_json::Value> = self
+                .card_kinds
                 .iter()
                 .map(|card| {
                     let mut card_value =
@@ -102,14 +102,14 @@ impl QuillConfig {
                         &mut card_value,
                         "CARD",
                         &card.name,
-                        "Card type name. Must match the card kind in the card block's ```card <kind>``` info string.",
+                        "Card kind name. Must match the card kind in the card block's ```card <kind>``` info string.",
                     );
                     (card.name.clone(), card_value)
                 })
                 .collect();
             obj.insert(
-                "card_types".to_string(),
-                serde_json::to_value(&card_types).unwrap_or(serde_json::Value::Null),
+                "card_kinds".to_string(),
+                serde_json::to_value(&card_kinds).unwrap_or(serde_json::Value::Null),
             );
         }
 
@@ -164,13 +164,13 @@ impl QuillConfig {
         card_tag: &str,
         fields: &IndexMap<String, QuillValue>,
     ) -> Result<IndexMap<String, QuillValue>, CoercionError> {
-        let Some(card_schema) = self.card_type(card_tag) else {
+        let Some(card_schema) = self.card_kind(card_tag) else {
             return Ok(fields.clone());
         };
         let mut coerced: IndexMap<String, QuillValue> = IndexMap::new();
         for (field_name, field_value) in fields {
             if let Some(field_schema) = card_schema.fields.get(field_name) {
-                let path = format!("card_types.{card_tag}.{field_name}");
+                let path = format!("card_kinds.{card_tag}.{field_name}");
                 coerced.insert(
                     field_name.clone(),
                     Self::coerce_value_strict(field_value, field_schema, &path)?,
@@ -962,14 +962,14 @@ impl QuillConfig {
             }
         }
 
-        // Reject unknown top-level sections. Known sections are: quill, main, card_types,
+        // Reject unknown top-level sections. Known sections are: quill, main, card_kinds,
         // and the backend name (e.g. typst). Everything else is a mistake. `fields` gets
         // a targeted hint since it's the most common shape mistake.
         if let Some(top_obj) = quill_yaml_val.as_object() {
             for key in top_obj.keys() {
                 let is_known = key == "quill"
                     || key == "main"
-                    || key == "card_types"
+                    || key == "card_kinds"
                     || (!backend.is_empty() && key == &backend);
                 if is_known {
                     continue;
@@ -988,7 +988,7 @@ impl QuillConfig {
                     )
                 } else {
                     diag.with_hint(format!(
-                        "Valid top-level sections are: quill, main, card_types{}",
+                        "Valid top-level sections are: quill, main, card_kinds{}",
                         if backend.is_empty() {
                             String::new()
                         } else {
@@ -1068,7 +1068,7 @@ impl QuillConfig {
         };
 
         // Extract main.description (optional, authored under `main:` like any
-        // other card type). This is independent of `quill.description`.
+        // other card kind). This is independent of `quill.description`.
         let main_description = main_obj_opt
             .and_then(|main_obj| main_obj.get("description"))
             .and_then(|v| v.as_str())
@@ -1084,27 +1084,27 @@ impl QuillConfig {
             body: main_body,
         };
 
-        // Extract [card_types] section (optional)
-        let mut card_types: Vec<CardSchema> = Vec::new();
-        if let Some(card_types_val) = quill_yaml_val.get("card_types") {
-            match card_types_val.as_object() {
+        // Extract [card_kinds] section (optional)
+        let mut card_kinds: Vec<CardSchema> = Vec::new();
+        if let Some(card_kinds_val) = quill_yaml_val.get("card_kinds") {
+            match card_kinds_val.as_object() {
                 None => {
                     errors.push(
                         Diagnostic::new(
                             Severity::Error,
-                            "'card_types' section must be an object (mapping of type names to schemas)".to_string(),
+                            "'card_kinds' section must be an object (mapping of type names to schemas)".to_string(),
                         )
-                        .with_code("quill::invalid_card_types".to_string()),
+                        .with_code("quill::invalid_card_kinds".to_string()),
                     );
                 }
-                Some(card_types_table) => {
-                    for (card_name, card_value) in card_types_table {
+                Some(card_kinds_table) => {
+                    for (card_name, card_value) in card_kinds_table {
                         if !Self::is_valid_card_identifier(card_name) {
                             errors.push(
                                 Diagnostic::new(
                                     Severity::Error,
                                     format!(
-                                        "Invalid card-type name '{}': names must match \
+                                        "Invalid card-kind name '{}': names must match \
                                          [a-z_][a-z0-9_]* (lowercase letters, digits, and underscores only).",
                                         card_name
                                     ),
@@ -1123,7 +1123,7 @@ impl QuillConfig {
                                         Diagnostic::new(
                                             Severity::Error,
                                             format!(
-                                                "Failed to parse card_type '{}': {}",
+                                                "Failed to parse card_kind '{}': {}",
                                                 card_name, e
                                             ),
                                         )
@@ -1142,7 +1142,7 @@ impl QuillConfig {
                             Self::parse_fields_with_order(
                                 card_fields_table,
                                 &card_field_order,
-                                &format!("card_type '{}' field", card_name),
+                                &format!("card_kind '{}' field", card_name),
                                 &mut errors,
                             )
                         } else {
@@ -1151,10 +1151,10 @@ impl QuillConfig {
 
                         Self::validate_description_singleline(
                             card_def.description.as_deref(),
-                            &format!("card_type '{}'", card_name),
+                            &format!("card_kind '{}'", card_name),
                             &mut errors,
                         );
-                        card_types.push(CardSchema {
+                        card_kinds.push(CardSchema {
                             name: card_name.clone(),
                             description: card_def.description,
                             fields: card_fields,
@@ -1193,8 +1193,8 @@ impl QuillConfig {
         if let Some(d) = warn_example_unused("main", &main.body) {
             warnings.push(d);
         }
-        for card in &card_types {
-            if let Some(d) = warn_example_unused(&format!("card_types.{}", card.name), &card.body) {
+        for card in &card_kinds {
+            if let Some(d) = warn_example_unused(&format!("card_kinds.{}", card.name), &card.body) {
                 warnings.push(d);
             }
         }
@@ -1227,9 +1227,9 @@ impl QuillConfig {
         if let Some(d) = err_example_contains_fence("main", &main.body) {
             errors.push(d);
         }
-        for card in &card_types {
+        for card in &card_kinds {
             if let Some(d) =
-                err_example_contains_fence(&format!("card_types.{}", card.name), &card.body)
+                err_example_contains_fence(&format!("card_kinds.{}", card.name), &card.body)
             {
                 errors.push(d);
             }
@@ -1244,7 +1244,7 @@ impl QuillConfig {
                 name,
                 description,
                 main,
-                card_types,
+                card_kinds,
                 backend,
                 version,
                 author,

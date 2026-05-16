@@ -61,7 +61,7 @@ impl QuillConfig {
             let text = example.unwrap_or("Write main body here.");
             out.push_str(&format!("\n{}\n", text));
         }
-        for card in &self.card_types {
+        for card in &self.card_kinds {
             out.push('\n');
             write_card_fence(&mut out, card);
             if card.body_enabled() {
@@ -686,7 +686,7 @@ quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     title: { type: string }
-card_types:
+card_kinds:
   note:
     description: A short note appended to the document.
     fields:
@@ -705,7 +705,7 @@ quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     title: { type: string }
-card_types:
+card_kinds:
   skills:
     body: { enabled: false }
     fields:
@@ -723,7 +723,7 @@ quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     title: { type: string }
-card_types:
+card_kinds:
   note:
     body:
       example: "This is an example note."
@@ -758,7 +758,7 @@ quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     title: { type: string }
-card_types:
+card_kinds:
   indorsement:
     fields:
       from: { type: string }
@@ -967,7 +967,7 @@ main:
       type: array
       example:
         - report.pdf
-card_types:
+card_kinds:
   enclosure:
     description: An enclosure attached to the letter.
     fields:

@@ -36,7 +36,7 @@ pub mod ui_key {
     pub const GROUP: &str = "group";
     /// Display order within the UI
     pub const ORDER: &str = "order";
-    /// Display label for a card type. May be a literal string or a template
+    /// Display label for a card kind. May be a literal string or a template
     /// containing `{field_name}` tokens interpolated per-instance by UI consumers.
     pub const TITLE: &str = "title";
     /// Compact rendering hint for UI consumers
@@ -67,13 +67,13 @@ pub struct UiFieldSchema {
     pub multiline: Option<bool>,
 }
 
-/// Body namespace configuration for a card type
+/// Body namespace configuration for a card kind
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BodyCardSchema {
     /// Whether the body editor is enabled for this card (default: true).
     /// When false, consumers must not accept or store body content for instances
-    /// of this card type.
+    /// of this card kind.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
     /// Example body content embedded verbatim in the blueprint body region.
@@ -86,20 +86,20 @@ pub struct BodyCardSchema {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UiCardSchema {
-    /// Display label for the card type — literal string or `{field_name}`
+    /// Display label for the card kind — literal string or `{field_name}`
     /// template. See `docs/format-designer/quill-yaml-reference.md`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
 }
 
-/// Schema definition for a card type (composable content blocks)
+/// Schema definition for a card kind (composable content blocks)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CardSchema {
-    /// Card type name (e.g., "indorsements"). The map key carries this on the
+    /// Card kind name (e.g., "indorsements"). The map key carries this on the
     /// wire; skipped during serialization to avoid duplication.
     #[serde(skip_serializing, default)]
     pub name: String,
-    /// Detailed description of this card type
+    /// Detailed description of this card kind
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// List of fields in the card

@@ -141,7 +141,7 @@ main:
       ui:
         group: Letterhead
         order: 6
-card_types:
+card_kinds:
   indorsement:
     description: >-
       Chain of routing endorsements. Each endorsement block adds an official response
@@ -151,7 +151,7 @@ card_types:
         type: string
         const: indorsement
         description: >-
-          Card type name. Must match the card kind in the card block's ```card <kind>```
+          Card kind name. Must match the card kind in the card block's ```card <kind>```
           info string.
         required: true
       attachments:

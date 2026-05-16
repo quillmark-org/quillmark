@@ -16,7 +16,7 @@ main:         # Optional — main entry-point card: field schemas and optional u
   ui:         # optional UI hints (e.g. title)
   body:       # optional body-region config (e.g. enabled, description)
 
-card_types:   # Optional — additional composable card types
+card_kinds:   # Optional — additional composable card kinds
   ...
 
 typst:        # Optional — backend-specific configuration
@@ -258,15 +258,15 @@ main:
 
 ---
 
-## `card_types` Section
+## `card_kinds` Section
 
-`card_types` define composable, repeatable content blocks (the *types* — a document can then carry zero or more *instances* of each type, interleaved with body content). Each entry is shaped exactly like `main:` (`fields`, optional `description`, `ui`, `body`); think of `main:` as the single mandatory card-type for the document body, and `card_types:` as the library of additional types that may attach to it.
+`card_kinds` define composable, repeatable content blocks (the *kinds* — a document can then carry zero or more *instances* of each kind, interleaved with body content). Each entry is shaped exactly like `main:` (`fields`, optional `description`, `ui`, `body`); think of `main:` as the single mandatory card-kind for the document body, and `card_kinds:` as the library of additional kinds that may attach to it.
 
-Card-type names (the keys under `card_types`) must match `[a-z_][a-z0-9_]*` (leading underscore is allowed).
+Card-kind names (the keys under `card_kinds`) must match `[a-z_][a-z0-9_]*` (leading underscore is allowed).
 
 ```yaml
-card_types:
-  indorsement:                    # Card-type name
+card_kinds:
+  indorsement:                    # Card-kind name
     description: Chain of routing endorsements.
     fields:
       from:
@@ -279,7 +279,7 @@ card_types:
         default: standard
 ```
 
-Invalid card-type names include:
+Invalid card-kind names include:
 
 - `BadCard` (uppercase letters)
 - `my-card` (hyphen)
@@ -298,18 +298,18 @@ Invalid card-type names include:
 
 | Property | Type   | Description |
 |----------|--------|-------------|
-| `title`  | string | Display label for the card type. Literal string or `{field}` template |
+| `title`  | string | Display label for the card kind. Literal string or `{field}` template |
 
 ### Card-level `body`
 
 | Property  | Type   | Description |
 |-----------|--------|-------------|
-| `enabled`     | bool   | Whether the body editor is enabled (default: true). When false, consumers must not accept or store body content for this card type. |
+| `enabled`     | bool   | Whether the body editor is enabled (default: true). When false, consumers must not accept or store body content for this card kind. |
 | `description` | string | Description shown in the body editor placeholder when the body is empty. |
 
 #### `title`
 
-A human-readable display label for the card type. UI consumers should prefer it over the snake_case map key when rendering section headers, chips, picker entries, or per-instance titles in a list.
+A human-readable display label for the card kind. UI consumers should prefer it over the snake_case map key when rendering section headers, chips, picker entries, or per-instance titles in a list.
 
 The label is decoupled from the map key (e.g. `indorsement`), which is the on-the-wire `CARD` discriminator. Authors can rename the label freely without invalidating stored documents.
 
@@ -318,7 +318,7 @@ The label is decoupled from the map key (e.g. `indorsement`), which is the on-th
 A literal string serves as a static type label:
 
 ```yaml
-card_types:
+card_kinds:
   indorsement:
     ui:
       title: Routing Endorsement
@@ -330,7 +330,7 @@ card_types:
 A template containing `{field_name}` tokens lets UI consumers produce a per-instance title by interpolating live field values:
 
 ```yaml
-card_types:
+card_kinds:
   endorsement:
     ui:
       title: "{from} → {for}"
@@ -353,10 +353,10 @@ With the template form, a UI rendering a list of cards can title each instance (
 
 #### `body.enabled`
 
-When `false`, the card type has no body/content area. Consumers must not accept or store body content for instances of this card type. The validator enforces this: a document instance that provides body content for a `body.enabled: false` card type is rejected with a `BodyDisabled` error.
+When `false`, the card kind has no body/content area. Consumers must not accept or store body content for instances of this card kind. The validator enforces this: a document instance that provides body content for a `body.enabled: false` card kind is rejected with a `BodyDisabled` error.
 
 ```yaml
-card_types:
+card_kinds:
   metadata_block:
     body:
       enabled: false    # Card has fields only, no body/content area
@@ -370,7 +370,7 @@ card_types:
 Optional description displayed in the body editor placeholder area when the body is empty. Has no effect when `body.enabled` is false.
 
 ```yaml
-card_types:
+card_kinds:
   experience:
     body:
       description: Describe your role, responsibilities, and key achievements.
@@ -491,7 +491,7 @@ main:
       ui:
         group: Financials
 
-card_types:
+card_kinds:
   milestone:
     description: A project milestone with target date and status.
     fields:
