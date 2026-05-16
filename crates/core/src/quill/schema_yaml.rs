@@ -21,17 +21,17 @@ quill:
   version: "1.0"
   backend: typst
   description: Full
-main:
-  fields:
-    status:
-      type: string
-      enum: [draft, final]
-      default: draft
-      ui:
-        group: Meta
-    page_count:
-      type: integer
-leaf_kinds:
+cards:
+  main:
+    fields:
+      status:
+        type: string
+        enum: [draft, final]
+        default: draft
+        ui:
+          group: Meta
+      page_count:
+        type: integer
   indorsement:
     fields:
       signature_block:
@@ -43,21 +43,23 @@ leaf_kinds:
         let config = cfg(FULL);
         let yaml = config.schema_yaml().unwrap();
         assert!(yaml.contains("enum:") && yaml.contains("type: integer"));
-        assert!(yaml.contains("leaf_kinds:") && yaml.contains("indorsement:"));
+        assert!(yaml.contains("cards:") && yaml.contains("indorsement:"));
         assert!(yaml.contains("ui:") && yaml.contains("group: Meta"));
     }
 
     #[test]
-    fn omits_leaf_kinds_when_absent() {
+    fn cards_holds_only_main_when_no_inline_kinds() {
         let yaml = cfg(r#"
 quill: { name: solo, version: "1.0", backend: typst, description: x }
-main:
-  fields:
-    title: { type: string }
+cards:
+  main:
+    fields:
+      title: { type: string }
 "#)
         .schema_yaml()
         .unwrap();
-        assert!(yaml.contains("main:") && !yaml.contains("leaf_kinds:"));
+        assert!(yaml.contains("cards:") && yaml.contains("main:"));
+        assert!(!yaml.contains("indorsement:"));
     }
 
     #[test]

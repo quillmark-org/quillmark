@@ -26,12 +26,12 @@ field: value  # <type>; <role>
 
 Write main body here.
 
-```leaf <leaf_kind>
-# <leaf description>
+```card <card_kind>
+# <card description>
 ...fields...
 ```
 
-Write <leaf_kind> body here.
+Write <card_kind> body here.
 ````
 
 When `body.example` is set, its text replaces the body marker entirely.
@@ -82,7 +82,7 @@ Form: **`# <type>[<format>]; <role>[, <extra>...]`**
   - omitted for `string`, `integer`, `number`, `boolean`, `object`,
     `markdown` (nothing meaningful to refine).
 - **Role slot** (mandatory, after `;`): `required` or `optional`. (A
-  composable leaf is signalled by the `` ```leaf <kind> `` fence itself,
+  composable card is signalled by the `` ```card <kind> `` fence itself,
   not by a role marker on a field line.)
 - **Extras** (optional, comma-separated, after the role): additional
   qualifiers. Currently used for `verbatim` on the QUILL sentinel,
@@ -102,7 +102,7 @@ Examples:
 | `published: ""  # datetime<ISO 8601>; required` | required datetime in ISO 8601 |
 | `level: low  # enum<low \| medium \| high>; optional` | optional enum, default is first value |
 | `QUILL: cmu_letter@0.1.0  # sentinel; required, verbatim` | quill binding, do not modify |
-| ` ```leaf skill ` | composable leaf — repeat the entire ` ```leaf skill ... ``` ` block per instance |
+| ` ```card skill ` | composable card — repeat the entire ` ```card skill ... ``` ` block per instance |
 
 ## Placeholder value precedence
 
@@ -238,11 +238,11 @@ within the same `ui.group` still cluster together via `ui.order`.
 ## Body markers
 
 - `Write main body here.` after the main fence
-- `Write <leaf_kind> body here.` after each leaf fence
+- `Write <card_kind> body here.` after each inline card fence
 - When `body.example` is set, its text replaces the marker verbatim.
 
-`body.enabled: false` suppresses the marker entirely for body-less leaves
-(e.g., a `skills` leaf whose data is purely structured).
+`body.enabled: false` suppresses the marker entirely for body-less cards
+(e.g., a `skills` card whose data is purely structured).
 
 A `body.example` whose text contains a line that would parse as a
 metadata fence (`---`, with up to three leading spaces) is rejected at

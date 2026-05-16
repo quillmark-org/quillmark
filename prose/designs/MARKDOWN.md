@@ -3,13 +3,12 @@
 **Status:** Draft specification
 **Editor:** Quillmark Team
 **Base:** [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)
-**Pending rework:** [CARD_MODEL.md](../proposals/CARD_MODEL.md) renames the
-inline-record vocabulary "leaf" → "card" (` ```card <kind> `). This spec
-describes the current implementation.
+**Design basis:** [CARD_MODEL.md](../proposals/CARD_MODEL.md) defines the
+unified inline-record vocabulary "card" (` ```card <kind> `) this spec uses.
 
 Quillmark Markdown is a **strict superset of CommonMark** with one declared
 deviation. It layers a structured-data system (YAML frontmatter + inline
-*leaf* records) on top of ordinary markdown, and selects a small, stable set
+*card* records) on top of ordinary markdown, and selects a small, stable set
 of GFM extensions. This document is the authoritative syntax standard.
 
 ## 1. Superset Statement
@@ -18,12 +17,12 @@ Every valid CommonMark 0.31.2 document parses to the same block / inline
 structure under this spec, *except* for the deviation declared in §6.2.
 Additionally, this spec defines:
 
-- **Structured data** — YAML frontmatter (`---/---` at top) and inline leaf
-  records (`` ```leaf `` fenced code blocks) (§3).
+- **Structured data** — YAML frontmatter (`---/---` at top) and inline card
+  records (`` ```card `` fenced code blocks) (§3).
 - **Extensions** — strikethrough, pipe tables, and `<u>` for underline
   (§6.1).
 
-Documents containing neither frontmatter nor leaves are ordinary
+Documents containing neither frontmatter nor cards are ordinary
 CommonMark, parsed as such.
 
 ## 2. Document Grammar
@@ -31,20 +30,20 @@ CommonMark, parsed as such.
 A document is a sequence of regions, in order:
 
 ```
-Document = Frontmatter? Body (LeafFence LeafBody)*
+Document = Frontmatter? Body (CardFence CardBody)*
 ```
 
-- **Frontmatter** — at most one. A `---/---` pair at the top of the
-  document, carrying `QUILL` plus any document-level fields (§3).
+- **Frontmatter** — at most one. The main card: a `---/---` pair at the top
+  of the document, carrying `QUILL` plus any document-level fields (§3).
 - **Body** — markdown content between the frontmatter close and the first
-  leaf fence (or EOF).
-- **Leaf fence + leaf body** — zero or more. Each leaf fence is a
-  CommonMark fenced code block whose info string is `leaf <kind>`; its
+  card fence (or EOF).
+- **Card fence + card body** — zero or more inline cards. Each card fence is
+  a CommonMark fenced code block whose info string is `card <kind>`; its
   body declares a typed structured record. Markdown prose attached to the
-  leaf follows the closing fence, up to the next leaf fence or EOF.
+  card follows the closing fence, up to the next card fence or EOF.
 
 The two structures use *different* delimiters by design — `---/---` for
-frontmatter (universal across the markdown ecosystem) and `` ```leaf `` for
+frontmatter (universal across the markdown ecosystem) and `` ```card `` for
 inline records (CommonMark fenced code block, safe against Prettier and
 thematic-break collisions).
 
@@ -58,7 +57,7 @@ whitespace, 0–3 leading spaces of indentation). The first body key must be
 
 - **Position.** Line 1 of the document, or preceded by a blank line.
 - **Line endings.** `\n` and `\r\n` are equally accepted.
-- **Reserved keys.** `BODY`, `LEAVES`, and `KIND` are **output-only** —
+- **Reserved keys.** `BODY`, `CARDS`, and `KIND` are **output-only** —
   the parser populates them on the parsed object and supplying them as
   input keys is a hard parse error. `QUILL` is the sentinel and must be
   the first body key.
@@ -74,33 +73,33 @@ whitespace, 0–3 leading spaces of indentation). The first body key must be
   other custom tag is dropped with a `parse::unsupported_yaml_tag`
   warning.
 
-### 3.2 Leaves
+### 3.2 Inline Cards
 
-A leaf is a [CommonMark fenced code block](https://spec.commonmark.org/0.31.2/#fenced-code-blocks)
-whose info string is exactly two whitespace-delimited tokens: `leaf`
+An inline card is a [CommonMark fenced code block](https://spec.commonmark.org/0.31.2/#fenced-code-blocks)
+whose info string is exactly two whitespace-delimited tokens: `card`
 followed by the **kind**. The body of the fence is parsed as YAML.
 
 ````markdown
-```leaf product
+```card product
 name: Widget
 price: 19.99
 ```
 
-Body prose for this leaf, up to the next leaf or EOF.
+Body prose for this card, up to the next card or EOF.
 ````
 
 - **Fence rules.** Inherit CommonMark §4.5 verbatim — opener and closer
   match by character and run length; closers carry no info string. To
-  embed a fenced code block inside a leaf body, open the leaf with a
+  embed a fenced code block inside a card body, open the card with a
   longer fence (e.g. four backticks).
 - **Indent.** 0–3 leading spaces are permitted, matching CommonMark.
-- **Info string.** Exactly `leaf <kind>`. The kind matches
+- **Info string.** Exactly `card <kind>`. The kind matches
   `[a-z_][a-z0-9_]*`. A missing kind token, an invalid kind token, or any
   extra info-string token is a hard parse error (§4.2).
-- **Reserved keys.** `BODY` and `KIND` are output-only inside a leaf —
+- **Reserved keys.** `BODY` and `KIND` are output-only inside a card —
   supplying either as an input body key is a hard parse error. `KIND` is
   populated from the info-string kind token. `QUILL` is not reserved
-  inside leaves.
+  inside cards.
 - **The `!fill` tag.** Same rules as frontmatter (§3.1). The kind lives in
   the info string, not the body, so `!fill` cannot reach it.
 
@@ -125,17 +124,17 @@ paragraph content).
 Only **one** frontmatter block is recognised — the first matching
 `---/---` pair. Subsequent `---/---` pairs are CommonMark thematic breaks.
 
-### 4.2 Leaf detection
+### 4.2 Card detection
 
-A fenced code block is a leaf iff its info string's first token is `leaf`.
-Detection is purely lexical: the parser commits to leaf-handling on that
-first token alone, before reading any body content.
+A fenced code block is an inline card iff its info string's first token is
+`card`. Detection is purely lexical: the parser commits to card-handling on
+that first token alone, before reading any body content.
 
 Once committed, the rest of the info string is *routing*: the second
-token is the kind and selects the schema. A leaf info string that is not
-exactly `leaf <kind>` — a missing kind token, an invalid kind token (one
+token is the kind and selects the schema. A card info string that is not
+exactly `card <kind>` — a missing kind token, an invalid kind token (one
 not matching `[a-z_][a-z0-9_]*`), or any extra token — is a hard parse
-error, not a fence-classification ambiguity. Likewise any malformed leaf
+error, not a fence-classification ambiguity. Likewise any malformed card
 body (reserved-key collision, invalid YAML) is a hard error.
 
 ### 4.3 Worked example
@@ -150,14 +149,14 @@ title: Spring Catalog
 
 Welcome to the spring catalog.
 
-```leaf product
+```card product
 name: Widget
 price: 19.99
 ```
 
 The Widget is our flagship product.
 
-```leaf product
+```card product
 name: Gadget
 price: 29.99
 ```
@@ -171,17 +170,20 @@ The Gadget complements the Widget.
   similar near-miss emits a `parse::near_miss_sentinel` warning and is
   treated as thematic breaks. Parsing fails with `MissingQuillField` and a
   hint pointing at the actual key found.
-- **Unknown info string.** ` ```leef ` is just a code block with an
+- **Unknown info string.** ` ```caard ` is just a code block with an
   unknown language — silently passed through. Misspelt info strings are
   not near-miss diagnostics.
-- **Missing kind token in a leaf.** A `` ```leaf `` fence with no kind
+- **Missing kind token in a card.** A `` ```card `` fence with no kind
   token (or an invalid/extra token) is a hard parse error — the fence has
-  been classified on the `leaf` token, so the diagnostic is specific.
-- **Legacy `---/CARD: …/---` block.** Accepted in this release as a
-  Release-N migration path: parsed as a leaf (the `CARD:` value becomes
-  the kind), surfaces a `parse::deprecated_leaf_syntax` warning, and
-  rewritten to ` ```leaf <kind> ` on `to_markdown()` round-trip. The
-  legacy form will be a hard parse error in the next release.
+  been classified on the `card` token, so the diagnostic is specific.
+- **Legacy `---/CARD: …/---` block.** Accepted as a back-compat path for
+  existing beta-user documents: parsed as an inline card (the `CARD:` value
+  becomes the kind), surfaces a `parse::deprecated_card_syntax` warning, and
+  rewritten to ` ```card <kind> ` on `to_markdown()` round-trip. The
+  deprecation is purely about fence *shape* (`---/CARD: …/---` →
+  `` ```card ``), not the noun. Removal of the legacy form is
+  telemetry-driven — retired only when telemetry shows it is no longer in
+  active use, not pinned to a release.
 
 ## 5. Data Model
 
@@ -189,30 +191,30 @@ Parsing yields:
 
 ```typescript
 interface Document {
-  QUILL: string;          // template reference, from frontmatter
-  BODY: string;           // body prose between frontmatter and first leaf
-  LEAVES: Leaf[];         // zero or more leaves, in document order
-  [field: string]: any;   // other frontmatter fields
+  QUILL: string;          // template reference, from the main card
+  BODY: string;           // body prose between frontmatter and first card
+  CARDS: Card[];          // zero or more inline cards, in document order
+  [field: string]: any;   // other main-card fields
 }
 
-interface Leaf {
-  KIND: string;           // leaf kind, matches /^[a-z_][a-z0-9_]*$/
-  BODY: string;           // leaf body prose
-  [field: string]: any;   // other leaf fields
+interface Card {
+  KIND: string;           // card kind, matches /^[a-z_][a-z0-9_]*$/
+  BODY: string;           // card body prose
+  [field: string]: any;   // other card fields
 }
 ```
 
-- `LEAVES` is always present, possibly empty.
-- Templates may also access leaves grouped by kind via `leaves.<kind>[i]`
+- `CARDS` is always present, possibly empty.
+- Templates may also access inline cards grouped by kind via `cards.<kind>[i]`
   (preserving document order within each kind).
-- Frontmatter field names and leaf field names may collide freely; each
-  leaf is its own scope.
+- Main-card field names and inline-card field names may collide freely; each
+  card is its own scope.
 - Body text is preserved verbatim — whitespace, line endings, and inline
   CommonMark are untouched by the splitter.
 
 ## 6. Markdown Content
 
-Body regions (the document body and every leaf body) are rendered as
+Body regions (the document body and every card body) are rendered as
 CommonMark 0.31.2 with the extensions and deviations below.
 
 ### 6.1 Extensions
@@ -272,7 +274,7 @@ Before CommonMark parsing, each body region is normalized:
    text reaches the paragraph parser instead of being consumed by the
    CommonMark HTML-block rule (type 2).
 
-Normalization is applied identically to the document body and every leaf
+Normalization is applied identically to the document body and every card
 body. It is not applied to YAML field values.
 
 ## 8. Limits
@@ -287,7 +289,7 @@ error when any is exceeded:
 | YAML nesting depth | 100 |
 | Markdown block nesting depth | 100 |
 | Field count per fence | 1000 |
-| Leaf count per document | 1000 |
+| Card count per document | 1000 |
 
 ## 9. Errors
 
@@ -296,11 +298,11 @@ Parse errors include:
 - Frontmatter started (top `---` with `QUILL:` first key) but no closing
   `---` before EOF.
 - Frontmatter missing the `QUILL` key (no valid frontmatter found).
-- Leaf fence opened but never closed.
-- Leaf info string that is not exactly `leaf <kind>` — a missing kind
+- Card fence opened but never closed.
+- Card info string that is not exactly `card <kind>` — a missing kind
   token, a kind token failing the `/^[a-z_][a-z0-9_]*$/` pattern, or any
   extra info-string token.
-- Use of an output-only reserved key (`BODY`, `LEAVES`, `KIND`) as a
+- Use of an output-only reserved key (`BODY`, `CARDS`, `KIND`) as a
   user-defined input field.
 - `!fill` tag applied to the sentinel key `QUILL`.
 - Invalid YAML inside any fence.
@@ -311,5 +313,5 @@ Parse errors include:
 - [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)
 - [GitHub Flavored Markdown](https://github.github.com/gfm/) (pipe tables,
   strikethrough)
-- [`CARD_MODEL.md`](../proposals/CARD_MODEL.md) — pending proposal: unified
-  "card" vocabulary, supersedes the leaf design this spec currently describes
+- [`CARD_MODEL.md`](../proposals/CARD_MODEL.md) — design basis: unified
+  "card" vocabulary this spec describes

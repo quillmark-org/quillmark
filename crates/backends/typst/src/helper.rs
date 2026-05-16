@@ -74,7 +74,7 @@ mod tests {
 
     #[test]
     fn test_generate_lib_typ_basic() {
-        let json = r#"{"title":"Test","BODY":"Hello","date":"2025-01-15","__meta__":{"content_fields":["BODY"],"leaf_content_fields":{},"date_fields":["date"],"leaf_date_fields":{}}}"#;
+        let json = r#"{"title":"Test","BODY":"Hello","date":"2025-01-15","__meta__":{"content_fields":["BODY"],"card_content_fields":{},"date_fields":["date"],"card_date_fields":{}}}"#;
         let lib = generate_lib_typ(json);
 
         // Should contain the version comment
@@ -90,7 +90,7 @@ mod tests {
         assert!(lib.contains("#let _parse-date(s)"));
         assert!(!lib.contains("#let parse-date(s)"));
         assert!(lib.contains("meta.date_fields"));
-        assert!(lib.contains("meta.leaf_date_fields"));
+        assert!(lib.contains("meta.card_date_fields"));
     }
 
     #[test]

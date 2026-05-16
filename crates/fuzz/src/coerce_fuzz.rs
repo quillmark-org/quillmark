@@ -21,7 +21,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use indexmap::IndexMap;
 use proptest::prelude::*;
-use quillmark_core::quill::{CoercionError, FieldSchema, FieldType, LeafSchema, QuillConfig};
+use quillmark_core::quill::{CoercionError, FieldSchema, FieldType, CardSchema, QuillConfig};
 use quillmark_core::QuillValue;
 
 // -- Generators ---------------------------------------------------------------
@@ -31,7 +31,7 @@ use quillmark_core::QuillValue;
 const ROOT_FIELD: &str = "f";
 const PROP_NAME_RE: &str = "[a-z]{1,4}";
 
-fn arb_leaf_field_type() -> impl Strategy<Value = FieldType> {
+fn arb_card_field_type() -> impl Strategy<Value = FieldType> {
     prop_oneof![
         Just(FieldType::String),
         Just(FieldType::Number),
@@ -47,8 +47,8 @@ fn arb_leaf_field_type() -> impl Strategy<Value = FieldType> {
 /// `properties` map applied to object-shaped children (the same way
 /// `coerce_value_strict` consumes it).
 fn arb_field_schema(max_depth: u32) -> impl Strategy<Value = FieldSchema> {
-    let leaf = arb_leaf_field_type().prop_map(|ty| FieldSchema::new(String::new(), ty, None));
-    leaf.prop_recursive(max_depth, 24, 3, |inner| {
+    let card = arb_card_field_type().prop_map(|ty| FieldSchema::new(String::new(), ty, None));
+    card.prop_recursive(max_depth, 24, 3, |inner| {
         let props_map = prop::collection::btree_map(PROP_NAME_RE, inner, 1..=3).prop_map(|m| {
             let mut props: BTreeMap<String, Box<FieldSchema>> = BTreeMap::new();
             for (k, mut v) in m {
@@ -77,7 +77,7 @@ fn arb_field_schema(max_depth: u32) -> impl Strategy<Value = FieldSchema> {
 /// Arbitrary JSON value of bounded depth, with finite numbers only
 /// (non-finite `f64` can't round-trip through `serde_json::Number` anyway).
 fn arb_json_value(max_depth: u32) -> impl Strategy<Value = serde_json::Value> {
-    let leaf = prop_oneof![
+    let card = prop_oneof![
         Just(serde_json::Value::Null),
         any::<bool>().prop_map(serde_json::Value::Bool),
         any::<i64>().prop_map(|i| serde_json::Value::Number(serde_json::Number::from(i))),
@@ -88,7 +88,7 @@ fn arb_json_value(max_depth: u32) -> impl Strategy<Value = serde_json::Value> {
                 .unwrap_or(serde_json::Value::Null)),
         ".{0,16}".prop_map(serde_json::Value::String),
     ];
-    leaf.prop_recursive(max_depth, 32, 3, |inner| {
+    card.prop_recursive(max_depth, 32, 3, |inner| {
         prop_oneof![
             prop::collection::vec(inner.clone(), 0..=3).prop_map(serde_json::Value::Array),
             prop::collection::btree_map(PROP_NAME_RE, inner, 0..=3).prop_map(|m| {
@@ -114,7 +114,7 @@ fn config_with_one_field(schema: FieldSchema) -> QuillConfig {
     schema.name = ROOT_FIELD.to_string();
     let mut fields = BTreeMap::new();
     fields.insert(ROOT_FIELD.to_string(), schema);
-    let main = LeafSchema {
+    let main = CardSchema {
         name: "main".to_string(),
         description: None,
         fields,
@@ -125,7 +125,7 @@ fn config_with_one_field(schema: FieldSchema) -> QuillConfig {
         name: "test".to_string(),
         description: String::new(),
         main,
-        leaf_kinds: Vec::new(),
+        cards: Vec::new(),
         backend: "typst".to_string(),
         version: "1.0".to_string(),
         author: String::new(),

@@ -14,7 +14,7 @@ use super::fences::find_metadata_blocks;
 use super::frontmatter::{Frontmatter, FrontmatterItem};
 use super::prescan::{prescan_fence_content, NestedComment, PreItem};
 use super::sentinel::{extract_sentinels, is_valid_tag_name};
-use super::{Document, Leaf, Sentinel};
+use super::{Document, Card, Sentinel};
 
 /// Strip exactly one F2 structural separator from the tail of a body slice.
 ///
@@ -39,12 +39,12 @@ fn strip_f2_separator(body: &str) -> &str {
     }
 }
 
-/// Parse a legacy `---/CARD: …/---` leaf body.
+/// Parse a legacy `---/CARD: …/---` card body.
 ///
 /// Used by the legacy `---/CARD: …/---` parser path (MARKDOWN.md §4.4). The previous
-/// leaf syntax carried the kind as a `CARD:` first body key; the canonical
+/// card syntax carried the kind as a `CARD:` first body key; the canonical
 /// syntax carries it in the fence info string (`MARKDOWN.md §3.2`). To produce
-/// the same `Leaf` from a legacy block, the kind must be lifted *out* of the
+/// the same `Card` from a legacy block, the kind must be lifted *out* of the
 /// body — leaving `CARD:` (or `KIND:`) in place would now be a reserved-key
 /// hard error.
 ///
@@ -53,7 +53,7 @@ fn strip_f2_separator(body: &str) -> &str {
 /// if the first non-blank, non-comment line is not a `CARD:` key — the caller
 /// guarantees this never happens, but we stay defensive rather than corrupt
 /// the slice.
-fn extract_legacy_card_leaf(content: &str) -> Option<(String, String)> {
+fn extract_legacy_card(content: &str) -> Option<(String, String)> {
     let mut kind: Option<String> = None;
     let mut out = String::with_capacity(content.len());
     for line in content.split_inclusive('\n') {
@@ -80,31 +80,31 @@ fn extract_legacy_card_leaf(content: &str) -> Option<(String, String)> {
 }
 
 /// Which sentinel a metadata block carries. `Main` is the top frontmatter's
-/// `QUILL:` reference (raw string, parsed to `QuillReference` later); `Leaf`
-/// is a leaf fence's kind, from its `leaf <kind>` info string.
+/// `QUILL:` reference (raw string, parsed to `QuillReference` later); `Card`
+/// is a card fence's kind, from its `card <kind>` info string.
 #[derive(Debug)]
 pub(super) enum BlockSentinel {
     Main(String),
-    Leaf(String),
+    Inline(String),
 }
 
 /// How `find_metadata_blocks` classified a fence before handing it to
-/// `build_block`. Replaces the former `leaf_kind: Option<String>` +
+/// `build_block`. Replaces the former `card: Option<String>` +
 /// `legacy_card: bool` pair, which together encoded these three cases but
 /// also admitted the impossible `Some(kind)` + legacy combination.
 #[derive(Debug)]
 pub(super) enum BlockSource {
     /// Document frontmatter (`---/---` with a `QUILL:` first key).
     Frontmatter,
-    /// Canonical leaf fence; the kind comes from the `leaf <kind>` info string.
-    Leaf(String),
-    /// Legacy `---/CARD: …/---` leaf — the kind is lifted from the `CARD:`
+    /// Canonical card fence; the kind comes from the `card <kind>` info string.
+    Inline(String),
+    /// Legacy `---/CARD: …/---` card — the kind is lifted from the `CARD:`
     /// first body key (`MARKDOWN.md §4.4`).
     LegacyCard,
 }
 
 /// An intermediate representation of one parsed metadata fence (frontmatter
-/// or leaf).
+/// or card).
 #[derive(Debug)]
 pub(super) struct MetadataBlock {
     pub(super) start: usize,                          // Position of opening fence
@@ -140,12 +140,12 @@ fn yaml_parse_options() -> serde_saphyr::Options {
 /// of the closing fence line. Returns errors per spec §9.
 ///
 /// `source` is how `find_metadata_blocks` classified the fence:
-/// `Frontmatter` for the document frontmatter, `Leaf(kind)` for a canonical
-/// leaf fence (kind from the `leaf <kind>` info string), or `LegacyCard` for
-/// a legacy `---/CARD: …/---` leaf (`MARKDOWN.md §4.4`). For `LegacyCard` the
+/// `Frontmatter` for the document frontmatter, `Inline(kind)` for a canonical
+/// card fence (kind from the `card <kind>` info string), or `LegacyCard` for
+/// a legacy `---/CARD: …/---` card (`MARKDOWN.md §4.4`). For `LegacyCard` the
 /// kind is lifted out of the `CARD:` first body key and that line is dropped
-/// before YAML parsing, so the resulting `Leaf` matches the canonical
-/// ` ```leaf <kind> ` form; the caller verifies the first content key is
+/// before YAML parsing, so the resulting `Card` matches the canonical
+/// ` ```card <kind> ` form; the caller verifies the first content key is
 /// `CARD:` and emits the deprecation warning.
 pub(super) fn build_block(
     markdown: &str,
@@ -158,25 +158,25 @@ pub(super) fn build_block(
 ) -> Result<MetadataBlock, ParseError> {
     let raw_slice = &markdown[content_start..content_end];
     let legacy_owned: String;
-    let (raw_content, leaf_kind): (&str, Option<String>) = match source {
+    let (raw_content, card): (&str, Option<String>) = match source {
         BlockSource::LegacyCard => {
             let line = markdown[..abs_pos].lines().count() + 1;
-            let (kind, stripped) = extract_legacy_card_leaf(raw_slice).ok_or_else(|| {
+            let (kind, stripped) = extract_legacy_card(raw_slice).ok_or_else(|| {
                 ParseError::InvalidStructure(format!(
-                    "Legacy leaf at line {} is missing its `CARD:` first body key.",
+                    "Legacy card at line {} is missing its `CARD:` first body key.",
                     line
                 ))
             })?;
             if !is_valid_tag_name(&kind) {
                 return Err(ParseError::InvalidStructure(format!(
-                    "Legacy leaf at line {} has an invalid `CARD:` value `{}` — the kind must match pattern [a-z_][a-z0-9_]*.",
+                    "Legacy card at line {} has an invalid `CARD:` value `{}` — the kind must match pattern [a-z_][a-z0-9_]*.",
                     line, kind
                 )));
             }
             legacy_owned = stripped;
             (legacy_owned.as_str(), Some(kind))
         }
-        BlockSource::Leaf(kind) => (raw_slice, Some(kind)),
+        BlockSource::Inline(kind) => (raw_slice, Some(kind)),
         BlockSource::Frontmatter => (raw_slice, None),
     };
 
@@ -197,7 +197,7 @@ pub(super) fn build_block(
     }
 
     let content = pre.cleaned_yaml.trim().to_string();
-    let is_frontmatter = leaf_kind.is_none();
+    let is_frontmatter = card.is_none();
     let (quill_ref, yaml_value) = if content.is_empty() {
         (None, None)
     } else {
@@ -218,10 +218,10 @@ pub(super) fn build_block(
     };
 
     // `find_metadata_blocks` classifies every block lexically before calling
-    // build_block — frontmatter carries `leaf_kind = None` and a `QUILL:`
-    // first key; a leaf carries `leaf_kind = Some(kind)` from its info string.
-    let sentinel = match (leaf_kind, quill_ref) {
-        (Some(k), _) => BlockSentinel::Leaf(k),
+    // build_block — frontmatter carries `card = None` and a `QUILL:`
+    // first key; a card carries `card = Some(kind)` from its info string.
+    let sentinel = match (card, quill_ref) {
+        (Some(k), _) => BlockSentinel::Inline(k),
         (None, Some(r)) => BlockSentinel::Main(r),
         (None, None) => unreachable!(
             "find_metadata_blocks classifies every block before calling build_block"
@@ -230,7 +230,7 @@ pub(super) fn build_block(
 
     // Per-fence field-count check (spec §8, §6.1 of GAP analysis). Frontmatter
     // adds +1 for the stripped `QUILL` sentinel so the cap matches what the
-    // user wrote; a leaf's kind is not a body field, so it adds nothing.
+    // user wrote; a card's kind is not a body field, so it adds nothing.
     if let Some(serde_json::Value::Object(ref map)) = yaml_value {
         let size = map.len() + usize::from(is_frontmatter);
         if size > crate::error::MAX_FIELD_COUNT {
@@ -306,7 +306,7 @@ pub(super) fn decompose_with_warnings(
 
     // Find all metadata blocks. `find_metadata_blocks` guarantees that
     // block 0 (if present) carries `BlockSentinel::Main` and every block
-    // after it carries `BlockSentinel::Leaf`.
+    // after it carries `BlockSentinel::Inline`.
     let (blocks, warnings, first_fence_issue) = find_metadata_blocks(markdown)?;
 
     let frontmatter_block = match blocks.first() {
@@ -336,7 +336,7 @@ pub(super) fn decompose_with_warnings(
     }
 
     // Global body: between end of frontmatter (block 0) and start of the
-    // first leaf (or EOF). When a fence follows, the raw slice ends with
+    // first card (or EOF). When a fence follows, the raw slice ends with
     // the F2 blank-line terminator — strip it so stored bodies hold only
     // authored content. The emitter re-derives the separator on output.
     let body_start = frontmatter_block.end;
@@ -351,13 +351,13 @@ pub(super) fn decompose_with_warnings(
         global_body_raw.to_string()
     };
 
-    // Parse leaf blocks into typed Leaves.
-    let mut leaves: Vec<Leaf> = Vec::new();
+    // Parse card blocks into typed Cards.
+    let mut cards: Vec<Card> = Vec::new();
     for (idx, block) in blocks.iter().enumerate().skip(1) {
-        let BlockSentinel::Leaf(ref tag_name) = block.sentinel else {
-            unreachable!("blocks[1..] are leaves by construction")
+        let BlockSentinel::Inline(ref tag_name) = block.sentinel else {
+            unreachable!("blocks[1..] are cards by construction")
         };
-        let leaf_frontmatter = build_frontmatter_from_pre_and_parsed(
+        let card_frontmatter = build_frontmatter_from_pre_and_parsed(
             &block.pre_items,
             &block.pre_nested_comments,
             &block.yaml_value,
@@ -365,7 +365,7 @@ pub(super) fn decompose_with_warnings(
         )
         .map_err(|e| match e {
             ParseError::InvalidStructure(msg) => ParseError::InvalidStructure(format!(
-                "Invalid YAML in leaf block '{}': {}",
+                "Invalid YAML in card block '{}': {}",
                 tag_name, msg
             )),
             other => other,
@@ -374,18 +374,18 @@ pub(super) fn decompose_with_warnings(
             warnings.push(w.clone());
         }
 
-        // Leaf body: from this block's end to the next block's start (or EOF).
+        // Card body: from this block's end to the next block's start (or EOF).
         // If another fence follows, the body slice ends with the F2 blank-line
         // terminator — strip it so stored bodies hold only authored content.
-        let leaf_body = match blocks.get(idx + 1) {
+        let card_body = match blocks.get(idx + 1) {
             Some(next) => strip_f2_separator(&markdown[block.end..next.start]).to_string(),
             None => markdown[block.end..].to_string(),
         };
 
-        leaves.push(Leaf::new_with_sentinel(
-            Sentinel::Leaf(tag_name.clone()),
-            leaf_frontmatter,
-            leaf_body,
+        cards.push(Card::new_with_sentinel(
+            Sentinel::Inline(tag_name.clone()),
+            card_frontmatter,
+            card_body,
         ));
     }
 
@@ -393,8 +393,8 @@ pub(super) fn decompose_with_warnings(
         ParseError::InvalidStructure(format!("Invalid QUILL tag '{}': {}", quill_tag, e))
     })?;
 
-    let main = Leaf::new_with_sentinel(Sentinel::Main(quill_ref), frontmatter, global_body);
-    let doc = Document::from_main_and_leaves(main, leaves, warnings.clone());
+    let main = Card::new_with_sentinel(Sentinel::Main(quill_ref), frontmatter, global_body);
+    let doc = Document::from_main_and_cards(main, cards, warnings.clone());
 
     Ok((doc, warnings))
 }
@@ -411,8 +411,8 @@ pub(super) fn decompose_with_warnings(
 ///
 /// `is_frontmatter` selects which sentinel key `extract_sentinels` stripped
 /// from `yaml_value`: `QUILL` for the document frontmatter, nothing for a
-/// leaf (its kind lives in the info string). The stripped key is skipped
-/// from the item list; in a leaf, `QUILL` is an ordinary field and is kept.
+/// card (its kind lives in the info string). The stripped key is skipped
+/// from the item list; in a card, `QUILL` is an ordinary field and is kept.
 fn build_frontmatter_from_pre_and_parsed(
     pre_items: &[PreItem],
     pre_nested_comments: &[NestedComment],
@@ -452,7 +452,7 @@ fn build_frontmatter_from_pre_and_parsed(
             PreItem::Field { key, fill } => {
                 // In frontmatter the `QUILL` sentinel key is stripped from the
                 // parsed map by `extract_sentinels`; skip it in the item list.
-                // In a leaf, `QUILL` is an ordinary field (the kind lives in
+                // In a card, `QUILL` is an ordinary field (the kind lives in
                 // the info string) and must be kept.
                 if is_frontmatter && key == "QUILL" {
                     after_stripped_sentinel = true;
