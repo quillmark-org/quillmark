@@ -10,9 +10,9 @@ fn small_quill_tree() -> wasm_bindgen::JsValue {
     common::tree(&[
         (
             "Quill.yaml",
-            b"quill:\n  name: test_quill\n  backend: typst\n  plate_file: plate.typ\n  description: Test quill for WASM bindings\n",
+            b"quill:\n  name: test_quill\n  backend: typst\n  main_file: main.typ\n  description: Test quill for WASM bindings\n",
         ),
-        ("plate.typ", b"= Title\n\nThis is a test."),
+        ("main.typ", b"= Title\n\nThis is a test."),
     ])
 }
 
@@ -166,9 +166,9 @@ fn test_quill_from_object_tree() {
     let entries: &[(&str, &[u8])] = &[
         (
             "Quill.yaml",
-            b"quill:\n  name: test_quill\n  backend: typst\n  plate_file: plate.typ\n  description: Test quill for WASM bindings\n",
+            b"quill:\n  name: test_quill\n  backend: typst\n  main_file: main.typ\n  description: Test quill for WASM bindings\n",
         ),
-        ("plate.typ", b"= Title\n\nThis is a test."),
+        ("main.typ", b"= Title\n\nThis is a test."),
     ];
 
     let engine = Quillmark::new();
@@ -206,9 +206,9 @@ fn test_quill_metadata_and_schemas() {
         .quill(common::tree(&[
             (
                 "Quill.yaml",
-                b"quill:\n  name: meta_quill\n  backend: typst\n  version: \"0.2.1\"\n  plate_file: plate.typ\n  description: Metadata quill\nmain:\n  fields:\n    title:\n      type: string\n      ui:\n        group: Header\ncards:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n",
+                b"quill:\n  name: meta_quill\n  backend: typst\n  version: \"0.2.1\"\n  main_file: main.typ\n  description: Metadata quill\nmain:\n  fields:\n    title:\n      type: string\n      ui:\n        group: Header\ncards:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n",
             ),
-            ("plate.typ", b"= Title"),
+            ("main.typ", b"= Title"),
         ]))
         .expect("quill load");
 

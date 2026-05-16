@@ -1,6 +1,6 @@
 //! End-to-end acceptance tests for the unsigned-SigField overlay feature.
 //!
-//! Compiles each plate through `compile_to_pdf`, parses the output with
+//! Compiles each main file through `compile_to_pdf`, parses the output with
 //! lopdf, and asserts the AcroForm structure. Manual Acrobat verification
 //! still required per the spec — see `prose/...` or the PR description.
 
@@ -49,11 +49,11 @@ fn host_source() -> QuillSource {
     QuillSource::from_tree(tree).expect("load source")
 }
 
-/// Empty data payload — our plates don't reference any fields.
+/// Empty data payload — our main files don't reference any fields.
 const MIN_JSON: &str = r#"{}"#;
 
-fn compile(plate: &str) -> Result<Vec<u8>, RenderError> {
-    compile_to_pdf(&host_source(), plate, MIN_JSON)
+fn compile(main: &str) -> Result<Vec<u8>, RenderError> {
+    compile_to_pdf(&host_source(), main, MIN_JSON)
 }
 
 // ─── regression: each widget has exactly one /Subtype entry ──────────────────
@@ -65,12 +65,12 @@ fn compile(plate: &str) -> Result<Vec<u8>, RenderError> {
 /// reject it. This test fences the regression at the byte level.
 #[test]
 fn regression_widget_dict_has_exactly_one_subtype() {
-    let plate = r#"
+    let main = r#"
 #import "@local/quillmark-helper:0.1.0": signature-field
 #set page(width: 600pt, height: 400pt, margin: 50pt)
 #signature-field("a")
 "#;
-    let pdf = compile(plate).expect("compile ok");
+    let pdf = compile(main).expect("compile ok");
 
     let doc = lopdf::Document::load_mem(&pdf).expect("reparse");
     let cat = doc.catalog().expect("catalog");
@@ -109,7 +109,7 @@ fn regression_widget_dict_has_exactly_one_subtype() {
 
 #[test]
 fn acceptance_two_pages_two_fields() {
-    let plate = r#"
+    let main = r#"
 #import "@local/quillmark-helper:0.1.0": signature-field
 
 #set page(width: 600pt, height: 400pt, margin: 50pt)
@@ -122,7 +122,7 @@ Page 1.
 Page 2.
 #signature-field("b")
 "#;
-    let pdf = compile(plate).expect("compile ok");
+    let pdf = compile(main).expect("compile ok");
     fs::write("/tmp/qm_sig_two_pages.pdf", &pdf).ok();
 
     let doc = lopdf::Document::load_mem(&pdf).expect("lopdf reparse");
@@ -197,14 +197,14 @@ Page 2.
 
 #[test]
 fn acceptance_duplicate_name_errors() {
-    let plate = r#"
+    let main = r#"
 #import "@local/quillmark-helper:0.1.0": signature-field
 
 #set page(width: 600pt, height: 400pt, margin: 50pt)
 #signature-field("a")
 #signature-field("a")
 "#;
-    let err = compile(plate).expect_err("expected duplicate-name error");
+    let err = compile(main).expect_err("expected duplicate-name error");
     let RenderError::CompilationFailed { diags } = &err else {
         panic!("expected CompilationFailed, got {:?}", err);
     };
@@ -234,13 +234,13 @@ fn acceptance_duplicate_name_errors() {
 /// out without raising and without losing the real signature-field call.
 #[test]
 fn user_metadata_on_reserved_label_does_not_clobber() {
-    let plate = r#"
+    let main = r#"
 #import "@local/quillmark-helper:0.1.0": signature-field
 #set page(width: 600pt, height: 400pt, margin: 50pt)
 #metadata((kind: "something-else", note: "user's own metadata")) <__qm_sig__>
 #signature-field("real_field")
 "#;
-    let pdf = compile(plate).expect("compile ok");
+    let pdf = compile(main).expect("compile ok");
     let doc = lopdf::Document::load_mem(&pdf).unwrap();
     let cat = doc.catalog().unwrap();
     let af_ref = cat.get(b"AcroForm").unwrap().as_reference().unwrap();
@@ -268,18 +268,18 @@ fn user_metadata_on_reserved_label_does_not_clobber() {
 
 #[test]
 fn acceptance_no_fields_no_overlay() {
-    let plate = r#"
+    let main = r#"
 #set page(width: 600pt, height: 400pt, margin: 50pt)
 
 Just a doc.
 "#;
-    let pdf = compile(plate).expect("compile ok");
+    let pdf = compile(main).expect("compile ok");
     // No AcroForm key in the catalog.
     let doc = lopdf::Document::load_mem(&pdf).unwrap();
     let cat = doc.catalog().unwrap();
     assert!(
         !cat.has(b"AcroForm"),
-        "expected no /AcroForm in catalog for sig-field-free plate"
+        "expected no /AcroForm in catalog for sig-field-free main file"
     );
 
     // Sanity: only one startxref (i.e. no incremental update appended) and

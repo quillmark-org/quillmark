@@ -41,7 +41,7 @@ Every Quill.yaml must have a `quill` section with format metadata.
 | `description`    | string | yes      | Human-readable description of the quill itself (non-empty). Independent of `cards.main.description`, which is the optional schema description authored under `cards.main:`. |
 | `version`        | string | yes      | Semantic version (`MAJOR.MINOR` or `MAJOR.MINOR.PATCH`) |
 | `author`         | string | no       | Creator of the Quill (defaults to `"Unknown"`) |
-| `plate_file`     | string | no       | Path to the plate file |
+| `main_file`      | string | no       | Path to the main file — the entry-point Typst file the backend compiles, distinct from helper/include `.typ` files a quill may also ship |
 | `example`        | string | no       | Path to an example Markdown document |
 | `example_file`   | string | no       | Alias for `example` |
 | `ui`             | object | no       | Document-level UI metadata |
@@ -53,7 +53,7 @@ quill:
   backend: typst
   description: Typesetted USAF Official Memorandum
   author: TongueToQuill
-  plate_file: plate.typ
+  main_file: main.typ
   example: example.md
 ```
 
@@ -469,7 +469,7 @@ quill:
   backend: typst
   description: Monthly project status report
   author: Engineering Team
-  plate_file: plate.typ
+  main_file: main.typ
   example: example.md
 
 cards:

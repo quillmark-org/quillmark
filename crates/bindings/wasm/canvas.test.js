@@ -82,14 +82,14 @@ title: Canvas Test
 # Hello canvas
 `
 
-const TEST_PLATE = `#import "@local/quillmark-helper:0.1.0": data
+const TEST_MAIN = `#import "@local/quillmark-helper:0.1.0": data
 = #data.title
 
 #data.BODY`
 
 function openQuill() {
   const engine = new Quillmark()
-  return engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+  return engine.quill(makeQuill({ name: 'test_quill', main: TEST_MAIN }))
 }
 
 function openSession() {
@@ -142,7 +142,7 @@ describe('RenderSession canvas preview', () => {
     expect(call.height).toBe(result.pixelHeight)
     expect(call.data.length).toBe(call.width * call.height * 4)
 
-    // Pixel-content sanity. The test plate renders a title heading, so the
+    // Pixel-content sanity. The test main file renders a title heading, so the
     // rasterized buffer must contain non-white pixels (visible glyph ink)
     // *and* opaque pixels (page background). A regression that wrote zeros,
     // swapped channels, or skipped demultiply would fail at least one of

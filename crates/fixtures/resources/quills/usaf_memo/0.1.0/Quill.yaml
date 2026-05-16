@@ -2,7 +2,7 @@ quill:
   name: usaf_memo
   version: 0.1.0
   backend: typst
-  plate_file: plate.typ
+  main_file: main.typ
   example: examples/basic.md
   example_file: example.md
   description: Typesetted USAF Official Memorandum

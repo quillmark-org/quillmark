@@ -35,7 +35,7 @@ pub struct QuillSource {
     pub(crate) metadata: HashMap<String, QuillValue>,
     pub(crate) name: String,
     pub(crate) backend_id: String,
-    pub(crate) plate: Option<String>,
+    pub(crate) main: Option<String>,
     pub(crate) example: Option<String>,
     pub(crate) config: QuillConfig,
     pub(crate) files: FileTreeNode,
@@ -57,9 +57,13 @@ impl QuillSource {
         &self.metadata
     }
 
-    /// The plate template content, if the quill declares one.
-    pub fn plate(&self) -> Option<&str> {
-        self.plate.as_deref()
+    /// The main entry-point Typst file content, if the quill declares one.
+    ///
+    /// This is the file the backend compiles. It is distinct from any helper
+    /// or include `.typ` files a quill may also ship — those are imported by
+    /// the main file rather than compiled directly.
+    pub fn main(&self) -> Option<&str> {
+        self.main.as_deref()
     }
 
     /// The example Markdown content, if the quill ships one.
@@ -84,8 +88,8 @@ impl std::fmt::Debug for QuillSource {
             .field("name", &self.name)
             .field("backend_id", &self.backend_id)
             .field(
-                "plate",
-                &self.plate.as_ref().map(|s| format!("<{} bytes>", s.len())),
+                "main",
+                &self.main.as_ref().map(|s| format!("<{} bytes>", s.len())),
             )
             .field("example", &self.example.is_some())
             .field("files", &"<FileTreeNode>")

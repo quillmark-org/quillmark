@@ -2,7 +2,7 @@ quill:
   name: taro
   version: 0.1.0
   backend: typst
-  plate_file: plate.typ
+  main_file: main.typ
   example_file: example.md
   description: A simple document template for testing
 

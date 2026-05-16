@@ -1,6 +1,6 @@
 # Typst Backend
 
-The Typst backend generates PDF, SVG, and PNG documents using the [Typst](https://typst.app/) typesetting system. It converts Markdown frontmatter fields to Typst markup, injects them into the plate as JSON via a helper package, and compiles to the requested format.
+The Typst backend generates PDF, SVG, and PNG documents using the [Typst](https://typst.app/) typesetting system. It converts Markdown frontmatter fields to Typst markup, injects them into the main file as JSON via a helper package, and compiles to the requested format.
 
 ## Basic Usage
 
@@ -12,7 +12,7 @@ quill:
   version: "1.0.0"
   backend: typst
   description: Document format using Typst
-  plate_file: plate.typ
+  main_file: main.typ
 
 typst:
   packages:
@@ -21,7 +21,7 @@ typst:
 
 ## Data Access
 
-Plates are plain Typst code. Frontmatter reaches the plate as a JSON dictionary exposed by the virtual `@local/quillmark-helper` package:
+The main file — the entry-point Typst file named by `main_file`, as opposed to any helper or include `.typ` files a quill may also ship — is plain Typst code. Frontmatter reaches the main file as a JSON dictionary exposed by the virtual `@local/quillmark-helper` package:
 
 ```typst
 #import "@local/quillmark-helper:0.1.0": data
@@ -70,7 +70,7 @@ The document body is at `data.BODY`. Arrays come through as Typst arrays. Cards 
 
 ## Typst Packages
 
-Declare packages in `Quill.yaml`, then `#import` them from the plate:
+Declare packages in `Quill.yaml`, then `#import` them from the main file:
 
 ```yaml
 typst:
@@ -103,7 +103,7 @@ Then reference them by family name (`#set text(font: "CustomFont")`).
 
 ## Typesetting
 
-Plate authors style output with Typst's standard `#set` directives:
+Main file authors style output with Typst's standard `#set` directives:
 
 ```typst
 #set page(paper: "us-letter", margin: 1in, numbering: "1")
@@ -111,11 +111,11 @@ Plate authors style output with Typst's standard `#set` directives:
 #set par(justify: true, leading: 0.65em)
 ```
 
-See the [Typst tutorial](https://typst.app/docs/tutorial/) for the full styling vocabulary. For worked plates that combine data access with real layout, see the `appreciated_letter`, `usaf_memo`, and `taro` examples in `crates/quillmark/examples/`.
+See the [Typst tutorial](https://typst.app/docs/tutorial/) for the full styling vocabulary. For worked main files that combine data access with real layout, see the `appreciated_letter`, `usaf_memo`, and `taro` examples in `crates/quillmark/examples/`.
 
 ## Signature Fields
 
-Import `signature-field` from the helper package to drop an unsigned PDF signature box anywhere in your plate:
+Import `signature-field` from the helper package to drop an unsigned PDF signature box anywhere in your main file:
 
 ```typst
 #import "@local/quillmark-helper:0.1.0": signature-field
@@ -169,7 +169,7 @@ Inside `#box`, `#table`, `#figure`, `#footnote`, `#move`, `#pad` — `signature-
 - A non-absolute `width` or `height` raises a Typst assert pointing at `signature-field`.
 - Names violating `[A-Za-z0-9_]+` raise a Typst assert.
 
-The label `<__qm_sig__>` and metadata `kind: "__qm_sig__"` are reserved for this hand-off — don't use them for unrelated metadata in your plate.
+The label `<__qm_sig__>` and metadata `kind: "__qm_sig__"` are reserved for this hand-off — don't use them for unrelated metadata in your main file.
 
 ## Output Formats
 

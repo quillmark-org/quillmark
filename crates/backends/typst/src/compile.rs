@@ -48,10 +48,10 @@ fn compile_document(world: &QuillWorld) -> Result<PagedDocument, RenderError> {
 /// Compile Typst source into a paged document with injected JSON data.
 pub fn compile_to_document(
     source: &QuillSource,
-    plated_content: &str,
+    main_content: &str,
     json_data: &str,
 ) -> Result<PagedDocument, RenderError> {
-    let world = QuillWorld::new_with_data(source, plated_content, json_data).map_err(|e| {
+    let world = QuillWorld::new_with_data(source, main_content, json_data).map_err(|e| {
         RenderError::EngineCreation {
             diag: Box::new(
                 Diagnostic::new(
@@ -70,13 +70,13 @@ pub fn compile_to_document(
 /// Compiles a Typst document to PDF format with JSON data injection.
 ///
 /// This function creates a `@local/quillmark-helper:0.1.0` package containing
-/// the JSON data, which can be imported by the plate file.
+/// the JSON data, which can be imported by the main file.
 pub fn compile_to_pdf(
     source: &QuillSource,
-    plated_content: &str,
+    main_content: &str,
     json_data: &str,
 ) -> Result<Vec<u8>, RenderError> {
-    let document = compile_to_document(source, plated_content, json_data)?;
+    let document = compile_to_document(source, main_content, json_data)?;
     let placements = sig_overlay::extract(&document)?;
 
     let pdf = typst_pdf::pdf(&document, &PdfOptions::default()).map_err(|e| {
@@ -95,13 +95,13 @@ pub fn compile_to_pdf(
 /// Compiles a Typst document to SVG format with JSON data injection.
 ///
 /// This function creates a `@local/quillmark-helper:0.1.0` package containing
-/// the JSON data, which can be imported by the plate file.
+/// the JSON data, which can be imported by the main file.
 pub fn compile_to_svg(
     source: &QuillSource,
-    plated_content: &str,
+    main_content: &str,
     json_data: &str,
 ) -> Result<Vec<Vec<u8>>, RenderError> {
-    let document = compile_to_document(source, plated_content, json_data)?;
+    let document = compile_to_document(source, main_content, json_data)?;
 
     let mut pages = Vec::new();
     for page in &document.pages {
@@ -122,16 +122,16 @@ const DEFAULT_PPI: f32 = 144.0;
 /// # Arguments
 ///
 /// * `quill` - The quill template containing assets and configuration
-/// * `plated_content` - The plate file content (Typst source)
+/// * `main_content` - The main file content (Typst source)
 /// * `json_data` - JSON string containing the document data
 /// * `ppi` - Pixels per inch. Defaults to 144.0 when `None`.
 pub fn compile_to_png(
     source: &QuillSource,
-    plated_content: &str,
+    main_content: &str,
     json_data: &str,
     ppi: Option<f32>,
 ) -> Result<Vec<Vec<u8>>, RenderError> {
-    let document = compile_to_document(source, plated_content, json_data)?;
+    let document = compile_to_document(source, main_content, json_data)?;
 
     let ppi = ppi.unwrap_or(DEFAULT_PPI);
 

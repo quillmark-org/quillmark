@@ -2096,14 +2096,14 @@ fn test_missing_quill_field_errors() {
         .contains("Missing required QUILL field"));
 }
 
-// ── to_plate_json round-trip snapshot ─────────────────────────────────────────
+// ── to_main_json round-trip snapshot ─────────────────────────────────────────
 
-/// Verify to_plate_json produces the correct shape for a simple document.
+/// Verify to_main_json produces the correct shape for a simple document.
 #[test]
-fn test_to_plate_json_simple() {
+fn test_to_main_json_simple() {
     let doc =
         Document::from_markdown("---\nQUILL: my_quill\ntitle: Hello\n---\n\nBody text.\n").unwrap();
-    let json = doc.to_plate_json();
+    let json = doc.to_main_json();
 
     assert_eq!(json["QUILL"], "my_quill");
     assert_eq!(json["title"], "Hello");
@@ -2112,9 +2112,9 @@ fn test_to_plate_json_simple() {
     assert_eq!(json["CARDS"].as_array().unwrap().len(), 0);
 }
 
-/// to_plate_json with cards produces CARDS array with KIND, fields, BODY.
+/// to_main_json with cards produces CARDS array with KIND, fields, BODY.
 #[test]
-fn test_to_plate_json_with_cards() {
+fn test_to_main_json_with_cards() {
     let markdown = r#"---
 QUILL: usaf_memo
 title: Test
@@ -2129,11 +2129,11 @@ for: ORG
 Card body here.
 "#;
     let doc = Document::from_markdown(markdown).unwrap();
-    let json = doc.to_plate_json();
+    let json = doc.to_main_json();
 
     assert_eq!(json["QUILL"], "usaf_memo");
     assert_eq!(json["title"], "Test");
-    // F2 separator stripped on parse; plate `BODY` reflects the same
+    // F2 separator stripped on parse; main file `BODY` reflects the same
     // content-only string as `Document::body()`.
     assert_eq!(json["BODY"], "\nGlobal body.\n");
 
@@ -2144,11 +2144,11 @@ Card body here.
     assert_eq!(cards[0]["BODY"], "\nCard body here.\n");
 }
 
-/// to_plate_json parity: the QUILL key appears first.
+/// to_main_json parity: the QUILL key appears first.
 #[test]
-fn test_to_plate_json_quill_first() {
+fn test_to_main_json_quill_first() {
     let doc = Document::from_markdown("---\nQUILL: my_quill\nfoo: bar\nbaz: qux\n---\n").unwrap();
-    let json = doc.to_plate_json();
+    let json = doc.to_main_json();
     let obj = json.as_object().unwrap();
     let keys: Vec<&String> = obj.keys().collect();
     assert_eq!(keys[0], "QUILL");
@@ -2156,10 +2156,10 @@ fn test_to_plate_json_quill_first() {
 
 /// Snapshot test against usaf_memo fixture example.md
 #[test]
-fn test_to_plate_json_fixture_snapshot() {
+fn test_to_main_json_fixture_snapshot() {
     let markdown = include_str!("../../../../fixtures/resources/quills/usaf_memo/0.1.0/example.md");
     let doc = Document::from_markdown(markdown).unwrap();
-    let json = doc.to_plate_json();
+    let json = doc.to_main_json();
 
     // QUILL key is present
     assert_eq!(json["QUILL"], "usaf_memo@0.1");

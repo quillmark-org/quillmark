@@ -1,7 +1,7 @@
 //! # Quillmark Helper Package Generator
 //!
 //! This module generates the virtual `@local/quillmark-helper:0.1.0` package
-//! that provides document data and helper functions to Typst plates.
+//! that provides document data and helper functions to Typst main files.
 //!
 //! ## Package Contents
 //!
@@ -9,7 +9,7 @@
 //! - `data` - A dictionary containing all document fields, with markdown fields
 //!   and date fields automatically converted to Typst values
 //!
-//! ## Usage in Plates
+//! ## Usage in the Main File
 //!
 //! ```typst
 //! #import "@local/quillmark-helper:0.1.0": data

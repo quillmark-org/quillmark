@@ -12,10 +12,10 @@ pub trait Backend: Send + Sync + std::fmt::Debug {
     /// Get supported output formats.
     fn supported_formats(&self) -> &'static [OutputFormat];
 
-    /// Open an iterative render session from plate + compiled JSON data.
+    /// Open an iterative render session from the main file + compiled JSON data.
     fn open(
         &self,
-        plate_content: &str,
+        main_content: &str,
         source: &QuillSource,
         json_data: &serde_json::Value,
     ) -> Result<RenderSession, RenderError>;

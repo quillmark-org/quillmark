@@ -21,7 +21,7 @@ author: Test Author
 
 This is a test document.`
 
-const TEST_PLATE = `#import "@local/quillmark-helper:0.1.0": data
+const TEST_MAIN = `#import "@local/quillmark-helper:0.1.0": data
 #let title = data.title
 #let body = data.BODY
 
@@ -206,13 +206,13 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
 describe('Quillmark.quill', () => {
   it('should return a render-ready Quill', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = engine.quill(makeQuill({ name: 'test_quill', main: TEST_MAIN }))
     expect(quill).toBeDefined()
   })
 
   it('should accept a plain object tree (Record<string, Uint8Array>)', () => {
     const engine = new Quillmark()
-    const mapTree = makeQuill({ name: 'test_quill', plate: TEST_PLATE })
+    const mapTree = makeQuill({ name: 'test_quill', main: TEST_MAIN })
     const objectTree = Object.fromEntries(mapTree)
 
     const fromMap = engine.quill(mapTree)
@@ -235,7 +235,7 @@ describe('Quillmark.quill', () => {
 
   it('should render markdown to PDF via quill.render(doc) with default opts', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = engine.quill(makeQuill({ name: 'test_quill', main: TEST_MAIN }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
     const result = quill.render(doc)
@@ -252,7 +252,7 @@ describe('Quillmark.quill', () => {
 
   it('should render markdown to PDF via quill.render(doc, opts)', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = engine.quill(makeQuill({ name: 'test_quill', main: TEST_MAIN }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
     const result = quill.render(doc, { format: 'pdf' })
@@ -266,7 +266,7 @@ describe('Quillmark.quill', () => {
 
   it('should render markdown to SVG via quill.render(doc)', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = engine.quill(makeQuill({ name: 'test_quill', main: TEST_MAIN }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
     const result = quill.render(doc, { format: 'svg' })
@@ -277,7 +277,7 @@ describe('Quillmark.quill', () => {
 
   it('should allow rendering the same Document multiple times', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = engine.quill(makeQuill({ name: 'test_quill', main: TEST_MAIN }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
     const pdf = quill.render(doc, { format: 'pdf' })
@@ -289,7 +289,7 @@ describe('Quillmark.quill', () => {
 
   it('should emit a quill::ref_mismatch warning when Document QUILL differs from quill name', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = engine.quill(makeQuill({ name: 'test_quill', main: TEST_MAIN }))
 
     // Document declares a different quill name
     const otherMarkdown = `---
@@ -640,7 +640,7 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
 describe('quill.open + session.render', () => {
   it('should support open + session.render with pageCount', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = engine.quill(makeQuill({ name: 'test_quill', main: TEST_MAIN }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
     const session = quill.open(doc)
@@ -662,7 +662,7 @@ describe('quill.open + session.render', () => {
 
   it('should throw on out-of-bounds page indices', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = engine.quill(makeQuill({ name: 'test_quill', main: TEST_MAIN }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const session = quill.open(doc)
     const oob = session.pageCount + 10
@@ -674,7 +674,7 @@ describe('quill.open + session.render', () => {
 
   it('should error when requesting page selection with PDF', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = engine.quill(makeQuill({ name: 'test_quill', main: TEST_MAIN }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const session = quill.open(doc)
 
@@ -689,7 +689,7 @@ describe('quill.metadata', () => {
   name: meta_test_quill
   version: "0.2.1"
   backend: typst
-  plate_file: plate.typ
+  main_file: main.typ
   description: Metadata test
 
 cards:
@@ -709,7 +709,7 @@ cards:
   it('exposes identity on metadata and schemas on dedicated getters', () => {
     const engine = new Quillmark()
     const quill = engine.quill(
-      makeQuill({ name: 'meta_test_quill', plate: TEST_PLATE, quillYaml: META_QUILL_YAML }),
+      makeQuill({ name: 'meta_test_quill', main: TEST_MAIN, quillYaml: META_QUILL_YAML }),
     )
 
     // metadata mirrors the `quill:` section of Quill.yaml — identity only.
@@ -739,7 +739,7 @@ cards:
   it('metadata and schema are JSON.stringify-able (plain objects)', () => {
     const engine = new Quillmark()
     const quill = engine.quill(
-      makeQuill({ name: 'meta_test_quill', plate: TEST_PLATE, quillYaml: META_QUILL_YAML }),
+      makeQuill({ name: 'meta_test_quill', main: TEST_MAIN, quillYaml: META_QUILL_YAML }),
     )
     const meta = JSON.parse(JSON.stringify(quill.metadata))
     expect(meta.name).toBe('meta_test_quill')
@@ -768,7 +768,7 @@ describe('Document.clone', () => {
 
   it('produces a clone that renders equivalently to the original', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = engine.quill(makeQuill({ name: 'test_quill', main: TEST_MAIN }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const clone = doc.clone()
 

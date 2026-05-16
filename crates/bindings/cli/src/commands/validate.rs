@@ -188,13 +188,13 @@ fn validate_file_references(
     config: &QuillConfig,
     result: &mut ValidationResult,
 ) {
-    // Check plate_file reference
-    if let Some(ref plate_file) = config.plate_file {
-        let plate_path = quill_path.join(plate_file);
-        if !plate_path.exists() {
+    // Check main_file reference
+    if let Some(ref main_file) = config.main_file {
+        let main_path = quill_path.join(main_file);
+        if !main_path.exists() {
             result.add_error(format!(
-                "Referenced plate_file '{}' does not exist",
-                plate_file
+                "Referenced main_file '{}' does not exist",
+                main_file
             ));
         }
     }

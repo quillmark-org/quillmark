@@ -87,8 +87,8 @@ impl QuillWorld {
     /// Create a new QuillWorld with JSON data injected as a helper package.
     ///
     /// This method creates a virtual `@local/quillmark-helper:0.1.0` package
-    /// containing the JSON data and helper functions. Plates can import this
-    /// package to access document data.
+    /// containing the JSON data and helper functions. The main file can
+    /// import this package to access document data.
     ///
     /// # Arguments
     ///

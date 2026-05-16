@@ -505,7 +505,7 @@ fn test_card_set_body() {
 /// After a deterministic sequence of mutations, the document must satisfy:
 /// - No reserved key in frontmatter
 /// - Every card tag passes is_valid_tag_name
-/// - The plate JSON can be produced without panicking
+/// - The main file JSON can be produced without panicking
 #[test]
 fn test_invariants_after_mutation_sequence() {
     let mut doc = make_doc();
@@ -557,8 +557,8 @@ fn test_invariants_after_mutation_sequence() {
         assert!(is_valid_tag_name(&tag), "invalid tag '{}' found", tag);
     }
 
-    // Can produce plate JSON without panicking
-    let json = doc.to_plate_json();
+    // Can produce main file JSON without panicking
+    let json = doc.to_main_json();
     assert!(json.is_object());
     assert_eq!(json["QUILL"].as_str(), Some("test_quill"));
     assert!(json["CARDS"].is_array());

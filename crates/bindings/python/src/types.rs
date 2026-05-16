@@ -70,8 +70,8 @@ impl PyQuill {
     }
 
     #[getter]
-    fn plate(&self) -> Option<String> {
-        self.inner.source().plate().map(str::to_string)
+    fn main(&self) -> Option<String> {
+        self.inner.source().main().map(str::to_string)
     }
 
     #[getter]

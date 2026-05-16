@@ -25,7 +25,7 @@ impl QuillSource {
     ///
     /// Returns a non-empty `Vec<Diagnostic>` describing every problem found.
     /// When `Quill.yaml` itself contains multiple errors they are all
-    /// reported together; subsequent failures (missing plate, malformed
+    /// reported together; subsequent failures (missing main file, malformed
     /// example) surface as single-element vectors.
     pub fn from_tree(root: FileTreeNode) -> Result<Self, Vec<Diagnostic>> {
         let quill_yaml_bytes = root.get_file("Quill.yaml").ok_or_else(|| {
@@ -79,18 +79,18 @@ impl QuillSource {
             metadata.insert(format!("{}_{}", config.backend, key), value.clone());
         }
 
-        // Read the plate content from plate file (if specified)
-        let plate_content: Option<String> = if let Some(ref plate_file_name) = config.plate_file {
-            let plate_bytes = root.get_file(plate_file_name).ok_or_else(|| {
+        // Read the main entry-point file content (if specified)
+        let main_content: Option<String> = if let Some(ref main_file_name) = config.main_file {
+            let main_bytes = root.get_file(main_file_name).ok_or_else(|| {
                 vec![diag(
-                    format!("Plate file '{}' not found in file tree", plate_file_name),
-                    "quill::plate_missing",
+                    format!("Main file '{}' not found in file tree", main_file_name),
+                    "quill::main_missing",
                 )]
             })?;
 
-            let content = String::from_utf8(plate_bytes.to_vec()).map_err(|e| {
+            let content = String::from_utf8(main_bytes.to_vec()).map_err(|e| {
                 vec![diag(
-                    format!("Plate file '{}' is not valid UTF-8: {}", plate_file_name, e),
+                    format!("Main file '{}' is not valid UTF-8: {}", main_file_name, e),
                     "quill::invalid_utf8",
                 )]
             })?;
@@ -157,7 +157,7 @@ impl QuillSource {
             metadata,
             name: config.name.clone(),
             backend_id: config.backend.clone(),
-            plate: plate_content,
+            main: main_content,
             example: example_content,
             config,
             files: root,

@@ -7,7 +7,7 @@
 //! Every successful mutator call leaves the document in a state that:
 //! - Contains no reserved key in any card's frontmatter (`BODY`, `CARDS`, `QUILL`, `KIND`).
 //! - Has every composable `card.tag()` passing `sentinel::is_valid_tag_name`.
-//! - Can be safely serialized via [`Document::to_plate_json`].
+//! - Can be safely serialized via [`Document::to_main_json`].
 //!
 //! **Mutators never modify `warnings`.**  Warnings are parse-time observations
 //! and remain stable for the lifetime of the document.
@@ -30,7 +30,7 @@ use crate::version::QuillReference;
 
 /// Reserved field names that may not appear in any `Card`'s frontmatter.
 /// These are the sentinel keys whose presence in user-visible fields would
-/// corrupt the plate wire format or the parser's structural invariants.
+/// corrupt the main file wire format or the parser's structural invariants.
 pub const RESERVED_NAMES: &[&str] = &["BODY", "CARDS", "QUILL", "KIND"];
 
 /// Returns `true` if `name` is one of the four reserved sentinel names.

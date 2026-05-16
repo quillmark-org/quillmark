@@ -27,7 +27,7 @@ pub struct QuillSource {
     pub metadata: HashMap<String, QuillValue>,
     pub name: String,
     pub backend_id: String,
-    pub plate: Option<String>,
+    pub main: Option<String>,
     pub example: Option<String>,
     pub config: QuillConfig,
     pub files: FileTreeNode,
@@ -56,7 +56,7 @@ For JS/WASM consumers this is exposed as `engine.quill(...)` accepting a
 Validation rules:
 1. Root MUST be a directory node
 2. `Quill.yaml` MUST exist and be valid YAML
-3. The `plate_file` referenced in `Quill.yaml`, if specified, MUST exist
+3. The `main_file` referenced in `Quill.yaml`, if specified, MUST exist
 4. File paths use `/` separators and are resolved relative to root
 
 ## `Quill.yaml` Structure
@@ -70,7 +70,7 @@ quill:
   version: "1.0.0"        # required; semver (MAJOR.MINOR.PATCH or MAJOR.MINOR)
   description: A beautiful format  # required; non-empty
   author: Jane Doe        # optional; defaults to "Unknown"
-  plate_file: plate.typ   # optional; path to Typst template
+  main_file: main.typ     # optional; the entry-point Typst file the backend compiles
   example_file: example.md  # optional; example document for preview
 
 cards:
@@ -105,12 +105,13 @@ Metadata resolution:
 - `name`, `description`, `backend`, `version`, `author` are direct struct fields on `QuillConfig`. `description` (required, non-empty in the `quill:` section) describes the quill itself; it is independent of `QuillConfig`'s `cards.main` description, which is the optional schema description authored under `cards.main:` like any other card kind.
 - `metadata` on `Quill` stores `backend`, `description`, `version`, `author`, and `typst_*` keys from the `[typst]` section. The `quill:` section accepts only the documented keys; unknown keys produce a `quill::unknown_key` error rather than landing in `metadata`.
 - `example_file` also accepts the alias `example` in YAML
+- `main_file` names the **entry-point Typst file** the backend compiles — the file that imports the helper package and lays out the document. It is distinct from any helper or include `.typ` files a quill may also ship (declared in packages or imported by the main file); those are never compiled directly.
 
 ## Strict Parsing
 
 `Quill.yaml` is parsed strictly: every problem the parser can detect is collected and reported in one pass as a `Vec<Diagnostic>`, rather than failing on the first error or silently dropping unsupported shapes. Specifically:
 
-- Unknown keys in the `quill:` section error with `quill::unknown_key` (typos like `platefile` are not silently captured).
+- Unknown keys in the `quill:` section error with `quill::unknown_key` (typos like `mainfile` are not silently captured).
 - Unknown top-level sections error with `quill::unknown_section` (typos like `card:` are not silently ignored). Root-level `fields:` gets a targeted hint pointing to `cards.main.fields:`.
 - Field schemas that fail to parse (e.g. legacy `title:`, missing `type:`) error with `quill::field_parse_error` and an actionable hint where applicable, rather than being dropped from the schema.
 - Standalone `object` fields and disallowed nested-object shapes error with `quill::standalone_object_not_supported` / `quill::nested_object_not_supported`.

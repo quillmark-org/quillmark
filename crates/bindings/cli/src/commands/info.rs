@@ -78,8 +78,8 @@ fn print_json(quill: &quillmark::Quill) -> Result<()> {
         );
     }
     info.insert(
-        "has_plate".to_string(),
-        serde_json::Value::Bool(source.plate().is_some()),
+        "has_main".to_string(),
+        serde_json::Value::Bool(source.main().is_some()),
     );
     info.insert(
         "has_example".to_string(),
@@ -151,10 +151,10 @@ fn print_human_readable(quill: &quillmark::Quill) {
         println!("  Defaults:    {}", defaults_count);
     }
 
-    // Plate and example
+    // Main file and example
     println!(
-        "  Has plate:   {}",
-        if source.plate().is_some() {
+        "  Has main:    {}",
+        if source.main().is_some() {
             "yes"
         } else {
             "no"

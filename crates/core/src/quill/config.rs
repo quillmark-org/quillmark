@@ -39,8 +39,10 @@ pub struct QuillConfig {
     pub example_file: Option<String>,
     /// Loaded markdown example content from `Quill.example`/`Quill.example_file`
     pub example_markdown: Option<String>,
-    /// Plate file (template)
-    pub plate_file: Option<String>,
+    /// The main entry-point Typst file the backend compiles. Distinct from
+    /// helper or include `.typ` files a quill may also ship, which are
+    /// imported by the main file rather than compiled directly.
+    pub main_file: Option<String>,
     /// Backend-specific configuration parsed from the top-level YAML section
     /// whose key matches `backend` (e.g. `[typst]`, `[html]`).
     #[serde(default)]
@@ -764,7 +766,7 @@ impl QuillConfig {
             "author",
             "example",
             "example_file",
-            "plate_file",
+            "main_file",
             "ui",
         ];
         if let Some(quill_obj) = quill_section.as_object() {
@@ -927,8 +929,8 @@ impl QuillConfig {
                     .map(|s| s.to_string())
             });
 
-        let plate_file = quill_section
-            .get("plate_file")
+        let main_file = quill_section
+            .get("main_file")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
@@ -1262,7 +1264,7 @@ impl QuillConfig {
                 author,
                 example_file,
                 example_markdown: None,
-                plate_file,
+                main_file,
                 backend_config,
             },
             warnings,

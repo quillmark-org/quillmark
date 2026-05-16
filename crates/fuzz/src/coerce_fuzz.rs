@@ -131,7 +131,7 @@ fn config_with_one_field(schema: FieldSchema) -> QuillConfig {
         author: String::new(),
         example_file: None,
         example_markdown: None,
-        plate_file: None,
+        main_file: None,
         backend_config: HashMap::new(),
     }
 }

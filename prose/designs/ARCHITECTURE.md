@@ -8,7 +8,7 @@ Quillmark converts Markdown with YAML frontmatter into output artifacts (PDF, SV
 
 1. **Parse** — YAML frontmatter extraction, bidi stripping, HTML fence normalization
 2. **Normalize** — Type coercion, schema defaults, field validation
-3. **Compile** — Backend's `open()` receives plate + JSON data and returns a `RenderSession`; `RenderSession::render()` produces artifacts
+3. **Compile** — Backend's `open()` receives the main file + JSON data and returns a `RenderSession`; `RenderSession::render()` produces artifacts
 
 ## Crate Structure
 
@@ -53,7 +53,7 @@ Fuzz tests for parsing, templating, and rendering.
 - **`Quillmark`** — Engine managing registered backends; auto-registers `TypstBackend` when the `typst` feature is enabled
 - **`Quill`** — Renderable shape in `quillmark`: pairs a `QuillSource` with a resolved `Backend`. Exposes `render`, `open`, `dry_run`, `compile_data`
 - **`QuillSource`** — Pure data in `quillmark-core`: file bundle + config + metadata; no render ability
-- **`Backend`** — Trait for output formats (`Send + Sync`): `id()`, `supported_formats()`, `open(plate, &QuillSource, json)`
+- **`Backend`** — Trait for output formats (`Send + Sync`): `id()`, `supported_formats()`, `open(main, &QuillSource, json)`
 - **`RenderSession`** — Opaque handle returned by `Backend::open()`; call `render(opts)` to produce artifacts. Exposes `page_count()` and `warnings()` for consumers (e.g. canvas previews) that don't go through `render()`. Backends with richer typed surfaces expose them via a downcast helper that goes through `RenderSession::handle()` + `SessionHandle::as_any` (Typst uses this for canvas preview — see `quillmark_typst::typst_session_of`).
 - **`Document`** — Typed in-memory representation of a Quillmark Markdown file (frontmatter, body, cards)
 - **`Diagnostic`** — Structured error with severity, code, message, location, hint, source chain
@@ -62,7 +62,7 @@ Fuzz tests for parsing, templating, and rendering.
 ## Data Injection
 
 `Backend::open()` receives:
-- `plate_content` — raw plate string from `QuillSource.plate` (empty string for plate-less backends)
+- `main_content` — raw source of the main entry-point file from `QuillSource.main` (empty string for backends with no main file)
 - `source` — `&QuillSource` with static assets/packages, config, metadata
 - `json_data` — JSON object after coercion, defaults, normalization
 

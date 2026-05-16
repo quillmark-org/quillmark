@@ -125,10 +125,10 @@ fn test_in_memory_file_system() {
     // Create test files
     fs::write(
             quill_dir.join("Quill.yaml"),
-            "quill:\n  name: \"test\"\n  version: \"1.0\"\n  backend: \"typst\"\n  plate_file: \"plate.typ\"\n  description: \"Test quill\"",
+            "quill:\n  name: \"test\"\n  version: \"1.0\"\n  backend: \"typst\"\n  main_file: \"main.typ\"\n  description: \"Test quill\"",
         )
         .unwrap();
-    fs::write(quill_dir.join("plate.typ"), "test plate").unwrap();
+    fs::write(quill_dir.join("main.typ"), "test main").unwrap();
 
     let assets_dir = quill_dir.join("assets");
     fs::create_dir_all(&assets_dir).unwrap();
@@ -142,7 +142,7 @@ fn test_in_memory_file_system() {
     let quill = load_from_path(quill_dir).unwrap();
 
     // Test file access
-    assert!(quill.file_exists("plate.typ"));
+    assert!(quill.file_exists("main.typ"));
     assert!(quill.file_exists("assets/test.txt"));
     assert!(quill.file_exists("packages/package.typ"));
     assert!(!quill.file_exists("nonexistent.txt"));
@@ -168,10 +168,10 @@ fn test_quillignore_integration() {
     // Create test files
     fs::write(
             quill_dir.join("Quill.yaml"),
-            "quill:\n  name: \"test\"\n  version: \"1.0\"\n  backend: \"typst\"\n  plate_file: \"plate.typ\"\n  description: \"Test quill\"",
+            "quill:\n  name: \"test\"\n  version: \"1.0\"\n  backend: \"typst\"\n  main_file: \"main.typ\"\n  description: \"Test quill\"",
         )
         .unwrap();
-    fs::write(quill_dir.join("plate.typ"), "test template").unwrap();
+    fs::write(quill_dir.join("main.typ"), "test template").unwrap();
     fs::write(quill_dir.join("should_ignore.tmp"), "ignored").unwrap();
 
     let target_dir = quill_dir.join("target");
@@ -182,7 +182,7 @@ fn test_quillignore_integration() {
     let quill = load_from_path(quill_dir).unwrap();
 
     // Test that ignored files are not loaded
-    assert!(quill.file_exists("plate.typ"));
+    assert!(quill.file_exists("main.typ"));
     assert!(!quill.file_exists("should_ignore.tmp"));
     assert!(!quill.file_exists("target/debug.txt"));
 }
@@ -195,10 +195,10 @@ fn test_find_files_pattern() {
     // Create test directory structure
     fs::write(
             quill_dir.join("Quill.yaml"),
-            "quill:\n  name: \"test\"\n  version: \"1.0\"\n  backend: \"typst\"\n  plate_file: \"plate.typ\"\n  description: \"Test quill\"",
+            "quill:\n  name: \"test\"\n  version: \"1.0\"\n  backend: \"typst\"\n  main_file: \"main.typ\"\n  description: \"Test quill\"",
         )
         .unwrap();
-    fs::write(quill_dir.join("plate.typ"), "template").unwrap();
+    fs::write(quill_dir.join("main.typ"), "template").unwrap();
 
     let assets_dir = quill_dir.join("assets");
     fs::create_dir_all(&assets_dir).unwrap();
@@ -218,7 +218,7 @@ fn test_find_files_pattern() {
 
     let typ_files = quill.find_files("*.typ");
     assert_eq!(typ_files.len(), 1);
-    assert!(typ_files.contains(&PathBuf::from("plate.typ")));
+    assert!(typ_files.contains(&PathBuf::from("main.typ")));
 }
 
 #[test]
@@ -232,13 +232,13 @@ quill:
   name: my_custom_quill
   version: "1.0"
   backend: typst
-  plate_file: custom_plate.typ
+  main_file: custom_main.typ
   description: Test quill with new format
   author: Test Author
 "#;
     fs::write(quill_dir.join("Quill.yaml"), yaml_content).unwrap();
     fs::write(
-        quill_dir.join("custom_plate.typ"),
+        quill_dir.join("custom_main.typ"),
         "= Custom Template\n\nThis is a custom template.",
     )
     .unwrap();
@@ -269,8 +269,8 @@ quill:
         }
     }
 
-    // Test that plate template content is loaded correctly
-    assert!(quill.plate.unwrap().contains("Custom Template"));
+    // Test that main template content is loaded correctly
+    assert!(quill.main.unwrap().contains("Custom Template"));
 }
 
 #[test]
@@ -283,12 +283,12 @@ fn test_template_loading() {
   name: "test_with_template"
   version: "1.0"
   backend: "typst"
-  plate_file: "plate.typ"
+  main_file: "main.typ"
   example_file: "example.md"
   description: "Test quill with template"
 "#;
     fs::write(quill_dir.join("Quill.yaml"), yaml_content).unwrap();
-    fs::write(quill_dir.join("plate.typ"), "plate content").unwrap();
+    fs::write(quill_dir.join("main.typ"), "main content").unwrap();
     fs::write(
         quill_dir.join("example.md"),
         "---\ntitle: Test\n---\n\nThis is a test template.",
@@ -309,8 +309,8 @@ fn test_template_loading() {
         .as_ref()
         .is_some_and(|value| value.contains("title: Test")));
 
-    // Test that plate template is still loaded
-    assert_eq!(quill.plate.unwrap(), "plate content");
+    // Test that main template is still loaded
+    assert_eq!(quill.main.unwrap(), "main content");
 }
 
 #[test]
@@ -323,11 +323,11 @@ fn test_template_smart_default() {
   name: "test_smart_default"
   version: "1.0"
   backend: "typst"
-  plate_file: "plate.typ"
+  main_file: "main.typ"
   description: "Test quill with smart default"
 "#;
     fs::write(quill_dir.join("Quill.yaml"), yaml_content).unwrap();
-    fs::write(quill_dir.join("plate.typ"), "plate content").unwrap();
+    fs::write(quill_dir.join("main.typ"), "main content").unwrap();
     // Create example.md which should be picked up automatically
     fs::write(
         quill_dir.join("example.md"),
@@ -355,11 +355,11 @@ fn test_template_optional() {
   name: "test_without_template"
   version: "1.0"
   backend: "typst"
-  plate_file: "plate.typ"
+  main_file: "main.typ"
   description: "Test quill without template"
 "#;
     fs::write(quill_dir.join("Quill.yaml"), yaml_content).unwrap();
-    fs::write(quill_dir.join("plate.typ"), "plate content").unwrap();
+    fs::write(quill_dir.join("main.typ"), "main content").unwrap();
 
     // Load quill
     let quill = load_from_path(quill_dir).unwrap();
@@ -367,8 +367,8 @@ fn test_template_optional() {
     // Test that example fields are None
     assert_eq!(quill.example, None);
 
-    // Test that plate template is still loaded
-    assert_eq!(quill.plate.unwrap(), "plate content");
+    // Test that main template is still loaded
+    assert_eq!(quill.main.unwrap(), "main content");
 }
 
 #[test]
@@ -381,7 +381,7 @@ fn test_from_tree() {
   name: "test_from_tree"
   version: "1.0"
   backend: "typst"
-  plate_file: "plate.typ"
+  main_file: "main.typ"
   description: "A test quill from tree"
 "#;
     root_files.insert(
@@ -391,12 +391,12 @@ fn test_from_tree() {
         },
     );
 
-    // Add plate file
-    let plate_content = "= Test Template\n\nThis is a test.";
+    // Add main file
+    let main_content = "= Test Template\n\nThis is a test.";
     root_files.insert(
-        "plate.typ".to_string(),
+        "main.typ".to_string(),
         FileTreeNode::File {
-            contents: plate_content.as_bytes().to_vec(),
+            contents: main_content.as_bytes().to_vec(),
         },
     );
 
@@ -407,7 +407,7 @@ fn test_from_tree() {
 
     // Validate the quill
     assert_eq!(quill.name, "test_from_tree");
-    assert_eq!(quill.plate.unwrap(), plate_content);
+    assert_eq!(quill.main.unwrap(), main_content);
     assert!(quill.metadata.contains_key("backend"));
     assert!(quill.metadata.contains_key("description"));
 }
@@ -423,7 +423,7 @@ quill:
   name: test_tree_template
   version: "1.0"
   backend: typst
-  plate_file: plate.typ
+  main_file: main.typ
   example_file: template.md
   description: Test tree with template
 "#;
@@ -434,20 +434,20 @@ quill:
         },
     );
 
-    // Add plate file
+    // Add main file
     root_files.insert(
-        "plate.typ".to_string(),
+        "main.typ".to_string(),
         FileTreeNode::File {
-            contents: b"plate content".to_vec(),
+            contents: b"main content".to_vec(),
         },
     );
 
     // Add template file
-    let template_content = "# {{ title }}\n\n{{ body }}";
+    let temmain_content = "# {{ title }}\n\n{{ body }}";
     root_files.insert(
         "template.md".to_string(),
         FileTreeNode::File {
-            contents: template_content.as_bytes().to_vec(),
+            contents: temmain_content.as_bytes().to_vec(),
         },
     );
 
@@ -457,7 +457,7 @@ quill:
     let quill = QuillSource::from_tree(root).unwrap();
 
     // Validate template is loaded
-    assert_eq!(quill.example, Some(template_content.to_string()));
+    assert_eq!(quill.example, Some(temmain_content.to_string()));
 }
 
 #[test]
@@ -469,15 +469,15 @@ fn test_from_tree_structure_direct() {
             "Quill.yaml".to_string(),
             FileTreeNode::File {
                 contents:
-                    b"quill:\n  name: direct_tree\n  version: \"1.0\"\n  backend: typst\n  plate_file: plate.typ\n  description: Direct tree test\n"
+                    b"quill:\n  name: direct_tree\n  version: \"1.0\"\n  backend: typst\n  main_file: main.typ\n  description: Direct tree test\n"
                         .to_vec(),
             },
         );
 
     root_files.insert(
-        "plate.typ".to_string(),
+        "main.typ".to_string(),
         FileTreeNode::File {
-            contents: b"plate content".to_vec(),
+            contents: b"main content".to_vec(),
         },
     );
 
@@ -501,7 +501,7 @@ fn test_from_tree_structure_direct() {
 
     assert_eq!(quill.name, "direct_tree");
     assert!(quill.file_exists("src/main.rs"));
-    assert!(quill.file_exists("plate.typ"));
+    assert!(quill.file_exists("main.typ"));
 }
 
 #[test]
@@ -512,16 +512,16 @@ fn test_dir_exists_and_list_apis() {
     root_files.insert(
             "Quill.yaml".to_string(),
             FileTreeNode::File {
-                contents: b"quill:\n  name: test\n  version: \"1.0\"\n  backend: typst\n  plate_file: plate.typ\n  description: Test quill\n"
+                contents: b"quill:\n  name: test\n  version: \"1.0\"\n  backend: typst\n  main_file: main.typ\n  description: Test quill\n"
                     .to_vec(),
             },
         );
 
-    // Add plate file
+    // Add main file
     root_files.insert(
-        "plate.typ".to_string(),
+        "main.typ".to_string(),
         FileTreeNode::File {
-            contents: b"plate content".to_vec(),
+            contents: b"main content".to_vec(),
         },
     );
 
@@ -576,19 +576,19 @@ fn test_dir_exists_and_list_apis() {
     assert!(quill.dir_exists("assets/fonts"));
     assert!(quill.dir_exists("empty"));
     assert!(!quill.dir_exists("nonexistent"));
-    assert!(!quill.dir_exists("plate.typ")); // file, not directory
+    assert!(!quill.dir_exists("main.typ")); // file, not directory
 
     // Test file_exists
-    assert!(quill.file_exists("plate.typ"));
+    assert!(quill.file_exists("main.typ"));
     assert!(quill.file_exists("assets/logo.png"));
     assert!(quill.file_exists("assets/fonts/font.ttf"));
     assert!(!quill.file_exists("assets")); // directory, not file
 
     // Test list_files
     let root_files_list = quill.list_files("");
-    assert_eq!(root_files_list.len(), 2); // Quill.yaml and plate.typ
+    assert_eq!(root_files_list.len(), 2); // Quill.yaml and main.typ
     assert!(root_files_list.contains(&"Quill.yaml".to_string()));
-    assert!(root_files_list.contains(&"plate.typ".to_string()));
+    assert!(root_files_list.contains(&"main.typ".to_string()));
 
     let assets_files_list = quill.list_files("assets");
     assert_eq!(assets_files_list.len(), 2); // logo.png and icon.svg
@@ -618,7 +618,7 @@ fn test_field_schemas_parsing() {
   name: "taro"
   version: "1.0"
   backend: "typst"
-  plate_file: "plate.typ"
+  main_file: "main.typ"
   example_file: "taro.md"
   description: "Test template for field schemas"
 
@@ -642,12 +642,12 @@ cards:
         },
     );
 
-    // Add plate file
-    let plate_content = "= Test Template\n\nThis is a test.";
+    // Add main file
+    let main_content = "= Test Template\n\nThis is a test.";
     root_files.insert(
-        "plate.typ".to_string(),
+        "main.typ".to_string(),
         FileTreeNode::File {
-            contents: plate_content.as_bytes().to_vec(),
+            contents: main_content.as_bytes().to_vec(),
         },
     );
 
@@ -757,16 +757,16 @@ ui:
 }
 
 #[test]
-fn test_quill_without_plate_file() {
-    // Test creating a Quill without specifying a plate file
+fn test_quill_without_main_file() {
+    // Test creating a Quill without specifying a main file
     let mut root_files = HashMap::new();
 
-    // Add Quill.yaml without plate field
+    // Add Quill.yaml without main field
     let quill_yaml = r#"quill:
-  name: "test_no_plate"
+  name: "test_no_main"
   version: "1.0"
   backend: "typst"
-  description: "Test quill without plate file"
+  description: "Test quill without main file"
 "#;
     root_files.insert(
         "Quill.yaml".to_string(),
@@ -780,9 +780,9 @@ fn test_quill_without_plate_file() {
     // Create Quill from tree
     let quill = QuillSource::from_tree(root).unwrap();
 
-    // Validate that plate is null (will use auto plate)
-    assert!(quill.plate.clone().is_none());
-    assert_eq!(quill.name, "test_no_plate");
+    // Validate that main is null (will use auto main)
+    assert!(quill.main.clone().is_none());
+    assert_eq!(quill.name, "test_no_main");
 }
 
 #[test]
@@ -795,7 +795,7 @@ quill:
   backend: typst
   description: Test configuration parsing
   author: Test Author
-  plate_file: plate.typ
+  main_file: main.typ
   example_file: example.md
 
 typst:
@@ -827,7 +827,7 @@ cards:
     // Verify optional fields
     assert_eq!(config.version, "1.0");
     assert_eq!(config.author, "Test Author");
-    assert_eq!(config.plate_file, Some("plate.typ".to_string()));
+    assert_eq!(config.main_file, Some("main.typ".to_string()));
     assert_eq!(config.example_file, Some("example.md".to_string()));
 
     // Verify backend-specific config (parsed from the [typst] section).
@@ -2239,22 +2239,22 @@ cards:
 
 #[test]
 fn test_unknown_key_in_quill_section_errors() {
-    // Typos like 'platefile' should fail loudly, not silently land in metadata.
+    // Typos like 'mainfile' should fail loudly, not silently land in metadata.
     let yaml_content = r#"
 quill:
   name: unk_key
   version: "1.0"
   backend: typst
   description: Unknown key test
-  platefile: foo.typ
+  mainfile: foo.typ
 "#;
 
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
 
     assert_eq!(err.len(), 1);
     assert_eq!(err[0].code.as_deref(), Some("quill::unknown_key"));
-    assert!(err[0].message.contains("platefile"));
-    assert!(err[0].hint.as_deref().unwrap_or("").contains("plate_file"));
+    assert!(err[0].message.contains("mainfile"));
+    assert!(err[0].hint.as_deref().unwrap_or("").contains("main_file"));
 }
 
 #[test]
@@ -2332,7 +2332,7 @@ quill:
   version: "1.0"
   backend: typst
   description: Multi-error test
-  platefile: foo.typ
+  mainfile: foo.typ
 
 cards:
   main:

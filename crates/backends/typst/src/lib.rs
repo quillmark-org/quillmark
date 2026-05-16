@@ -162,7 +162,7 @@ impl Backend for TypstBackend {
 
     fn open(
         &self,
-        plate_content: &str,
+        main_content: &str,
         source: &QuillSource,
         json_data: &serde_json::Value,
     ) -> Result<RenderSession, RenderError> {
@@ -183,7 +183,7 @@ impl Backend for TypstBackend {
 
         let json_str =
             serde_json::to_string(&transformed_json).unwrap_or_else(|_| "{}".to_string());
-        let document = compile::compile_to_document(source, plate_content, &json_str)?;
+        let document = compile::compile_to_document(source, main_content, &json_str)?;
         let page_count = document.pages.len();
         let sig_placements = sig_overlay::extract(&document)?;
         let session = TypstSession {

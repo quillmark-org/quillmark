@@ -23,8 +23,8 @@ def test_quill_properties(taro_quill_dir):
 
     assert quill.name == "taro"
     assert quill.backend == "typst"
-    assert quill.plate is not None
-    assert isinstance(quill.plate, str)
+    assert quill.main is not None
+    assert isinstance(quill.main, str)
 
     metadata = quill.metadata
     assert isinstance(metadata, dict)

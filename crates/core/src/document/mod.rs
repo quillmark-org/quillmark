@@ -54,7 +54,7 @@
 //! assert_eq!(doc.cards()[0].tag(), "product");
 //! ```
 //!
-//! ### Accessing the plate wire format
+//! ### Accessing the main file wire format
 //!
 //! ```
 //! use quillmark_core::Document;
@@ -62,7 +62,7 @@
 //! let doc = Document::from_markdown(
 //!     "---\nQUILL: my_quill\ntitle: Hi\n---\n\nBody here.\n"
 //! ).unwrap();
-//! let json = doc.to_plate_json();
+//! let json = doc.to_main_json();
 //! assert_eq!(json["QUILL"], "my_quill");
 //! assert_eq!(json["title"], "Hi");
 //! assert_eq!(json["BODY"], "\nBody here.\n");
@@ -239,8 +239,8 @@ impl Card {
 /// - `main` — the entry `Card` (sentinel is `Sentinel::Main(reference)`).
 /// - `cards` — ordered composable cards (each with `Sentinel::Inline(tag)`).
 ///
-/// Backend plates consume the flat JSON wire shape produced by
-/// [`Document::to_plate_json`]. That method is the **only** place in core
+/// Backend main files consume the flat JSON wire shape produced by
+/// [`Document::to_main_json`]. That method is the **only** place in core
 /// that reconstructs `{"QUILL": ..., "CARDS": [...], "BODY": "..."}`.
 #[derive(Debug, Clone)]
 pub struct Document {
@@ -336,7 +336,7 @@ impl Document {
 
     // ── Wire format ────────────────────────────────────────────────────────────
 
-    /// Serialize this document to the JSON shape expected by backend plates.
+    /// Serialize this document to the JSON shape expected by backend main files.
     ///
     /// The output has the following top-level keys, which match what
     /// `lib.typ.template` reads at Typst runtime:
@@ -354,13 +354,13 @@ impl Document {
     /// }
     /// ```
     ///
-    /// This is the **only** place in `quillmark-core` that knows about the plate
-    /// wire format. All internal consumers (Quill, backends) call this instead
-    /// of constructing the shape by hand.
-    pub fn to_plate_json(&self) -> serde_json::Value {
+    /// This is the **only** place in `quillmark-core` that knows about the
+    /// main file wire format. All internal consumers (Quill, backends) call
+    /// this instead of constructing the shape by hand.
+    pub fn to_main_json(&self) -> serde_json::Value {
         let mut map = serde_json::Map::new();
 
-        // QUILL first — plate authors expect this at the top.
+        // QUILL first — main file authors expect this at the top.
         map.insert(
             "QUILL".to_string(),
             serde_json::Value::String(self.quill_reference().to_string()),

@@ -9,7 +9,7 @@ Start with this layout:
 ```
 my-quill/
 ├── Quill.yaml
-├── plate.typ
+├── main.typ
 └── example.md
 ```
 
@@ -23,7 +23,7 @@ quill:
   backend: typst
   version: "1.0.0"
   description: A simple letter format
-  plate_file: plate.typ
+  main_file: main.typ
   example_file: example.md
 
 cards:
@@ -42,9 +42,11 @@ cards:
 
 `name`, `backend`, `version`, and `description` are all required. `name` must be `snake_case`. Define your document's expected frontmatter fields under `cards.main.fields`. Each field has a `type`, optional `default`, `description`, and validation constraints. Use `integer` for whole numbers only and `number` for values that may include decimals. For the full list of field types, UI hints, typed arrays, and enum constraints, see the [Quill.yaml Reference](quill-yaml-reference.md).
 
-## 3. Write `plate.typ`
+## 3. Write `main.typ`
 
-Your first plate template:
+`main.typ` is the **main file** — the entry-point Typst file the backend
+compiles. A quill may also ship helper or include `.typ` files, but those are
+imported by the main file rather than compiled directly. Your first main file:
 
 ```typst
 #import "@local/quillmark-helper:0.1.0": data

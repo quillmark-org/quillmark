@@ -16,7 +16,7 @@ The same Markdown can be rendered by different Quills to produce different outpu
 A **Quill** is a format bundle that defines how Markdown content should be rendered. It contains:
 
 - **Metadata** (`Quill.yaml`) - Configuration including name, backend, and field schemas
-- **Plate file** - Backend-specific plate that receives document data as JSON
+- **Main file** - The entry-point backend file that receives document data as JSON and is compiled into the artifact; distinct from helper or include files a quill may also ship
 - **Assets** - Fonts, images, and other resources needed for rendering
 - **Packages** - Backend-specific packages (e.g., Typst packages)
 
@@ -38,7 +38,7 @@ This metadata is accessible in formats and is validated against native schema ru
 
 ### Backends
 
-A backend compiles the plate plus injected JSON data into the final artifact. The Typst backend is currently the only one — it produces PDF, SVG, and PNG, and converts fields declared `type: markdown` to Typst markup during compilation.
+A backend compiles the main file plus injected JSON data into the final artifact. The Typst backend is currently the only one — it produces PDF, SVG, and PNG, and converts fields declared `type: markdown` to Typst markup during compilation.
 
 ### Required `QUILL` Reference
 
@@ -59,7 +59,7 @@ If `QUILL` is missing, parsing fails. Quill names must be `snake_case` (`[a-z][a
 Quillmark follows a three-stage pipeline:
 
 1. **Parse & Normalize** - Extract YAML frontmatter/body, apply schema coercion/defaults, strip bidi characters, fix HTML fences
-2. **Compile** - Backend receives plate content + JSON data and converts them into final artifacts (PDF, SVG, PNG, etc.)
+2. **Compile** - Backend receives the main file content + JSON data and converts them into final artifacts (PDF, SVG, PNG, etc.)
 3. **Output** - Return artifacts with metadata
 
 ```

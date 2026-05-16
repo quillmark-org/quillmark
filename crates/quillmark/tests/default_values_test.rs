@@ -9,7 +9,7 @@ fn create_test_quill(temp_dir: &TempDir, quill_yaml: &str) -> std::path::PathBuf
     fs::create_dir_all(&quill_path).unwrap();
     fs::write(quill_path.join("Quill.yaml"), quill_yaml).unwrap();
     fs::write(
-        quill_path.join("plate.typ"),
+        quill_path.join("main.typ"),
         "#import \"@local/quillmark-helper:0.1.0\": data\n= Document\n#data",
     )
     .unwrap();
@@ -25,7 +25,7 @@ fn test_default_values_applied_via_dry_run() {
   name: "test_quill"
   version: "1.0"
   backend: "typst"
-  plate_file: "plate.typ"
+  main_file: "main.typ"
   description: "Test quill with defaults"
 
 cards:
@@ -66,7 +66,7 @@ fn test_default_values_not_overriding_existing_fields() {
   name: "test_quill"
   version: "1.0"
   backend: "typst"
-  plate_file: "plate.typ"
+  main_file: "main.typ"
   description: "Test quill with defaults"
 
 cards:
@@ -105,7 +105,7 @@ fn test_validation_with_defaults() {
   name: "test_quill"
   version: "1.0"
   backend: "typst"
-  plate_file: "plate.typ"
+  main_file: "main.typ"
   description: "Test quill with optional fields"
 
 cards:
@@ -144,7 +144,7 @@ fn test_validation_fails_without_defaults() {
   name: "test_quill"
   version: "1.0"
   backend: "typst"
-  plate_file: "plate.typ"
+  main_file: "main.typ"
   description: "Test quill with required field"
 
 cards:

@@ -73,23 +73,23 @@ impl Quill {
     /// Open an iterative render session for this document.
     pub fn open(&self, doc: &Document) -> Result<RenderSession, RenderError> {
         let json_data = self.compile_data(doc)?;
-        let plate_content = self
+        let main_content = self
             .source
-            .plate()
+            .main()
             .filter(|s| !s.is_empty())
             .unwrap_or("")
             .to_string();
         let warnings: Vec<_> = self.ref_mismatch_warning(doc).into_iter().collect();
         let session = self
             .backend
-            .open(&plate_content, &self.source, &json_data)?;
+            .open(&main_content, &self.source, &json_data)?;
         Ok(session.with_warnings(warnings))
     }
 
     /// Compile a Document to JSON data suitable for the backend.
     ///
     /// Applies coercion, validation, normalization, and schema defaults, then
-    /// calls [`Document::to_plate_json`] to produce the wire format.
+    /// calls [`Document::to_main_json`] to produce the wire format.
     pub fn compile_data(&self, doc: &Document) -> Result<serde_json::Value, RenderError> {
         let coerced = self.coerce_and_validate(doc)?;
 
@@ -131,7 +131,7 @@ impl Quill {
             normalized.warnings().to_vec(),
         );
 
-        Ok(final_doc.to_plate_json())
+        Ok(final_doc.to_main_json())
     }
 
     /// Perform a dry-run validation without backend compilation.
