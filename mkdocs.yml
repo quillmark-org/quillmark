@@ -46,6 +46,8 @@ nav:
       - Versioning: format-designer/versioning.md
   - CLI:
       - Reference: cli/reference.md
+  - Migration:
+      - "@quillmark/wasm 0.77 → 0.79": migration/wasm-0.77-to-0.79.md
 
 markdown_extensions:
   - pymdownx.highlight:
