@@ -29,19 +29,19 @@ card_kinds:
   experience_section:
     description: An entry with a heading, subheading, and bullet points.
     ui:
-      title: "{headingLeft} — {subheadingLeft}"
+      title: "{heading_left} — {subheading_left}"
     fields:
       title:
         type: string
         default: Experience
-      headingLeft:
+      heading_left:
         type: string
         required: true
-      headingRight:
+      heading_right:
         type: string
-      subheadingLeft:
+      subheading_left:
         type: string
-      subheadingRight:
+      subheading_right:
         type: string
 
   skills_section:
