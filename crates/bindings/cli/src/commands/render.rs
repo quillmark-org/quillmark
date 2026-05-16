@@ -1,7 +1,8 @@
+use crate::commands::load_quill;
 use crate::errors::{CliError, Result};
 use crate::output::{derive_output_path, OutputWriter};
 use clap::Parser;
-use quillmark::{Document, Quillmark};
+use quillmark::Document;
 use quillmark_core::{OutputFormat, RenderOptions};
 use std::fs;
 use std::path::PathBuf;
@@ -42,21 +43,12 @@ pub struct RenderArgs {
 }
 
 pub fn execute(args: RenderArgs) -> Result<()> {
-    // Validate quill path exists
-    if !args.quill.exists() {
-        return Err(CliError::InvalidArgument(format!(
-            "Quill directory not found: {}",
-            args.quill.display()
-        )));
-    }
-
     if args.verbose {
         println!("Loading quill from: {}", args.quill.display());
     }
 
     // Load quill
-    let engine = Quillmark::new();
-    let quill = engine.quill_from_path(args.quill.clone())?;
+    let quill = load_quill(&args.quill)?;
 
     if args.verbose {
         println!("Quill loaded: {}", quill.source().name());
