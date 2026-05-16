@@ -41,7 +41,7 @@ fn strip_f2_separator(body: &str) -> &str {
 
 /// Parse a legacy `---/CARD: …/---` leaf body.
 ///
-/// Used by the legacy `---/CARD: …/---` parser path (CARD_MODEL.md §9). The previous
+/// Used by the legacy `---/CARD: …/---` parser path (MARKDOWN.md §4.4). The previous
 /// leaf syntax carried the kind as a `CARD:` first body key; the canonical
 /// syntax carries it in the fence info string (`MARKDOWN.md §3.2`). To produce
 /// the same `Leaf` from a legacy block, the kind must be lifted *out* of the
@@ -99,7 +99,7 @@ pub(super) enum BlockSource {
     /// Canonical leaf fence; the kind comes from the `leaf <kind>` info string.
     Leaf(String),
     /// Legacy `---/CARD: …/---` leaf — the kind is lifted from the `CARD:`
-    /// first body key (`CARD_MODEL.md §9`).
+    /// first body key (`MARKDOWN.md §4.4`).
     LegacyCard,
 }
 
@@ -142,7 +142,7 @@ fn yaml_parse_options() -> serde_saphyr::Options {
 /// `source` is how `find_metadata_blocks` classified the fence:
 /// `Frontmatter` for the document frontmatter, `Leaf(kind)` for a canonical
 /// leaf fence (kind from the `leaf <kind>` info string), or `LegacyCard` for
-/// a legacy `---/CARD: …/---` leaf (`CARD_MODEL.md §9`). For `LegacyCard` the
+/// a legacy `---/CARD: …/---` leaf (`MARKDOWN.md §4.4`). For `LegacyCard` the
 /// kind is lifted out of the `CARD:` first body key and that line is dropped
 /// before YAML parsing, so the resulting `Leaf` matches the canonical
 /// ` ```leaf <kind> ` form; the caller verifies the first content key is

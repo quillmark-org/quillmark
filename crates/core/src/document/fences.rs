@@ -253,7 +253,7 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
     //
     // - **Canonical**: CommonMark fenced code block whose info string is
     //   `leaf <kind>`.
-    // - **Legacy (`CARD_MODEL.md §9`)**: `---/---` block (F2)
+    // - **Legacy (`MARKDOWN.md §4.4`)**: `---/---` block (F2)
     //   whose first body key is `CARD:`. Each occurrence emits a
     //   `parse::deprecated_leaf_syntax` warning; the canonical emitter
     //   rewrites it to ` ```leaf <kind> ` on round-trip.

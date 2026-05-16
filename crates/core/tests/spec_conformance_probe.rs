@@ -123,8 +123,8 @@ fn leaves_is_always_present_even_when_empty() {
 
 // §3.2 / §4.2 — a `leaf`-prefixed fence commits to leaf parsing on that token
 // alone; a missing, invalid, or extra info-string kind token is a hard parse
-// error, not a silent fallthrough to body content. This is the central "no
-// silent classification miss" promise of LEAF_REWORK.md §3.3.
+// error, not a silent fallthrough to body content — a hard error, not a
+// silent classification miss.
 #[test]
 fn leaf_fence_with_bad_kind_token_is_rejected() {
     let cases = [

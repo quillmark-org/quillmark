@@ -956,7 +956,7 @@ leaf_kinds:
         let doc1 = Document::from_markdown(&bp).expect("blueprint must parse");
         // The blueprint declares one leaf kind (`enclosure`). It must survive
         // parsing — earlier the leaf was emitted as `---/KIND/---`, which the
-        // parser silently dropped into body prose. See LEAF_REWORK.md §3.3.
+        // parser silently dropped into body prose.
         assert_eq!(
             doc1.leaves().len(),
             1,

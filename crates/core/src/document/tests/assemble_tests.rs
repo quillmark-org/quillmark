@@ -2201,7 +2201,7 @@ fn frontmatter_field_order_preserved_after_quill_removal() {
     );
 }
 
-// ── Legacy `---/CARD:/---` migration path (LEAF_REWORK.md §7) ──────────────
+// ── Legacy `---/CARD:/---` migration path (MARKDOWN.md §4.4) ───────────────
 
 /// A legacy `---/CARD:/---` block parses as a leaf and surfaces a
 /// `parse::deprecated_leaf_syntax` warning.
