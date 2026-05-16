@@ -82,6 +82,32 @@ quillmark schema ./my-quill -o schema.yaml
 quillmark schema ./my-quill | grep '^  description:'
 ```
 
+### specs
+
+Extract the annotated Markdown blueprint from a quill — the same shape an author writes, pre-filled with placeholders, examples, and constraint hints. Useful as a prompt-time reference document for LLM authoring.
+
+```bash
+quillmark specs [OPTIONS] <QUILL_PATH>
+```
+
+**Arguments:**
+
+- `<QUILL_PATH>`: Path to quill directory
+
+**Options:**
+
+- `-o <FILE>` / `--output <FILE>`: Output file (default: stdout)
+
+**Examples:**
+
+```bash
+# Print blueprint to stdout
+quillmark specs ./my-quill
+
+# Save blueprint to file
+quillmark specs ./my-quill -o blueprint.md
+```
+
 ### validate
 
 Validate quill configuration and structure.
