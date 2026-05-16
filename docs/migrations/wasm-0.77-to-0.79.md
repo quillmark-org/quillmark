@@ -87,8 +87,7 @@ This is the one behavior change most likely to affect you:
   on-disk bytes change.
 - **Diffing the original source against `toMarkdown()`** to detect edits will
   report a spurious diff for documents that contained legacy card fences. Use
-  [`doc.equals`](https://github.com/quillmark-org/quillmark) for semantic
-  comparison instead of string comparison.
+  `doc.equals(other)` for semantic comparison instead of string comparison.
 
 The `Document` card mutators (`pushCard`, `insertCard`, `updateCardField`,
 etc.) and the `CardInput` shape (`{ tag, fields?, body? }`) are unchanged.
