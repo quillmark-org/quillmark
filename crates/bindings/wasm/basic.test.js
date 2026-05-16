@@ -699,7 +699,7 @@ main:
       type: string
       description: The title
 
-card_types:
+card_kinds:
   indorsement:
     description: Indorsement
     fields:
@@ -730,9 +730,9 @@ card_types:
     expect(schema.main.description).toBe('The main card schema')
     expect(schema.main.fields.title).toBeDefined()
     expect(schema.main.fields.QUILL.const).toBe('meta_test_quill@0.2.1')
-    expect(schema.card_types.main).toBeUndefined()
-    expect(schema.card_types.indorsement.fields.signature_block).toBeDefined()
-    expect(schema.card_types.indorsement.fields.CARD.const).toBe('indorsement')
+    expect(schema.card_kinds.main).toBeUndefined()
+    expect(schema.card_kinds.indorsement.fields.signature_block).toBeDefined()
+    expect(schema.card_kinds.indorsement.fields.CARD.const).toBe('indorsement')
   })
 
   it('metadata and schema are JSON.stringify-able (plain objects)', () => {
@@ -799,7 +799,7 @@ main:
     count:
       type: integer
 
-card_types:
+card_kinds:
   note:
     fields:
       body:

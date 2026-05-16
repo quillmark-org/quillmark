@@ -31,14 +31,14 @@ pub enum ValidationError {
     #[error("field `{path}` does not match expected format `{format}`")]
     FormatViolation { path: String, format: String },
 
-    #[error("unknown card type `{card}` at `{path}`")]
+    #[error("unknown card kind `{card}` at `{path}`")]
     UnknownCard { path: String, card: String },
 
     #[error("card at `{path}` missing `CARD` discriminator")]
     MissingCardDiscriminator { path: String },
 
     #[error(
-        "card `{card}` at `{path}` has body content but the card type declares `body.enabled: false` — remove the body content or set `body.enabled: true` on the card type"
+        "card `{card}` at `{path}` has body content but the card kind declares `body.enabled: false` — remove the body content or set `body.enabled: true` on the card kind"
     )]
     BodyDisabled { path: String, card: String },
 }
@@ -130,11 +130,11 @@ pub fn validate_typed_document(
         let card_name = card.tag();
         let item_path = format!("cards[{index}]");
         // NOTE: `cards[N]` is the document-instance-side path (the cards
-        // array on a Document). Card-type definitions live under
-        // `card_types:` in Quill.yaml, but instances on a document are
+        // array on a Document). Card-kind definitions live under
+        // `card_kinds:` in Quill.yaml, but instances on a document are
         // still a `cards` list.
 
-        let Some(card_schema) = config.card_type(card_name.as_str()) else {
+        let Some(card_schema) = config.card_kind(card_name.as_str()) else {
             errors.push(ValidationError::UnknownCard {
                 path: item_path,
                 card: card_name,
@@ -614,7 +614,7 @@ main:
     fn validates_card_with_valid_discriminator() {
         let config = config_with(
             "    title:\n      type: string",
-            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
+            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
         );
         let doc = doc_with_typed_cards(
             &[],
@@ -630,7 +630,7 @@ main:
     fn rejects_unknown_card_discriminator() {
         let config = config_with(
             "    title:\n      type: string",
-            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string",
+            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string",
         );
         let doc = doc_with_typed_cards(&[], vec![typed_card("unknown", &[])]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
@@ -643,7 +643,7 @@ main:
     fn validates_multiple_card_instances_same_type() {
         let config = config_with(
             "    title:\n      type: string",
-            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
+            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
         );
         let doc = doc_with_typed_cards(
             &[],
@@ -656,10 +656,10 @@ main:
     }
 
     #[test]
-    fn validates_multiple_card_types_mixed() {
+    fn validates_multiple_card_kinds_mixed() {
         let config = config_with(
             "    title:\n      type: string",
-            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true\n  routing:\n    fields:\n      office:\n        type: string\n        required: true",
+            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true\n  routing:\n    fields:\n      office:\n        type: string\n        required: true",
         );
         let doc = doc_with_typed_cards(
             &[],
@@ -675,7 +675,7 @@ main:
     fn reports_card_field_paths_with_card_name_and_index() {
         let config = config_with(
             "    title:\n      type: string",
-            "card_types:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
+            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
         );
         let doc = doc_with_typed_cards(&[], vec![typed_card("indorsement", &[])]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
@@ -688,7 +688,7 @@ main:
     fn body_disabled_card_enforces_trim_boundary() {
         let config = config_with(
             "    title:\n      type: string",
-            "card_types:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        required: true",
+            "card_kinds:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        required: true",
         );
         // Prose triggers the error; whitespace-only does not.
         let mut prose_card = typed_card("skills", &[("items", json!(["Rust"]))]);

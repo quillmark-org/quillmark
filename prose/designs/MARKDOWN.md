@@ -271,7 +271,7 @@ interface Document {
 }
 
 interface Card {
-  CARD: string;           // card type, matches /^[a-z_][a-z0-9_]*$/
+  CARD: string;           // card kind, matches /^[a-z_][a-z0-9_]*$/
   BODY: string;           // card body prose
   [field: string]: any;   // other card fields
 }

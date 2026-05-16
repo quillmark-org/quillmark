@@ -292,12 +292,12 @@ fn transform_markdown_fields(
         }
     }
 
-    // Collect per-card-type content field names from schema $defs
+    // Collect per-card-kind content field names from schema $defs
     let mut card_content_fields = serde_json::Map::new();
     let mut card_date_fields = serde_json::Map::new();
     if let Some(defs) = schema_json.get("$defs").and_then(|v| v.as_object()) {
         for (def_name, def_schema) in defs {
-            if let Some(card_type) = def_name.strip_suffix("_card") {
+            if let Some(card_kind) = def_name.strip_suffix("_card") {
                 let card_fields: Vec<&str> = def_schema
                     .get("properties")
                     .and_then(|v| v.as_object())
@@ -311,7 +311,7 @@ fn transform_markdown_fields(
                     .unwrap_or_default();
                 if !card_fields.is_empty() {
                     card_content_fields.insert(
-                        card_type.to_string(),
+                        card_kind.to_string(),
                         serde_json::Value::Array(
                             card_fields
                                 .into_iter()
@@ -334,7 +334,7 @@ fn transform_markdown_fields(
                     .unwrap_or_default();
                 if !date_fields.is_empty() {
                     card_date_fields.insert(
-                        card_type.to_string(),
+                        card_kind.to_string(),
                         serde_json::Value::Array(
                             date_fields
                                 .into_iter()
@@ -376,11 +376,11 @@ fn transform_cards_array(
 
     for card in cards_array {
         if let Some(card_obj) = card.as_object() {
-            if let Some(card_type) = card_obj.get("CARD").and_then(|v| v.as_str()) {
-                // Construct the definition name: {type}_card
-                let def_name = format!("{}_card", card_type);
+            if let Some(card_kind) = card_obj.get("CARD").and_then(|v| v.as_str()) {
+                // Construct the definition name: {kind}_card
+                let def_name = format!("{}_card", card_kind);
 
-                // Look up the schema for this card type
+                // Look up the schema for this card kind
                 if let Some(card_schema_json) = defs.and_then(|d| d.get(&def_name)) {
                     // Convert the card object to HashMap<String, QuillValue>
                     let mut card_fields: HashMap<String, QuillValue> = HashMap::new();
@@ -406,7 +406,7 @@ fn transform_cards_array(
             }
         }
 
-        // If not an object, no CARD type, or no matching schema, keep as-is
+        // If not an object, no CARD kind, or no matching schema, keep as-is
         transformed_cards.push(card.clone());
     }
 

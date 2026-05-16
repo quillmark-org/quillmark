@@ -86,7 +86,7 @@ For command options and output controls, see the [CLI Reference](../cli/referenc
 
 ## 6. Next steps
 
-- [Quill.yaml Reference](quill-yaml-reference.md) — full field types, UI hints, `card_types`, `typst` section
+- [Quill.yaml Reference](quill-yaml-reference.md) — full field types, UI hints, `card_kinds`, `typst` section
 - [Typst Backend](typst-backend.md) — data access patterns, CARDS iteration, helper package
 - [Quill Versioning](versioning.md)
 

@@ -18,7 +18,7 @@ main:
       description: title of document
       type: string
 
-card_types:
+card_kinds:
   quotes:
     description: A collection of quotes about taro ice cream
     ui:

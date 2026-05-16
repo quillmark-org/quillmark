@@ -374,7 +374,7 @@ Item body"#;
 
 #[test]
 fn test_card_name_collision_with_array_field() {
-    // CARD type names CAN now conflict with frontmatter field names
+    // CARD kind names CAN now conflict with frontmatter field names
     let markdown = r#"---
 QUILL: test_quill
 items:

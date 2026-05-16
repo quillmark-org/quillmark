@@ -132,7 +132,7 @@ pub struct Form {
 
 /// Build the [`Form`] for a document. Composes:
 /// - `QuillConfig::main` — the main card schema.
-/// - `QuillConfig::card_type` — to look up card schemas by tag.
+/// - `QuillConfig::card_kind` — to look up card schemas by tag.
 /// - `QuillConfig::validate_document` — to gather validation diagnostics.
 ///
 /// Coercion (`coerce_frontmatter` / `coerce_card`) is **not** applied here:
@@ -149,7 +149,7 @@ pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
     let mut cards: Vec<FormCard> = Vec::new();
     for (index, card) in doc.cards().iter().enumerate() {
         let tag = card.tag();
-        match quill.source().config().card_type(&tag) {
+        match quill.source().config().card_kind(&tag) {
             Some(card_schema) => {
                 let card_fields = card.frontmatter().to_index_map();
                 cards.push(project_card(card_schema, &card_fields));
@@ -186,13 +186,13 @@ pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
     }
 }
 
-/// Build a blank [`FormCard`] for a card type by tag, or `None` if the tag
+/// Build a blank [`FormCard`] for a card kind by tag, or `None` if the tag
 /// isn't declared in the quill's schema.
-pub(crate) fn blank_card_for_tag(quill: &Quill, card_type: &str) -> Option<FormCard> {
+pub(crate) fn blank_card_for_tag(quill: &Quill, card_kind: &str) -> Option<FormCard> {
     quill
         .source()
         .config()
-        .card_type(card_type)
+        .card_kind(card_kind)
         .map(FormCard::blank)
 }
 

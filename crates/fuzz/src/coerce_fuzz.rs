@@ -125,7 +125,7 @@ fn config_with_one_field(schema: FieldSchema) -> QuillConfig {
         name: "test".to_string(),
         description: String::new(),
         main,
-        card_types: Vec::new(),
+        card_kinds: Vec::new(),
         backend: "typst".to_string(),
         version: "1.0".to_string(),
         author: String::new(),

@@ -19,9 +19,9 @@ pub struct CardSchema {
 }
 ```
 
-The static display label for a card type lives on `UiCardSchema::title`, not on `CardSchema` directly — see `ui.title` below. Body behavior (whether body content is permitted and optional guide text) lives under `body` — see `body.enabled` and `body.description` below.
+The static display label for a card kind lives on `UiCardSchema::title`, not on `CardSchema` directly — see `ui.title` below. Body behavior (whether body content is permitted and optional guide text) lives under `body` — see `body.enabled` and `body.description` below.
 
-`QuillConfig` exposes the entry-point card as `main: CardSchema` and the additional named card-types as `card_types: Vec<CardSchema>`. Look up a named card-type by name via `card_type(name)` or get a name-keyed map via `card_types_map()`.
+`QuillConfig` exposes the entry-point card as `main: CardSchema` and the additional named card-kinds as `card_kinds: Vec<CardSchema>`. Look up a named card-kind by name via `card_kind(name)` or get a name-keyed map via `card_kinds_map()`.
 
 ## Quill.yaml Configuration
 
@@ -30,7 +30,7 @@ main:
   fields:
     # ... main-card fields ...
 
-card_types:
+card_kinds:
   indorsement:
     description: Chain of routing endorsements for multi-level correspondence.
     ui:
@@ -55,7 +55,7 @@ card_types:
 ## Public Schema YAML Output
 
 ```yaml
-card_types:
+card_kinds:
   indorsement:
     description: Chain of routing endorsements for multi-level correspondence.
     ui:
@@ -72,7 +72,7 @@ card_types:
           group: Addressing
 ```
 
-`QuillConfig::schema()` emits the schema (with `ui` and `body` hints retained) and `schema_yaml()` is the YAML wrapper. The output keeps the same `card_types.<name>.fields` shape as `Quill.yaml` and injects a required `CARD` sentinel field whose `const` value is the card name. The `card_types` key is omitted entirely when no named card-types are defined. See `SCHEMAS.md` for the full surface.
+`QuillConfig::schema()` emits the schema (with `ui` and `body` hints retained) and `schema_yaml()` is the YAML wrapper. The output keeps the same `card_kinds.<name>.fields` shape as `Quill.yaml` and injects a required `CARD` sentinel field whose `const` value is the card name. The `card_kinds` key is omitted entirely when no named card-kinds are defined. See `SCHEMAS.md` for the full surface.
 
 ## Markdown Syntax
 

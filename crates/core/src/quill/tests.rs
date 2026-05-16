@@ -803,7 +803,7 @@ quill:
   backend: typst
   description: Bad card name
 
-card_types:
+card_kinds:
   BadCard:
     fields:
       title:
@@ -826,7 +826,7 @@ quill:
   backend: typst
   description: Leading underscore card name
 
-card_types:
+card_kinds:
   _private_card:
     fields:
       title:
@@ -868,7 +868,7 @@ quill:
   backend: typst
   description: Bad card field key
 
-card_types:
+card_kinds:
   profile:
     fields:
       DisplayName:
@@ -1014,7 +1014,7 @@ quill:
   backend: typst
   description: Card defaults test
 
-card_types:
+card_kinds:
   indorsement:
     fields:
       signature_block:
@@ -1027,7 +1027,7 @@ card_types:
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
 
-    let card = config.card_type("indorsement").unwrap();
+    let card = config.card_kind("indorsement").unwrap();
     let card_defaults = card.defaults();
     assert_eq!(card_defaults.len(), 1);
     assert_eq!(
@@ -1038,7 +1038,7 @@ card_types:
     let sig_example = card.fields.get("signature_block").unwrap().example.as_ref();
     assert_eq!(sig_example.and_then(|v| v.as_str()), Some("Col Smith"));
 
-    assert!(config.card_type("unknown").is_none());
+    assert!(config.card_kind("unknown").is_none());
 }
 
 #[test]
@@ -1169,7 +1169,7 @@ quill:
   backend: typst
   description: Test [cards.X.fields.Y] syntax
 
-card_types:
+card_kinds:
   endorsements:
     description: Chain of endorsements
     fields:
@@ -1185,9 +1185,9 @@ card_types:
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
 
-    // Verify the card-type was parsed into config.card_types
-    assert!(config.card_type("endorsements").is_some());
-    let card = config.card_type("endorsements").unwrap();
+    // Verify the card-kind was parsed into config.card_kinds
+    assert!(config.card_kind("endorsements").is_some());
+    let card = config.card_kind("endorsements").unwrap();
 
     assert_eq!(card.name, "endorsements");
     assert_eq!(card.description, Some("Chain of endorsements".to_string()));
@@ -1248,7 +1248,7 @@ main:
       description: Regular field
       type: string
 
-card_types:
+card_kinds:
   indorsements:
     description: Chain of endorsements
     fields:
@@ -1264,9 +1264,9 @@ card_types:
     let regular = config.main.fields.get("regular").unwrap();
     assert_eq!(regular.r#type, FieldType::String);
 
-    // Check card-type is in config.card_types (not config.main.fields)
-    assert!(config.card_type("indorsements").is_some());
-    let card = config.card_type("indorsements").unwrap();
+    // Check card-kind is in config.card_kinds (not config.main.fields)
+    assert!(config.card_kind("indorsements").is_some());
+    let card = config.card_kind("indorsements").unwrap();
     assert_eq!(card.description, Some("Chain of endorsements".to_string()));
     assert!(card.fields.contains_key("name"));
 }
@@ -1281,13 +1281,13 @@ quill:
   backend: typst
   description: Test cards without fields
 
-card_types:
+card_kinds:
   myscope:
     description: My scope
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
-    let card = config.card_type("myscope").unwrap();
+    let card = config.card_kind("myscope").unwrap();
     assert_eq!(card.name, "myscope");
     assert_eq!(card.description, Some("My scope".to_string()));
     assert!(card.fields.is_empty());
@@ -1309,7 +1309,7 @@ main:
       description: Field
       type: string
 
-card_types:
+card_kinds:
   conflict:
     description: Card
 "#;
@@ -1325,7 +1325,7 @@ card_types:
 
     let config = result.unwrap();
     assert!(config.main.fields.contains_key("conflict"));
-    assert!(config.card_type("conflict").is_some());
+    assert!(config.card_kind("conflict").is_some());
 }
 
 #[test]
@@ -1347,7 +1347,7 @@ main:
       type: string
       description: Zero
 
-card_types:
+card_kinds:
   second:
     description: Second
     fields:
@@ -1360,7 +1360,7 @@ card_types:
 
     let first = config.main.fields.get("first").unwrap();
     let zero = config.main.fields.get("zero").unwrap();
-    let second = config.card_type("second").unwrap();
+    let second = config.card_kind("second").unwrap();
 
     // Check field ordering
     let ord_first = first.ui.as_ref().unwrap().order.unwrap();
@@ -1388,7 +1388,7 @@ quill:
   backend: typst
   description: Test card field order
 
-card_types:
+card_kinds:
   mycard:
     description: Test card
     fields:
@@ -1401,7 +1401,7 @@ card_types:
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
-    let card = config.card_type("mycard").unwrap();
+    let card = config.card_kind("mycard").unwrap();
 
     let z_first = card.fields.get("z_first").unwrap();
     let a_second = card.fields.get("a_second").unwrap();
@@ -1749,7 +1749,7 @@ quill:
   backend: typst
   description: Coerce cards
 
-card_types:
+card_kinds:
   indorsement:
     fields:
       score:
@@ -1914,7 +1914,7 @@ main:
     subject:
       type: string
 
-card_types:
+card_kinds:
   indorsement:
     ui:
       title: "{from} → {for}"
@@ -1932,7 +1932,7 @@ card_types:
         Some("Memorandum"),
         "literal main.ui.title"
     );
-    let indorsement = config.card_type("indorsement").unwrap();
+    let indorsement = config.card_kind("indorsement").unwrap();
     assert_eq!(
         indorsement.ui.as_ref().unwrap().title.as_deref(),
         Some("{from} → {for}"),
@@ -1942,7 +1942,7 @@ card_types:
     let schema = config.schema();
     assert_eq!(schema["main"]["ui"]["title"].as_str(), Some("Memorandum"));
     assert_eq!(
-        schema["card_types"]["indorsement"]["ui"]["title"].as_str(),
+        schema["card_kinds"]["indorsement"]["ui"]["title"].as_str(),
         Some("{from} → {for}")
     );
 }
@@ -2018,7 +2018,7 @@ quill:
 
 #[test]
 fn test_unknown_top_level_section_errors() {
-    // 'card_type' is a common typo for 'card_types'. Must not be silently ignored.
+    // 'card_kind' is a common typo for 'card_kinds'. Must not be silently ignored.
     let yaml_content = r#"
 quill:
   name: unk_section
@@ -2026,7 +2026,7 @@ quill:
   backend: typst
   description: Unknown section test
 
-card_type:
+card_kind:
   foo:
     description: Should not silently disappear
     fields:
@@ -2037,7 +2037,7 @@ card_type:
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
 
     assert!(err.iter().any(|d| {
-        d.code.as_deref() == Some("quill::unknown_section") && d.message.contains("card_type")
+        d.code.as_deref() == Some("quill::unknown_section") && d.message.contains("card_kind")
     }));
 }
 
@@ -2239,7 +2239,7 @@ fn check_schema_snapshot(
     let parsed: serde_json::Value = serde_saphyr::from_str(&yaml).expect("parse yaml");
     assert_eq!(json_of(&quill.config), parsed, "{golden} json/yaml parity");
     assert!(parsed.get("main").and_then(|v| v.get("fields")).is_some());
-    assert!(parsed.get("card_types").is_some());
+    assert!(parsed.get("card_kinds").is_some());
     assert!(parsed.get("ref").is_none() && parsed.get("example").is_none());
     assert!(yaml.contains("ui:"), "{golden} must include ui hints");
 }
@@ -2256,7 +2256,7 @@ quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     title: { type: string }
-card_types:
+card_kinds:
   skills:
     body:
       enabled: false
@@ -2357,14 +2357,14 @@ main:
 }
 
 #[test]
-fn body_example_card_type_fence_line_is_an_error() {
-    // The fence check applies to card-type body examples too.
+fn body_example_card_kind_fence_line_is_an_error() {
+    // The fence check applies to card-kind body examples too.
     let yaml = r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     title: { type: string }
-card_types:
+card_kinds:
   note:
     body:
       example: "See below:\n---\nEnd."
@@ -2379,7 +2379,7 @@ card_types:
             .as_deref()
             .map(|c| c == "quill::body_example_contains_fence")
             .unwrap_or(false)),
-        "expected body_example_contains_fence error for card type, got: {:?}",
+        "expected body_example_contains_fence error for card kind, got: {:?}",
         errors
     );
 }

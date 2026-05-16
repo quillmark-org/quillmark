@@ -39,7 +39,7 @@ main:
     count:
       type: integer
 
-card_types:
+card_kinds:
   note:
     fields:
       body:
@@ -178,7 +178,7 @@ def test_blank_main_returns_card_with_no_document_values(tmp_path):
 
 
 def test_blank_card_known_type(tmp_path):
-    """blank_card returns a dict for a known card type."""
+    """blank_card returns a dict for a known card kind."""
     quill = make_quill(tmp_path)
 
     blank = quill.blank_card("note")
@@ -191,7 +191,7 @@ def test_blank_card_known_type(tmp_path):
 
 
 def test_blank_card_unknown_type(tmp_path):
-    """blank_card returns None for an unknown card type."""
+    """blank_card returns None for an unknown card kind."""
     quill = make_quill(tmp_path)
 
     assert quill.blank_card("does_not_exist") is None

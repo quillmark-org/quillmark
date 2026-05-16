@@ -117,7 +117,7 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
     );
 
     let mut defs = serde_json::Map::new();
-    for card in &config.card_types {
+    for card in &config.card_kinds {
         let mut card_properties = serde_json::Map::new();
         for (name, field) in &card.fields {
             card_properties.insert(name.clone(), field_to_schema(field));
@@ -201,7 +201,7 @@ main:
     }
 
     #[test]
-    fn injects_body_as_markdown_for_main_and_each_card_type() {
+    fn injects_body_as_markdown_for_main_and_each_card_kind() {
         let yaml = r#"
 quill:
   name: example
@@ -214,7 +214,7 @@ main:
     title:
       type: string
 
-card_types:
+card_kinds:
   indorsement:
     fields:
       signature_block:

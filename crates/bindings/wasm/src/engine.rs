@@ -22,14 +22,14 @@ export interface QuillFieldUi {
     multiline?: boolean;
 }
 
-/** UI layout hints for a card (main or named card type). */
+/** UI layout hints for a card (main or named card kind). */
 export interface QuillCardUi {
     title?: string;
 }
 
-/** Body namespace for a card (main or named card type). */
+/** Body namespace for a card (main or named card kind). */
 export interface QuillCardBody {
-    /** When false, consumers must not accept or store body content for this card type. Defaults to true. */
+    /** When false, consumers must not accept or store body content for this card kind. Defaults to true. */
     enabled?: boolean;
     /** Example body content embedded verbatim in the blueprint body region. Fallback is "Write <card> body here." */
     example?: string;
@@ -48,7 +48,7 @@ export interface QuillFieldSchema {
     items?: QuillFieldSchema;
 }
 
-/** Schema entry for the main card or a named card type. */
+/** Schema entry for the main card or a named card kind. */
 export interface QuillCardSchema {
     description?: string;
     fields: Record<string, QuillFieldSchema>;
@@ -59,13 +59,13 @@ export interface QuillCardSchema {
 /**
  * Document schema returned by `Quill.schema`. Includes optional `ui` keys.
  *
- * `main.fields.QUILL` and `card_types[name].fields.CARD` are required
+ * `main.fields.QUILL` and `card_kinds[name].fields.CARD` are required
  * sentinels with `const` values telling consumers what to write.
  */
 export interface QuillSchema {
     main: QuillCardSchema;
-    /** Present only when the quill declares at least one named card type. */
-    card_types?: Record<string, QuillCardSchema>;
+    /** Present only when the quill declares at least one named card kind. */
+    card_kinds?: Record<string, QuillCardSchema>;
 }
 
 /**
@@ -443,16 +443,16 @@ impl Quill {
         })
     }
 
-    /// A blank form for a card of the given type — no document values supplied.
+    /// A blank form for a card of the given kind — no document values supplied.
     ///
-    /// Returns `null` if `cardType` is not declared in this quill's schema.
+    /// Returns `null` if `cardKind` is not declared in this quill's schema.
     /// Otherwise returns a plain JS object shaped like a single entry in
     /// [`Form::cards`].
     ///
     /// [`Form::cards`]: quillmark::form::Form::cards
     #[wasm_bindgen(js_name = blankCard, unchecked_return_type = "FormCard | null")]
-    pub fn blank_card(&self, card_type: &str) -> Result<JsValue, JsValue> {
-        match self.inner.blank_card(card_type) {
+    pub fn blank_card(&self, card_kind: &str) -> Result<JsValue, JsValue> {
+        match self.inner.blank_card(card_kind) {
             Some(card) => {
                 let serializer = serde_wasm_bindgen::Serializer::new()
                     .serialize_maps_as_objects(true)

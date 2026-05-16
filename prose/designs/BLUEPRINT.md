@@ -245,7 +245,7 @@ within the same `ui.group` still cluster together via `ui.order`.
 ## Body markers
 
 - `Write main body here.` after the main fence
-- `Write <card_name> body here.` after each card fence
+- `Write <card_kind> body here.` after each card fence
 - When `body.example` is set, its text replaces the marker verbatim.
 
 `body.enabled: false` suppresses the marker entirely for body-less cards
