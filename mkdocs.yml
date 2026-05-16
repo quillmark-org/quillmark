@@ -39,7 +39,7 @@ nav:
       - Markdown Syntax: authoring/markdown-syntax.md
       - YAML Frontmatter: authoring/yaml-frontmatter.md
       - Cards: authoring/cards.md
-  - Formats:
+  - Quills:
       - Creating Quills: format-designer/creating-quills.md
       - Quill.yaml Reference: format-designer/quill-yaml-reference.md
       - Typst Backend: format-designer/typst-backend.md

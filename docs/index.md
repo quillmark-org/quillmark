@@ -15,7 +15,7 @@ A format-first Markdown rendering system that converts Markdown with YAML frontm
 - **Writing documents?** You author Markdown content using existing formats.  
   → [Markdown Syntax](authoring/markdown-syntax.md)
 
-- **Building formats?** You create Quill formats that control rendering.  
+- **Building quills?** You create Quill formats that control rendering.  
   → [Creating Quills](format-designer/creating-quills.md)
 
 - **Integrating into an app?** You use Quillmark via Python or JavaScript.  
