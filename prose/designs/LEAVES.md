@@ -1,7 +1,8 @@
 # Composable Leaves Architecture
 
-> **Status**: Implemented
-> **Related**: [SCHEMAS.md](SCHEMAS.md), [QUILL.md](QUILL.md), [MARKDOWN.md](MARKDOWN.md), [LEAF_REWORK.md](LEAF_REWORK.md)
+> **Status**: Implemented — describes the current `leaf` vocabulary.
+> **Pending rework**: [CARD_MODEL.md](../proposals/CARD_MODEL.md) renames "leaf" → "card" across this design (this doc will become `CARDS.md`).
+> **Related**: [SCHEMAS.md](SCHEMAS.md), [QUILL.md](QUILL.md), [MARKDOWN.md](MARKDOWN.md)
 
 ## Overview
 

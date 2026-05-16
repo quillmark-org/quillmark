@@ -18,8 +18,7 @@
 
 ## Proposals
 
-- **[../proposals/LEAF_REWORK.md](../proposals/LEAF_REWORK.md)** - Design rationale for the inline-leaf syntax
-- **[../proposals/LEAF_KIND_INFOSTRING.md](../proposals/LEAF_KIND_INFOSTRING.md)** - Move the leaf kind discriminator into the info string
+- **[../proposals/CARD_MODEL.md](../proposals/CARD_MODEL.md)** - Unified "card" vocabulary; supersedes the deleted LEAF_REWORK / LEAF_KIND_INFOSTRING proposals
 
 ## Backends
 

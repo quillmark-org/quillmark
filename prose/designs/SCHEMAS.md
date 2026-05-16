@@ -1,5 +1,10 @@
 # Schema Model (`QuillConfig`)
 
+> **Pending rework**: [CARD_MODEL.md](../proposals/CARD_MODEL.md) replaces the
+> `main:` + `leaf_kinds:` schema split with a unified `cards:` map and renames
+> `leaf` → `card` throughout. This document describes the current
+> implementation.
+
 ## TL;DR
 
 `QuillConfig` is the only schema model in quillmark. Validation, coercion, defaults extraction, and public schema emission all read directly from it.

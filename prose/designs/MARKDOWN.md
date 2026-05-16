@@ -3,6 +3,9 @@
 **Status:** Draft specification
 **Editor:** Quillmark Team
 **Base:** [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)
+**Pending rework:** [CARD_MODEL.md](../proposals/CARD_MODEL.md) renames the
+inline-record vocabulary "leaf" → "card" (` ```card <kind> `). This spec
+describes the current implementation.
 
 Quillmark Markdown is a **strict superset of CommonMark** with one declared
 deviation. It layers a structured-data system (YAML frontmatter + inline
@@ -308,5 +311,5 @@ Parse errors include:
 - [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)
 - [GitHub Flavored Markdown](https://github.github.com/gfm/) (pipe tables,
   strikethrough)
-- [`LEAF_REWORK.md`](./LEAF_REWORK.md) — design rationale for the leaf
-  syntax this spec adopts
+- [`CARD_MODEL.md`](../proposals/CARD_MODEL.md) — pending proposal: unified
+  "card" vocabulary, supersedes the leaf design this spec currently describes
