@@ -15,10 +15,10 @@
 
   if card.CARD == "experience_section" {
     timeline-entry(
-      heading-left: card.at("headingLeft", default: ""),
-      heading-right: card.at("headingRight", default: ""),
-      subheading-left: card.at("subheadingLeft", default: none),
-      subheading-right: card.at("subheadingRight", default: none),
+      heading-left: card.at("heading_left", default: ""),
+      heading-right: card.at("heading_right", default: ""),
+      subheading-left: card.at("subheading_left", default: none),
+      subheading-right: card.at("subheading_right", default: none),
       body: card.at("BODY", default: ""),
     )
   } else if card.CARD == "skills_section" {

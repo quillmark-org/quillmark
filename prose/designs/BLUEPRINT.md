@@ -122,9 +122,11 @@ Role drives "must fill"; the value rendering follows a single cascade:
 | Has `enum` only | first enum value |
 | Otherwise | type-empty (`""`, `0`, `false`, `[]`, or block scalar for markdown — see below) |
 
-Examples never become the rendered value, regardless of role. Examples
-are inherently illustrative and unsafe to ship; they always surface in
-the `# e.g.` leading line while the value follows the cascade above.
+Examples never become the rendered value, regardless of role or type —
+this holds uniformly for scalars, arrays, typed tables, and typed
+dictionaries. Examples are inherently illustrative and unsafe to ship;
+they always surface in the `# e.g.` leading line while the value follows
+the cascade above.
 
 All fields render as **live YAML** — no commented-out fields. The role
 tag (`; required` / `; optional`) is the sole "must fill" signal. The
@@ -189,9 +191,13 @@ fallback; authors needing these characters must reshape their values.
 A field of `type: array` with a `properties` map renders with full
 per-property annotations:
 
-- An `example:` or non-empty `default:` renders as actual rows.
+- A non-empty `default:` renders as actual rows.
 - Otherwise one synthetic row is emitted, with each property carrying
   its own description, inline type/format, and role.
+
+An `example:` never renders as rows. Like every other field type, it
+surfaces only in the `# e.g.` leading line — as a one-line flow
+sequence, e.g. `# e.g. [{org: ACME, year: 2020}]`.
 
 The outer field's inline annotation is `# array<object>; <role>`.
 
@@ -201,10 +207,15 @@ A field of `type: object` with a `properties` map renders as an indented
 block mapping with per-property annotations — no outer value on the key
 line:
 
-- An `example:` or non-empty `default:` renders as a concrete block
-  mapping (property values only, no annotations).
+- A non-empty `default:` renders as a concrete block mapping (property
+  values only, no annotations).
 - Otherwise each property is emitted with its own description, inline
   type/format, and role — the same annotation rules as any other field.
+
+An `example:` never renders as a concrete mapping. Like every other
+field type, it surfaces only in the `# e.g.` leading line — as a
+one-line flow mapping, e.g. `# e.g. {street: 1 Infinite Loop, city:
+Cupertino}`.
 
 The outer field's inline annotation is `# object; <role>`.
 
@@ -284,6 +295,42 @@ date: ""  # date<YYYY-MM-DD>; optional
 
 Write main body here.
 ```
+
+## Guarantees
+
+`blueprint()` guarantees the emitted document is **schema-valid and
+parseable**: every field key is present, every value is type-correct,
+enums sit at their first value, dates render as `""`. Parsing the
+blueprint with `Document::from_markdown` and validating it against the
+quill schema always succeeds. This is the guarantee `blueprint()` itself
+is responsible for, and it is total over any valid `QuillConfig`.
+
+`blueprint()` does **not**, on its own, guarantee the document
+*renders*. Rendering depends on the quill's `plate.typ` and its
+packages, which `blueprint()` does not control. That is a separate
+**quill authoring contract**:
+
+> A quill's `plate.typ` MUST render the quill's own blueprint to a
+> successful (non-error) output.
+
+The blueprint is, by construction, the *type-minimal valid input* — the
+worst-case-but-valid document. A plate that renders it has shown it
+degrades gracefully on every type-valid input shape. The contract
+requires:
+
+- Templates treat type-empty values (`""`, `0`, `false`, `[]`, empty
+  markdown body) as valid *present* input — read via `data.field`,
+  `card.at("field", default: …)`, or guarded with `if "field" in data`.
+- No template asserts that a required field is *non-empty*. The schema
+  guarantees *presence*, not non-emptiness; `required` is an authoring
+  signal, not a render-time precondition.
+- "Renders successfully" means "compiles without error," not "produces
+  meaningful output." An empty-string title is a blank title — that is
+  acceptable.
+
+The contract is enforced by a fixture test that renders every bundled
+quill's blueprint and asserts success
+(`crates/quillmark/tests/blueprint_render_test.rs`).
 
 ## Bindings surface
 

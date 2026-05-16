@@ -39,6 +39,11 @@ impl QuillConfig {
     /// Generate an annotated Markdown blueprint for this quill. See module
     /// docs for the annotation grammar; the function is total over any valid
     /// `QuillConfig`.
+    ///
+    /// The result is guaranteed schema-valid and parseable (every key
+    /// present, every value type-correct). It is *not* guaranteed to render
+    /// — that is the quill authoring contract on `plate.typ`; see
+    /// `prose/designs/BLUEPRINT.md` §Guarantees.
     pub fn blueprint(&self) -> String {
         let mut out = String::new();
         let main_desc = self
@@ -235,11 +240,11 @@ fn sort_props(props: &BTreeMap<String, Box<FieldSchema>>) -> Vec<&FieldSchema> {
     v
 }
 
-/// Emit a typed-table field: description + optional `# e.g.` line, then the
-/// field key with its `array<object>; <role>` inline annotation, then either
-/// example/default rows or a synthetic template row. When concrete rows are
-/// rendered, the `# e.g.` comment is suppressed (the rows themselves carry
-/// the example shape).
+/// Emit a typed-table field: description + `# e.g.` line (whenever an example
+/// is configured), then the field key with its `array<object>; <role>` inline
+/// annotation, then either default rows or a synthetic template row. An
+/// example never renders as rows — like every other field type it surfaces
+/// only in the `# e.g.` leading line.
 fn write_typed_table_field(
     out: &mut String,
     field: &FieldSchema,
@@ -249,18 +254,15 @@ fn write_typed_table_field(
     let pad = "  ".repeat(indent);
 
     let concrete_rows = field
-        .example
+        .default
         .as_ref()
-        .or(field.default.as_ref())
         .and_then(|v| match v.as_json() {
             serde_json::Value::Array(items) if !items.is_empty() => Some(items.clone()),
             _ => None,
         });
 
     write_description(out, field, &pad);
-    if concrete_rows.is_none() {
-        write_eg_comment(out, field, &pad);
-    }
+    write_eg_comment(out, field, &pad);
 
     let inline = inline_annotation(field, true);
     out.push_str(&format!("{}{}:  # {}\n", pad, field.name, inline));
@@ -277,11 +279,11 @@ fn write_typed_table_field(
     }
 }
 
-/// Emit a typed-dictionary field: description + optional `# e.g.` line, then the
-/// field key with its `object; <role>` inline annotation, then either a concrete
-/// mapping from example/default or per-property annotations. When concrete values
-/// are rendered, the `# e.g.` comment is suppressed (the mapping itself carries
-/// the example shape).
+/// Emit a typed-dictionary field: description + `# e.g.` line (whenever an
+/// example is configured), then the field key with its `object; <role>` inline
+/// annotation, then either a concrete mapping from `default` or per-property
+/// annotations. An example never renders as a concrete mapping — like every
+/// other field type it surfaces only in the `# e.g.` leading line.
 fn write_typed_object_field(
     out: &mut String,
     field: &FieldSchema,
@@ -291,18 +293,15 @@ fn write_typed_object_field(
     let pad = "  ".repeat(indent);
 
     let concrete = field
-        .example
+        .default
         .as_ref()
-        .or(field.default.as_ref())
         .and_then(|v| match v.as_json() {
             serde_json::Value::Object(map) if !map.is_empty() => Some(map.clone()),
             _ => None,
         });
 
     write_description(out, field, &pad);
-    if concrete.is_none() {
-        write_eg_comment(out, field, &pad);
-    }
+    write_eg_comment(out, field, &pad);
 
     let inline = inline_annotation(field, false);
     out.push_str(&format!("{}{}:  # {}\n", pad, field.name, inline));
@@ -433,15 +432,13 @@ fn write_array_items(out: &mut String, items: &[serde_json::Value], pad: &str) {
     }
 }
 
-/// Format an example value as a compact one-line hint. Arrays render as a YAML
-/// flow sequence (`[a, b, c]`) so multi-element shape information is preserved
-/// without expanding into multiple comment lines.
+/// Format an example value as a compact one-line hint. Arrays and objects
+/// render as YAML flow collections (`[a, b, c]`, `{k: v}`) so multi-element
+/// shape information is preserved without expanding into multiple comment
+/// lines.
 fn eg_hint(example: &QuillValue) -> String {
     match example.as_json() {
-        serde_json::Value::Array(items) => {
-            let parts: Vec<String> = items.iter().map(render_scalar_flow).collect();
-            format!("[{}]", parts.join(", "))
-        }
+        v @ (serde_json::Value::Array(_) | serde_json::Value::Object(_)) => render_flow(v),
         val => render_scalar(val),
     }
 }
@@ -456,11 +453,23 @@ fn render_scalar(val: &serde_json::Value) -> String {
     }
 }
 
-/// Render a scalar in YAML flow context — strings containing flow indicators
-/// (`,`, `[`, `]`, `{`, `}`) must be quoted so the surrounding `[…]` parses
-/// as a single item, not a comma-split list.
-fn render_scalar_flow(val: &serde_json::Value) -> String {
+/// Render a value as a compact one-line YAML flow collection — used for
+/// `# e.g.` hints on arrays and objects. Strings containing flow indicators
+/// (`,`, `[`, `]`, `{`, `}`) are quoted so the flow form round-trips as
+/// distinct items rather than a comma-split list.
+fn render_flow(val: &serde_json::Value) -> String {
     match val {
+        serde_json::Value::Array(items) => {
+            let parts: Vec<String> = items.iter().map(render_flow).collect();
+            format!("[{}]", parts.join(", "))
+        }
+        serde_json::Value::Object(map) => {
+            let parts: Vec<String> = map
+                .iter()
+                .map(|(k, v)| format!("{}: {}", k, render_flow(v)))
+                .collect();
+            format!("{{{}}}", parts.join(", "))
+        }
         serde_json::Value::String(s) => yaml_string_flow(s),
         other => render_scalar(other),
     }
@@ -810,7 +819,9 @@ main:
     }
 
     #[test]
-    fn typed_table_with_example_renders_example_rows_no_eg_line() {
+    fn typed_table_with_example_keeps_eg_line_and_synthetic_row() {
+        // Examples never render as rows — they surface only in `# e.g.`,
+        // consistent with every other field type.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -824,9 +835,10 @@ main:
         year: { type: integer }
 "#)
         .blueprint();
-        assert!(t.contains("refs:  # array<object>; optional\n  - org: ACME\n"));
-        assert!(!t.contains("refs:  # array<object>; optional\n  -\n"));
-        assert!(!t.contains("# e.g."));
+        assert!(t.contains("# e.g. [{org: ACME, year: 2020}]\n"));
+        assert!(t.contains("refs:  # array<object>; optional\n  -\n"));
+        assert!(t.contains("    org: \"\"  # string; required\n"));
+        assert!(t.contains("    year: 0  # integer; optional\n"));
     }
 
     #[test]
@@ -927,7 +939,9 @@ main:
     }
 
     #[test]
-    fn typed_dict_with_example_suppresses_eg_line() {
+    fn typed_dict_with_example_keeps_eg_line_and_per_property() {
+        // Examples never render as a concrete mapping — they surface only in
+        // `# e.g.`, consistent with every other field type.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -941,9 +955,12 @@ main:
 "#)
         .blueprint();
         assert!(t.contains("address:  # object; optional\n"));
-        // eg comment suppressed when concrete values are rendered.
-        assert!(!t.contains("# e.g."));
-        assert!(t.contains("  city: Cupertino\n"));
+        assert!(
+            t.contains("# e.g. {street: 1 Infinite Loop, city: Cupertino}\n")
+                || t.contains("# e.g. {city: Cupertino, street: 1 Infinite Loop}\n")
+        );
+        assert!(t.contains("  street: \"\"  # string; required\n"));
+        assert!(t.contains("  city: \"\"  # string; optional\n"));
     }
 
     const LETTER_QUILL: &str = r#"
