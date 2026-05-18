@@ -11,7 +11,7 @@
 //! let engine = Quillmark::new();
 //! let quill = engine.quill_from_path("path/to/quill").unwrap();
 //!
-//! let parsed = Document::from_markdown("~~~card-yaml\n#@quill: my_quill\n#@kind: main\ntitle: Hello\n~~~\n\n# Hello World").unwrap();
+//! let parsed = Document::from_markdown("~~~card-yaml\n#@quill: my_quill\ntitle: Hello\n~~~\n\n# Hello World").unwrap();
 //! let result = quill.render(&parsed, &RenderOptions {
 //!     output_format: Some(OutputFormat::Pdf),
 //!     ..Default::default()

@@ -35,7 +35,7 @@ main:
 #[test]
 fn test_markdown_field_normalization() {
     // Create a document via from_markdown
-    let md = "~~~card-yaml\n#@quill: test\n#@kind: main\nmarkdown_field: This has <<guillemets>>\nstring_field: This has <<stripped>>\n~~~\n";
+    let md = "~~~card-yaml\n#@quill: test\nmarkdown_field: This has <<guillemets>>\nstring_field: This has <<stripped>>\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();
 
     // Normalize
@@ -56,7 +56,7 @@ fn test_markdown_field_normalization() {
 #[test]
 fn test_normalize_document_body_is_str_not_option() {
     // body() now returns &str (not Option<&str>)
-    let doc = Document::from_markdown("~~~card-yaml\n#@quill: t\n#@kind: main\n~~~\n\nHello body.").unwrap();
+    let doc = Document::from_markdown("~~~card-yaml\n#@quill: t\n~~~\n\nHello body.").unwrap();
     let normalized = normalize_document(doc).unwrap();
     assert!(normalized.main().body().contains("Hello body."));
 }

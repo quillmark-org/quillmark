@@ -209,8 +209,9 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
         k += 1;
     }
 
-    // Card-count check counts only composable card blocks (spec §8).
-    let card_count = blocks.iter().filter(|b| b.tag.is_some()).count();
+    // Card-count check counts composable card blocks — every block after the
+    // root (spec §8).
+    let card_count = blocks.len().saturating_sub(1);
     if card_count > crate::error::MAX_CARD_COUNT {
         return Err(ParseError::InputTooLarge {
             size: card_count,

@@ -105,7 +105,7 @@ fn test_render_with_custom_backend() {
     assert_eq!(quill.name(), "custom_backend_quill");
     assert!(quill.supported_formats().contains(&OutputFormat::Txt));
 
-    let markdown = "~~~card-yaml\n#@quill: custom_backend_quill\n#@kind: main\ntitle: Hello Custom Backend\n~~~\n\n# Test\n";
+    let markdown = "~~~card-yaml\n#@quill: custom_backend_quill\ntitle: Hello Custom Backend\n~~~\n\n# Test\n";
     let parsed = Document::from_markdown(markdown).expect("parse failed");
     let result = quill
         .render(

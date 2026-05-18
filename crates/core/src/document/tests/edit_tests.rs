@@ -1,7 +1,7 @@
 //! Unit tests for the document editor surface.
 
 use crate::document::edit::{is_reserved_name, is_valid_field_name, EditError, RESERVED_NAMES};
-use crate::document::sentinel::is_valid_tag_name;
+use crate::document::meta::is_valid_tag_name;
 use crate::document::{Card, Document};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
@@ -11,14 +11,14 @@ use std::str::FromStr;
 
 fn make_doc() -> Document {
     Document::from_markdown(
-        "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Hello\n~~~\n\nBody text.\n",
+        "~~~card-yaml\n#@quill: test_quill\ntitle: Hello\n~~~\n\nBody text.\n",
     )
     .unwrap()
 }
 
 fn make_doc_with_cards() -> Document {
     Document::from_markdown(
-        "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Hello\n~~~\n\nBody.\n\n~~~card-yaml\n#@kind: note\nfoo: bar\n~~~\n\nCard body.\n\n~~~card-yaml\n#@kind: summary\n~~~\n",
+        "~~~card-yaml\n#@quill: test_quill\ntitle: Hello\n~~~\n\nBody.\n\n~~~card-yaml\n#@kind: note\nfoo: bar\n~~~\n\nCard body.\n\n~~~card-yaml\n#@kind: summary\n~~~\n",
     )
     .unwrap()
 }
@@ -371,7 +371,7 @@ fn test_move_card_to_out_of_range() {
 fn test_set_card_tag_renames_in_place() {
     let mut doc = make_doc_with_cards(); // note(0) with field foo=bar, summary(1)
     doc.set_card_tag(0, "annotation").unwrap();
-    // Sentinel changed.
+    // `#@kind` changed.
     assert_eq!(doc.cards()[0].tag(), "annotation");
     // Payload and body untouched.
     assert_eq!(

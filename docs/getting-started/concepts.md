@@ -23,13 +23,12 @@ A **Quill** is a format bundle that defines how Markdown content should be rende
 ### card-yaml Blocks
 
 Quillmark documents use **card-yaml blocks** to provide structured metadata. A
-card-yaml block is delimited by `~~~card-yaml` / `~~~` fences and carries a
-`#@`-prefixed system sentinel followed by a YAML payload:
+card-yaml block is delimited by `~~~card-yaml` / `~~~` fences and may begin
+with a run of `#@`-prefixed system metadata lines followed by a YAML payload:
 
 ```markdown
 ~~~card-yaml
 #@quill: my_format
-#@kind: main
 title: My Document
 author: John Doe
 date: 2025-01-15
@@ -44,21 +43,20 @@ This metadata is accessible in formats and is validated against native schema ru
 
 A backend compiles the plate plus injected JSON data into the final artifact. The Typst backend is currently the only one — it produces PDF, SVG, and PNG, and converts fields declared `type: markdown` to Typst markup during compilation.
 
-### Required `#@quill:` Sentinel
+### Required `#@quill` Metadata
 
-Each document must declare its target format in the root block's `#@quill:`
-system sentinel.
+Each document must declare its target format in the root block's `#@quill`
+system metadata line.
 
 ```markdown
 ~~~card-yaml
 #@quill: my_custom_format
-#@kind: main
 title: My First Document
 author: Jane Doe
 ~~~
 ```
 
-If the `#@quill:` sentinel is missing, parsing fails. Quill names must be `snake_case` (`[a-z][a-z0-9_]*`); hyphens are not allowed.
+If the root block's `#@quill` line is missing, parsing fails. Quill names must be `snake_case` (`[a-z][a-z0-9_]*`); hyphens are not allowed.
 
 ## The Rendering Pipeline
 

@@ -76,7 +76,6 @@ const { makeQuill } = await import('./test-helpers.js')
 
 const TEST_MARKDOWN = `~~~card-yaml
 #@quill: test_quill
-#@kind: main
 title: Canvas Test
 ~~~
 

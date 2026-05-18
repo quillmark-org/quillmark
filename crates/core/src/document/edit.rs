@@ -6,7 +6,7 @@
 //!
 //! Every successful mutator call leaves the document in a state that:
 //! - Contains no reserved key in any card's payload (`BODY`, `CARDS`, `QUILL`, `CARD`).
-//! - Has every composable `card.tag()` passing `sentinel::is_valid_tag_name`.
+//! - Has every composable `card.tag()` passing `meta::is_valid_tag_name`.
 //! - Can be safely serialized via [`Document::to_plate_json`].
 //!
 //! **Mutators never modify `warnings`.**  Warnings are parse-time observations
@@ -21,8 +21,8 @@
 
 use unicode_normalization::UnicodeNormalization;
 
-use crate::document::sentinel::{is_valid_tag_name, MAIN_KIND};
-use crate::document::{Card, Document, Payload, Sentinel};
+use crate::document::meta::is_valid_tag_name;
+use crate::document::{Card, Document, Payload, SystemMeta};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
 
@@ -86,11 +86,6 @@ pub enum EditError {
     #[error("invalid tag name '{0}': must match [a-z_][a-z0-9_]*")]
     InvalidTagName(String),
 
-    /// The supplied kind is `main`, which is reserved for the document's
-    /// root block and cannot be used for a composable card.
-    #[error("reserved kind 'main' cannot be used for a composable card")]
-    ReservedKind,
-
     /// A card index was out of the valid range.
     #[error("index {index} is out of range (len = {len})")]
     IndexOutOfRange { index: usize, len: usize },
@@ -99,7 +94,7 @@ pub enum EditError {
 // ── impl Document ────────────────────────────────────────────────────────────
 
 impl Document {
-    /// Replace the QUILL reference on the main card's sentinel.
+    /// Replace the root block's `#@quill` system-metadata entry.
     ///
     /// # Invariants enforced
     ///
@@ -110,7 +105,9 @@ impl Document {
     ///
     /// This method never modifies `warnings`.
     pub fn set_quill_ref(&mut self, reference: QuillReference) {
-        self.main_mut().replace_sentinel(Sentinel::Main(reference));
+        self.main_mut()
+            .meta_mut()
+            .insert("quill", reference.to_string());
     }
 
     // ── Card mutators ────────────────────────────────────────────────────────
@@ -129,16 +126,16 @@ impl Document {
     ///
     /// # Invariants
     ///
-    /// `card.sentinel()` must be [`Sentinel::Card`]; a main card cannot be
-    /// appended as a composable card. Debug assert.
+    /// `card.is_main()` must be `false`; the root card cannot be appended as a
+    /// composable card. Debug assert.
     ///
     /// # Warnings
     ///
     /// This method never modifies `warnings`.
     pub fn push_card(&mut self, card: Card) {
         debug_assert!(
-            !card.sentinel().is_main(),
-            "cannot push a Main-sentinel card as a composable card"
+            !card.is_main(),
+            "cannot push the root card as a composable card"
         );
         self.cards_vec_mut().push(card);
     }
@@ -155,8 +152,8 @@ impl Document {
     /// This method never modifies `warnings`.
     pub fn insert_card(&mut self, index: usize, card: Card) -> Result<(), EditError> {
         debug_assert!(
-            !card.sentinel().is_main(),
-            "cannot insert a Main-sentinel card as a composable card"
+            !card.is_main(),
+            "cannot insert the root card as a composable card"
         );
         let len = self.cards().len();
         if index > len {
@@ -178,10 +175,10 @@ impl Document {
         Some(self.cards_vec_mut().remove(index))
     }
 
-    /// Replace the tag (sentinel) of the composable card at `index`.
+    /// Replace the `#@kind` of the composable card at `index`.
     ///
-    /// **Field-bag semantics.** This mutates only the sentinel; the card's
-    /// payload and body are untouched. After the call:
+    /// **Field-bag semantics.** This mutates only the `#@kind` metadata; the
+    /// card's payload and body are untouched. After the call:
     ///
     /// - Fields valid under both old and new schemas round-trip unchanged.
     /// - Fields only in the old schema linger in the bag (silently ignored
@@ -199,8 +196,7 @@ impl Document {
     /// - `index` must be in `0..len`. Out of range returns
     ///   [`EditError::IndexOutOfRange`].
     /// - `new_tag` must match `[a-z_][a-z0-9_]*`. Invalid tags return
-    ///   [`EditError::InvalidTagName`]. The reserved kind `main` returns
-    ///   [`EditError::ReservedKind`].
+    ///   [`EditError::InvalidTagName`].
     ///
     /// # Warnings
     ///
@@ -214,14 +210,11 @@ impl Document {
         if !is_valid_tag_name(&new_tag) {
             return Err(EditError::InvalidTagName(new_tag));
         }
-        if new_tag == MAIN_KIND {
-            return Err(EditError::ReservedKind);
-        }
         let len = self.cards().len();
         let card = self
             .card_mut(index)
             .ok_or(EditError::IndexOutOfRange { index, len })?;
-        card.replace_sentinel(Sentinel::Card(new_tag));
+        card.meta_mut().insert("kind", new_tag);
         Ok(())
     }
 
@@ -262,23 +255,17 @@ impl Card {
     /// # Invariants enforced
     ///
     /// `tag` must match `[a-z_][a-z0-9_]*`.  An invalid tag returns
-    /// [`EditError::InvalidTagName`]; the reserved kind `main` returns
-    /// [`EditError::ReservedKind`].
+    /// [`EditError::InvalidTagName`].
     ///
-    /// The new card has no fields and an empty body.
+    /// The new card declares `#@kind: <tag>`, has no fields, and an empty body.
     pub fn new(tag: impl Into<String>) -> Result<Self, EditError> {
         let tag = tag.into();
         if !is_valid_tag_name(&tag) {
             return Err(EditError::InvalidTagName(tag));
         }
-        if tag == MAIN_KIND {
-            return Err(EditError::ReservedKind);
-        }
-        Ok(Card::new_with_sentinel(
-            Sentinel::Card(tag),
-            Payload::new(),
-            String::new(),
-        ))
+        let mut meta = SystemMeta::new();
+        meta.insert("kind", tag);
+        Ok(Card::from_parts(false, meta, Payload::new(), String::new()))
     }
 
     /// Set a payload field by name. Always clears the `!fill` marker for

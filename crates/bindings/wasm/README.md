@@ -36,7 +36,6 @@ const quill = engine.quill(tree);
 
 const markdown = `~~~card-yaml
 #@quill: my_quill
-#@kind: main
 title: My Document
 ~~~
 
@@ -57,7 +56,7 @@ Build + validate + attach backend. Returns a render-ready `Quill`.
 ### `Document.fromMarkdown(markdown)`
 Parse markdown to a parsed document. Throws a JS `Error` (with `.diagnostics`
 attached, see [Errors](#errors)) on any parse failure, including a missing
-`#@quill:` sentinel, malformed YAML, and inputs over the 10 MB
+root `#@quill` metadata line, malformed YAML, and inputs over the 10 MB
 `parse::input_too_large` limit.
 
 ### `doc.toMarkdown()`
@@ -180,7 +179,7 @@ backend compilation errors. `message` is derived from `diagnostics`
 Read `err.diagnostics[0]` for the primary diagnostic; iterate the array for
 compilation failures. The same shape applies to every throw site:
 
-- `Document.fromMarkdown` — parse errors (missing `#@quill:` sentinel, YAML
+- `Document.fromMarkdown` — parse errors (missing root `#@quill` metadata, YAML
   errors, `parse::input_too_large` for inputs > 10 MB).
 - `Document` mutators (`setField`, `updateCardField`, etc.) — `EditError`
   variants (`ReservedName`, `InvalidFieldName`, `InvalidTagName`,
@@ -216,7 +215,7 @@ try {
 ## Notes
 
 - Parsed markdown requires a root `~~~card-yaml` block with a
-  `#@quill:` system sentinel. Empty input surfaces a dedicated
+  `#@quill` system-metadata line. Empty input surfaces a dedicated
   "Empty markdown input cannot be parsed" message.
 - QUILL mismatch during `quill.render(parsed)` is a warning (`quill::ref_mismatch`), not an error.
 - Output schema APIs are no longer engine-level in WASM.

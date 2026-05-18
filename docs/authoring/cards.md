@@ -6,14 +6,13 @@ with the Markdown prose that follows it.
 
 ## Card Block Syntax
 
-A card is a `~~~card-yaml` block whose first non-blank line is a
-`#@kind: <kind>` system sentinel. The block's YAML payload sits below the
-sentinel; the Markdown after the closing `~~~` fence is the card's body.
+A card is a `~~~card-yaml` block, optionally led by a `#@kind: <kind>`
+metadata line. The block's YAML payload sits below the `#@` header; the
+Markdown after the closing `~~~` fence is the card's body.
 
 ```
 ~~~card-yaml
 #@quill: my_quill@1.0
-#@kind: main
 title: Main Document
 ~~~
 
@@ -44,22 +43,21 @@ All card blocks are collected into the `CARDS` array.
 
 - A card block opens with exactly `~~~card-yaml` and closes with exactly `~~~`
   (three tildes).
-- The first non-blank line inside a card block must be a `#@kind: <kind>`
-  system sentinel naming the card kind.
-- The card kind (`#@kind:` value) must match `[a-z_][a-z0-9_]*`. Invalid
+- A card block may begin with a `#@kind: <kind>` metadata line naming the card
+  kind.
+- The card kind (`#@kind` value) must match `[a-z_][a-z0-9_]*`. Invalid
   examples: `BadCard`, `my-card`, `2nd_card`.
 - `QUILL`, `CARD`, `BODY`, and `CARDS` are reserved and cannot be used as field
   names inside a card.
 - A blank line is required immediately above every `~~~card-yaml` opener
   (unless the block is the very first line of the document). A `~~~card-yaml`
   line without a blank line above it is treated as an ordinary code block.
-- Comments are **not** supported on the `#@` sentinel line itself. YAML
+- Comments are **not** supported on a `#@` header line itself. YAML
   comments are supported in the payload below it.
 
-The first block in a document is the root block; it carries a
-`#@quill: <name>@<version>` sentinel together with `#@kind: main`. `main` is a
-**reserved** card kind for the root block — a composable card may not declare
-`#@kind: main`. Every subsequent block is a card.
+The document is positional: the **first** `~~~card-yaml` block is the root
+block, and it must declare a `#@quill: <name>@<version>` metadata line. Every
+subsequent block is a card.
 
 ## Card Body Content
 
@@ -69,6 +67,6 @@ closing `~~~` fence and the next block's opening fence (or document end).
 ## Emission
 
 Round-tripping a document through `toMarkdown` always emits the canonical
-`~~~card-yaml` / `#@kind:` / payload / `~~~` form. Fence markers, the sentinel
-form, key ordering, and YAML quoting are normalised. `!fill` tags and payload
+`~~~card-yaml` / `#@` metadata header / payload / `~~~` form. Fence markers,
+key ordering, and YAML quoting are normalised. `!fill` tags and payload
 comments survive the round-trip.

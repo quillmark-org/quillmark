@@ -40,7 +40,6 @@ let quill = engine.quill_from_path("path/to/quill")?;
 
 let markdown = r#"~~~card-yaml
 #@quill: my_quill
-#@kind: main
 title: Example
 ~~~
 

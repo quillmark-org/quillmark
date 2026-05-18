@@ -381,12 +381,11 @@ card_kinds:
 
 ### Using Cards in Markdown
 
-Cards appear as `~~~card-yaml` blocks with a `#@kind: <kind>` system sentinel in the document body:
+Cards appear as `~~~card-yaml` blocks with a `#@kind: <kind>` metadata line in the document body:
 
 ```markdown
 ~~~card-yaml
 #@quill: usaf_memo
-#@kind: main
 subject: Example
 # ... other fields ...
 ~~~

@@ -7,7 +7,7 @@ from conftest import QUILLS_PATH, _latest_version
 
 def test_parsed_document_quill_ref():
     """Test that Document exposes quill_ref method."""
-    markdown_with_quill = "~~~card-yaml\n#@quill: my_quill\n#@kind: main\ntitle: Test\n~~~\n\n# Content\n"
+    markdown_with_quill = "~~~card-yaml\n#@quill: my_quill\ntitle: Test\n~~~\n\n# Content\n"
     parsed = Document.from_markdown(markdown_with_quill)
     assert parsed.quill_ref() == "my_quill"
 
@@ -44,7 +44,7 @@ def test_full_workflow():
     taro_dir = QUILLS_PATH / "taro"
     quill = engine.quill_from_path(str(_latest_version(taro_dir)))
 
-    markdown = "~~~card-yaml\n#@quill: taro\n#@kind: main\nauthor: Test Author\nice_cream: Chocolate\ntitle: Test\n~~~\n\nContent.\n"
+    markdown = "~~~card-yaml\n#@quill: taro\nauthor: Test Author\nice_cream: Chocolate\ntitle: Test\n~~~\n\nContent.\n"
     parsed = Document.from_markdown(markdown)
     assert parsed.quill_ref() == "taro"
 
@@ -62,12 +62,11 @@ def test_full_workflow():
 # Phase 3 — editor surface tests
 # ---------------------------------------------------------------------------
 
-SIMPLE_MD = "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Hello\nauthor: Alice\n~~~\n\nBody text.\n"
+SIMPLE_MD = "~~~card-yaml\n#@quill: test_quill\ntitle: Hello\nauthor: Alice\n~~~\n\nBody text.\n"
 
 MD_WITH_CARDS = """\
 ~~~card-yaml
 #@quill: test_quill
-#@kind: main
 title: Hello
 ~~~
 

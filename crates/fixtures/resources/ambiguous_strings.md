@@ -1,6 +1,5 @@
 ~~~card-yaml
 #@quill: test_quill
-#@kind: main
 on_word: "on"
 off_word: "off"
 yes_word: "yes"

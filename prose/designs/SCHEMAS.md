@@ -53,8 +53,8 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
 - Field types, constraints, and `enum`/`default`/`example` annotations
 - `ui` hints on fields and card kinds (`group`, `order`, `compact`, `multiline`, `title`)
 - `body` blocks on cards (`enabled`, `description`)
-- A required `QUILL` sentinel prepended to `main.fields` (`const = "<name>@<version>"`)
-- A required `CARD` sentinel prepended to each `card_kinds.<name>.fields` (`const = "<name>"`)
+- A required `QUILL` discriminator field prepended to `main.fields` (`const = "<name>@<version>"`)
+- A required `CARD` discriminator field prepended to each `card_kinds.<name>.fields` (`const = "<name>"`)
 
 `QuillConfig::schema_yaml()` is a YAML wrapper over the same value. The schema is pinned by serde attributes on `FieldSchema`, `CardSchema`, `UiFieldSchema`, `UiCardSchema`, and `BodyCardSchema` — there is no parallel mirror struct.
 
@@ -73,9 +73,9 @@ Identity fields (`name`, `version`, `backend`, `author`, `description`) live on 
 | Python | `Quill.schema` getter (YAML) |
 | CLI | `quillmark schema <path>` |
 
-### `main.fields` and `card_kinds.<name>.fields` sentinels
+### `main.fields` and `card_kinds.<name>.fields` discriminators
 
-`schema()` prepends a synthetic discriminator field to each card's `fields` map so consumers know exactly which discriminator value to use — the `QUILL` reference for the main card, and the card kind (the `#@kind: <kind>` system sentinel) for each card kind:
+`schema()` prepends a synthetic discriminator field to each card's `fields` map so consumers know exactly which discriminator value to use — the `QUILL` reference for the main card, and the card kind (the `#@kind: <kind>` metadata value) for each card kind:
 
 - `main.fields.QUILL` — `{ type: string, const: "<name>@<version>", required: true, description: ... }`
 - `card_kinds.<name>.fields.CARD` — `{ type: string, const: "<name>", required: true, description: ... }`

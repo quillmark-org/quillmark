@@ -10,9 +10,9 @@
 //! ## Key Types
 //!
 //! - [`Document`]: Typed in-memory Quillmark document — `main` card plus composable cards.
-//! - [`Card`]: A single card block, main or composable, with a sentinel,
-//!   typed payload, and a body.
-//! - [`Sentinel`]: Discriminates the root block from composable card blocks.
+//! - [`Card`]: A single card block, root or composable, with a `#@` metadata
+//!   header, a typed payload, and a body.
+//! - [`SystemMeta`]: A block's `#@` system metadata (`#@quill`, `#@kind`, `#@id`, …).
 //! - [`Payload`]: Ordered list of items (fields + comments) parsed from a
 //!   block's YAML payload.
 //!
@@ -25,7 +25,6 @@
 //!
 //! let markdown = r#"~~~card-yaml
 //! #@quill: my_quill
-//! #@kind: main
 //! title: My Document
 //! author: John Doe
 //! ~~~
@@ -51,7 +50,7 @@
 //! use quillmark_core::Document;
 //!
 //! let doc = Document::from_markdown(
-//!     "~~~card-yaml\n#@quill: my_quill\n#@kind: main\ntitle: Hi\n~~~\n\nBody here.\n"
+//!     "~~~card-yaml\n#@quill: my_quill\ntitle: Hi\n~~~\n\nBody here.\n"
 //! ).unwrap();
 //! let json = doc.to_plate_json();
 //! assert_eq!(json["QUILL"], "my_quill");
@@ -65,9 +64,9 @@
 //! [`Document::from_markdown`] returns errors for:
 //! - Malformed YAML syntax
 //! - Unclosed `~~~card-yaml` blocks
-//! - A missing or misplaced `#@quill` / `#@kind` system sentinel
+//! - A root block missing its required `#@quill` system metadata
+//! - A malformed or duplicated `#@` metadata line
 //! - Reserved field name usage
-//! - Name collisions
 //!
 //! See [MARKDOWN.md](https://github.com/nibsbin/quillmark/blob/main/prose/designs/MARKDOWN.md)
 //! for comprehensive documentation of the card-yaml format.
@@ -80,16 +79,14 @@ pub mod assemble;
 pub mod edit;
 pub mod emit;
 pub mod fences;
-pub mod payload;
 pub mod limits;
+pub mod meta;
+pub mod payload;
 pub mod prescan;
-pub mod sentinel;
 
 pub use edit::EditError;
+pub use meta::SystemMeta;
 pub use payload::{Payload, PayloadItem};
-
-// Re-export the sentinel type (defined below in this module file).
-// `Sentinel` is exported at the crate root via `lib.rs`.
 
 #[cfg(test)]
 mod tests;
@@ -104,44 +101,15 @@ pub struct ParseOutput {
     pub warnings: Vec<Diagnostic>,
 }
 
-/// Discriminator for a [`Card`].
-///
-/// The document's root block declares `#@quill: <ref>` and is the
-/// document-level *main* card; every composable card declares a kind via its
-/// `#@kind: <kind>` system sentinel. `Sentinel` captures that distinction in
-/// the typed model so every card is one uniform shape.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Sentinel {
-    /// The document's root block, carrying the `#@quill` reference.
-    Main(QuillReference),
-    /// A composable card with the given `#@kind` tag.
-    Card(String),
-}
-
-impl Sentinel {
-    /// String form of this sentinel's value: the quill reference for `Main`,
-    /// the tag for `Card`.
-    pub fn as_str(&self) -> String {
-        match self {
-            Sentinel::Main(r) => r.to_string(),
-            Sentinel::Card(t) => t.clone(),
-        }
-    }
-
-    /// Returns `true` if this is a `Main` sentinel.
-    pub fn is_main(&self) -> bool {
-        matches!(self, Sentinel::Main(_))
-    }
-}
-
 /// A single card-yaml block parsed from a Quillmark Markdown document.
 ///
 /// A `Card` is the uniform shape for both the document's root block and
-/// composable card blocks. `sentinel` distinguishes the two.
+/// composable card blocks; `is_main` records which one it is. Root vs. card
+/// is positional — the root is the document's first block — so `is_main`
+/// carries no information beyond that position.
 ///
 /// Every card has:
-/// - `sentinel` — the `#@quill` reference (for the root block) or the
-///   `#@kind` tag (for a composable card).
+/// - `meta` — the block's `#@` system metadata (`#@quill`, `#@kind`, `#@id`, …).
 /// - `payload` — ordered items parsed from the block's YAML payload.
 /// - `body` — the Markdown text that follows the closing `~~~` fence, up to
 ///   the next block (or EOF).
@@ -154,34 +122,50 @@ impl Sentinel {
 /// should check `card.body().is_empty()`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Card {
-    sentinel: Sentinel,
+    is_main: bool,
+    meta: SystemMeta,
     payload: Payload,
     body: String,
 }
 
 impl Card {
-    /// Create a `Card` directly from a sentinel, a typed payload, and a
-    /// body. Does **not** validate the sentinel tag or any field names —
-    /// callers are responsible for providing already-valid data. For
-    /// user-facing construction of composable cards use [`Card::new`]
-    /// (defined in `edit.rs`).
-    pub fn new_with_sentinel(sentinel: Sentinel, payload: Payload, body: String) -> Self {
+    /// Create a `Card` from its parts. `is_main` marks the document's root
+    /// block. Does **not** validate metadata or field names — callers are
+    /// responsible for providing already-valid data. For user-facing
+    /// construction of composable cards use [`Card::new`] (defined in `edit.rs`).
+    pub fn from_parts(is_main: bool, meta: SystemMeta, payload: Payload, body: String) -> Self {
         Self {
-            sentinel,
+            is_main,
+            meta,
             payload,
             body,
         }
     }
 
-    /// The sentinel discriminating this card as main or composable.
-    pub fn sentinel(&self) -> &Sentinel {
-        &self.sentinel
+    /// The block's `#@` system metadata.
+    pub fn meta(&self) -> &SystemMeta {
+        &self.meta
     }
 
-    /// The card tag — the card kind for composable cards, or the string
-    /// form of the quill reference for main cards.
+    /// Mutable access to the system metadata.
+    pub fn meta_mut(&mut self) -> &mut SystemMeta {
+        &mut self.meta
+    }
+
+    /// The card kind — the `#@kind` metadata value, or the empty string when
+    /// the block declares no `#@kind`.
     pub fn tag(&self) -> String {
-        self.sentinel.as_str()
+        self.meta.kind().unwrap_or("").to_string()
+    }
+
+    /// The `#@kind` card kind, if the block declares one.
+    pub fn kind(&self) -> Option<&str> {
+        self.meta.kind()
+    }
+
+    /// The `#@id` opaque identifier, if the block declares one.
+    pub fn id(&self) -> Option<&str> {
+        self.meta.id()
     }
 
     /// Typed payload (map-keyed view and ordered item list).
@@ -201,15 +185,9 @@ impl Card {
         &self.body
     }
 
-    /// Returns `true` if this is the document entry (main) card.
+    /// Returns `true` if this is the document's root (main) block.
     pub fn is_main(&self) -> bool {
-        self.sentinel.is_main()
-    }
-
-    /// Replace this card's sentinel. Internal helper; public mutators
-    /// ([`Document::set_quill_ref`], the parser) call this.
-    pub(crate) fn replace_sentinel(&mut self, sentinel: Sentinel) {
-        self.sentinel = sentinel;
+        self.is_main
     }
 
     /// Overwrite the body string. Internal helper used by [`Card::replace_body`].
@@ -226,8 +204,8 @@ impl Card {
 ///
 /// ## Structure
 ///
-/// - `main` — the entry `Card` (sentinel is `Sentinel::Main(reference)`).
-/// - `cards` — ordered composable cards (each with `Sentinel::Card(tag)`).
+/// - `main` — the document's root `Card` (`is_main()` is `true`).
+/// - `cards` — ordered composable cards (each `is_main()` is `false`).
 ///
 /// Backend plates consume the flat JSON wire shape produced by
 /// [`Document::to_plate_json`]. That method is the **only** place in core
@@ -253,13 +231,14 @@ impl PartialEq for Document {
 impl Document {
     /// Create a `Document` from a pre-built main `Card` and composable cards.
     ///
-    /// The caller must guarantee that `main.sentinel` is `Sentinel::Main(_)`
-    /// and every card in `cards` has `sentinel` = `Sentinel::Card(_)`.
+    /// The caller must guarantee that `main.is_main()` is `true` (and that its
+    /// `#@quill` metadata is present and valid) and that every card in `cards`
+    /// has `is_main()` = `false`.
     pub fn from_main_and_cards(main: Card, cards: Vec<Card>, warnings: Vec<Diagnostic>) -> Self {
-        debug_assert!(main.sentinel.is_main(), "main card must be Sentinel::Main");
+        debug_assert!(main.is_main, "main card must have is_main = true");
         debug_assert!(
-            cards.iter().all(|c| !c.sentinel.is_main()),
-            "composable cards must be Sentinel::Card"
+            cards.iter().all(|c| !c.is_main),
+            "composable cards must have is_main = false"
         );
         Self {
             main,
@@ -291,15 +270,17 @@ impl Document {
         &mut self.main
     }
 
-    /// The quill reference (`name@version-selector`) carried by the main card's
-    /// sentinel. Convenience reader over `doc.main().sentinel()`.
-    pub fn quill_reference(&self) -> &QuillReference {
-        match &self.main.sentinel {
-            Sentinel::Main(r) => r,
-            Sentinel::Card(_) => {
-                unreachable!("main card must carry Sentinel::Main by construction")
-            }
-        }
+    /// The quill reference (`name@version-selector`) the document binds to,
+    /// parsed from the root block's `#@quill` system metadata.
+    ///
+    /// The root `#@quill` is validated when the document is parsed, so this
+    /// never fails for a `Document` produced by [`Document::from_markdown`].
+    pub fn quill_reference(&self) -> QuillReference {
+        self.main
+            .meta
+            .quill()
+            .and_then(|s| s.parse().ok())
+            .expect("root block's #@quill is validated at parse time")
     }
 
     /// Ordered list of composable card blocks.
@@ -373,7 +354,10 @@ impl Document {
             .iter()
             .map(|card| {
                 let mut card_map = serde_json::Map::new();
-                card_map.insert("CARD".to_string(), serde_json::Value::String(card.tag()));
+                card_map.insert(
+                    "CARD".to_string(),
+                    serde_json::Value::String(card.meta.kind().unwrap_or("").to_string()),
+                );
                 for (key, value) in card.payload.iter() {
                     card_map.insert(key.clone(), value.as_json().clone());
                 }

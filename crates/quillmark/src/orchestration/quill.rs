@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use quillmark_core::{
-    normalize::normalize_document, Backend, Card, Diagnostic, Document, Payload, OutputFormat,
-    QuillSource, QuillValue, RenderError, RenderOptions, RenderResult, RenderSession, Sentinel,
+    normalize::normalize_document, Backend, Card, Diagnostic, Document, OutputFormat, Payload,
+    QuillSource, QuillValue, RenderError, RenderOptions, RenderResult, RenderSession,
     Severity,
 };
 
@@ -112,16 +112,18 @@ impl Quill {
                     .map(|c| c.defaults())
                     .unwrap_or_default();
                 let fields = apply_defaults(&card.payload().to_index_map(), defaults);
-                Card::new_with_sentinel(
-                    Sentinel::Card(card.tag()),
+                Card::from_parts(
+                    false,
+                    card.meta().clone(),
                     Payload::from_index_map(fields),
                     card.body().to_string(),
                 )
             })
             .collect();
 
-        let final_main = Card::new_with_sentinel(
-            Sentinel::Main(normalized.quill_reference().clone()),
+        let final_main = Card::from_parts(
+            true,
+            normalized.main().meta().clone(),
             Payload::from_index_map(main_with_defaults),
             normalized.main().body().to_string(),
         );
@@ -155,15 +157,17 @@ impl Quill {
             let coerced_fields = config
                 .coerce_card(&card.tag(), &card.payload().to_index_map())
                 .map_err(coercion_error)?;
-            coerced_cards.push(Card::new_with_sentinel(
-                Sentinel::Card(card.tag()),
+            coerced_cards.push(Card::from_parts(
+                false,
+                card.meta().clone(),
                 Payload::from_index_map(coerced_fields),
                 card.body().to_string(),
             ));
         }
 
-        let coerced_main = Card::new_with_sentinel(
-            Sentinel::Main(doc.quill_reference().clone()),
+        let coerced_main = Card::from_parts(
+            true,
+            doc.main().meta().clone(),
             Payload::from_index_map(coerced_payload),
             doc.main().body().to_string(),
         );
@@ -176,8 +180,8 @@ impl Quill {
     }
 
     fn ref_mismatch_warning(&self, doc: &Document) -> Option<Diagnostic> {
-        let doc_ref = doc.quill_reference().name.as_str();
-        if doc_ref != self.source.name() {
+        let doc_ref = doc.quill_reference();
+        if doc_ref.name.as_str() != self.source.name() {
             Some(
                 Diagnostic::new(
                     Severity::Warning,

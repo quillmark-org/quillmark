@@ -18,7 +18,7 @@ use crate::document::Document;
 #[test]
 fn top_level_comments_round_trip() {
     let src =
-        "~~~card-yaml\n#@quill: q\n#@kind: main\n# recipient's full name\nrecipient: Jane\nauthor: Alice\n~~~\n\nBody.\n";
+        "~~~card-yaml\n#@quill: q\n# recipient's full name\nrecipient: Jane\nauthor: Alice\n~~~\n\nBody.\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
@@ -47,7 +47,7 @@ fn top_level_comments_round_trip() {
 /// Trailing inline comments on top-level fields round-trip inline.
 #[test]
 fn top_level_inline_comments_round_trip() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\ntitle: My Document # this is a comment\n~~~\n\nBody.\n";
+    let src = "~~~card-yaml\n#@quill: q\ntitle: My Document # this is a comment\n~~~\n\nBody.\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
@@ -85,7 +85,7 @@ fn top_level_inline_comments_round_trip() {
 #[test]
 fn custom_tags_lose_tag_but_keep_value() {
     // `!fill` case: round-trip with fill preserved.
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nmemo_from: !fill 2d lt example\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nmemo_from: !fill 2d lt example\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
 
     let fm = doc.main().payload();
@@ -110,7 +110,7 @@ fn custom_tags_lose_tag_but_keep_value() {
     );
 
     // Non-`!fill` tag case: warning + dropped tag.
-    let src2 = "~~~card-yaml\n#@quill: q\n#@kind: main\nmemo_from: !include value.txt\n~~~\n";
+    let src2 = "~~~card-yaml\n#@quill: q\nmemo_from: !include value.txt\n~~~\n";
     let out = Document::from_markdown_with_warnings(src2).unwrap();
     assert!(
         out.warnings
@@ -130,7 +130,7 @@ fn custom_tags_lose_tag_but_keep_value() {
 /// `!fill` on a bare key (no value) emits `key: !fill` and preserves null.
 #[test]
 fn fill_tag_bare_null_round_trip() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nrecipient: !fill\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nrecipient: !fill\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let fm = doc.main().payload();
@@ -150,7 +150,7 @@ fn fill_tag_bare_null_round_trip() {
 /// the fill marker.
 #[test]
 fn fill_tag_block_sequence_round_trip() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nrecipient: !fill\n  - Dr. Who\n  - 1 TARDIS Lane\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nrecipient: !fill\n  - Dr. Who\n  - 1 TARDIS Lane\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let fm = doc.main().payload();
@@ -176,7 +176,7 @@ fn fill_tag_block_sequence_round_trip() {
 /// `!fill` on a flow sequence round-trips (normalised to block form).
 #[test]
 fn fill_tag_flow_sequence_round_trip() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\ntags: !fill [a, b, c]\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\ntags: !fill [a, b, c]\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
     let fm = doc.main().payload();
     assert!(fm.is_fill("tags"));
@@ -194,7 +194,7 @@ fn fill_tag_flow_sequence_round_trip() {
 /// `!fill` on an empty sequence round-trips as `key: !fill []`.
 #[test]
 fn fill_tag_empty_sequence_round_trip() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nitems: !fill []\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nitems: !fill []\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
     let fm = doc.main().payload();
     assert!(fm.is_fill("items"));
@@ -217,7 +217,7 @@ fn fill_tag_empty_sequence_round_trip() {
 /// `!fill` on a top-level mapping is rejected at parse.
 #[test]
 fn fill_tag_mapping_rejected() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nx: !fill {a: 1}\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nx: !fill {a: 1}\n~~~\n";
     let err = Document::from_markdown(src).unwrap_err();
     assert!(
         err.to_string().contains("!fill") && err.to_string().contains("mapping"),
@@ -230,7 +230,7 @@ fn fill_tag_mapping_rejected() {
 #[test]
 fn fill_tag_all_scalar_types_round_trip() {
     let src = concat!(
-        "~~~card-yaml\n#@quill: q\n#@kind: main\n",
+        "~~~card-yaml\n#@quill: q\n",
         "s: !fill hello\n",
         "i: !fill 42\n",
         "f: !fill 3.14\n",
@@ -276,7 +276,7 @@ fn fill_tag_all_scalar_types_round_trip() {
 #[test]
 fn original_quoting_style_is_not_preserved() {
     // Mix of single-quoted, unquoted, and double-quoted strings.
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nsingle_q: 'hello'\nunquoted: world\ndouble_q: \"already\"\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nsingle_q: 'hello'\nunquoted: world\ndouble_q: \"already\"\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
@@ -338,7 +338,7 @@ fn original_quoting_style_is_not_preserved() {
 #[test]
 fn nested_sequence_comments_round_trip() {
     let src =
-        "~~~card-yaml\n#@quill: q\n#@kind: main\nitems:\n  # before-first\n  - a\n  # between\n  - b\n  # after-last\n~~~\n";
+        "~~~card-yaml\n#@quill: q\nitems:\n  # before-first\n  - a\n  # between\n  - b\n  # after-last\n~~~\n";
 
     let out = Document::from_markdown_with_warnings(src).unwrap();
     assert!(
@@ -374,7 +374,7 @@ fn nested_sequence_comments_round_trip() {
 /// Comments inside nested mappings round-trip at the matching position.
 #[test]
 fn nested_mapping_comments_round_trip() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nouter:\n  # leading\n  inner: 1\n  # trailing\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nouter:\n  # leading\n  inner: 1\n  # trailing\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
@@ -398,7 +398,7 @@ fn nested_mapping_comments_round_trip() {
 /// Trailing inline comments on nested sequence items round-trip inline.
 #[test]
 fn nested_sequence_inline_comments_round_trip() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nitems:\n  - a # inline\n  - b\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nitems:\n  - a # inline\n  - b\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
@@ -417,7 +417,7 @@ fn nested_sequence_inline_comments_round_trip() {
 /// Trailing inline comments on nested mapping fields round-trip inline.
 #[test]
 fn nested_mapping_inline_comments_round_trip() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nouter:\n  inner: 1 # tail\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nouter:\n  inner: 1 # tail\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
@@ -436,7 +436,7 @@ fn nested_mapping_inline_comments_round_trip() {
 /// line, before the indented children.
 #[test]
 fn inline_on_container_key_round_trips() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nouter: # describes outer\n  inner: 1\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nouter: # describes outer\n  inner: 1\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
@@ -455,12 +455,12 @@ fn inline_on_container_key_round_trips() {
 /// system sentinel — round-trips at its source position.
 #[test]
 fn sentinel_payload_comment_round_trips() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\n# main entry\ntitle: Hi\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\n# main entry\ntitle: Hi\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
     assert!(
-        emitted.starts_with("~~~card-yaml\n#@quill: q\n#@kind: main\n# main entry\n"),
+        emitted.starts_with("~~~card-yaml\n#@quill: q\n# main entry\n"),
         "own-line comment below the `#@quill` sentinel must round-trip\nGot:\n{}",
         emitted
     );
@@ -474,7 +474,7 @@ fn sentinel_payload_comment_round_trips() {
 /// system sentinel — round-trips at its source position.
 #[test]
 fn card_payload_comment_round_trips() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\n~~~card-yaml\n#@kind: foo\n# the foo card\nx: 1\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@kind: foo\n# the foo card\nx: 1\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
@@ -492,7 +492,7 @@ fn card_payload_comment_round_trips() {
 /// Inline comment with `!fill` round-trips with the tag intact.
 #[test]
 fn fill_with_inline_comment_round_trips() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\ndept: !fill Sales # placeholder\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\ndept: !fill Sales # placeholder\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     assert!(
@@ -516,7 +516,7 @@ fn fill_with_inline_comment_round_trips() {
 /// item — all preserved in one document.
 #[test]
 fn mixed_inline_comments_round_trip() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\ntitle: Hello # greeting\nitems:\n  - a # first\n  - b\nouter:\n  inner: 1 # nested tail\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\ntitle: Hello # greeting\nitems:\n  - a # first\n  - b\nouter:\n  inner: 1 # nested tail\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
@@ -534,7 +534,7 @@ fn mixed_inline_comments_round_trip() {
 /// degrades to an own-line comment instead of being silently dropped.
 #[test]
 fn orphan_inline_after_remove_degrades_to_own_line() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nfield: value # tail\nother: 2\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nfield: value # tail\nother: 2\n~~~\n";
 
     let mut doc = Document::from_markdown(src).unwrap();
     // Remove the host field. The inline comment is now orphaned in items.
@@ -571,7 +571,7 @@ fn inline_on_empty_mapping_degrades_to_own_line() {
     use crate::QuillValue;
 
     // Construct programmatically since `key: {}` doesn't appear in source.
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\n~~~\n";
     let mut doc = Document::from_markdown(src).unwrap();
     doc.main_mut()
         .payload_mut()
@@ -602,7 +602,7 @@ fn inline_on_empty_mapping_degrades_to_own_line() {
 /// Mixed: own-line and inline comments referencing the same field.
 #[test]
 fn own_line_then_inline_round_trip() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\n# header\ntitle: Hi # tail\n# footer\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\n# header\ntitle: Hi # tail\n# footer\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();

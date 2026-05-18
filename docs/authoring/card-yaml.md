@@ -8,7 +8,6 @@ to render the document; later blocks are composable [cards](cards.md).
 ```
 ~~~card-yaml
 #@quill: my_format
-#@kind: main
 title: My Document
 author: Jane Doe
 date: 2025-01-15
@@ -23,13 +22,13 @@ tags: ["important", "draft"]
 A card-yaml block has four parts, in order:
 
 1. **Opening fence** — exactly `~~~card-yaml` (three tildes plus the info
-   string). No leading indentation.
-2. **System sentinels** — the leading non-blank lines inside the block,
-   prefixed with `#@`. Every block declares `#@kind: <block_type>`; the root
-   block additionally declares `#@quill: <name>@<version>` and its kind is the
-   reserved value `main` (`#@kind: main`).
+   string). No leading indentation. The info string alone identifies a
+   metadata block.
+2. **System metadata header** — an optional leading run of `#@key: value`
+   lines inside the block. The root block must declare `#@quill`; all other
+   `#@` entries are optional.
 3. **Data payload** — standard YAML key/value pairs directly below the
-   sentinels.
+   `#@` header.
 4. **Closing fence** — exactly `~~~`.
 
 The unstructured Markdown body begins immediately after the closing `~~~`
@@ -40,24 +39,32 @@ A blank line is required immediately above every `~~~card-yaml` opener,
 `~~~card-yaml` line without a blank line above it is **not** an opener — it is
 treated as an ordinary code block.
 
-## The `#@quill:` and `#@kind: main` Sentinels
+## System Metadata (`#@`)
 
-The root block declares two system sentinels: `#@quill: <name>@<version>`,
-which names the format used to render the document, and `#@kind: main`, the
-reserved kind of the root block. Canonically `#@quill:` comes first, then
-`#@kind: main` on the next line. If `#@quill:` is missing, parsing fails;
-`#@quill:` is permitted only in the root block. The root block must declare
-`#@kind: main`, and `main` is **reserved** — no composable card block may use
-it.
+A block may begin with a **system metadata header** — an optional leading run
+of `#@key: value` lines. These lines carry no parser semantics; they are kept
+out of the YAML payload's user field set.
+
+- **`#@quill: <name>@<version>`** names the format used to render the
+  document. The root block (the first block, identified by position) **must
+  declare `#@quill`** — it is the only required `#@` entry. If the root block
+  is missing `#@quill`, parsing fails.
+- **`#@kind: <kind>`** is optional metadata identifying a card's kind. There
+  is no reserved kind.
+- **`#@id: <value>`** is an opaque, optional identifier — plain metadata with
+  no validation or uniqueness requirement, carried through the round-trip.
+
+`#@` header lines may appear in any order; the emitter preserves their source
+order. A duplicate `#@key` within a single block, or a malformed `#@` line, is
+a parse error.
 
 ### Version Selectors
 
-Pin a specific version with `@version` syntax on the sentinel:
+Pin a specific version with `@version` syntax on the `#@quill` line:
 
 ```
 ~~~card-yaml
 #@quill: my_format@2.1
-#@kind: main
 title: Document Title
 ~~~
 ```
@@ -75,7 +82,7 @@ underscores; must start with a lowercase letter).
 
 ## Payload Data Types
 
-The data payload below the system sentinel is standard YAML.
+The data payload below the `#@` metadata header is standard YAML.
 
 **Strings:**
 ```yaml
@@ -130,7 +137,7 @@ YAML comments are supported in the payload and round-trip through
 title: My Document  # an inline comment
 ```
 
-Comments are **not** supported on the `#@` sentinel line itself.
+Comments are **not** supported on a `#@` header line itself.
 
 ## Placeholder Fields (`!fill`)
 
@@ -153,13 +160,13 @@ dropped with a warning.
 `QUILL`, `CARD`, `BODY`, and `CARDS` are reserved and cannot be used as field
 names — the parser rejects documents that include them. `BODY` holds the
 block's Markdown body; `CARDS` holds the array of card blocks; `QUILL` and
-`CARD` hold the values declared by the `#@quill:` and `#@kind:` sentinels.
+`CARD` hold the values declared by the `#@quill` and `#@kind` metadata.
 
 ## Card Blocks
 
-Every card-yaml block after the root block is a **card** — it carries a
-`#@kind: <kind>` sentinel, where `<kind>` matches `[a-z_][a-z0-9_]*`. All card
-blocks are collected into the `CARDS` array available to templates.
+Every card-yaml block after the root block is a **card**. It may carry a
+`#@kind: <kind>` metadata line, where `<kind>` matches `[a-z_][a-z0-9_]*`. All
+card blocks are collected into the `CARDS` array available to templates.
 
 ```
 ~~~card-yaml
@@ -176,11 +183,10 @@ See [Cards](cards.md) for details on card syntax and usage.
 ## Emission
 
 `toMarkdown` always emits the canonical block form — a `~~~card-yaml` opener,
-the system sentinels, the YAML payload, and a `~~~` closer. The root block
-emits `#@quill:` first, then `#@kind: main`; composable blocks emit a single
-`#@kind:` sentinel. Fence markers, the sentinel form and order, key ordering,
-and YAML quoting are normalised; `!fill` tags and payload comments survive the
-round-trip.
+the `#@` metadata lines in source order, the YAML payload, and a `~~~` closer.
+The root block's header includes `#@quill`; other blocks emit whatever `#@`
+entries they declared, or none. Fence markers, key ordering, and YAML quoting
+are normalised; `!fill` tags and payload comments survive the round-trip.
 
 The payload is coerced and validated against the schema declared in the
 Quill's `Quill.yaml` (`main.fields`). See the

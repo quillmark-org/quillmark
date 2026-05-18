@@ -131,7 +131,6 @@ fn emit_twice_is_byte_equal() {
     let src = "\
 ~~~card-yaml
 #@quill: test@1.0.0
-#@kind: main
 title: Stability Test
 flags:
   - on
@@ -157,44 +156,44 @@ Body content here.
 
 #[test]
 fn round_trip_booleans() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nflag_true: true\nflag_false: false\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nflag_true: true\nflag_false: false\n~~~\n";
     assert_round_trip("booleans", src);
 }
 
 #[test]
 fn round_trip_null() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nnull_field: null\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nnull_field: null\n~~~\n";
     assert_round_trip("null", src);
 }
 
 #[test]
 fn round_trip_numbers() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\ncount: 42\nfloat: 3.14\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\ncount: 42\nfloat: 3.14\n~~~\n";
     assert_round_trip("numbers", src);
 }
 
 #[test]
 fn round_trip_string_ambiguous() {
     // These are the strings most likely to be mis-parsed as booleans/numbers.
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nfield_on: \"on\"\nfield_yes: \"yes\"\nfield_01234: \"01234\"\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nfield_on: \"on\"\nfield_yes: \"yes\"\nfield_01234: \"01234\"\n~~~\n";
     assert_round_trip("ambiguous strings", src);
 }
 
 #[test]
 fn round_trip_nested_map() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nsender:\n  name: Alice\n  city: Springfield\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nsender:\n  name: Alice\n  city: Springfield\n~~~\n";
     assert_round_trip("nested map", src);
 }
 
 #[test]
 fn round_trip_sequence() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\ntags:\n  - demo\n  - test\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\ntags:\n  - demo\n  - test\n~~~\n";
     assert_round_trip("sequence", src);
 }
 
 #[test]
 fn round_trip_empty_sequence() {
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nempty: []\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nempty: []\n~~~\n";
     assert_round_trip("empty sequence", src);
 }
 
@@ -203,7 +202,6 @@ fn round_trip_cards() {
     let src = "\
 ~~~card-yaml
 #@quill: q
-#@kind: main
 title: Test
 ~~~
 
@@ -224,7 +222,6 @@ fn round_trip_card_empty_body() {
     let src = "\
 ~~~card-yaml
 #@quill: q
-#@kind: main
 title: Test
 ~~~
 
@@ -239,21 +236,21 @@ title: No body
 #[test]
 fn round_trip_string_with_escapes() {
     // String containing backslash and quotes — must survive as a string.
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\npath: \"C:\\\\Users\\\\test\"\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\npath: \"C:\\\\Users\\\\test\"\n~~~\n";
     assert_round_trip("string with backslash", src);
 }
 
 #[test]
 fn round_trip_multiline_string() {
     // A string containing a literal newline.
-    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nbio: \"Line one\\nLine two\"\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\nbio: \"Line one\\nLine two\"\n~~~\n";
     assert_round_trip("multiline string", src);
 }
 
 #[test]
 fn round_trip_quill_version_selectors() {
     for qref in &["q", "q@1", "q@1.2", "q@1.2.3", "q@latest"] {
-        let src = format!("~~~card-yaml\n#@quill: {}\n#@kind: main\ntitle: t\n~~~\n", qref);
+        let src = format!("~~~card-yaml\n#@quill: {}\ntitle: t\n~~~\n", qref);
         assert_round_trip(&format!("quill ref {}", qref), &src);
     }
 }
@@ -275,13 +272,12 @@ fn empty_map_omitted_from_emit() {
         QuillValue::from_json(serde_json::json!("hello")),
     );
 
-    use crate::document::{Card, Payload, Sentinel};
-    use crate::version::{QuillReference, VersionSelector};
-    let main = Card::new_with_sentinel(
-        Sentinel::Main(QuillReference::new(
-            "test".to_string(),
-            VersionSelector::Latest,
-        )),
+    use crate::document::{Card, Payload, SystemMeta};
+    let mut meta = SystemMeta::new();
+    meta.insert("quill", "test");
+    let main = Card::from_parts(
+        true,
+        meta,
         Payload::from_index_map(payload),
         String::new(),
     );

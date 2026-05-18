@@ -1,8 +1,8 @@
 //! Assembly of card-yaml blocks into a [`Document`].
 //!
-//! This module contains the top-level parsing glue: it calls the fence scanner,
-//! parses each block's `#@` system sentinel, and assembles a typed [`Document`]
-//! from the pieces.
+//! This module contains the top-level parsing glue: it calls the fence
+//! scanner, parses each block's `#@` system-metadata header, and assembles a
+//! typed [`Document`] from the pieces.
 
 use std::str::FromStr;
 
@@ -12,12 +12,10 @@ use crate::version::QuillReference;
 use crate::Diagnostic;
 
 use super::fences::find_metadata_blocks;
+use super::meta::{parse_meta_line, validate_payload_yaml, SystemMeta};
 use super::payload::{Payload, PayloadItem};
 use super::prescan::{prescan_fence_content, NestedComment, PreItem};
-use super::sentinel::{
-    is_valid_tag_name, parse_system_sentinel, validate_payload_yaml, MAIN_KIND,
-};
-use super::{Card, Document, Sentinel};
+use super::{Card, Document};
 
 /// Strip exactly one structural separator from the tail of a body slice.
 ///
@@ -42,8 +40,7 @@ pub(super) struct MetadataBlock {
     pub(super) start: usize, // Position of the opening `~~~card-yaml`
     pub(super) end: usize,   // Position after the closing `~~~`
     pub(super) yaml_value: Option<serde_json::Value>, // Parsed YAML payload as JSON
-    pub(super) tag: Option<String>, // Card kind from `#@kind:` (composable blocks)
-    pub(super) quill_ref: Option<String>, // Quill reference from `#@quill:` (root block)
+    pub(super) meta: SystemMeta, // The block's `#@` system metadata
     /// Pre-scan items (comments + fill-tagged field keys) in source order.
     pub(super) pre_items: Vec<PreItem>,
     /// Pre-scan nested comments (with structural paths).
@@ -64,15 +61,15 @@ fn yaml_parse_options() -> serde_saphyr::Options {
     }
 }
 
-/// Split a block's raw content into its `#@` system-sentinel header and the
+/// Split a block's raw content into its `#@` system-metadata header and the
 /// YAML payload that follows it.
 ///
-/// The sentinel header is the run of `#@`-prefixed lines at the top of the
+/// The metadata header is the run of `#@`-prefixed lines at the top of the
 /// block (blank lines interspersed are skipped). The payload is everything
 /// after the last header line. A block with no `#@` line yields an empty
 /// header.
-fn split_sentinel_header(content: &str) -> (Vec<&str>, &str) {
-    let mut sentinels: Vec<&str> = Vec::new();
+fn split_meta_header(content: &str) -> (Vec<&str>, &str) {
+    let mut header: Vec<&str> = Vec::new();
     let mut payload_start = 0;
     for line in content.split_inclusive('\n') {
         let line_text = line.trim_end_matches(['\n', '\r']);
@@ -82,23 +79,49 @@ fn split_sentinel_header(content: &str) -> (Vec<&str>, &str) {
             continue;
         }
         if trimmed.starts_with("#@") {
-            sentinels.push(line_text);
+            header.push(line_text);
             payload_start += line.len();
             continue;
         }
         break;
     }
-    (sentinels, &content[payload_start..])
+    (header, &content[payload_start..])
+}
+
+/// Parse a block's `#@` header lines into a [`SystemMeta`] map.
+///
+/// Header lines may appear in any order. A malformed `#@` line, or a
+/// duplicate key, is a parse error.
+fn parse_meta_header(header: &[&str]) -> Result<SystemMeta, ParseError> {
+    let mut meta = SystemMeta::new();
+    for line in header {
+        match parse_meta_line(line) {
+            Some((key, value)) => {
+                if meta.contains_key(&key) {
+                    return Err(ParseError::InvalidStructure(format!(
+                        "Duplicate `#@{}` system-metadata entry in one card-yaml block",
+                        key
+                    )));
+                }
+                meta.insert(key, value);
+            }
+            None => {
+                return Err(ParseError::InvalidStructure(format!(
+                    "Malformed `#@` metadata line `{}` — expected `#@<key>: <value>`",
+                    line.trim()
+                )));
+            }
+        }
+    }
+    Ok(meta)
 }
 
 /// Process one recognised `~~~card-yaml` block and build a [`MetadataBlock`].
 ///
 /// `block_start` / `block_end` bound the whole block (used to slice card
 /// bodies). `content_start` / `content_end` bound the block content between
-/// the `~~~card-yaml` opener and its `~~~` closer.
-///
-/// `block_index` discriminates the root block (index 0, which must declare
-/// `#@quill:`) from composable blocks (which must declare `#@kind:`).
+/// the `~~~card-yaml` opener and its `~~~` closer. `block_index` is used only
+/// for YAML-error location context.
 pub(super) fn build_block(
     markdown: &str,
     block_start: usize,
@@ -117,9 +140,9 @@ pub(super) fn build_block(
         });
     }
 
-    // Separate the `#@` system-sentinel header from the YAML payload.
-    let (sentinels, yaml_payload) = split_sentinel_header(raw_content);
-    let (tag, quill_ref) = resolve_sentinel(block_index, &sentinels)?;
+    // Separate the `#@` system-metadata header from the YAML payload.
+    let (header, yaml_payload) = split_meta_header(raw_content);
+    let meta = parse_meta_header(&header)?;
 
     // Run the pre-scan over the YAML payload to extract top-level comments,
     // `!fill` markers, and warn on unsupported tags / nested comments.
@@ -164,114 +187,11 @@ pub(super) fn build_block(
         start: block_start,
         end: block_end,
         yaml_value,
-        tag,
-        quill_ref,
+        meta,
         pre_items: pre.items,
         pre_nested_comments: pre.nested_comments,
         pre_warnings: pre.warnings,
     })
-}
-
-/// Resolve a block's `#@` system-sentinel header, returning `(tag, quill_ref)`.
-///
-/// Every block declares `#@kind: <type>`. The root block (index 0) declares
-/// `#@kind: main` and additionally `#@quill: <name>@<version>`; `main` is a
-/// reserved kind that no composable block may use. Header lines may appear in
-/// any order.
-#[allow(clippy::type_complexity)]
-fn resolve_sentinel(
-    block_index: usize,
-    sentinels: &[&str],
-) -> Result<(Option<String>, Option<String>), ParseError> {
-    let mut quill: Option<String> = None;
-    let mut kind: Option<String> = None;
-
-    for line in sentinels {
-        match parse_system_sentinel(line) {
-            Some((key, value)) if key == "quill" => {
-                if quill.is_some() {
-                    return Err(ParseError::InvalidStructure(
-                        "Duplicate `#@quill:` system sentinel in one card-yaml block".to_string(),
-                    ));
-                }
-                quill = Some(value);
-            }
-            Some((key, value)) if key == "kind" => {
-                if kind.is_some() {
-                    return Err(ParseError::InvalidStructure(
-                        "Duplicate `#@kind:` system sentinel in one card-yaml block".to_string(),
-                    ));
-                }
-                kind = Some(value);
-            }
-            Some((key, _)) => {
-                return Err(ParseError::InvalidStructure(format!(
-                    "Unknown system sentinel `#@{}:` — expected `#@quill:` or `#@kind:`",
-                    key
-                )));
-            }
-            None => {
-                return Err(ParseError::InvalidStructure(format!(
-                    "Malformed system sentinel line `{}` — expected `#@<directive>: <value>`",
-                    line.trim()
-                )));
-            }
-        }
-    }
-
-    if block_index == 0 {
-        // Root block — must declare `#@kind: main` and `#@quill:`.
-        match kind.as_deref() {
-            Some(MAIN_KIND) => {}
-            Some(other) => {
-                return Err(ParseError::InvalidStructure(format!(
-                    "The document's root card-yaml block must declare `#@kind: main` (found `#@kind: {}`).",
-                    other
-                )));
-            }
-            None => {
-                return Err(ParseError::InvalidStructure(
-                    "The document's root card-yaml block must declare `#@kind: main`.".to_string(),
-                ));
-            }
-        }
-        let Some(quill) = quill else {
-            return Err(ParseError::MissingQuillField(
-                "The document's root card-yaml block must declare `#@quill: <name>`.".to_string(),
-            ));
-        };
-        if quill.is_empty() {
-            return Err(ParseError::InvalidStructure(
-                "`#@quill:` system sentinel has no value — expected `#@quill: <name>`".to_string(),
-            ));
-        }
-        Ok((None, Some(quill)))
-    } else {
-        // Composable card — must declare `#@kind: <type>`, never `#@quill:`.
-        if quill.is_some() {
-            return Err(ParseError::InvalidStructure(
-                "`#@quill` may only be declared by the document's root card-yaml block".to_string(),
-            ));
-        }
-        let Some(kind) = kind else {
-            return Err(ParseError::InvalidStructure(
-                "A composable card-yaml block is missing its `#@kind: <type>` system sentinel."
-                    .to_string(),
-            ));
-        };
-        if kind == MAIN_KIND {
-            return Err(ParseError::InvalidStructure(
-                "`#@kind: main` is reserved for the document's root card-yaml block".to_string(),
-            ));
-        }
-        if !is_valid_tag_name(&kind) {
-            return Err(ParseError::InvalidStructure(format!(
-                "Invalid card kind '{}': must match pattern [a-z_][a-z0-9_]*",
-                kind
-            )));
-        }
-        Ok((Some(kind), None))
-    }
 }
 
 /// Decompose markdown, discarding warnings. Test- and `from_markdown`-facing.
@@ -303,8 +223,8 @@ pub(super) fn decompose_with_warnings(
         });
     }
 
-    // Find all card-yaml blocks. The scanner guarantees block 0 carries the
-    // `#@quill` sentinel and every later block carries `#@kind`.
+    // Find all card-yaml blocks. The first is the document root; the rest are
+    // composable cards.
     let (blocks, warnings) = find_metadata_blocks(markdown)?;
 
     if blocks.is_empty() {
@@ -315,33 +235,35 @@ pub(super) fn decompose_with_warnings(
         ));
     }
 
-    // Block 0 is always the root `#@quill` block.
-    let payload_block = &blocks[0];
-    let quill_tag = payload_block.quill_ref.clone().ok_or_else(|| {
+    // The root block must declare a valid `#@quill` reference.
+    let root_block = &blocks[0];
+    let quill_str = root_block.meta.quill().ok_or_else(|| {
         ParseError::MissingQuillField(
-            "The document's first card-yaml block must declare `#@quill: <name>`.".to_string(),
+            "The document's root card-yaml block must declare `#@quill: <name>`.".to_string(),
         )
+    })?;
+    QuillReference::from_str(quill_str).map_err(|e| {
+        ParseError::InvalidStructure(format!("Invalid #@quill reference '{}': {}", quill_str, e))
     })?;
 
     // Build the root block's payload item list.
-    let payload = build_payload_from_pre_and_parsed(
-        &payload_block.pre_items,
-        &payload_block.pre_nested_comments,
-        &payload_block.yaml_value,
+    let main_payload = build_payload_from_pre_and_parsed(
+        &root_block.pre_items,
+        &root_block.pre_nested_comments,
+        &root_block.yaml_value,
     )?;
     // Surface pre-scan warnings (nested-comment drops, unsupported tags).
     let mut warnings = warnings;
-    for w in &payload_block.pre_warnings {
+    for w in &root_block.pre_warnings {
         warnings.push(w.clone());
     }
 
-    // Global body: between the end of block 0 and the start of the first
-    // composable card block (or EOF). When a block follows, the slice ends
-    // with the blank-line separator — strip it so stored bodies contain only
-    // authored content.
+    // Global body: between the end of the root block and the start of the
+    // first composable card block (or EOF). When a block follows, the slice
+    // ends with the blank-line separator — strip it so stored bodies contain
+    // only authored content.
     let body_start = blocks[0].end;
-    let first_card_block = blocks.iter().skip(1).find(|b| b.tag.is_some());
-    let (body_end, body_is_followed_by_fence) = match first_card_block {
+    let (body_end, body_is_followed_by_fence) = match blocks.get(1) {
         Some(b) => (b.start, true),
         None => (markdown.len(), false),
     };
@@ -352,61 +274,61 @@ pub(super) fn decompose_with_warnings(
         global_body_raw.to_string()
     };
 
-    // Parse composable card blocks into typed Cards.
+    let main = Card::from_parts(
+        true,
+        blocks[0].meta.clone(),
+        main_payload,
+        global_body,
+    );
+
+    // Parse composable card blocks (every block after the root) into Cards.
     let mut cards: Vec<Card> = Vec::new();
-    for (idx, block) in blocks.iter().enumerate() {
-        if let Some(ref tag_name) = block.tag {
-            let card_payload = build_payload_from_pre_and_parsed(
-                &block.pre_items,
-                &block.pre_nested_comments,
-                &block.yaml_value,
-            )
-            .map_err(|e| match e {
-                ParseError::InvalidStructure(msg) => ParseError::InvalidStructure(format!(
-                    "Invalid YAML in card block '{}': {}",
-                    tag_name, msg
-                )),
-                other => other,
-            })?;
-            for w in &block.pre_warnings {
-                warnings.push(w.clone());
+    for idx in 1..blocks.len() {
+        let block = &blocks[idx];
+        let card_payload = build_payload_from_pre_and_parsed(
+            &block.pre_items,
+            &block.pre_nested_comments,
+            &block.yaml_value,
+        )
+        .map_err(|e| match e {
+            ParseError::InvalidStructure(msg) => {
+                ParseError::InvalidStructure(format!("Invalid YAML in card block: {}", msg))
             }
-
-            // Card body: between this block's end and the next block's start.
-            let card_body_start = block.end;
-            let has_next_block = idx + 1 < blocks.len();
-            let card_body_end = if has_next_block {
-                blocks[idx + 1].start
-            } else {
-                markdown.len()
-            };
-            let card_body_raw = &markdown[card_body_start..card_body_end];
-            let card_body = if has_next_block {
-                strip_blank_separator(card_body_raw).to_string()
-            } else {
-                card_body_raw.to_string()
-            };
-
-            cards.push(Card::new_with_sentinel(
-                Sentinel::Card(tag_name.clone()),
-                card_payload,
-                card_body,
-            ));
+            other => other,
+        })?;
+        for w in &block.pre_warnings {
+            warnings.push(w.clone());
         }
+
+        // Card body: between this block's end and the next block's start (or EOF).
+        let card_body_start = block.end;
+        let has_next_block = idx + 1 < blocks.len();
+        let card_body_end = if has_next_block {
+            blocks[idx + 1].start
+        } else {
+            markdown.len()
+        };
+        let card_body_raw = &markdown[card_body_start..card_body_end];
+        let card_body = if has_next_block {
+            strip_blank_separator(card_body_raw).to_string()
+        } else {
+            card_body_raw.to_string()
+        };
+
+        cards.push(Card::from_parts(
+            false,
+            block.meta.clone(),
+            card_payload,
+            card_body,
+        ));
     }
 
-    let quill_ref = QuillReference::from_str(&quill_tag).map_err(|e| {
-        ParseError::InvalidStructure(format!("Invalid #@quill reference '{}': {}", quill_tag, e))
-    })?;
-
-    let main = Card::new_with_sentinel(Sentinel::Main(quill_ref), payload, global_body);
     let doc = Document::from_main_and_cards(main, cards, warnings.clone());
 
     Ok((doc, warnings))
 }
 
-/// Build a [`Payload`] from the pre-scan items and the parsed YAML
-/// mapping.
+/// Build a [`Payload`] from the pre-scan items and the parsed YAML mapping.
 ///
 /// The pre-scan defined source order for fields and comments; the parsed
 /// YAML defined the typed value for each key. We walk pre-scan order, pulling

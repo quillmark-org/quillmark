@@ -22,7 +22,7 @@ use serde_json::Value as JsonValue;
 
 use super::payload::PayloadItem;
 use super::prescan::{CommentPathSegment, NestedComment};
-use super::{Card, Document, Sentinel};
+use super::{Card, Document};
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
@@ -112,14 +112,13 @@ impl Document {
 
 // ── Block emission ────────────────────────────────────────────────────────────
 
-/// Emit a card-yaml block: `~~~card-yaml`, the `#@` system-sentinel header,
+/// Emit a card-yaml block: `~~~card-yaml`, the `#@` system-metadata header,
 /// the YAML payload, then a closing `~~~`.
 ///
-/// The root block declares `#@quill: <ref>` followed by `#@kind: main`;
-/// composable cards declare `#@kind: <tag>`. There is no sentinel line for an
-/// inline comment to attach to, so an inline comment carried over at
-/// `items[0]` degrades to an own-line comment as the first payload line,
-/// preserving its text.
+/// The `#@` header lines are emitted in metadata insertion order. There is no
+/// `#@` line for an inline comment to attach to, so an inline comment carried
+/// over at `items[0]` degrades to an own-line comment as the first payload
+/// line, preserving its text.
 ///
 /// Three tildes are always a safe fence length: canonically emitted payload
 /// lines never begin with `~` (keys are identifiers, sequence items start with
@@ -128,18 +127,12 @@ impl Document {
 fn emit_block(out: &mut String, card: &Card) {
     out.push_str("~~~card-yaml\n");
 
-    match card.sentinel() {
-        Sentinel::Main(r) => {
-            out.push_str("#@quill: ");
-            out.push_str(&r.to_string());
-            out.push('\n');
-            out.push_str("#@kind: main\n");
-        }
-        Sentinel::Card(tag) => {
-            out.push_str("#@kind: ");
-            out.push_str(tag);
-            out.push('\n');
-        }
+    for (key, value) in card.meta().iter() {
+        out.push_str("#@");
+        out.push_str(key);
+        out.push_str(": ");
+        out.push_str(value);
+        out.push('\n');
     }
 
     emit_fence_items(

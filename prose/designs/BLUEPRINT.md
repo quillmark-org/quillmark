@@ -8,7 +8,7 @@ constraint hints. It is the **authoring surface** for LLM and MCP
 consumers; [SCHEMAS.md](SCHEMAS.md) covers the validation/form surface.
 
 A blueprint is the document, not a description of the document. Fill in
-the placeholders; the structure, sentinels, and body markers come for
+the placeholders; the structure, `#@` metadata, and body markers come for
 free.
 
 ## Output shape
@@ -16,7 +16,6 @@ free.
 ````
 ~~~card-yaml
 #@quill: <name>@<version>
-#@kind: main
 # <description>
 
 # <field description>
@@ -37,9 +36,8 @@ Write <card_kind> body here.
 ````
 
 Every block is a `~~~card-yaml` block (see [MARKDOWN.md](MARKDOWN.md) §3):
-the root block carries the `#@quill:` system sentinel together with
-`#@kind: main` (the reserved root kind); each composable card carries a
-`#@kind: <card_kind>` system sentinel.
+the root block carries the `#@quill` system-metadata line; each composable
+card carries a `#@kind: <card_kind>` metadata line.
 
 When `body.example` is set, its text replaces the body marker entirely.
 When `body.enabled` is false the marker is omitted entirely.
@@ -75,7 +73,7 @@ Form: **`# <type>[<format>]; <role>[, <extra>...]`**
 
 - **Type slot** (mandatory, first): one of
   `string`, `integer`, `number`, `boolean`, `array`, `object`,
-  `markdown`, `date`, `datetime`, `enum`, `sentinel`.
+  `markdown`, `date`, `datetime`, `enum`.
   Every field is labeled — there is no "self-evident" exemption.
   (`object` requires a `properties` map; freeform untyped objects are not
   supported. `object` also appears in the format slot of typed-table fields
@@ -92,14 +90,13 @@ Form: **`# <type>[<format>]; <role>[, <extra>...]`**
 - **Extras** (optional, comma-separated, after the role): additional
   qualifiers.
 
-The system sentinels (`#@quill:` and `#@kind:`) have no inline-annotation
-slot — they are not YAML fields and carry no trailing `#` comment
-(comments are unsupported on the sentinel line). The root block's
-`#@quill:` and `#@kind: main` lines are emitted verbatim; their values are
-fixed and must not be modified. A composable card's kind is carried in its
-`#@kind: <card_kind>` sentinel (and may never be `main`, which is reserved
-for the root block). Its `composable (0..N)` role is emitted as an own-line
-`# composable (0..N)` comment directly under the sentinel, ahead of the
+The `#@` system-metadata lines (`#@quill`, `#@kind`, …) have no
+inline-annotation slot — they are not YAML fields and carry no trailing `#`
+comment (comments are unsupported on a `#@` header line). The root block's
+`#@quill` line is emitted verbatim; its value is fixed and must not be
+modified. A composable card's kind is carried in its `#@kind: <card_kind>`
+metadata line. Its `composable (0..N)` role is emitted as an own-line
+`# composable (0..N)` comment directly under the `#@` header, ahead of the
 card description.
 
 Examples:
@@ -115,7 +112,7 @@ Examples:
 | `date: ""  # date<YYYY-MM-DD>; required` | required date in `YYYY-MM-DD` format |
 | `published: ""  # datetime<ISO 8601>; required` | required datetime in ISO 8601 |
 | `level: low  # enum<low \| medium \| high>; optional` | optional enum, default is first value |
-| `#@quill: cmu_letter@0.1.0` | quill binding sentinel, emitted verbatim, do not modify |
+| `#@quill: cmu_letter@0.1.0` | quill binding metadata, emitted verbatim, do not modify |
 | `#@kind: skill` followed by `# composable (0..N)` | repeat the entire `~~~card-yaml` … `~~~` block per instance |
 
 ## Placeholder value precedence
@@ -279,7 +276,6 @@ blueprint's document structure.
 ```
 ~~~card-yaml
 #@quill: cmu_letter@0.1.0
-#@kind: main
 # Typeset letters that comply with Carnegie Mellon University letterhead standards.
 
 # The recipient's name and full mailing address.

@@ -61,10 +61,10 @@ Some constructs (like link titles) are accepted by the parser but may be dropped
 ## Structured metadata: card-yaml blocks
 
 Quillmark carries structured metadata in [card-yaml blocks](card-yaml.md) —
-blocks delimited by `~~~card-yaml` / `~~~` fences with a `#@`-prefixed system
-sentinel. Each block is followed by its Markdown prose body. The document's
-first block (the root block) names the rendering format; later blocks are
-composable [cards](cards.md).
+blocks delimited by `~~~card-yaml` / `~~~` fences, optionally led by a run of
+`#@`-prefixed system metadata lines. Each block is followed by its Markdown
+prose body. The document's first block (the root block) names the rendering
+format; later blocks are composable [cards](cards.md).
 
 Because metadata lives inside `~~~card-yaml` fences, ordinary Markdown markers
 keep their CommonMark meaning. A `---` line in body content is a thematic

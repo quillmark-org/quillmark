@@ -17,11 +17,11 @@
 //!   field. Format slot uses angle brackets (`array<string>`,
 //!   `date<YYYY-MM-DD>`, `enum<a | b | c>`). Role is `required` or
 //!   `optional`.
-//! - **Sentinel annotation.** The `#@quill` / `#@kind` system sentinels have
-//!   no inline-annotation slot, so their role annotation
-//!   (`sentinel; required, verbatim` for the root block, `composable (0..N)`
-//!   for cards) is emitted as an own-line `# …` comment directly under the
-//!   sentinel.
+//! - **Metadata annotation.** The `#@quill` / `#@kind` system-metadata lines
+//!   have no inline-annotation slot, so their role annotation
+//!   (`system metadata; required, verbatim` for the root block,
+//!   `composable (0..N)` for cards) is emitted as an own-line `# …` comment
+//!   directly under the `#@` line.
 //! - **Body regions** are signalled by `Write main body here.` after the main
 //!   fence and `Write <card kind> body here.` after each card fence. When
 //!   `body.example` is set, the example text is embedded verbatim instead.
@@ -88,10 +88,10 @@ fn write_comment(out: &mut String, text: &str) {
 }
 
 /// Emit the root block:
-/// `~~~card-yaml\n#@quill: …\n#@kind: main\n# sentinel; …\n[# desc\n]<fields>~~~\n`.
+/// `~~~card-yaml\n#@quill: …\n# system metadata; …\n[# desc\n]<fields>~~~\n`.
 ///
-/// The `#@quill` and `#@kind: main` system sentinels lead the block; the role
-/// annotation and the optional description follow as own-line comments.
+/// The `#@quill` system-metadata line leads the block; the role annotation
+/// and the optional description follow as own-line comments.
 fn write_main_fence(
     out: &mut String,
     card: &CardSchema,
@@ -102,8 +102,7 @@ fn write_main_fence(
     out.push_str("#@quill: ");
     out.push_str(quill_ref);
     out.push('\n');
-    out.push_str("#@kind: main\n");
-    write_comment(out, "sentinel; required, verbatim");
+    write_comment(out, "system metadata; required, verbatim");
     if let Some(desc) = description {
         write_comment(out, desc);
     }
@@ -680,7 +679,7 @@ main:
     }
 
     #[test]
-    fn quill_sentinel_line_is_required_verbatim() {
+    fn quill_metadata_line_is_required_verbatim() {
         let t = cfg(r#"
 quill: { name: taro, version: 0.1.0, backend: typst, description: x }
 main:
@@ -689,7 +688,7 @@ main:
 "#)
         .blueprint();
         assert!(t.starts_with(
-            "~~~card-yaml\n#@quill: taro@0.1.0\n#@kind: main\n# sentinel; required, verbatim\n# x\n"
+            "~~~card-yaml\n#@quill: taro@0.1.0\n# system metadata; required, verbatim\n# x\n"
         ));
         assert!(t.contains("\nWrite main body here.\n"));
     }

@@ -23,7 +23,7 @@ quillmark render [OPTIONS] <QUILL_PATH> [MARKDOWN_FILE]
 - `<QUILL_PATH>`: Path to quill directory
 - `[MARKDOWN_FILE]`: Path to markdown file with a root card-yaml block (optional — when omitted, the quill's blueprint is rendered)
 
-`<QUILL_PATH>` selects the local quill bundle used for rendering. `MARKDOWN_FILE` still requires a root `~~~card-yaml` block with a `#@quill:` system sentinel during parsing.
+`<QUILL_PATH>` selects the local quill bundle used for rendering. `MARKDOWN_FILE` still requires a root `~~~card-yaml` block with a `#@quill` system metadata line during parsing.
 
 **Options:**
 

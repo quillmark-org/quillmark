@@ -402,16 +402,14 @@ main:
     }
 
     fn doc_with_typed_cards(fm: &[(&str, serde_json::Value)], cards: Vec<Card>) -> Document {
-        use crate::document::{Payload, Sentinel};
+        use crate::document::{Payload, SystemMeta};
         let mut payload = IndexMap::new();
         for (k, v) in fm {
             payload.insert(k.to_string(), QuillValue::from_json(v.clone()));
         }
-        let main = Card::new_with_sentinel(
-            Sentinel::Main(QuillReference::from_str("test_quill").unwrap()),
-            Payload::from_index_map(payload),
-            String::new(),
-        );
+        let mut meta = SystemMeta::new();
+        meta.insert("quill", "test_quill");
+        let main = Card::from_parts(true, meta, Payload::from_index_map(payload), String::new());
         Document::from_main_and_cards(main, cards, vec![])
     }
 
@@ -739,9 +737,12 @@ main:
 "#,
         )
         .unwrap();
-        use crate::document::{Payload, Sentinel};
-        let main = Card::new_with_sentinel(
-            Sentinel::Main(crate::version::QuillReference::from_str("test_quill").unwrap()),
+        use crate::document::{Payload, SystemMeta};
+        let mut meta = SystemMeta::new();
+        meta.insert("quill", "test_quill");
+        let main = Card::from_parts(
+            true,
+            meta,
             Payload::from_index_map(IndexMap::new()),
             "Body content that should not be here.".to_string(),
         );

@@ -1,6 +1,5 @@
 ~~~card-yaml
 #@quill: business_letter@latest
-#@kind: main
 sender:
   name: Alice Johnson
   title: Engineering Manager

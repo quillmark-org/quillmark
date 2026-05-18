@@ -70,7 +70,7 @@ proptest! {
         value in "\\PC{0,100}"
     ) {
         // Build a minimal Quillmark document.
-        let src = format!("~~~card-yaml\n#@quill: {}\n#@kind: main\n{}: \"{}\"\n~~~\n\nBody.\n",
+        let src = format!("~~~card-yaml\n#@quill: {}\n{}: \"{}\"\n~~~\n\nBody.\n",
             quill, key, value.replace('\\', "\\\\").replace('"', "\\\""));
 
         let doc_a = match Document::from_markdown(&src) {
@@ -111,7 +111,7 @@ proptest! {
         card_value in "[a-zA-Z0-9 ]{0,50}"
     ) {
         let src = format!(
-            "~~~card-yaml\n#@quill: {}\n#@kind: main\ntitle: \"test\"\n~~~\n\nBody here.\n\n~~~card-yaml\n#@kind: {}\n{}: \"{}\"\n~~~\n\nCard body.\n",
+            "~~~card-yaml\n#@quill: {}\ntitle: \"test\"\n~~~\n\nBody here.\n\n~~~card-yaml\n#@kind: {}\n{}: \"{}\"\n~~~\n\nCard body.\n",
             quill, card_tag, card_key, card_value
         );
 
