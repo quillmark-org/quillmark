@@ -20,12 +20,13 @@ def test_parse_markdown(taro_md):
 
 def test_parse_invalid_yaml():
     """Test parsing invalid YAML payload."""
-    invalid_md = """---
-title: [unclosed bracket
----
-
-Content
-"""
+    invalid_md = (
+        "~~~card-yaml\n"
+        "#@quill: test_quill\n"
+        "#@kind: main\n"
+        "title: [unclosed bracket\n"
+        "~~~\n\nContent\n"
+    )
     with pytest.raises(ParseError):
         Document.from_markdown(invalid_md)
 

@@ -224,13 +224,13 @@ fn resolve_sentinel(
         match kind.as_deref() {
             Some(MAIN_KIND) => {}
             Some(other) => {
-                return Err(ParseError::MissingQuillField(format!(
+                return Err(ParseError::InvalidStructure(format!(
                     "The document's root card-yaml block must declare `#@kind: main` (found `#@kind: {}`).",
                     other
                 )));
             }
             None => {
-                return Err(ParseError::MissingQuillField(
+                return Err(ParseError::InvalidStructure(
                     "The document's root card-yaml block must declare `#@kind: main`.".to_string(),
                 ));
             }

@@ -11,7 +11,7 @@ def test_parsed_document_quill_ref():
     parsed = Document.from_markdown(markdown_with_quill)
     assert parsed.quill_ref() == "my_quill"
 
-    markdown_without_quill = "---\ntitle: Test\n---\n\n# Content\n"
+    markdown_without_quill = "# Just content\n\nNo card-yaml block here.\n"
     with pytest.raises(ParseError):
         Document.from_markdown(markdown_without_quill)
 
