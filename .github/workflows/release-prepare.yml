@@ -11,6 +11,11 @@ on:
           - patch
           - minor
           - major
+          - patch-rc
+          - minor-rc
+          - major-rc
+          - rc
+          - promote-rc
 
 jobs:
   prepare:
@@ -46,12 +51,35 @@ jobs:
         run: |
           CURRENT=$(cargo metadata --format-version=1 --no-deps \
             | jq -r '.packages[] | select(.name == "quillmark") | .version')
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+          # Strip any pre-release suffix before splitting on '.' so that
+          # PATCH isn't "0-rc.1" when the current version is e.g. 0.81.0-rc.1.
+          BASE_VERSION="${CURRENT%%-*}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
 
           case "${{ inputs.bump }}" in
-            major) NEXT="$((MAJOR + 1)).0.0" ;;
-            minor) NEXT="${MAJOR}.$((MINOR + 1)).0" ;;
-            patch) NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+            major)      NEXT="$((MAJOR + 1)).0.0" ;;
+            minor)      NEXT="${MAJOR}.$((MINOR + 1)).0" ;;
+            patch)      NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+            major-rc)   NEXT="$((MAJOR + 1)).0.0-rc.1" ;;
+            minor-rc)   NEXT="${MAJOR}.$((MINOR + 1)).0-rc.1" ;;
+            patch-rc)   NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))-rc.1" ;;
+            rc)
+              if [[ "$CURRENT" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-rc\.([0-9]+)$ ]]; then
+                NEXT="${BASH_REMATCH[1]}-rc.$((BASH_REMATCH[2] + 1))"
+              else
+                echo "Error: current version '$CURRENT' is not an RC version; cannot bump RC." >&2
+                exit 1
+              fi
+              ;;
+            promote-rc)
+              if [[ "$CURRENT" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-rc\.[0-9]+$ ]]; then
+                NEXT="${BASH_REMATCH[1]}"
+              else
+                echo "Error: current version '$CURRENT' is not an RC version; cannot promote." >&2
+                exit 1
+              fi
+              ;;
           esac
 
           echo "next=$NEXT" >> "$GITHUB_OUTPUT"
