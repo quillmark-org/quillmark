@@ -1,10 +1,11 @@
 //! Tests for the `~~~card-yaml` composable-card syntax.
 //!
 //! Coverage:
-//! - Composable cards declared with `#@kind:` parse to `Card`s.
+//! - Composable cards declared with `#@kind:` parse to `Card`s; `#@kind` is optional.
 //! - Every card round-trips to the canonical `~~~card-yaml` form.
-//! - Card-kind validation and error reporting.
-//! - The blank-line rule for `~~~card-yaml` openers.
+//! - Ordinary fenced code blocks and the blank-line rule for `~~~card-yaml` openers.
+//!
+//! Parse-error and metadata-validation cases live in `assemble_tests.rs`.
 
 use crate::document::Document;
 
@@ -103,50 +104,6 @@ fn card_fence_without_kind_is_allowed() {
     let doc = Document::from_markdown(src).unwrap();
     assert_eq!(doc.cards().len(), 1);
     assert_eq!(doc.cards()[0].kind(), None);
-}
-
-#[test]
-fn card_fence_unknown_meta_key_is_error() {
-    // The `#@` header is a closed set `{quill, kind, id}`; any other `#@key`
-    // is a parse error.
-    let src = "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@foo: bar\nname: Widget\n~~~\n";
-    let err = Document::from_markdown(src).unwrap_err().to_string();
-    assert!(err.contains("Unknown `#@foo`"), "got: {err}");
-}
-
-#[test]
-fn card_fence_unusual_kind_is_accepted_verbatim() {
-    // `#@kind` carries no parse-time name-pattern validation.
-    let src = "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@kind: BadKind\nname: Widget\n~~~\n";
-    let doc = Document::from_markdown(src).unwrap();
-    assert_eq!(doc.cards().len(), 1);
-    assert_eq!(doc.cards()[0].kind(), Some("BadKind"));
-}
-
-#[test]
-fn card_fence_unclosed_is_error() {
-    let src = "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@kind: product\nname: Widget\n";
-    let err = Document::from_markdown(src).unwrap_err().to_string();
-    assert!(
-        err.contains("never closed with `~~~`"),
-        "got: {err}"
-    );
-}
-
-#[test]
-fn card_fence_reserved_key_is_error() {
-    let src = "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@kind: product\nBODY: nope\n~~~\n";
-    let err = Document::from_markdown(src).unwrap_err().to_string();
-    assert!(err.contains("Reserved field name"), "got: {err}");
-}
-
-#[test]
-fn non_root_block_declaring_quill_is_error() {
-    // Only the root block binds the document to a quill — a composable block
-    // carrying `#@quill` is a structural parse error.
-    let src = "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@quill: other\nname: Widget\n~~~\n";
-    let err = Document::from_markdown(src).unwrap_err().to_string();
-    assert!(err.contains("must not declare `#@quill`"), "got: {err}");
 }
 
 // ── Non-card fenced code blocks are untouched ─────────────────────────────────

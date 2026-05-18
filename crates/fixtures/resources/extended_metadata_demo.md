@@ -17,7 +17,7 @@ name: Tag Directives
 status: implemented
 ~~~
 
-Use the `~~~card-yaml` block syntax with a `#@kind:` system sentinel to create collections of related items. Each card block creates an entry in an array.
+Use the `~~~card-yaml` block syntax with a `#@kind:` metadata key to create collections of related items. Each card block creates an entry in an array.
 
 ~~~card-yaml
 #@kind: features

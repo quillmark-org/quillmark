@@ -62,7 +62,7 @@ proptest! {
         );
     }
 
-    /// Inputs that look like a valid card-yaml block with a `#@quill:` sentinel.
+    /// Inputs that look like a valid card-yaml block with a `#@quill:` metadata key.
     #[test]
     fn fuzz_emit_roundtrip_payload_shaped(
         quill in "[a-z][a-z0-9_]{0,20}",

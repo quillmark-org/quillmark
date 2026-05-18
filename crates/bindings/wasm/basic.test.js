@@ -115,7 +115,7 @@ author: Test Author
 
 # Hello Default
 
-This document has no #@quill sentinel.`
+This document has no #@quill metadata.`
 
     expect(() => {
       Document.fromMarkdown(markdownWithoutQuill)
@@ -429,9 +429,9 @@ Card two.
     expect(doc.cards[0].body).toBe('My card.')
   })
 
-  it('pushCard throws on invalid tag', () => {
+  it('pushCard throws on invalid kind', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.pushCard({ kind: 'BadTag' })).toThrow(/InvalidTagName/)
+    expect(() => doc.pushCard({ kind: 'BadKind' })).toThrow(/InvalidKindName/)
   })
 
   it('insertCard inserts at specified index', () => {
@@ -478,24 +478,24 @@ Card two.
     expect(() => doc.moveCard(5, 0)).toThrow(/IndexOutOfRange/)
   })
 
-  it('setCardTag renames the tag in place', () => {
+  it('setCardKind renames the kind in place', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARDS)
-    doc.setCardTag(0, 'annotation')
+    doc.setCardKind(0, 'annotation')
     expect(doc.cards[0].kind).toBe('annotation')
     // Payload preserved across rename.
     expect(doc.cards[0].payload).toBeDefined()
   })
 
-  it('setCardTag throws InvalidTagName for empty/uppercase/dashed tags', () => {
+  it('setCardKind throws InvalidKindName for empty/uppercase/dashed kinds', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARDS)
-    for (const bad of ['', 'BadTag', 'with-dash']) {
-      expect(() => doc.setCardTag(0, bad)).toThrow(/InvalidTagName/)
+    for (const bad of ['', 'BadKind', 'with-dash']) {
+      expect(() => doc.setCardKind(0, bad)).toThrow(/InvalidKindName/)
     }
   })
 
-  it('setCardTag throws IndexOutOfRange when index >= len', () => {
+  it('setCardKind throws IndexOutOfRange when index >= len', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARDS) // 2 cards
-    expect(() => doc.setCardTag(5, 'annotation')).toThrow(/IndexOutOfRange/)
+    expect(() => doc.setCardKind(5, 'annotation')).toThrow(/IndexOutOfRange/)
   })
 
   it('cardCount reports composable card count without allocating', () => {
@@ -730,7 +730,7 @@ card_kinds:
     expect(meta.supportedFormats.length).toBeGreaterThan(0)
     expect(meta.schema).toBeUndefined()
 
-    // schema: structure + ui hints. QUILL/CARD sentinels with const values.
+    // schema: structure + ui hints. QUILL/CARD reserved fields with const values.
     const schema = quill.schema
     expect(schema.main.description).toBe('The main card schema')
     expect(schema.main.fields.title).toBeDefined()

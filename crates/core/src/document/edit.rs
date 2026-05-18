@@ -6,7 +6,7 @@
 //!
 //! Every successful mutator call leaves the document in a state that:
 //! - Contains no reserved key in any card's payload (`BODY`, `CARDS`, `QUILL`, `CARD`).
-//! - Has every composable card's `#@kind` passing `meta::is_valid_tag_name`.
+//! - Has every composable card's `#@kind` passing `meta::is_valid_kind_name`.
 //! - Can be safely serialized via [`Document::to_plate_json`].
 //!
 //! **Mutators never modify `warnings`.**  Warnings are parse-time observations
@@ -21,7 +21,7 @@
 
 use unicode_normalization::UnicodeNormalization;
 
-use crate::document::meta::is_valid_tag_name;
+use crate::document::meta::is_valid_kind_name;
 use crate::document::{Card, CardMetadata, Document, Payload};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
@@ -29,11 +29,11 @@ use crate::version::QuillReference;
 // ── Reserved names ──────────────────────────────────────────────────────────
 
 /// Reserved field names that may not appear in any `Card`'s payload.
-/// These are the sentinel keys whose presence in user-visible fields would
-/// corrupt the plate wire format or the parser's structural invariants.
+/// Their presence in user-visible fields would corrupt the plate wire
+/// format or the parser's structural invariants.
 pub const RESERVED_NAMES: &[&str] = &["BODY", "CARDS", "QUILL", "CARD"];
 
-/// Returns `true` if `name` is one of the four reserved sentinel names.
+/// Returns `true` if `name` is one of the four reserved names.
 #[inline]
 pub fn is_reserved_name(name: &str) -> bool {
     RESERVED_NAMES.contains(&name)
@@ -45,7 +45,7 @@ pub fn is_reserved_name(name: &str) -> bool {
 ///
 /// A valid field name matches `[a-z_][a-z0-9_]*` after NFC normalisation.
 /// Upper-case identifiers are intentionally excluded; they are reserved for
-/// sentinel keys (`QUILL`, `CARD`, `BODY`, `CARDS`).
+/// the wire-format keys (`QUILL`, `CARD`, `BODY`, `CARDS`).
 pub fn is_valid_field_name(name: &str) -> bool {
     // NFC-normalize first so that, e.g., composed vs decomposed forms compare equal.
     let normalized: String = name.nfc().collect();
@@ -73,7 +73,7 @@ pub fn is_valid_field_name(name: &str) -> bool {
 /// source-location information because edits happen after parsing.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum EditError {
-    /// The supplied name is one of the four reserved sentinel keys
+    /// The supplied name is one of the four reserved names
     /// (`BODY`, `CARDS`, `QUILL`, `CARD`).
     #[error("reserved name '{0}' cannot be used as a field name")]
     ReservedName(String),
@@ -82,9 +82,9 @@ pub enum EditError {
     #[error("invalid field name '{0}': must match [a-z_][a-z0-9_]*")]
     InvalidFieldName(String),
 
-    /// The supplied tag does not match `[a-z_][a-z0-9_]*`.
-    #[error("invalid tag name '{0}': must match [a-z_][a-z0-9_]*")]
-    InvalidTagName(String),
+    /// The supplied card kind does not match `[a-z_][a-z0-9_]*`.
+    #[error("invalid card kind '{0}': must match [a-z_][a-z0-9_]*")]
+    InvalidKindName(String),
 
     /// A card index was out of the valid range.
     #[error("index {index} is out of range (len = {len})")]
@@ -187,32 +187,32 @@ impl Document {
     ///   `validate_document`.
     ///
     /// Schema-aware migration (clearing orphans, applying defaults, etc.) is
-    /// the caller's responsibility — `set_card_tag` is a structural primitive.
+    /// the caller's responsibility — `set_card_kind` is a structural primitive.
     ///
     /// # Invariants enforced
     ///
     /// - `index` must be in `0..len`. Out of range returns
     ///   [`EditError::IndexOutOfRange`].
-    /// - `new_tag` must match `[a-z_][a-z0-9_]*`. Invalid tags return
-    ///   [`EditError::InvalidTagName`].
+    /// - `new_kind` must match `[a-z_][a-z0-9_]*`. An invalid kind returns
+    ///   [`EditError::InvalidKindName`].
     ///
     /// # Warnings
     ///
     /// This method never modifies `warnings`.
-    pub fn set_card_tag(
+    pub fn set_card_kind(
         &mut self,
         index: usize,
-        new_tag: impl Into<String>,
+        new_kind: impl Into<String>,
     ) -> Result<(), EditError> {
-        let new_tag = new_tag.into();
-        if !is_valid_tag_name(&new_tag) {
-            return Err(EditError::InvalidTagName(new_tag));
+        let new_kind = new_kind.into();
+        if !is_valid_kind_name(&new_kind) {
+            return Err(EditError::InvalidKindName(new_kind));
         }
         let len = self.cards().len();
         let card = self
             .card_mut(index)
             .ok_or(EditError::IndexOutOfRange { index, len })?;
-        card.meta_mut().kind = Some(new_tag);
+        card.meta_mut().kind = Some(new_kind);
         Ok(())
     }
 
@@ -248,21 +248,21 @@ impl Document {
 // ── impl Card ────────────────────────────────────────────────────────────────
 
 impl Card {
-    /// Create a new, empty composable card with the given tag.
+    /// Create a new, empty composable card with the given kind.
     ///
     /// # Invariants enforced
     ///
-    /// `tag` must match `[a-z_][a-z0-9_]*`.  An invalid tag returns
-    /// [`EditError::InvalidTagName`].
+    /// `kind` must match `[a-z_][a-z0-9_]*`.  An invalid kind returns
+    /// [`EditError::InvalidKindName`].
     ///
-    /// The new card declares `#@kind: <tag>`, has no fields, and an empty body.
-    pub fn new(tag: impl Into<String>) -> Result<Self, EditError> {
-        let tag = tag.into();
-        if !is_valid_tag_name(&tag) {
-            return Err(EditError::InvalidTagName(tag));
+    /// The new card declares `#@kind: <kind>`, has no fields, and an empty body.
+    pub fn new(kind: impl Into<String>) -> Result<Self, EditError> {
+        let kind = kind.into();
+        if !is_valid_kind_name(&kind) {
+            return Err(EditError::InvalidKindName(kind));
         }
         let meta = CardMetadata {
-            kind: Some(tag),
+            kind: Some(kind),
             ..CardMetadata::default()
         };
         Ok(Card::from_parts(false, meta, Payload::new(), String::new()))
@@ -273,7 +273,7 @@ impl Card {
     ///
     /// # Invariants enforced
     ///
-    /// - `name` must not be one of the reserved sentinel names.
+    /// - `name` must not be one of the reserved names.
     ///   Returns [`EditError::ReservedName`].
     /// - `name` must match `[a-z_][a-z0-9_]*` after NFC normalisation.
     ///   Returns [`EditError::InvalidFieldName`].
@@ -323,7 +323,7 @@ impl Card {
     ///
     /// # Invariants enforced
     ///
-    /// - `name` must not be one of the reserved sentinel names.
+    /// - `name` must not be one of the reserved names.
     ///   Returns [`EditError::ReservedName`].
     /// - `name` must match `[a-z_][a-z0-9_]*` after NFC normalisation.
     ///   Returns [`EditError::InvalidFieldName`].

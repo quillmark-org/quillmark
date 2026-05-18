@@ -168,11 +168,11 @@ def test_push_card():
     assert doc.cards[0]["body"] == "Card body."
 
 
-def test_push_card_invalid_tag():
-    """push_card raises EditError for an invalid tag."""
+def test_push_card_invalid_kind():
+    """push_card raises EditError for an invalid kind."""
     doc = Document.from_markdown(SIMPLE_MD)
-    with pytest.raises(EditError, match="InvalidTagName"):
-        doc.push_card({"kind": "BadTag"})
+    with pytest.raises(EditError, match="InvalidKindName"):
+        doc.push_card({"kind": "BadKind"})
 
 
 def test_insert_card_at_front():

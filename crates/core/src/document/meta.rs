@@ -125,8 +125,8 @@ pub(super) fn validate_payload_yaml(
     Ok(Some(parsed))
 }
 
-/// Validate a card kind / tag name follows the pattern `[a-z_][a-z0-9_]*`.
-pub(super) fn is_valid_tag_name(name: &str) -> bool {
+/// Validate a card kind name follows the pattern `[a-z_][a-z0-9_]*`.
+pub(super) fn is_valid_kind_name(name: &str) -> bool {
     if name.is_empty() {
         return false;
     }

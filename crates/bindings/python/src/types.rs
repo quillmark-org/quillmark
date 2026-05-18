@@ -177,8 +177,8 @@ impl PyQuill {
     /// This is a **read-only snapshot**. Call `form` again after any edits
     /// to the document to obtain an updated view.
     ///
-    /// Cards with unknown tags are excluded from `cards`; each produces a
-    /// diagnostic with code `"form::unknown_card_tag"`.
+    /// Cards with unknown kinds are excluded from `cards`; each produces a
+    /// diagnostic with code `"form::unknown_card_kind"`.
     fn form<'py>(
         &self,
         py: Python<'py>,
@@ -323,7 +323,7 @@ impl PyDocument {
 
     /// The document's main (entry) card as a dict.
     ///
-    /// Keys: `tag` (str), `payload` (dict), `payload_items` (list),
+    /// Keys: `kind` (str), `payload` (dict), `payload_items` (list),
     /// `fields` (dict — alias of `payload`), `body` (str).
     #[getter]
     fn main<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
@@ -332,7 +332,7 @@ impl PyDocument {
 
     /// Ordered list of composable card blocks.
     ///
-    /// Each card is a dict with keys: `tag` (str), `payload` (dict),
+    /// Each card is a dict with keys: `kind` (str), `payload` (dict),
     /// `payload_items` (list), `fields` (dict), `body` (str).
     #[getter]
     fn cards<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
@@ -350,7 +350,7 @@ impl PyDocument {
     /// Convenience method equivalent to `doc.main_mut().set_field(name, value)`.
     /// Clears any `!fill` marker on the field.
     ///
-    /// Raises `quillmark.EditError` if `name` is a reserved sentinel
+    /// Raises `quillmark.EditError` if `name` is a reserved name
     /// (`BODY`, `CARDS`, `QUILL`, `CARD`) or does not match `[a-z_][a-z0-9_]*`.
     ///
     /// This method never modifies `warnings`.
@@ -414,10 +414,10 @@ impl PyDocument {
 
     /// Append a card to the card list.
     ///
-    /// `card` must be a dict with a `tag` key (str) and optional `fields` (dict)
+    /// `card` must be a dict with a `kind` key (str) and optional `fields` (dict)
     /// and `body` (str).
     ///
-    /// Raises `quillmark.EditError` if `card["tag"]` is not a valid tag name or
+    /// Raises `quillmark.EditError` if `card["kind"]` is not a valid kind name or
     /// if any field name is invalid.
     ///
     /// This method never modifies `warnings`.
@@ -465,20 +465,20 @@ impl PyDocument {
             .map_err(convert_edit_error)
     }
 
-    /// Replace the tag of the composable card at `index`.
+    /// Replace the `#@kind` of the composable card at `index`.
     ///
-    /// Mutates only the sentinel — the card's payload and body are
+    /// Mutates only the `#@kind` — the card's payload and body are
     /// untouched. Schema-aware migration (clearing orphan fields, applying
-    /// new defaults) is the caller's responsibility; `set_card_tag` is a
+    /// new defaults) is the caller's responsibility; `set_card_kind` is a
     /// structural primitive.
     ///
-    /// Raises `quillmark.EditError` if `index` is out of range or `new_tag`
+    /// Raises `quillmark.EditError` if `index` is out of range or `new_kind`
     /// does not match `[a-z_][a-z0-9_]*`.
     ///
     /// This method never modifies `warnings`.
-    fn set_card_tag(&mut self, index: usize, new_tag: &str) -> PyResult<()> {
+    fn set_card_kind(&mut self, index: usize, new_kind: &str) -> PyResult<()> {
         self.inner
-            .set_card_tag(index, new_tag)
+            .set_card_kind(index, new_kind)
             .map_err(convert_edit_error)
     }
 

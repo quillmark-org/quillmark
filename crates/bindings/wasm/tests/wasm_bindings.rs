@@ -193,7 +193,7 @@ fn test_quill_from_object_tree() {
     assert_eq!(r_map.artifacts.len(), r_obj.artifacts.len());
 }
 
-/// `metadata` is identity only; `schema` keeps ui hints and injects QUILL/CARD sentinels.
+/// `metadata` is identity only; `schema` keeps ui hints and injects QUILL/CARD reserved fields.
 #[wasm_bindgen_test]
 fn test_quill_metadata_and_schemas() {
     use js_sys::Reflect;
@@ -225,7 +225,7 @@ fn test_quill_metadata_and_schemas() {
     assert!(js_sys::Array::from(&get(&meta, "supportedFormats")).length() > 0);
     assert!(get(&meta, "schema").is_undefined());
 
-    // schema: QUILL/CARD sentinels with const values, ui hints included.
+    // schema: QUILL/CARD reserved fields with const values, ui hints included.
     let schema = quill.schema();
     let main_fields = get(&get(&schema, "main"), "fields");
     assert!(get(&get(&main_fields, "title"), "ui").is_object());

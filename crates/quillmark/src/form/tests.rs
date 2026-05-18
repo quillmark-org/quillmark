@@ -129,14 +129,14 @@ main:
 }
 
 #[test]
-fn form_unknown_card_tag_drops_card_and_emits_diagnostic() {
+fn form_unknown_card_kind_drops_card_and_emits_diagnostic() {
     let quill = quill_from_yaml(
         r#"
 quill:
   name: unknown_card_test
   version: "1.0"
   backend: typst
-  description: Unknown card tag test
+  description: Unknown card kind test
 
 main:
   fields:
@@ -166,11 +166,11 @@ card_kinds:
     let unknown_diag = form
         .diagnostics
         .iter()
-        .find(|d| d.code.as_deref() == Some("form::unknown_card_tag"))
-        .expect("expected unknown_card_tag diagnostic");
+        .find(|d| d.code.as_deref() == Some("form::unknown_card_kind"))
+        .expect("expected unknown_card_kind diagnostic");
     assert!(
         unknown_diag.message.contains("ghost_card"),
-        "diagnostic should name the tag: {:?}",
+        "diagnostic should name the kind: {:?}",
         unknown_diag.message
     );
 }

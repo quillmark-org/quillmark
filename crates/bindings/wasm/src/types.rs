@@ -183,7 +183,7 @@ pub enum PayloadItem {
         /// `true` when the comment was a trailing inline comment in source
         /// (`field: value # text`). Inline comments attach to the previous
         /// field on emit; `Comment{inline:true}` at index 0 attaches to the
-        /// sentinel line. Inline comments without a host degrade to
+        /// `#@` metadata header. Inline comments without a host degrade to
         /// own-line on emit.
         #[serde(default)]
         inline: bool,
@@ -206,7 +206,7 @@ pub struct Card {
     /// The block's `#@kind` value (e.g. `"endorsement"`); empty string when
     /// the block declares no `#@kind`.
     pub kind: String,
-    /// Map-keyed view of payload values (no `#@` sentinel key, comments invisible).
+    /// Map-keyed view of payload values (no `#@` metadata, comments invisible).
     #[tsify(type = "Record<string, unknown>")]
     pub payload: serde_json::Value,
     /// Ordered payload item list — fields and comments, in source order.

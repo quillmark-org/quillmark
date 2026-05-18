@@ -1,9 +1,9 @@
 //! Ordered payload representation.
 //!
-//! A [`Payload`] is the typed representation of a YAML fence body with the
-//! sentinel key already stripped. Unlike a plain `IndexMap`, it preserves
-//! YAML comments as first-class ordered items and carries a `fill: bool`
-//! marker on each field (for `!fill` tags).
+//! A [`Payload`] is the typed representation of a card-yaml block's YAML
+//! payload (the `#@` metadata header already separated off). Unlike a plain
+//! `IndexMap`, it preserves YAML comments as first-class ordered items and
+//! carries a `fill: bool` marker on each field (for `!fill` tags).
 //!
 //! It provides both ordered iteration (over [`PayloadItem`]s) and
 //! map-keyed access (`get`, `contains_key`, `insert`, `remove`) so existing
@@ -36,7 +36,7 @@ pub enum PayloadItem {
     /// itself) from trailing inline comments (`field: value # text`). An
     /// inline comment attaches to the field that immediately precedes it
     /// in the items vector; if no such field exists at emit time (orphan)
-    /// it degrades to an own-line comment. The `#@` system-sentinel line of
+    /// it degrades to an own-line comment. The `#@` metadata header of
     /// a card-yaml block has no inline-comment slot, so a `Comment { inline:
     /// true }` at `items[0]` degrades to an own-line comment.
     Comment {

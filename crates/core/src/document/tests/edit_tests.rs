@@ -1,7 +1,7 @@
 //! Unit tests for the document editor surface.
 
 use crate::document::edit::{is_reserved_name, is_valid_field_name, EditError, RESERVED_NAMES};
-use crate::document::meta::is_valid_tag_name;
+use crate::document::meta::is_valid_kind_name;
 use crate::document::{Card, Document};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
@@ -98,11 +98,11 @@ fn test_edit_error_invalid_field_name() {
 }
 
 #[test]
-fn test_edit_error_invalid_tag_name() {
-    let result = Card::new("Invalid-Tag");
+fn test_edit_error_invalid_kind_name() {
+    let result = Card::new("Invalid-Kind");
     assert_eq!(
         result,
-        Err(EditError::InvalidTagName("Invalid-Tag".to_string()))
+        Err(EditError::InvalidKindName("Invalid-Kind".to_string()))
     );
 }
 
@@ -124,9 +124,9 @@ fn test_edit_error_display() {
     assert!(EditError::InvalidFieldName("Bad-Name".to_string())
         .to_string()
         .contains("Bad-Name"));
-    assert!(EditError::InvalidTagName("Bad-Tag".to_string())
+    assert!(EditError::InvalidKindName("Bad-Kind".to_string())
         .to_string()
-        .contains("Bad-Tag"));
+        .contains("Bad-Kind"));
     assert!(EditError::IndexOutOfRange { index: 3, len: 2 }
         .to_string()
         .contains("3"));
@@ -365,12 +365,12 @@ fn test_move_card_to_out_of_range() {
     assert_eq!(result, Err(EditError::IndexOutOfRange { index: len, len }));
 }
 
-// ── Document::set_card_tag ───────────────────────────────────────────────────
+// ── Document::set_card_kind ───────────────────────────────────────────────────
 
 #[test]
-fn test_set_card_tag_renames_in_place() {
+fn test_set_card_kind_renames_in_place() {
     let mut doc = make_doc_with_cards(); // note(0) with field foo=bar, summary(1)
-    doc.set_card_tag(0, "annotation").unwrap();
+    doc.set_card_kind(0, "annotation").unwrap();
     // `#@kind` changed.
     assert_eq!(doc.cards()[0].kind(), Some("annotation"));
     // Payload and body untouched.
@@ -383,32 +383,32 @@ fn test_set_card_tag_renames_in_place() {
 }
 
 #[test]
-fn test_set_card_tag_rejects_invalid_tag() {
+fn test_set_card_kind_rejects_invalid_kind() {
     let mut doc = make_doc_with_cards();
     for bad in ["", "Bad", "with-dash", "1leading_digit"] {
-        match doc.set_card_tag(0, bad) {
-            Err(EditError::InvalidTagName(t)) => assert_eq!(t, bad),
-            other => panic!("expected InvalidTagName for {bad:?}, got {other:?}"),
+        match doc.set_card_kind(0, bad) {
+            Err(EditError::InvalidKindName(t)) => assert_eq!(t, bad),
+            other => panic!("expected InvalidKindName for {bad:?}, got {other:?}"),
         }
     }
-    // Original tag preserved on failure.
+    // Original kind preserved on failure.
     assert_eq!(doc.cards()[0].kind(), Some("note"));
 }
 
 #[test]
-fn test_set_card_tag_index_out_of_range() {
+fn test_set_card_kind_index_out_of_range() {
     let mut doc = make_doc_with_cards();
     let len = doc.cards().len();
-    let result = doc.set_card_tag(len, "annotation");
+    let result = doc.set_card_kind(len, "annotation");
     assert_eq!(result, Err(EditError::IndexOutOfRange { index: len, len }));
 }
 
 #[test]
-fn test_set_card_tag_round_trips_via_markdown() {
+fn test_set_card_kind_round_trips_via_markdown() {
     // Verify that renaming a card and re-emitting markdown produces a doc
-    // that re-parses with the new tag.
+    // that re-parses with the new kind.
     let mut doc = make_doc_with_cards();
-    doc.set_card_tag(0, "annotation").unwrap();
+    doc.set_card_kind(0, "annotation").unwrap();
     let md = doc.to_markdown();
     let reparsed = crate::Document::from_markdown(&md).unwrap();
     assert_eq!(reparsed.cards()[0].kind(), Some("annotation"));
@@ -425,11 +425,11 @@ fn test_card_new_valid() {
 }
 
 #[test]
-fn test_card_new_invalid_tag_rejected() {
-    for tag in ["Note", "", "my-card"] {
+fn test_card_new_invalid_kind_rejected() {
+    for kind in ["Note", "", "my-card"] {
         assert_eq!(
-            Card::new(tag),
-            Err(EditError::InvalidTagName(tag.to_string()))
+            Card::new(kind),
+            Err(EditError::InvalidKindName(kind.to_string()))
         );
     }
 }
@@ -507,7 +507,7 @@ fn test_card_set_body() {
 
 /// After a deterministic sequence of mutations, the document must satisfy:
 /// - No reserved key in payload
-/// - Every card tag passes is_valid_tag_name
+/// - Every card kind passes is_valid_kind_name
 /// - The plate JSON can be produced without panicking
 #[test]
 fn test_invariants_after_mutation_sequence() {
@@ -557,7 +557,7 @@ fn test_invariants_after_mutation_sequence() {
     // Every card kind is valid
     for card in doc.cards() {
         if let Some(kind) = card.kind() {
-            assert!(is_valid_tag_name(kind), "invalid tag '{}' found", kind);
+            assert!(is_valid_kind_name(kind), "invalid kind '{}' found", kind);
         }
     }
 

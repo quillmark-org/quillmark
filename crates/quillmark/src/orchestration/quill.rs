@@ -212,8 +212,8 @@ impl Quill {
     /// **Snapshot semantics.** The result is a read-only snapshot — re-call
     /// after editing `doc`.
     ///
-    /// **Unknown card tags** are dropped from [`Form::cards`] and surface as
-    /// `form::unknown_card_tag` diagnostics. Validation errors are appended
+    /// **Unknown card kinds** are dropped from [`Form::cards`] and surface as
+    /// `form::unknown_card_kind` diagnostics. Validation errors are appended
     /// as `form::validation_error` diagnostics; the view itself is never
     /// altered or filtered by validation failures.
     pub fn form(&self, doc: &Document) -> Form {
@@ -237,7 +237,7 @@ impl Quill {
     /// This is the "user is about to add a new card" view: the UI can render
     /// the form before the card is committed to the document.
     pub fn blank_card(&self, card_kind: &str) -> Option<FormCard> {
-        form::blank_card_for_tag(self, card_kind)
+        form::blank_card_for_kind(self, card_kind)
     }
 
     fn validate_document(&self, doc: &Document) -> Result<(), RenderError> {

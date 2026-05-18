@@ -46,8 +46,8 @@ impl Document {
     ///
     /// - Line endings: `\n` only.  CRLF normalization happens on import.
     /// - Every block is emitted as a `~~~card-yaml` fence: a `~~~card-yaml`
-    ///   opener, the `#@` system sentinel (`#@quill: <ref>` for the root
-    ///   block, `#@kind: <tag>` for composable cards), the block's YAML
+    ///   opener, the `#@` system-metadata header (`#@quill: <ref>` for the
+    ///   root block, `#@kind: <kind>` for composable cards), the block's YAML
     ///   payload, then a closing `~~~`.
     /// - Cards: one blank line before each, then the block, then the card body.
     /// - Body: emitted verbatim after the root block (and after each card).

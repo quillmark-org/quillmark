@@ -83,11 +83,11 @@ impl QuillConfig {
         let mut obj = serde_json::Map::new();
 
         let mut main_value = serde_json::to_value(&self.main).unwrap_or(serde_json::Value::Null);
-        Self::prepend_sentinel_field(
+        Self::prepend_reserved_field(
             &mut main_value,
             "QUILL",
             &canonical_ref,
-            "Canonical quill reference. Must be exactly this value as the #@quill: system sentinel in the root card-yaml block.",
+            "Canonical quill reference. Must be exactly this value as the #@quill system metadata in the root card-yaml block.",
         );
         obj.insert("main".to_string(), main_value);
 
@@ -98,11 +98,11 @@ impl QuillConfig {
                 .map(|card| {
                     let mut card_value =
                         serde_json::to_value(card).unwrap_or(serde_json::Value::Null);
-                    Self::prepend_sentinel_field(
+                    Self::prepend_reserved_field(
                         &mut card_value,
                         "CARD",
                         &card.name,
-                        "Card kind name. Must match the card kind in the card block's #@kind: system sentinel.",
+                        "Card kind name. Must match the card kind in the card block's #@kind system metadata.",
                     );
                     (card.name.clone(), card_value)
                 })
@@ -116,14 +116,14 @@ impl QuillConfig {
         serde_json::Value::Object(obj)
     }
 
-    /// Insert a `QUILL`/`CARD` sentinel as the first entry of a card's `fields`.
-    fn prepend_sentinel_field(
+    /// Insert a `QUILL`/`CARD` reserved field as the first entry of a card's `fields`.
+    fn prepend_reserved_field(
         card_value: &mut serde_json::Value,
         key: &str,
         const_value: &str,
         description: &str,
     ) {
-        let sentinel = serde_json::json!({
+        let reserved = serde_json::json!({
             "type": "string",
             "const": const_value,
             "description": description,
@@ -131,7 +131,7 @@ impl QuillConfig {
         });
         if let Some(serde_json::Value::Object(fields)) = card_value.get_mut("fields") {
             let existing = std::mem::take(fields);
-            fields.insert(key.to_string(), sentinel);
+            fields.insert(key.to_string(), reserved);
             fields.extend(existing);
         }
     }
@@ -158,19 +158,19 @@ impl QuillConfig {
 
     /// Coerce typed fields for a single card (IndexMap, no CARD/BODY keys).
     ///
-    /// Returns the input unchanged when the card tag is unknown.
+    /// Returns the input unchanged when the card kind is unknown.
     pub fn coerce_card(
         &self,
-        card_tag: &str,
+        card_kind: &str,
         fields: &IndexMap<String, QuillValue>,
     ) -> Result<IndexMap<String, QuillValue>, CoercionError> {
-        let Some(card_schema) = self.card_kind(card_tag) else {
+        let Some(card_schema) = self.card_kind(card_kind) else {
             return Ok(fields.clone());
         };
         let mut coerced: IndexMap<String, QuillValue> = IndexMap::new();
         for (field_name, field_value) in fields {
             if let Some(field_schema) = card_schema.fields.get(field_name) {
-                let path = format!("card_kinds.{card_tag}.{field_name}");
+                let path = format!("card_kinds.{card_kind}.{field_name}");
                 coerced.insert(
                     field_name.clone(),
                     Self::coerce_value_strict(field_value, field_schema, &path)?,

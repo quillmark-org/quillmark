@@ -60,7 +60,7 @@ export interface QuillCardSchema {
  * Document schema returned by `Quill.schema`. Includes optional `ui` keys.
  *
  * `main.fields.QUILL` and `card_kinds[name].fields.CARD` are required
- * sentinels with `const` values telling consumers what to write.
+ * reserved fields with `const` values telling consumers what to write.
  */
 export interface QuillSchema {
     main: QuillCardSchema;
@@ -112,8 +112,8 @@ export interface FormCard {
  * Schema-aware form view of a document, returned by `Quill.form`.
  *
  * - `main` — the main card viewed through the quill's main schema.
- * - `cards` — composable card blocks, in document order (unknown tags excluded).
- * - `diagnostics` — diagnostics from unknown card tags and validation.
+ * - `cards` — composable card blocks, in document order (unknown kinds excluded).
+ * - `diagnostics` — diagnostics from unknown card kinds and validation.
  */
 export interface Form {
     main: FormCard;
@@ -124,7 +124,7 @@ export interface Form {
 
 /// TypeScript declaration for the `pushCard` / `insertCard` input shape.
 ///
-/// `tag` is required; `fields` and `body` are optional (defaulted by serde).
+/// `kind` is required; `fields` and `body` are optional (defaulted by serde).
 /// Emitted via `typescript_custom_section` so it lands in the generated
 /// `.d.ts` without forcing consumers to import a nominal type — the
 /// `unchecked_param_type` attribute on each method references it by name.
@@ -516,7 +516,7 @@ impl Document {
 
     /// The document's main (entry) card.
     ///
-    /// Carries the QUILL sentinel, the document-level payload, and the
+    /// Carries the QUILL metadata, the document-level payload, and the
     /// global body. Payload/body reads and mutations go through this
     /// handle — there are no document-level shortcuts after the rework.
     ///
@@ -668,10 +668,10 @@ impl Document {
 
     /// Append a card to the end of the card list.
     ///
-    /// `card` must be a JS object with a `tag` string field and optional
+    /// `card` must be a JS object with a `kind` string field and optional
     /// `fields` (object) and `body` (string).
     ///
-    /// Throws an `Error` if `card.tag` is not a valid tag name.
+    /// Throws an `Error` if `card.kind` is not a valid kind name.
     ///
     /// Mutators never modify `warnings`.
     #[wasm_bindgen(js_name = pushCard)]
@@ -730,21 +730,21 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Replace the tag of the composable card at `index`.
+    /// Replace the `#@kind` of the composable card at `index`.
     ///
-    /// Mutates only the sentinel — the card's payload and body are
+    /// Mutates only the `#@kind` — the card's payload and body are
     /// untouched. Schema-aware migration (clearing orphan fields, applying
-    /// new defaults) is the caller's responsibility; `setCardTag` is a
+    /// new defaults) is the caller's responsibility; `setCardKind` is a
     /// structural primitive.
     ///
-    /// Throws if `index` is out of range or if `newTag` does not match
+    /// Throws if `index` is out of range or if `newKind` does not match
     /// `[a-z_][a-z0-9_]*`.
     ///
     /// Mutators never modify `warnings`.
-    #[wasm_bindgen(js_name = setCardTag)]
-    pub fn set_card_tag(&mut self, index: usize, new_tag: &str) -> Result<(), JsValue> {
+    #[wasm_bindgen(js_name = setCardKind)]
+    pub fn set_card_kind(&mut self, index: usize, new_kind: &str) -> Result<(), JsValue> {
         self.inner
-            .set_card_tag(index, new_tag)
+            .set_card_kind(index, new_kind)
             .map_err(|e| edit_error_to_js(&e))
     }
 
@@ -824,7 +824,7 @@ fn edit_error_to_js(err: &quillmark_core::EditError) -> JsValue {
     let variant = match err {
         quillmark_core::EditError::ReservedName(_) => "ReservedName",
         quillmark_core::EditError::InvalidFieldName(_) => "InvalidFieldName",
-        quillmark_core::EditError::InvalidTagName(_) => "InvalidTagName",
+        quillmark_core::EditError::InvalidKindName(_) => "InvalidKindName",
         quillmark_core::EditError::IndexOutOfRange { .. } => "IndexOutOfRange",
     };
     WasmError::from(format!("[EditError::{}] {}", variant, err)).to_js_value()

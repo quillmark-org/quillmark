@@ -1,5 +1,5 @@
 use crate::document::assemble::decompose;
-use crate::document::meta::is_valid_tag_name;
+use crate::document::meta::is_valid_kind_name;
 use crate::document::Document;
 
 #[test]
@@ -944,7 +944,7 @@ Body of item 1.";
 }
 
 #[test]
-fn test_triple_dash_in_body_without_sentinel_is_delegated() {
+fn test_triple_dash_between_paragraphs_is_delegated() {
     let markdown = "~~~card-yaml
 #@quill: test_quill
 title: Test
@@ -1768,17 +1768,17 @@ fn test_no_body_after_payload() {
     assert_eq!(doc.main().body(), "");
 }
 
-// Tag name validation
+// Kind name validation
 
 #[test]
-fn test_tag_name_validator() {
+fn test_kind_name_validator() {
     for &name in &["_", "_private", "item1", "item_2"] {
-        assert!(is_valid_tag_name(name), "expected valid: {:?}", name);
+        assert!(is_valid_kind_name(name), "expected valid: {:?}", name);
     }
     for &name in &[
         "", "1item", "Items", "ITEMS", "my-items", "my.items", "my items",
     ] {
-        assert!(!is_valid_tag_name(name), "expected invalid: {:?}", name);
+        assert!(!is_valid_kind_name(name), "expected invalid: {:?}", name);
     }
 }
 

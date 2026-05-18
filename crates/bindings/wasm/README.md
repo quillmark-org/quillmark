@@ -182,7 +182,7 @@ compilation failures. The same shape applies to every throw site:
 - `Document.fromMarkdown` — parse errors (missing root `#@quill` metadata, YAML
   errors, `parse::input_too_large` for inputs > 10 MB).
 - `Document` mutators (`setField`, `updateCardField`, etc.) — `EditError`
-  variants (`ReservedName`, `InvalidFieldName`, `InvalidTagName`,
+  variants (`ReservedName`, `InvalidFieldName`, `InvalidKindName`,
   `IndexOutOfRange`) appear in `diagnostics[0].message` with the
   `[EditError::<Variant>]` prefix.
 - `quill.render` / `session.render` — backend compilation failures and

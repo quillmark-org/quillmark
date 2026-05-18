@@ -107,8 +107,8 @@ enum FrameKind {
 
 /// Scan the YAML payload of a card-yaml block.
 ///
-/// `content` is the block's YAML payload — the text below the `#@` system
-/// sentinel — with leading/trailing whitespace preserved.
+/// `content` is the block's YAML payload — the text below the `#@`
+/// metadata header — with leading/trailing whitespace preserved.
 pub fn prescan_fence_content(content: &str) -> PreScan {
     let mut out = PreScan::default();
 
@@ -457,7 +457,7 @@ fn has_empty_inline_value(after_colon: &str) -> bool {
 fn split_key(line: &str) -> Option<(String, String)> {
     // Identifier-like keys only. YAML allows more, but Quillmark's schema
     // restricts field names to `[a-zA-Z_][a-zA-Z0-9_]*` (and reserved
-    // uppercase sentinels). Anything more exotic falls through to the
+    // uppercase keys). Anything more exotic falls through to the
     // unmodified path and will be parsed (or rejected) by serde_saphyr.
     let bytes = line.as_bytes();
     if bytes.is_empty() {

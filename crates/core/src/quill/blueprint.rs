@@ -112,7 +112,7 @@ fn write_main_fence(
 
 /// Emit a composable card as a `~~~card-yaml` block declaring `#@kind: <kind>`.
 /// The `composable (0..N)` role annotation and the optional description are
-/// emitted as own-line comments directly under the sentinel.
+/// emitted as own-line comments directly under the `#@kind` header.
 fn write_card_fence(out: &mut String, card: &CardSchema) {
     out.push_str("~~~card-yaml\n");
     out.push_str("#@kind: ");

@@ -2,7 +2,7 @@
 //!
 //! Both own-line and trailing inline YAML comments round-trip at their
 //! source position. Own-line comments in a block's payload (below the
-//! `#@quill` / `#@kind` system sentinel) also round-trip. Comments whose
+//! `#@quill` / `#@kind` metadata header) also round-trip. Comments whose
 //! host disappears at emit
 //! time (empty-mapping omission, programmatic field removal) degrade to
 //! own-line comments at the same indent so the comment text is preserved
@@ -452,16 +452,16 @@ fn inline_on_container_key_round_trips() {
 }
 
 /// An own-line comment in the root payload — directly below the `#@quill`
-/// system sentinel — round-trips at its source position.
+/// metadata header — round-trips at its source position.
 #[test]
-fn sentinel_payload_comment_round_trips() {
+fn root_payload_comment_round_trips() {
     let src = "~~~card-yaml\n#@quill: q\n# main entry\ntitle: Hi\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
     assert!(
         emitted.starts_with("~~~card-yaml\n#@quill: q\n# main entry\n"),
-        "own-line comment below the `#@quill` sentinel must round-trip\nGot:\n{}",
+        "own-line comment below the `#@quill` header must round-trip\nGot:\n{}",
         emitted
     );
 
@@ -471,7 +471,7 @@ fn sentinel_payload_comment_round_trips() {
 }
 
 /// An own-line comment in a card payload — directly below the `#@kind`
-/// system sentinel — round-trips at its source position.
+/// metadata header — round-trips at its source position.
 #[test]
 fn card_payload_comment_round_trips() {
     let src = "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@kind: foo\n# the foo card\nx: 1\n~~~\n";
@@ -480,7 +480,7 @@ fn card_payload_comment_round_trips() {
     let emitted = doc.to_markdown();
     assert!(
         emitted.contains("~~~card-yaml\n#@kind: foo\n# the foo card\n"),
-        "own-line comment below the `#@kind` sentinel must round-trip\nGot:\n{}",
+        "own-line comment below the `#@kind` header must round-trip\nGot:\n{}",
         emitted
     );
 
