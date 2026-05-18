@@ -62,6 +62,8 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
 
+use serde::{Deserialize, Serialize};
+
 /// Semantic version number (MAJOR.MINOR.PATCH)
 ///
 /// Versions follow semantic versioning conventions where:
@@ -85,7 +87,7 @@ use std::str::FromStr;
 /// let v2 = Version::from_str("2.1").unwrap();
 /// assert_eq!(v2, Version::new(2, 1, 0));
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Version {
     /// Major version number (breaking changes)
     pub major: u32,
@@ -182,7 +184,7 @@ impl Ord for Version {
 /// let major = VersionSelector::from_str("@2").unwrap();
 /// let latest = VersionSelector::from_str("@latest").unwrap();
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum VersionSelector {
     /// Match exactly this version (e.g., "@2.1.0")
     Exact(Version),
@@ -266,7 +268,7 @@ impl fmt::Display for VersionSelector {
 ///
 /// let ref2 = QuillReference::from_str("resume_template").unwrap();
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct QuillReference {
     /// Template name (e.g., "resume_template")
     pub name: String,

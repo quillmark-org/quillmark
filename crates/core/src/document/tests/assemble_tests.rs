@@ -2227,3 +2227,67 @@ fn frontmatter_field_order_preserved_after_quill_removal() {
         "Frontmatter fields must preserve insertion order after QUILL removal"
     );
 }
+
+// ── serde JSON round-trip ─────────────────────────────────────────────────────
+
+/// A Document survives a serde_json round-trip unchanged.
+#[test]
+fn test_json_round_trip_simple() {
+    let doc =
+        Document::from_markdown("---\nQUILL: my_quill\ntitle: Hello\n---\n\nBody text.\n").unwrap();
+
+    let json = serde_json::to_string(&doc).unwrap();
+    let restored: Document = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(doc, restored);
+}
+
+/// Round-trip preserves cards, comments, !fill markers, nested comments,
+/// and the quill version selector.
+#[test]
+fn test_json_round_trip_full_fidelity() {
+    let markdown = "\
+---
+QUILL: usaf_memo@0.1
+# a top-level comment
+memo_for:
+  - ORG/SYMBOL # inline comment inside a sequence
+date: 2504-10-05
+subject: !fill Subject of the Memorandum
+---
+
+The body of the memorandum.
+
+```card indorsement
+for: ORG/SYMBOL
+from: ORG/SYMBOL
+```
+
+This body and the metadata above are an indorsement card.
+";
+    let doc = Document::from_markdown(markdown).unwrap();
+
+    let json = serde_json::to_string(&doc).unwrap();
+    let restored: Document = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(doc, restored);
+    // The restored document emits the same canonical markdown.
+    assert_eq!(doc.to_markdown(), restored.to_markdown());
+}
+
+/// `warnings` are excluded from the serialized form and default to empty
+/// on deserialization.
+#[test]
+fn test_json_round_trip_excludes_warnings() {
+    let doc =
+        Document::from_markdown("---\nQUILL: my_quill\ntitle: Hello\n---\n\nBody text.\n").unwrap();
+
+    let value: serde_json::Value = serde_json::to_value(&doc).unwrap();
+    assert!(
+        value.get("warnings").is_none(),
+        "warnings must not appear in serialized JSON"
+    );
+
+    let restored: Document = serde_json::from_value(value).unwrap();
+    assert!(restored.warnings().is_empty());
+}

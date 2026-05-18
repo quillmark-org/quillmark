@@ -71,6 +71,8 @@
 //! See [PARSE.md](https://github.com/nibsbin/quillmark/blob/main/designs/PARSE.md) for
 //! comprehensive documentation of the Extended YAML Metadata Standard.
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::ParseError;
 use crate::version::QuillReference;
 use crate::Diagnostic;
@@ -110,7 +112,7 @@ pub struct ParseOutput {
 /// ```` ```card <kind> ```` info string (canonical) or a legacy `CARD: <kind>`
 /// sentinel. `Sentinel` captures that distinction in the typed model so every
 /// card is one uniform shape.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Sentinel {
     /// The document entry card, carrying the `QUILL` reference.
     Main(QuillReference),
@@ -152,7 +154,7 @@ impl Sentinel {
 /// EOF immediately follows the closing fence), `body` is the empty string `""`.
 /// It is never `None`; callers that need to distinguish "absent" from "empty"
 /// should check `card.body().is_empty()`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Card {
     sentinel: Sentinel,
     frontmatter: Frontmatter,
@@ -232,10 +234,14 @@ impl Card {
 /// Backend plates consume the flat JSON wire shape produced by
 /// [`Document::to_plate_json`]. That method is the **only** place in core
 /// that reconstructs `{"QUILL": ..., "CARDS": [...], "BODY": "..."}`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     main: Card,
     cards: Vec<Card>,
+    /// Parse-time warnings. Excluded from serialization — they are
+    /// observations about the source text, not document content, and are
+    /// repopulated on the next parse.
+    #[serde(skip)]
     warnings: Vec<Diagnostic>,
 }
 
