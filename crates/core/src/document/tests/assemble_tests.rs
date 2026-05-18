@@ -785,9 +785,9 @@ Section 1 body.";
 }
 
 #[test]
-fn test_non_root_block_declaring_quill_is_ignored_metadata() {
-    // A non-root card-yaml block may carry `#@quill` — it is just ignored
-    // system metadata on the card now, no longer an error.
+fn test_non_root_block_declaring_quill_is_error() {
+    // Only the root block binds the document to a quill. A composable card
+    // declaring `#@quill` is a structural parse error.
     let markdown = "~~~card-yaml
 #@quill: first
 ~~~
@@ -797,12 +797,10 @@ fn test_non_root_block_declaring_quill_is_ignored_metadata() {
 #@kind: note
 ~~~";
 
-    let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.quill_reference().name, "first");
-    assert_eq!(doc.cards().len(), 1);
-    assert_eq!(
-        doc.cards()[0].meta().quill.as_ref().map(|q| q.name.as_str()),
-        Some("second")
+    let err = decompose(markdown).unwrap_err().to_string();
+    assert!(
+        err.contains("must not declare `#@quill`"),
+        "got: {err}"
     );
 }
 

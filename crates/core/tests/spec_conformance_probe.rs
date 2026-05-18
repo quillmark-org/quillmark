@@ -58,10 +58,10 @@ fn composable_card_block_registers_a_card() {
 }
 
 // A non-root block missing `#@kind:` is allowed — `#@kind` is optional
-// metadata, and `#@quill` on a card is just ignored system metadata.
+// metadata.
 #[test]
 fn non_root_block_without_kind_is_allowed() {
-    let md = "~~~card-yaml\n#@quill: t\n~~~\n\nB.\n\n~~~card-yaml\n#@quill: oops\nname: X\n~~~\n";
+    let md = "~~~card-yaml\n#@quill: t\n~~~\n\nB.\n\n~~~card-yaml\nname: X\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();
     assert_eq!(doc.cards().len(), 1);
     assert_eq!(doc.cards()[0].kind(), None);

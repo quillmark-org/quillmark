@@ -119,9 +119,10 @@ optional fields — `quill`, `kind`, `id`.
 
 - **`#@quill: <name>@<version>`** — binds the document to a quill (see §3.5
   for the version-selector forms). This is the **only required `#@` entry**,
-  and it must be declared by the **root block** (the first block). It may
-  appear on any block, and is parsed into a typed quill reference as the
-  block is read.
+  and it must be declared by the **root block** (the first block). It is
+  parsed into a typed quill reference as the block is read. `#@quill` is
+  **exclusive to the root block** — a composable card declaring `#@quill` is
+  a parse error.
 - **`#@kind: <value>`** — optional metadata identifying a card's kind. There
   is no reserved kind; `#@kind` is carried verbatim with no parse-time
   name-pattern validation.
@@ -132,7 +133,8 @@ optional fields — `quill`, `kind`, `id`.
 Rules:
 
 - The `#@` header is optional on every block *except* the root block, which
-  must declare `#@quill`.
+  must declare `#@quill`. A composable (non-root) block must **not** declare
+  `#@quill`.
 - `#@` header lines may appear in any order. The emitter emits them in the
   canonical key order `quill`, `kind`, `id` (see §9).
 - A duplicate `#@key` within a single block is a parse error.
@@ -357,6 +359,7 @@ Parse errors include:
 
 - A `~~~card-yaml` opener with no matching `~~~` closer before EOF.
 - The root block missing its `#@quill` entry.
+- A composable (non-root) block declaring `#@quill`.
 - A malformed `#@` header line (not of the form `#@key: value`).
 - A duplicate `#@key` within a single block.
 - An unknown `#@key` outside the closed set `{quill, kind, id}`.

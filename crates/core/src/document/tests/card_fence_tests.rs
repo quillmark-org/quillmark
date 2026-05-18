@@ -141,16 +141,12 @@ fn card_fence_reserved_key_is_error() {
 }
 
 #[test]
-fn non_root_block_declaring_quill_is_ignored_metadata() {
-    // A composable block may carry `#@quill` — it is just ignored system
-    // metadata on the card, not an error.
+fn non_root_block_declaring_quill_is_error() {
+    // Only the root block binds the document to a quill — a composable block
+    // carrying `#@quill` is a structural parse error.
     let src = "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@quill: other\nname: Widget\n~~~\n";
-    let doc = Document::from_markdown(src).unwrap();
-    assert_eq!(doc.cards().len(), 1);
-    assert_eq!(
-        doc.cards()[0].meta().quill.as_ref().map(|q| q.name.as_str()),
-        Some("other")
-    );
+    let err = Document::from_markdown(src).unwrap_err().to_string();
+    assert!(err.contains("must not declare `#@quill`"), "got: {err}");
 }
 
 // ── Non-card fenced code blocks are untouched ─────────────────────────────────

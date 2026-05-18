@@ -252,6 +252,19 @@ pub(super) fn decompose_with_warnings(
     let mut cards: Vec<Card> = Vec::new();
     for idx in 1..blocks.len() {
         let block = &blocks[idx];
+
+        // Only the root block binds the document to a quill. A composable
+        // card declaring `#@quill` is a structural error — `#@quill` is
+        // captured by the per-block header parser, but rejected here, where
+        // root-vs-composable position is known.
+        if block.meta.quill.is_some() {
+            return Err(ParseError::InvalidStructure(
+                "A composable card-yaml block must not declare `#@quill` — only \
+                 the document's root block binds the document to a quill."
+                    .to_string(),
+            ));
+        }
+
         let card_payload = build_payload_from_pre_and_parsed(
             &block.pre_items,
             &block.pre_nested_comments,

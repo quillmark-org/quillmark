@@ -22,8 +22,9 @@ use crate::version::QuillReference;
 /// [`QuillReference`] as the block is read.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CardMetadata {
-    /// The `#@quill` reference. Required on the document's root block;
-    /// optional (and inert) on composable cards.
+    /// The `#@quill` reference. Required on the document's root block and
+    /// rejected on composable cards (see `assemble`); `None` on every card
+    /// in a successfully parsed [`crate::Document`].
     pub quill: Option<QuillReference>,
     /// The `#@kind` card kind, if the block declares one. Carried verbatim.
     pub kind: Option<String>,
