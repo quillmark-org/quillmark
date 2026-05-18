@@ -762,7 +762,8 @@ mod tests {
     fn test_normalize_document_idempotent() {
         use crate::document::Document;
 
-        let doc = Document::from_markdown("~~~card-yaml\n#@quill: test\n~~~\n\n<<content>>").unwrap();
+        let doc =
+            Document::from_markdown("~~~card-yaml\n#@quill: test\n~~~\n\n<<content>>").unwrap();
         let normalized_once = super::normalize_document(doc).unwrap();
         let normalized_twice = super::normalize_document(normalized_once.clone()).unwrap();
 
@@ -776,7 +777,8 @@ mod tests {
     fn test_normalize_document_body_bidi_stripped() {
         use crate::document::Document;
 
-        let doc = Document::from_markdown("~~~card-yaml\n#@quill: test\n~~~\n\nhello\u{202D}world").unwrap();
+        let doc = Document::from_markdown("~~~card-yaml\n#@quill: test\n~~~\n\nhello\u{202D}world")
+            .unwrap();
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(normalized.main().body(), "\nhelloworld");
     }
@@ -785,7 +787,8 @@ mod tests {
     fn test_normalize_document_yaml_field_bidi_preserved() {
         use crate::document::Document;
 
-        let doc = Document::from_markdown("~~~card-yaml\n#@quill: test\ntitle: a\u{202D}b\n~~~\n").unwrap();
+        let doc = Document::from_markdown("~~~card-yaml\n#@quill: test\ntitle: a\u{202D}b\n~~~\n")
+            .unwrap();
         let normalized = super::normalize_document(doc).unwrap();
         // Bidi preserved in YAML fields
         assert_eq!(

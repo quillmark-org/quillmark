@@ -77,12 +77,7 @@ This is the body.";
 
     assert_eq!(doc.main().body(), "\n# Hello World\n\nThis is the body.");
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Test Document"
     );
     assert_eq!(
@@ -119,12 +114,7 @@ Content here.";
 
     assert_eq!(doc.main().body(), "\nContent here.");
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Complex Document"
     );
 
@@ -199,12 +189,7 @@ Body of item 1.";
     // so the trailing `\n\n` from the source becomes a single `\n`.
     assert_eq!(doc.main().body(), "\nMain body content.\n");
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Main Document"
     );
 
@@ -286,12 +271,7 @@ Section 2 content.";
     let doc = decompose(markdown).unwrap();
 
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Global"
     );
     assert_eq!(doc.main().body(), "\nGlobal body.\n");
@@ -618,12 +598,7 @@ rating: 4
 
     // Verify global payload
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Product Catalog"
     );
     assert_eq!(
@@ -636,12 +611,7 @@ rating: 4
         "John Doe"
     );
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("date")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("date").unwrap().as_str().unwrap(),
         "2024-01-01"
     );
 
@@ -753,12 +723,7 @@ Section 1 body.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.quill_reference().name, "document");
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Test Document"
     );
     assert_eq!(doc.cards().len(), 1);
@@ -780,10 +745,7 @@ fn test_non_root_block_declaring_quill_is_error() {
 ~~~";
 
     let err = decompose(markdown).unwrap_err().to_string();
-    assert!(
-        err.contains("must not declare `#@quill`"),
-        "got: {err}"
-    );
+    assert!(err.contains("must not declare `#@quill`"), "got: {err}");
 }
 
 #[test]
@@ -854,12 +816,7 @@ This is the body.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.main().body(), "\n# Hello World\n\nThis is the body.");
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Test Document"
     );
     assert_eq!(
@@ -981,12 +938,7 @@ Body content.";
 
     let doc = decompose(markdown).unwrap();
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Test"
     );
     assert_eq!(
@@ -1017,12 +969,7 @@ fn test_extended_metadata_demo_file() {
     let doc = decompose(markdown).unwrap();
 
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Extended Metadata Demo"
     );
     assert_eq!(
@@ -1046,15 +993,16 @@ fn test_extended_metadata_demo_file() {
     );
 
     // Verify body
-    assert!(doc
-        .main()
-        .body()
-        .contains("card-yaml metadata format"));
+    assert!(doc.main().body().contains("card-yaml metadata format"));
 
     // 5 cards total: 3 features + 2 use_cases
     assert_eq!(doc.cards().len(), 5);
 
-    let features_count = doc.cards().iter().filter(|c| c.kind() == Some("features")).count();
+    let features_count = doc
+        .cards()
+        .iter()
+        .filter(|c| c.kind() == Some("features"))
+        .count();
     let use_cases_count = doc
         .cards()
         .iter()
@@ -1127,7 +1075,10 @@ fn test_yaml_depth_limit() {
         yaml_content.push_str(&format!("level{}: value\n", i));
     }
 
-    let markdown = format!("~~~card-yaml\n#@quill: test_quill\n{}~~~\n\nBody", yaml_content);
+    let markdown = format!(
+        "~~~card-yaml\n#@quill: test_quill\n{}~~~\n\nBody",
+        yaml_content
+    );
     let result = decompose(&markdown);
 
     assert!(result.is_err());
@@ -1195,12 +1146,7 @@ Use <<card body>> here.";
 
     // Payload scalar, array, nested map.
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Test <<with chevrons>>"
     );
     let items = doc
@@ -1234,11 +1180,7 @@ Use <<card body>> here.";
     // Card yaml and body.
     let card = &doc.cards()[0];
     assert_eq!(
-        card.payload()
-            .get("description")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        card.payload().get("description").unwrap().as_str().unwrap(),
         "<<card yaml>>"
     );
     assert!(card.body().contains("<<card body>>"));
@@ -1254,12 +1196,7 @@ count: 42
 Body.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("count")
-            .unwrap()
-            .as_i64()
-            .unwrap(),
+        doc.main().payload().get("count").unwrap().as_i64().unwrap(),
         42
     );
 }
@@ -1330,12 +1267,7 @@ fn test_line_ending_normalization() {
     ] {
         let doc = decompose(markdown).unwrap();
         assert_eq!(
-            doc.main()
-                .payload()
-                .get("title")
-                .unwrap()
-                .as_str()
-                .unwrap(),
+            doc.main().payload().get("title").unwrap().as_str().unwrap(),
             "Test"
         );
     }
@@ -1346,12 +1278,7 @@ fn test_payload_at_eof_no_trailing_newline() {
     let markdown = "~~~card-yaml\n#@quill: test_quill\ntitle: Test\n~~~";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Test"
     );
     assert_eq!(doc.main().body(), "");
@@ -1365,12 +1292,7 @@ fn test_unicode_in_yaml_keys() {
         "~~~card-yaml\n#@quill: test_quill\ntitre: Bonjour\nタイトル: こんにちは\n~~~\n\nBody.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("titre")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("titre").unwrap().as_str().unwrap(),
         "Bonjour"
     );
     assert_eq!(
@@ -1389,12 +1311,7 @@ fn test_unicode_in_yaml_values() {
     let markdown = "~~~card-yaml\n#@quill: test_quill\ntitle: 你好世界 🎉\n~~~\n\nBody.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "你好世界 🎉"
     );
 }
@@ -1467,12 +1384,7 @@ fn test_yaml_empty_string_value() {
     let markdown = "~~~card-yaml\n#@quill: test_quill\nempty: \"\"\n~~~\n\nBody.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("empty")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("empty").unwrap().as_str().unwrap(),
         ""
     );
 }
@@ -1603,12 +1515,7 @@ Body content.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.quill_reference().name, "my_quill");
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Document Title"
     );
     assert_eq!(
@@ -1783,21 +1690,11 @@ items:
 Body.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("count")
-            .unwrap()
-            .as_i64()
-            .unwrap(),
+        doc.main().payload().get("count").unwrap().as_i64().unwrap(),
         42
     );
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("price")
-            .unwrap()
-            .as_f64()
-            .unwrap(),
+        doc.main().payload().get("price").unwrap().as_f64().unwrap(),
         19.99
     );
     assert!(doc
@@ -1814,12 +1711,7 @@ fn test_guillemet_double_conversion_prevention() {
     let markdown = "~~~card-yaml\n#@quill: test_quill\ntitle: Already «converted»\n~~~\n\nBody.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Already «converted»"
     );
 }
@@ -1924,12 +1816,7 @@ Conclusion content.
     let doc = decompose(markdown).unwrap();
 
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "My Document"
     );
     assert_eq!(doc.quill_reference().name, "blog_post");
@@ -2029,9 +1916,8 @@ Card body here.
 /// to_plate_json parity: the QUILL key appears first.
 #[test]
 fn test_to_plate_json_quill_first() {
-    let doc =
-        Document::from_markdown("~~~card-yaml\n#@quill: my_quill\nfoo: bar\nbaz: qux\n~~~\n")
-            .unwrap();
+    let doc = Document::from_markdown("~~~card-yaml\n#@quill: my_quill\nfoo: bar\nbaz: qux\n~~~\n")
+        .unwrap();
     let json = doc.to_plate_json();
     let obj = json.as_object().unwrap();
     let keys: Vec<&String> = obj.keys().collect();
@@ -2088,12 +1974,7 @@ This body and the metadata above are an indorsement card.
 fn payload_field_order_preserved_after_quill_removal() {
     let md = "~~~card-yaml\n#@quill: q\nsender: Alice\nrecipient: Bob\ndate: March 15\nsubject: hi\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();
-    let keys: Vec<&str> = doc
-        .main()
-        .payload()
-        .keys()
-        .map(|s| s.as_str())
-        .collect();
+    let keys: Vec<&str> = doc.main().payload().keys().map(|s| s.as_str()).collect();
     // Fields must appear in YAML document order, not alphabetical or swap-order.
     assert_eq!(
         keys,

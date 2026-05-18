@@ -7,8 +7,7 @@ use std::sync::Arc;
 
 use quillmark_core::{
     normalize::normalize_document, Backend, Card, Diagnostic, Document, OutputFormat, Payload,
-    QuillSource, QuillValue, RenderError, RenderOptions, RenderResult, RenderSession,
-    Severity,
+    QuillSource, QuillValue, RenderError, RenderOptions, RenderResult, RenderSession, Severity,
 };
 
 use crate::form::{self, Form, FormCard};

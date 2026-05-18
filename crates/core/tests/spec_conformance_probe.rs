@@ -25,11 +25,7 @@ fn thematic_break_in_body_is_not_a_block() {
 fn first_block_without_quill_is_rejected() {
     let md = "~~~card-yaml\ntitle: X\n~~~\n\nBody.";
     let err = Document::from_markdown(md).unwrap_err().to_string();
-    assert!(
-        err.contains("must declare `#@quill"),
-        "got: {}",
-        err
-    );
+    assert!(err.contains("must declare `#@quill"), "got: {}", err);
 }
 
 // YAML `#` comment lines inside a block are accepted as ordinary YAML.
@@ -38,12 +34,7 @@ fn yaml_comment_banners_inside_block_are_accepted() {
     let md = "~~~card-yaml\n#@quill: t\n# Essential\ntitle: T\n~~~\n\nBody.";
     let doc = Document::from_markdown(md).unwrap();
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "T"
     );
 }
@@ -127,12 +118,7 @@ fn normalize_yaml_scalar_keeps_bidi() {
     let doc = Document::from_markdown(md).unwrap();
     let doc = normalize_document(doc).unwrap();
     assert_eq!(
-        doc.main()
-            .payload()
-            .get("title")
-            .unwrap()
-            .as_str()
-            .unwrap(),
+        doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "hi\u{202D}there"
     );
 }
@@ -184,11 +170,7 @@ fn card_body_crlf_line_endings_are_normalized() {
 #[test]
 fn empty_input_is_rejected() {
     let err = Document::from_markdown("").unwrap_err().to_string();
-    assert!(
-        err.contains("Empty markdown input"),
-        "got: {}",
-        err
-    );
+    assert!(err.contains("Empty markdown input"), "got: {}", err);
 }
 
 // A document with no card-yaml block is rejected.
@@ -209,11 +191,7 @@ fn missing_root_block_is_rejected() {
 fn unclosed_card_yaml_block_is_rejected() {
     let md = "~~~card-yaml\n#@quill: t\ntitle: T\n";
     let err = Document::from_markdown(md).unwrap_err().to_string();
-    assert!(
-        err.contains("never closed with `~~~`"),
-        "got: {}",
-        err
-    );
+    assert!(err.contains("never closed with `~~~`"), "got: {}", err);
 }
 
 // A card-yaml block with no blank line above is treated as an ordinary code

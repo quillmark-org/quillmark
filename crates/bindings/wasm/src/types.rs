@@ -227,19 +227,15 @@ impl From<&quillmark_core::Card> for Card {
             .items()
             .iter()
             .map(|item| match item {
-                quillmark_core::PayloadItem::Field { key, value, fill } => {
-                    PayloadItem::Field {
-                        key: key.clone(),
-                        value: value.as_json().clone(),
-                        fill: *fill,
-                    }
-                }
-                quillmark_core::PayloadItem::Comment { text, inline } => {
-                    PayloadItem::Comment {
-                        text: text.clone(),
-                        inline: *inline,
-                    }
-                }
+                quillmark_core::PayloadItem::Field { key, value, fill } => PayloadItem::Field {
+                    key: key.clone(),
+                    value: value.as_json().clone(),
+                    fill: *fill,
+                },
+                quillmark_core::PayloadItem::Comment { text, inline } => PayloadItem::Comment {
+                    text: text.clone(),
+                    inline: *inline,
+                },
             })
             .collect();
 
@@ -337,10 +333,7 @@ mod tests {
         // inline:false is the default — presence in JSON is an implementation
         // detail, but the round-trip must deserialize back to false.
         let back: PayloadItem = serde_json::from_str(&json).unwrap();
-        assert!(matches!(
-            back,
-            PayloadItem::Comment { inline: false, .. }
-        ));
+        assert!(matches!(back, PayloadItem::Comment { inline: false, .. }));
     }
 
     #[test]
@@ -353,10 +346,7 @@ mod tests {
         assert!(json.contains("\"kind\":\"comment\""));
         assert!(json.contains("\"inline\":true"));
         let back: PayloadItem = serde_json::from_str(&json).unwrap();
-        assert!(matches!(
-            back,
-            PayloadItem::Comment { inline: true, .. }
-        ));
+        assert!(matches!(back, PayloadItem::Comment { inline: true, .. }));
     }
 
     #[test]
@@ -364,10 +354,7 @@ mod tests {
         // `inline` is serde(default) — omitting it from JSON must deserialize as false.
         let json = r#"{"kind":"comment","text":"note"}"#;
         let item: PayloadItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(
-            item,
-            PayloadItem::Comment { inline: false, .. }
-        ));
+        assert!(matches!(item, PayloadItem::Comment { inline: false, .. }));
     }
 
     #[test]

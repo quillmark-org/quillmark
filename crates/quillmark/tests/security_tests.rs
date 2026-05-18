@@ -14,7 +14,10 @@ fn test_yaml_depth_limit_attack() {
         deep_yaml.push_str(&"  ".repeat(i));
         deep_yaml.push_str("a:\n");
     }
-    let markdown = format!("~~~card-yaml\n#@quill: test_quill\n{}~~~\n\nBody", deep_yaml);
+    let markdown = format!(
+        "~~~card-yaml\n#@quill: test_quill\n{}~~~\n\nBody",
+        deep_yaml
+    );
     let result = Document::from_markdown(&markdown);
 
     // Should fail with YAML depth limit error
@@ -31,9 +34,13 @@ fn test_yaml_depth_limit_attack() {
 #[test]
 fn test_card_count_limit_attack() {
     // Generate more than MAX_CARD_COUNT (1000) card blocks
-    let mut markdown = String::from("~~~card-yaml\n#@quill: test_quill\ntitle: Test\n~~~\n\nBody\n\n");
+    let mut markdown =
+        String::from("~~~card-yaml\n#@quill: test_quill\ntitle: Test\n~~~\n\nBody\n\n");
     for i in 0..1002 {
-        markdown.push_str(&format!("~~~card-yaml\n#@kind: item{}\nvalue: {}\n~~~\n\n", i, i));
+        markdown.push_str(&format!(
+            "~~~card-yaml\n#@kind: item{}\nvalue: {}\n~~~\n\n",
+            i, i
+        ));
     }
     let result = Document::from_markdown(&markdown);
 
@@ -93,7 +100,10 @@ fn test_input_size_limit() {
 #[test]
 fn test_yaml_size_limit() {
     let large_value = "x".repeat(1024 * 1024 + 100);
-    let markdown = format!("~~~card-yaml\n#@quill: test_quill\ndata: {}\n~~~\n\nBody", large_value);
+    let markdown = format!(
+        "~~~card-yaml\n#@quill: test_quill\ndata: {}\n~~~\n\nBody",
+        large_value
+    );
     let result = Document::from_markdown(&markdown);
 
     assert!(result.is_err(), "Should reject oversized YAML");
@@ -113,7 +123,10 @@ fn test_reserved_field_injection() {
             "~~~card-yaml\n#@quill: test_quill\nBODY: injected\n~~~\n\nBody",
             "BODY",
         ),
-        ("~~~card-yaml\n#@quill: test_quill\nCARDS: []\n~~~\n\nBody", "CARDS"),
+        (
+            "~~~card-yaml\n#@quill: test_quill\nCARDS: []\n~~~\n\nBody",
+            "CARDS",
+        ),
     ];
 
     for (markdown, reserved) in reserved_tests {

@@ -338,9 +338,7 @@ impl Document {
                 let mut card_map = serde_json::Map::new();
                 card_map.insert(
                     "CARD".to_string(),
-                    serde_json::Value::String(
-                        card.meta.kind.as_deref().unwrap_or("").to_string(),
-                    ),
+                    serde_json::Value::String(card.meta.kind.as_deref().unwrap_or("").to_string()),
                 );
                 for (key, value) in card.payload.iter() {
                     card_map.insert(key.clone(), value.as_json().clone());

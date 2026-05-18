@@ -174,8 +174,7 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
             let mut closer_k: Option<usize> = None;
             let mut j = k + 1;
             while j < lines.len() {
-                if let Some((_, _, true)) =
-                    code_fence_on_line(lines.line_text(j), Some((b'~', 3)))
+                if let Some((_, _, true)) = code_fence_on_line(lines.line_text(j), Some((b'~', 3)))
                 {
                     closer_k = Some(j);
                     break;

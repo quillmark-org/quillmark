@@ -256,13 +256,10 @@ fn write_typed_table_field(
 ) {
     let pad = "  ".repeat(indent);
 
-    let concrete_rows = field
-        .default
-        .as_ref()
-        .and_then(|v| match v.as_json() {
-            serde_json::Value::Array(items) if !items.is_empty() => Some(items.clone()),
-            _ => None,
-        });
+    let concrete_rows = field.default.as_ref().and_then(|v| match v.as_json() {
+        serde_json::Value::Array(items) if !items.is_empty() => Some(items.clone()),
+        _ => None,
+    });
 
     write_description(out, field, &pad);
     write_eg_comment(out, field, &pad);
@@ -295,13 +292,10 @@ fn write_typed_object_field(
 ) {
     let pad = "  ".repeat(indent);
 
-    let concrete = field
-        .default
-        .as_ref()
-        .and_then(|v| match v.as_json() {
-            serde_json::Value::Object(map) if !map.is_empty() => Some(map.clone()),
-            _ => None,
-        });
+    let concrete = field.default.as_ref().and_then(|v| match v.as_json() {
+        serde_json::Value::Object(map) if !map.is_empty() => Some(map.clone()),
+        _ => None,
+    });
 
     write_description(out, field, &pad);
     write_eg_comment(out, field, &pad);

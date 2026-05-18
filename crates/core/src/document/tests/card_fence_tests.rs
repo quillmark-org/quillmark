@@ -19,10 +19,7 @@ fn card_fence_parses_kind_fields_and_body() {
     assert_eq!(doc.cards().len(), 1);
     let card = &doc.cards()[0];
     assert_eq!(card.kind(), Some("product"));
-    assert_eq!(
-        card.payload().get("name").unwrap().as_str(),
-        Some("Widget")
-    );
+    assert_eq!(card.payload().get("name").unwrap().as_str(), Some("Widget"));
     assert_eq!(card.body(), "\nWidget description.\n");
 }
 

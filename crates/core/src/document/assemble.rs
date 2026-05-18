@@ -290,7 +290,11 @@ pub(super) fn decompose_with_warnings(
             card_body_raw.to_string()
         };
 
-        cards.push(Card::from_parts(block.meta.clone(), card_payload, card_body));
+        cards.push(Card::from_parts(
+            block.meta.clone(),
+            card_payload,
+            card_body,
+        ));
     }
 
     let doc = Document::from_main_and_cards(main, cards, warnings.clone());

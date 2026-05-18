@@ -81,7 +81,8 @@ fn test_quill_engine_end_to_end() {
         .quill_from_path(&quill_path)
         .expect("quill_from_path failed");
 
-    let markdown = "~~~card-yaml\n#@quill: my_test_quill\ntitle: Test Document\n~~~\n\n# Introduction\n";
+    let markdown =
+        "~~~card-yaml\n#@quill: my_test_quill\ntitle: Test Document\n~~~\n\n# Introduction\n";
     let parsed = Document::from_markdown(markdown).expect("parse failed");
 
     let result = quill.dry_run(&parsed);
@@ -98,7 +99,8 @@ fn test_quill_render_succeeds_with_engine_loaded_quill() {
     let quill = engine
         .quill_from_path(quill_path)
         .expect("quill_from_path failed");
-    let parsed = Document::from_markdown("~~~card-yaml\n#@quill: my_quill\n~~~\n").expect("parse failed");
+    let parsed =
+        Document::from_markdown("~~~card-yaml\n#@quill: my_quill\n~~~\n").expect("parse failed");
     let result = quill.render(
         &parsed,
         &RenderOptions {

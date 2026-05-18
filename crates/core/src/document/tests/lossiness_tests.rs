@@ -66,10 +66,7 @@ fn top_level_inline_comments_round_trip() {
     // Value still intact.
     let doc2 = Document::from_markdown(&emitted).unwrap();
     assert_eq!(
-        doc2.main()
-            .payload()
-            .get("title")
-            .and_then(|v| v.as_str()),
+        doc2.main().payload().get("title").and_then(|v| v.as_str()),
         Some("My Document"),
     );
 
@@ -474,7 +471,8 @@ fn root_payload_comment_round_trips() {
 /// metadata header — round-trips at its source position.
 #[test]
 fn card_payload_comment_round_trips() {
-    let src = "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@kind: foo\n# the foo card\nx: 1\n~~~\n";
+    let src =
+        "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@kind: foo\n# the foo card\nx: 1\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();

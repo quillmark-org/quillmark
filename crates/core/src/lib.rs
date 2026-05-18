@@ -44,9 +44,7 @@
 //! - [Examples](https://github.com/nibsbin/quillmark/tree/main/examples) - Working examples
 
 pub mod document;
-pub use document::{
-    Card, CardMetadata, Document, EditError, ParseOutput, Payload, PayloadItem,
-};
+pub use document::{Card, CardMetadata, Document, EditError, ParseOutput, Payload, PayloadItem};
 
 pub mod backend;
 pub use backend::Backend;
