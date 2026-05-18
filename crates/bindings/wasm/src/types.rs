@@ -193,16 +193,15 @@ pub enum PayloadItem {
 /// A single card block parsed from a Quillmark Markdown document.
 ///
 /// Exposed as a plain JS object via `Document.main`, `Document.cards`, etc.
-/// Carries a `role` that distinguishes the document entry (main) card from
-/// composable cards, a `kind` string (the block's `#@kind`, empty when the
-/// block declares none), typed payload (map view under `payload`, ordered
-/// item list under `payloadItems`), and the body.
+/// Carries a `kind` string (the block's `#@kind`, empty when the block
+/// declares none), typed payload (map view under `payload`, ordered item
+/// list under `payloadItems`), and the body. Whether a card is the document
+/// entry (main) card or a composable card is positional — it is whichever
+/// `Document` accessor it came from (`main` vs `cards`).
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
 pub struct Card {
-    /// `"main"` for the document entry (`#@quill`) card; `"card"` for composable cards.
-    pub role: String,
     /// The block's `#@kind` value (e.g. `"endorsement"`); empty string when
     /// the block declares no `#@kind`.
     pub kind: String,
@@ -244,10 +243,7 @@ impl From<&quillmark_core::Card> for Card {
             })
             .collect();
 
-        let role = if card.is_main() { "main" } else { "card" };
-
         Card {
-            role: role.to_string(),
             kind: card.kind().unwrap_or("").to_string(),
             payload: serde_json::Value::Object(fields_map),
             payload_items: items,

@@ -113,7 +113,6 @@ impl Quill {
                     .unwrap_or_default();
                 let fields = apply_defaults(&card.payload().to_index_map(), defaults);
                 Card::from_parts(
-                    false,
                     card.meta().clone(),
                     Payload::from_index_map(fields),
                     card.body().to_string(),
@@ -122,7 +121,6 @@ impl Quill {
             .collect();
 
         let final_main = Card::from_parts(
-            true,
             normalized.main().meta().clone(),
             Payload::from_index_map(main_with_defaults),
             normalized.main().body().to_string(),
@@ -158,7 +156,6 @@ impl Quill {
                 .coerce_card(card.kind().unwrap_or(""), &card.payload().to_index_map())
                 .map_err(coercion_error)?;
             coerced_cards.push(Card::from_parts(
-                false,
                 card.meta().clone(),
                 Payload::from_index_map(coerced_fields),
                 card.body().to_string(),
@@ -166,7 +163,6 @@ impl Quill {
         }
 
         let coerced_main = Card::from_parts(
-            true,
             doc.main().meta().clone(),
             Payload::from_index_map(coerced_payload),
             doc.main().body().to_string(),

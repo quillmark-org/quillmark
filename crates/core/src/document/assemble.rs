@@ -241,12 +241,7 @@ pub(super) fn decompose_with_warnings(
         global_body_raw.to_string()
     };
 
-    let main = Card::from_parts(
-        true,
-        blocks[0].meta.clone(),
-        main_payload,
-        global_body,
-    );
+    let main = Card::from_parts(blocks[0].meta.clone(), main_payload, global_body);
 
     // Parse composable card blocks (every block after the root) into Cards.
     let mut cards: Vec<Card> = Vec::new();
@@ -295,12 +290,7 @@ pub(super) fn decompose_with_warnings(
             card_body_raw.to_string()
         };
 
-        cards.push(Card::from_parts(
-            false,
-            block.meta.clone(),
-            card_payload,
-            card_body,
-        ));
+        cards.push(Card::from_parts(block.meta.clone(), card_payload, card_body));
     }
 
     let doc = Document::from_main_and_cards(main, cards, warnings.clone());

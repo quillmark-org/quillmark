@@ -404,7 +404,6 @@ pub fn normalize_document(
     let normalized_main_fm_map = normalize_fields(doc.main().payload().to_index_map());
     let normalized_main_body = normalize_markdown(doc.main().body());
     let main = Card::from_parts(
-        true,
         doc.main().meta().clone(),
         crate::document::Payload::from_index_map(normalized_main_fm_map),
         normalized_main_body,
@@ -423,7 +422,6 @@ pub fn normalize_document(
                 .collect();
             let normalized_card_body = normalize_markdown(card.body());
             Card::from_parts(
-                false,
                 card.meta().clone(),
                 crate::document::Payload::from_index_map(normalized_card_fields),
                 normalized_card_body,

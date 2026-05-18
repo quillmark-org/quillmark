@@ -122,19 +122,10 @@ impl Document {
 
     /// Append a composable card to the end of the card list.
     ///
-    /// # Invariants
-    ///
-    /// `card.is_main()` must be `false`; the root card cannot be appended as a
-    /// composable card. Debug assert.
-    ///
     /// # Warnings
     ///
     /// This method never modifies `warnings`.
     pub fn push_card(&mut self, card: Card) {
-        debug_assert!(
-            !card.is_main(),
-            "cannot push the root card as a composable card"
-        );
         self.cards_vec_mut().push(card);
     }
 
@@ -149,10 +140,6 @@ impl Document {
     ///
     /// This method never modifies `warnings`.
     pub fn insert_card(&mut self, index: usize, card: Card) -> Result<(), EditError> {
-        debug_assert!(
-            !card.is_main(),
-            "cannot insert the root card as a composable card"
-        );
         let len = self.cards().len();
         if index > len {
             return Err(EditError::IndexOutOfRange { index, len });
@@ -265,7 +252,7 @@ impl Card {
             kind: Some(kind),
             ..CardMetadata::default()
         };
-        Ok(Card::from_parts(false, meta, Payload::new(), String::new()))
+        Ok(Card::from_parts(meta, Payload::new(), String::new()))
     }
 
     /// Set a payload field by name. Always clears the `!fill` marker for

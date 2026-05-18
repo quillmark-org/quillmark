@@ -408,7 +408,7 @@ main:
             quill: Some("test_quill".parse().unwrap()),
             ..CardMetadata::default()
         };
-        let main = Card::from_parts(true, meta, Payload::from_index_map(payload), String::new());
+        let main = Card::from_parts(meta, Payload::from_index_map(payload), String::new());
         Document::from_main_and_cards(main, cards, vec![])
     }
 
@@ -742,7 +742,6 @@ main:
             ..CardMetadata::default()
         };
         let main = Card::from_parts(
-            true,
             meta,
             Payload::from_index_map(IndexMap::new()),
             "Body content that should not be here.".to_string(),

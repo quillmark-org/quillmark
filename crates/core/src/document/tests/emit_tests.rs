@@ -277,12 +277,7 @@ fn empty_map_omitted_from_emit() {
         quill: Some("test".parse().unwrap()),
         ..CardMetadata::default()
     };
-    let main = Card::from_parts(
-        true,
-        meta,
-        Payload::from_index_map(payload),
-        String::new(),
-    );
+    let main = Card::from_parts(meta, Payload::from_index_map(payload), String::new());
     let doc = crate::document::Document::from_main_and_cards(main, vec![], vec![]);
 
     let md = doc.to_markdown();

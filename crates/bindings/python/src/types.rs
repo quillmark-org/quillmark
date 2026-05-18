@@ -323,8 +323,8 @@ impl PyDocument {
 
     /// The document's main (entry) card as a dict.
     ///
-    /// Keys: `role` (str), `kind` (str), `payload` (dict), `payload_items`
-    /// (list), `fields` (dict — alias of `payload`), `body` (str).
+    /// Keys: `kind` (str), `payload` (dict), `payload_items` (list),
+    /// `fields` (dict — alias of `payload`), `body` (str).
     #[getter]
     fn main<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         card_to_pydict(py, self.inner.main())
@@ -332,8 +332,8 @@ impl PyDocument {
 
     /// Ordered list of composable card blocks.
     ///
-    /// Each card is a dict with keys: `role` (str), `kind` (str), `payload`
-    /// (dict), `payload_items` (list), `fields` (dict), `body` (str).
+    /// Each card is a dict with keys: `kind` (str), `payload` (dict),
+    /// `payload_items` (list), `fields` (dict), `body` (str).
     #[getter]
     fn cards<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         let mut result = Vec::new();
@@ -711,7 +711,6 @@ fn card_to_pydict<'py>(
     card: &quillmark_core::Card,
 ) -> PyResult<Bound<'py, PyDict>> {
     let d = PyDict::new(py);
-    d.set_item("role", if card.is_main() { "main" } else { "card" })?;
     d.set_item("kind", card.kind().unwrap_or(""))?;
 
     // Map-keyed payload view (values only, no comments).

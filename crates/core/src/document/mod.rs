@@ -104,9 +104,10 @@ pub struct ParseOutput {
 /// A single card-yaml block parsed from a Quillmark Markdown document.
 ///
 /// A `Card` is the uniform shape for both the document's root block and
-/// composable card blocks; `is_main` records which one it is. Root vs. card
-/// is positional — the root is the document's first block — so `is_main`
-/// carries no information beyond that position.
+/// composable card blocks. Root vs. composable is purely positional — the
+/// root is the document's first block, held in [`Document::main`]; composable
+/// cards live in [`Document::cards`]. A `Card` carries no flag of its own
+/// recording which collection it belongs to.
 ///
 /// Every card has:
 /// - `meta` — the block's typed `#@` system metadata (`#@quill`, `#@kind`, `#@id`).
@@ -122,20 +123,18 @@ pub struct ParseOutput {
 /// should check `card.body().is_empty()`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Card {
-    is_main: bool,
     meta: CardMetadata,
     payload: Payload,
     body: String,
 }
 
 impl Card {
-    /// Create a `Card` from its parts. `is_main` marks the document's root
-    /// block. Does **not** validate metadata or field names — callers are
-    /// responsible for providing already-valid data. For user-facing
-    /// construction of composable cards use [`Card::new`] (defined in `edit.rs`).
-    pub fn from_parts(is_main: bool, meta: CardMetadata, payload: Payload, body: String) -> Self {
+    /// Create a `Card` from its parts. Does **not** validate metadata or
+    /// field names — callers are responsible for providing already-valid
+    /// data. For user-facing construction of composable cards use
+    /// [`Card::new`] (defined in `edit.rs`).
+    pub fn from_parts(meta: CardMetadata, payload: Payload, body: String) -> Self {
         Self {
-            is_main,
             meta,
             payload,
             body,
@@ -179,11 +178,6 @@ impl Card {
         &self.body
     }
 
-    /// Returns `true` if this is the document's root (main) block.
-    pub fn is_main(&self) -> bool {
-        self.is_main
-    }
-
     /// Overwrite the body string. Internal helper used by [`Card::replace_body`].
     pub(crate) fn overwrite_body(&mut self, body: String) {
         self.body = body;
@@ -198,8 +192,8 @@ impl Card {
 ///
 /// ## Structure
 ///
-/// - `main` — the document's root `Card` (`is_main()` is `true`).
-/// - `cards` — ordered composable cards (each `is_main()` is `false`).
+/// - `main` — the document's root `Card`.
+/// - `cards` — ordered composable cards.
 ///
 /// Backend plates consume the flat JSON wire shape produced by
 /// [`Document::to_plate_json`]. That method is the **only** place in core
@@ -225,15 +219,9 @@ impl PartialEq for Document {
 impl Document {
     /// Create a `Document` from a pre-built main `Card` and composable cards.
     ///
-    /// The caller must guarantee that `main.is_main()` is `true` (and that its
-    /// `#@quill` metadata is present and valid) and that every card in `cards`
-    /// has `is_main()` = `false`.
+    /// The caller must guarantee that `main`'s `#@quill` metadata is present
+    /// and valid.
     pub fn from_main_and_cards(main: Card, cards: Vec<Card>, warnings: Vec<Diagnostic>) -> Self {
-        debug_assert!(main.is_main, "main card must have is_main = true");
-        debug_assert!(
-            cards.iter().all(|c| !c.is_main),
-            "composable cards must have is_main = false"
-        );
         Self {
             main,
             cards,
