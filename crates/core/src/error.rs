@@ -59,7 +59,7 @@
 //! ### RenderError Variants
 //!
 //! - [`RenderError::EngineCreation`]: Failed to create rendering engine
-//! - [`RenderError::InvalidFrontmatter`]: Malformed YAML in a card-yaml block
+//! - [`RenderError::InvalidPayload`]: Malformed YAML in a card-yaml block
 //! - [`RenderError::CompilationFailed`]: Backend compilation errors
 //! - [`RenderError::FormatNotSupported`]: Requested format not supported
 //! - [`RenderError::UnsupportedBackend`]: Backend not registered
@@ -411,7 +411,7 @@ pub enum RenderError {
 
     /// Invalid YAML in a card-yaml block
     #[error("{diag}")]
-    InvalidFrontmatter {
+    InvalidPayload {
         /// Diagnostic information
         diag: Box<Diagnostic>,
     },
@@ -464,7 +464,7 @@ impl RenderError {
             | RenderError::QuillConfig { diags }
             | RenderError::ValidationFailed { diags } => diags.iter().collect(),
             RenderError::EngineCreation { diag }
-            | RenderError::InvalidFrontmatter { diag }
+            | RenderError::InvalidPayload { diag }
             | RenderError::FormatNotSupported { diag }
             | RenderError::UnsupportedBackend { diag } => vec![diag.as_ref()],
         }
@@ -474,7 +474,7 @@ impl RenderError {
 /// Convert ParseError to RenderError
 impl From<ParseError> for RenderError {
     fn from(err: ParseError) -> Self {
-        RenderError::InvalidFrontmatter {
+        RenderError::InvalidPayload {
             diag: Box::new(
                 Diagnostic::new(Severity::Error, err.to_string())
                     .with_code("parse::error".to_string()),

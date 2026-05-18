@@ -171,7 +171,7 @@ fn test_document_set_field_inserts() {
     let mut doc = make_doc();
     doc.main_mut().set_field("author", qv("Alice")).unwrap();
     assert_eq!(
-        doc.main().frontmatter().get("author").unwrap().as_str(),
+        doc.main().payload().get("author").unwrap().as_str(),
         Some("Alice")
     );
 }
@@ -181,7 +181,7 @@ fn test_document_set_field_updates_existing() {
     let mut doc = make_doc();
     doc.main_mut().set_field("title", qv("New Title")).unwrap();
     assert_eq!(
-        doc.main().frontmatter().get("title").unwrap().as_str(),
+        doc.main().payload().get("title").unwrap().as_str(),
         Some("New Title")
     );
 }
@@ -193,7 +193,7 @@ fn test_document_remove_field_existing() {
     let mut doc = make_doc();
     let removed = doc.main_mut().remove_field("title").unwrap();
     assert_eq!(removed.unwrap().as_str(), Some("Hello"));
-    assert!(doc.main().frontmatter().get("title").is_none());
+    assert!(doc.main().payload().get("title").is_none());
 }
 
 #[test]
@@ -373,9 +373,9 @@ fn test_set_card_tag_renames_in_place() {
     doc.set_card_tag(0, "annotation").unwrap();
     // Sentinel changed.
     assert_eq!(doc.cards()[0].tag(), "annotation");
-    // Frontmatter and body untouched.
+    // Payload and body untouched.
     assert_eq!(
-        doc.cards()[0].frontmatter().get("foo").unwrap().as_str(),
+        doc.cards()[0].payload().get("foo").unwrap().as_str(),
         Some("bar")
     );
     // Other cards untouched.
@@ -420,7 +420,7 @@ fn test_set_card_tag_round_trips_via_markdown() {
 fn test_card_new_valid() {
     let card = Card::new("note").unwrap();
     assert_eq!(card.tag(), "note");
-    assert!(card.frontmatter().is_empty());
+    assert!(card.payload().is_empty());
     assert_eq!(card.body(), "");
 }
 
@@ -441,7 +441,7 @@ fn test_card_set_field_valid() {
     let mut card = Card::new("note").unwrap();
     card.set_field("content", qv("Some text")).unwrap();
     assert_eq!(
-        card.frontmatter().get("content").unwrap().as_str(),
+        card.payload().get("content").unwrap().as_str(),
         Some("Some text")
     );
 }
@@ -465,7 +465,7 @@ fn test_card_remove_field_existing() {
     let card = doc.card_mut(0).unwrap();
     let removed = card.remove_field("foo").unwrap();
     assert_eq!(removed.unwrap().as_str(), Some("bar"));
-    assert!(card.frontmatter().get("foo").is_none());
+    assert!(card.payload().get("foo").is_none());
 }
 
 #[test]
@@ -506,14 +506,14 @@ fn test_card_set_body() {
 // ── Invariant check: sequence of mutations ───────────────────────────────────
 
 /// After a deterministic sequence of mutations, the document must satisfy:
-/// - No reserved key in frontmatter
+/// - No reserved key in payload
 /// - Every card tag passes is_valid_tag_name
 /// - The plate JSON can be produced without panicking
 #[test]
 fn test_invariants_after_mutation_sequence() {
     let mut doc = make_doc();
 
-    // 1. Add some frontmatter fields
+    // 1. Add some payload fields
     doc.main_mut().set_field("author", qv("Alice")).unwrap();
     doc.main_mut().set_field("version", qv_int(3)).unwrap();
 
@@ -540,16 +540,16 @@ fn test_invariants_after_mutation_sequence() {
     // 6. Replace body
     doc.main_mut().replace_body("Updated body.");
 
-    // 7. Remove a frontmatter field
+    // 7. Remove a payload field
     doc.main_mut().remove_field("version").unwrap();
 
     // --- Assertions ---
 
-    // No reserved key in frontmatter
-    for key in doc.main().frontmatter().keys() {
+    // No reserved key in payload
+    for key in doc.main().payload().keys() {
         assert!(
             !is_reserved_name(key),
-            "reserved key '{}' found in frontmatter",
+            "reserved key '{}' found in payload",
             key
         );
     }
@@ -567,12 +567,12 @@ fn test_invariants_after_mutation_sequence() {
     assert!(json["CARDS"].is_array());
     assert_eq!(json["BODY"].as_str(), Some("Updated body."));
 
-    // Frontmatter still has expected keys
+    // Payload still has expected keys
     assert_eq!(
-        doc.main().frontmatter().get("author").unwrap().as_str(),
+        doc.main().payload().get("author").unwrap().as_str(),
         Some("Alice")
     );
-    assert!(doc.main().frontmatter().get("version").is_none());
+    assert!(doc.main().payload().get("version").is_none());
 }
 
 // ── Warnings never touched ───────────────────────────────────────────────────

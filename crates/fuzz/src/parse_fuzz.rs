@@ -11,14 +11,14 @@ proptest! {
 
     #[test]
     fn fuzz_decompose_with_dashes(s in "---[\\s\\S]*---[\\s\\S]*") {
-        // Test inputs that might look like frontmatter
+        // Test inputs that might look like payload
         let result = Document::from_markdown(&s);
         // Should either succeed or return an error, but not panic
         match result {
             Ok(doc) => {
                 // If it parsed, we should be able to access the document safely
                 let _ = doc.main().body();
-                let _ = doc.main().frontmatter();
+                let _ = doc.main().payload();
                 let _ = doc.cards();
             }
             Err(_) => {
@@ -28,12 +28,12 @@ proptest! {
     }
 
     #[test]
-    fn fuzz_decompose_valid_frontmatter(
+    fn fuzz_decompose_valid_payload(
         title in "[a-zA-Z0-9 ]{1,50}",
         author in "[a-zA-Z ]{1,30}",
         content in "\\PC{0,200}"
     ) {
-        // Test with valid-looking frontmatter
+        // Test with valid-looking payload
         let markdown = format!(
             "---\ntitle: {}\nauthor: {}\n---\n\n{}",
             title, author, content
@@ -57,7 +57,7 @@ proptest! {
         if let Ok(doc) = result {
             // Tag might create a card
             let _ = doc.cards();
-            let _ = doc.main().frontmatter();
+            let _ = doc.main().payload();
         }
     }
 
@@ -70,18 +70,18 @@ proptest! {
     }
 
     #[test]
-    fn fuzz_decompose_large_frontmatter(size in 1usize..100) {
-        // Test with large frontmatter blocks
+    fn fuzz_decompose_large_payload(size in 1usize..100) {
+        // Test with large payload blocks
         let fields: Vec<String> = (0..size)
             .map(|i| format!("field{}: value{}", i, i))
             .collect();
-        let frontmatter = fields.join("\n");
-        let markdown = format!("---\n{}\n---\n\nContent", frontmatter);
+        let payload = fields.join("\n");
+        let markdown = format!("---\n{}\n---\n\nContent", payload);
 
         let result = Document::from_markdown(&markdown);
         if let Ok(doc) = result {
-            // frontmatter has exactly the fields we provided (no BODY or CARDS keys)
-            assert!(doc.main().frontmatter().len() <= size);
+            // payload has exactly the fields we provided (no BODY or CARDS keys)
+            assert!(doc.main().payload().len() <= size);
         }
     }
 
@@ -142,7 +142,7 @@ proptest! {
         let result = Document::from_markdown(&markdown);
         if let Ok(doc) = result {
             // Should handle multiple sections
-            let _ = doc.main().frontmatter();
+            let _ = doc.main().payload();
             let _ = doc.cards();
         }
     }

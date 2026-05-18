@@ -35,7 +35,7 @@ result.artifacts[0].save("output.pdf")
 parsed.set_field("title", "Updated")
 emitted = parsed.to_markdown()
 reparsed = Document.from_markdown(emitted)
-assert reparsed.frontmatter["title"] == "Updated"
+assert reparsed.payload["title"] == "Updated"
 ```
 
 ## API Overview

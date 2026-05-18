@@ -59,7 +59,7 @@ Tests for the `inject_json` helper function:
 
 ### YAML Parser Fuzzing (`parse_fuzz`)
 
-YAML frontmatter security:
+card-yaml payload security:
 - Tests malformed YAML handling
 - Validates tag directive parsing with random inputs
 - Tests nested YAML structures for stability
@@ -95,7 +95,7 @@ The fuzzing tests are organized into four modules:
 - `convert_fuzz.rs` - Tests for markdown to Typst conversion and escaping functions
 - `emit_roundtrip_fuzz.rs` - Round-trip stability tests (parse → emit → re-parse)
 - `filter_fuzz.rs` - Tests for filter input validation and injection safety
-- `parse_fuzz.rs` - Tests for YAML frontmatter and markdown parsing
+- `parse_fuzz.rs` - Tests for card-yaml and markdown parsing
 
 All fuzzing tests use `proptest` for property-based testing, which generates random inputs to validate that security properties hold across a wide range of inputs.
 

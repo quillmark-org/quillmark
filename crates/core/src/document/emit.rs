@@ -20,7 +20,7 @@
 
 use serde_json::Value as JsonValue;
 
-use super::frontmatter::FrontmatterItem;
+use super::payload::PayloadItem;
 use super::prescan::{CommentPathSegment, NestedComment};
 use super::{Card, Document, Sentinel};
 
@@ -79,7 +79,7 @@ impl Document {
     ///   (empty-mapping omission, programmatic field removal) degrade to
     ///   own-line comments at the same indent so the comment text is preserved
     ///   even when its position shifts.
-    /// - **`!fill` tags**: round-trip via the `fill` flag on `FrontmatterItem::Field`.
+    /// - **`!fill` tags**: round-trip via the `fill` flag on `PayloadItem::Field`.
     ///
     /// # What is lost
     ///
@@ -144,8 +144,8 @@ fn emit_block(out: &mut String, card: &Card) {
 
     emit_fence_items(
         out,
-        card.frontmatter().items(),
-        card.frontmatter().nested_comments(),
+        card.payload().items(),
+        card.payload().nested_comments(),
     );
 
     out.push_str("~~~\n");
@@ -162,20 +162,20 @@ fn emit_block(out: &mut String, card: &Card) {
 /// - **Own-line / orphan.** A `Comment` that is not consumed by a field's
 ///   lookahead — own-line, or an inline orphan — renders as an own-line
 ///   `# text` comment.
-fn emit_fence_items(out: &mut String, items: &[FrontmatterItem], nested: &[NestedComment]) {
+fn emit_fence_items(out: &mut String, items: &[PayloadItem], nested: &[NestedComment]) {
     let mut i = 0;
     while i < items.len() {
         match &items[i] {
-            FrontmatterItem::Field { key, value, fill } => {
+            PayloadItem::Field { key, value, fill } => {
                 let trailer = items.get(i + 1).and_then(|next| match next {
-                    FrontmatterItem::Comment { text, inline: true } => Some(text.as_str()),
+                    PayloadItem::Comment { text, inline: true } => Some(text.as_str()),
                     _ => None,
                 });
                 let path = vec![CommentPathSegment::Key(key.clone())];
                 emit_field(out, key, value.as_json(), 0, *fill, &path, nested, trailer);
                 i += if trailer.is_some() { 2 } else { 1 };
             }
-            FrontmatterItem::Comment { text, .. } => {
+            PayloadItem::Comment { text, .. } => {
                 out.push_str("# ");
                 out.push_str(text);
                 out.push('\n');

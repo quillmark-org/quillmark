@@ -107,14 +107,14 @@ impl ValidationError {
     }
 }
 
-/// Validate a typed [`Document`] (with `IndexMap` frontmatter + typed `Card` list).
+/// Validate a typed [`Document`] (with `IndexMap` payload + typed `Card` list).
 ///
 /// This is the typed entry point used by `QuillConfig::validate_document`.
 pub fn validate_typed_document(
     config: &QuillConfig,
     doc: &Document,
 ) -> Result<(), Vec<ValidationError>> {
-    let main_fields = doc.main().frontmatter().to_index_map();
+    let main_fields = doc.main().payload().to_index_map();
     let mut errors = validate_fields_for_card_indexmap(&config.main, &main_fields, "");
 
     // Enforce body.enabled on the main card. Whitespace-only bodies are
@@ -143,7 +143,7 @@ pub fn validate_typed_document(
         };
 
         let card_path = format!("cards.{card_name}[{index}]");
-        let card_fields = card.frontmatter().to_index_map();
+        let card_fields = card.payload().to_index_map();
         errors.extend(validate_fields_for_card_indexmap(
             card_schema,
             &card_fields,
@@ -402,14 +402,14 @@ main:
     }
 
     fn doc_with_typed_cards(fm: &[(&str, serde_json::Value)], cards: Vec<Card>) -> Document {
-        use crate::document::{Frontmatter, Sentinel};
-        let mut frontmatter = IndexMap::new();
+        use crate::document::{Payload, Sentinel};
+        let mut payload = IndexMap::new();
         for (k, v) in fm {
-            frontmatter.insert(k.to_string(), QuillValue::from_json(v.clone()));
+            payload.insert(k.to_string(), QuillValue::from_json(v.clone()));
         }
         let main = Card::new_with_sentinel(
             Sentinel::Main(QuillReference::from_str("test_quill").unwrap()),
-            Frontmatter::from_index_map(frontmatter),
+            Payload::from_index_map(payload),
             String::new(),
         );
         Document::from_main_and_cards(main, cards, vec![])
@@ -739,10 +739,10 @@ main:
 "#,
         )
         .unwrap();
-        use crate::document::{Frontmatter, Sentinel};
+        use crate::document::{Payload, Sentinel};
         let main = Card::new_with_sentinel(
             Sentinel::Main(crate::version::QuillReference::from_str("test_quill").unwrap()),
-            Frontmatter::from_index_map(IndexMap::new()),
+            Payload::from_index_map(IndexMap::new()),
             "Body content that should not be here.".to_string(),
         );
         let doc = Document::from_main_and_cards(main, vec![], vec![]);

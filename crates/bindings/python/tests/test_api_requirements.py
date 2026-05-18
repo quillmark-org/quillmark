@@ -89,17 +89,17 @@ Card two.
 
 
 def test_set_field_inserts():
-    """set_field adds a new frontmatter field."""
+    """set_field adds a new payload field."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.set_field("subtitle", "A subtitle")
-    assert doc.frontmatter["subtitle"] == "A subtitle"
+    assert doc.payload["subtitle"] == "A subtitle"
 
 
 def test_set_field_updates():
-    """set_field updates an existing frontmatter field."""
+    """set_field updates an existing payload field."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.set_field("title", "New Title")
-    assert doc.frontmatter["title"] == "New Title"
+    assert doc.payload["title"] == "New Title"
 
 
 def test_set_field_reserved_name_matrix():
@@ -130,7 +130,7 @@ def test_remove_field_existing():
     doc = Document.from_markdown(SIMPLE_MD)
     val = doc.remove_field("title")
     assert val == "Hello"
-    assert "title" not in doc.frontmatter
+    assert "title" not in doc.payload
 
 
 def test_remove_field_absent():
@@ -288,14 +288,14 @@ def test_invariants_after_mutation_sequence():
     doc.move_card(3, 0)                    # appendix, note, intro, summary
     doc.remove_card(2)                     # appendix, note, summary
 
-    # Mutate frontmatter
+    # Mutate payload
     doc.set_field("extra_author", "Bob")
     doc.remove_field("extra_author")
 
-    # Assertions: no reserved key in frontmatter
+    # Assertions: no reserved key in payload
     RESERVED = {"BODY", "CARDS", "QUILL", "CARD"}
-    for key in doc.frontmatter:
-        assert key not in RESERVED, f"reserved key '{key}' found in frontmatter"
+    for key in doc.payload:
+        assert key not in RESERVED, f"reserved key '{key}' found in payload"
 
     # Every card tag is lowercase-valid (just check non-empty and lowercase)
     for card in doc.cards:
@@ -328,7 +328,7 @@ def test_to_markdown_general_round_trip():
 
     # Re-parse and assert structure survives
     doc2 = Document.from_markdown(emitted)
-    assert doc2.frontmatter["title"] == "New Title"
+    assert doc2.payload["title"] == "New Title"
     assert doc2.body.rstrip("\n") == "Updated body"
     assert len(doc2.cards) == original_card_count + 1
     assert doc2.cards[0]["tag"] == "note"
@@ -358,12 +358,12 @@ def test_to_markdown_ambiguous_string_survival():
     doc2 = Document.from_markdown(emitted)
 
     # Every value must survive as a string, not be re-interpreted
-    assert doc2.frontmatter["flag_on"] == "on"
-    assert doc2.frontmatter["flag_off"] == "off"
-    assert doc2.frontmatter["flag_yes"] == "yes"
-    assert doc2.frontmatter["flag_no"] == "no"
-    assert doc2.frontmatter["str_true"] == "true"
-    assert doc2.frontmatter["str_false"] == "false"
-    assert doc2.frontmatter["str_null"] == "null"
-    assert doc2.frontmatter["octal_str"] == "01234"
-    assert doc2.frontmatter["date_str"] == "2024-01-15"
+    assert doc2.payload["flag_on"] == "on"
+    assert doc2.payload["flag_off"] == "off"
+    assert doc2.payload["flag_yes"] == "yes"
+    assert doc2.payload["flag_no"] == "no"
+    assert doc2.payload["str_true"] == "true"
+    assert doc2.payload["str_false"] == "false"
+    assert doc2.payload["str_null"] == "null"
+    assert doc2.payload["octal_str"] == "01234"
+    assert doc2.payload["date_str"] == "2024-01-15"

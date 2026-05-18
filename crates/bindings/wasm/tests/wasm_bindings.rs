@@ -260,12 +260,12 @@ fn test_document_clone_independence() {
 
     assert!(
         original_md.contains("title: \"Hello\""),
-        "original frontmatter must be untouched after clone mutation\nGot:\n{}",
+        "original payload must be untouched after clone mutation\nGot:\n{}",
         original_md
     );
     assert!(
         clone_md.contains("title: \"Changed\""),
-        "clone frontmatter must reflect the mutation\nGot:\n{}",
+        "clone payload must reflect the mutation\nGot:\n{}",
         clone_md
     );
 

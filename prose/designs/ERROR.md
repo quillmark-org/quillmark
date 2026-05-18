@@ -14,7 +14,7 @@
 
 **`RenderError`**: main rendering error enum with variants:
 - `EngineCreation` — failed to create engine
-- `InvalidFrontmatter` — malformed YAML in a card-yaml block (also wraps `ParseError`)
+- `InvalidPayload` — malformed YAML in a card-yaml block (also wraps `ParseError`)
 - `CompilationFailed` — backend compilation failed; carries `Vec<Diagnostic>`
 - `FormatNotSupported` — requested output format not supported
 - `UnsupportedBackend` — backend not registered

@@ -19,7 +19,7 @@
 //!
 //! - [`strip_bidi_formatting`] - Remove Unicode bidi control characters
 //! - [`normalize_markdown`] - Apply all markdown-specific normalizations
-//! - [`normalize_fields`] - Normalize document frontmatter fields (bidi stripping on body only)
+//! - [`normalize_fields`] - Normalize document payload fields (bidi stripping on body only)
 //! - [`normalize_document`] - Normalize a typed [`crate::document::Document`] in-place
 //!
 //! ## Why Normalize?
@@ -304,10 +304,10 @@ fn normalize_line_endings(s: &str) -> String {
     out
 }
 
-/// Normalizes document frontmatter fields per the Quillmark §7 spec.
+/// Normalizes document payload fields per the Quillmark §7 spec.
 ///
 /// This is an internal helper used by [`normalize_document`]. It operates on
-/// the typed `IndexMap<String, QuillValue>` frontmatter; it does **not** touch
+/// the typed `IndexMap<String, QuillValue>` payload; it does **not** touch
 /// `body` or `cards` (those are normalized separately by the caller).
 ///
 /// Field names at the top level are NFC-normalized (see [`normalize_field_name`]).
@@ -335,7 +335,7 @@ pub fn normalize_fields(fields: IndexMap<String, QuillValue>) -> IndexMap<String
         .map(|(key, value)| {
             // Normalize field name to NFC form for consistent key comparison.
             let normalized_key = normalize_field_name(&key);
-            // All top-level frontmatter fields pass through verbatim — body
+            // All top-level payload fields pass through verbatim — body
             // regions are handled separately in normalize_document.
             (normalized_key, value)
         })
@@ -372,10 +372,10 @@ pub fn normalize_field_name(name: &str) -> String {
 ///
 /// # Normalization Steps
 ///
-/// 1. **Unicode NFC normalization** — Frontmatter field names are normalized to NFC form.
+/// 1. **Unicode NFC normalization** — Payload field names are normalized to NFC form.
 /// 2. **Bidi stripping** — Invisible bidirectional control characters are removed from
 ///    body regions (each `Card::body`). YAML field values in every
-///    `Card::frontmatter` pass through verbatim (spec §7).
+///    `Card::payload` pass through verbatim (spec §7).
 /// 3. **HTML comment fence fixing** — Trailing text after `-->` is preserved in body
 ///    regions only.
 ///
@@ -400,12 +400,12 @@ pub fn normalize_document(
     use crate::document::{Document, Sentinel};
 
     // NFC-normalize main-card field names; values pass through verbatim.
-    let normalized_main_fm_map = normalize_fields(doc.main().frontmatter().to_index_map());
+    let normalized_main_fm_map = normalize_fields(doc.main().payload().to_index_map());
     let normalized_main_body = normalize_markdown(doc.main().body());
     let main_sentinel = doc.main().sentinel().clone();
     let main = Card::new_with_sentinel(
         main_sentinel,
-        crate::document::Frontmatter::from_index_map(normalized_main_fm_map),
+        crate::document::Payload::from_index_map(normalized_main_fm_map),
         normalized_main_body,
     );
 
@@ -416,14 +416,14 @@ pub fn normalize_document(
         .iter()
         .map(|card| {
             let normalized_card_fields: IndexMap<String, QuillValue> = card
-                .frontmatter()
+                .payload()
                 .iter()
                 .map(|(k, v)| (normalize_field_name(k), v.clone()))
                 .collect();
             let normalized_card_body = normalize_markdown(card.body());
             Card::new_with_sentinel(
                 Sentinel::Card(card.tag()),
-                crate::document::Frontmatter::from_index_map(normalized_card_fields),
+                crate::document::Payload::from_index_map(normalized_card_fields),
                 normalized_card_body,
             )
         })
@@ -673,7 +673,7 @@ mod tests {
         );
     }
 
-    // Tests for normalize_fields (frontmatter only)
+    // Tests for normalize_fields (payload only)
 
     #[test]
     fn test_normalize_fields_other_field_chevrons_preserved() {
@@ -736,7 +736,7 @@ mod tests {
         assert_eq!(
             normalized
                 .main()
-                .frontmatter()
+                .payload()
                 .get("title")
                 .unwrap()
                 .as_str()
@@ -791,7 +791,7 @@ mod tests {
         assert_eq!(
             normalized
                 .main()
-                .frontmatter()
+                .payload()
                 .get("title")
                 .unwrap()
                 .as_str()
@@ -821,7 +821,7 @@ mod tests {
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(
             normalized.cards()[0]
-                .frontmatter()
+                .payload()
                 .get("name")
                 .unwrap()
                 .as_str()

@@ -1,13 +1,13 @@
-//! Ordered frontmatter representation.
+//! Ordered payload representation.
 //!
-//! A [`Frontmatter`] is the typed representation of a YAML fence body with the
+//! A [`Payload`] is the typed representation of a YAML fence body with the
 //! sentinel key already stripped. Unlike a plain `IndexMap`, it preserves
 //! YAML comments as first-class ordered items and carries a `fill: bool`
 //! marker on each field (for `!fill` tags).
 //!
-//! It provides both ordered iteration (over [`FrontmatterItem`]s) and
+//! It provides both ordered iteration (over [`PayloadItem`]s) and
 //! map-keyed access (`get`, `contains_key`, `insert`, `remove`) so existing
-//! callers that treat the frontmatter as a map keep working. The map-keyed
+//! callers that treat the payload as a map keep working. The map-keyed
 //! accessors walk the item vec; field count is small enough that a linear
 //! scan is fine.
 
@@ -17,10 +17,10 @@ use serde::{Deserialize, Serialize};
 use super::prescan::NestedComment;
 use crate::value::QuillValue;
 
-/// One entry in a [`Frontmatter`]: a field or a comment line.
+/// One entry in a [`Payload`]: a field or a comment line.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
-pub enum FrontmatterItem {
+pub enum PayloadItem {
     /// A YAML field (key-value pair), optionally tagged `!fill`.
     Field {
         key: String,
@@ -46,10 +46,10 @@ pub enum FrontmatterItem {
     },
 }
 
-impl FrontmatterItem {
+impl PayloadItem {
     /// Build a plain (non-fill) field entry.
     pub fn field(key: impl Into<String>, value: QuillValue) -> Self {
-        FrontmatterItem::Field {
+        PayloadItem::Field {
             key: key.into(),
             value,
             fill: false,
@@ -58,7 +58,7 @@ impl FrontmatterItem {
 
     /// Build an own-line comment item.
     pub fn comment(text: impl Into<String>) -> Self {
-        FrontmatterItem::Comment {
+        PayloadItem::Comment {
             text: text.into(),
             inline: false,
         }
@@ -67,27 +67,27 @@ impl FrontmatterItem {
     /// Build an inline (trailing) comment item. Attaches to the previous
     /// field on emit; degrades to own-line if none exists.
     pub fn comment_inline(text: impl Into<String>) -> Self {
-        FrontmatterItem::Comment {
+        PayloadItem::Comment {
             text: text.into(),
             inline: true,
         }
     }
 }
 
-/// Ordered list of frontmatter items with map-keyed convenience accessors.
+/// Ordered list of payload items with map-keyed convenience accessors.
 ///
-/// Top-level YAML comments live in `items` as [`FrontmatterItem::Comment`].
+/// Top-level YAML comments live in `items` as [`PayloadItem::Comment`].
 /// Comments inside nested mappings/sequences live in `nested_comments`,
 /// keyed by structural path; the emitter re-injects them at the matching
 /// position when serialising the value tree.
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct Frontmatter {
-    items: Vec<FrontmatterItem>,
+pub struct Payload {
+    items: Vec<PayloadItem>,
     nested_comments: Vec<NestedComment>,
 }
 
-impl Frontmatter {
-    /// Create an empty `Frontmatter`.
+impl Payload {
+    /// Create an empty `Payload`.
     pub fn new() -> Self {
         Self {
             items: Vec::new(),
@@ -99,7 +99,7 @@ impl Frontmatter {
     pub fn from_index_map(map: IndexMap<String, QuillValue>) -> Self {
         let items = map
             .into_iter()
-            .map(|(key, value)| FrontmatterItem::Field {
+            .map(|(key, value)| PayloadItem::Field {
                 key,
                 value,
                 fill: false,
@@ -112,7 +112,7 @@ impl Frontmatter {
     }
 
     /// Build from a pre-computed item list.
-    pub fn from_items(items: Vec<FrontmatterItem>) -> Self {
+    pub fn from_items(items: Vec<PayloadItem>) -> Self {
         Self {
             items,
             nested_comments: Vec::new(),
@@ -121,7 +121,7 @@ impl Frontmatter {
 
     /// Build from a pre-computed item list and a set of nested comments.
     pub fn from_items_with_nested(
-        items: Vec<FrontmatterItem>,
+        items: Vec<PayloadItem>,
         nested_comments: Vec<NestedComment>,
     ) -> Self {
         Self {
@@ -138,23 +138,23 @@ impl Frontmatter {
     }
 
     /// Ordered iterator over raw items (including comments).
-    pub fn items(&self) -> &[FrontmatterItem] {
+    pub fn items(&self) -> &[PayloadItem] {
         &self.items
     }
 
     /// Iterator over `(key, value)` pairs, skipping comments. Preserves order.
     pub fn iter(&self) -> impl Iterator<Item = (&String, &QuillValue)> + '_ {
         self.items.iter().filter_map(|item| match item {
-            FrontmatterItem::Field { key, value, .. } => Some((key, value)),
-            FrontmatterItem::Comment { .. } => None,
+            PayloadItem::Field { key, value, .. } => Some((key, value)),
+            PayloadItem::Comment { .. } => None,
         })
     }
 
     /// Iterator over field keys, skipping comments. Preserves order.
     pub fn keys(&self) -> impl Iterator<Item = &String> + '_ {
         self.items.iter().filter_map(|item| match item {
-            FrontmatterItem::Field { key, .. } => Some(key),
-            FrontmatterItem::Comment { .. } => None,
+            PayloadItem::Field { key, .. } => Some(key),
+            PayloadItem::Comment { .. } => None,
         })
     }
 
@@ -162,7 +162,7 @@ impl Frontmatter {
     pub fn len(&self) -> usize {
         self.items
             .iter()
-            .filter(|item| matches!(item, FrontmatterItem::Field { .. }))
+            .filter(|item| matches!(item, PayloadItem::Field { .. }))
             .count()
     }
 
@@ -174,7 +174,7 @@ impl Frontmatter {
     /// Look up a field value by key.
     pub fn get(&self, key: &str) -> Option<&QuillValue> {
         self.items.iter().find_map(|item| match item {
-            FrontmatterItem::Field { key: k, value, .. } if k == key => Some(value),
+            PayloadItem::Field { key: k, value, .. } if k == key => Some(value),
             _ => None,
         })
     }
@@ -190,7 +190,7 @@ impl Frontmatter {
     pub fn insert(&mut self, key: impl Into<String>, value: QuillValue) -> Option<QuillValue> {
         let key = key.into();
         for item in self.items.iter_mut() {
-            if let FrontmatterItem::Field {
+            if let PayloadItem::Field {
                 key: k,
                 value: v,
                 fill,
@@ -203,7 +203,7 @@ impl Frontmatter {
                 }
             }
         }
-        self.items.push(FrontmatterItem::Field {
+        self.items.push(PayloadItem::Field {
             key,
             value,
             fill: false,
@@ -216,7 +216,7 @@ impl Frontmatter {
     pub fn insert_fill(&mut self, key: impl Into<String>, value: QuillValue) -> Option<QuillValue> {
         let key = key.into();
         for item in self.items.iter_mut() {
-            if let FrontmatterItem::Field {
+            if let PayloadItem::Field {
                 key: k,
                 value: v,
                 fill,
@@ -229,7 +229,7 @@ impl Frontmatter {
                 }
             }
         }
-        self.items.push(FrontmatterItem::Field {
+        self.items.push(PayloadItem::Field {
             key,
             value,
             fill: true,
@@ -243,17 +243,17 @@ impl Frontmatter {
         let pos = self
             .items
             .iter()
-            .position(|item| matches!(item, FrontmatterItem::Field { key: k, .. } if k == key))?;
+            .position(|item| matches!(item, PayloadItem::Field { key: k, .. } if k == key))?;
         match self.items.remove(pos) {
-            FrontmatterItem::Field { value, .. } => Some(value),
-            FrontmatterItem::Comment { .. } => unreachable!(),
+            PayloadItem::Field { value, .. } => Some(value),
+            PayloadItem::Comment { .. } => unreachable!(),
         }
     }
 
     /// Returns `true` if a field with this key is marked `!fill`.
     pub fn is_fill(&self, key: &str) -> bool {
         self.items.iter().any(|item| match item {
-            FrontmatterItem::Field { key: k, fill, .. } => k == key && *fill,
+            PayloadItem::Field { key: k, fill, .. } => k == key && *fill,
             _ => false,
         })
     }
@@ -263,7 +263,7 @@ impl Frontmatter {
     pub fn to_index_map(&self) -> IndexMap<String, QuillValue> {
         let mut map = IndexMap::new();
         for item in &self.items {
-            if let FrontmatterItem::Field { key, value, .. } = item {
+            if let PayloadItem::Field { key, value, .. } = item {
                 map.insert(key.clone(), value.clone());
             }
         }
@@ -271,18 +271,18 @@ impl Frontmatter {
     }
 }
 
-impl<'a> IntoIterator for &'a Frontmatter {
+impl<'a> IntoIterator for &'a Payload {
     type Item = (&'a String, &'a QuillValue);
     type IntoIter = std::iter::FilterMap<
-        std::slice::Iter<'a, FrontmatterItem>,
-        fn(&'a FrontmatterItem) -> Option<(&'a String, &'a QuillValue)>,
+        std::slice::Iter<'a, PayloadItem>,
+        fn(&'a PayloadItem) -> Option<(&'a String, &'a QuillValue)>,
     >;
 
     fn into_iter(self) -> Self::IntoIter {
-        fn filter(item: &FrontmatterItem) -> Option<(&String, &QuillValue)> {
+        fn filter(item: &PayloadItem) -> Option<(&String, &QuillValue)> {
             match item {
-                FrontmatterItem::Field { key, value, .. } => Some((key, value)),
-                FrontmatterItem::Comment { .. } => None,
+                PayloadItem::Field { key, value, .. } => Some((key, value)),
+                PayloadItem::Comment { .. } => None,
             }
         }
         self.items.iter().filter_map(filter)
@@ -299,7 +299,7 @@ mod tests {
 
     #[test]
     fn insert_new_appends() {
-        let mut fm = Frontmatter::new();
+        let mut fm = Payload::new();
         fm.insert("title", qv("Hello"));
         fm.insert("author", qv("Alice"));
         assert_eq!(fm.len(), 2);
@@ -309,7 +309,7 @@ mod tests {
 
     #[test]
     fn insert_existing_preserves_position() {
-        let mut fm = Frontmatter::new();
+        let mut fm = Payload::new();
         fm.insert("a", qv("1"));
         fm.insert("b", qv("2"));
         fm.insert("a", qv("updated"));
@@ -320,7 +320,7 @@ mod tests {
 
     #[test]
     fn insert_clears_fill() {
-        let mut fm = Frontmatter::new();
+        let mut fm = Payload::new();
         fm.insert_fill("k", qv("placeholder"));
         assert!(fm.is_fill("k"));
         fm.insert("k", qv("user value"));
@@ -329,7 +329,7 @@ mod tests {
 
     #[test]
     fn insert_fill_preserves_position_and_sets_flag() {
-        let mut fm = Frontmatter::new();
+        let mut fm = Payload::new();
         fm.insert("k", qv("v"));
         fm.insert_fill("k", qv("placeholder"));
         assert!(fm.is_fill("k"));
@@ -339,20 +339,20 @@ mod tests {
     #[test]
     fn remove_leaves_comments_alone() {
         let items = vec![
-            FrontmatterItem::comment("header"),
-            FrontmatterItem::field("a", qv("1")),
-            FrontmatterItem::comment("mid"),
-            FrontmatterItem::field("b", qv("2")),
+            PayloadItem::comment("header"),
+            PayloadItem::field("a", qv("1")),
+            PayloadItem::comment("mid"),
+            PayloadItem::field("b", qv("2")),
         ];
-        let mut fm = Frontmatter::from_items(items);
+        let mut fm = Payload::from_items(items);
         let removed = fm.remove("a").unwrap();
         assert_eq!(removed.as_str(), Some("1"));
         let comments: Vec<&str> = fm
             .items()
             .iter()
             .filter_map(|item| match item {
-                FrontmatterItem::Comment { text, .. } => Some(text.as_str()),
-                FrontmatterItem::Field { .. } => None,
+                PayloadItem::Comment { text, .. } => Some(text.as_str()),
+                PayloadItem::Field { .. } => None,
             })
             .collect();
         assert_eq!(comments, vec!["header", "mid"]);
@@ -361,11 +361,11 @@ mod tests {
     #[test]
     fn map_style_iter_skips_comments() {
         let items = vec![
-            FrontmatterItem::comment("c"),
-            FrontmatterItem::field("a", qv("1")),
-            FrontmatterItem::field("b", qv("2")),
+            PayloadItem::comment("c"),
+            PayloadItem::field("a", qv("1")),
+            PayloadItem::field("b", qv("2")),
         ];
-        let fm = Frontmatter::from_items(items);
+        let fm = Payload::from_items(items);
         let pairs: Vec<(String, String)> = fm
             .iter()
             .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_string()))

@@ -31,25 +31,25 @@ const TEST_PLATE = `#import "@local/quillmark-helper:0.1.0": data
 #body`
 
 describe('Document.fromMarkdown', () => {
-  it('should parse markdown with YAML frontmatter', () => {
+  it('should parse markdown with YAML payload', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
     expect(doc).toBeDefined()
     expect(doc.quillRef).toBe('test_quill')
   })
 
-  it('should expose typed frontmatter (no QUILL/BODY/CARDS)', () => {
+  it('should expose typed payload (no QUILL/BODY/CARDS)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
-    expect(doc.main.frontmatter).toBeDefined()
-    expect(doc.main.frontmatter instanceof Object).toBe(true)
-    expect(doc.main.frontmatter.title).toBe('Test Document')
-    expect(doc.main.frontmatter.author).toBe('Test Author')
-    // QUILL, BODY, CARDS must NOT appear in frontmatter
-    expect(doc.main.frontmatter.quill).toBeUndefined()
-    expect(doc.main.frontmatter.QUILL).toBeUndefined()
-    expect(doc.main.frontmatter.BODY).toBeUndefined()
-    expect(doc.main.frontmatter.CARDS).toBeUndefined()
+    expect(doc.main.payload).toBeDefined()
+    expect(doc.main.payload instanceof Object).toBe(true)
+    expect(doc.main.payload.title).toBe('Test Document')
+    expect(doc.main.payload.author).toBe('Test Author')
+    // QUILL, BODY, CARDS must NOT appear in payload
+    expect(doc.main.payload.quill).toBeUndefined()
+    expect(doc.main.payload.QUILL).toBeUndefined()
+    expect(doc.main.payload.BODY).toBeUndefined()
+    expect(doc.main.payload.CARDS).toBeUndefined()
   })
 
   it('should expose body as a string', () => {
@@ -85,7 +85,7 @@ Card body.
 
     expect(doc.cards.length).toBe(1)
     expect(doc.cards[0].tag).toBe('note')
-    expect(doc.cards[0].frontmatter.foo).toBe('bar')
+    expect(doc.cards[0].payload.foo).toBe('bar')
     expect(doc.cards[0].body).toContain('Card body.')
   })
 
@@ -95,7 +95,7 @@ Card body.
     expect(doc.warnings.length).toBe(0)
   })
 
-  it('should throw on invalid YAML frontmatter', () => {
+  it('should throw on invalid YAML payload', () => {
     const badMarkdown = `~~~card-yaml
 #@quill: test_quill
 #@kind: main
@@ -169,11 +169,11 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
     // stripped but the terminator stays, so `doc2.main.body === 'Updated body\n'`. The card
     // body is at EOF and has no F2 separator, so it survives byte-for-byte.
     const doc2 = Document.fromMarkdown(emitted)
-    expect(doc2.main.frontmatter.title).toBe('New Title')
+    expect(doc2.main.payload.title).toBe('New Title')
     expect(doc2.main.body).toBe('Updated body\n')
     expect(doc2.cards.length).toBe(originalCardCount + 1)
     expect(doc2.cards[0].tag).toBe('note')
-    expect(doc2.cards[0].frontmatter.author).toBe('Alice')
+    expect(doc2.cards[0].payload.author).toBe('Alice')
     expect(doc2.cards[0].body).toBe('Hello')
   })
 
@@ -196,15 +196,15 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
     const doc2 = Document.fromMarkdown(emitted)
 
     // Every value must survive as a string, not be re-interpreted as bool/null/number
-    expect(doc2.main.frontmatter.flag_on).toBe('on')
-    expect(doc2.main.frontmatter.flag_off).toBe('off')
-    expect(doc2.main.frontmatter.flag_yes).toBe('yes')
-    expect(doc2.main.frontmatter.flag_no).toBe('no')
-    expect(doc2.main.frontmatter.str_true).toBe('true')
-    expect(doc2.main.frontmatter.str_false).toBe('false')
-    expect(doc2.main.frontmatter.str_null).toBe('null')
-    expect(doc2.main.frontmatter.octal_str).toBe('01234')
-    expect(doc2.main.frontmatter.date_str).toBe('2024-01-15')
+    expect(doc2.main.payload.flag_on).toBe('on')
+    expect(doc2.main.payload.flag_off).toBe('off')
+    expect(doc2.main.payload.flag_yes).toBe('yes')
+    expect(doc2.main.payload.flag_no).toBe('no')
+    expect(doc2.main.payload.str_true).toBe('true')
+    expect(doc2.main.payload.str_false).toBe('false')
+    expect(doc2.main.payload.str_null).toBe('null')
+    expect(doc2.main.payload.octal_str).toBe('01234')
+    expect(doc2.main.payload.date_str).toBe('2024-01-15')
   })
 })
 
@@ -318,16 +318,16 @@ title: Mismatch Test
 // ---------------------------------------------------------------------------
 
 describe('Document editor surface — setField / removeField', () => {
-  it('setField inserts a new frontmatter field', () => {
+  it('setField inserts a new payload field', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.setField('subtitle', 'A subtitle')
-    expect(doc.main.frontmatter.subtitle).toBe('A subtitle')
+    expect(doc.main.payload.subtitle).toBe('A subtitle')
   })
 
   it('setField updates an existing field', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.setField('title', 'Updated')
-    expect(doc.main.frontmatter.title).toBe('Updated')
+    expect(doc.main.payload.title).toBe('Updated')
   })
 
   it('setField throws EditError::ReservedName for BODY', () => {
@@ -359,7 +359,7 @@ describe('Document editor surface — setField / removeField', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const removed = doc.removeField('title')
     expect(removed).toBe('Test Document')
-    expect(doc.main.frontmatter.title).toBeUndefined()
+    expect(doc.main.payload.title).toBeUndefined()
   })
 
   it('removeField returns undefined when field absent', () => {
@@ -487,8 +487,8 @@ Card two.
     const doc = Document.fromMarkdown(MD_WITH_CARDS)
     doc.setCardTag(0, 'annotation')
     expect(doc.cards[0].tag).toBe('annotation')
-    // Frontmatter preserved across rename.
-    expect(doc.cards[0].frontmatter).toBeDefined()
+    // Payload preserved across rename.
+    expect(doc.cards[0].payload).toBeDefined()
   })
 
   it('setCardTag throws InvalidTagName for empty/uppercase/dashed tags', () => {
@@ -529,7 +529,7 @@ describe('Document.equals', () => {
     expect(a.equals(b)).toBe(true)
   })
 
-  it('returns false after a frontmatter mutation', () => {
+  it('returns false after a payload mutation', () => {
     const a = Document.fromMarkdown(TEST_MARKDOWN)
     const b = Document.fromMarkdown(TEST_MARKDOWN)
     b.setField('title', 'Different')
@@ -576,7 +576,7 @@ Card body.
   it('updateCardField sets a field on a card', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
     doc.updateCardField(0, 'content', 'hello')
-    expect(doc.cards[0].frontmatter.content).toBe('hello')
+    expect(doc.cards[0].payload.content).toBe('hello')
   })
 
   it('updateCardField throws EditError::ReservedName for BODY', () => {
@@ -593,7 +593,7 @@ Card body.
     const doc = Document.fromMarkdown(MD_WITH_CARD)
     const removed = doc.removeCardField(0, 'foo')
     expect(removed).toBe('bar')
-    expect('foo' in doc.cards[0].frontmatter).toBe(false)
+    expect('foo' in doc.cards[0].payload).toBe(false)
   })
 
   it('removeCardField returns undefined when field absent', () => {
@@ -629,7 +629,7 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
     doc.setQuillRef('updated_quill')
 
     // Assert state
-    expect(doc.main.frontmatter.author).toBe('Bob')
+    expect(doc.main.payload.author).toBe('Bob')
     expect(doc.main.body).toBe('New body text.')
     expect(doc.cards.length).toBe(1)
     expect(doc.cards[0].tag).toBe('note')
@@ -637,7 +637,7 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
     expect(doc.quillRef).toBe('updated_quill')
 
     // Original title still present
-    expect(doc.main.frontmatter.title).toBe('Test Document')
+    expect(doc.main.payload.title).toBe('Test Document')
 
     // Warnings untouched
     expect(Array.isArray(doc.warnings)).toBe(true)
@@ -765,8 +765,8 @@ describe('Document.clone', () => {
 
     clone.setField('title', 'Changed')
 
-    expect(doc.main.frontmatter.title).toBe('Test Document')
-    expect(clone.main.frontmatter.title).toBe('Changed')
+    expect(doc.main.payload.title).toBe('Test Document')
+    expect(clone.main.payload.title).toBe('Changed')
   })
 
   it('preserves parse-time warnings on the clone', () => {

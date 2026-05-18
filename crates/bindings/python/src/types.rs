@@ -246,7 +246,7 @@ impl PyQuill {
 /// - `from_markdown(markdown)` — static constructor
 /// - `to_markdown()` — emit canonical Quillmark Markdown
 /// - `quill_ref()` — quill reference string
-/// - `frontmatter` — dict of typed YAML fields (no QUILL/BODY/CARDS)
+/// - `payload` — dict of typed YAML fields (no QUILL/BODY/CARDS)
 /// - `body` — global Markdown body (str, never None)
 /// - `cards` — list of `Card` dicts
 /// - `warnings` — list of `Diagnostic` objects
@@ -309,13 +309,13 @@ impl PyDocument {
         self.inner.main().body()
     }
 
-    /// Typed YAML frontmatter fields on the main card (no QUILL, BODY, or CARDS keys).
+    /// Typed YAML payload fields on the main card (no QUILL, BODY, or CARDS keys).
     ///
-    /// Convenience accessor equivalent to `doc.main['frontmatter']`.
+    /// Convenience accessor equivalent to `doc.main['payload']`.
     #[getter]
-    fn frontmatter<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+    fn payload<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let dict = PyDict::new(py);
-        for (key, value) in self.inner.main().frontmatter().iter() {
+        for (key, value) in self.inner.main().payload().iter() {
             dict.set_item(key, quillvalue_to_py(py, value)?)?;
         }
         Ok(dict)
@@ -323,8 +323,8 @@ impl PyDocument {
 
     /// The document's main (entry) card as a dict.
     ///
-    /// Keys: `tag` (str), `frontmatter` (dict), `frontmatter_items` (list),
-    /// `fields` (dict — alias of `frontmatter`), `body` (str).
+    /// Keys: `tag` (str), `payload` (dict), `payload_items` (list),
+    /// `fields` (dict — alias of `payload`), `body` (str).
     #[getter]
     fn main<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         card_to_pydict(py, self.inner.main())
@@ -332,8 +332,8 @@ impl PyDocument {
 
     /// Ordered list of composable card blocks.
     ///
-    /// Each card is a dict with keys: `tag` (str), `frontmatter` (dict),
-    /// `frontmatter_items` (list), `fields` (dict), `body` (str).
+    /// Each card is a dict with keys: `tag` (str), `payload` (dict),
+    /// `payload_items` (list), `fields` (dict), `body` (str).
     #[getter]
     fn cards<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         let mut result = Vec::new();
@@ -345,7 +345,7 @@ impl PyDocument {
 
     // ── Mutators ──────────────────────────────────────────────────────────────
 
-    /// Set a frontmatter field by name on the main card.
+    /// Set a payload field by name on the main card.
     ///
     /// Convenience method equivalent to `doc.main_mut().set_field(name, value)`.
     /// Clears any `!fill` marker on the field.
@@ -362,7 +362,7 @@ impl PyDocument {
             .map_err(convert_edit_error)
     }
 
-    /// Set a frontmatter field on the main card AND mark it as `!fill`.
+    /// Set a payload field on the main card AND mark it as `!fill`.
     ///
     /// Convenience method equivalent to `doc.main_mut().set_fill(name, value)`.
     fn set_fill(&mut self, name: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
@@ -373,7 +373,7 @@ impl PyDocument {
             .map_err(convert_edit_error)
     }
 
-    /// Remove a frontmatter field from the main card, returning the value or `None`.
+    /// Remove a payload field from the main card, returning the value or `None`.
     ///
     /// Raises `quillmark.EditError` if `name` is reserved (`BODY`, `CARDS`,
     /// `QUILL`, `CARD`) or does not match `[a-z_][a-z0-9_]*`. Absence of an
@@ -467,7 +467,7 @@ impl PyDocument {
 
     /// Replace the tag of the composable card at `index`.
     ///
-    /// Mutates only the sentinel — the card's frontmatter and body are
+    /// Mutates only the sentinel — the card's payload and body are
     /// untouched. Schema-aware migration (clearing orphan fields, applying
     /// new defaults) is the caller's responsibility; `set_card_tag` is a
     /// structural primitive.
@@ -714,26 +714,26 @@ fn card_to_pydict<'py>(
     d.set_item("sentinel", if card.is_main() { "main" } else { "card" })?;
     d.set_item("tag", card.tag())?;
 
-    // Map-keyed frontmatter view (values only, no comments).
+    // Map-keyed payload view (values only, no comments).
     let fm = PyDict::new(py);
-    for (k, v) in card.frontmatter().iter() {
+    for (k, v) in card.payload().iter() {
         fm.set_item(k, quillvalue_to_py(py, v)?)?;
     }
-    d.set_item("frontmatter", fm.clone())?;
+    d.set_item("payload", fm.clone())?;
     d.set_item("fields", fm)?;
 
     // Ordered item list with comments and fill flags.
     let items = pyo3::types::PyList::empty(py);
-    for item in card.frontmatter().items() {
+    for item in card.payload().items() {
         let entry = PyDict::new(py);
         match item {
-            quillmark_core::FrontmatterItem::Field { key, value, fill } => {
+            quillmark_core::PayloadItem::Field { key, value, fill } => {
                 entry.set_item("kind", "field")?;
                 entry.set_item("key", key)?;
                 entry.set_item("value", quillvalue_to_py(py, value)?)?;
                 entry.set_item("fill", *fill)?;
             }
-            quillmark_core::FrontmatterItem::Comment { text, inline } => {
+            quillmark_core::PayloadItem::Comment { text, inline } => {
                 entry.set_item("kind", "comment")?;
                 entry.set_item("text", text)?;
                 entry.set_item("inline", *inline)?;
@@ -741,7 +741,7 @@ fn card_to_pydict<'py>(
         }
         items.append(entry)?;
     }
-    d.set_item("frontmatter_items", items)?;
+    d.set_item("payload_items", items)?;
 
     d.set_item("body", card.body())?;
     Ok(d)

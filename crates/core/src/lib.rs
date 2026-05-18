@@ -21,7 +21,7 @@
 //! let markdown = "~~~card-yaml\n#@quill: my_quill\n#@kind: main\ntitle: Example\n~~~\n\n# Content";
 //! let doc = Document::from_markdown(markdown).unwrap();
 //! let title = doc.main()
-//!     .frontmatter()
+//!     .payload()
 //!     .get("title")
 //!     .and_then(|v| v.as_str())
 //!     .unwrap_or("Untitled");
@@ -45,7 +45,7 @@
 
 pub mod document;
 pub use document::{
-    Card, Document, EditError, Frontmatter, FrontmatterItem, ParseOutput, Sentinel,
+    Card, Document, EditError, Payload, PayloadItem, ParseOutput, Sentinel,
 };
 
 pub mod backend;

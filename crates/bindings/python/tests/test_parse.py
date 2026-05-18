@@ -13,13 +13,13 @@ QUILLS_PATH = RESOURCES_PATH / "quills"
 
 
 def test_parse_markdown(taro_md):
-    """Test parsing markdown with frontmatter."""
+    """Test parsing markdown with payload."""
     doc = Document.from_markdown(taro_md)
-    assert "Ice Cream" in str(doc.frontmatter.get("title", ""))
+    assert "Ice Cream" in str(doc.payload.get("title", ""))
 
 
 def test_parse_invalid_yaml():
-    """Test parsing invalid YAML frontmatter."""
+    """Test parsing invalid YAML payload."""
     invalid_md = """---
 title: [unclosed bracket
 ---
@@ -30,13 +30,13 @@ Content
         Document.from_markdown(invalid_md)
 
 
-def test_frontmatter_access(taro_md):
-    """Test accessing typed frontmatter (no BODY/CARDS/QUILL)."""
+def test_payload_access(taro_md):
+    """Test accessing typed payload (no BODY/CARDS/QUILL)."""
     doc = Document.from_markdown(taro_md)
-    fm = doc.frontmatter
+    fm = doc.payload
     assert "title" in fm
     assert "Ice Cream" in fm["title"]
-    # BODY, CARDS, QUILL must NOT appear in frontmatter
+    # BODY, CARDS, QUILL must NOT appear in payload
     assert "BODY" not in fm
     assert "CARDS" not in fm
     assert "QUILL" not in fm

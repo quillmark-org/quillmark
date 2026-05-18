@@ -28,7 +28,7 @@ Supported field types:
 
 ## Type coercion
 
-`QuillConfig::coerce_frontmatter` and `coerce_card` run before validation.
+`QuillConfig::coerce_payload` and `coerce_card` run before validation.
 
 - Returns `Result<IndexMap<String, QuillValue>, CoercionError>`
 - Coerces top-level fields and per-card fields to their declared types

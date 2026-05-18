@@ -95,7 +95,7 @@ pub fn convert_render_error(err: RenderError) -> PyErr {
             }
             py_err
         }
-        RenderError::InvalidFrontmatter { diag } => {
+        RenderError::InvalidPayload { diag } => {
             with_diag_attached(py, ParseError::new_err(diag.message.clone()), *diag)
         }
         RenderError::EngineCreation { diag }

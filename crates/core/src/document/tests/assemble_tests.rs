@@ -3,7 +3,7 @@ use crate::document::sentinel::is_valid_tag_name;
 use crate::document::Document;
 
 #[test]
-fn test_no_frontmatter() {
+fn test_no_payload() {
     let markdown = "# Hello World\n\nThis is a test.";
     let result = decompose(markdown);
     assert!(result.is_err());
@@ -46,7 +46,7 @@ fn test_missing_quill_field_diagnostic_code() {
     // Documents with no `~~~card-yaml` block at all surface the dedicated
     // `parse::missing_quill_field` code.
     let cases = [
-        "# Hello World\n\nNo frontmatter here.",
+        "# Hello World\n\nNo payload here.",
         "Just prose, no card-yaml block.",
     ];
     for input in cases {
@@ -62,7 +62,7 @@ fn test_missing_quill_field_diagnostic_code() {
 }
 
 #[test]
-fn test_with_frontmatter() {
+fn test_with_payload() {
     let markdown = "~~~card-yaml
 #@quill: test_quill
 #@kind: main
@@ -79,7 +79,7 @@ This is the body.";
     assert_eq!(doc.main().body(), "\n# Hello World\n\nThis is the body.");
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -88,20 +88,20 @@ This is the body.";
     );
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("author")
             .unwrap()
             .as_str()
             .unwrap(),
         "Test Author"
     );
-    assert_eq!(doc.main().frontmatter().len(), 2); // title, author
+    assert_eq!(doc.main().payload().len(), 2); // title, author
     assert_eq!(doc.cards().len(), 0);
     assert_eq!(doc.quill_reference().name, "test_quill");
 }
 
 #[test]
-fn test_complex_yaml_frontmatter() {
+fn test_complex_yaml_payload() {
     let markdown = "~~~card-yaml
 #@quill: test_quill
 #@kind: main
@@ -122,7 +122,7 @@ Content here.";
     assert_eq!(doc.main().body(), "\nContent here.");
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -132,7 +132,7 @@ Content here.";
 
     let tags = doc
         .main()
-        .frontmatter()
+        .payload()
         .get("tags")
         .unwrap()
         .as_array()
@@ -161,7 +161,7 @@ Content here.";
 }
 
 #[test]
-fn test_unclosed_frontmatter() {
+fn test_unclosed_payload() {
     // Root card-yaml block without a closing `~~~` fence.
     let markdown = "~~~card-yaml
 #@quill: test_quill
@@ -205,7 +205,7 @@ Body of item 1.";
     assert_eq!(doc.main().body(), "\nMain body content.\n");
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -217,7 +217,7 @@ Body of item 1.";
     let card = &doc.cards()[0];
     assert_eq!(card.tag(), "items");
     assert_eq!(
-        card.frontmatter().get("name").unwrap().as_str().unwrap(),
+        card.payload().get("name").unwrap().as_str().unwrap(),
         "Item 1"
     );
     // Last card body at EOF: no blank-line separator to strip.
@@ -253,14 +253,14 @@ Second item body.";
     let card1 = &doc.cards()[0];
     assert_eq!(card1.tag(), "items");
     assert_eq!(
-        card1.frontmatter().get("name").unwrap().as_str().unwrap(),
+        card1.payload().get("name").unwrap().as_str().unwrap(),
         "Item 1"
     );
 
     let card2 = &doc.cards()[1];
     assert_eq!(card2.tag(), "items");
     assert_eq!(
-        card2.frontmatter().get("name").unwrap().as_str().unwrap(),
+        card2.payload().get("name").unwrap().as_str().unwrap(),
         "Item 2"
     );
 }
@@ -294,7 +294,7 @@ Section 2 content.";
 
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -323,7 +323,7 @@ Body without metadata.";
     assert_eq!(doc.cards().len(), 1);
     let card = &doc.cards()[0];
     assert_eq!(card.tag(), "items");
-    assert!(card.frontmatter().is_empty());
+    assert!(card.payload().is_empty());
     assert_eq!(card.body(), "\nBody without metadata.");
 }
 
@@ -369,7 +369,7 @@ Item body";
 
 #[test]
 fn test_card_name_collision_with_array_field() {
-    // Card kind names CAN now conflict with frontmatter field names.
+    // Card kind names CAN now conflict with payload field names.
     let markdown = "~~~card-yaml
 #@quill: test_quill
 #@kind: main
@@ -441,7 +441,7 @@ BODY: Test
 
 #[test]
 fn test_reserved_field_cards_rejected() {
-    // CARDS reserved inside the root frontmatter.
+    // CARDS reserved inside the root payload.
     let markdown = "~~~card-yaml
 #@quill: test_quill
 #@kind: main
@@ -470,7 +470,7 @@ Here is some code:
 ```yaml
 ~~~card-yaml
 #@kind: code_example
-fake: frontmatter
+fake: payload
 ~~~
 ```
 
@@ -479,8 +479,8 @@ More content.
 
     let doc = decompose(markdown).unwrap();
     // The card-yaml inside the code block should NOT be parsed as metadata.
-    assert!(doc.main().body().contains("fake: frontmatter"));
-    assert!(doc.main().frontmatter().get("fake").is_none());
+    assert!(doc.main().body().contains("fake: payload"));
+    assert!(doc.main().payload().get("fake").is_none());
     assert_eq!(doc.cards().len(), 0);
 }
 
@@ -497,7 +497,7 @@ Here is some code:
 ````yaml
 ~~~card-yaml
 #@kind: code_example
-fake: frontmatter
+fake: payload
 ~~~
 ````
 
@@ -505,8 +505,8 @@ More content.
 ";
 
     let doc = decompose(markdown).unwrap();
-    assert!(doc.main().body().contains("fake: frontmatter"));
-    assert!(doc.main().frontmatter().get("fake").is_none());
+    assert!(doc.main().body().contains("fake: payload"));
+    assert!(doc.main().payload().get("fake").is_none());
     assert_eq!(doc.cards().len(), 0);
 }
 
@@ -557,14 +557,14 @@ Section 1 body";
     let card0 = &doc.cards()[0];
     assert_eq!(card0.tag(), "items");
     assert_eq!(
-        card0.frontmatter().get("name").unwrap().as_str().unwrap(),
+        card0.payload().get("name").unwrap().as_str().unwrap(),
         "Item 1"
     );
 
     let card1 = &doc.cards()[1];
     assert_eq!(card1.tag(), "sections");
     assert_eq!(
-        card1.frontmatter().get("title").unwrap().as_str().unwrap(),
+        card1.payload().get("title").unwrap().as_str().unwrap(),
         "Section 1"
     );
 }
@@ -602,7 +602,7 @@ Third";
 
     for (i, card) in doc.cards().iter().enumerate() {
         assert_eq!(card.tag(), "items");
-        let id = card.frontmatter().get("id").unwrap().as_i64().unwrap();
+        let id = card.payload().get("id").unwrap().as_i64().unwrap();
         assert_eq!(id, (i + 1) as i64);
     }
 }
@@ -655,10 +655,10 @@ rating: 4
 
     let doc = decompose(markdown).unwrap();
 
-    // Verify global frontmatter
+    // Verify global payload
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -667,7 +667,7 @@ rating: 4
     );
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("author")
             .unwrap()
             .as_str()
@@ -676,7 +676,7 @@ rating: 4
     );
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("date")
             .unwrap()
             .as_str()
@@ -694,7 +694,7 @@ rating: 4
     assert_eq!(doc.cards()[0].tag(), "products");
     assert_eq!(
         doc.cards()[0]
-            .frontmatter()
+            .payload()
             .get("name")
             .unwrap()
             .as_str()
@@ -703,7 +703,7 @@ rating: 4
     );
     assert_eq!(
         doc.cards()[0]
-            .frontmatter()
+            .payload()
             .get("price")
             .unwrap()
             .as_f64()
@@ -714,7 +714,7 @@ rating: 4
     assert_eq!(doc.cards()[1].tag(), "products");
     assert_eq!(
         doc.cards()[1]
-            .frontmatter()
+            .payload()
             .get("name")
             .unwrap()
             .as_str()
@@ -726,7 +726,7 @@ rating: 4
     assert_eq!(doc.cards()[2].tag(), "reviews");
     assert_eq!(
         doc.cards()[2]
-            .frontmatter()
+            .payload()
             .get("product")
             .unwrap()
             .as_str()
@@ -735,7 +735,7 @@ rating: 4
     );
     assert_eq!(
         doc.cards()[2]
-            .frontmatter()
+            .payload()
             .get("rating")
             .unwrap()
             .as_i64()
@@ -743,8 +743,8 @@ rating: 4
         5
     );
 
-    // Frontmatter has 3 fields: title, author, date
-    assert_eq!(doc.main().frontmatter().len(), 3);
+    // Payload has 3 fields: title, author, date
+    assert_eq!(doc.main().payload().len(), 3);
 }
 
 #[test]
@@ -762,7 +762,7 @@ This is the memo body.";
     assert_eq!(doc.quill_reference().name, "usaf_memo");
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("memo_for")
             .unwrap()
             .as_array()
@@ -795,7 +795,7 @@ Section 1 body.";
     assert_eq!(doc.quill_reference().name, "document");
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -878,7 +878,7 @@ fn test_card_wrong_kind_sentinel() {
 }
 
 #[test]
-fn test_blank_lines_in_frontmatter() {
+fn test_blank_lines_in_payload() {
     let markdown = "~~~card-yaml
 #@quill: test_quill
 #@kind: main
@@ -899,7 +899,7 @@ This is the body.";
     assert_eq!(doc.main().body(), "\n# Hello World\n\nThis is the body.");
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -908,7 +908,7 @@ This is the body.";
     );
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("author")
             .unwrap()
             .as_str()
@@ -917,7 +917,7 @@ This is the body.";
     );
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("description")
             .unwrap()
             .as_str()
@@ -926,7 +926,7 @@ This is the body.";
     );
     let tags = doc
         .main()
-        .frontmatter()
+        .payload()
         .get("tags")
         .unwrap()
         .as_array()
@@ -959,14 +959,14 @@ Body of item 1.";
     let card = &doc.cards()[0];
     assert_eq!(card.tag(), "items");
     assert_eq!(
-        card.frontmatter().get("name").unwrap().as_str().unwrap(),
+        card.payload().get("name").unwrap().as_str().unwrap(),
         "Item 1"
     );
     assert_eq!(
-        card.frontmatter().get("price").unwrap().as_f64().unwrap(),
+        card.payload().get("price").unwrap().as_f64().unwrap(),
         19.99
     );
-    let tags = card.frontmatter().get("tags").unwrap().as_array().unwrap();
+    let tags = card.payload().get("tags").unwrap().as_array().unwrap();
     assert_eq!(tags.len(), 2);
 }
 
@@ -1030,7 +1030,7 @@ Body content.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -1039,7 +1039,7 @@ Body content.";
     );
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("author")
             .unwrap()
             .as_str()
@@ -1048,7 +1048,7 @@ Body content.";
     );
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("version")
             .unwrap()
             .as_f64()
@@ -1066,7 +1066,7 @@ fn test_extended_metadata_demo_file() {
 
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -1075,7 +1075,7 @@ fn test_extended_metadata_demo_file() {
     );
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("author")
             .unwrap()
             .as_str()
@@ -1085,7 +1085,7 @@ fn test_extended_metadata_demo_file() {
     // version is parsed as a number by YAML
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("version")
             .unwrap()
             .as_f64()
@@ -1115,7 +1115,7 @@ fn test_extended_metadata_demo_file() {
     assert_eq!(doc.cards()[0].tag(), "features");
     assert_eq!(
         doc.cards()[0]
-            .frontmatter()
+            .payload()
             .get("name")
             .unwrap()
             .as_str()
@@ -1243,10 +1243,10 @@ Use <<card body>> here.";
 
     let doc = decompose(markdown).unwrap();
 
-    // Frontmatter scalar, array, nested map.
+    // Payload scalar, array, nested map.
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -1255,7 +1255,7 @@ Use <<card body>> here.";
     );
     let items = doc
         .main()
-        .frontmatter()
+        .payload()
         .get("items")
         .unwrap()
         .as_array()
@@ -1264,7 +1264,7 @@ Use <<card body>> here.";
     assert_eq!(items[1].as_str().unwrap(), "<<second>>");
     let metadata = doc
         .main()
-        .frontmatter()
+        .payload()
         .get("metadata")
         .unwrap()
         .as_object()
@@ -1284,7 +1284,7 @@ Use <<card body>> here.";
     // Card yaml and body.
     let card = &doc.cards()[0];
     assert_eq!(
-        card.frontmatter()
+        card.payload()
             .get("description")
             .unwrap()
             .as_str()
@@ -1306,7 +1306,7 @@ Body.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("count")
             .unwrap()
             .as_i64()
@@ -1327,7 +1327,7 @@ Body.";
     let doc = decompose(markdown).unwrap();
     assert!(doc
         .main()
-        .frontmatter()
+        .payload()
         .get("active")
         .unwrap()
         .as_bool()
@@ -1383,7 +1383,7 @@ fn test_line_ending_normalization() {
         let doc = decompose(markdown).unwrap();
         assert_eq!(
             doc.main()
-                .frontmatter()
+                .payload()
                 .get("title")
                 .unwrap()
                 .as_str()
@@ -1394,12 +1394,12 @@ fn test_line_ending_normalization() {
 }
 
 #[test]
-fn test_frontmatter_at_eof_no_trailing_newline() {
+fn test_payload_at_eof_no_trailing_newline() {
     let markdown = "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Test\n~~~";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -1418,7 +1418,7 @@ fn test_unicode_in_yaml_keys() {
     let doc = decompose(markdown).unwrap();
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("titre")
             .unwrap()
             .as_str()
@@ -1427,7 +1427,7 @@ fn test_unicode_in_yaml_keys() {
     );
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("タイトル")
             .unwrap()
             .as_str()
@@ -1442,7 +1442,7 @@ fn test_unicode_in_yaml_values() {
     let doc = decompose(markdown).unwrap();
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -1477,7 +1477,7 @@ Body.";
     let doc = decompose(markdown).unwrap();
     let desc = doc
         .main()
-        .frontmatter()
+        .payload()
         .get("description")
         .unwrap()
         .as_str()
@@ -1501,7 +1501,7 @@ Body.";
     let doc = decompose(markdown).unwrap();
     let desc = doc
         .main()
-        .frontmatter()
+        .payload()
         .get("description")
         .unwrap()
         .as_str()
@@ -1513,7 +1513,7 @@ Body.";
 fn test_yaml_null_value() {
     let markdown = "~~~card-yaml\n#@quill: test_quill\n#@kind: main\noptional: null\n~~~\n\nBody.";
     let doc = decompose(markdown).unwrap();
-    assert!(doc.main().frontmatter().get("optional").unwrap().is_null());
+    assert!(doc.main().payload().get("optional").unwrap().is_null());
 }
 
 #[test]
@@ -1522,7 +1522,7 @@ fn test_yaml_empty_string_value() {
     let doc = decompose(markdown).unwrap();
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("empty")
             .unwrap()
             .as_str()
@@ -1538,7 +1538,7 @@ fn test_yaml_special_characters_in_string() {
     let doc = decompose(markdown).unwrap();
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("special")
             .unwrap()
             .as_str()
@@ -1564,7 +1564,7 @@ Body.";
     let doc = decompose(markdown).unwrap();
     let config = doc
         .main()
-        .frontmatter()
+        .payload()
         .get("config")
         .unwrap()
         .as_object()
@@ -1663,7 +1663,7 @@ Body content.";
     assert_eq!(doc.quill_reference().name, "my_quill");
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -1672,7 +1672,7 @@ Body content.";
     );
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("author")
             .unwrap()
             .as_str()
@@ -1817,7 +1817,7 @@ fn test_f2_strip_does_not_overstrip_content_newlines() {
 }
 
 #[test]
-fn test_no_body_after_frontmatter() {
+fn test_no_body_after_payload() {
     let markdown = "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Test\n~~~";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.main().body(), "");
@@ -1857,7 +1857,7 @@ Body.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("count")
             .unwrap()
             .as_i64()
@@ -1866,7 +1866,7 @@ Body.";
     );
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("price")
             .unwrap()
             .as_f64()
@@ -1875,7 +1875,7 @@ Body.";
     );
     assert!(doc
         .main()
-        .frontmatter()
+        .payload()
         .get("active")
         .unwrap()
         .as_bool()
@@ -1888,7 +1888,7 @@ fn test_guillemet_double_conversion_prevention() {
     let doc = decompose(markdown).unwrap();
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -1915,7 +1915,7 @@ Body
     let doc = decompose(markdown).unwrap();
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("my_card")
             .unwrap()
             .as_str()
@@ -1926,7 +1926,7 @@ Body
     assert_eq!(doc.cards()[0].tag(), "my_card");
     assert_eq!(
         doc.cards()[0]
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -1936,7 +1936,7 @@ Body
 }
 
 #[test]
-fn test_yaml_custom_tags_in_frontmatter() {
+fn test_yaml_custom_tags_in_payload() {
     let markdown = "~~~card-yaml
 #@quill: test_quill
 #@kind: main
@@ -1948,7 +1948,7 @@ Body content.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("memo_from")
             .unwrap()
             .as_str()
@@ -1957,7 +1957,7 @@ Body content.";
     );
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("regular_field")
             .unwrap()
             .as_str()
@@ -2001,7 +2001,7 @@ Conclusion content.
 
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -2019,7 +2019,7 @@ Conclusion content.
     assert_eq!(doc.cards()[0].tag(), "section");
     assert_eq!(
         doc.cards()[0]
-            .frontmatter()
+            .payload()
             .get("heading")
             .unwrap()
             .as_str()
@@ -2030,7 +2030,7 @@ Conclusion content.
     assert_eq!(doc.cards()[1].tag(), "section");
     assert_eq!(
         doc.cards()[1]
-            .frontmatter()
+            .payload()
             .get("heading")
             .unwrap()
             .as_str()
@@ -2142,7 +2142,7 @@ This body and the metadata above are an indorsement card.
 
     // QUILL key is present
     assert_eq!(json["QUILL"], "usaf_memo@0.1");
-    // frontmatter fields are present at top level
+    // payload fields are present at top level
     assert!(json.get("memo_for").is_some());
     assert!(json.get("date").is_some());
     // BODY and CARDS present
@@ -2160,15 +2160,15 @@ This body and the metadata above are an indorsement card.
 ///
 /// `serde_json::Map::remove` with `preserve_order` uses `swap_remove` under
 /// the hood (O(1), moves last element into removed slot) — NOT the order-
-/// preserving `shift_remove` (O(n)).  Frontmatter field order must be
+/// preserving `shift_remove` (O(n)).  Payload field order must be
 /// preserved.
 #[test]
-fn frontmatter_field_order_preserved_after_quill_removal() {
+fn payload_field_order_preserved_after_quill_removal() {
     let md = "~~~card-yaml\n#@quill: q\n#@kind: main\nsender: Alice\nrecipient: Bob\ndate: March 15\nsubject: hi\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();
     let keys: Vec<&str> = doc
         .main()
-        .frontmatter()
+        .payload()
         .keys()
         .map(|s| s.as_str())
         .collect();
@@ -2176,6 +2176,6 @@ fn frontmatter_field_order_preserved_after_quill_removal() {
     assert_eq!(
         keys,
         vec!["sender", "recipient", "date", "subject"],
-        "Frontmatter fields must preserve insertion order"
+        "Payload fields must preserve insertion order"
     );
 }

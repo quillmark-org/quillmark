@@ -39,7 +39,7 @@ fn yaml_comment_banners_inside_block_are_accepted() {
     let doc = Document::from_markdown(md).unwrap();
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()
@@ -82,7 +82,7 @@ fn fences_inside_code_blocks_are_ignored() {
 
 // Reserved keys BODY/CARDS cannot be user-defined.
 #[test]
-fn reserved_keys_in_frontmatter_are_rejected() {
+fn reserved_keys_in_payload_are_rejected() {
     for reserved in ["BODY", "CARDS"] {
         let md = format!("~~~card-yaml\n#@quill: t\n#@kind: main\n{}: nope\n~~~\n\nBody.", reserved);
         let err = Document::from_markdown(&md).unwrap_err().to_string();
@@ -131,7 +131,7 @@ fn normalize_yaml_scalar_keeps_bidi() {
     let doc = normalize_document(doc).unwrap();
     assert_eq!(
         doc.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .unwrap()
             .as_str()

@@ -64,7 +64,7 @@ proptest! {
 
     /// Inputs that look like a valid card-yaml block with a `#@quill:` sentinel.
     #[test]
-    fn fuzz_emit_roundtrip_frontmatter_shaped(
+    fn fuzz_emit_roundtrip_payload_shaped(
         quill in "[a-z][a-z0-9_]{0,20}",
         key in "[a-z][a-z0-9_]{0,15}",
         value in "\\PC{0,100}"
@@ -82,7 +82,7 @@ proptest! {
 
         let doc_b = Document::from_markdown(&emit1).unwrap_or_else(|e| {
             panic!(
-                "fuzz frontmatter-shaped: re-parse failed.\nError: {}\nSrc:\n{}\nEmitted:\n{}",
+                "fuzz payload-shaped: re-parse failed.\nError: {}\nSrc:\n{}\nEmitted:\n{}",
                 e, src, emit1
             )
         });
@@ -90,7 +90,7 @@ proptest! {
         prop_assert_eq!(
             &doc_a,
             &doc_b,
-            "fuzz frontmatter-shaped: doc_a != doc_b.\nEmitted:\n{}",
+            "fuzz payload-shaped: doc_a != doc_b.\nEmitted:\n{}",
             emit1
         );
 
@@ -98,7 +98,7 @@ proptest! {
         prop_assert_eq!(
             &emit1,
             &emit2,
-            "fuzz frontmatter-shaped: emit not idempotent."
+            "fuzz payload-shaped: emit not idempotent."
         );
     }
 

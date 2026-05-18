@@ -11,7 +11,7 @@
 //!
 //! - `convert_fuzz` - Tests for markdown to Typst conversion and escaping
 //! - `filter_fuzz` - Tests for filter input validation and injection safety
-//! - `parse_fuzz` - Tests for YAML frontmatter and markdown parsing
+//! - `parse_fuzz` - Tests for YAML payload and markdown parsing
 
 #[cfg(test)]
 mod coerce_fuzz;

@@ -11,9 +11,9 @@
 //!
 //! - [`Document`]: Typed in-memory Quillmark document — `main` card plus composable cards.
 //! - [`Card`]: A single card block, main or composable, with a sentinel,
-//!   typed frontmatter, and a body.
+//!   typed payload, and a body.
 //! - [`Sentinel`]: Discriminates the root block from composable card blocks.
-//! - [`Frontmatter`]: Ordered list of items (fields + comments) parsed from a
+//! - [`Payload`]: Ordered list of items (fields + comments) parsed from a
 //!   block's YAML payload.
 //!
 //! ## Examples
@@ -37,7 +37,7 @@
 //!
 //! let doc = Document::from_markdown(markdown).unwrap();
 //! let title = doc.main()
-//!     .frontmatter()
+//!     .payload()
 //!     .get("title")
 //!     .and_then(|v| v.as_str())
 //!     .unwrap_or("Untitled");
@@ -80,13 +80,13 @@ pub mod assemble;
 pub mod edit;
 pub mod emit;
 pub mod fences;
-pub mod frontmatter;
+pub mod payload;
 pub mod limits;
 pub mod prescan;
 pub mod sentinel;
 
 pub use edit::EditError;
-pub use frontmatter::{Frontmatter, FrontmatterItem};
+pub use payload::{Payload, PayloadItem};
 
 // Re-export the sentinel type (defined below in this module file).
 // `Sentinel` is exported at the crate root via `lib.rs`.
@@ -142,7 +142,7 @@ impl Sentinel {
 /// Every card has:
 /// - `sentinel` — the `#@quill` reference (for the root block) or the
 ///   `#@kind` tag (for a composable card).
-/// - `frontmatter` — ordered items parsed from the block's YAML payload.
+/// - `payload` — ordered items parsed from the block's YAML payload.
 /// - `body` — the Markdown text that follows the closing `~~~` fence, up to
 ///   the next block (or EOF).
 ///
@@ -155,20 +155,20 @@ impl Sentinel {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Card {
     sentinel: Sentinel,
-    frontmatter: Frontmatter,
+    payload: Payload,
     body: String,
 }
 
 impl Card {
-    /// Create a `Card` directly from a sentinel, a typed frontmatter, and a
+    /// Create a `Card` directly from a sentinel, a typed payload, and a
     /// body. Does **not** validate the sentinel tag or any field names —
     /// callers are responsible for providing already-valid data. For
     /// user-facing construction of composable cards use [`Card::new`]
     /// (defined in `edit.rs`).
-    pub fn new_with_sentinel(sentinel: Sentinel, frontmatter: Frontmatter, body: String) -> Self {
+    pub fn new_with_sentinel(sentinel: Sentinel, payload: Payload, body: String) -> Self {
         Self {
             sentinel,
-            frontmatter,
+            payload,
             body,
         }
     }
@@ -184,14 +184,14 @@ impl Card {
         self.sentinel.as_str()
     }
 
-    /// Typed frontmatter (map-keyed view and ordered item list).
-    pub fn frontmatter(&self) -> &Frontmatter {
-        &self.frontmatter
+    /// Typed payload (map-keyed view and ordered item list).
+    pub fn payload(&self) -> &Payload {
+        &self.payload
     }
 
-    /// Mutable access to the frontmatter.
-    pub fn frontmatter_mut(&mut self) -> &mut Frontmatter {
-        &mut self.frontmatter
+    /// Mutable access to the payload.
+    pub fn payload_mut(&mut self) -> &mut Payload {
+        &mut self.payload
     }
 
     /// Markdown body that follows this card's closing fence.
@@ -356,8 +356,8 @@ impl Document {
             serde_json::Value::String(self.quill_reference().to_string()),
         );
 
-        // Frontmatter fields in insertion order.
-        for (key, value) in self.main.frontmatter.iter() {
+        // Payload fields in insertion order.
+        for (key, value) in self.main.payload.iter() {
             map.insert(key.clone(), value.as_json().clone());
         }
 
@@ -374,7 +374,7 @@ impl Document {
             .map(|card| {
                 let mut card_map = serde_json::Map::new();
                 card_map.insert("CARD".to_string(), serde_json::Value::String(card.tag()));
-                for (key, value) in card.frontmatter.iter() {
+                for (key, value) in card.payload.iter() {
                     card_map.insert(key.clone(), value.as_json().clone());
                 }
                 card_map.insert(

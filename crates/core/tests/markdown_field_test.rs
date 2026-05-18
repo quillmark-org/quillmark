@@ -40,7 +40,7 @@ fn test_markdown_field_normalization() {
 
     // Normalize
     let normalized = normalize_document(doc).expect("Failed to normalize document");
-    let fm = normalized.main().frontmatter();
+    let fm = normalized.main().payload();
 
     // Both fields pass through unchanged (no stripping on YAML fields)
     assert_eq!(

@@ -265,24 +265,24 @@ fn empty_map_omitted_from_emit() {
     use crate::value::QuillValue;
     use indexmap::IndexMap;
 
-    let mut frontmatter: IndexMap<String, QuillValue> = IndexMap::new();
-    frontmatter.insert(
+    let mut payload: IndexMap<String, QuillValue> = IndexMap::new();
+    payload.insert(
         "empty_obj".to_string(),
         QuillValue::from_json(serde_json::json!({})),
     );
-    frontmatter.insert(
+    payload.insert(
         "real_field".to_string(),
         QuillValue::from_json(serde_json::json!("hello")),
     );
 
-    use crate::document::{Card, Frontmatter, Sentinel};
+    use crate::document::{Card, Payload, Sentinel};
     use crate::version::{QuillReference, VersionSelector};
     let main = Card::new_with_sentinel(
         Sentinel::Main(QuillReference::new(
             "test".to_string(),
             VersionSelector::Latest,
         )),
-        Frontmatter::from_index_map(frontmatter),
+        Payload::from_index_map(payload),
         String::new(),
     );
     let doc = crate::document::Document::from_main_and_cards(main, vec![], vec![]);

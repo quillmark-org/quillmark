@@ -209,7 +209,7 @@ pub struct RenderSession {
 ///
 /// Created via `Document.fromMarkdown(markdown)`. Exposes:
 /// - `quillRef` (string)
-/// - `frontmatter` (JS object/Record)
+/// - `payload` (JS object/Record)
 /// - `body` (string)
 /// - `cards` (array of Card objects)
 /// - `warnings` (array of Diagnostic objects)
@@ -516,8 +516,8 @@ impl Document {
 
     /// The document's main (entry) card.
     ///
-    /// Carries the QUILL sentinel, the document-level frontmatter, and the
-    /// global body. Frontmatter/body reads and mutations go through this
+    /// Carries the QUILL sentinel, the document-level payload, and the
+    /// global body. Payload/body reads and mutations go through this
     /// handle — there are no document-level shortcuts after the rework.
     ///
     /// Allocates and serializes on each call — cache locally if read in a hot loop.
@@ -573,7 +573,7 @@ impl Document {
 
     // ── Mutators ──────────────────────────────────────────────────────────────
 
-    /// Update a frontmatter field on the main card.
+    /// Update a payload field on the main card.
     ///
     /// Convenience method: equivalent to `doc.mainMut().setField(name, value)`.
     /// Clears any existing `!fill` marker on the field.
@@ -595,7 +595,7 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Update a frontmatter field on the main card AND mark it as `!fill`.
+    /// Update a payload field on the main card AND mark it as `!fill`.
     ///
     /// Convenience method: equivalent to `doc.mainMut().setFill(name, value)`.
     ///
@@ -613,7 +613,7 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Remove a frontmatter field on the main card, returning the removed value or `undefined`.
+    /// Remove a payload field on the main card, returning the removed value or `undefined`.
     ///
     /// Throws an `Error` whose message includes the `EditError` variant name
     /// and details if `name` is reserved (`BODY`, `CARDS`, `QUILL`, `CARD`)
@@ -732,7 +732,7 @@ impl Document {
 
     /// Replace the tag of the composable card at `index`.
     ///
-    /// Mutates only the sentinel — the card's frontmatter and body are
+    /// Mutates only the sentinel — the card's payload and body are
     /// untouched. Schema-aware migration (clearing orphan fields, applying
     /// new defaults) is the caller's responsibility; `setCardTag` is a
     /// structural primitive.
@@ -774,7 +774,7 @@ impl Document {
         card.set_field(name, qv).map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Remove a frontmatter field on the card at `index`, returning the
+    /// Remove a payload field on the card at `index`, returning the
     /// removed value or `undefined` if the field was absent.
     ///
     /// Throws if `index` is out of range, `name` is reserved, or `name` does

@@ -55,7 +55,7 @@ use crate::Quill;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FormFieldSource {
-    /// Value was present in the document's frontmatter or card fields.
+    /// Value was present in the document's payload or card fields.
     Document,
     /// Value was absent from the document; the schema provides a default.
     Default,
@@ -112,7 +112,7 @@ impl FormCard {
 /// [`Form::diagnostics`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Form {
-    /// View of the main document card (frontmatter fields).
+    /// View of the main document card (payload fields).
     pub main: FormCard,
     /// View of each recognised card, in document order.
     ///
@@ -135,7 +135,7 @@ pub struct Form {
 /// - `QuillConfig::card_kind` — to look up card schemas by tag.
 /// - `QuillConfig::validate_document` — to gather validation diagnostics.
 ///
-/// Coercion (`coerce_frontmatter` / `coerce_card`) is **not** applied here:
+/// Coercion (`coerce_payload` / `coerce_card`) is **not** applied here:
 /// the form view is the document as-is so the editor sees what the user typed.
 /// Validation diagnostics already inform the consumer when values are
 /// type-mismatched.
@@ -143,7 +143,7 @@ pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
 
     let main_schema = &quill.source().config().main;
-    let main_fields = doc.main().frontmatter().to_index_map();
+    let main_fields = doc.main().payload().to_index_map();
     let main = project_card(main_schema, &main_fields);
 
     let mut cards: Vec<FormCard> = Vec::new();
@@ -151,7 +151,7 @@ pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
         let tag = card.tag();
         match quill.source().config().card_kind(&tag) {
             Some(card_schema) => {
-                let card_fields = card.frontmatter().to_index_map();
+                let card_fields = card.payload().to_index_map();
                 cards.push(project_card(card_schema, &card_fields));
             }
             None => {

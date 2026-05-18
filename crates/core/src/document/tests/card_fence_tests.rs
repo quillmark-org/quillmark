@@ -21,7 +21,7 @@ fn card_fence_parses_kind_fields_and_body() {
     assert_eq!(card.sentinel(), &Sentinel::Card("product".to_string()));
     assert_eq!(card.tag(), "product");
     assert_eq!(
-        card.frontmatter().get("name").unwrap().as_str(),
+        card.payload().get("name").unwrap().as_str(),
         Some("Widget")
     );
     assert_eq!(card.body(), "\nWidget description.\n");
@@ -32,7 +32,7 @@ fn card_fence_empty_body_has_no_fields() {
     let src = "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\n~~~card-yaml\n#@kind: marker\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
     assert_eq!(doc.cards().len(), 1);
-    assert!(doc.cards()[0].frontmatter().is_empty());
+    assert!(doc.cards()[0].payload().is_empty());
     assert_eq!(doc.cards()[0].body(), "");
 }
 
@@ -42,11 +42,11 @@ fn card_fence_multiple_cards() {
     let doc = Document::from_markdown(src).unwrap();
     assert_eq!(doc.cards().len(), 2);
     assert_eq!(
-        doc.cards()[0].frontmatter().get("name").unwrap().as_str(),
+        doc.cards()[0].payload().get("name").unwrap().as_str(),
         Some("A")
     );
     assert_eq!(
-        doc.cards()[1].frontmatter().get("name").unwrap().as_str(),
+        doc.cards()[1].payload().get("name").unwrap().as_str(),
         Some("B")
     );
 }

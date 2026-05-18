@@ -12,7 +12,7 @@ use crate::version::QuillReference;
 use crate::Diagnostic;
 
 use super::fences::find_metadata_blocks;
-use super::frontmatter::{Frontmatter, FrontmatterItem};
+use super::payload::{Payload, PayloadItem};
 use super::prescan::{prescan_fence_content, NestedComment, PreItem};
 use super::sentinel::{
     is_valid_tag_name, parse_system_sentinel, validate_payload_yaml, MAIN_KIND,
@@ -316,22 +316,22 @@ pub(super) fn decompose_with_warnings(
     }
 
     // Block 0 is always the root `#@quill` block.
-    let frontmatter_block = &blocks[0];
-    let quill_tag = frontmatter_block.quill_ref.clone().ok_or_else(|| {
+    let payload_block = &blocks[0];
+    let quill_tag = payload_block.quill_ref.clone().ok_or_else(|| {
         ParseError::MissingQuillField(
             "The document's first card-yaml block must declare `#@quill: <name>`.".to_string(),
         )
     })?;
 
-    // Build the root block's frontmatter item list.
-    let frontmatter = build_frontmatter_from_pre_and_parsed(
-        &frontmatter_block.pre_items,
-        &frontmatter_block.pre_nested_comments,
-        &frontmatter_block.yaml_value,
+    // Build the root block's payload item list.
+    let payload = build_payload_from_pre_and_parsed(
+        &payload_block.pre_items,
+        &payload_block.pre_nested_comments,
+        &payload_block.yaml_value,
     )?;
     // Surface pre-scan warnings (nested-comment drops, unsupported tags).
     let mut warnings = warnings;
-    for w in &frontmatter_block.pre_warnings {
+    for w in &payload_block.pre_warnings {
         warnings.push(w.clone());
     }
 
@@ -356,7 +356,7 @@ pub(super) fn decompose_with_warnings(
     let mut cards: Vec<Card> = Vec::new();
     for (idx, block) in blocks.iter().enumerate() {
         if let Some(ref tag_name) = block.tag {
-            let card_frontmatter = build_frontmatter_from_pre_and_parsed(
+            let card_payload = build_payload_from_pre_and_parsed(
                 &block.pre_items,
                 &block.pre_nested_comments,
                 &block.yaml_value,
@@ -389,7 +389,7 @@ pub(super) fn decompose_with_warnings(
 
             cards.push(Card::new_with_sentinel(
                 Sentinel::Card(tag_name.clone()),
-                card_frontmatter,
+                card_payload,
                 card_body,
             ));
         }
@@ -399,24 +399,24 @@ pub(super) fn decompose_with_warnings(
         ParseError::InvalidStructure(format!("Invalid #@quill reference '{}': {}", quill_tag, e))
     })?;
 
-    let main = Card::new_with_sentinel(Sentinel::Main(quill_ref), frontmatter, global_body);
+    let main = Card::new_with_sentinel(Sentinel::Main(quill_ref), payload, global_body);
     let doc = Document::from_main_and_cards(main, cards, warnings.clone());
 
     Ok((doc, warnings))
 }
 
-/// Build a [`Frontmatter`] from the pre-scan items and the parsed YAML
+/// Build a [`Payload`] from the pre-scan items and the parsed YAML
 /// mapping.
 ///
 /// The pre-scan defined source order for fields and comments; the parsed
 /// YAML defined the typed value for each key. We walk pre-scan order, pulling
 /// each field's value from `parsed`. Any field the pre-scan didn't catch is
 /// appended at the end in parsed-map order so we never drop values.
-fn build_frontmatter_from_pre_and_parsed(
+fn build_payload_from_pre_and_parsed(
     pre_items: &[PreItem],
     pre_nested_comments: &[NestedComment],
     yaml_value: &Option<serde_json::Value>,
-) -> Result<Frontmatter, ParseError> {
+) -> Result<Payload, ParseError> {
     let mapping = match yaml_value {
         Some(serde_json::Value::Object(map)) => map.clone(),
         Some(serde_json::Value::Null) | None => serde_json::Map::new(),
@@ -427,13 +427,13 @@ fn build_frontmatter_from_pre_and_parsed(
         }
     };
 
-    let mut items: Vec<FrontmatterItem> = Vec::new();
+    let mut items: Vec<PayloadItem> = Vec::new();
     let mut consumed: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for pre in pre_items {
         match pre {
             PreItem::Comment { text, inline } => {
-                items.push(FrontmatterItem::Comment {
+                items.push(PayloadItem::Comment {
                     text: text.clone(),
                     inline: *inline,
                 });
@@ -448,7 +448,7 @@ fn build_frontmatter_from_pre_and_parsed(
                             key
                         )));
                     }
-                    items.push(FrontmatterItem::Field {
+                    items.push(PayloadItem::Field {
                         key: key.clone(),
                         value: QuillValue::from_json(value),
                         fill: *fill,
@@ -464,14 +464,14 @@ fn build_frontmatter_from_pre_and_parsed(
         if consumed.contains(key) {
             continue;
         }
-        items.push(FrontmatterItem::Field {
+        items.push(PayloadItem::Field {
             key: key.clone(),
             value: QuillValue::from_json(value.clone()),
             fill: false,
         });
     }
 
-    Ok(Frontmatter::from_items_with_nested(
+    Ok(Payload::from_items_with_nested(
         items,
         pre_nested_comments.to_vec(),
     ))

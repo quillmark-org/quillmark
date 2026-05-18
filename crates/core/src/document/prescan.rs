@@ -4,7 +4,7 @@
 //! Three features are recovered here:
 //!
 //! 1. **Top-level comments.** YAML comments are dropped by the YAML parser.
-//!    To round-trip them as [`super::FrontmatterItem::Comment`], we extract them
+//!    To round-trip them as [`super::PayloadItem::Comment`], we extract them
 //!    before parsing.
 //!
 //! 2. **Nested comments.** Comments inside block mappings/sequences are
@@ -117,7 +117,7 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
     let lines: Vec<&str> = content.split('\n').collect();
     let mut cleaned_lines: Vec<String> = Vec::with_capacity(lines.len());
 
-    // Stack of open containers. The root frame is the frontmatter mapping
+    // Stack of open containers. The root frame is the payload mapping
     // itself; children appear at indent 0.
     let mut stack: Vec<Frame> = vec![Frame {
         indent: 0,

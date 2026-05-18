@@ -33,7 +33,7 @@ fn top_level_comments_round_trip() {
     let doc2 = Document::from_markdown(&emitted).unwrap();
     assert_eq!(
         doc2.main()
-            .frontmatter()
+            .payload()
             .get("recipient")
             .and_then(|v| v.as_str()),
         Some("Jane"),
@@ -67,7 +67,7 @@ fn top_level_inline_comments_round_trip() {
     let doc2 = Document::from_markdown(&emitted).unwrap();
     assert_eq!(
         doc2.main()
-            .frontmatter()
+            .payload()
             .get("title")
             .and_then(|v| v.as_str()),
         Some("My Document"),
@@ -88,7 +88,7 @@ fn custom_tags_lose_tag_but_keep_value() {
     let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nmemo_from: !fill 2d lt example\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
 
-    let fm = doc.main().frontmatter();
+    let fm = doc.main().payload();
     assert_eq!(
         fm.get("memo_from").and_then(|v| v.as_str()),
         Some("2d lt example"),
@@ -105,7 +105,7 @@ fn custom_tags_lose_tag_but_keep_value() {
 
     let doc2 = Document::from_markdown(&emitted).unwrap();
     assert!(
-        doc2.main().frontmatter().is_fill("memo_from"),
+        doc2.main().payload().is_fill("memo_from"),
         "fill marker must survive a full round-trip"
     );
 
@@ -133,7 +133,7 @@ fn fill_tag_bare_null_round_trip() {
     let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nrecipient: !fill\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
-    let fm = doc.main().frontmatter();
+    let fm = doc.main().payload();
 
     assert!(fm.get("recipient").map(|v| v.is_null()).unwrap_or(false));
     assert!(fm.is_fill("recipient"));
@@ -153,7 +153,7 @@ fn fill_tag_block_sequence_round_trip() {
     let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nrecipient: !fill\n  - Dr. Who\n  - 1 TARDIS Lane\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
-    let fm = doc.main().frontmatter();
+    let fm = doc.main().payload();
 
     assert!(fm.is_fill("recipient"));
     let arr = fm.get("recipient").and_then(|v| v.as_array()).unwrap();
@@ -169,7 +169,7 @@ fn fill_tag_block_sequence_round_trip() {
     );
 
     let doc2 = Document::from_markdown(&emitted).unwrap();
-    assert!(doc2.main().frontmatter().is_fill("recipient"));
+    assert!(doc2.main().payload().is_fill("recipient"));
     assert_eq!(doc2, doc, "full round-trip must be equal");
 }
 
@@ -178,7 +178,7 @@ fn fill_tag_block_sequence_round_trip() {
 fn fill_tag_flow_sequence_round_trip() {
     let src = "~~~card-yaml\n#@quill: q\n#@kind: main\ntags: !fill [a, b, c]\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
-    let fm = doc.main().frontmatter();
+    let fm = doc.main().payload();
     assert!(fm.is_fill("tags"));
     assert_eq!(
         fm.get("tags").and_then(|v| v.as_array()).map(|a| a.len()),
@@ -187,7 +187,7 @@ fn fill_tag_flow_sequence_round_trip() {
 
     let emitted = doc.to_markdown();
     let doc2 = Document::from_markdown(&emitted).unwrap();
-    assert!(doc2.main().frontmatter().is_fill("tags"));
+    assert!(doc2.main().payload().is_fill("tags"));
     assert_eq!(doc2, doc);
 }
 
@@ -196,7 +196,7 @@ fn fill_tag_flow_sequence_round_trip() {
 fn fill_tag_empty_sequence_round_trip() {
     let src = "~~~card-yaml\n#@quill: q\n#@kind: main\nitems: !fill []\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
-    let fm = doc.main().frontmatter();
+    let fm = doc.main().payload();
     assert!(fm.is_fill("items"));
     assert_eq!(
         fm.get("items").and_then(|v| v.as_array()).map(|a| a.len()),
@@ -240,7 +240,7 @@ fn fill_tag_all_scalar_types_round_trip() {
     );
 
     let doc = Document::from_markdown(src).unwrap();
-    let fm = doc.main().frontmatter();
+    let fm = doc.main().payload();
 
     assert_eq!(fm.get("s").and_then(|v| v.as_str()), Some("hello"));
     assert_eq!(fm.get("i").and_then(|v| v.as_i64()), Some(42));
@@ -258,7 +258,7 @@ fn fill_tag_all_scalar_types_round_trip() {
     let doc2 = Document::from_markdown(&emitted).unwrap();
     for key in ["s", "i", "f", "b", "n"] {
         assert!(
-            doc2.main().frontmatter().is_fill(key),
+            doc2.main().payload().is_fill(key),
             "{} must remain fill-tagged after round-trip",
             key
         );
@@ -311,21 +311,21 @@ fn original_quoting_style_is_not_preserved() {
     let doc2 = Document::from_markdown(&emitted).unwrap();
     assert_eq!(
         doc2.main()
-            .frontmatter()
+            .payload()
             .get("single_q")
             .and_then(|v| v.as_str()),
         Some("hello")
     );
     assert_eq!(
         doc2.main()
-            .frontmatter()
+            .payload()
             .get("unquoted")
             .and_then(|v| v.as_str()),
         Some("world")
     );
     assert_eq!(
         doc2.main()
-            .frontmatter()
+            .payload()
             .get("double_q")
             .and_then(|v| v.as_str()),
         Some("already")
@@ -496,7 +496,7 @@ fn fill_with_inline_comment_round_trips() {
 
     let doc = Document::from_markdown(src).unwrap();
     assert!(
-        doc.main().frontmatter().is_fill("dept"),
+        doc.main().payload().is_fill("dept"),
         "fill marker must be set"
     );
 
@@ -530,7 +530,7 @@ fn mixed_inline_comments_round_trip() {
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
 
-/// Orphan inline comment whose host is removed via `Frontmatter::remove`
+/// Orphan inline comment whose host is removed via `Payload::remove`
 /// degrades to an own-line comment instead of being silently dropped.
 #[test]
 fn orphan_inline_after_remove_degrades_to_own_line() {
@@ -538,7 +538,7 @@ fn orphan_inline_after_remove_degrades_to_own_line() {
 
     let mut doc = Document::from_markdown(src).unwrap();
     // Remove the host field. The inline comment is now orphaned in items.
-    doc.main_mut().frontmatter_mut().remove("field");
+    doc.main_mut().payload_mut().remove("field");
 
     let emitted = doc.to_markdown();
     // Comment text preserved as own-line.
@@ -574,15 +574,15 @@ fn inline_on_empty_mapping_degrades_to_own_line() {
     let src = "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n";
     let mut doc = Document::from_markdown(src).unwrap();
     doc.main_mut()
-        .frontmatter_mut()
+        .payload_mut()
         .insert("empty", QuillValue::from_json(serde_json::json!({})));
     // Append an inline comment item right after the empty-mapping field.
     {
-        let fm = doc.main_mut().frontmatter_mut();
+        let fm = doc.main_mut().payload_mut();
         let items = fm.items().to_vec();
         let mut new_items = items;
-        new_items.push(crate::FrontmatterItem::comment_inline("notes about empty"));
-        *fm = crate::document::Frontmatter::from_items(new_items);
+        new_items.push(crate::PayloadItem::comment_inline("notes about empty"));
+        *fm = crate::document::Payload::from_items(new_items);
     }
 
     let emitted = doc.to_markdown();

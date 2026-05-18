@@ -136,13 +136,13 @@ impl QuillConfig {
         }
     }
 
-    /// Coerce typed frontmatter fields (IndexMap, no CARDS/BODY keys).
-    pub fn coerce_frontmatter(
+    /// Coerce typed payload fields (IndexMap, no CARDS/BODY keys).
+    pub fn coerce_payload(
         &self,
-        frontmatter: &IndexMap<String, QuillValue>,
+        payload: &IndexMap<String, QuillValue>,
     ) -> Result<IndexMap<String, QuillValue>, CoercionError> {
         let mut coerced: IndexMap<String, QuillValue> = IndexMap::new();
-        for (field_name, field_value) in frontmatter {
+        for (field_name, field_value) in payload {
             if let Some(field_schema) = self.main.fields.get(field_name) {
                 let path = field_name.as_str();
                 coerced.insert(

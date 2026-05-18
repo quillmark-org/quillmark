@@ -31,7 +31,7 @@ fn number_scientific_notation_round_trip() {
 
     // The parsed value must be a number (not a string).
     let doc = Document::from_markdown(src).unwrap();
-    let v = doc.main().frontmatter().get("big").unwrap();
+    let v = doc.main().payload().get("big").unwrap();
     assert!(
         v.as_f64().is_some(),
         "1e10 must parse as a number, got {:?}",
@@ -46,7 +46,7 @@ fn string_that_looks_like_scientific_notation_round_trip() {
     assert_round_trip("\"1e10\" string", src);
 
     let doc = Document::from_markdown(src).unwrap();
-    let v = doc.main().frontmatter().get("big").unwrap();
+    let v = doc.main().payload().get("big").unwrap();
     assert_eq!(
         v.as_str(),
         Some("1e10"),
@@ -65,7 +65,7 @@ fn string_hex_like_round_trip() {
     assert_round_trip("0x1F string", src);
 
     let doc = Document::from_markdown(src).unwrap();
-    let v = doc.main().frontmatter().get("hex").unwrap();
+    let v = doc.main().payload().get("hex").unwrap();
     assert_eq!(
         v.as_str(),
         Some("0x1F"),
@@ -83,7 +83,7 @@ fn large_integer_round_trip() {
     assert_round_trip("large integer", src);
 
     let doc = Document::from_markdown(src).unwrap();
-    let v = doc.main().frontmatter().get("big_int").unwrap();
+    let v = doc.main().payload().get("big_int").unwrap();
     assert_eq!(
         v.as_i64(),
         Some(9_999_999_999_999_i64),
@@ -139,8 +139,8 @@ fn emitted_number_representation_matches_parse() {
                 case.src_value, e, emitted
             )
         });
-        let v1 = doc.main().frontmatter().get(case.key).unwrap();
-        let v2 = doc2.main().frontmatter().get(case.key).unwrap();
+        let v1 = doc.main().payload().get(case.key).unwrap();
+        let v2 = doc2.main().payload().get(case.key).unwrap();
         assert_eq!(
             v1, v2,
             "number {} changed representation after emit/re-parse\nEmitted:\n{}",

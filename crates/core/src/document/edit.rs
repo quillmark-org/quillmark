@@ -5,7 +5,7 @@
 //! ## Invariants
 //!
 //! Every successful mutator call leaves the document in a state that:
-//! - Contains no reserved key in any card's frontmatter (`BODY`, `CARDS`, `QUILL`, `CARD`).
+//! - Contains no reserved key in any card's payload (`BODY`, `CARDS`, `QUILL`, `CARD`).
 //! - Has every composable `card.tag()` passing `sentinel::is_valid_tag_name`.
 //! - Can be safely serialized via [`Document::to_plate_json`].
 //!
@@ -14,7 +14,7 @@
 //!
 //! ## Surface
 //!
-//! Frontmatter and body mutators live on [`Card`]:
+//! Payload and body mutators live on [`Card`]:
 //! `doc.main_mut().set_field(…)`, `doc.main_mut().replace_body(…)`,
 //! `doc.cards_mut()[i].set_field(…)`. [`Document`] keeps only document-level
 //! operations (quill-ref, push/insert/remove/move card).
@@ -22,13 +22,13 @@
 use unicode_normalization::UnicodeNormalization;
 
 use crate::document::sentinel::{is_valid_tag_name, MAIN_KIND};
-use crate::document::{Card, Document, Frontmatter, Sentinel};
+use crate::document::{Card, Document, Payload, Sentinel};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
 
 // ── Reserved names ──────────────────────────────────────────────────────────
 
-/// Reserved field names that may not appear in any `Card`'s frontmatter.
+/// Reserved field names that may not appear in any `Card`'s payload.
 /// These are the sentinel keys whose presence in user-visible fields would
 /// corrupt the plate wire format or the parser's structural invariants.
 pub const RESERVED_NAMES: &[&str] = &["BODY", "CARDS", "QUILL", "CARD"];
@@ -41,7 +41,7 @@ pub fn is_reserved_name(name: &str) -> bool {
 
 // ── Field name validation ───────────────────────────────────────────────────
 
-/// Returns `true` if `name` is a valid frontmatter / card field name.
+/// Returns `true` if `name` is a valid payload / card field name.
 ///
 /// A valid field name matches `[a-z_][a-z0-9_]*` after NFC normalisation.
 /// Upper-case identifiers are intentionally excluded; they are reserved for
@@ -181,7 +181,7 @@ impl Document {
     /// Replace the tag (sentinel) of the composable card at `index`.
     ///
     /// **Field-bag semantics.** This mutates only the sentinel; the card's
-    /// frontmatter and body are untouched. After the call:
+    /// payload and body are untouched. After the call:
     ///
     /// - Fields valid under both old and new schemas round-trip unchanged.
     /// - Fields only in the old schema linger in the bag (silently ignored
@@ -276,12 +276,12 @@ impl Card {
         }
         Ok(Card::new_with_sentinel(
             Sentinel::Card(tag),
-            Frontmatter::new(),
+            Payload::new(),
             String::new(),
         ))
     }
 
-    /// Set a frontmatter field by name. Always clears the `!fill` marker for
+    /// Set a payload field by name. Always clears the `!fill` marker for
     /// that key — the "user filled in" path.
     ///
     /// # Invariants enforced
@@ -293,7 +293,7 @@ impl Card {
     ///
     /// # Validity
     ///
-    /// After a successful call the card remains valid: `frontmatter`
+    /// After a successful call the card remains valid: `payload`
     /// contains no reserved key and the value is stored at the correct key.
     ///
     /// # Warnings
@@ -306,11 +306,11 @@ impl Card {
         if !is_valid_field_name(name) {
             return Err(EditError::InvalidFieldName(name.to_string()));
         }
-        self.frontmatter_mut().insert(name.to_string(), value);
+        self.payload_mut().insert(name.to_string(), value);
         Ok(())
     }
 
-    /// Set a frontmatter field AND mark it as a `!fill` placeholder — the
+    /// Set a payload field AND mark it as a `!fill` placeholder — the
     /// "reset to placeholder" path. A `Null` value emits as `key: !fill`;
     /// a scalar or sequence value emits as `key: !fill <value>`.
     ///
@@ -328,11 +328,11 @@ impl Card {
         if !is_valid_field_name(name) {
             return Err(EditError::InvalidFieldName(name.to_string()));
         }
-        self.frontmatter_mut().insert_fill(name.to_string(), value);
+        self.payload_mut().insert_fill(name.to_string(), value);
         Ok(())
     }
 
-    /// Remove a frontmatter field by name, returning the value if it existed.
+    /// Remove a payload field by name, returning the value if it existed.
     ///
     /// # Invariants enforced
     ///
@@ -353,7 +353,7 @@ impl Card {
         if !is_valid_field_name(name) {
             return Err(EditError::InvalidFieldName(name.to_string()));
         }
-        Ok(self.frontmatter_mut().remove(name))
+        Ok(self.payload_mut().remove(name))
     }
 
     /// Replace the card's Markdown body.
