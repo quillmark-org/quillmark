@@ -81,7 +81,7 @@ impl FrontmatterItem {
 /// Comments inside nested mappings/sequences live in `nested_comments`,
 /// keyed by structural path; the emitter re-injects them at the matching
 /// position when serialising the value tree.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Frontmatter {
     items: Vec<FrontmatterItem>,
     nested_comments: Vec<NestedComment>,

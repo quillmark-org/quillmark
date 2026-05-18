@@ -78,6 +78,7 @@ use crate::version::QuillReference;
 use crate::Diagnostic;
 
 pub mod assemble;
+pub mod dto;
 pub mod edit;
 pub mod emit;
 pub mod fences;
@@ -86,6 +87,7 @@ pub mod limits;
 pub mod prescan;
 pub mod sentinel;
 
+pub use dto::{StorageError, StoredDocument};
 pub use edit::EditError;
 pub use frontmatter::{Frontmatter, FrontmatterItem};
 
@@ -112,7 +114,7 @@ pub struct ParseOutput {
 /// ```` ```card <kind> ```` info string (canonical) or a legacy `CARD: <kind>`
 /// sentinel. `Sentinel` captures that distinction in the typed model so every
 /// card is one uniform shape.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Sentinel {
     /// The document entry card, carrying the `QUILL` reference.
     Main(QuillReference),
@@ -154,7 +156,7 @@ impl Sentinel {
 /// EOF immediately follows the closing fence), `body` is the empty string `""`.
 /// It is never `None`; callers that need to distinguish "absent" from "empty"
 /// should check `card.body().is_empty()`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Card {
     sentinel: Sentinel,
     frontmatter: Frontmatter,
@@ -235,13 +237,10 @@ impl Card {
 /// [`Document::to_plate_json`]. That method is the **only** place in core
 /// that reconstructs `{"QUILL": ..., "CARDS": [...], "BODY": "..."}`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(into = "StoredDocument", try_from = "StoredDocument")]
 pub struct Document {
     main: Card,
     cards: Vec<Card>,
-    /// Parse-time warnings. Excluded from serialization — they are
-    /// observations about the source text, not document content, and are
-    /// repopulated on the next parse.
-    #[serde(skip)]
     warnings: Vec<Diagnostic>,
 }
 

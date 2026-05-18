@@ -21,8 +21,6 @@
 //! Other custom tags (`!include`, `!env`, …) are stripped with a
 //! `parse::unsupported_yaml_tag` warning.
 
-use serde::{Deserialize, Serialize};
-
 use crate::Diagnostic;
 use crate::Severity;
 
@@ -43,7 +41,7 @@ pub enum PreItem {
 }
 
 /// One segment of a path into the parsed YAML structure.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommentPathSegment {
     Key(String),
     Index(usize),
@@ -62,7 +60,7 @@ pub enum CommentPathSegment {
 ///   ranging `0..child_count`. The comment is attached to that child's
 ///   trailing line. An inline comment whose host is missing at emit time
 ///   (orphan) degrades to an own-line comment at the same indent.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NestedComment {
     pub container_path: Vec<CommentPathSegment>,
     pub position: usize,
