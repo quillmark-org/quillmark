@@ -6,9 +6,9 @@
 //! The `#@` prefix keeps them invisible to a plain YAML parser (a `#` line is
 //! a comment).
 //!
-//! Only `#@quill` on the root block carries parser semantics — it binds the
-//! document to a quill. `#@kind` and `#@id` are opaque metadata carried
-//! through round-trip unchanged.
+//! `#@quill` on the root block binds the document to a quill; `#@kind` is
+//! name-validated against `[a-z_][a-z0-9_]*` at parse time. `#@id` is opaque
+//! metadata, carried through round-trip unchanged.
 
 use std::str::FromStr;
 
@@ -26,7 +26,8 @@ pub struct CardMetadata {
     /// rejected on composable cards (see `assemble`); `None` on every card
     /// in a successfully parsed [`crate::Document`].
     pub quill: Option<QuillReference>,
-    /// The `#@kind` card kind, if the block declares one. Carried verbatim.
+    /// The `#@kind` card kind, if the block declares one. Validated against
+    /// `[a-z_][a-z0-9_]*` at parse time.
     pub kind: Option<String>,
     /// The `#@id` opaque identifier, if the block declares one.
     pub id: Option<String>,
@@ -36,7 +37,8 @@ pub struct CardMetadata {
 ///
 /// Header lines may appear in any order. The accepted keys are the closed set
 /// `{quill, kind, id}`. A malformed `#@` line, an unknown `#@key`, a duplicate
-/// key, or an invalid `#@quill` reference is a parse error.
+/// key, an invalid `#@quill` reference, or a `#@kind` that does not match
+/// `[a-z_][a-z0-9_]*` is a parse error.
 pub(super) fn parse_meta_header(header: &[&str]) -> Result<CardMetadata, ParseError> {
     let mut meta = CardMetadata::default();
     for line in header {
@@ -62,6 +64,13 @@ pub(super) fn parse_meta_header(header: &[&str]) -> Result<CardMetadata, ParseEr
             "kind" => {
                 if meta.kind.is_some() {
                     return Err(duplicate_meta_error("kind"));
+                }
+                if !is_valid_kind_name(&value) {
+                    return Err(ParseError::InvalidStructure(format!(
+                        "Invalid `#@kind` value '{}' — a card kind must match \
+                         `[a-z_][a-z0-9_]*`",
+                        value
+                    )));
                 }
                 meta.kind = Some(value);
             }
@@ -111,7 +120,7 @@ fn parse_meta_line(line: &str) -> Option<(String, String)> {
 /// unchanged.
 pub(super) fn validate_payload_yaml(
     parsed: serde_json::Value,
-) -> Result<Option<serde_json::Value>, ParseError> {
+) -> Result<serde_json::Value, ParseError> {
     if let Some(mapping) = parsed.as_object() {
         for reserved in ["QUILL", "CARD", "BODY", "CARDS"] {
             if mapping.contains_key(reserved) {
@@ -122,7 +131,7 @@ pub(super) fn validate_payload_yaml(
             }
         }
     }
-    Ok(Some(parsed))
+    Ok(parsed)
 }
 
 /// Validate a card kind name follows the pattern `[a-z_][a-z0-9_]*`.

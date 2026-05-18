@@ -139,7 +139,7 @@ pub(super) fn build_block(
                 });
             }
         };
-        validate_payload_yaml(parsed)?
+        Some(validate_payload_yaml(parsed)?)
     };
 
     // Per-block field-count check (spec §8)

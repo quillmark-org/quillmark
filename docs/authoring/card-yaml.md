@@ -50,7 +50,8 @@ out of the YAML payload's user field set.
   declare `#@quill`** — it is the only required `#@` entry. If the root block
   is missing `#@quill`, parsing fails.
 - **`#@kind: <kind>`** is optional metadata identifying a card's kind. There
-  is no reserved kind.
+  is no reserved kind, but `<kind>` must match `[a-z_][a-z0-9_]*` — an invalid
+  kind is a parse error.
 - **`#@id: <value>`** is an opaque, optional identifier — plain metadata with
   no validation or uniqueness requirement, carried through the round-trip.
 

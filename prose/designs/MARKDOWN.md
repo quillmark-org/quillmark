@@ -124,8 +124,8 @@ optional fields — `quill`, `kind`, `id`.
   **exclusive to the root block** — a composable card declaring `#@quill` is
   a parse error.
 - **`#@kind: <value>`** — optional metadata identifying a card's kind. There
-  is no reserved kind; `#@kind` is carried verbatim with no parse-time
-  name-pattern validation.
+  is no reserved kind, but the value is name-validated at parse time: it must
+  match `[a-z_][a-z0-9_]*`, otherwise parsing fails.
 - **`#@id: <value>`** — an opaque, optional identifier. It is plain metadata:
   no validation, no uniqueness requirement; it is carried through the
   round-trip unchanged.

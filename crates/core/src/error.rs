@@ -30,11 +30,11 @@
 //!
 //! ```text
 //! path        := segment ( "." field_name | "[" index "]" )*
-//! field_name  := [a-z_][a-z0-9_]*       // same charset enforced for fields/tags
+//! field_name  := [a-z_][a-z0-9_]*       // same charset enforced for fields/kinds
 //! index       := [0-9]+
 //! ```
 //!
-//! Because field and card tag names are validated to that charset (no `.`,
+//! Because field names and card kinds are validated to that charset (no `.`,
 //! `[`, `]`, or whitespace can appear in any segment), the dotted form
 //! round-trips unambiguously.
 //!
@@ -48,9 +48,9 @@
 //! | Typed card (whole)            | `cards.indorsement[0]`                        |
 //! | Field on typed card           | `cards.indorsement[0].signature_block`        |
 //! | Body on typed card            | `cards.indorsement[0].body`                   |
-//! | Card with unknown tag         | `cards[0]`                                    |
+//! | Card with unknown kind        | `cards[0]`                                    |
 //!
-//! The `cards.<tag>[<index>]` form fuses the card tag and the document
+//! The `cards.<kind>[<index>]` form fuses the card kind and the document
 //! array index into one segment so consumers receive both pieces of
 //! information without a second lookup.
 //!

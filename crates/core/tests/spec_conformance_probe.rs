@@ -100,13 +100,15 @@ fn cards_is_always_present_even_when_empty() {
     assert!(doc.cards().is_empty());
 }
 
-// `#@kind:` is opaque system metadata at parse time — no name-pattern check.
+// `#@kind:` is name-validated at parse time against `[a-z_][a-z0-9_]*`.
 #[test]
-fn card_kind_is_opaque_metadata() {
-    let md = "~~~card-yaml\n#@quill: t\n~~~\n\nB.\n\n~~~card-yaml\n#@kind: ITEMS\n~~~\n\nX.";
-    let doc = Document::from_markdown(md).unwrap();
-    assert_eq!(doc.cards().len(), 1);
-    assert_eq!(doc.cards()[0].kind(), Some("ITEMS"));
+fn card_kind_is_name_validated() {
+    let bad = "~~~card-yaml\n#@quill: t\n~~~\n\nB.\n\n~~~card-yaml\n#@kind: ITEMS\n~~~\n\nX.";
+    assert!(Document::from_markdown(bad).is_err());
+
+    let ok = "~~~card-yaml\n#@quill: t\n~~~\n\nB.\n\n~~~card-yaml\n#@kind: items\n~~~\n\nX.";
+    let doc = Document::from_markdown(ok).unwrap();
+    assert_eq!(doc.cards()[0].kind(), Some("items"));
 }
 
 // Body bidi stripped during normalize_document.

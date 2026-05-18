@@ -178,7 +178,7 @@ Content without closing fence";
 // Extended metadata tests
 
 #[test]
-fn test_basic_tagged_block() {
+fn test_basic_card_block() {
     let markdown = "~~~card-yaml
 #@quill: test_quill
 title: Main Document
@@ -220,7 +220,7 @@ Body of item 1.";
 }
 
 #[test]
-fn test_multiple_tagged_blocks() {
+fn test_multiple_card_blocks() {
     let markdown = "~~~card-yaml
 #@quill: test_quill
 ~~~
@@ -260,7 +260,7 @@ Second item body.";
 }
 
 #[test]
-fn test_mixed_global_and_tagged() {
+fn test_mixed_global_and_cards() {
     let markdown = "~~~card-yaml
 #@quill: test_quill
 title: Global
@@ -300,7 +300,7 @@ Section 2 content.";
 }
 
 #[test]
-fn test_empty_tagged_metadata() {
+fn test_empty_card_metadata() {
     let markdown = "~~~card-yaml
 #@quill: test_quill
 ~~~
@@ -320,7 +320,7 @@ Body without metadata.";
 }
 
 #[test]
-fn test_tagged_block_without_body() {
+fn test_card_block_without_body() {
     let markdown = "~~~card-yaml
 #@quill: test_quill
 ~~~
@@ -338,7 +338,7 @@ name: Item
 }
 
 #[test]
-fn test_name_collision_global_and_tagged() {
+fn test_name_collision_global_and_card() {
     let markdown = "~~~card-yaml
 #@quill: test_quill
 items: \"global value\"
@@ -495,25 +495,7 @@ More content.
 }
 
 #[test]
-fn test_card_kind_is_opaque_metadata() {
-    // `#@kind` is opaque system metadata at parse time — its value is carried
-    // through verbatim with no name-pattern validation.
-    let markdown = "~~~card-yaml
-#@quill: test_quill
-~~~
-
-~~~card-yaml
-#@kind: Invalid-Name
-title: Test
-~~~";
-
-    let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.cards().len(), 1);
-    assert_eq!(doc.cards()[0].kind(), Some("Invalid-Name"));
-}
-
-#[test]
-fn test_adjacent_blocks_different_tags() {
+fn test_adjacent_blocks_different_kinds() {
     let markdown = "~~~card-yaml
 #@quill: test_quill
 ~~~
@@ -1643,16 +1625,17 @@ Body content.";
 // Error handling
 
 #[test]
-fn test_unusual_card_kind_names_are_accepted_verbatim() {
-    // `#@kind` carries no parse-time name-pattern validation; any value is
-    // accepted as opaque system metadata.
-    for kind in ["ITEMS", "123items", "my-items"] {
+fn test_invalid_card_kind_names_are_rejected() {
+    // `#@kind` is name-validated at parse time against `[a-z_][a-z0-9_]*`.
+    for kind in ["ITEMS", "123items", "my-items", "Invalid-Name", ""] {
         let markdown = format!(
             "~~~card-yaml\n#@quill: test_quill\n~~~\n\n~~~card-yaml\n#@kind: {kind}\n~~~\n\nBody."
         );
-        let doc = decompose(&markdown).unwrap();
-        assert_eq!(doc.cards().len(), 1);
-        assert_eq!(doc.cards()[0].kind(), Some(kind));
+        let err = decompose(&markdown).unwrap_err().to_string();
+        assert!(
+            err.contains("Invalid `#@kind`"),
+            "kind {kind:?} should be rejected; got: {err}"
+        );
     }
 }
 

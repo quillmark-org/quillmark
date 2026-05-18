@@ -106,13 +106,13 @@ proptest! {
     #[test]
     fn fuzz_emit_roundtrip_with_cards(
         quill in "[a-z][a-z0-9_]{0,20}",
-        card_tag in "[a-z][a-z0-9_]{0,15}",
+        card_kind in "[a-z][a-z0-9_]{0,15}",
         card_key in "[a-z][a-z0-9_]{0,15}",
         card_value in "[a-zA-Z0-9 ]{0,50}"
     ) {
         let src = format!(
             "~~~card-yaml\n#@quill: {}\ntitle: \"test\"\n~~~\n\nBody here.\n\n~~~card-yaml\n#@kind: {}\n{}: \"{}\"\n~~~\n\nCard body.\n",
-            quill, card_tag, card_key, card_value
+            quill, card_kind, card_key, card_value
         );
 
         let doc_a = match Document::from_markdown(&src) {
