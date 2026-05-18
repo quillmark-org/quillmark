@@ -61,7 +61,7 @@ Tests for the `inject_json` helper function:
 
 card-yaml payload security:
 - Tests malformed YAML handling
-- Validates tag directive parsing with random inputs
+- Validates composable card-kind parsing with random inputs
 - Tests nested YAML structures for stability
 - Unicode and special character handling
 

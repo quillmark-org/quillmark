@@ -10,8 +10,8 @@ proptest! {
     }
 
     #[test]
-    fn fuzz_decompose_with_dashes(s in "---[\\s\\S]*---[\\s\\S]*") {
-        // Test inputs that might look like payload
+    fn fuzz_decompose_with_fences(s in "~~~card-yaml[\\s\\S]*~~~[\\s\\S]*") {
+        // Test inputs that look like card-yaml blocks
         let result = Document::from_markdown(&s);
         // Should either succeed or return an error, but not panic
         match result {
@@ -33,29 +33,29 @@ proptest! {
         author in "[a-zA-Z ]{1,30}",
         content in "\\PC{0,200}"
     ) {
-        // Test with valid-looking payload
+        // Test with a well-formed root card-yaml block
         let markdown = format!(
-            "---\ntitle: {}\nauthor: {}\n---\n\n{}",
+            "~~~card-yaml\n#@quill: test_quill\ntitle: {}\nauthor: {}\n~~~\n\n{}",
             title, author, content
         );
 
         let result = Document::from_markdown(&markdown);
-        // Result may be Ok or Err (missing QUILL now errors); should never panic
+        // Result may be Ok or Err (e.g. an ambiguous YAML scalar); never panics
         let _ = result;
     }
 
     #[test]
-    fn fuzz_decompose_tag_directives(tag_name in "[a-z]{1,20}") {
-        // Test tag directive parsing
+    fn fuzz_decompose_card_kinds(kind_name in "[a-z][a-z0-9_]{0,19}") {
+        // Test composable card parsing with a `#@kind` discriminator
         let markdown = format!(
-            "---\nglobal: value\n---\n\n---\n!{}\nfield: data\n---\n\nContent",
-            tag_name
+            "~~~card-yaml\n#@quill: test_quill\n~~~\n\n\
+             ~~~card-yaml\n#@kind: {}\nfield: data\n~~~\n\nContent",
+            kind_name
         );
 
         let result = Document::from_markdown(&markdown);
-        // Should handle tag directives without panic
+        // Should handle composable cards without panic
         if let Ok(doc) = result {
-            // Tag might create a card
             let _ = doc.cards();
             let _ = doc.main().payload();
         }
@@ -63,8 +63,8 @@ proptest! {
 
     #[test]
     fn fuzz_decompose_malformed_yaml(s in "[^a-zA-Z0-9\\s]{1,50}") {
-        // Test with potentially malformed YAML
-        let markdown = format!("---\n{}\n---\n\nContent", s);
+        // Test with potentially malformed YAML in the payload
+        let markdown = format!("~~~card-yaml\n#@quill: test_quill\n{}\n~~~\n\nContent", s);
         let _ = Document::from_markdown(&markdown);
         // Should handle errors gracefully
     }
@@ -76,7 +76,8 @@ proptest! {
             .map(|i| format!("field{}: value{}", i, i))
             .collect();
         let payload = fields.join("\n");
-        let markdown = format!("---\n{}\n---\n\nContent", payload);
+        let markdown =
+            format!("~~~card-yaml\n#@quill: test_quill\n{}\n~~~\n\nContent", payload);
 
         let result = Document::from_markdown(&markdown);
         if let Ok(doc) = result {
@@ -95,7 +96,8 @@ proptest! {
         }
         yaml.push_str(&format!("{}value: data", "  ".repeat(depth + 1)));
 
-        let markdown = format!("---\n{}\n---\n\nContent", yaml);
+        let markdown =
+            format!("~~~card-yaml\n#@quill: test_quill\n{}\n~~~\n\nContent", yaml);
         let _ = Document::from_markdown(&markdown);
     }
 }
@@ -105,8 +107,9 @@ proptest! {
 
     #[test]
     fn fuzz_decompose_special_characters(s in "[\\\\\"'`$#*_\\[\\]<>@\\n\\r\\t]{0,100}") {
-        // Test with special characters in content
-        let markdown = format!("---\ntitle: Test\n---\n\n{}", s);
+        // Test with special characters in body content
+        let markdown =
+            format!("~~~card-yaml\n#@quill: test_quill\ntitle: Test\n~~~\n\n{}", s);
         let result = Document::from_markdown(&markdown);
 
         if let Ok(doc) = result {
@@ -118,8 +121,9 @@ proptest! {
 
     #[test]
     fn fuzz_decompose_unicode(s in "\\PC{0,100}") {
-        // Test with Unicode content
-        let markdown = format!("---\ntitle: Test\n---\n\n{}", s);
+        // Test with Unicode body content
+        let markdown =
+            format!("~~~card-yaml\n#@quill: test_quill\ntitle: Test\n~~~\n\n{}", s);
         let result = Document::from_markdown(&markdown);
 
         if let Ok(doc) = result {
@@ -128,20 +132,20 @@ proptest! {
     }
 
     #[test]
-    fn fuzz_decompose_multiple_sections(count in 1usize..10) {
-        // Test with multiple tagged sections
-        let mut markdown = String::from("---\nglobal: value\n---\n\n");
+    fn fuzz_decompose_multiple_cards(count in 1usize..10) {
+        // Test with multiple composable card blocks
+        let mut markdown = String::from("~~~card-yaml\n#@quill: test_quill\n~~~\n\n");
 
         for i in 0..count {
             markdown.push_str(&format!(
-                "---\n!section{}\ndata: value{}\n---\n\nContent {}\n\n",
+                "~~~card-yaml\n#@kind: section{}\ndata: value{}\n~~~\n\nContent {}\n\n",
                 i, i, i
             ));
         }
 
         let result = Document::from_markdown(&markdown);
         if let Ok(doc) = result {
-            // Should handle multiple sections
+            // Should handle multiple cards
             let _ = doc.main().payload();
             let _ = doc.cards();
         }
