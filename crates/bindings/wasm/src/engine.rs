@@ -520,6 +520,12 @@ impl Document {
     ///
     /// `undefined` only ever means "not a storage DTO" — `fromMarkdown`
     /// still throws on genuinely malformed markdown.
+    //
+    // No `tryFromMarkdown` counterpart: a malformed-markdown failure is a
+    // real input error the caller wants to see, not a format-discriminator
+    // signal. The asymmetry is intentional — the only motivating use case
+    // is "is this content a storage DTO, or markdown?", and JSON is the
+    // discriminating side of that test.
     #[wasm_bindgen(js_name = tryFromJson)]
     pub fn try_from_json(json: &str) -> Option<Document> {
         let inner: quillmark_core::Document = serde_json::from_str(json).ok()?;
@@ -560,28 +566,6 @@ impl Document {
         serde_json::to_string(&self.inner).map_err(|e| {
             WasmError::from(format!("toJson: serialization failed: {e}")).to_js_value()
         })
-    }
-
-    /// Convert Quillmark Markdown directly to a storage DTO string.
-    ///
-    /// Equivalent to `fromMarkdown(markdown).toJson()` without exposing an
-    /// intermediate `Document` handle — a pure `string -> string` function
-    /// for storage layers that only need the conversion. Throws on the same
-    /// inputs as [`fromMarkdown`](Document::from_markdown).
-    #[wasm_bindgen(js_name = markdownToJson)]
-    pub fn markdown_to_json(markdown: &str) -> Result<String, JsValue> {
-        Document::from_markdown(markdown)?.to_json()
-    }
-
-    /// Convert a storage DTO string directly to Quillmark Markdown.
-    ///
-    /// Equivalent to `fromJson(json).toMarkdown()` without exposing an
-    /// intermediate `Document` handle — a pure `string -> string` function
-    /// for storage layers that only need the conversion. Throws on the same
-    /// inputs as [`fromJson`](Document::from_json).
-    #[wasm_bindgen(js_name = jsonToMarkdown)]
-    pub fn json_to_markdown(json: &str) -> Result<String, JsValue> {
-        Ok(Document::from_json(json)?.to_markdown())
     }
 
     /// Return a fresh `Document` handle with the same parse state.

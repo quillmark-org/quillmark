@@ -15,11 +15,14 @@ syntax also evolves), `Document` serializes to a **versioned JSON envelope**,
 | Form | Round-trips? | Stable for storage? |
 |---|---|---|
 | Markdown (`Document::to_markdown`) | Yes | No — syntax evolves |
-| Plate JSON (`Document::to_plate_json`) | No — lossy, one-way export to backends | — |
 | `StoredDocument` JSON | Yes — lossless | Yes — frozen per schema version |
 
 Use `StoredDocument` JSON whenever a `Document` must survive a process
 restart or a crate upgrade: database rows, caches, message payloads.
+
+`Document::to_plate_json` also exists as a lossy, one-way export to
+Plate-shaped backends; it is core-only (not exposed by the WASM or Python
+bindings) and never a storage option.
 
 ## Design Principles
 

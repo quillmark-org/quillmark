@@ -112,13 +112,6 @@ const doc = Document.tryFromJson(content) ?? Document.fromMarkdown(content);
 `undefined` means only "not a storage DTO"; `fromMarkdown` still throws on
 genuinely malformed Markdown.
 
-### `Document.markdownToJson(markdown)` / `Document.jsonToMarkdown(json)`
-Pure `string → string` conversions for storage layers that don't need a
-`Document` handle. `markdownToJson` is `fromMarkdown(md).toJson()` and
-`jsonToMarkdown` is `fromJson(json).toMarkdown()`, with no intermediate
-handle to track or `free()`. Each throws on the same inputs as the
-underlying parse method.
-
 ### Storage compatibility across versions
 
 The `schema` tag (`quillmark/document@0.81.0`) is the **model version**, not

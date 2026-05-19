@@ -288,19 +288,6 @@ describe('Document JSON DTO — toJson / fromJson', () => {
     ).toBeUndefined()
     expect(Document.tryFromJson(TEST_MARKDOWN)).toBeUndefined()
   })
-
-  it('markdownToJson / jsonToMarkdown convert without a handle', () => {
-    const json = Document.markdownToJson(TEST_MARKDOWN)
-    expect(json).toBe(Document.fromMarkdown(TEST_MARKDOWN).toJson())
-
-    const markdown = Document.jsonToMarkdown(json)
-    expect(markdown).toBe(Document.fromJson(json).toMarkdown())
-  })
-
-  it('markdownToJson / jsonToMarkdown throw on bad input', () => {
-    expect(() => Document.markdownToJson('no quill frontmatter')).toThrow()
-    expect(() => Document.jsonToMarkdown('not a dto')).toThrow()
-  })
 })
 
 describe('Quillmark.quill', () => {
