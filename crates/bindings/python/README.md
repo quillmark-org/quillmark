@@ -65,7 +65,7 @@ emitted = doc.to_markdown()          # canonical Quillmark Markdown
 # Versioned storage DTO — use this to persist a document across a
 # process restart or crate upgrade. The wire format is frozen per
 # schema version, whereas Markdown syntax evolves.
-stored = doc.to_json()               # JSON string carrying a schema tag
+stored = doc.to_json()               # JSON string carrying a schema version
 restored = Document.from_json(stored)
 assert restored.to_markdown() == doc.to_markdown()
 ```

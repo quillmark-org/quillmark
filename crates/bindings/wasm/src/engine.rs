@@ -535,6 +535,39 @@ impl Document {
         })
     }
 
+    /// Read the schema version from a raw storage DTO string without
+    /// performing a full parse, or `undefined`.
+    ///
+    /// Returns the `schema` field as-is — including unknown future versions
+    /// that `fromJson` would reject. Use this to distinguish "this build is
+    /// too old for the payload" from "the payload is corrupt" when
+    /// [`fromJson`](Document::from_json) throws:
+    ///
+    /// ```js
+    /// const v = Document.schemaVersionOf(blob);
+    /// if (v === undefined) {
+    ///   // not a stored DTO at all — try fromMarkdown
+    /// } else if (v !== Document.currentSchemaVersion()) {
+    ///   // newer (or older unmigrated) schema — prompt the user to upgrade
+    /// } else {
+    ///   doc = Document.fromJson(blob);
+    /// }
+    /// ```
+    #[wasm_bindgen(js_name = schemaVersionOf)]
+    pub fn schema_version_of(json: &str) -> Option<String> {
+        quillmark_core::document::peek_schema_version(json)
+    }
+
+    /// Schema version this build writes via [`toJson`](Document::to_json).
+    ///
+    /// Compare a payload's [`schemaVersionOf`](Document::schema_version_of)
+    /// against this to detect mismatches before calling
+    /// [`fromJson`](Document::from_json).
+    #[wasm_bindgen(js_name = currentSchemaVersion)]
+    pub fn current_schema_version() -> String {
+        quillmark_core::document::SCHEMA_V0_81_0.to_string()
+    }
+
     /// Emit canonical Quillmark Markdown.
     ///
     /// Returns the document serialised as a Quillmark Markdown string.
@@ -548,7 +581,7 @@ impl Document {
     /// Serialize this document to a versioned storage DTO string.
     ///
     /// Returns the document as a JSON string carrying a `schema` version
-    /// tag. The string is produced inside the module via `serde_json` and
+    /// field. The string is produced inside the module via `serde_json` and
     /// round-trips losslessly back to an equal `Document` via
     /// [`fromJson`](Document::from_json) — the JS `JSON` global is not
     /// involved in either direction.

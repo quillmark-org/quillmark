@@ -166,11 +166,11 @@ fn test_json_dto_round_trip() {
     let md = "---\nQUILL: test_quill\ntitle: Hello\nsubject: !fill A Subject\n---\n\n# Hello\n\n```card note\nfor: someone\n```\n\nNote body.\n";
     let doc = Document::from_markdown(md).expect("fromMarkdown failed");
 
-    // toJson yields a string carrying the versioned schema tag.
+    // toJson yields a string carrying the schema version.
     let dto = doc.to_json().expect("toJson failed");
     assert!(
         dto.contains("\"quillmark/document@0.81.0\""),
-        "DTO string must carry the versioned schema tag, got: {dto}"
+        "DTO string must carry the schema version, got: {dto}"
     );
 
     // fromJson reconstructs an equal document.
@@ -210,7 +210,7 @@ fn test_json_dto_rejects_invalid_input() {
     let unknown_schema = r#"{"schema":"quillmark/document@0.99.0","main":{}}"#;
     assert!(
         Document::from_json(unknown_schema).is_err(),
-        "fromJson must reject an unknown schema tag"
+        "fromJson must reject an unknown schema version"
     );
 
     assert!(

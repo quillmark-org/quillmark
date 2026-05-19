@@ -87,7 +87,7 @@ pub mod limits;
 pub mod prescan;
 pub mod sentinel;
 
-pub use dto::{StorageError, StoredDocument};
+pub use dto::{peek_schema_version, StorageError, StoredDocument, SCHEMA_V0_81_0};
 pub use edit::EditError;
 pub use frontmatter::{Frontmatter, FrontmatterItem};
 

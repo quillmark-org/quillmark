@@ -26,8 +26,8 @@
 //!
 //! ## Schema versioning
 //!
-//! The schema tag tracks the crate version at which the `Document` model was
-//! last changed — currently `0.81.0` (see [`SCHEMA_V0_81_0`]). A model change
+//! The schema version tracks the crate version at which the `Document` model
+//! was last changed — currently `0.81.0` (see [`SCHEMA_V0_81_0`]). A model change
 //! adds a new [`StoredDocument`] variant with its own frozen type tree and a
 //! migration; older variants stay frozen so previously stored rows keep
 //! deserializing.
@@ -49,9 +49,25 @@ use super::{Card, Document, Sentinel};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
 
-/// Schema tag for the Document model as established in crate version
+/// Schema version for the Document model as established in crate version
 /// `0.81.0`. Bumped only when the model itself changes.
 pub const SCHEMA_V0_81_0: &str = "quillmark/document@0.81.0";
+
+/// Read the `schema` field from a raw storage DTO payload without performing
+/// full deserialization.
+///
+/// Returns `None` if `json` is not valid JSON, is not an object, or has no
+/// `schema` field. The returned string is **not** validated against the set
+/// of supported schema versions — callers use this to distinguish "unknown
+/// future version" from "corrupt payload" when [`Document`] deserialization
+/// fails.
+pub fn peek_schema_version(json: &str) -> Option<String> {
+    #[derive(Deserialize)]
+    struct Peek {
+        schema: Option<String>,
+    }
+    serde_json::from_str::<Peek>(json).ok()?.schema
+}
 
 /// Versioned envelope for a persisted [`Document`].
 ///
@@ -506,7 +522,7 @@ This body and the metadata above are an indorsement card.
     }
 
     #[test]
-    fn serialized_form_carries_versioned_schema_tag() {
+    fn serialized_form_carries_schema_version() {
         let doc = sample();
         let value: serde_json::Value = serde_json::to_value(&doc).unwrap();
         assert_eq!(value["schema"], SCHEMA_V0_81_0);
@@ -516,6 +532,27 @@ This body and the metadata above are an indorsement card.
     fn rejects_unknown_schema_version() {
         let json = r#"{"schema":"quillmark/document@0.99.0","main":{}}"#;
         assert!(serde_json::from_str::<Document>(json).is_err());
+    }
+
+    #[test]
+    fn peek_schema_version_reads_field_without_full_parse() {
+        let doc = sample();
+        let json = serde_json::to_string(&doc).unwrap();
+        assert_eq!(peek_schema_version(&json).as_deref(), Some(SCHEMA_V0_81_0));
+
+        // Unknown future version: peek still succeeds, even though full
+        // deserialization would reject it.
+        let future = r#"{"schema":"quillmark/document@0.99.0","main":{}}"#;
+        assert_eq!(
+            peek_schema_version(future).as_deref(),
+            Some("quillmark/document@0.99.0")
+        );
+
+        // Not JSON, no schema field, wrong type — all None.
+        assert_eq!(peek_schema_version("not json"), None);
+        assert_eq!(peek_schema_version(r#"{"foo":"bar"}"#), None);
+        assert_eq!(peek_schema_version(r#"{"schema":42}"#), None);
+        assert_eq!(peek_schema_version("[1,2,3]"), None);
     }
 
     #[test]

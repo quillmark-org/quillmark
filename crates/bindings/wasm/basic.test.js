@@ -208,7 +208,7 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
 // ---------------------------------------------------------------------------
 
 describe('Document JSON DTO — toJson / fromJson', () => {
-  it('toJson emits a string carrying the versioned schema tag', () => {
+  it('toJson emits a string carrying the schema version', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const dto = doc.toJson()
     expect(typeof dto).toBe('string')
@@ -252,7 +252,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
     expect(restored.warnings.length).toBe(0)
   })
 
-  it('fromJson rejects an unknown schema tag', () => {
+  it('fromJson rejects an unknown schema version', () => {
     expect(() =>
       Document.fromJson('{"schema":"quillmark/document@0.99.0","main":{}}'),
     ).toThrow()
@@ -287,6 +287,29 @@ describe('Document JSON DTO — toJson / fromJson', () => {
       Document.tryFromJson('{"schema":"quillmark/document@0.99.0","main":{}}'),
     ).toBeUndefined()
     expect(Document.tryFromJson(TEST_MARKDOWN)).toBeUndefined()
+  })
+
+  it('currentSchemaVersion matches what toJson writes', () => {
+    const dto = JSON.parse(Document.fromMarkdown(TEST_MARKDOWN).toJson())
+    expect(dto.schema).toBe(Document.currentSchemaVersion())
+  })
+
+  it('schemaVersionOf reads the schema field from any object payload', () => {
+    const current = Document.fromMarkdown(TEST_MARKDOWN).toJson()
+    expect(Document.schemaVersionOf(current)).toBe(
+      Document.currentSchemaVersion(),
+    )
+
+    // Future versions are returned as-is, even though fromJson would reject.
+    expect(
+      Document.schemaVersionOf(
+        '{"schema":"quillmark/document@0.99.0","main":{}}',
+      ),
+    ).toBe('quillmark/document@0.99.0')
+
+    expect(Document.schemaVersionOf('not json')).toBeUndefined()
+    expect(Document.schemaVersionOf('{"foo":"bar"}')).toBeUndefined()
+    expect(Document.schemaVersionOf(TEST_MARKDOWN)).toBeUndefined()
   })
 })
 
