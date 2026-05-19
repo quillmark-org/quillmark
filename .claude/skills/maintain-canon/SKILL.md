@@ -1,5 +1,5 @@
 ---
-name: maintain-designs
+name: maintain-canon
 description: Maintain prose/canon/ — the canonical, high-level design documentation. Use when adding, consolidating, or auditing canon docs.
 ---
 
