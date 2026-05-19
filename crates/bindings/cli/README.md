@@ -175,7 +175,7 @@ cargo run -- render path/to/quill document.md
 ## Design Documentation
 
 For architectural details and design decisions, see:
-- [CLI Design Document](../../prose/designs/CLI.md)
+- [CLI Design Document](../../prose/canon/CLI.md)
 - [Implementation Plan](../../prose/plans/cli-basic-render.md)
 
 ## License

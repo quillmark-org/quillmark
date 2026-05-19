@@ -1,4 +1,4 @@
-//! Enforces the quill authoring contract from `prose/designs/BLUEPRINT.md`:
+//! Enforces the quill authoring contract from `prose/canon/BLUEPRINT.md`:
 //! a quill's `plate.typ` must render the quill's own blueprint to a
 //! successful (non-error) output.
 //!

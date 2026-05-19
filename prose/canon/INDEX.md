@@ -1,4 +1,4 @@
-# Quillmark Design Index
+# Quillmark Canon Index
 
 ## Core
 

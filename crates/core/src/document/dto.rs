@@ -33,7 +33,7 @@
 //! deserializing.
 //!
 //! The canonical design — including the step-by-step procedure for adding a
-//! schema version — is `prose/designs/DOCUMENT_STORAGE.md`.
+//! schema version — is `prose/canon/DOCUMENT_STORAGE.md`.
 
 // Storage DTO types are deliberately named after the crate version that
 // fixed their shape (e.g. `DocumentV0_81_0`); the underscores are intentional.

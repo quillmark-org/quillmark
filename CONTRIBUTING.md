@@ -3,7 +3,7 @@
 ## Documentation
 
 - API docs: standard in-line Rust doc comments (`///`), minimal examples on public APIs, err toward brevity.
-- Design docs and specifications: `prose/designs/`.
+- Canonical design docs and specifications: `prose/canon/`.
 - User guide: `docs/` (rendered by mkdocs).
 
 ## Binding tests

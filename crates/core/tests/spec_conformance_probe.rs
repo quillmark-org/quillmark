@@ -1,4 +1,4 @@
-//! Independent spec conformance probes for prose/designs/MARKDOWN.md.
+//! Independent spec conformance probes for prose/canon/MARKDOWN.md.
 //!
 //! These tests exercise concrete spec requirements that are most likely to
 //! diverge between the parser and the written standard.
