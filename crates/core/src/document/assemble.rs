@@ -55,21 +55,6 @@ pub(super) struct MetadataBlock {
     pub(super) pre_warnings: Vec<Diagnostic>,
 }
 
-/// Creates serde_saphyr Options with security budgets configured.
-///
-/// Uses MAX_YAML_DEPTH from limits.rs to limit nesting depth at the parser level,
-/// which is more robust than heuristic-based pre-parse checks.
-fn yaml_parse_options() -> serde_saphyr::Options {
-    let budget = serde_saphyr::Budget {
-        max_depth: super::limits::MAX_YAML_DEPTH,
-        ..Default::default()
-    };
-    serde_saphyr::Options {
-        budget: Some(budget),
-        ..Default::default()
-    }
-}
-
 /// Process the YAML content of a recognized metadata block and build a
 /// `MetadataBlock`. Returns errors per spec §9.
 ///
@@ -116,7 +101,7 @@ pub(super) fn build_block(
     } else {
         let parsed = match serde_saphyr::from_str_with_options::<serde_json::Value>(
             &content,
-            yaml_parse_options(),
+            super::limits::yaml_parse_options(),
         ) {
             Ok(parsed) => parsed,
             Err(e) => {
