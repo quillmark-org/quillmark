@@ -4,18 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Version bump type
+        description: Version bump type (ignored while iterating an existing RC)
         required: true
         type: choice
         options:
           - patch
           - minor
-          - major
-          - patch-rc
-          - minor-rc
-          - major-rc
-          - rc
-          - promote-rc
+      release_candidate:
+        description: Cut a release candidate (-rc.N) instead of a final release
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   prepare:
@@ -52,35 +51,29 @@ jobs:
           CURRENT=$(cargo metadata --format-version=1 --no-deps \
             | jq -r '.packages[] | select(.name == "quillmark") | .version')
 
-          # Strip any pre-release suffix before splitting on '.' so that
-          # PATCH isn't "0-rc.1" when the current version is e.g. 0.81.0-rc.1.
-          BASE_VERSION="${CURRENT%%-*}"
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+          RC="${{ inputs.release_candidate }}"
 
-          case "${{ inputs.bump }}" in
-            major)      NEXT="$((MAJOR + 1)).0.0" ;;
-            minor)      NEXT="${MAJOR}.$((MINOR + 1)).0" ;;
-            patch)      NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
-            major-rc)   NEXT="$((MAJOR + 1)).0.0-rc.1" ;;
-            minor-rc)   NEXT="${MAJOR}.$((MINOR + 1)).0-rc.1" ;;
-            patch-rc)   NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))-rc.1" ;;
-            rc)
-              if [[ "$CURRENT" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-rc\.([0-9]+)$ ]]; then
-                NEXT="${BASH_REMATCH[1]}-rc.$((BASH_REMATCH[2] + 1))"
-              else
-                echo "Error: current version '$CURRENT' is not an RC version; cannot bump RC." >&2
-                exit 1
-              fi
-              ;;
-            promote-rc)
-              if [[ "$CURRENT" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-rc\.[0-9]+$ ]]; then
-                NEXT="${BASH_REMATCH[1]}"
-              else
-                echo "Error: current version '$CURRENT' is not an RC version; cannot promote." >&2
-                exit 1
-              fi
-              ;;
-          esac
+          if [[ "$CURRENT" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-rc\.([0-9]+)$ ]]; then
+            # Already an RC: the target base version is fixed, so `bump` is
+            # ignored. The checkbox decides whether to iterate or promote.
+            RC_BASE="${BASH_REMATCH[1]}"
+            RC_NUM="${BASH_REMATCH[2]}"
+            if [[ "$RC" == "true" ]]; then
+              NEXT="${RC_BASE}-rc.$((RC_NUM + 1))"
+            else
+              NEXT="${RC_BASE}"
+            fi
+          else
+            # Not an RC: apply the chosen bump, optionally as a fresh -rc.1.
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+            case "${{ inputs.bump }}" in
+              minor) NEXT="${MAJOR}.$((MINOR + 1)).0" ;;
+              patch) NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+            esac
+            if [[ "$RC" == "true" ]]; then
+              NEXT="${NEXT}-rc.1"
+            fi
+          fi
 
           echo "next=$NEXT" >> "$GITHUB_OUTPUT"
           echo "Bumping $CURRENT → $NEXT"
