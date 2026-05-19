@@ -241,8 +241,13 @@ describe('Document JSON DTO — toJson / fromJson', () => {
     expect(parsed.schema).toBe('quillmark/document@0.81.0')
   })
 
-  it('reconstructed document carries no parse-time warnings', () => {
-    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+  it('drops parse-time warnings on reconstruction', () => {
+    // An unknown YAML tag triggers a `parse::unsupported_yaml_tag` warning.
+    const warnMd =
+      '---\nQUILL: test_quill\ntitle: Hi\nweird: !custom value\n---\n\nBody\n'
+    const doc = Document.fromMarkdown(warnMd)
+    expect(doc.warnings.length).toBeGreaterThan(0)
+
     const restored = Document.fromJson(doc.toJson())
     expect(restored.warnings.length).toBe(0)
   })

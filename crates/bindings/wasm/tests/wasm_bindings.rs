@@ -180,8 +180,22 @@ fn test_json_dto_round_trip() {
         "fromJson(toJson(doc)) must equal doc"
     );
     assert_eq!(restored.quill_ref(), doc.quill_ref());
+}
 
-    // The restored document carries no parse-time warnings.
+/// A DTO-reconstructed document carries no parse-time warnings, even when
+/// the source document had them — the DTO describes content, not source.
+#[wasm_bindgen_test]
+fn test_json_dto_drops_parse_warnings() {
+    // An unknown YAML tag triggers a `parse::unsupported_yaml_tag` warning.
+    let warn_md = "---\nQUILL: test_quill\ntitle: Hi\nweird: !custom value\n---\n\nBody\n";
+    let doc = Document::from_markdown(warn_md).expect("fromMarkdown failed");
+    assert!(
+        js_sys::Array::from(&doc.warnings()).length() > 0,
+        "source document must carry a parse warning"
+    );
+
+    let restored = Document::from_json(&doc.to_json().expect("toJson failed"))
+        .expect("fromJson failed");
     assert_eq!(
         js_sys::Array::from(&restored.warnings()).length(),
         0,
