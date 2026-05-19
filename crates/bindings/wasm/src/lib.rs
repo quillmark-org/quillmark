@@ -6,7 +6,8 @@
 //!
 //! - [`Quillmark`] - engine for loading render-ready quills from in-memory trees
 //! - [`Quill`] - quill handle for rendering/compiling
-//! - [`engine::Document`] - typed parsed document (`fromMarkdown` static, `toMarkdown` emitter)
+//! - [`engine::Document`] - typed parsed document (`fromMarkdown`/`fromJson` static
+//!   constructors, `toMarkdown`/`toJson` emitters)
 //!
 //! ## Usage
 //!

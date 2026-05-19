@@ -484,6 +484,30 @@ impl Document {
         })
     }
 
+    /// Reconstruct a `Document` from its versioned storage DTO string.
+    ///
+    /// `json` must be a string produced by [`toJson`](Document::to_json) —
+    /// the versioned storage DTO. Parsing and schema dispatch happen inside
+    /// the module via `serde_json`; the JS `JSON` global is not involved.
+    /// Unknown `schema` tags are rejected.
+    ///
+    /// The reconstructed document carries no parse-time warnings — the DTO
+    /// describes content, not source text — so `.warnings` is always empty.
+    ///
+    /// Throws a JS `Error` if `json` is not a valid storage DTO (malformed
+    /// JSON, unknown `schema`, missing fields, or an unparseable quill
+    /// reference).
+    #[wasm_bindgen(js_name = fromJson)]
+    pub fn from_json(json: &str) -> Result<Document, JsValue> {
+        let inner: quillmark_core::Document = serde_json::from_str(json).map_err(|e| {
+            WasmError::from(format!("fromJson: invalid storage DTO: {e}")).to_js_value()
+        })?;
+        Ok(Document {
+            inner,
+            parse_warnings: Vec::new(),
+        })
+    }
+
     /// Emit canonical Quillmark Markdown.
     ///
     /// Returns the document serialised as a Quillmark Markdown string.
@@ -492,6 +516,29 @@ impl Document {
     #[wasm_bindgen(js_name = toMarkdown)]
     pub fn to_markdown(&self) -> String {
         self.inner.to_markdown()
+    }
+
+    /// Serialize this document to a versioned storage DTO string.
+    ///
+    /// Returns the document as a JSON string carrying a `schema` version
+    /// tag. The string is produced inside the module via `serde_json` and
+    /// round-trips losslessly back to an equal `Document` via
+    /// [`fromJson`](Document::from_json) — the JS `JSON` global is not
+    /// involved in either direction.
+    ///
+    /// Use this — not [`toMarkdown`](Document::to_markdown) — to persist a
+    /// document across a process restart or crate upgrade; the wire format
+    /// is frozen per `schema` version, whereas Markdown syntax evolves.
+    /// Parse-time `warnings` are not part of the DTO.
+    ///
+    /// The result is standard JSON text, so callers that want to inspect it
+    /// may `JSON.parse` it — but treating it as an opaque blob is the
+    /// intended use.
+    #[wasm_bindgen(js_name = toJson)]
+    pub fn to_json(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.inner).map_err(|e| {
+            WasmError::from(format!("toJson: serialization failed: {e}")).to_js_value()
+        })
     }
 
     /// Return a fresh `Document` handle with the same parse state.

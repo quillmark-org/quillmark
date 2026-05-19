@@ -56,6 +56,23 @@ session = quill.open(parsed)
 quill.dry_run(parsed)
 ```
 
+### `Document`
+
+```python
+doc = Document.from_markdown(markdown)
+emitted = doc.to_markdown()          # canonical Quillmark Markdown
+
+# Versioned storage DTO — use this to persist a document across a
+# process restart or crate upgrade. The wire format is frozen per
+# schema version, whereas Markdown syntax evolves.
+stored = doc.to_json()               # JSON string carrying a schema tag
+restored = Document.from_json(stored)
+assert restored.to_markdown() == doc.to_markdown()
+```
+
+`from_json` raises `ParseError` on malformed JSON or an unknown schema
+tag. A DTO-reconstructed document has no parse-time `warnings`.
+
 ## Development
 
 ```bash

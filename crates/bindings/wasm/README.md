@@ -67,6 +67,31 @@ byte-equal to the original source — YAML quoting, key ordering, and
 whitespace are normalised. Use `equals` (not string comparison) to test
 semantic equality.
 
+### `doc.toJson()`
+Serialize the document to a versioned storage DTO — a JSON **string**
+carrying a `schema` version tag. Use this (not `toMarkdown`) to persist a
+document across a process restart or crate upgrade: the wire format is
+frozen per `schema` version, whereas Markdown syntax evolves. Parse-time
+`warnings` are not part of the DTO.
+
+The string is produced inside the module by `serde_json`; the JS `JSON`
+global is not involved. It is standard JSON text, so callers may
+`JSON.parse` it to inspect it — but it is intended as an opaque blob you
+persist and hand back.
+
+### `Document.fromJson(json)`
+Reconstruct a `Document` from a storage DTO string produced by `toJson`.
+Round-trips losslessly:
+
+```ts
+const stored = doc.toJson();        // persist this string
+const restored = Document.fromJson(stored);
+restored.equals(doc);               // true
+```
+
+Throws a JS `Error` on malformed JSON, an unknown `schema` tag, or a
+malformed payload. The restored document has no parse-time `warnings`.
+
 ### `doc.equals(other)`
 Structural equality between two `Document` handles. Compares `main` and
 `cards` by value; parse-time `warnings` are intentionally excluded.
