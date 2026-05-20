@@ -205,6 +205,116 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
   })
 })
 
+// ---------------------------------------------------------------------------
+// Document.toJson / Document.fromJson — versioned storage DTO round-trip
+// ---------------------------------------------------------------------------
+
+describe('Document JSON DTO — toJson / fromJson', () => {
+  it('toJson emits a string carrying the schema version', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    const dto = doc.toJson()
+    expect(typeof dto).toBe('string')
+    expect(dto).toContain('quillmark/document@0.81.0')
+  })
+
+  it('round-trips losslessly: fromJson(toJson(doc)) equals doc', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    const restored = Document.fromJson(doc.toJson())
+    expect(restored.equals(doc)).toBe(true)
+  })
+
+  it('round-trips a mutated document with cards', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setField('title', 'New Title')
+    doc.pushCard({ tag: 'note', fields: { author: 'Alice' }, body: 'Hello' })
+
+    const restored = Document.fromJson(doc.toJson())
+
+    expect(restored.equals(doc)).toBe(true)
+    expect(restored.main.frontmatter.title).toBe('New Title')
+    expect(restored.cards[0].tag).toBe('note')
+    expect(restored.cards[0].frontmatter.author).toBe('Alice')
+    expect(restored.cards[0].body).toBe('Hello')
+  })
+
+  it('toJson output is standard JSON parseable by the JSON global', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    const parsed = JSON.parse(doc.toJson())
+    expect(parsed.schema).toBe('quillmark/document@0.81.0')
+  })
+
+  it('drops parse-time warnings on reconstruction', () => {
+    // An unknown YAML tag triggers a `parse::unsupported_yaml_tag` warning.
+    const warnMd =
+      '---\nQUILL: test_quill\ntitle: Hi\nweird: !custom value\n---\n\nBody\n'
+    const doc = Document.fromMarkdown(warnMd)
+    expect(doc.warnings.length).toBeGreaterThan(0)
+
+    const restored = Document.fromJson(doc.toJson())
+    expect(restored.warnings.length).toBe(0)
+  })
+
+  it('fromJson rejects an unknown schema version', () => {
+    expect(() =>
+      Document.fromJson('{"schema":"quillmark/document@0.99.0","main":{}}'),
+    ).toThrow()
+  })
+
+  it('fromJson rejects malformed JSON', () => {
+    expect(() => Document.fromJson('not json at all')).toThrow()
+  })
+
+  it('toJson is deterministic across repeated calls', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    expect(doc.toJson()).toBe(doc.toJson())
+  })
+
+  it('toJson is byte-identical for equal documents', () => {
+    const a = Document.fromMarkdown(TEST_MARKDOWN)
+    const b = Document.fromJson(a.toJson())
+    expect(b.equals(a)).toBe(true)
+    expect(b.toJson()).toBe(a.toJson())
+  })
+
+  it('tryFromJson returns a Document for a valid DTO', () => {
+    const dto = Document.fromMarkdown(TEST_MARKDOWN).toJson()
+    const restored = Document.tryFromJson(dto)
+    expect(restored).toBeDefined()
+    expect(restored.equals(Document.fromMarkdown(TEST_MARKDOWN))).toBe(true)
+  })
+
+  it('tryFromJson returns undefined for non-DTO input instead of throwing', () => {
+    expect(Document.tryFromJson('not json at all')).toBeUndefined()
+    expect(
+      Document.tryFromJson('{"schema":"quillmark/document@0.99.0","main":{}}'),
+    ).toBeUndefined()
+    expect(Document.tryFromJson(TEST_MARKDOWN)).toBeUndefined()
+  })
+
+  it('currentSchemaVersion matches what toJson writes', () => {
+    const dto = JSON.parse(Document.fromMarkdown(TEST_MARKDOWN).toJson())
+    expect(dto.schema).toBe(Document.currentSchemaVersion())
+  })
+
+  it('schemaVersionOf reads the schema field from any object payload', () => {
+    const current = Document.fromMarkdown(TEST_MARKDOWN).toJson()
+    expect(Document.schemaVersionOf(current)).toBe(
+      Document.currentSchemaVersion(),
+    )
+
+    // Future versions are returned as-is, even though fromJson would reject.
+    expect(
+      Document.schemaVersionOf(
+        '{"schema":"quillmark/document@0.99.0","main":{}}',
+      ),
+    ).toBe('quillmark/document@0.99.0')
+
+    expect(Document.schemaVersionOf('not json')).toBeUndefined()
+    expect(Document.schemaVersionOf('{"foo":"bar"}')).toBeUndefined()
+    expect(Document.schemaVersionOf(TEST_MARKDOWN)).toBeUndefined()
+  })
+})
+
 describe('Quillmark.quill', () => {
   it('should return a render-ready Quill', () => {
     const engine = new Quillmark()

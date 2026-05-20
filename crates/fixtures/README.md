@@ -1,6 +1,6 @@
 # quillmark-fixtures
 
-Test fixtures and sample Quill templates for [Quillmark](https://github.com/nibsbin/quillmark).
+Test fixtures and sample Quill templates for [Quillmark](https://github.com/quillmark-org/quillmark).
 
 ## Overview
 

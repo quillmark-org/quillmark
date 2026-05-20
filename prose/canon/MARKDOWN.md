@@ -1,8 +1,8 @@
 # Quillmark Markdown
 
-**Status:** Draft specification
-**Editor:** Quillmark Team
-**Base:** [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)
+> **Status**: Draft specification
+> **Base**: [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)
+> **Implementation**: `crates/core/src/document/`
 
 Quillmark Markdown is a **strict superset of CommonMark** with one declared
 deviation. It layers a structured-data system — the **card-yaml** format — on

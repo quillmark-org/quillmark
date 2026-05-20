@@ -244,7 +244,9 @@ impl PyQuill {
 ///
 /// Exposes:
 /// - `from_markdown(markdown)` — static constructor
+/// - `from_json(json)` — static constructor from a versioned storage DTO
 /// - `to_markdown()` — emit canonical Quillmark Markdown
+/// - `to_json()` — emit the versioned storage DTO string
 /// - `quill_ref()` — quill reference string
 /// - `payload` — dict of typed YAML fields (no QUILL/BODY/CARDS)
 /// - `body` — global Markdown body (str, never None)
@@ -278,6 +280,29 @@ impl PyDocument {
         })
     }
 
+    /// Reconstruct a `Document` from its versioned storage DTO string.
+    ///
+    /// `json` must be a string produced by [`to_json`](PyDocument::to_json).
+    /// Parsing and schema dispatch happen via `serde_json`; unknown `schema`
+    /// tags are rejected.
+    ///
+    /// The reconstructed document carries no parse-time warnings — the DTO
+    /// describes content, not source text — so `warnings` is always empty.
+    ///
+    /// Raises `quillmark.ParseError` if `json` is not a valid storage DTO
+    /// (malformed JSON, unknown `schema`, missing fields, or an unparseable
+    /// quill reference).
+    #[staticmethod]
+    fn from_json(json: &str) -> PyResult<Self> {
+        let inner: Document = serde_json::from_str(json).map_err(|e| {
+            PyErr::new::<crate::errors::ParseError, _>(format!("invalid storage DTO: {e}"))
+        })?;
+        Ok(PyDocument {
+            inner,
+            parse_warnings: Vec::new(),
+        })
+    }
+
     /// Emit canonical Quillmark Markdown.
     ///
     /// Returns the document serialised as a Quillmark Markdown string.
@@ -285,6 +310,22 @@ impl PyDocument {
     /// produces a `Document` equal to `self` by value and by type.
     fn to_markdown(&self) -> String {
         self.inner.to_markdown()
+    }
+
+    /// Serialize this document to a versioned storage DTO string.
+    ///
+    /// Returns the document as a JSON string carrying a `schema` version
+    /// tag. Round-trips losslessly back to an equal `Document` via
+    /// [`from_json`](PyDocument::from_json).
+    ///
+    /// Use this — not [`to_markdown`](PyDocument::to_markdown) — to persist a
+    /// document across a process restart or crate upgrade; the wire format
+    /// is frozen per `schema` version, whereas Markdown syntax evolves.
+    /// Parse-time `warnings` are not part of the DTO.
+    fn to_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.inner).map_err(|e| {
+            PyErr::new::<crate::errors::QuillmarkError, _>(format!("serialization failed: {e}"))
+        })
     }
 
     /// The QUILL reference string (e.g. `"usaf_memo@0.1"`).

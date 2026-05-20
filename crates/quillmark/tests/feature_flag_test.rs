@@ -25,7 +25,7 @@
 //!
 //! ## Design Reference
 //!
-//! See `prose/designs/ARCHITECTURE.md` section on Backend Auto-Registration.
+//! See `prose/canon/ARCHITECTURE.md` section on Backend Auto-Registration.
 
 use quillmark::Quillmark;
 

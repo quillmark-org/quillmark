@@ -40,8 +40,8 @@
 //!
 //! ## Further Reading
 //!
-//! - [PARSE.md](https://github.com/nibsbin/quillmark/blob/main/designs/PARSE.md) - Detailed parsing documentation
-//! - [Examples](https://github.com/nibsbin/quillmark/tree/main/examples) - Working examples
+//! - [MARKDOWN.md](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/MARKDOWN.md) - Quillmark Markdown parsing specification
+//! - [Examples](https://github.com/quillmark-org/quillmark/tree/main/crates/core/examples) - Working examples
 
 pub mod document;
 pub use document::{Card, CardMetadata, Document, EditError, ParseOutput, Payload, PayloadItem};

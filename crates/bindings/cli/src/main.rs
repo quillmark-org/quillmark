@@ -23,7 +23,7 @@ enum Commands {
     Schema(commands::schema::SchemaArgs),
 
     /// Output the annotated Markdown blueprint for a quill
-    Specs(commands::specs::SpecsArgs),
+    Blueprint(commands::blueprint::BlueprintArgs),
 
     /// Validate a quill's configuration (including defaults)
     Validate(commands::validate::ValidateArgs),
@@ -38,7 +38,7 @@ fn main() {
     let result = match cli.command {
         Commands::Render(args) => commands::render::execute(args),
         Commands::Schema(args) => commands::schema::execute(args),
-        Commands::Specs(args) => commands::specs::execute(args),
+        Commands::Blueprint(args) => commands::blueprint::execute(args),
         Commands::Validate(args) => commands::validate::execute(args),
         Commands::Info(args) => commands::info::execute(args),
     };

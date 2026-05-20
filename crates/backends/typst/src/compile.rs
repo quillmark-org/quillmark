@@ -53,14 +53,12 @@ pub fn compile_to_document(
 ) -> Result<PagedDocument, RenderError> {
     let world = QuillWorld::new_with_data(source, plated_content, json_data).map_err(|e| {
         RenderError::EngineCreation {
-            diag: Box::new(
-                Diagnostic::new(
-                    Severity::Error,
-                    format!("Failed to create Typst compilation environment: {}", e),
-                )
-                .with_code("typst::world_creation".to_string())
-                .with_source(e.as_ref()),
-            ),
+            diags: vec![Diagnostic::new(
+                Severity::Error,
+                format!("Failed to create Typst compilation environment: {}", e),
+            )
+            .with_code("typst::world_creation".to_string())
+            .with_source(e.as_ref())],
         }
     })?;
 
@@ -167,13 +165,11 @@ pub(crate) fn render_document_pages(
     // PDF does not support selective page rendering
     if format == OutputFormat::Pdf && pages.is_some() {
         return Err(RenderError::FormatNotSupported {
-            diag: Box::new(
-                Diagnostic::new(
-                    Severity::Error,
-                    "PDF does not support page selection; pass null/None to render the full document, or use PNG/SVG".to_string(),
-                )
-                .with_code("typst::pdf_page_selection_not_supported".to_string()),
-            ),
+            diags: vec![Diagnostic::new(
+                Severity::Error,
+                "PDF does not support page selection; pass null/None to render the full document, or use PNG/SVG".to_string(),
+            )
+            .with_code("typst::pdf_page_selection_not_supported".to_string())],
         });
     }
 
@@ -251,13 +247,11 @@ pub(crate) fn render_document_pages(
             ))
         }
         OutputFormat::Txt => Err(RenderError::FormatNotSupported {
-            diag: Box::new(
-                Diagnostic::new(
-                    Severity::Error,
-                    "TXT output is not supported for Typst".into(),
-                )
-                .with_code("typst::format_not_supported".to_string()),
-            ),
+            diags: vec![Diagnostic::new(
+                Severity::Error,
+                "TXT output is not supported for Typst".into(),
+            )
+            .with_code("typst::format_not_supported".to_string())],
         }),
     }
 }

@@ -46,18 +46,6 @@ pub(super) struct MetadataBlock {
     pub(super) pre_warnings: Vec<Diagnostic>,
 }
 
-/// Creates serde_saphyr Options with security budgets configured.
-fn yaml_parse_options() -> serde_saphyr::Options {
-    let budget = serde_saphyr::Budget {
-        max_depth: super::limits::MAX_YAML_DEPTH,
-        ..Default::default()
-    };
-    serde_saphyr::Options {
-        budget: Some(budget),
-        ..Default::default()
-    }
-}
-
 /// Split a block's raw content into its `#@` system-metadata header and the
 /// YAML payload that follows it.
 ///
@@ -127,7 +115,7 @@ pub(super) fn build_block(
     } else {
         let parsed = match serde_saphyr::from_str_with_options::<serde_json::Value>(
             &content,
-            yaml_parse_options(),
+            super::limits::yaml_parse_options(),
         ) {
             Ok(parsed) => parsed,
             Err(e) => {

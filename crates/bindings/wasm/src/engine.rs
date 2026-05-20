@@ -484,6 +484,96 @@ impl Document {
         })
     }
 
+    /// Reconstruct a `Document` from its versioned storage DTO string.
+    ///
+    /// `json` must be a string produced by [`toJson`](Document::to_json) —
+    /// the versioned storage DTO. Parsing and schema dispatch happen inside
+    /// the module via `serde_json`; the JS `JSON` global is not involved.
+    /// Unknown `schema` tags are rejected.
+    ///
+    /// The reconstructed document carries no parse-time warnings — the DTO
+    /// describes content, not source text — so `.warnings` is always empty.
+    ///
+    /// Throws a JS `Error` if `json` is not a valid storage DTO (malformed
+    /// JSON, unknown `schema`, missing fields, or an unparseable quill
+    /// reference).
+    #[wasm_bindgen(js_name = fromJson)]
+    pub fn from_json(json: &str) -> Result<Document, JsValue> {
+        let inner: quillmark_core::Document = serde_json::from_str(json).map_err(|e| {
+            WasmError::from(format!("fromJson: invalid storage DTO: {e}")).to_js_value()
+        })?;
+        Ok(Document {
+            inner,
+            parse_warnings: Vec::new(),
+        })
+    }
+
+    /// Reconstruct a `Document` from a storage DTO string, or `undefined`.
+    ///
+    /// Like [`fromJson`](Document::from_json), but returns `undefined`
+    /// instead of throwing when `json` is not a valid storage DTO. Use this
+    /// to detect format and fall back without exceptions as control flow:
+    ///
+    /// ```js
+    /// const doc = Document.tryFromJson(content) ?? Document.fromMarkdown(content);
+    /// ```
+    ///
+    /// `undefined` only ever means "not a storage DTO" — `fromMarkdown`
+    /// still throws on genuinely malformed markdown.
+    //
+    // No `tryFromMarkdown` counterpart: a malformed-markdown failure is a
+    // real input error the caller wants to see, not a format-discriminator
+    // signal. The asymmetry is intentional — the only motivating use case
+    // is "is this content a storage DTO, or markdown?", and JSON is the
+    // discriminating side of that test.
+    #[wasm_bindgen(js_name = tryFromJson)]
+    pub fn try_from_json(json: &str) -> Option<Document> {
+        let inner: quillmark_core::Document = serde_json::from_str(json).ok()?;
+        Some(Document {
+            inner,
+            parse_warnings: Vec::new(),
+        })
+    }
+
+    /// Read the schema version from a raw storage DTO string without
+    /// performing a full parse, or `undefined`.
+    ///
+    /// Returns the `schema` field as-is — including unknown future versions
+    /// that `fromJson` would reject. Use this to distinguish "this build is
+    /// too old for the payload" from "the payload is corrupt" when
+    /// [`fromJson`](Document::from_json) throws:
+    ///
+    /// ```js
+    /// const v = Document.schemaVersionOf(blob);
+    /// if (v === undefined) {
+    ///   // not a stored DTO at all — try fromMarkdown
+    /// } else if (v !== Document.currentSchemaVersion()) {
+    ///   // newer (or older unmigrated) schema — prompt the user to upgrade
+    /// } else {
+    ///   doc = Document.fromJson(blob);
+    /// }
+    /// ```
+    #[wasm_bindgen(js_name = schemaVersionOf)]
+    pub fn schema_version_of(json: &str) -> Option<String> {
+        quillmark_core::document::peek_schema_version(json)
+    }
+
+    /// Schema version this build writes via [`toJson`](Document::to_json).
+    ///
+    /// Compare a payload's [`schemaVersionOf`](Document::schema_version_of)
+    /// against this to detect mismatches before calling
+    /// [`fromJson`](Document::from_json).
+    ///
+    /// The tag tracks the **`Document` model version** — the crate version
+    /// at which the wire format was last changed — not the running crate
+    /// version. Every patch and minor release within the same model
+    /// generation returns the same string; the tag advances only when a
+    /// new schema variant ships.
+    #[wasm_bindgen(js_name = currentSchemaVersion)]
+    pub fn current_schema_version() -> String {
+        quillmark_core::document::SCHEMA_V0_81_0.to_string()
+    }
+
     /// Emit canonical Quillmark Markdown.
     ///
     /// Returns the document serialised as a Quillmark Markdown string.
@@ -492,6 +582,46 @@ impl Document {
     #[wasm_bindgen(js_name = toMarkdown)]
     pub fn to_markdown(&self) -> String {
         self.inner.to_markdown()
+    }
+
+    /// Serialize this document to a versioned storage DTO string.
+    ///
+    /// Returns the document as a JSON string carrying a `schema` version
+    /// field. The string is produced inside the module via `serde_json` and
+    /// round-trips losslessly back to an equal `Document` via
+    /// [`fromJson`](Document::from_json) — the JS `JSON` global is not
+    /// involved in either direction.
+    ///
+    /// Use this — not [`toMarkdown`](Document::to_markdown) — to persist a
+    /// document across a process restart or crate upgrade; the wire format
+    /// is frozen per `schema` version, whereas Markdown syntax evolves.
+    /// Parse-time `warnings` are not part of the DTO.
+    ///
+    /// The result is standard JSON text, so callers that want to inspect it
+    /// may `JSON.parse` it — but treating it as an opaque blob is the
+    /// intended use.
+    ///
+    /// ## Byte-stability
+    ///
+    /// The output is a **byte-deterministic** function of the document's
+    /// value within a given `schema` version: two documents that compare
+    /// equal under [`equals`](Document::equals) serialize to byte-equal
+    /// strings, and the same document re-serialized in a later patch or
+    /// minor release of this crate (same `schema`) produces the same bytes.
+    /// Content-hash use cases (template-divergence detection, cache keys)
+    /// can rely on this without re-canonicalizing.
+    ///
+    /// Specifics: object fields are emitted in struct-declaration order;
+    /// frontmatter field values preserve their YAML insertion order (no
+    /// key sorting); whitespace is `serde_json`'s compact form (no spaces
+    /// between tokens, no trailing newline); strings use `serde_json`'s
+    /// standard escape set. A schema-version bump may change any of these.
+    #[wasm_bindgen(js_name = toJson)]
+    pub fn to_json(&self) -> String {
+        // Infallible: every field of `Document` and its DTO serializes via
+        // standard derives into a `String` buffer — there is no `io::Write`
+        // and no custom `Serialize` that can return an error.
+        serde_json::to_string(&self.inner).expect("Document serialization is infallible")
     }
 
     /// Return a fresh `Document` handle with the same parse state.

@@ -67,6 +67,86 @@ byte-equal to the original source — YAML quoting, key ordering, and
 whitespace are normalised. Use `equals` (not string comparison) to test
 semantic equality.
 
+### `doc.toJson()`
+Serialize the document to a versioned storage DTO — a JSON **string**
+carrying a `schema` version. Use this (not `toMarkdown`) to persist a
+document across a process restart or crate upgrade: the wire format is
+frozen per `schema` version, whereas Markdown syntax evolves. Parse-time
+`warnings` are not part of the DTO.
+
+The string is produced inside the module by `serde_json`; the JS `JSON`
+global is not involved. It is standard JSON text, so callers may
+`JSON.parse` it to inspect it — but it is intended as an opaque blob you
+persist and hand back.
+
+`toJson()` is **deterministic**: a `Document` that is `equals` to another
+serializes to a byte-identical string — across repeated calls, and across
+any crate upgrade that keeps the same `schema` version (every release does until
+the `Document` model changes; see [Storage compatibility](#storage-compatibility-across-versions)).
+Field order is fixed and object key order is preserved, so content hashes
+and string-equality dirty-checks over the output are stable.
+
+### `Document.fromJson(json)`
+Reconstruct a `Document` from a storage DTO string produced by `toJson`.
+Round-trips losslessly:
+
+```ts
+const stored = doc.toJson();        // persist this string
+const restored = Document.fromJson(stored);
+restored.equals(doc);               // true
+```
+
+Throws a JS `Error` on malformed JSON, an unknown `schema` version, or a
+malformed payload. The restored document has no parse-time `warnings`.
+
+### `Document.tryFromJson(json)`
+Like `fromJson`, but returns `undefined` instead of throwing when `json` is
+not a valid storage DTO. Use it to branch on format without a heuristic or
+`try`/`catch` as control flow:
+
+```ts
+// "JSON canonical, Markdown fallback" — no exceptions, no string sniffing
+const doc = Document.tryFromJson(content) ?? Document.fromMarkdown(content);
+```
+
+`undefined` means only "not a storage DTO"; `fromMarkdown` still throws on
+genuinely malformed Markdown.
+
+### Storage compatibility across versions
+
+The `schema` value (`quillmark/document@0.81.0`) is the **model version**,
+not the running crate version. It is a hand-set constant, bumped only when
+the `Document` model itself changes — so every `0.81.x` patch release reads
+and writes that same value.
+
+- **Upgrading is safe.** A newer build always reads documents written by an
+  older one. Each schema version's wire format is frozen and never changes;
+  when the model does change, the new build ships a migration that converts
+  old payloads on `fromJson`. A document you commit as your canonical
+  on-disk format keeps loading across crate upgrades — there is no need to
+  pin old wasm to read old data.
+- **Downgrading is not.** `fromJson` rejects an *unknown* (i.e. newer)
+  `schema` version rather than guessing at a format it predates. Don't feed
+  documents written by a newer build back into an older one.
+
+To detect a version mismatch before parsing, use the static accessors:
+
+```ts
+const v = Document.schemaVersionOf(blob); // undefined | string
+if (v && v !== Document.currentSchemaVersion()) {
+  // payload is from a build with a different model version
+}
+```
+
+`schemaVersionOf` does not validate the payload — it only reads the
+`schema` field, returning `undefined` for non-JSON, non-objects, or
+payloads that don't carry one. Use it to distinguish "wrong version" from
+"corrupt" when `fromJson` throws.
+
+In short: persist the `toJson` string, upgrade freely, never downgrade. The
+full design — including how migrations are added — is in
+`prose/canon/DOCUMENT_STORAGE.md`.
+
 ### `doc.equals(other)`
 Structural equality between two `Document` handles. Compares `main` and
 `cards` by value; parse-time `warnings` are intentionally excluded.
@@ -193,8 +273,11 @@ compilation failures. The same shape applies to every throw site:
 The wasm bindings are built with `--weak-refs`, so dropped `Document`,
 `Quill`, and `RenderSession` handles are reclaimed by `FinalizationRegistry`
 without manual `.free()` discipline. `.free()` is still emitted as an eager
-teardown hook for callers that want deterministic release. Requires
-Node 14.6+ / current evergreen browsers (all supported targets).
+teardown hook for callers that want deterministic release.
+
+The package requires Node 24+ (`engines: { node: ">=24" }`) and current
+evergreen browsers; `--weak-refs` itself only needs Node 14.6+, but the
+published package floor is 24.
 
 For environments where `using` (the [explicit resource management][erm]
 proposal) hasn't landed, use an explicit `try` / `finally`:

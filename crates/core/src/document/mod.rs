@@ -68,14 +68,17 @@
 //! - A malformed or duplicated `#@` metadata line
 //! - Reserved field name usage
 //!
-//! See [MARKDOWN.md](https://github.com/nibsbin/quillmark/blob/main/prose/designs/MARKDOWN.md)
+//! See [MARKDOWN.md](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/MARKDOWN.md)
 //! for comprehensive documentation of the card-yaml format.
+
+use serde::{Deserialize, Serialize};
 
 use crate::error::ParseError;
 use crate::version::QuillReference;
 use crate::Diagnostic;
 
 pub mod assemble;
+pub mod dto;
 pub mod edit;
 pub mod emit;
 pub mod fences;
@@ -84,6 +87,7 @@ pub mod meta;
 pub mod payload;
 pub mod prescan;
 
+pub use dto::{peek_schema_version, StorageError, StoredDocument, SCHEMA_V0_81_0};
 pub use edit::EditError;
 pub use meta::CardMetadata;
 pub use payload::{Payload, PayloadItem};
@@ -198,7 +202,18 @@ impl Card {
 /// Backend plates consume the flat JSON wire shape produced by
 /// [`Document::to_plate_json`]. That method is the **only** place in core
 /// that reconstructs `{"QUILL": ..., "CARDS": [...], "BODY": "..."}`.
-#[derive(Debug, Clone)]
+///
+/// ## Serialization
+///
+/// `Document` implements `serde::Serialize`/`Deserialize` for persistence
+/// (e.g. storing documents in a database). Serialization is routed through
+/// the versioned [`StoredDocument`] envelope — see the [`dto`] module — so
+/// the stored JSON is decoupled from both the evolving Markdown syntax and
+/// this struct's in-memory layout. This is distinct from the plate wire
+/// shape ([`to_plate_json`](Document::to_plate_json), a one-way export for
+/// backends) and from Markdown ([`to_markdown`](Document::to_markdown)).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(into = "StoredDocument", try_from = "StoredDocument")]
 pub struct Document {
     main: Card,
     cards: Vec<Card>,
@@ -220,8 +235,13 @@ impl Document {
     /// Create a `Document` from a pre-built main `Card` and composable cards.
     ///
     /// The caller must guarantee that `main`'s `#@quill` metadata is present
-    /// and valid.
+    /// and valid, and that composable cards do not carry `#@quill`.
     pub fn from_main_and_cards(main: Card, cards: Vec<Card>, warnings: Vec<Diagnostic>) -> Self {
+        debug_assert!(main.meta.quill.is_some(), "main card must carry `#@quill`");
+        debug_assert!(
+            cards.iter().all(|c| c.meta.quill.is_none()),
+            "composable cards must not carry `#@quill`"
+        );
         Self {
             main,
             cards,
@@ -275,16 +295,18 @@ impl Document {
         &mut self.cards
     }
 
+    /// Non-fatal warnings collected during the parse that produced this
+    /// document. Empty for documents reconstructed from a storage DTO or
+    /// built programmatically.
+    pub fn warnings(&self) -> &[Diagnostic] {
+        &self.warnings
+    }
+
     /// Internal mutable access to the backing `Vec<Card>`. Used by edit
     /// operations ([`Document::push_card`], etc.) that need to insert or
     /// remove elements.
     pub(crate) fn cards_vec_mut(&mut self) -> &mut Vec<Card> {
         &mut self.cards
-    }
-
-    /// Non-fatal warnings collected during parsing.
-    pub fn warnings(&self) -> &[Diagnostic] {
-        &self.warnings
     }
 
     // ── Wire format ────────────────────────────────────────────────────────────

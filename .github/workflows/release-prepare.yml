@@ -4,13 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Version bump type
+        description: Version bump type (ignored while iterating an existing RC)
         required: true
         type: choice
         options:
           - patch
           - minor
-          - major
+      release_candidate:
+        description: Cut a release candidate (-rc.N) instead of a final release
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   prepare:
@@ -46,13 +50,30 @@ jobs:
         run: |
           CURRENT=$(cargo metadata --format-version=1 --no-deps \
             | jq -r '.packages[] | select(.name == "quillmark") | .version')
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
 
-          case "${{ inputs.bump }}" in
-            major) NEXT="$((MAJOR + 1)).0.0" ;;
-            minor) NEXT="${MAJOR}.$((MINOR + 1)).0" ;;
-            patch) NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
-          esac
+          RC="${{ inputs.release_candidate }}"
+
+          if [[ "$CURRENT" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-rc\.([0-9]+)$ ]]; then
+            # Already an RC: the target base version is fixed, so `bump` is
+            # ignored. The checkbox decides whether to iterate or promote.
+            RC_BASE="${BASH_REMATCH[1]}"
+            RC_NUM="${BASH_REMATCH[2]}"
+            if [[ "$RC" == "true" ]]; then
+              NEXT="${RC_BASE}-rc.$((RC_NUM + 1))"
+            else
+              NEXT="${RC_BASE}"
+            fi
+          else
+            # Not an RC: apply the chosen bump, optionally as a fresh -rc.1.
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+            case "${{ inputs.bump }}" in
+              minor) NEXT="${MAJOR}.$((MINOR + 1)).0" ;;
+              patch) NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+            esac
+            if [[ "$RC" == "true" ]]; then
+              NEXT="${NEXT}-rc.1"
+            fi
+          fi
 
           echo "next=$NEXT" >> "$GITHUB_OUTPUT"
           echo "Bumping $CURRENT → $NEXT"

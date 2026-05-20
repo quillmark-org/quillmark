@@ -432,7 +432,7 @@ pub fn normalize_document(
     Ok(Document::from_main_and_cards(
         main,
         normalized_cards,
-        doc.warnings().to_vec(),
+        Vec::new(),
     ))
 }
 

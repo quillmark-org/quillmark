@@ -105,5 +105,4 @@ When adding new features to Quillmark, consider adding corresponding fuzzing tes
 
 ## References
 
-- See `designs/SECURITY_REC.md` in the main repository for detailed security recommendations
 - [proptest documentation](https://docs.rs/proptest/) for property-based testing guidelines

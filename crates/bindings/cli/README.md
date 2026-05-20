@@ -22,10 +22,10 @@ The binary will be installed to `~/.cargo/bin/quillmark` (ensure `~/.cargo/bin` 
 
 ```bash
 # Install latest from main branch
-cargo install --git https://github.com/nibsbin/quillmark quillmark-cli
+cargo install --git https://github.com/quillmark-org/quillmark quillmark-cli
 
 # Install from specific branch or tag
-cargo install --git https://github.com/nibsbin/quillmark --branch main quillmark-cli
+cargo install --git https://github.com/quillmark-org/quillmark --branch main quillmark-cli
 ```
 
 ### From Local Source
@@ -175,7 +175,7 @@ cargo run -- render path/to/quill document.md
 ## Design Documentation
 
 For architectural details and design decisions, see:
-- [CLI Design Document](../../prose/designs/CLI.md)
+- [CLI Design Document](../../prose/canon/CLI.md)
 - [Implementation Plan](../../prose/plans/cli-basic-render.md)
 
 ## License

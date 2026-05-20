@@ -1,8 +1,8 @@
 # Quill Resource File Structure and API
 
-> **Status**: Final Design - Opinionated, No Backward Compatibility
-> **Implementation**: `crates/core/src/quill.rs` (`QuillSource`),
-> `crates/quillmark/src/orchestration/quill.rs` (`Quill`)
+> **Status**: Final design — opinionated, no backward compatibility
+> **Implementation**: `crates/core/src/quill/` (`QuillSource`),
+> `crates/quillmark/src/orchestration/` (`Quill`)
 
 ## Type split: `QuillSource` vs `Quill`
 
@@ -60,7 +60,7 @@ Validation rules:
 
 ## `Quill.yaml` Structure
 
-Required top-level sections: `Quill` (bundle metadata). Optional: `main` (document fields), `card_kinds` (card kind definitions), `typst` (backend config).
+Required top-level sections: `quill` (bundle metadata). Optional: `main` (document fields), `card_kinds` (card kind definitions), `typst` (backend config).
 
 ```yaml
 quill:

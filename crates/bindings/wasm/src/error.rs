@@ -62,23 +62,12 @@ impl From<ParseError> for WasmError {
 
 impl From<RenderError> for WasmError {
     fn from(error: RenderError) -> Self {
-        match error {
-            // Multi-diagnostic variants forward every diagnostic so JS
-            // consumers can iterate `err.diagnostics` and read each entry's
-            // `path` for document-model navigation.
-            RenderError::CompilationFailed { diags }
-            | RenderError::QuillConfig { diags }
-            | RenderError::ValidationFailed { diags } => WasmError { diagnostics: diags },
-            _ => {
-                let diagnostic = error
-                    .diagnostics()
-                    .first()
-                    .map(|d| (*d).clone())
-                    .unwrap_or_else(|| Diagnostic::new(Severity::Error, error.to_string()));
-                WasmError {
-                    diagnostics: vec![diagnostic],
-                }
-            }
+        // Every `RenderError` variant carries a non-empty diagnostic vector,
+        // so the conversion is uniform: forward every diagnostic so JS
+        // consumers can iterate `err.diagnostics` and read each entry's
+        // `path` for document-model navigation.
+        WasmError {
+            diagnostics: error.into_diagnostics(),
         }
     }
 }
@@ -135,9 +124,7 @@ mod tests {
 
     #[test]
     fn test_validation_failed_carries_all_diagnostics() {
-        // Regression: prior to the PR-#566 fix, the `From<RenderError>`
-        // fallback called `.diagnostics().first()` and dropped every
-        // diagnostic after the first for non-CompilationFailed variants.
+        // Every multi-diagnostic variant forwards its full diagnostic vector.
         let diag1 = Diagnostic::new(Severity::Error, "missing title".to_string())
             .with_path("title".to_string());
         let diag2 = Diagnostic::new(Severity::Error, "missing author".to_string())
@@ -154,7 +141,6 @@ mod tests {
 
     #[test]
     fn test_quill_config_carries_all_diagnostics() {
-        // Same regression as above, for `QuillConfig`.
         let diag1 = Diagnostic::new(Severity::Error, "config error 1".to_string());
         let diag2 = Diagnostic::new(Severity::Error, "config error 2".to_string());
         let render_err = RenderError::QuillConfig {

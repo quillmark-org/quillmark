@@ -1,8 +1,8 @@
 site_name: Quillmark
 site_description: A format-first Markdown rendering system
-site_url: https://nibsbin.github.io/quillmark
-repo_url: https://github.com/nibsbin/quillmark
-repo_name: nibsbin/quillmark
+site_url: https://quillmark-org.github.io/quillmark
+repo_url: https://github.com/quillmark-org/quillmark
+repo_name: quillmark-org/quillmark
 edit_uri: edit/main/docs/
 
 theme:

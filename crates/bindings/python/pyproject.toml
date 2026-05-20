@@ -26,7 +26,7 @@ keywords = ["markdown", "pdf", "typst", "rendering", "templates"]
 
 [project.urls]
 Homepage = "https://quillmark.readthedocs.io/"
-Repository = "https://github.com/nibsbin/quillmark"
+Repository = "https://github.com/quillmark-org/quillmark"
 
 [project.optional-dependencies]
 dev = [

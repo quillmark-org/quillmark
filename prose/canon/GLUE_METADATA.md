@@ -1,6 +1,6 @@
 # Plate Data Injection
 
-> **Status**: Implemented  
+> **Implementation**: `crates/backends/typst/src/`
 > **Scope**: How parsed document data reaches plates/backends
 
 ## Overview

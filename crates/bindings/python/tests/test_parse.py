@@ -95,3 +95,35 @@ def test_to_markdown_emits_string(taro_md):
     emitted = doc.to_markdown()
     assert isinstance(emitted, str)
     assert emitted.strip() != ""
+
+
+def test_json_dto_round_trip(taro_md):
+    """to_json emits a versioned DTO string that from_json round-trips."""
+    doc = Document.from_markdown(taro_md)
+
+    dto = doc.to_json()
+    assert isinstance(dto, str)
+    assert "quillmark/document@0.81.0" in dto
+
+    restored = Document.from_json(dto)
+    assert restored.quill_ref() == doc.quill_ref()
+    assert restored.to_markdown() == doc.to_markdown()
+
+
+def test_json_dto_rejects_invalid_input():
+    """from_json rejects an unknown schema tag and malformed JSON."""
+    with pytest.raises(ParseError):
+        Document.from_json('{"schema":"quillmark/document@0.99.0","main":{}}')
+    with pytest.raises(ParseError):
+        Document.from_json("not json at all")
+
+
+def test_json_dto_drops_parse_warnings():
+    """A DTO-reconstructed document carries no parse-time warnings."""
+    # An unknown YAML tag triggers a `parse::unsupported_yaml_tag` warning.
+    warn_md = "---\nQUILL: my_quill\ntitle: Hi\nweird: !custom value\n---\n\nBody\n"
+    doc = Document.from_markdown(warn_md)
+    assert len(doc.warnings) > 0, "source document should have a parse warning"
+
+    restored = Document.from_json(doc.to_json())
+    assert restored.warnings == []

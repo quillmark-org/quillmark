@@ -1,5 +1,7 @@
 # Canvas Preview (WASM, Typst)
 
+> **Implementation**: `crates/backends/typst/src/`, `crates/bindings/wasm/src/`
+
 ## TL;DR
 
 A Typst-only, WASM-only path that paints rasterized pages directly into a

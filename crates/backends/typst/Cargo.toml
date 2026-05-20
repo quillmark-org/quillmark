@@ -8,7 +8,7 @@ description = "Typst backend for Quillmark"
 license.workspace = true
 documentation = "https://docs.rs/quillmark-typst"
 homepage.workspace = true
-repository = "https://github.com/nibsbin/quillmark"
+repository = "https://github.com/quillmark-org/quillmark"
 
 [dependencies]
 pdf-writer = "0.14"
