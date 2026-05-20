@@ -1,5 +1,7 @@
 # Schema Model (`QuillConfig`)
 
+> **Implementation**: `crates/core/src/quill/`
+
 ## TL;DR
 
 `QuillConfig` is the only schema model in quillmark. Validation, coercion, defaults extraction, and public schema emission all read directly from it.

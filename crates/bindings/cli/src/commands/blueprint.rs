@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 #[derive(Parser)]
-pub struct SpecsArgs {
+pub struct BlueprintArgs {
     /// Path to quill directory
     #[arg(value_name = "QUILL_PATH")]
     quill: PathBuf,
@@ -15,7 +15,7 @@ pub struct SpecsArgs {
     output: Option<PathBuf>,
 }
 
-pub fn execute(args: SpecsArgs) -> Result<()> {
+pub fn execute(args: BlueprintArgs) -> Result<()> {
     let quill = load_quill(&args.quill)?;
 
     let blueprint = quill.source().config().blueprint();

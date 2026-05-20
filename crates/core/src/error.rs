@@ -400,48 +400,50 @@ impl From<&str> for ParseError {
 }
 
 /// Main error type for rendering operations.
-#[derive(thiserror::Error, Debug)]
+///
+/// Every variant carries a non-empty `diags: Vec<Diagnostic>`. Variants whose
+/// failure is inherently a single diagnostic still carry a one-element vector
+/// — the uniform shape lets every consumer, and every language binding,
+/// handle all rendering errors through a single code path. See
+/// [`RenderError::diagnostics`] and [`RenderError::into_diagnostics`]. The
+/// variant itself records the *kind* of failure (which bindings map to typed
+/// exceptions); the payload is always just the diagnostics.
+#[derive(Debug)]
 pub enum RenderError {
-    /// Failed to create rendering engine
-    #[error("{diag}")]
+    /// Failed to create rendering engine.
     EngineCreation {
-        /// Diagnostic information
-        diag: Box<Diagnostic>,
-    },
-
-    /// Invalid YAML in a card-yaml block
-    #[error("{diag}")]
-    InvalidPayload {
-        /// Diagnostic information
-        diag: Box<Diagnostic>,
-    },
-
-    /// Backend compilation failed with one or more errors
-    #[error("Backend compilation failed with {} error(s)", diags.len())]
-    CompilationFailed {
-        /// List of diagnostics
+        /// Diagnostics describing the failure. Always non-empty.
         diags: Vec<Diagnostic>,
     },
 
-    /// Requested output format not supported by backend
-    #[error("{diag}")]
-    FormatNotSupported {
-        /// Diagnostic information
-        diag: Box<Diagnostic>,
+    /// Invalid YAML in a card-yaml block.
+    InvalidPayload {
+        /// Diagnostics describing the failure. Always non-empty.
+        diags: Vec<Diagnostic>,
     },
 
-    /// Backend not registered with engine
-    #[error("{diag}")]
+    /// Backend compilation failed with one or more errors.
+    CompilationFailed {
+        /// All compilation diagnostics. Always non-empty.
+        diags: Vec<Diagnostic>,
+    },
+
+    /// Requested output format not supported by backend.
+    FormatNotSupported {
+        /// Diagnostics describing the failure. Always non-empty.
+        diags: Vec<Diagnostic>,
+    },
+
+    /// Backend not registered with engine.
     UnsupportedBackend {
-        /// Diagnostic information
-        diag: Box<Diagnostic>,
+        /// Diagnostics describing the failure. Always non-empty.
+        diags: Vec<Diagnostic>,
     },
 
     /// Validation failed for parsed document — may carry multiple diagnostics
     /// when several problems are detected during a single validation pass
     /// (e.g. multiple missing required fields). Each diagnostic should set
     /// `path` to anchor the error at a specific location in the document model.
-    #[error("Validation failed with {} error(s)", diags.len())]
     ValidationFailed {
         /// All validation diagnostics. Always non-empty.
         diags: Vec<Diagnostic>,
@@ -449,7 +451,6 @@ pub enum RenderError {
 
     /// Quill configuration error — may carry multiple diagnostics when several
     /// problems are detected during parsing (e.g. several unknown keys at once).
-    #[error("Quill configuration failed with {} error(s)", diags.len())]
     QuillConfig {
         /// All configuration diagnostics. Always non-empty.
         diags: Vec<Diagnostic>,
@@ -457,28 +458,73 @@ pub enum RenderError {
 }
 
 impl RenderError {
-    /// Extract all diagnostics from this error
-    pub fn diagnostics(&self) -> Vec<&Diagnostic> {
+    /// All diagnostics carried by this error, in order. Always non-empty.
+    pub fn diagnostics(&self) -> &[Diagnostic] {
         match self {
-            RenderError::CompilationFailed { diags }
-            | RenderError::QuillConfig { diags }
-            | RenderError::ValidationFailed { diags } => diags.iter().collect(),
-            RenderError::EngineCreation { diag }
-            | RenderError::InvalidPayload { diag }
-            | RenderError::FormatNotSupported { diag }
-            | RenderError::UnsupportedBackend { diag } => vec![diag.as_ref()],
+            RenderError::EngineCreation { diags }
+            | RenderError::InvalidPayload { diags }
+            | RenderError::CompilationFailed { diags }
+            | RenderError::FormatNotSupported { diags }
+            | RenderError::UnsupportedBackend { diags }
+            | RenderError::ValidationFailed { diags }
+            | RenderError::QuillConfig { diags } => diags,
+        }
+    }
+
+    /// Consume the error and return its diagnostics. Always non-empty.
+    pub fn into_diagnostics(self) -> Vec<Diagnostic> {
+        match self {
+            RenderError::EngineCreation { diags }
+            | RenderError::InvalidPayload { diags }
+            | RenderError::CompilationFailed { diags }
+            | RenderError::FormatNotSupported { diags }
+            | RenderError::UnsupportedBackend { diags }
+            | RenderError::ValidationFailed { diags }
+            | RenderError::QuillConfig { diags } => diags,
         }
     }
 }
+
+impl std::fmt::Display for RenderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RenderError::CompilationFailed { diags } => {
+                write!(
+                    f,
+                    "Backend compilation failed with {} error(s)",
+                    diags.len()
+                )
+            }
+            RenderError::ValidationFailed { diags } => {
+                write!(f, "Validation failed with {} error(s)", diags.len())
+            }
+            RenderError::QuillConfig { diags } => {
+                write!(
+                    f,
+                    "Quill configuration failed with {} error(s)",
+                    diags.len()
+                )
+            }
+            // Single-diagnostic kinds display their primary diagnostic message.
+            RenderError::EngineCreation { .. }
+            | RenderError::InvalidPayload { .. }
+            | RenderError::FormatNotSupported { .. }
+            | RenderError::UnsupportedBackend { .. } => match self.diagnostics().first() {
+                Some(d) => write!(f, "{}", d.message),
+                None => write!(f, "render error"),
+            },
+        }
+    }
+}
+
+impl std::error::Error for RenderError {}
 
 /// Convert ParseError to RenderError
 impl From<ParseError> for RenderError {
     fn from(err: ParseError) -> Self {
         RenderError::InvalidPayload {
-            diag: Box::new(
-                Diagnostic::new(Severity::Error, err.to_string())
-                    .with_code("parse::error".to_string()),
-            ),
+            diags: vec![Diagnostic::new(Severity::Error, err.to_string())
+                .with_code("parse::error".to_string())],
         }
     }
 }
@@ -560,6 +606,35 @@ mod tests {
 
         let diags = err.diagnostics();
         assert_eq!(diags.len(), 2);
+    }
+
+    #[test]
+    fn test_render_error_uniform_single_diagnostic_shape() {
+        // Single-diagnostic kinds carry a one-element vector and expose it
+        // through the same accessors as the multi-diagnostic kinds.
+        let err = RenderError::UnsupportedBackend {
+            diags: vec![Diagnostic::new(
+                Severity::Error,
+                "no such backend".to_string(),
+            )],
+        };
+        assert_eq!(err.diagnostics().len(), 1);
+        assert_eq!(err.to_string(), "no such backend");
+
+        let owned = err.into_diagnostics();
+        assert_eq!(owned.len(), 1);
+        assert_eq!(owned[0].message, "no such backend");
+    }
+
+    #[test]
+    fn test_render_error_display_aggregates_multi_diagnostic() {
+        let err = RenderError::ValidationFailed {
+            diags: vec![
+                Diagnostic::new(Severity::Error, "a".to_string()),
+                Diagnostic::new(Severity::Error, "b".to_string()),
+            ],
+        };
+        assert_eq!(err.to_string(), "Validation failed with 2 error(s)");
     }
 
     #[test]

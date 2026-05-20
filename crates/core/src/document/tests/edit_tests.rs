@@ -573,19 +573,3 @@ fn test_invariants_after_mutation_sequence() {
     );
     assert!(doc.main().payload().get("version").is_none());
 }
-
-// ── Warnings never touched ───────────────────────────────────────────────────
-
-#[test]
-fn test_mutators_do_not_touch_warnings() {
-    let doc = make_doc();
-    let initial_warnings = doc.warnings().to_vec();
-
-    let mut doc = doc;
-    doc.main_mut().set_field("extra", qv("value")).unwrap();
-    doc.main_mut().replace_body("New body.");
-    let card = Card::new("new_card").unwrap();
-    doc.push_card(card);
-
-    assert_eq!(doc.warnings(), initial_warnings.as_slice());
-}

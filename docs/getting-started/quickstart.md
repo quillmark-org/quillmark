@@ -113,4 +113,4 @@ Get started with Quillmark in Python or JavaScript.
     - Canvas pixels are opaque to the DOM — there's no text selection or
       find-in-page. Keep an SVG/PDF path alongside if you need either.
 
-    Full design rationale: [PREVIEW.md](https://github.com/nibsbin/quillmark/blob/main/prose/designs/PREVIEW.md).
+    Full design rationale: [PREVIEW.md](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/PREVIEW.md).

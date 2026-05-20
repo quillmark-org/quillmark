@@ -159,6 +159,65 @@ fn test_to_markdown_round_trip() {
     );
 }
 
+/// `toJson` emits the versioned storage DTO string and `fromJson`
+/// round-trips it back to an equal `Document`.
+#[wasm_bindgen_test]
+fn test_json_dto_round_trip() {
+    let md = "---\nQUILL: test_quill\ntitle: Hello\nsubject: !fill A Subject\n---\n\n# Hello\n\n```card note\nfor: someone\n```\n\nNote body.\n";
+    let doc = Document::from_markdown(md).expect("fromMarkdown failed");
+
+    // toJson yields a string carrying the schema version.
+    let dto = doc.to_json();
+    assert!(
+        dto.contains("\"quillmark/document@0.81.0\""),
+        "DTO string must carry the schema version, got: {dto}"
+    );
+
+    // fromJson reconstructs an equal document.
+    let restored = Document::from_json(&dto).expect("fromJson failed");
+    assert!(
+        restored.equals(&doc),
+        "fromJson(toJson(doc)) must equal doc"
+    );
+    assert_eq!(restored.quill_ref(), doc.quill_ref());
+}
+
+/// A DTO-reconstructed document carries no parse-time warnings, even when
+/// the source document had them — the DTO describes content, not source.
+#[wasm_bindgen_test]
+fn test_json_dto_drops_parse_warnings() {
+    // An unknown YAML tag triggers a `parse::unsupported_yaml_tag` warning.
+    let warn_md = "---\nQUILL: test_quill\ntitle: Hi\nweird: !custom value\n---\n\nBody\n";
+    let doc = Document::from_markdown(warn_md).expect("fromMarkdown failed");
+    assert!(
+        js_sys::Array::from(&doc.warnings()).length() > 0,
+        "source document must carry a parse warning"
+    );
+
+    let restored = Document::from_json(&doc.to_json()).expect("fromJson failed");
+    assert_eq!(
+        js_sys::Array::from(&restored.warnings()).length(),
+        0,
+        "DTO-reconstructed document must have no warnings"
+    );
+}
+
+/// `fromJson` rejects a payload whose `schema` tag is unknown, and rejects
+/// malformed JSON.
+#[wasm_bindgen_test]
+fn test_json_dto_rejects_invalid_input() {
+    let unknown_schema = r#"{"schema":"quillmark/document@0.99.0","main":{}}"#;
+    assert!(
+        Document::from_json(unknown_schema).is_err(),
+        "fromJson must reject an unknown schema version"
+    );
+
+    assert!(
+        Document::from_json("not json at all").is_err(),
+        "fromJson must reject malformed JSON"
+    );
+}
+
 /// Plain object (`Record<string, Uint8Array>`) must be accepted by
 /// `engine.quill` equivalently to `Map<string, Uint8Array>`.
 #[wasm_bindgen_test]

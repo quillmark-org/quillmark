@@ -27,80 +27,67 @@ pub fn convert_edit_error(err: EditError) -> PyErr {
     PyEditError::new_err(format!("[EditError::{}] {}", variant, err))
 }
 
-fn with_diag_attached(py: Python, py_err: PyErr, diag: Diagnostic) -> PyErr {
-    if let Ok(exc) = py_err.value(py).downcast::<pyo3::types::PyAny>() {
-        let py_diag = crate::types::PyDiagnostic { inner: diag.into() };
-        let _ = exc.setattr("diagnostic", py_diag);
-    }
-    py_err
-}
-
 pub fn convert_render_error(err: RenderError) -> PyErr {
-    Python::attach(|py| match err {
-        RenderError::CompilationFailed { diags } => {
-            let py_err = CompilationError::new_err(format!(
+    Python::attach(|py| {
+        let diags = err.diagnostics();
+        debug_assert!(
+            !diags.is_empty(),
+            "RenderError always carries at least one diagnostic"
+        );
+
+        // The variant kind selects the Python exception type and the summary
+        // message; the diagnostic payload is uniform across every variant.
+        let py_err = match &err {
+            RenderError::CompilationFailed { diags } => CompilationError::new_err(format!(
                 "Compilation failed with {} error(s)",
                 diags.len()
-            ));
-            if let Ok(exc) = py_err.value(py).downcast::<pyo3::types::PyAny>() {
-                let py_diags: Vec<crate::types::PyDiagnostic> = diags
-                    .into_iter()
-                    .map(|d| crate::types::PyDiagnostic { inner: d.into() })
-                    .collect();
-                let _ = exc.setattr("diagnostics", py_diags);
+            )),
+            RenderError::InvalidPayload { diags } => ParseError::new_err(primary_message(diags)),
+            RenderError::QuillConfig { diags } => {
+                QuillmarkError::new_err(summary_message("Quill configuration has", diags))
             }
-            py_err
-        }
-        RenderError::QuillConfig { diags } => {
-            let msg = if diags.len() == 1 {
-                diags[0].message.clone()
-            } else {
-                format!("Quill configuration has {} error(s)", diags.len())
-            };
-            let py_err = QuillmarkError::new_err(msg);
-            if let Ok(exc) = py_err.value(py).downcast::<pyo3::types::PyAny>() {
-                let py_diags: Vec<crate::types::PyDiagnostic> = diags
-                    .into_iter()
-                    .map(|d| crate::types::PyDiagnostic { inner: d.into() })
-                    .collect();
-                let _ = exc.setattr("diagnostics", py_diags);
+            RenderError::ValidationFailed { diags } => {
+                QuillmarkError::new_err(summary_message("Validation failed with", diags))
             }
-            py_err
-        }
-        RenderError::ValidationFailed { diags } => {
-            // Multi-diagnostic: each entry sets `path` to anchor the error
-            // in the document model. Consumers should iterate `.diagnostics`.
-            //
-            // Pre-PR-#566 versions of this binding attached a single
-            // `.diagnostic` for `ValidationFailed`. To soften that
-            // breaking change for the common single-error case, we also
-            // attach `.diagnostic = diagnostics[0]` when there is exactly
-            // one diagnostic. New code should prefer `.diagnostics`.
-            let msg = if diags.len() == 1 {
-                diags[0].message.clone()
-            } else {
-                format!("Validation failed with {} error(s)", diags.len())
-            };
-            let py_err = QuillmarkError::new_err(msg);
-            if let Ok(exc) = py_err.value(py).downcast::<pyo3::types::PyAny>() {
-                let py_diags: Vec<crate::types::PyDiagnostic> = diags
-                    .into_iter()
-                    .map(|d| crate::types::PyDiagnostic { inner: d.into() })
-                    .collect();
-                if py_diags.len() == 1 {
-                    let _ = exc.setattr("diagnostic", py_diags[0].clone());
-                }
-                let _ = exc.setattr("diagnostics", py_diags);
+            RenderError::EngineCreation { diags }
+            | RenderError::FormatNotSupported { diags }
+            | RenderError::UnsupportedBackend { diags } => {
+                QuillmarkError::new_err(primary_message(diags))
             }
-            py_err
+        };
+
+        // Every exception carries the full `.diagnostics` list; the
+        // convenience `.diagnostic` singular is attached when there is
+        // exactly one diagnostic. Each diagnostic's `path` anchors the
+        // error in the document model for UI navigation.
+        let py_diags: Vec<crate::types::PyDiagnostic> = err
+            .into_diagnostics()
+            .into_iter()
+            .map(|d| crate::types::PyDiagnostic { inner: d.into() })
+            .collect();
+        if let Ok(exc) = py_err.value(py).downcast::<pyo3::types::PyAny>() {
+            if let [only] = py_diags.as_slice() {
+                let _ = exc.setattr("diagnostic", only.clone());
+            }
+            let _ = exc.setattr("diagnostics", py_diags);
         }
-        RenderError::InvalidPayload { diag } => {
-            with_diag_attached(py, ParseError::new_err(diag.message.clone()), *diag)
-        }
-        RenderError::EngineCreation { diag }
-        | RenderError::FormatNotSupported { diag }
-        | RenderError::UnsupportedBackend { diag } => {
-            with_diag_attached(py, QuillmarkError::new_err(diag.message.clone()), *diag)
-        }
+        py_err
     })
+}
+
+/// Message for single-diagnostic error kinds: the primary diagnostic's text.
+fn primary_message(diags: &[Diagnostic]) -> String {
+    diags
+        .first()
+        .map(|d| d.message.clone())
+        .unwrap_or_else(|| "render error".to_string())
+}
+
+/// Message for multi-diagnostic error kinds: the lone diagnostic's text when
+/// there is exactly one, otherwise an aggregate `"<prefix> N error(s)"`.
+fn summary_message(prefix: &str, diags: &[Diagnostic]) -> String {
+    match diags {
+        [only] => only.message.clone(),
+        _ => format!("{} {} error(s)", prefix, diags.len()),
+    }
 }

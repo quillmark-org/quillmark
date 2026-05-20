@@ -58,17 +58,15 @@ impl Quillmark {
             self.backends
                 .get(backend_id)
                 .ok_or_else(|| RenderError::UnsupportedBackend {
-                    diag: Box::new(
-                        Diagnostic::new(
-                            Severity::Error,
-                            format!("Backend '{}' not registered or not enabled", backend_id),
-                        )
-                        .with_code("engine::backend_not_found".to_string())
-                        .with_hint(format!(
-                            "Available backends: {}",
-                            self.backends.keys().cloned().collect::<Vec<_>>().join(", ")
-                        )),
-                    ),
+                    diags: vec![Diagnostic::new(
+                        Severity::Error,
+                        format!("Backend '{}' not registered or not enabled", backend_id),
+                    )
+                    .with_code("engine::backend_not_found".to_string())
+                    .with_hint(format!(
+                        "Available backends: {}",
+                        self.backends.keys().cloned().collect::<Vec<_>>().join(", ")
+                    ))],
                 })?;
         Ok(Quill::new(Arc::new(source), Arc::clone(backend)))
     }

@@ -1,6 +1,6 @@
 # Composable Cards Architecture
 
-> **Status**: Implemented
+> **Implementation**: `crates/core/src/quill/`
 > **Related**: [SCHEMAS.md](SCHEMAS.md), [QUILL.md](QUILL.md)
 
 ## Overview

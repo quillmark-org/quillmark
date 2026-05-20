@@ -1,6 +1,8 @@
 # Markdown to Typst Conversion
 
-This document details the design and implementation of the markdown-to-Typst conversion system in `quillmark-typst/src/convert.rs`.
+> **Implementation**: `crates/backends/typst/src/`
+
+This document details the design and implementation of the markdown-to-Typst conversion system in `crates/backends/typst/src/`.
 
 ## Table of Contents
 

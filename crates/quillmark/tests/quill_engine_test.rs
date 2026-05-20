@@ -109,8 +109,8 @@ fn test_quill_render_succeeds_with_engine_loaded_quill() {
         },
     );
 
-    if let Err(quillmark::RenderError::EngineCreation { diag }) = &result {
-        if diag.message.contains("No fonts found") {
+    if let Err(quillmark::RenderError::EngineCreation { diags }) = &result {
+        if diags[0].message.contains("No fonts found") {
             return;
         }
     }

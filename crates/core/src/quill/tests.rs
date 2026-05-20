@@ -2378,3 +2378,25 @@ card_kinds:
         errors
     );
 }
+
+#[test]
+fn quill_yaml_deep_nesting_is_rejected() {
+    // Mirrors the frontmatter depth-budget regression in
+    // crates/quillmark/tests/security_tests.rs::test_yaml_depth_limit_attack.
+    // Deeply nested YAML under any `quill` subtree must be refused by the
+    // shared depth budget (`MAX_YAML_DEPTH`).
+    let mut deep = String::from(
+        "quill:\n  name: bomb\n  version: 1.0.0\n  backend: typst\n  description: bomb\n  payload:\n",
+    );
+    for i in 0..150 {
+        deep.push_str(&"  ".repeat(i + 1));
+        deep.push_str("nest:\n");
+    }
+    let result = QuillConfig::from_yaml(&deep);
+    assert!(result.is_err(), "deeply nested Quill.yaml must be rejected");
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("depth") || msg.contains("YAML") || msg.contains("limit"),
+        "error should reference the depth/YAML limit, got: {msg}"
+    );
+}

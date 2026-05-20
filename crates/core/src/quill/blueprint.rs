@@ -44,7 +44,7 @@ impl QuillConfig {
     /// The result is guaranteed schema-valid and parseable (every key
     /// present, every value type-correct). It is *not* guaranteed to render
     /// — that is the quill authoring contract on `plate.typ`; see
-    /// `prose/designs/BLUEPRINT.md` §Guarantees.
+    /// `prose/canon/BLUEPRINT.md` §Guarantees.
     pub fn blueprint(&self) -> String {
         let mut out = String::new();
         let main_desc = self

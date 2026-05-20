@@ -112,14 +112,12 @@ impl SessionHandle for TypstSession {
 
         if !SUPPORTED_FORMATS.contains(&format) {
             return Err(RenderError::FormatNotSupported {
-                diag: Box::new(
-                    Diagnostic::new(
-                        Severity::Error,
-                        format!("{:?} not supported by typst backend", format),
-                    )
-                    .with_code("backend::format_not_supported".to_string())
-                    .with_hint(format!("Supported formats: {:?}", SUPPORTED_FORMATS)),
-                ),
+                diags: vec![Diagnostic::new(
+                    Severity::Error,
+                    format!("{:?} not supported by typst backend", format),
+                )
+                .with_code("backend::format_not_supported".to_string())
+                .with_hint(format!("Supported formats: {:?}", SUPPORTED_FORMATS))],
             });
         }
 

@@ -8,7 +8,7 @@ description = "Quillmark engine API"
 license.workspace = true
 documentation = "https://docs.rs/quillmark"
 homepage.workspace = true
-repository = "https://github.com/nibsbin/quillmark"
+repository = "https://github.com/quillmark-org/quillmark"
 
 [dependencies]
 quillmark-core = { workspace = true }

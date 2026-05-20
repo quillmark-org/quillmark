@@ -1,6 +1,6 @@
 # Quillmark Rust Workspace — CI/CD
 
-**Status**: Implemented
+> **Implementation**: `.github/workflows/`
 
 Published crates: `quillmark-core`, `backends/quillmark-typst`, `quillmark`, `bindings/quillmark-cli`.
 

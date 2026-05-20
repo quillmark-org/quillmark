@@ -1,4 +1,5 @@
-//! Independent spec conformance probes for the card-yaml metadata syntax.
+//! Independent spec conformance probes for the card-yaml metadata syntax
+//! described in `prose/canon/MARKDOWN.md`.
 //!
 //! These tests exercise concrete spec requirements that are most likely to
 //! diverge between the parser and the written standard.

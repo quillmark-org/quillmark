@@ -1,6 +1,5 @@
 # QuillValue - Centralized Value Type
 
-> **Status**: Implemented  
 > **Implementation**: `crates/core/src/value.rs`
 
 ## Overview

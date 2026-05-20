@@ -26,7 +26,7 @@
 //! - Event-based conversion flow
 //! - Implementation notes
 //!
-//! See [CONVERT.md](https://github.com/nibsbin/quillmark/blob/main/quillmark-typst/docs/designs/CONVERT.md) for the complete specification.
+//! See [CONVERT.md](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/CONVERT.md) for the complete specification.
 
 use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use quillmark_core::error::MAX_NESTING_DEPTH;
@@ -283,8 +283,11 @@ where
                     Tag::Strong => {
                         // <u>…</u> is synthesized as Tag::Strong by MarkdownFixer; detect it
                         // by peeking at the source. Both ** and __ render as #strong[…].
-                        let kind = if range.start + 2 <= source.len()
-                            && source[range.start..range.start + 2].eq_ignore_ascii_case("<u")
+                        // `get` (not direct indexing) keeps this panic-free when
+                        // `range.start + 2` lands inside a multi-byte UTF-8 character.
+                        let kind = if source
+                            .get(range.start..range.start + 2)
+                            .is_some_and(|s| s.eq_ignore_ascii_case("<u"))
                         {
                             StrongKind::Underline
                         } else {
@@ -1908,6 +1911,23 @@ mod robustness_tests {
     fn test_emoji() {
         let result = mark_to_typst("Hello 🎉 World 🚀").unwrap();
         assert_eq!(result, "Hello 🎉 World 🚀\n\n");
+    }
+
+    #[test]
+    fn test_strong_detection_with_multibyte_does_not_panic() {
+        // The Tag::Strong handler peeks two bytes of source to tell `<u>`
+        // apart from `**`/`__`. A multi-byte character adjacent to the strong
+        // span must not cause a byte-index slice panic.
+        for input in [
+            "–**bold**",
+            "**bold**–",
+            "你好**世界**",
+            "<u>你好</u>",
+            "–<u>x</u>",
+            "“**quoted**”",
+        ] {
+            let _ = mark_to_typst(input).unwrap();
+        }
     }
 
     #[test]
