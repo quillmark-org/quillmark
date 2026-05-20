@@ -955,6 +955,7 @@ fn edit_error_to_js(err: &quillmark_core::EditError) -> JsValue {
         quillmark_core::EditError::ReservedName(_) => "ReservedName",
         quillmark_core::EditError::InvalidFieldName(_) => "InvalidFieldName",
         quillmark_core::EditError::InvalidKindName(_) => "InvalidKindName",
+        quillmark_core::EditError::ReservedKind => "ReservedKind",
         quillmark_core::EditError::IndexOutOfRange { .. } => "IndexOutOfRange",
     };
     WasmError::from(format!("[EditError::{}] {}", variant, err)).to_js_value()

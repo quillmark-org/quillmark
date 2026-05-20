@@ -22,6 +22,7 @@ pub fn convert_edit_error(err: EditError) -> PyErr {
         EditError::ReservedName(_) => "ReservedName",
         EditError::InvalidFieldName(_) => "InvalidFieldName",
         EditError::InvalidKindName(_) => "InvalidKindName",
+        EditError::ReservedKind => "ReservedKind",
         EditError::IndexOutOfRange { .. } => "IndexOutOfRange",
     };
     PyEditError::new_err(format!("[EditError::{}] {}", variant, err))

@@ -101,15 +101,42 @@ fn duplicate_meta_error(key: &str) -> ParseError {
 
 /// Parse a `#@`-prefixed metadata line into its `(key, value)` pair.
 ///
-/// `#@quill: example@0.1.0` parses to `("quill", "example@0.1.0")`. Returns
-/// `None` when `line` is not a `#@` metadata line (no `#@` prefix, or no `:`
-/// separator).
+/// `#@quill: example@0.1.0` parses to `("quill", "example@0.1.0")`. A trailing
+/// inline comment (` # …` to end of line) is dropped from the value, matching
+/// YAML's own comment rule:
+///
+/// ```text
+/// #@quill: example@0.1.0  # bound at build time
+/// →                ↳ key="quill", value="example@0.1.0"
+/// ```
+///
+/// A `#` is only treated as a comment marker when preceded by whitespace
+/// (or at the start of the value), so `#@id: abc#def` keeps `abc#def` intact.
+///
+/// Returns `None` when `line` is not a `#@` metadata line (no `#@` prefix,
+/// or no `:` separator).
 fn parse_meta_line(line: &str) -> Option<(String, String)> {
     let rest = line.trim_start().strip_prefix("#@")?;
     let colon = rest.find(':')?;
     let key = rest[..colon].trim().to_string();
-    let value = rest[colon + 1..].trim().to_string();
+    let value_raw = &rest[colon + 1..];
+    let value = strip_trailing_comment(value_raw).trim().to_string();
     Some((key, value))
+}
+
+/// Strip a YAML-style trailing comment from a `#@` value.
+///
+/// A `#` starts a comment when it is the first non-whitespace character of
+/// the value or is preceded by whitespace. Other `#`s are kept verbatim.
+fn strip_trailing_comment(s: &str) -> &str {
+    let mut prev_was_ws = true;
+    for (i, c) in s.char_indices() {
+        if c == '#' && prev_was_ws {
+            return &s[..i];
+        }
+        prev_was_ws = c == ' ' || c == '\t';
+    }
+    s
 }
 
 /// Validate a card-yaml block's YAML payload.
@@ -154,4 +181,45 @@ pub(super) fn is_valid_kind_name(name: &str) -> bool {
     }
 
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trailing_comment_stripped_from_quill_value() {
+        let (k, v) = parse_meta_line("#@quill: foo@0.1  # bound at build").unwrap();
+        assert_eq!(k, "quill");
+        assert_eq!(v, "foo@0.1");
+    }
+
+    #[test]
+    fn trailing_comment_stripped_from_kind_value() {
+        let (k, v) = parse_meta_line("#@kind: main # the root").unwrap();
+        assert_eq!(k, "kind");
+        assert_eq!(v, "main");
+    }
+
+    #[test]
+    fn hash_inside_value_is_kept_when_not_preceded_by_whitespace() {
+        // `abc#def` is a single token — `#` has no whitespace before it.
+        let (_, v) = parse_meta_line("#@id: abc#def").unwrap();
+        assert_eq!(v, "abc#def");
+    }
+
+    #[test]
+    fn hash_at_start_of_value_is_a_comment() {
+        // After the colon-space, `#` is the first non-whitespace character —
+        // matches YAML's rule for "comment starts at column 0 of value".
+        let (k, v) = parse_meta_line("#@id: # gone").unwrap();
+        assert_eq!(k, "id");
+        assert_eq!(v, "");
+    }
+
+    #[test]
+    fn no_trailing_comment_leaves_value_unchanged() {
+        let (_, v) = parse_meta_line("#@quill: foo@0.1").unwrap();
+        assert_eq!(v, "foo@0.1");
+    }
 }

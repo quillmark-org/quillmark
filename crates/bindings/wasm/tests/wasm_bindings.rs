@@ -16,7 +16,8 @@ fn small_quill_tree() -> wasm_bindgen::JsValue {
     ])
 }
 
-const SIMPLE_MARKDOWN: &str = "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Hello\n~~~\n\n# Hello\n";
+const SIMPLE_MARKDOWN: &str =
+    "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Hello\n~~~\n\n# Hello\n";
 
 #[wasm_bindgen_test]
 fn test_parse_markdown_static() {
@@ -49,7 +50,8 @@ fn test_render_ref_mismatch_warning() {
     let engine = Quillmark::new();
     let quill = engine.quill(small_quill_tree()).expect("quill failed");
 
-    let mismatch_md = "~~~card-yaml\n#@quill: other_quill\n#@kind: main\ntitle: Mismatch\n~~~\n\n# Content\n";
+    let mismatch_md =
+        "~~~card-yaml\n#@quill: other_quill\n#@kind: main\ntitle: Mismatch\n~~~\n\n# Content\n";
     let doc = Document::from_markdown(mismatch_md).expect("fromMarkdown failed");
     let result = quill
         .render(&doc, Some(RenderOptions::default()))

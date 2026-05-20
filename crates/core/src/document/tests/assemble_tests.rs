@@ -1286,7 +1286,8 @@ fn test_missing_quill() {
 
 #[test]
 fn test_dashes_in_middle_of_line() {
-    let markdown = "~~~card-yaml\n#@quill: test_quill\n#@kind: main\n~~~\n\nsome text --- more text";
+    let markdown =
+        "~~~card-yaml\n#@quill: test_quill\n#@kind: main\n~~~\n\nsome text --- more text";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.main().body(), "\nsome text --- more text");
 }
@@ -1341,7 +1342,8 @@ fn test_unicode_in_yaml_keys() {
 
 #[test]
 fn test_unicode_in_yaml_values() {
-    let markdown = "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: 你好世界 🎉\n~~~\n\nBody.";
+    let markdown =
+        "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: 你好世界 🎉\n~~~\n\nBody.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
         doc.main().payload().get("title").unwrap().as_str().unwrap(),
@@ -1602,7 +1604,8 @@ fn test_yaml_syntax_error_missing_colon() {
 
 #[test]
 fn test_yaml_syntax_error_bad_indentation() {
-    let markdown = "~~~card-yaml\n#@quill: test_quill\n#@kind: main\nitems:\n- one\n - two\n~~~\n\nBody.";
+    let markdown =
+        "~~~card-yaml\n#@quill: test_quill\n#@kind: main\nitems:\n- one\n - two\n~~~\n\nBody.";
     let result = decompose(markdown);
     // Bad indentation may or may not be an error depending on YAML parser
     let _ = result;
@@ -1622,7 +1625,8 @@ fn test_body_with_leading_newlines() {
 fn test_body_with_trailing_newlines() {
     // Body at EOF: no blank-line separator to strip, source's trailing
     // newlines are preserved verbatim as authored content.
-    let markdown = "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Test\n~~~\n\nBody.\n\n\n";
+    let markdown =
+        "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Test\n~~~\n\nBody.\n\n\n";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.main().body(), "\nBody.\n\n\n");
 }
@@ -1635,7 +1639,8 @@ fn test_blank_separator_strip_global_body_followed_by_card_lf() {
     // Global body followed by a card block: the source's tail `\n\n` is
     // (content line terminator) + (blank-line separator). Strip exactly the
     // separator `\n`, leaving `\n` as the content terminator.
-    let markdown = "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\nbody\n\n~~~card-yaml\n#@kind: x\n~~~\n";
+    let markdown =
+        "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\nbody\n\n~~~card-yaml\n#@kind: x\n~~~\n";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.main().body(), "\nbody\n");
 }
@@ -1667,7 +1672,8 @@ fn test_blank_separator_strip_card_body_followed_by_card() {
 fn test_blank_separator_strip_preserves_author_blank_lines() {
     // Author wrote two blank lines after the body. Only the blank-line
     // separator (last `\n`) is stripped; the author's blank line is preserved.
-    let markdown = "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\nbody\n\n\n~~~card-yaml\n#@kind: x\n~~~\n";
+    let markdown =
+        "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\nbody\n\n\n~~~card-yaml\n#@kind: x\n~~~\n";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.main().body(), "\nbody\n\n");
 }
@@ -1749,7 +1755,8 @@ Body.";
 
 #[test]
 fn test_guillemet_double_conversion_prevention() {
-    let markdown = "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Already «converted»\n~~~\n\nBody.";
+    let markdown =
+        "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Already «converted»\n~~~\n\nBody.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
         doc.main().payload().get("title").unwrap().as_str().unwrap(),
@@ -1961,8 +1968,10 @@ Card body here.
 /// to_plate_json parity: the QUILL key appears first.
 #[test]
 fn test_to_plate_json_quill_first() {
-    let doc = Document::from_markdown("~~~card-yaml\n#@quill: my_quill\n#@kind: main\nfoo: bar\nbaz: qux\n~~~\n")
-        .unwrap();
+    let doc = Document::from_markdown(
+        "~~~card-yaml\n#@quill: my_quill\n#@kind: main\nfoo: bar\nbaz: qux\n~~~\n",
+    )
+    .unwrap();
     let json = doc.to_plate_json();
     let obj = json.as_object().unwrap();
     let keys: Vec<&String> = obj.keys().collect();

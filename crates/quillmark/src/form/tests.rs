@@ -250,7 +250,8 @@ main:
     );
 
     // `count` is a string, not an integer → TypeMismatch validation error
-    let md = "~~~card-yaml\n#@quill: validation_diag_test\n#@kind: main\ncount: \"not-a-number\"\n~~~\n";
+    let md =
+        "~~~card-yaml\n#@quill: validation_diag_test\n#@kind: main\ncount: \"not-a-number\"\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();
 
     let form = quill.form(&doc);

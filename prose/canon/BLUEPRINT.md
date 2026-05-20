@@ -94,8 +94,9 @@ Form: **`# <type>[<format>]; <role>[, <extra>...]`**
   qualifiers.
 
 The `#@` system-metadata lines (`#@quill`, `#@kind`, …) have no
-inline-annotation slot — they are not YAML fields and carry no trailing `#`
-comment (comments are unsupported on a `#@` header line). The root block's
+inline-annotation slot — they are not YAML fields. (Parsers accept a
+trailing ` # comment` on a `#@` line, but the blueprint emitter does not
+attach one — the canonical form drops it.) The root block's
 `#@quill` line is emitted verbatim; its value is fixed and must not be
 modified. A composable card's kind is carried in its `#@kind: <card_kind>`
 metadata line. Its `composable (0..N)` role is emitted as an own-line

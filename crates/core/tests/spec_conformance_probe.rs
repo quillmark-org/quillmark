@@ -74,7 +74,10 @@ fn fences_inside_code_blocks_are_ignored() {
 #[test]
 fn reserved_keys_in_payload_are_rejected() {
     for reserved in ["BODY", "CARDS"] {
-        let md = format!("~~~card-yaml\n#@quill: t\n#@kind: main\n{}: nope\n~~~\n\nBody.", reserved);
+        let md = format!(
+            "~~~card-yaml\n#@quill: t\n#@kind: main\n{}: nope\n~~~\n\nBody.",
+            reserved
+        );
         let err = Document::from_markdown(&md).unwrap_err().to_string();
         assert!(
             err.contains(&format!("Reserved field name '{}'", reserved)),
@@ -88,7 +91,8 @@ fn reserved_keys_in_payload_are_rejected() {
 // CARDS is always accessible, even when empty.
 #[test]
 fn cards_is_always_present_even_when_empty() {
-    let doc = Document::from_markdown("~~~card-yaml\n#@quill: t\n#@kind: main\n~~~\n\nBody.").unwrap();
+    let doc =
+        Document::from_markdown("~~~card-yaml\n#@quill: t\n#@kind: main\n~~~\n\nBody.").unwrap();
     assert!(doc.cards().is_empty());
 }
 
@@ -199,7 +203,8 @@ fn unclosed_card_yaml_block_is_rejected() {
 // block and emits a `parse::card_fence_missing_blank` warning.
 #[test]
 fn card_fence_missing_blank_emits_warning() {
-    let md = "~~~card-yaml\n#@quill: t\n#@kind: main\n~~~\nBody line.\n~~~card-yaml\n#@kind: x\n~~~\n";
+    let md =
+        "~~~card-yaml\n#@quill: t\n#@kind: main\n~~~\nBody line.\n~~~card-yaml\n#@kind: x\n~~~\n";
     let out = Document::from_markdown_with_warnings(md).unwrap();
     assert!(
         out.warnings
