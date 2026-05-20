@@ -16,7 +16,7 @@ fn small_quill_tree() -> wasm_bindgen::JsValue {
     ])
 }
 
-const SIMPLE_MARKDOWN: &str = "~~~card-yaml\n#@quill: test_quill\ntitle: Hello\n~~~\n\n# Hello\n";
+const SIMPLE_MARKDOWN: &str = "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Hello\n~~~\n\n# Hello\n";
 
 #[wasm_bindgen_test]
 fn test_parse_markdown_static() {
@@ -49,7 +49,7 @@ fn test_render_ref_mismatch_warning() {
     let engine = Quillmark::new();
     let quill = engine.quill(small_quill_tree()).expect("quill failed");
 
-    let mismatch_md = "~~~card-yaml\n#@quill: other_quill\ntitle: Mismatch\n~~~\n\n# Content\n";
+    let mismatch_md = "~~~card-yaml\n#@quill: other_quill\n#@kind: main\ntitle: Mismatch\n~~~\n\n# Content\n";
     let doc = Document::from_markdown(mismatch_md).expect("fromMarkdown failed");
     let result = quill
         .render(&doc, Some(RenderOptions::default()))
@@ -163,7 +163,7 @@ fn test_to_markdown_round_trip() {
 /// round-trips it back to an equal `Document`.
 #[wasm_bindgen_test]
 fn test_json_dto_round_trip() {
-    let md = "~~~card-yaml\n#@quill: test_quill\ntitle: Hello\nsubject: !fill A Subject\n~~~\n\n# Hello\n\n~~~card-yaml\n#@kind: note\nfor: someone\n~~~\n\nNote body.\n";
+    let md = "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Hello\nsubject: !fill A Subject\n~~~\n\n# Hello\n\n~~~card-yaml\n#@kind: note\nfor: someone\n~~~\n\nNote body.\n";
     let doc = Document::from_markdown(md).expect("fromMarkdown failed");
 
     // toJson yields a string carrying the schema version.
@@ -188,7 +188,7 @@ fn test_json_dto_round_trip() {
 fn test_json_dto_drops_parse_warnings() {
     // An unknown YAML tag triggers a `parse::unsupported_yaml_tag` warning.
     let warn_md =
-        "~~~card-yaml\n#@quill: test_quill\ntitle: Hi\nweird: !custom value\n~~~\n\nBody\n";
+        "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Hi\nweird: !custom value\n~~~\n\nBody\n";
     let doc = Document::from_markdown(warn_md).expect("fromMarkdown failed");
     assert!(
         js_sys::Array::from(&doc.warnings()).length() > 0,

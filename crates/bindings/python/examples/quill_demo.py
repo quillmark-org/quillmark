@@ -29,6 +29,7 @@ def main():
 
     markdown = """~~~card-yaml
 #@quill: taro
+#@kind: main
 author: Alice
 ice_cream: Taro
 title: My Favorite Ice Cream

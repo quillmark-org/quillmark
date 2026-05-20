@@ -18,7 +18,7 @@
 //! use quillmark_core::Document;
 //!
 //! // Parse markdown with a card-yaml metadata block
-//! let markdown = "~~~card-yaml\n#@quill: my_quill\ntitle: Example\n~~~\n\n# Content";
+//! let markdown = "~~~card-yaml\n#@quill: my_quill\n#@kind: main\ntitle: Example\n~~~\n\n# Content";
 //! let doc = Document::from_markdown(markdown).unwrap();
 //! let title = doc.main()
 //!     .payload()

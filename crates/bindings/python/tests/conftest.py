@@ -44,6 +44,7 @@ def taro_quill_dir():
 
 TARO_MARKDOWN = '''~~~card-yaml
 #@quill: taro@0.1
+#@kind: main
 author: Nibs
 ice_cream: Taro
 title: "My Favorite Ice Cream Flavor"

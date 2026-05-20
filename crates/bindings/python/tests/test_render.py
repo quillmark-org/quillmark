@@ -53,6 +53,7 @@ def test_quill_render_ref_mismatch_warning(taro_quill_dir):
     mismatch_md = (
         "~~~card-yaml\n"
         "#@quill: completely_different_quill\n"
+        "#@kind: main\n"
         "author: Test Author\n"
         "ice_cream: Chocolate\n"
         "title: Mismatch Test\n"
@@ -100,6 +101,7 @@ def test_parse_error_carries_diagnostic_payload():
     """
     invalid_md = """~~~card-yaml
 #@quill: test_quill
+#@kind: main
 title: [unclosed bracket
 ~~~
 

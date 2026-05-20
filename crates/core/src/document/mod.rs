@@ -25,6 +25,7 @@
 //!
 //! let markdown = r#"~~~card-yaml
 //! #@quill: my_quill
+//! #@kind: main
 //! title: My Document
 //! author: John Doe
 //! ~~~
@@ -50,7 +51,7 @@
 //! use quillmark_core::Document;
 //!
 //! let doc = Document::from_markdown(
-//!     "~~~card-yaml\n#@quill: my_quill\ntitle: Hi\n~~~\n\nBody here.\n"
+//!     "~~~card-yaml\n#@quill: my_quill\n#@kind: main\ntitle: Hi\n~~~\n\nBody here.\n"
 //! ).unwrap();
 //! let json = doc.to_plate_json();
 //! assert_eq!(json["QUILL"], "my_quill");

@@ -13,7 +13,7 @@ use crate::document::Document;
 
 #[test]
 fn card_fence_parses_kind_fields_and_body() {
-    let src = "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@kind: product\nname: Widget\nprice: 19\n~~~\n\nWidget description.\n";
+    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\n~~~card-yaml\n#@kind: product\nname: Widget\nprice: 19\n~~~\n\nWidget description.\n";
     let doc = Document::from_markdown(src).unwrap();
 
     assert_eq!(doc.cards().len(), 1);
@@ -25,7 +25,7 @@ fn card_fence_parses_kind_fields_and_body() {
 
 #[test]
 fn card_fence_empty_body_has_no_fields() {
-    let src = "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@kind: marker\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\n~~~card-yaml\n#@kind: marker\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
     assert_eq!(doc.cards().len(), 1);
     assert!(doc.cards()[0].payload().is_empty());
@@ -34,7 +34,7 @@ fn card_fence_empty_body_has_no_fields() {
 
 #[test]
 fn card_fence_multiple_cards() {
-    let src = "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@kind: product\nname: A\n~~~\n\n~~~card-yaml\n#@kind: product\nname: B\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\n~~~card-yaml\n#@kind: product\nname: A\n~~~\n\n~~~card-yaml\n#@kind: product\nname: B\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
     assert_eq!(doc.cards().len(), 2);
     assert_eq!(
@@ -51,12 +51,12 @@ fn card_fence_multiple_cards() {
 
 #[test]
 fn emit_uses_canonical_card_fence() {
-    let src = "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@kind: product\nname: Widget\n~~~\n";
+    let src = "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\n~~~card-yaml\n#@kind: product\nname: Widget\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
     assert_eq!(
         emitted,
-        "~~~card-yaml\n#@quill: q\n~~~\n\n~~~card-yaml\n#@kind: product\nname: \"Widget\"\n~~~\n"
+        "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\n~~~card-yaml\n#@kind: product\nname: \"Widget\"\n~~~\n"
     );
 }
 

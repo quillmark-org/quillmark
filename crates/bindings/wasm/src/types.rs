@@ -361,7 +361,7 @@ mod tests {
     fn card_from_core_carries_payload_items() {
         use quillmark_core::Document;
 
-        let md = "~~~card-yaml\n#@quill: q\ntitle: Hi # inline note\nauthor: Alice\n~~~\n";
+        let md = "~~~card-yaml\n#@quill: q\n#@kind: main\ntitle: Hi # inline note\nauthor: Alice\n~~~\n";
         let doc = Document::from_markdown(md).unwrap();
         let card = Card::from(doc.main());
 

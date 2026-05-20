@@ -20,6 +20,7 @@ quill = engine.quill_from_path("path/to/quill")
 
 markdown = """~~~card-yaml
 #@quill: my_quill
+#@kind: main
 title: Hello World
 ~~~
 

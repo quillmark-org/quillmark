@@ -36,6 +36,7 @@ const quill = engine.quill(tree);
 
 const markdown = `~~~card-yaml
 #@quill: my_quill
+#@kind: main
 title: My Document
 ~~~
 
