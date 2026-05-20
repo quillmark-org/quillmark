@@ -522,6 +522,28 @@ This body and the metadata above are an indorsement card.
     }
 
     #[test]
+    fn serialization_is_byte_deterministic() {
+        // The wasm `toJson` docstring promises byte-equal output for
+        // equal documents within a schema version; consumers content-hash
+        // the result for divergence detection. Re-serializing the same
+        // document, and round-tripping through deserialization, must both
+        // produce the same bytes.
+        let doc = sample();
+        let first = serde_json::to_string(&doc).unwrap();
+        let second = serde_json::to_string(&doc).unwrap();
+        assert_eq!(
+            first, second,
+            "to_string must be deterministic (byte-equal on repeated calls)"
+        );
+        let restored: Document = serde_json::from_str(&first).unwrap();
+        let third = serde_json::to_string(&restored).unwrap();
+        assert_eq!(
+            first, third,
+            "byte-equality must survive a round-trip through fromJson/toJson"
+        );
+    }
+
+    #[test]
     fn serialized_form_carries_schema_version() {
         let doc = sample();
         let value: serde_json::Value = serde_json::to_value(&doc).unwrap();

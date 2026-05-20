@@ -61,6 +61,23 @@ let restored: Document = serde_json::from_str(&json)?;  // load
 assert_eq!(doc, restored);
 ```
 
+## Byte-stability
+
+Serialization is **byte-deterministic** within a given schema version:
+equal `Document`s (by `PartialEq`) produce byte-equal JSON, and the same
+document re-serialized in any later patch or minor release tagged with
+the same `schema` produces the same bytes. This is load-bearing for
+consumers that content-hash stored documents (template-divergence
+detection, cache keys).
+
+The guarantee follows from: struct field order is fixed in the frozen
+DTO tree; `Vec` fields preserve order by definition; `serde_json::Value`
+inside frontmatter field values keeps YAML insertion order via the
+workspace's `serde_json/preserve_order` feature. No key sorting or
+whitespace normalization is applied — the output is `serde_json`'s
+compact form. Bumping the `schema` version is the only event that may
+change the byte layout.
+
 ## Schema Versioning
 
 The schema version is tied to the **crate version at which the `Document`

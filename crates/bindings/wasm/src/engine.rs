@@ -563,6 +563,12 @@ impl Document {
     /// Compare a payload's [`schemaVersionOf`](Document::schema_version_of)
     /// against this to detect mismatches before calling
     /// [`fromJson`](Document::from_json).
+    ///
+    /// The tag tracks the **`Document` model version** — the crate version
+    /// at which the wire format was last changed — not the running crate
+    /// version. Every patch and minor release within the same model
+    /// generation returns the same string; the tag advances only when a
+    /// new schema variant ships.
     #[wasm_bindgen(js_name = currentSchemaVersion)]
     pub fn current_schema_version() -> String {
         quillmark_core::document::SCHEMA_V0_81_0.to_string()
@@ -594,6 +600,22 @@ impl Document {
     /// The result is standard JSON text, so callers that want to inspect it
     /// may `JSON.parse` it — but treating it as an opaque blob is the
     /// intended use.
+    ///
+    /// ## Byte-stability
+    ///
+    /// The output is a **byte-deterministic** function of the document's
+    /// value within a given `schema` version: two documents that compare
+    /// equal under [`equals`](Document::equals) serialize to byte-equal
+    /// strings, and the same document re-serialized in a later patch or
+    /// minor release of this crate (same `schema`) produces the same bytes.
+    /// Content-hash use cases (template-divergence detection, cache keys)
+    /// can rely on this without re-canonicalizing.
+    ///
+    /// Specifics: object fields are emitted in struct-declaration order;
+    /// frontmatter field values preserve their YAML insertion order (no
+    /// key sorting); whitespace is `serde_json`'s compact form (no spaces
+    /// between tokens, no trailing newline); strings use `serde_json`'s
+    /// standard escape set. A schema-version bump may change any of these.
     #[wasm_bindgen(js_name = toJson)]
     pub fn to_json(&self) -> Result<String, JsValue> {
         serde_json::to_string(&self.inner).map_err(|e| {
