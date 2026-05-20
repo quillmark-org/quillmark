@@ -30,8 +30,13 @@ def test_quill_properties(taro_quill_dir):
     assert isinstance(metadata, dict)
 
     schema = quill.schema
-    assert isinstance(schema, str)
-    assert "fields:" in schema
+    assert isinstance(schema, dict)
+    assert "main" in schema
+    assert "fields" in schema["main"]
+
+    schema_yaml = quill.schema_yaml
+    assert isinstance(schema_yaml, str)
+    assert "fields:" in schema_yaml
 
     supported_formats = quill.supported_formats
     assert isinstance(supported_formats, list)

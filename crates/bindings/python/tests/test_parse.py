@@ -128,3 +128,172 @@ def test_json_dto_drops_parse_warnings():
 
     restored = Document.from_json(doc.to_json())
     assert restored.warnings == []
+
+
+def test_try_from_json_round_trip(taro_md):
+    """try_from_json returns a Document for valid DTOs."""
+    doc = Document.from_markdown(taro_md)
+    dto = doc.to_json()
+
+    restored = Document.try_from_json(dto)
+    assert restored is not None
+    assert restored.quill_ref() == doc.quill_ref()
+
+
+def test_try_from_json_returns_none_on_markdown(taro_md):
+    """try_from_json returns None for non-DTO content (e.g. raw markdown)."""
+    assert Document.try_from_json(taro_md) is None
+    assert Document.try_from_json("not json at all") is None
+    assert Document.try_from_json('{"schema":"quillmark/document@0.99.0"}') is None
+
+
+def test_schema_version_of_reads_dto(taro_md):
+    """schema_version_of returns the schema tag from a stored DTO."""
+    doc = Document.from_markdown(taro_md)
+    dto = doc.to_json()
+
+    assert Document.schema_version_of(dto) == "quillmark/document@0.81.0"
+
+
+def test_schema_version_of_returns_unknown_future_versions():
+    """schema_version_of returns the raw tag, even for unsupported versions."""
+    # Note: this would be rejected by from_json, but schema_version_of returns it
+    # so callers can distinguish "build too old" from "payload corrupt".
+    future = '{"schema":"quillmark/document@0.99.0"}'
+    assert Document.schema_version_of(future) == "quillmark/document@0.99.0"
+
+
+def test_schema_version_of_returns_none_for_non_dto():
+    """schema_version_of returns None when the input is not a schema-tagged object."""
+    assert Document.schema_version_of("not json") is None
+    assert Document.schema_version_of('{"foo":"bar"}') is None
+
+
+def test_current_schema_version_matches_emitted_tag(taro_md):
+    """current_schema_version equals the tag emitted by to_json."""
+    doc = Document.from_markdown(taro_md)
+    dto = doc.to_json()
+
+    current = Document.current_schema_version()
+    assert isinstance(current, str)
+    assert Document.schema_version_of(dto) == current
+
+
+def test_clone_preserves_state(taro_md):
+    """clone returns a fresh handle with the same parsed state."""
+    doc = Document.from_markdown(taro_md)
+    cloned = doc.clone()
+
+    assert cloned.quill_ref() == doc.quill_ref()
+    assert cloned == doc
+
+
+def test_clone_isolates_mutations(taro_md):
+    """Mutating a clone does not affect the original."""
+    doc = Document.from_markdown(taro_md)
+    cloned = doc.clone()
+
+    cloned.set_field("title", "Updated Title")
+    assert doc.payload["title"] != "Updated Title"
+    assert cloned.payload["title"] == "Updated Title"
+
+
+def test_copy_module_clones(taro_md):
+    """The standard library copy module works on Document."""
+    import copy
+
+    doc = Document.from_markdown(taro_md)
+
+    shallow = copy.copy(doc)
+    deep = copy.deepcopy(doc)
+
+    assert shallow == doc
+    assert deep == doc
+
+    shallow.set_field("title", "Shallow Edit")
+    assert doc.payload["title"] != "Shallow Edit"
+
+
+def test_equals_and_eq(taro_md):
+    """equals and == both compare structurally; warnings are ignored."""
+    doc1 = Document.from_markdown(taro_md)
+    doc2 = Document.from_markdown(taro_md)
+
+    assert doc1.equals(doc2)
+    assert doc1 == doc2
+
+
+def test_eq_after_mutation(taro_md):
+    """Mutation breaks equality."""
+    doc1 = Document.from_markdown(taro_md)
+    doc2 = Document.from_markdown(taro_md)
+
+    doc2.set_field("title", "Different")
+    assert doc1 != doc2
+
+
+def test_card_count_matches_cards_len():
+    """card_count is O(1) shortcut for len(cards)."""
+    md = (
+        "~~~card-yaml\n#@quill: q\n#@kind: main\ntitle: T\n~~~\n\nBody.\n\n"
+        "~~~card-yaml\n#@kind: note\n~~~\n\nFirst.\n\n"
+        "~~~card-yaml\n#@kind: summary\n~~~\n\nSecond.\n"
+    )
+    doc = Document.from_markdown(md)
+    assert doc.card_count == 2
+    assert doc.card_count == len(doc.cards)
+
+
+def test_repr_includes_quill_ref(taro_md):
+    """__repr__ surfaces the quill ref and card count."""
+    doc = Document.from_markdown(taro_md)
+    text = repr(doc)
+    assert "Document(" in text
+    assert "taro" in text
+
+
+def test_remove_card_field_returns_value():
+    """remove_card_field removes and returns the field's value."""
+    md = (
+        "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\nBody.\n\n"
+        "~~~card-yaml\n#@kind: note\nfoo: bar\nbaz: qux\n~~~\n"
+    )
+    doc = Document.from_markdown(md)
+
+    removed = doc.remove_card_field(0, "foo")
+    assert removed == "bar"
+    assert "foo" not in doc.cards[0]["fields"]
+    assert doc.cards[0]["fields"]["baz"] == "qux"
+
+
+def test_remove_card_field_absent_returns_none():
+    """remove_card_field returns None when the field doesn't exist."""
+    md = (
+        "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\nBody.\n\n"
+        "~~~card-yaml\n#@kind: note\n~~~\n"
+    )
+    doc = Document.from_markdown(md)
+    assert doc.remove_card_field(0, "missing") is None
+
+
+def test_remove_card_field_out_of_range():
+    """remove_card_field raises EditError for an out-of-range card index."""
+    from quillmark import EditError
+
+    md = "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n"
+    doc = Document.from_markdown(md)
+    with pytest.raises(EditError, match="IndexOutOfRange"):
+        doc.remove_card_field(0, "foo")
+
+
+def test_remove_card_field_reserved_name():
+    """remove_card_field rejects reserved names."""
+    from quillmark import EditError
+
+    md = (
+        "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\nBody.\n\n"
+        "~~~card-yaml\n#@kind: note\n~~~\n"
+    )
+    doc = Document.from_markdown(md)
+    with pytest.raises(EditError, match="ReservedName"):
+        doc.remove_card_field(0, "BODY")
