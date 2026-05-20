@@ -474,23 +474,25 @@ fn render_flow(val: &serde_json::Value) -> String {
 }
 
 /// Quote a YAML string only when necessary in block context.
+///
+/// The oracle is the parser itself: if `s` round-trips through
+/// `serde_saphyr` as a string equal to itself, it can be emitted unquoted —
+/// every consumer in the pipeline parses through the same library, so its
+/// answer is by construction the correct one. This avoids hand-maintaining
+/// YAML's plain-scalar resolution rules (numeric forms, YAML 1.1 boolean
+/// variants, null-aliases, anchor/alias indicators, comment triggers, …).
 fn yaml_string(s: &str) -> String {
-    let needs_quotes = s.is_empty()
-        || matches!(s, "true" | "false" | "null" | "yes" | "no" | "on" | "off")
-        || s.starts_with(|c: char| {
-            matches!(
-                c,
-                '{' | '[' | '&' | '*' | '!' | '|' | '>' | '\'' | '"' | '%' | '@' | '`'
-            )
-        })
-        || s.contains(": ")
-        || s.contains(" #")
-        || s.starts_with("- ")
-        || s.starts_with('#');
-    if needs_quotes {
-        quote(s)
-    } else {
+    if round_trips_as_string(s) {
         s.to_string()
+    } else {
+        quote(s)
+    }
+}
+
+fn round_trips_as_string(s: &str) -> bool {
+    match serde_saphyr::from_str::<serde_json::Value>(s) {
+        Ok(serde_json::Value::String(t)) => t == s,
+        _ => false,
     }
 }
 
@@ -991,6 +993,72 @@ card_kinds:
       label: { type: string, required: true }
       pages: { type: integer, default: 1 }
 "#;
+
+    #[test]
+    fn string_default_that_looks_numeric_is_quoted() {
+        // Regression: a string-typed field with a numeric-looking default
+        // (e.g. version "1.0") must emit quoted so that a model copying
+        // the line verbatim doesn't hand the renderer a float.
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    version: { type: string, default: "1.0" }
+    build_number: { type: string, default: "42" }
+"#)
+        .blueprint();
+        assert!(t.contains("version: \"1.0\""), "got:\n{}", t);
+        assert!(t.contains("build_number: \"42\""), "got:\n{}", t);
+    }
+
+    #[test]
+    fn string_default_that_looks_boolean_or_null_is_quoted() {
+        // YAML 1.1 boolean variants and null aliases must also be quoted
+        // when they appear as string-typed defaults.
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    truthy:  { type: string, default: "True" }
+    nully:   { type: string, default: "~" }
+    yessy:   { type: string, default: "Yes" }
+"#)
+        .blueprint();
+        assert!(t.contains("truthy: \"True\""), "got:\n{}", t);
+        assert!(t.contains("nully: \"~\""), "got:\n{}", t);
+        assert!(t.contains("yessy: \"Yes\""), "got:\n{}", t);
+    }
+
+    #[test]
+    fn ambiguous_string_defaults_round_trip_via_blueprint() {
+        // The blueprint's emitted YAML must reparse to the original string
+        // values — that is the whole guarantee this fix restores.
+        let bp = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    version:      { type: string, default: "1.0" }
+    build_number: { type: string, default: "42" }
+    truthy:       { type: string, default: "True" }
+    nully:        { type: string, default: "~" }
+"#)
+        .blueprint();
+        let doc = Document::from_markdown(&bp).expect("blueprint must parse");
+        let payload = doc.main().payload();
+        assert_eq!(
+            payload.get("version").and_then(|v| v.as_str()),
+            Some("1.0")
+        );
+        assert_eq!(
+            payload.get("build_number").and_then(|v| v.as_str()),
+            Some("42")
+        );
+        assert_eq!(
+            payload.get("truthy").and_then(|v| v.as_str()),
+            Some("True")
+        );
+        assert_eq!(payload.get("nully").and_then(|v| v.as_str()), Some("~"));
+    }
 
     #[test]
     fn blueprint_round_trips_idempotently() {
