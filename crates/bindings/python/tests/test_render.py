@@ -1,6 +1,8 @@
 """Tests for rendering workflow."""
 
-from quillmark import OutputFormat, Document, Quillmark
+import pytest
+
+from quillmark import OutputFormat, Document, ParseError, Quillmark, QuillmarkError
 
 
 def test_save_artifact(taro_quill_dir, taro_md, tmp_path):
@@ -87,3 +89,47 @@ def test_quill_render_full_document(taro_quill_dir, taro_md):
 
     assert len(result.artifacts) > 0
     assert result.output_format == OutputFormat.PDF
+
+
+def test_parse_error_carries_diagnostic_payload():
+    """ParseError exposes both `.diagnostic` (singular) and `.diagnostics` (list).
+
+    Locks in the v0.81 RenderError unification contract: every binding
+    exception carries the diagnostic list; the singular shim is set only
+    when there is exactly one diagnostic.
+    """
+    invalid_md = """---
+title: [unclosed bracket
+---
+
+Content
+"""
+    with pytest.raises(ParseError) as exc_info:
+        Document.from_markdown(invalid_md)
+
+    exc = exc_info.value
+    assert hasattr(exc, "diagnostics"), "exception should carry .diagnostics list"
+    assert len(exc.diagnostics) >= 1, "diagnostics must be non-empty"
+    assert all(hasattr(d, "message") for d in exc.diagnostics)
+
+    if len(exc.diagnostics) == 1:
+        assert hasattr(exc, "diagnostic"), (
+            "single-diagnostic exceptions must set the .diagnostic singular shim"
+        )
+        assert exc.diagnostic.message == exc.diagnostics[0].message
+
+
+def test_quill_load_error_carries_diagnostics(tmp_path):
+    """Quill-loading failures surface as QuillmarkError with diagnostics."""
+    bogus = tmp_path / "not_a_quill"
+    bogus.mkdir()
+    (bogus / "Quill.yaml").write_text("quill: { name: x }\n")  # missing required keys
+
+    engine = Quillmark()
+    with pytest.raises(QuillmarkError) as exc_info:
+        engine.quill_from_path(str(bogus))
+
+    exc = exc_info.value
+    assert hasattr(exc, "diagnostics") and len(exc.diagnostics) >= 1, (
+        "quill-load failure must expose at least one diagnostic"
+    )
