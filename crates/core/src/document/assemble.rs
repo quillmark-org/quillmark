@@ -201,16 +201,24 @@ pub(super) fn decompose_with_warnings(
         ));
     }
 
-    // `main` is the reserved kind for the document root. The author may omit
-    // `#@kind` here, but if they declare it explicitly it must be `main` —
-    // no other kind may sit at the root.
-    if let Some(other) = root_block.meta.kind.as_deref() {
-        if other != "main" {
+    // `main` is the reserved kind for the document root. The root block
+    // must declare `#@kind: main`; no other value is permitted there, and a
+    // composable card may not declare `#@kind: main` (checked below).
+    match root_block.meta.kind.as_deref() {
+        Some("main") => {}
+        Some(other) => {
             return Err(ParseError::InvalidStructure(format!(
                 "The document's root card-yaml block must declare `#@kind: main`, \
                  not `#@kind: {}` — `main` is reserved for the document root.",
                 other
             )));
+        }
+        None => {
+            return Err(ParseError::InvalidStructure(
+                "The document's root card-yaml block must declare `#@kind: main` \
+                 alongside `#@quill:`."
+                    .to_string(),
+            ));
         }
     }
 

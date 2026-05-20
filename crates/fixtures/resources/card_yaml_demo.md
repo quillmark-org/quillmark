@@ -1,5 +1,6 @@
 ~~~card-yaml
 #@quill: test_quill
+#@kind: main
 title: Quillmark Card-YAML Demo
 author: Quillmark Team
 date: 2024-01-01

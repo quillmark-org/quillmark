@@ -29,6 +29,7 @@ with a run of `#@`-prefixed system metadata lines followed by a YAML payload:
 ```markdown
 ~~~card-yaml
 #@quill: my_format
+#@kind: main
 title: My Document
 author: John Doe
 date: 2025-01-15
@@ -51,6 +52,7 @@ system metadata line.
 ```markdown
 ~~~card-yaml
 #@quill: my_custom_format
+#@kind: main
 title: My First Document
 author: Jane Doe
 ~~~

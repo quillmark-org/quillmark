@@ -386,6 +386,7 @@ Cards appear as `~~~card-yaml` blocks with a `#@kind: <kind>` metadata line in t
 ```markdown
 ~~~card-yaml
 #@quill: usaf_memo
+#@kind: main
 subject: Example
 # ... other fields ...
 ~~~

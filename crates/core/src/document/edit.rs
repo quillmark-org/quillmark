@@ -86,6 +86,11 @@ pub enum EditError {
     #[error("invalid card kind '{0}': must match [a-z_][a-z0-9_]*")]
     InvalidKindName(String),
 
+    /// The supplied card kind is `"main"`, which is reserved for the
+    /// document root. Composable cards may not declare `#@kind: main`.
+    #[error("card kind 'main' is reserved for the document root")]
+    ReservedKind,
+
     /// A card index was out of the valid range.
     #[error("index {index} is out of range (len = {len})")]
     IndexOutOfRange { index: usize, len: usize },
@@ -182,6 +187,8 @@ impl Document {
     ///   [`EditError::IndexOutOfRange`].
     /// - `new_kind` must match `[a-z_][a-z0-9_]*`. An invalid kind returns
     ///   [`EditError::InvalidKindName`].
+    /// - `new_kind` must not be `"main"` — that kind is reserved for the
+    ///   document root. Returns [`EditError::ReservedKind`].
     ///
     /// # Warnings
     ///
@@ -194,6 +201,9 @@ impl Document {
         let new_kind = new_kind.into();
         if !is_valid_kind_name(&new_kind) {
             return Err(EditError::InvalidKindName(new_kind));
+        }
+        if new_kind == "main" {
+            return Err(EditError::ReservedKind);
         }
         let len = self.cards().len();
         let card = self
@@ -239,14 +249,19 @@ impl Card {
     ///
     /// # Invariants enforced
     ///
-    /// `kind` must match `[a-z_][a-z0-9_]*`.  An invalid kind returns
-    /// [`EditError::InvalidKindName`].
+    /// - `kind` must match `[a-z_][a-z0-9_]*`. An invalid kind returns
+    ///   [`EditError::InvalidKindName`].
+    /// - `kind` must not be `"main"` — that kind is reserved for the
+    ///   document root. Returns [`EditError::ReservedKind`].
     ///
     /// The new card declares `#@kind: <kind>`, has no fields, and an empty body.
     pub fn new(kind: impl Into<String>) -> Result<Self, EditError> {
         let kind = kind.into();
         if !is_valid_kind_name(&kind) {
             return Err(EditError::InvalidKindName(kind));
+        }
+        if kind == "main" {
+            return Err(EditError::ReservedKind);
         }
         let meta = CardMetadata {
             kind: Some(kind),

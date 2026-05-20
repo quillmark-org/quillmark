@@ -13,6 +13,7 @@ Markdown after the closing `~~~` fence is the card's body.
 ```
 ~~~card-yaml
 #@quill: my_quill@1.0
+#@kind: main
 title: Main Document
 ~~~
 

@@ -8,6 +8,7 @@ to render the document; later blocks are composable [cards](cards.md).
 ```
 ~~~card-yaml
 #@quill: my_format
+#@kind: main
 title: My Document
 author: Jane Doe
 date: 2025-01-15
@@ -66,6 +67,7 @@ Pin a specific version with `@version` syntax on the `#@quill` line:
 ```
 ~~~card-yaml
 #@quill: my_format@2.1
+#@kind: main
 title: Document Title
 ~~~
 ```

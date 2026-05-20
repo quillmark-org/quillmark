@@ -66,6 +66,7 @@ Create a `document.md` that matches the fields you defined:
 ```markdown
 ~~~card-yaml
 #@quill: my_quill
+#@kind: main
 sender: Jane Doe
 recipient: John Smith
 date: 2026-01-15

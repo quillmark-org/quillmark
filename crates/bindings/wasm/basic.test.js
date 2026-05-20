@@ -13,6 +13,7 @@ import { makeQuill } from './test-helpers.js'
 
 const TEST_MARKDOWN = `~~~card-yaml
 #@quill: test_quill
+#@kind: main
 title: Test Document
 author: Test Author
 ~~~
@@ -68,6 +69,7 @@ describe('Document.fromMarkdown', () => {
   it('should expose card fields and body', () => {
     const md = `~~~card-yaml
 #@quill: test_quill
+#@kind: main
 ~~~
 
 Global body.
@@ -96,6 +98,7 @@ Card body.
   it('should throw on invalid YAML payload', () => {
     const badMarkdown = `~~~card-yaml
 #@quill: test_quill
+#@kind: main
 title: Test
 this is not valid yaml
 ~~~
@@ -246,7 +249,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
   it('drops parse-time warnings on reconstruction', () => {
     // An unknown YAML tag triggers a `parse::unsupported_yaml_tag` warning.
     const warnMd =
-      '~~~card-yaml\n#@quill: test_quill\ntitle: Hi\nweird: !custom value\n~~~\n\nBody\n'
+      '~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Hi\nweird: !custom value\n~~~\n\nBody\n'
     const doc = Document.fromMarkdown(warnMd)
     expect(doc.warnings.length).toBeGreaterThan(0)
 
@@ -406,6 +409,7 @@ describe('Quillmark.quill', () => {
     // Document declares a different quill name
     const otherMarkdown = `~~~card-yaml
 #@quill: other_quill
+#@kind: main
 title: Mismatch Test
 ~~~
 
@@ -513,6 +517,7 @@ describe('Document editor surface — setQuillRef / replaceBody', () => {
 describe('Document editor surface — card mutations', () => {
   const MD_WITH_CARDS = `~~~card-yaml
 #@quill: test_quill
+#@kind: main
 ~~~
 
 Body.
@@ -665,6 +670,7 @@ describe('Document.equals', () => {
 describe('Document editor surface — updateCardField / updateCardBody', () => {
   const MD_WITH_CARD = `~~~card-yaml
 #@quill: test_quill
+#@kind: main
 ~~~
 
 Body.
@@ -926,6 +932,7 @@ card_kinds:
 
   const MD_WITH_TITLE = `~~~card-yaml
 #@quill: form_smoke_test
+#@kind: main
 title: "Hello"
 ~~~
 `

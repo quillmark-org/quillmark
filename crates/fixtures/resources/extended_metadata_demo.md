@@ -1,5 +1,6 @@
 ~~~card-yaml
 #@quill: test_quill
+#@kind: main
 title: Extended Metadata Demo
 author: Quillmark Team
 version: 1.0

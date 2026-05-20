@@ -114,16 +114,11 @@ pub struct CardV0_81_0 {
 pub enum SentinelV0_81_0 {
     /// Document entry card. `quill` is the rendered quill reference string
     /// (e.g. `usaf_memo@0.1`), parsed back via [`QuillReference::from_str`].
+    /// The root's `#@kind` is always `"main"` per the spec (§3.3); the wire
+    /// format omits it because the variant discriminator already implies it.
     Main {
         /// Quill reference string.
         quill: String,
-        /// `#@kind` value on the root, if the author declared it. Always
-        /// `"main"` when present — the parser rejects any other value at the
-        /// root. Skipped on serialize when the author omitted `#@kind` so
-        /// `Document → StoredDocument → Document` stays byte-symmetric under
-        /// `PartialEq`.
-        #[serde(default, rename = "tag", skip_serializing_if = "Option::is_none")]
-        kind: Option<String>,
         /// `#@id` opaque identifier, if any.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         id: Option<String>,
@@ -210,17 +205,11 @@ pub enum StorageError {
     MainCardNotMain,
     /// A composable card carried a `Main` sentinel; only `main` may.
     ComposableCardIsMain,
-    /// A composable card's tag was not a valid `[a-z_][a-z0-9_]*` identifier.
+    /// A composable card's tag was not a valid `[a-z_][a-z0-9_]*` identifier,
+    /// or it was `"main"` — the reserved root kind.
     InvalidCardTag {
         /// The offending tag.
         tag: String,
-    },
-    /// The document root carried `#@kind: <other>` for some `<other>` that
-    /// is not `"main"`. `main` is reserved for the document root, so any
-    /// other value is rejected on reconstruction.
-    ReservedRootKind {
-        /// The offending kind value (already known not to be `"main"`).
-        kind: String,
     },
     /// A card carried more payload fields than
     /// [`MAX_FIELD_COUNT`](crate::error::MAX_FIELD_COUNT).
@@ -255,14 +244,15 @@ impl std::fmt::Display for StorageError {
                 "composable cards must carry a card tag, not a QUILL sentinel"
             ),
             StorageError::InvalidCardTag { tag } => {
-                write!(f, "invalid card tag {tag:?}: must match [a-z_][a-z0-9_]*")
-            }
-            StorageError::ReservedRootKind { kind } => {
-                write!(
-                    f,
-                    "root card declared #@kind: {kind:?}, but `main` is reserved \
-                     for the document root and no other value is permitted"
-                )
+                if tag == "main" {
+                    write!(
+                        f,
+                        "card tag {tag:?} is reserved for the document root \
+                         and may not appear on a composable card"
+                    )
+                } else {
+                    write!(f, "invalid card tag {tag:?}: must match [a-z_][a-z0-9_]*")
+                }
             }
             StorageError::TooManyFields { count } => write!(
                 f,
@@ -336,12 +326,11 @@ impl From<&CardMetadata> for SentinelV0_81_0 {
         // `None` on a card produced by parsing or by the `Card::new` editor.
         // If both happen to be set (only constructable via low-level
         // `Card::from_parts`), preferring `quill` keeps the entry-card shape
-        // intact on the wire — the optional `kind` field carries any explicit
-        // `#@kind: main` the author wrote at the root.
+        // intact on the wire — the root's `kind` is always `"main"` per the
+        // spec and is implied by the `Main` variant itself.
         if let Some(reference) = &meta.quill {
             SentinelV0_81_0::Main {
                 quill: reference.to_string(),
-                kind: meta.kind.clone(),
                 id: meta.id.clone(),
             }
         } else {
@@ -459,30 +448,25 @@ impl TryFrom<SentinelV0_81_0> for CardMetadata {
 
     fn try_from(sentinel: SentinelV0_81_0) -> Result<Self, Self::Error> {
         match sentinel {
-            SentinelV0_81_0::Main { quill, kind, id } => {
+            SentinelV0_81_0::Main { quill, id } => {
                 let reference = QuillReference::from_str(&quill).map_err(|reason| {
                     StorageError::InvalidQuillReference {
                         value: quill.clone(),
                         reason,
                     }
                 })?;
-                // The root carries `kind` only when the author wrote `#@kind`
-                // explicitly. The parser already enforces that any such value
-                // is `"main"`, but reconstructed-from-storage data hasn't
-                // passed through the parser — reject anything else here.
-                if let Some(value) = kind.as_deref() {
-                    if value != "main" {
-                        return Err(StorageError::ReservedRootKind { kind: value.into() });
-                    }
-                }
+                // The `Main` variant implies `#@kind: main` (spec §3.3); the
+                // reconstructed model carries the canonical kind so the
+                // markdown emit emits `#@kind: main` and the round-trip is
+                // symmetric with the parser, which requires it.
                 Ok(CardMetadata {
                     quill: Some(reference),
-                    kind,
+                    kind: Some("main".to_string()),
                     id,
                 })
             }
             SentinelV0_81_0::Card { tag, id } => {
-                if !is_valid_kind_name(&tag) {
+                if !is_valid_kind_name(&tag) || tag == "main" {
                     return Err(StorageError::InvalidCardTag { tag });
                 }
                 Ok(CardMetadata {
@@ -586,19 +570,33 @@ This body and the metadata above are an indorsement card.
         assert_eq!(doc.to_markdown(), restored.to_markdown());
     }
 
-    /// A root block that omits `#@kind` must round-trip with `kind: None`
-    /// intact — the wire format must not synthesize a kind that the author
-    /// never wrote, or `PartialEq` would fail after a save+load.
+    /// Every parsed root carries `meta.kind == Some("main")` per the spec,
+    /// and the DTO round-trip preserves that — the wire `Main` variant
+    /// implies it, so the restored model populates it unconditionally.
     #[test]
-    fn round_trip_preserves_implicit_root_kind() {
-        let doc =
-            Document::from_markdown("~~~card-yaml\n#@quill: usaf_memo@0.1\ntitle: \"Hi\"\n~~~\n")
-                .unwrap();
-        assert_eq!(doc.main().meta().kind, None);
+    fn root_kind_is_main_through_round_trip() {
+        let doc = Document::from_markdown(
+            "~~~card-yaml\n#@quill: usaf_memo@0.1\n#@kind: main\ntitle: \"Hi\"\n~~~\n",
+        )
+        .unwrap();
+        assert_eq!(doc.main().meta().kind.as_deref(), Some("main"));
         let restored: Document =
             serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
         assert_eq!(doc, restored);
-        assert_eq!(restored.main().meta().kind, None);
+        assert_eq!(restored.main().meta().kind.as_deref(), Some("main"));
+    }
+
+    /// A composable card tagged `"main"` on the wire must be rejected on
+    /// reconstruction — `main` is reserved for the document root.
+    #[test]
+    fn rejects_composable_card_tagged_main() {
+        let json = r#"{"schema":"quillmark/document@0.81.0",
+            "main":{"sentinel":{"kind":"main","quill":"usaf_memo@0.1"},
+                    "frontmatter":{},"body":""},
+            "cards":[{"sentinel":{"kind":"card","tag":"main"},
+                      "frontmatter":{},"body":""}]}"#;
+        let err = serde_json::from_str::<Document>(json).unwrap_err();
+        assert!(err.to_string().contains("reserved for the document root"));
     }
 
     #[test]
@@ -676,7 +674,6 @@ This body and the metadata above are an indorsement card.
             main: CardV0_81_0 {
                 sentinel: SentinelV0_81_0::Main {
                     quill: "not a valid ref!!".to_string(),
-                    kind: None,
                     id: None,
                 },
                 frontmatter: FrontmatterV0_81_0::default(),
@@ -707,7 +704,6 @@ This body and the metadata above are an indorsement card.
             main: CardV0_81_0 {
                 sentinel: SentinelV0_81_0::Main {
                     quill: "usaf_memo@0.1".to_string(),
-                    kind: None,
                     id: None,
                 },
                 frontmatter: FrontmatterV0_81_0::default(),
@@ -716,7 +712,6 @@ This body and the metadata above are an indorsement card.
             cards: vec![CardV0_81_0 {
                 sentinel: SentinelV0_81_0::Main {
                     quill: "usaf_memo@0.1".to_string(),
-                    kind: None,
                     id: None,
                 },
                 frontmatter: FrontmatterV0_81_0::default(),
@@ -733,7 +728,6 @@ This body and the metadata above are an indorsement card.
             main: CardV0_81_0 {
                 sentinel: SentinelV0_81_0::Main {
                     quill: "usaf_memo@0.1".to_string(),
-                    kind: None,
                     id: None,
                 },
                 frontmatter: fm,
@@ -757,7 +751,6 @@ This body and the metadata above are an indorsement card.
             main: CardV0_81_0 {
                 sentinel: SentinelV0_81_0::Main {
                     quill: "usaf_memo@0.1".to_string(),
-                    kind: None,
                     id: None,
                 },
                 frontmatter: FrontmatterV0_81_0::default(),

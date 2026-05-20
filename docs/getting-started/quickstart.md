@@ -20,6 +20,7 @@ Get started with Quillmark in Python or JavaScript.
 
     markdown = """~~~card-yaml
     #@quill: my_quill
+    #@kind: main
     title: Example Document
     ~~~
 
@@ -56,6 +57,7 @@ Get started with Quillmark in Python or JavaScript.
 
     const markdown = `~~~card-yaml
     #@quill: my_quill
+    #@kind: main
     title: Example Document
     ~~~
 

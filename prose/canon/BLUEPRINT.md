@@ -18,6 +18,7 @@ free.
 ````
 ~~~card-yaml
 #@quill: <name>@<version>
+#@kind: main
 # <description>
 
 # <field description>
@@ -278,6 +279,7 @@ blueprint's document structure.
 ```
 ~~~card-yaml
 #@quill: cmu_letter@0.1.0
+#@kind: main
 # Typeset letters that comply with Carnegie Mellon University letterhead standards.
 
 # The recipient's name and full mailing address.
