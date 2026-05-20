@@ -167,7 +167,7 @@ fn test_json_dto_round_trip() {
     let doc = Document::from_markdown(md).expect("fromMarkdown failed");
 
     // toJson yields a string carrying the schema version.
-    let dto = doc.to_json().expect("toJson failed");
+    let dto = doc.to_json();
     assert!(
         dto.contains("\"quillmark/document@0.81.0\""),
         "DTO string must carry the schema version, got: {dto}"
@@ -194,8 +194,7 @@ fn test_json_dto_drops_parse_warnings() {
         "source document must carry a parse warning"
     );
 
-    let restored = Document::from_json(&doc.to_json().expect("toJson failed"))
-        .expect("fromJson failed");
+    let restored = Document::from_json(&doc.to_json()).expect("fromJson failed");
     assert_eq!(
         js_sys::Array::from(&restored.warnings()).length(),
         0,

@@ -14,7 +14,6 @@ re-document implementation detail that the code already carries.
 
 - `prose/canon/` — settled truth. One concept per page. Indexed by `INDEX.md`.
 - `prose/proposals/` — fleshed-out proposed changes, not yet implemented.
-- `prose/BOOKMARKS.md` — quick notes and ideas not yet worth a proposal.
 
 Canon never references proposals or plans.
 

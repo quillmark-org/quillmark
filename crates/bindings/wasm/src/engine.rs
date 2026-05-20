@@ -617,10 +617,11 @@ impl Document {
     /// between tokens, no trailing newline); strings use `serde_json`'s
     /// standard escape set. A schema-version bump may change any of these.
     #[wasm_bindgen(js_name = toJson)]
-    pub fn to_json(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.inner).map_err(|e| {
-            WasmError::from(format!("toJson: serialization failed: {e}")).to_js_value()
-        })
+    pub fn to_json(&self) -> String {
+        // Infallible: every field of `Document` and its DTO serializes via
+        // standard derives into a `String` buffer — there is no `io::Write`
+        // and no custom `Serialize` that can return an error.
+        serde_json::to_string(&self.inner).expect("Document serialization is infallible")
     }
 
     /// Return a fresh `Document` handle with the same parse state.

@@ -1,8 +1,15 @@
-//! Ensures every quill in the fixtures quiver loads and renders its blueprint.
+//! Enforces the quill authoring contract from `prose/canon/BLUEPRINT.md`:
+//! every quill in the fixtures quiver loads, and its `plate.typ` renders the
+//! quill's own blueprint to a successful (non-error) output.
+//!
+//! The blueprint is the type-minimal valid input — every required field
+//! present, every value type-correct, enums at their first value. A plate
+//! that renders it has shown it degrades gracefully on every type-valid
+//! input shape.
 
 #![cfg(feature = "typst")]
 
-use quillmark::{Document, OutputFormat, Quillmark, RenderOptions};
+use quillmark::{Document, OutputFormat, Quillmark, RenderError, RenderOptions};
 use quillmark_fixtures::{quills_path, resource_path};
 use std::fs;
 
@@ -31,14 +38,28 @@ fn every_quill_in_quiver_renders() {
         let parsed = Document::from_markdown(&markdown)
             .unwrap_or_else(|e| panic!("quill '{name}' blueprint failed to parse: {e:?}"));
 
-        quill
-            .render(
-                &parsed,
-                &RenderOptions {
-                    output_format: Some(OutputFormat::Pdf),
-                    ..Default::default()
-                },
-            )
-            .unwrap_or_else(|e| panic!("quill '{name}' failed to render: {e:?}"));
+        let result = quill.render(
+            &parsed,
+            &RenderOptions {
+                output_format: Some(OutputFormat::Pdf),
+                ..Default::default()
+            },
+        );
+
+        // Font-less CI environments cannot exercise the renderer; skip rather
+        // than fail, matching the convention in quill_engine_test.rs.
+        if let Err(RenderError::EngineCreation { diags }) = &result {
+            if diags[0].message.contains("No fonts found") {
+                eprintln!("quill '{name}': skipping — no fonts available");
+                continue;
+            }
+        }
+
+        let rendered = result
+            .unwrap_or_else(|e| panic!("quill '{name}' failed to render: {e:?}\n---\n{markdown}"));
+        assert!(
+            !rendered.artifacts.is_empty(),
+            "quill '{name}': render produced no artifacts"
+        );
     }
 }

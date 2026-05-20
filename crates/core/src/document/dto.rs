@@ -525,9 +525,10 @@ This body and the metadata above are an indorsement card.
     fn serialization_is_byte_deterministic() {
         // The wasm `toJson` docstring promises byte-equal output for
         // equal documents within a schema version; consumers content-hash
-        // the result for divergence detection. Re-serializing the same
-        // document, and round-tripping through deserialization, must both
-        // produce the same bytes.
+        // the result for divergence detection. Three guarantees are
+        // checked: re-serialization stability, round-trip stability, and
+        // path-independence — a parsed document and a DTO-restored copy of
+        // it serialize to the same bytes.
         let doc = sample();
         let first = serde_json::to_string(&doc).unwrap();
         let second = serde_json::to_string(&doc).unwrap();
@@ -540,6 +541,18 @@ This body and the metadata above are an indorsement card.
         assert_eq!(
             first, third,
             "byte-equality must survive a round-trip through fromJson/toJson"
+        );
+
+        // Path independence: documents arrived at by different routes but
+        // value-equal must serialize identically.
+        let from_markdown = sample();
+        let from_dto: Document =
+            serde_json::from_str(&serde_json::to_string(&from_markdown).unwrap()).unwrap();
+        assert_eq!(from_markdown, from_dto);
+        assert_eq!(
+            serde_json::to_string(&from_markdown).unwrap(),
+            serde_json::to_string(&from_dto).unwrap(),
+            "value-equal documents must serialize to byte-equal strings regardless of construction path"
         );
     }
 
