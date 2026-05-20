@@ -641,17 +641,19 @@ pub(crate) fn saphyr_emit_scalar(value: &JsonValue) -> String {
     }
 
     // Saphyr 0.0.23's plain-safety check inspects only the leading byte
-    // for whitespace, so a string ending with an ASCII space gets emitted
-    // unquoted. YAML strips trailing whitespace from plain scalars on
-    // parse, losing the data. Detect the case and emit double-quoted
-    // ourselves so the round-trip is preserved.
+    // as ASCII whitespace, missing strings whose first or last char is
+    // Unicode whitespace (U+2000…) or whose last char is an ASCII space.
+    // YAML strips such whitespace from plain scalars on parse, losing
+    // the data. Detect and emit double-quoted ourselves so the round-
+    // trip is preserved.
     if let JsonValue::String(s) = value {
-        if s.ends_with(' ')
-            && !buf.starts_with('"')
+        let unquoted = !buf.starts_with('"')
             && !buf.starts_with('\'')
             && !buf.starts_with('|')
-            && !buf.starts_with('>')
-        {
+            && !buf.starts_with('>');
+        let has_edge_whitespace = !s.is_empty()
+            && (s.starts_with(char::is_whitespace) || s.ends_with(char::is_whitespace));
+        if unquoted && has_edge_whitespace {
             return double_quote_string(s);
         }
     }
