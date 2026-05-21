@@ -402,11 +402,7 @@ pub fn normalize_document(
     let main = normalize_card(doc.main());
     let normalized_cards: Vec<Card> = doc.cards().iter().map(normalize_card).collect();
 
-    Ok(Document::from_main_and_cards(
-        main,
-        normalized_cards,
-        doc.warnings().to_vec(),
-    ))
+    Ok(Document::from_main_and_cards(main, normalized_cards))
 }
 
 /// Build a new `Card` with NFC-normalized field names and a normalized body.
