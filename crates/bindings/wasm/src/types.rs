@@ -295,28 +295,24 @@ mod tests {
     // ── PayloadItem ───────────────────────────────────────────────────────
 
     #[test]
-    fn payload_item_field_serializes_with_kind_tag() {
-        let item = PayloadItem::Field {
+    fn payload_item_field_serializes_with_type_tag_and_fill_flag() {
+        let plain = PayloadItem::Field {
             key: "title".into(),
             value: serde_json::json!("Hello"),
             fill: false,
         };
-        let json = serde_json::to_string(&item).unwrap();
-        assert!(json.contains("\"kind\":\"field\""));
-        assert!(json.contains("\"key\":\"title\""));
-        assert!(json.contains("\"value\":\"Hello\""));
-        assert!(json.contains("\"fill\":false"));
-    }
+        let plain_json = serde_json::to_string(&plain).unwrap();
+        assert!(plain_json.contains("\"type\":\"field\""));
+        assert!(plain_json.contains("\"key\":\"title\""));
+        assert!(plain_json.contains("\"value\":\"Hello\""));
+        assert!(plain_json.contains("\"fill\":false"));
 
-    #[test]
-    fn payload_item_field_fill_flag() {
-        let item = PayloadItem::Field {
+        let filled = PayloadItem::Field {
             key: "dept".into(),
             value: serde_json::json!("Sales"),
             fill: true,
         };
-        let json = serde_json::to_string(&item).unwrap();
-        assert!(json.contains("\"fill\":true"));
+        assert!(serde_json::to_string(&filled).unwrap().contains("\"fill\":true"));
     }
 
     #[test]
@@ -326,7 +322,7 @@ mod tests {
             inline: false,
         };
         let json = serde_json::to_string(&item).unwrap();
-        assert!(json.contains("\"kind\":\"comment\""));
+        assert!(json.contains("\"type\":\"comment\""));
         assert!(json.contains("\"text\":\"required\""));
         // inline:false is the default — presence in JSON is an implementation
         // detail, but the round-trip must deserialize back to false.
@@ -341,7 +337,7 @@ mod tests {
             inline: true,
         };
         let json = serde_json::to_string(&item).unwrap();
-        assert!(json.contains("\"kind\":\"comment\""));
+        assert!(json.contains("\"type\":\"comment\""));
         assert!(json.contains("\"inline\":true"));
         let back: PayloadItem = serde_json::from_str(&json).unwrap();
         assert!(matches!(back, PayloadItem::Comment { inline: true, .. }));
@@ -350,7 +346,7 @@ mod tests {
     #[test]
     fn payload_item_inline_default_is_false() {
         // `inline` is serde(default) — omitting it from JSON must deserialize as false.
-        let json = r#"{"kind":"comment","text":"note"}"#;
+        let json = r#"{"type":"comment","text":"note"}"#;
         let item: PayloadItem = serde_json::from_str(json).unwrap();
         assert!(matches!(item, PayloadItem::Comment { inline: false, .. }));
     }

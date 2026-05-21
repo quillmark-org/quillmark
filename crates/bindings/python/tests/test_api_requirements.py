@@ -5,6 +5,26 @@ from quillmark import Quillmark, Document, OutputFormat, ParseError, EditError
 from conftest import QUILLS_PATH, _latest_version
 
 
+def field(card, key):
+    """Return the value of a named field from a card's payload_items list."""
+    for item in card["payload_items"]:
+        if item["type"] == "field" and item["key"] == key:
+            return item["value"]
+    return None
+
+
+def has_field(card, key):
+    """True when a named field exists in a card's payload_items."""
+    return any(
+        i["type"] == "field" and i["key"] == key for i in card["payload_items"]
+    )
+
+
+def field_keys(card):
+    """Iterable of all field keys in a card, in source order."""
+    return [i["key"] for i in card["payload_items"] if i["type"] == "field"]
+
+
 def test_parsed_document_quill_ref():
     """Test that Document exposes quill_ref method."""
     markdown_with_quill = "~~~card-yaml\n#@quill: my_quill\n#@kind: main\ntitle: Test\n~~~\n\n# Content\n"
@@ -97,14 +117,14 @@ def test_set_field_inserts():
     """set_field adds a new payload field."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.set_field("subtitle", "A subtitle")
-    assert doc.payload["subtitle"] == "A subtitle"
+    assert field(doc.main, "subtitle") == "A subtitle"
 
 
 def test_set_field_updates():
     """set_field updates an existing payload field."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.set_field("title", "New Title")
-    assert doc.payload["title"] == "New Title"
+    assert field(doc.main, "title") == "New Title"
 
 
 def test_set_field_reserved_name_matrix():
@@ -135,7 +155,7 @@ def test_remove_field_existing():
     doc = Document.from_markdown(SIMPLE_MD)
     val = doc.remove_field("title")
     assert val == "Hello"
-    assert "title" not in doc.payload
+    assert not has_field(doc.main, "title")
 
 
 def test_remove_field_absent():
@@ -240,7 +260,7 @@ def test_update_card_field():
     """update_card_field sets a field on a specific card."""
     doc = Document.from_markdown(MD_WITH_CARDS)
     doc.update_card_field(0, "content", "hello")
-    assert doc.cards[0]["fields"]["content"] == "hello"
+    assert field(doc.cards[0], "content") == "hello"
 
 
 def test_update_card_field_reserved_name():
@@ -299,7 +319,7 @@ def test_invariants_after_mutation_sequence():
 
     # Assertions: no reserved key in payload
     RESERVED = {"BODY", "CARDS", "QUILL", "CARD"}
-    for key in doc.payload:
+    for key in field_keys(doc.main):
         assert key not in RESERVED, f"reserved key '{key}' found in payload"
 
     # Every card kind is lowercase-valid (just check non-empty and lowercase)
@@ -333,11 +353,11 @@ def test_to_markdown_general_round_trip():
 
     # Re-parse and assert structure survives
     doc2 = Document.from_markdown(emitted)
-    assert doc2.payload["title"] == "New Title"
+    assert field(doc2.main, "title") == "New Title"
     assert doc2.body.rstrip("\n") == "Updated body"
     assert len(doc2.cards) == original_card_count + 1
     assert doc2.cards[0]["kind"] == "note"
-    assert doc2.cards[0]["fields"]["author"] == "Alice"
+    assert field(doc2.cards[0], "author") == "Alice"
     assert doc2.cards[0]["body"] == "Hello"
 
 
@@ -363,12 +383,12 @@ def test_to_markdown_ambiguous_string_survival():
     doc2 = Document.from_markdown(emitted)
 
     # Every value must survive as a string, not be re-interpreted
-    assert doc2.payload["flag_on"] == "on"
-    assert doc2.payload["flag_off"] == "off"
-    assert doc2.payload["flag_yes"] == "yes"
-    assert doc2.payload["flag_no"] == "no"
-    assert doc2.payload["str_true"] == "true"
-    assert doc2.payload["str_false"] == "false"
-    assert doc2.payload["str_null"] == "null"
-    assert doc2.payload["octal_str"] == "01234"
-    assert doc2.payload["date_str"] == "2024-01-15"
+    assert field(doc2.main, "flag_on") == "on"
+    assert field(doc2.main, "flag_off") == "off"
+    assert field(doc2.main, "flag_yes") == "yes"
+    assert field(doc2.main, "flag_no") == "no"
+    assert field(doc2.main, "str_true") == "true"
+    assert field(doc2.main, "str_false") == "false"
+    assert field(doc2.main, "str_null") == "null"
+    assert field(doc2.main, "octal_str") == "01234"
+    assert field(doc2.main, "date_str") == "2024-01-15"

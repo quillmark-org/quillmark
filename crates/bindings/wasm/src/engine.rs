@@ -209,9 +209,9 @@ pub struct RenderSession {
 ///
 /// Created via `Document.fromMarkdown(markdown)`. Exposes:
 /// - `quillRef` (string)
-/// - `payload` (JS object/Record)
 /// - `body` (string)
-/// - `cards` (array of Card objects)
+/// - `main` / `cards` (entry / composable Card objects, each carrying
+///   `kind`, `payloadItems`, and `body`)
 /// - `warnings` (array of Diagnostic objects)
 ///
 /// `toMarkdown()` emits canonical Quillmark Markdown that round-trips back to

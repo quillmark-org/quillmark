@@ -353,12 +353,17 @@ fn build_payload(
 
     // Look up typed `$` items by `$key`. Each entry is consumed at most
     // once; anything left over at the end is appended in source order.
+    // `extract_meta_items` only ever returns the three system variants;
+    // assert that contract here so a regression upstream is loud, not a
+    // silent drop of user fields/comments.
     let mut typed_by_key: HashMap<&'static str, PayloadItem> =
         HashMap::with_capacity(meta_items.len());
     for m in meta_items {
-        if let Some(k) = meta_key(m) {
-            typed_by_key.insert(k, m.clone());
-        }
+        let k = meta_key(m).expect(
+            "build_payload: meta_items must contain only system variants \
+             ($quill/$kind/$id); got a Field or Comment",
+        );
+        typed_by_key.insert(k, m.clone());
     }
 
     let mut items: Vec<PayloadItem> = Vec::new();
@@ -403,10 +408,9 @@ fn build_payload(
     // `meta_items` in source order so the relative `$` ordering is
     // preserved.
     for meta in meta_items {
-        if let Some(k) = meta_key(meta) {
-            if typed_by_key.remove(k).is_some() {
-                items.push(meta.clone());
-            }
+        let k = meta_key(meta).expect("see invariant above");
+        if typed_by_key.remove(k).is_some() {
+            items.push(meta.clone());
         }
     }
 

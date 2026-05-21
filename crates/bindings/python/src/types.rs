@@ -276,9 +276,9 @@ impl PyQuill {
 /// - `to_markdown()` — emit canonical Quillmark Markdown
 /// - `to_json()` — emit the versioned storage DTO string
 /// - `quill_ref()` — quill reference string
-/// - `payload` — dict of typed YAML fields (no QUILL/BODY/CARDS)
 /// - `body` — global Markdown body (str, never None)
-/// - `cards` — list of `Card` dicts
+/// - `main` / `cards` — entry card / composable card dicts, each carrying
+///   `kind`, `payload_items` (ordered field/comment list), and `body`
 /// - `warnings` — list of `Diagnostic` objects
 #[pyclass(name = "Document")]
 pub struct PyDocument {
