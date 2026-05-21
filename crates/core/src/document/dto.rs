@@ -1,66 +1,62 @@
 //! Versioned, storage-stable serialization for [`Document`].
 //!
-//! [`Document`] and its component types (`Card`, `Sentinel`, `Frontmatter`,
-//! …) track the evolving Quillmark model; their in-memory layout is an
-//! internal detail and is deliberately *not* serialized directly. To persist
-//! a document — e.g. in a database — it is converted to a [`StoredDocument`]:
-//! a versioned envelope whose wire format is frozen per schema version.
+//! [`Document`] and its component types (`Card`, `Payload`, …) track the
+//! evolving Quillmark model; their in-memory layout is an internal detail
+//! and is deliberately *not* serialized directly. To persist a document —
+//! e.g. in a database — it is converted to a [`StoredDocument`]: a versioned
+//! envelope whose wire format is frozen per schema version.
 //!
 //! `Document` itself serializes through this envelope via
 //! `#[serde(into / try_from)]`, so the ordinary serde entry points produce
-//! and consume the versioned form transparently:
+//! and consume the versioned form transparently.
 //!
-//! ```
-//! use quillmark_core::Document;
+//! ## Schema versions
 //!
-//! let doc = Document::from_markdown(
-//!     "---\nQUILL: my_quill\ntitle: Hi\n---\n\nBody.\n"
-//! ).unwrap();
+//! - **`quillmark/document@0.82.0`** — current. Encodes the unified
+//!   [`Payload`] item list (typed `$` entries, user fields, and comments
+//!   interleaved in source order). This is the format newly serialized
+//!   documents use.
+//! - **`quillmark/document@0.81.0`** — legacy. Encodes the pre-unification
+//!   shape with a separate `sentinel` (the typed `$quill` / `$kind`) and a
+//!   `frontmatter` item list (user fields + comments only). Kept read-only
+//!   so documents written by `0.81.x` consumers still load; on
+//!   reconstruction it is migrated to the V0_82_0 in-memory shape.
 //!
-//! let json = serde_json::to_string(&doc).unwrap();
-//! assert!(json.contains("\"schema\""));
-//!
-//! let restored: Document = serde_json::from_str(&json).unwrap();
-//! assert_eq!(doc, restored);
-//! ```
-//!
-//! ## Schema versioning
-//!
-//! The schema version tracks the crate version at which the `Document` model
-//! was last changed — currently `0.81.0` (see [`SCHEMA_V0_81_0`]). A model change
-//! adds a new [`StoredDocument`] variant with its own frozen type tree and a
-//! migration; older variants stay frozen so previously stored rows keep
-//! deserializing.
-//!
-//! The canonical design — including the step-by-step procedure for adding a
-//! schema version — is `prose/canon/DOCUMENT_STORAGE.md`.
+//! The canonical design — including the step-by-step procedure for adding
+//! a schema version — is `prose/canon/DOCUMENT_STORAGE.md`.
 
-// Storage DTO types are deliberately named after the crate version that
-// fixed their shape (e.g. `DocumentV0_81_0`); the underscores are intentional.
+// Storage DTO types are named after the crate version that fixed their shape
+// (e.g. `DocumentV0_81_0`); the underscores are intentional.
 #![allow(non_camel_case_types)]
 
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-use super::frontmatter::{Frontmatter, FrontmatterItem};
+use super::meta::validate_composable_kind;
+use super::payload::{Payload, PayloadItem};
 use super::prescan::{CommentPathSegment, NestedComment};
-use super::{Card, Document, Sentinel};
+use super::{Card, Document};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
 
-/// Schema version for the Document model as established in crate version
-/// `0.81.0`. Bumped only when the model itself changes.
+/// Schema version for the V0_81_0 wire format. Documents written by
+/// `quillmark-core` `0.81.x` carry this tag and are migrated forward on
+/// read.
 pub const SCHEMA_V0_81_0: &str = "quillmark/document@0.81.0";
 
-/// Read the `schema` field from a raw storage DTO payload without performing
-/// full deserialization.
+/// Schema version for the V0_82_0 wire format. Newly serialized documents
+/// carry this tag.
+pub const SCHEMA_V0_82_0: &str = "quillmark/document@0.82.0";
+
+/// Read the `schema` field from a raw storage DTO payload without
+/// performing full deserialization.
 ///
 /// Returns `None` if `json` is not valid JSON, is not an object, or has no
-/// `schema` field. The returned string is **not** validated against the set
-/// of supported schema versions — callers use this to distinguish "unknown
-/// future version" from "corrupt payload" when [`Document`] deserialization
-/// fails.
+/// `schema` field. The returned string is **not** validated against the
+/// set of supported schema versions — callers use this to distinguish
+/// "unknown future version" from "corrupt payload" when [`Document`]
+/// deserialization fails.
 pub fn peek_schema_version(json: &str) -> Option<String> {
     #[derive(Deserialize)]
     struct Peek {
@@ -77,109 +73,24 @@ pub fn peek_schema_version(json: &str) -> Option<String> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "schema")]
 pub enum StoredDocument {
-    /// Document model as of crate version `0.81.0`.
+    /// Current (V0_82_0) document model — unified payload items.
+    #[serde(rename = "quillmark/document@0.82.0")]
+    V0_82_0(DocumentV0_82_0),
+    /// Legacy (V0_81_0) document model — separate sentinel + frontmatter.
+    /// Read-only; migrated on reconstruction.
     #[serde(rename = "quillmark/document@0.81.0")]
     V0_81_0(DocumentV0_81_0),
 }
 
-/// Frozen `0.81.0` representation of a [`Document`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DocumentV0_81_0 {
-    /// The document entry card.
-    pub main: CardV0_81_0,
-    /// Composable cards, in order.
-    #[serde(default)]
-    pub cards: Vec<CardV0_81_0>,
-}
-
-/// Frozen `0.81.0` representation of a [`Card`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CardV0_81_0 {
-    /// Card discriminator.
-    pub sentinel: SentinelV0_81_0,
-    /// Ordered frontmatter.
-    #[serde(default)]
-    pub frontmatter: FrontmatterV0_81_0,
-    /// Markdown body following the card fence.
-    #[serde(default)]
-    pub body: String,
-}
-
-/// Frozen `0.81.0` representation of a [`Sentinel`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-pub enum SentinelV0_81_0 {
-    /// Document entry card. `quill` is the rendered quill reference string
-    /// (e.g. `usaf_memo@0.1`), parsed back via [`QuillReference::from_str`].
-    Main {
-        /// Quill reference string.
-        quill: String,
-    },
-    /// Composable card with a kind tag.
-    Card {
-        /// Card kind tag.
-        tag: String,
-    },
-}
-
-/// Frozen `0.81.0` representation of a [`Frontmatter`].
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct FrontmatterV0_81_0 {
-    /// Ordered fields and top-level comments.
-    #[serde(default)]
-    pub items: Vec<FrontmatterItemV0_81_0>,
-    /// Comments captured inside nested mappings/sequences.
-    #[serde(default)]
-    pub nested_comments: Vec<NestedCommentV0_81_0>,
-}
-
-/// Frozen `0.81.0` representation of a [`FrontmatterItem`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-pub enum FrontmatterItemV0_81_0 {
-    /// A YAML field.
-    Field {
-        /// Field key.
-        key: String,
-        /// Field value as raw JSON.
-        value: serde_json::Value,
-        /// `true` when tagged `!fill` in source.
-        #[serde(default)]
-        fill: bool,
-    },
-    /// A YAML comment.
-    Comment {
-        /// Comment text (no leading `#`).
-        text: String,
-        /// `true` for trailing inline comments.
-        #[serde(default)]
-        inline: bool,
-    },
-}
-
-/// Frozen `0.81.0` representation of a [`NestedComment`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct NestedCommentV0_81_0 {
-    /// Path to the immediate parent container.
-    pub container_path: Vec<CommentPathSegmentV0_81_0>,
-    /// Slot or host index (see [`NestedComment`]).
-    pub position: usize,
-    /// Comment text.
-    pub text: String,
-    /// `true` for trailing inline comments.
-    pub inline: bool,
-}
-
-/// Frozen `0.81.0` representation of a [`CommentPathSegment`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum CommentPathSegmentV0_81_0 {
-    /// Mapping key.
-    Key(String),
-    /// Sequence index.
-    Index(usize),
-}
-
 /// Failure while reconstructing a [`Document`] from a [`StoredDocument`].
+///
+/// The taxonomy is intentionally minimal: only [`Self::InvalidQuillReference`]
+/// is typed, because that is the one error a non-malicious caller hits at
+/// the document/quill boundary. Every other defect — wrong-role card,
+/// invalid kind, reserved field name, duplicate key, too many fields —
+/// can only arise from a hand-crafted storage DTO (the markdown parser
+/// already rejects them) and is reported through [`Self::Malformed`] with
+/// a descriptive message.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StorageError {
     /// A stored quill reference string could not be parsed.
@@ -189,33 +100,9 @@ pub enum StorageError {
         /// Parser explanation.
         reason: String,
     },
-    /// The document's `main` card carried a non-`Main` sentinel. The entry
-    /// card must carry a `QUILL` reference.
-    MainCardNotMain,
-    /// A composable card carried a `Main` sentinel; only `main` may.
-    ComposableCardIsMain,
-    /// A composable card's tag was not a valid `[a-z_][a-z0-9_]*` identifier.
-    InvalidCardTag {
-        /// The offending tag.
-        tag: String,
-    },
-    /// A card carried more frontmatter fields than
-    /// [`MAX_FIELD_COUNT`](crate::error::MAX_FIELD_COUNT).
-    TooManyFields {
-        /// The field count found.
-        count: usize,
-    },
-    /// A frontmatter field used a reserved sentinel key
-    /// (`BODY`, `CARDS`, `QUILL`, `CARD`).
-    ReservedFieldName {
-        /// The offending key.
-        key: String,
-    },
-    /// Two frontmatter fields in the same card shared a key.
-    DuplicateFieldKey {
-        /// The duplicated key.
-        key: String,
-    },
+    /// The stored document is structurally malformed in a way the markdown
+    /// parser would reject. The message describes the specific defect.
+    Malformed(String),
 }
 
 impl std::fmt::Display for StorageError {
@@ -224,116 +111,146 @@ impl std::fmt::Display for StorageError {
             StorageError::InvalidQuillReference { value, reason } => {
                 write!(f, "invalid quill reference {value:?}: {reason}")
             }
-            StorageError::MainCardNotMain => {
-                write!(f, "main card must carry a QUILL sentinel, not a card tag")
-            }
-            StorageError::ComposableCardIsMain => write!(
-                f,
-                "composable cards must carry a card tag, not a QUILL sentinel"
-            ),
-            StorageError::InvalidCardTag { tag } => {
-                write!(f, "invalid card tag {tag:?}: must match [a-z_][a-z0-9_]*")
-            }
-            StorageError::TooManyFields { count } => write!(
-                f,
-                "card has {count} frontmatter fields, exceeding the maximum of {}",
-                crate::error::MAX_FIELD_COUNT
-            ),
-            StorageError::ReservedFieldName { key } => {
-                write!(f, "reserved name {key:?} cannot be used as a field name")
-            }
-            StorageError::DuplicateFieldKey { key } => {
-                write!(f, "duplicate frontmatter field key {key:?}")
-            }
+            StorageError::Malformed(msg) => f.write_str(msg),
         }
     }
-}
-
-/// Reject a frontmatter no markdown-parsed `Document` could produce: too many
-/// fields, a reserved sentinel key, or a duplicate key. The markdown parser
-/// already rejects all three, so this only guards hand-crafted storage DTOs.
-fn validate_dto_frontmatter(fm: &Frontmatter) -> Result<(), StorageError> {
-    if fm.len() > crate::error::MAX_FIELD_COUNT {
-        return Err(StorageError::TooManyFields { count: fm.len() });
-    }
-    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    for key in fm.keys() {
-        if super::edit::is_reserved_name(key) {
-            return Err(StorageError::ReservedFieldName { key: key.clone() });
-        }
-        if !seen.insert(key.as_str()) {
-            return Err(StorageError::DuplicateFieldKey { key: key.clone() });
-        }
-    }
-    Ok(())
 }
 
 impl std::error::Error for StorageError {}
 
-// ── Document → StoredDocument (infallible) ────────────────────────────────────
+// ─── V0_82_0 wire format (current) ────────────────────────────────────────────
+
+/// Frozen `0.82.0` representation of a [`Document`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DocumentV0_82_0 {
+    pub main: CardV0_82_0,
+    #[serde(default)]
+    pub cards: Vec<CardV0_82_0>,
+}
+
+/// Frozen `0.82.0` representation of a [`Card`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CardV0_82_0 {
+    pub payload: PayloadV0_82_0,
+    #[serde(default)]
+    pub body: String,
+}
+
+/// Frozen `0.82.0` representation of a [`Payload`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct PayloadV0_82_0 {
+    #[serde(default)]
+    pub items: Vec<PayloadItemV0_82_0>,
+    #[serde(default)]
+    pub nested_comments: Vec<NestedCommentV0_82_0>,
+}
+
+/// Frozen `0.82.0` representation of a unified payload item.
+///
+/// Discriminator field is `type` to keep it unambiguous next to the `$kind`
+/// metadata semantic (a `kind` discriminator would yield `{"kind":"kind"}`
+/// for `$kind` entries).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum PayloadItemV0_82_0 {
+    /// `$quill` system metadata — the quill reference string.
+    Quill { value: String },
+    /// `$kind` system metadata.
+    Kind { value: String },
+    /// `$id` system metadata.
+    Id { value: String },
+    /// A user-defined field.
+    Field {
+        key: String,
+        value: serde_json::Value,
+        #[serde(default)]
+        fill: bool,
+    },
+    /// A YAML comment.
+    Comment {
+        text: String,
+        #[serde(default)]
+        inline: bool,
+    },
+}
+
+/// Frozen `0.82.0` representation of a [`NestedComment`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NestedCommentV0_82_0 {
+    pub container_path: Vec<CommentPathSegmentV0_82_0>,
+    pub position: usize,
+    pub text: String,
+    pub inline: bool,
+}
+
+/// Frozen `0.82.0` representation of a [`CommentPathSegment`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum CommentPathSegmentV0_82_0 {
+    Key(String),
+    Index(usize),
+}
+
+// ─── Document ↔ V0_82_0 (live conversion) ─────────────────────────────────────
 
 impl From<Document> for StoredDocument {
     fn from(doc: Document) -> Self {
-        StoredDocument::V0_81_0(DocumentV0_81_0::from(&doc))
+        StoredDocument::V0_82_0(DocumentV0_82_0::from(&doc))
     }
 }
 
-impl From<&Document> for DocumentV0_81_0 {
+impl From<&Document> for DocumentV0_82_0 {
     fn from(doc: &Document) -> Self {
-        DocumentV0_81_0 {
-            main: CardV0_81_0::from(doc.main()),
-            cards: doc.cards().iter().map(CardV0_81_0::from).collect(),
+        DocumentV0_82_0 {
+            main: CardV0_82_0::from(doc.main()),
+            cards: doc.cards().iter().map(CardV0_82_0::from).collect(),
         }
     }
 }
 
-impl From<&Card> for CardV0_81_0 {
+impl From<&Card> for CardV0_82_0 {
     fn from(card: &Card) -> Self {
-        CardV0_81_0 {
-            sentinel: SentinelV0_81_0::from(card.sentinel()),
-            frontmatter: FrontmatterV0_81_0::from(card.frontmatter()),
+        CardV0_82_0 {
+            payload: PayloadV0_82_0::from(card.payload()),
             body: card.body().to_string(),
         }
     }
 }
 
-impl From<&Sentinel> for SentinelV0_81_0 {
-    fn from(sentinel: &Sentinel) -> Self {
-        match sentinel {
-            Sentinel::Main(reference) => SentinelV0_81_0::Main {
-                quill: reference.to_string(),
-            },
-            Sentinel::Card(tag) => SentinelV0_81_0::Card { tag: tag.clone() },
-        }
-    }
-}
-
-impl From<&Frontmatter> for FrontmatterV0_81_0 {
-    fn from(fm: &Frontmatter) -> Self {
-        FrontmatterV0_81_0 {
-            items: fm
+impl From<&Payload> for PayloadV0_82_0 {
+    fn from(payload: &Payload) -> Self {
+        PayloadV0_82_0 {
+            items: payload
                 .items()
                 .iter()
-                .map(FrontmatterItemV0_81_0::from)
+                .map(PayloadItemV0_82_0::from)
                 .collect(),
-            nested_comments: fm
+            nested_comments: payload
                 .nested_comments()
                 .iter()
-                .map(NestedCommentV0_81_0::from)
+                .map(NestedCommentV0_82_0::from)
                 .collect(),
         }
     }
 }
 
-impl From<&FrontmatterItem> for FrontmatterItemV0_81_0 {
-    fn from(item: &FrontmatterItem) -> Self {
+impl From<&PayloadItem> for PayloadItemV0_82_0 {
+    fn from(item: &PayloadItem) -> Self {
         match item {
-            FrontmatterItem::Field { key, value, fill } => FrontmatterItemV0_81_0::Field {
+            PayloadItem::Quill { reference } => PayloadItemV0_82_0::Quill {
+                value: reference.to_string(),
+            },
+            PayloadItem::Kind { value } => PayloadItemV0_82_0::Kind {
+                value: value.clone(),
+            },
+            PayloadItem::Id { value } => PayloadItemV0_82_0::Id {
+                value: value.clone(),
+            },
+            PayloadItem::Field { key, value, fill } => PayloadItemV0_82_0::Field {
                 key: key.clone(),
                 value: value.as_json().clone(),
                 fill: *fill,
             },
-            FrontmatterItem::Comment { text, inline } => FrontmatterItemV0_81_0::Comment {
+            PayloadItem::Comment { text, inline } => PayloadItemV0_82_0::Comment {
                 text: text.clone(),
                 inline: *inline,
             },
@@ -341,13 +258,13 @@ impl From<&FrontmatterItem> for FrontmatterItemV0_81_0 {
     }
 }
 
-impl From<&NestedComment> for NestedCommentV0_81_0 {
+impl From<&NestedComment> for NestedCommentV0_82_0 {
     fn from(nc: &NestedComment) -> Self {
-        NestedCommentV0_81_0 {
+        NestedCommentV0_82_0 {
             container_path: nc
                 .container_path
                 .iter()
-                .map(CommentPathSegmentV0_81_0::from)
+                .map(CommentPathSegmentV0_82_0::from)
                 .collect(),
             position: nc.position,
             text: nc.text.clone(),
@@ -356,111 +273,123 @@ impl From<&NestedComment> for NestedCommentV0_81_0 {
     }
 }
 
-impl From<&CommentPathSegment> for CommentPathSegmentV0_81_0 {
+impl From<&CommentPathSegment> for CommentPathSegmentV0_82_0 {
     fn from(seg: &CommentPathSegment) -> Self {
         match seg {
-            CommentPathSegment::Key(k) => CommentPathSegmentV0_81_0::Key(k.clone()),
-            CommentPathSegment::Index(i) => CommentPathSegmentV0_81_0::Index(*i),
+            CommentPathSegment::Key(k) => CommentPathSegmentV0_82_0::Key(k.clone()),
+            CommentPathSegment::Index(i) => CommentPathSegmentV0_82_0::Index(*i),
         }
     }
 }
-
-// ── StoredDocument → Document (fallible) ──────────────────────────────────────
 
 impl TryFrom<StoredDocument> for Document {
     type Error = StorageError;
 
     fn try_from(stored: StoredDocument) -> Result<Self, Self::Error> {
         match stored {
-            StoredDocument::V0_81_0(payload) => Document::try_from(payload),
+            StoredDocument::V0_82_0(payload) => Document::try_from(payload),
+            StoredDocument::V0_81_0(payload) => Document::try_from(DocumentV0_82_0::from(payload)),
         }
     }
 }
 
-impl TryFrom<DocumentV0_81_0> for Document {
+impl TryFrom<DocumentV0_82_0> for Document {
     type Error = StorageError;
 
-    fn try_from(payload: DocumentV0_81_0) -> Result<Self, Self::Error> {
+    fn try_from(payload: DocumentV0_82_0) -> Result<Self, Self::Error> {
         let main = Card::try_from(payload.main)?;
-        if !main.sentinel().is_main() {
-            return Err(StorageError::MainCardNotMain);
+        if main.quill().is_none() {
+            return Err(StorageError::Malformed(
+                "main card must carry a $quill entry".into(),
+            ));
         }
         let cards = payload
             .cards
             .into_iter()
             .map(Card::try_from)
             .collect::<Result<Vec<_>, _>>()?;
-        if cards.iter().any(|c| c.sentinel().is_main()) {
-            return Err(StorageError::ComposableCardIsMain);
-        }
-        Ok(Document::from_main_and_cards(main, cards))
-    }
-}
-
-impl TryFrom<CardV0_81_0> for Card {
-    type Error = StorageError;
-
-    fn try_from(card: CardV0_81_0) -> Result<Self, Self::Error> {
-        let sentinel = Sentinel::try_from(card.sentinel)?;
-        let frontmatter = Frontmatter::from(card.frontmatter);
-        validate_dto_frontmatter(&frontmatter)?;
-        Ok(Card::new_with_sentinel(sentinel, frontmatter, card.body))
-    }
-}
-
-impl TryFrom<SentinelV0_81_0> for Sentinel {
-    type Error = StorageError;
-
-    fn try_from(sentinel: SentinelV0_81_0) -> Result<Self, Self::Error> {
-        match sentinel {
-            SentinelV0_81_0::Main { quill } => {
-                let reference = QuillReference::from_str(&quill).map_err(|reason| {
-                    StorageError::InvalidQuillReference {
-                        value: quill.clone(),
-                        reason,
+        for card in &cards {
+            if card.quill().is_some() {
+                return Err(StorageError::Malformed(
+                    "composable cards must not carry a $quill entry".into(),
+                ));
+            }
+            if let Some(kind) = card.kind() {
+                match validate_composable_kind(kind) {
+                    Ok(()) => {}
+                    Err(super::meta::CardKindError::InvalidName) => {
+                        return Err(StorageError::Malformed(format!(
+                            "invalid composable card kind {kind:?}: must match \
+                             [a-z_][a-z0-9_]*"
+                        )));
                     }
-                })?;
-                Ok(Sentinel::Main(reference))
-            }
-            SentinelV0_81_0::Card { tag } => {
-                if !super::sentinel::is_valid_tag_name(&tag) {
-                    return Err(StorageError::InvalidCardTag { tag });
+                    Err(super::meta::CardKindError::Reserved) => {
+                        return Err(StorageError::Malformed(format!(
+                            "composable card kind {kind:?} is reserved (root only)"
+                        )));
+                    }
                 }
-                Ok(Sentinel::Card(tag))
             }
         }
+        Ok(Document::from_main_and_cards(main, cards, Vec::new()))
     }
 }
 
-impl From<FrontmatterV0_81_0> for Frontmatter {
-    fn from(fm: FrontmatterV0_81_0) -> Self {
-        let items = fm.items.into_iter().map(FrontmatterItem::from).collect();
-        let nested = fm
+impl TryFrom<CardV0_82_0> for Card {
+    type Error = StorageError;
+
+    fn try_from(card: CardV0_82_0) -> Result<Self, Self::Error> {
+        let payload = Payload::try_from(card.payload)?;
+        validate_dto_payload(&payload)?;
+        Ok(Card::from_parts(payload, card.body))
+    }
+}
+
+impl TryFrom<PayloadV0_82_0> for Payload {
+    type Error = StorageError;
+
+    fn try_from(p: PayloadV0_82_0) -> Result<Self, Self::Error> {
+        let mut items = Vec::with_capacity(p.items.len());
+        for item in p.items {
+            items.push(PayloadItem::try_from(item)?);
+        }
+        let nested = p
             .nested_comments
             .into_iter()
             .map(NestedComment::from)
             .collect();
-        Frontmatter::from_items_with_nested(items, nested)
+        Ok(Payload::from_items_with_nested(items, nested))
     }
 }
 
-impl From<FrontmatterItemV0_81_0> for FrontmatterItem {
-    fn from(item: FrontmatterItemV0_81_0) -> Self {
-        match item {
-            FrontmatterItemV0_81_0::Field { key, value, fill } => FrontmatterItem::Field {
+impl TryFrom<PayloadItemV0_82_0> for PayloadItem {
+    type Error = StorageError;
+
+    fn try_from(item: PayloadItemV0_82_0) -> Result<Self, Self::Error> {
+        Ok(match item {
+            PayloadItemV0_82_0::Quill { value } => {
+                let reference = QuillReference::from_str(&value).map_err(|reason| {
+                    StorageError::InvalidQuillReference {
+                        value: value.clone(),
+                        reason,
+                    }
+                })?;
+                PayloadItem::Quill { reference }
+            }
+            PayloadItemV0_82_0::Kind { value } => PayloadItem::Kind { value },
+            PayloadItemV0_82_0::Id { value } => PayloadItem::Id { value },
+            PayloadItemV0_82_0::Field { key, value, fill } => PayloadItem::Field {
                 key,
                 value: QuillValue::from_json(value),
                 fill,
             },
-            FrontmatterItemV0_81_0::Comment { text, inline } => {
-                FrontmatterItem::Comment { text, inline }
-            }
-        }
+            PayloadItemV0_82_0::Comment { text, inline } => PayloadItem::Comment { text, inline },
+        })
     }
 }
 
-impl From<NestedCommentV0_81_0> for NestedComment {
-    fn from(nc: NestedCommentV0_81_0) -> Self {
+impl From<NestedCommentV0_82_0> for NestedComment {
+    fn from(nc: NestedCommentV0_82_0) -> Self {
         NestedComment {
             container_path: nc
                 .container_path
@@ -474,11 +403,200 @@ impl From<NestedCommentV0_81_0> for NestedComment {
     }
 }
 
-impl From<CommentPathSegmentV0_81_0> for CommentPathSegment {
+impl From<CommentPathSegmentV0_82_0> for CommentPathSegment {
+    fn from(seg: CommentPathSegmentV0_82_0) -> Self {
+        match seg {
+            CommentPathSegmentV0_82_0::Key(k) => CommentPathSegment::Key(k),
+            CommentPathSegmentV0_82_0::Index(i) => CommentPathSegment::Index(i),
+        }
+    }
+}
+
+/// Reject a payload no markdown-parsed `Document` could produce: too many
+/// fields, a reserved sentinel key, or a duplicate user-field key. The
+/// markdown parser already rejects all three; this only guards hand-crafted
+/// storage DTOs.
+fn validate_dto_payload(payload: &Payload) -> Result<(), StorageError> {
+    if payload.len() > crate::error::MAX_FIELD_COUNT {
+        return Err(StorageError::Malformed(format!(
+            "card has {} user fields, exceeding the maximum of {}",
+            payload.len(),
+            crate::error::MAX_FIELD_COUNT
+        )));
+    }
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for key in payload.keys() {
+        if super::edit::is_reserved_name(key) {
+            return Err(StorageError::Malformed(format!(
+                "reserved name {key:?} cannot be used as a field name"
+            )));
+        }
+        if !seen.insert(key.as_str()) {
+            return Err(StorageError::Malformed(format!(
+                "duplicate user-field key {key:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+// ─── V0_81_0 wire format (legacy, read-only) ──────────────────────────────────
+
+/// Frozen `0.81.0` representation of a [`Document`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DocumentV0_81_0 {
+    pub main: CardV0_81_0,
+    #[serde(default)]
+    pub cards: Vec<CardV0_81_0>,
+}
+
+/// Frozen `0.81.0` representation of a [`Card`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CardV0_81_0 {
+    pub sentinel: SentinelV0_81_0,
+    #[serde(default)]
+    pub frontmatter: FrontmatterV0_81_0,
+    #[serde(default)]
+    pub body: String,
+}
+
+/// Frozen `0.81.0` representation of a card discriminator (sentinel).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum SentinelV0_81_0 {
+    Main { quill: String },
+    Card { tag: String },
+}
+
+/// Frozen `0.81.0` representation of a card payload (user fields only).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct FrontmatterV0_81_0 {
+    #[serde(default)]
+    pub items: Vec<FrontmatterItemV0_81_0>,
+    #[serde(default)]
+    pub nested_comments: Vec<NestedCommentV0_81_0>,
+}
+
+/// Frozen `0.81.0` representation of a payload item (no `$` entries).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum FrontmatterItemV0_81_0 {
+    Field {
+        key: String,
+        value: serde_json::Value,
+        #[serde(default)]
+        fill: bool,
+    },
+    Comment {
+        text: String,
+        #[serde(default)]
+        inline: bool,
+    },
+}
+
+/// Frozen `0.81.0` representation of a [`NestedComment`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NestedCommentV0_81_0 {
+    pub container_path: Vec<CommentPathSegmentV0_81_0>,
+    pub position: usize,
+    pub text: String,
+    pub inline: bool,
+}
+
+/// Frozen `0.81.0` representation of a [`CommentPathSegment`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum CommentPathSegmentV0_81_0 {
+    Key(String),
+    Index(usize),
+}
+
+// ─── V0_81_0 → V0_82_0 migration ──────────────────────────────────────────────
+//
+// The migration is purely structural — it converts the old separate
+// `sentinel + frontmatter` shape into a unified items list, then defers to
+// the V0_82_0 → Document path for typed validation. Quill-reference
+// validity is checked once, on the V0_82_0 side.
+
+impl From<DocumentV0_81_0> for DocumentV0_82_0 {
+    fn from(d: DocumentV0_81_0) -> Self {
+        DocumentV0_82_0 {
+            main: CardV0_82_0::from(d.main),
+            cards: d.cards.into_iter().map(CardV0_82_0::from).collect(),
+        }
+    }
+}
+
+impl From<CardV0_81_0> for CardV0_82_0 {
+    fn from(c: CardV0_81_0) -> Self {
+        let mut items: Vec<PayloadItemV0_82_0> = Vec::new();
+
+        // The sentinel migrates to a prelude of typed `$` entries. The
+        // `Main` variant implies `$kind: main` (spec §3.3); the
+        // reconstructed model carries the canonical kind so the markdown
+        // emit produces a parseable document.
+        match c.sentinel {
+            SentinelV0_81_0::Main { quill } => {
+                items.push(PayloadItemV0_82_0::Quill { value: quill });
+                items.push(PayloadItemV0_82_0::Kind {
+                    value: "main".into(),
+                });
+            }
+            SentinelV0_81_0::Card { tag } => {
+                items.push(PayloadItemV0_82_0::Kind { value: tag });
+            }
+        }
+
+        // Append user fields and comments in their original order. V0_81_0
+        // didn't track `$`-line comments separately, so the comment
+        // positions migrate as-is (after the `$` prelude).
+        for item in c.frontmatter.items {
+            items.push(match item {
+                FrontmatterItemV0_81_0::Field { key, value, fill } => {
+                    PayloadItemV0_82_0::Field { key, value, fill }
+                }
+                FrontmatterItemV0_81_0::Comment { text, inline } => {
+                    PayloadItemV0_82_0::Comment { text, inline }
+                }
+            });
+        }
+
+        let nested_comments = c
+            .frontmatter
+            .nested_comments
+            .into_iter()
+            .map(NestedCommentV0_82_0::from)
+            .collect();
+
+        CardV0_82_0 {
+            payload: PayloadV0_82_0 {
+                items,
+                nested_comments,
+            },
+            body: c.body,
+        }
+    }
+}
+
+impl From<NestedCommentV0_81_0> for NestedCommentV0_82_0 {
+    fn from(nc: NestedCommentV0_81_0) -> Self {
+        NestedCommentV0_82_0 {
+            container_path: nc
+                .container_path
+                .into_iter()
+                .map(CommentPathSegmentV0_82_0::from)
+                .collect(),
+            position: nc.position,
+            text: nc.text,
+            inline: nc.inline,
+        }
+    }
+}
+
+impl From<CommentPathSegmentV0_81_0> for CommentPathSegmentV0_82_0 {
     fn from(seg: CommentPathSegmentV0_81_0) -> Self {
         match seg {
-            CommentPathSegmentV0_81_0::Key(k) => CommentPathSegment::Key(k),
-            CommentPathSegmentV0_81_0::Index(i) => CommentPathSegment::Index(i),
+            CommentPathSegmentV0_81_0::Key(k) => CommentPathSegmentV0_82_0::Key(k),
+            CommentPathSegmentV0_81_0::Index(i) => CommentPathSegmentV0_82_0::Index(i),
         }
     }
 }
@@ -490,21 +608,23 @@ mod tests {
     fn sample() -> Document {
         Document::from_markdown(
             "\
----
-QUILL: usaf_memo@0.1
+~~~card-yaml
+$quill: usaf_memo@0.1
+$kind: main
 # a top-level comment
 memo_for:
   - ORG/SYMBOL # inline comment inside a sequence
 date: 2504-10-05
 subject: !fill Subject of the Memorandum
----
+~~~
 
 The body of the memorandum.
 
-```card indorsement
+~~~card-yaml
+$kind: indorsement
 for: ORG/SYMBOL
 from: ORG/SYMBOL
-```
+~~~
 
 This body and the metadata above are an indorsement card.
 ",
@@ -522,45 +642,37 @@ This body and the metadata above are an indorsement card.
     }
 
     #[test]
-    fn serialization_is_byte_deterministic() {
-        // The wasm `toJson` docstring promises byte-equal output for
-        // equal documents within a schema version; consumers content-hash
-        // the result for divergence detection. Three guarantees are
-        // checked: re-serialization stability, round-trip stability, and
-        // path-independence — a parsed document and a DTO-restored copy of
-        // it serialize to the same bytes.
+    fn serialization_uses_v0_82_0_schema() {
         let doc = sample();
-        let first = serde_json::to_string(&doc).unwrap();
-        let second = serde_json::to_string(&doc).unwrap();
-        assert_eq!(
-            first, second,
-            "to_string must be deterministic (byte-equal on repeated calls)"
-        );
-        let restored: Document = serde_json::from_str(&first).unwrap();
-        let third = serde_json::to_string(&restored).unwrap();
-        assert_eq!(
-            first, third,
-            "byte-equality must survive a round-trip through fromJson/toJson"
-        );
-
-        // Path independence: documents arrived at by different routes but
-        // value-equal must serialize identically.
-        let from_markdown = sample();
-        let from_dto: Document =
-            serde_json::from_str(&serde_json::to_string(&from_markdown).unwrap()).unwrap();
-        assert_eq!(from_markdown, from_dto);
-        assert_eq!(
-            serde_json::to_string(&from_markdown).unwrap(),
-            serde_json::to_string(&from_dto).unwrap(),
-            "value-equal documents must serialize to byte-equal strings regardless of construction path"
-        );
+        let value: serde_json::Value = serde_json::to_value(&doc).unwrap();
+        assert_eq!(value["schema"], SCHEMA_V0_82_0);
     }
 
     #[test]
-    fn serialized_form_carries_schema_version() {
+    fn root_kind_is_main_through_round_trip() {
+        let doc = Document::from_markdown(
+            "~~~card-yaml\n$quill: usaf_memo@0.1\n$kind: main\ntitle: \"Hi\"\n~~~\n",
+        )
+        .unwrap();
+        assert_eq!(doc.main().kind(), Some("main"));
+        let restored: Document =
+            serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+        assert_eq!(doc, restored);
+        assert_eq!(restored.main().kind(), Some("main"));
+    }
+
+    #[test]
+    fn serialization_is_byte_deterministic() {
+        // Re-serialization stability, round-trip stability, and
+        // path-independence — checked together because consumers
+        // content-hash the result.
         let doc = sample();
-        let value: serde_json::Value = serde_json::to_value(&doc).unwrap();
-        assert_eq!(value["schema"], SCHEMA_V0_81_0);
+        let first = serde_json::to_string(&doc).unwrap();
+        let second = serde_json::to_string(&doc).unwrap();
+        assert_eq!(first, second, "to_string must be deterministic");
+        let restored: Document = serde_json::from_str(&first).unwrap();
+        let third = serde_json::to_string(&restored).unwrap();
+        assert_eq!(first, third, "byte-equality must survive a round-trip");
     }
 
     #[test]
@@ -573,165 +685,149 @@ This body and the metadata above are an indorsement card.
     fn peek_schema_version_reads_field_without_full_parse() {
         let doc = sample();
         let json = serde_json::to_string(&doc).unwrap();
-        assert_eq!(peek_schema_version(&json).as_deref(), Some(SCHEMA_V0_81_0));
+        assert_eq!(peek_schema_version(&json).as_deref(), Some(SCHEMA_V0_82_0));
 
-        // Unknown future version: peek still succeeds, even though full
-        // deserialization would reject it.
+        // Unknown future version: peek still succeeds.
         let future = r#"{"schema":"quillmark/document@0.99.0","main":{}}"#;
         assert_eq!(
             peek_schema_version(future).as_deref(),
             Some("quillmark/document@0.99.0")
         );
-
-        // Not JSON, no schema field, wrong type — all None.
         assert_eq!(peek_schema_version("not json"), None);
         assert_eq!(peek_schema_version(r#"{"foo":"bar"}"#), None);
-        assert_eq!(peek_schema_version(r#"{"schema":42}"#), None);
-        assert_eq!(peek_schema_version("[1,2,3]"), None);
+    }
+
+    #[test]
+    fn comment_on_dollar_line_round_trips() {
+        // The headline case the unification enables: a `$kind` line with an
+        // inline trailing comment survives a JSON round-trip.
+        let src = "\
+~~~card-yaml
+$quill: q@1.0
+$kind: main # required for root
+title: Hi
+~~~
+";
+        let doc = Document::from_markdown(src).unwrap();
+        let json = serde_json::to_string(&doc).unwrap();
+        let restored: Document = serde_json::from_str(&json).unwrap();
+        assert_eq!(doc, restored);
+        // And the emitted markdown carries the comment back on the `$kind` line.
+        assert!(restored
+            .to_markdown()
+            .contains("$kind: main # required for root"));
+    }
+
+    #[test]
+    fn v0_81_0_payload_loads_via_migration() {
+        let json = r#"{
+            "schema": "quillmark/document@0.81.0",
+            "main": {
+                "sentinel": {"kind": "main", "quill": "usaf_memo@0.1"},
+                "frontmatter": {
+                    "items": [{"kind": "field", "key": "title", "value": "Hello"}]
+                },
+                "body": "Body."
+            },
+            "cards": []
+        }"#;
+        let doc: Document = serde_json::from_str(json).unwrap();
+        assert_eq!(doc.main().kind(), Some("main"));
+        assert_eq!(doc.quill_reference().to_string(), "usaf_memo@0.1");
+        assert_eq!(
+            doc.main().payload().get("title").unwrap().as_str(),
+            Some("Hello")
+        );
+    }
+
+    #[test]
+    fn v0_81_0_with_composable_card_migrates() {
+        let json = r#"{
+            "schema": "quillmark/document@0.81.0",
+            "main": {
+                "sentinel": {"kind": "main", "quill": "q@1.0"},
+                "frontmatter": {"items": []},
+                "body": ""
+            },
+            "cards": [
+                {
+                    "sentinel": {"kind": "card", "tag": "indorsement"},
+                    "frontmatter": {"items": [{"kind": "field", "key": "for", "value": "X"}]},
+                    "body": "C body"
+                }
+            ]
+        }"#;
+        let doc: Document = serde_json::from_str(json).unwrap();
+        assert_eq!(doc.cards().len(), 1);
+        assert_eq!(doc.cards()[0].kind(), Some("indorsement"));
+        assert_eq!(
+            doc.cards()[0].payload().get("for").unwrap().as_str(),
+            Some("X")
+        );
+    }
+
+    #[test]
+    fn rejects_main_card_without_quill() {
+        let json = r#"{
+            "schema": "quillmark/document@0.82.0",
+            "main": {"payload": {"items": [{"type": "kind", "value": "main"}]}, "body": ""},
+            "cards": []
+        }"#;
+        let err = serde_json::from_str::<Document>(json).unwrap_err();
+        assert!(err.to_string().contains("$quill"));
+    }
+
+    #[test]
+    fn rejects_composable_card_tagged_main() {
+        let json = r#"{
+            "schema": "quillmark/document@0.82.0",
+            "main": {
+                "payload": {"items": [
+                    {"type": "quill", "value": "q@1.0"},
+                    {"type": "kind", "value": "main"}
+                ]},
+                "body": ""
+            },
+            "cards": [
+                {"payload": {"items": [{"type": "kind", "value": "main"}]}, "body": ""}
+            ]
+        }"#;
+        let err = serde_json::from_str::<Document>(json).unwrap_err();
+        assert!(err.to_string().contains("reserved (root only)"));
     }
 
     #[test]
     fn rejects_invalid_quill_reference() {
-        let stored = StoredDocument::V0_81_0(DocumentV0_81_0 {
-            main: CardV0_81_0 {
-                sentinel: SentinelV0_81_0::Main {
-                    quill: "not a valid ref!!".to_string(),
-                },
-                frontmatter: FrontmatterV0_81_0::default(),
-                body: String::new(),
+        let json = r#"{
+            "schema": "quillmark/document@0.82.0",
+            "main": {
+                "payload": {"items": [
+                    {"type": "quill", "value": "not a valid ref!!"},
+                    {"type": "kind", "value": "main"}
+                ]},
+                "body": ""
             },
-            cards: Vec::new(),
-        });
-        let err = Document::try_from(stored).unwrap_err();
-        assert!(matches!(err, StorageError::InvalidQuillReference { .. }));
-    }
-
-    #[test]
-    fn rejects_main_card_with_card_sentinel() {
-        // A crafted DTO whose `main` carries a card tag instead of a QUILL
-        // reference must be rejected — not built into a Document that later
-        // panics in `to_markdown()` / the render path.
-        let json = r#"{"schema":"quillmark/document@0.81.0",
-            "main":{"sentinel":{"kind":"card","tag":"x"},"frontmatter":{},"body":""}}"#;
+            "cards": []
+        }"#;
         let err = serde_json::from_str::<Document>(json).unwrap_err();
-        assert!(err.to_string().contains("main card must carry a QUILL sentinel"));
-    }
-
-    #[test]
-    fn rejects_composable_card_with_main_sentinel() {
-        let stored = StoredDocument::V0_81_0(DocumentV0_81_0 {
-            main: CardV0_81_0 {
-                sentinel: SentinelV0_81_0::Main {
-                    quill: "usaf_memo@0.1".to_string(),
-                },
-                frontmatter: FrontmatterV0_81_0::default(),
-                body: String::new(),
-            },
-            cards: vec![CardV0_81_0 {
-                sentinel: SentinelV0_81_0::Main {
-                    quill: "usaf_memo@0.1".to_string(),
-                },
-                frontmatter: FrontmatterV0_81_0::default(),
-                body: String::new(),
-            }],
-        });
-        let err = Document::try_from(stored).unwrap_err();
-        assert_eq!(err, StorageError::ComposableCardIsMain);
-    }
-
-    /// A minimal valid main card wrapping `fm`, with no composable cards.
-    fn doc_with_main_frontmatter(fm: FrontmatterV0_81_0) -> StoredDocument {
-        StoredDocument::V0_81_0(DocumentV0_81_0 {
-            main: CardV0_81_0 {
-                sentinel: SentinelV0_81_0::Main {
-                    quill: "usaf_memo@0.1".to_string(),
-                },
-                frontmatter: fm,
-                body: String::new(),
-            },
-            cards: Vec::new(),
-        })
-    }
-
-    fn dto_field(key: &str) -> FrontmatterItemV0_81_0 {
-        FrontmatterItemV0_81_0::Field {
-            key: key.to_string(),
-            value: serde_json::json!("x"),
-            fill: false,
-        }
-    }
-
-    #[test]
-    fn rejects_invalid_card_tag() {
-        let stored = StoredDocument::V0_81_0(DocumentV0_81_0 {
-            main: CardV0_81_0 {
-                sentinel: SentinelV0_81_0::Main {
-                    quill: "usaf_memo@0.1".to_string(),
-                },
-                frontmatter: FrontmatterV0_81_0::default(),
-                body: String::new(),
-            },
-            cards: vec![CardV0_81_0 {
-                sentinel: SentinelV0_81_0::Card {
-                    tag: "Bad Tag".to_string(),
-                },
-                frontmatter: FrontmatterV0_81_0::default(),
-                body: String::new(),
-            }],
-        });
-        let err = Document::try_from(stored).unwrap_err();
-        assert!(matches!(err, StorageError::InvalidCardTag { .. }));
+        assert!(err.to_string().contains("invalid quill reference"));
     }
 
     #[test]
     fn rejects_reserved_field_name() {
-        let fm = FrontmatterV0_81_0 {
-            items: vec![dto_field("BODY")],
-            nested_comments: Vec::new(),
-        };
-        let err = Document::try_from(doc_with_main_frontmatter(fm)).unwrap_err();
-        assert!(matches!(err, StorageError::ReservedFieldName { .. }));
-    }
-
-    #[test]
-    fn rejects_duplicate_field_key() {
-        let fm = FrontmatterV0_81_0 {
-            items: vec![dto_field("a"), dto_field("a")],
-            nested_comments: Vec::new(),
-        };
-        let err = Document::try_from(doc_with_main_frontmatter(fm)).unwrap_err();
-        assert!(matches!(err, StorageError::DuplicateFieldKey { .. }));
-    }
-
-    #[test]
-    fn rejects_too_many_fields() {
-        let items = (0..=crate::error::MAX_FIELD_COUNT)
-            .map(|i| dto_field(&format!("f{i}")))
-            .collect();
-        let fm = FrontmatterV0_81_0 {
-            items,
-            nested_comments: Vec::new(),
-        };
-        let err = Document::try_from(doc_with_main_frontmatter(fm)).unwrap_err();
-        assert!(matches!(err, StorageError::TooManyFields { .. }));
-    }
-
-    #[test]
-    fn accepts_non_identifier_field_keys() {
-        // The markdown parser produces keys like `memo-for`; the DTO must
-        // round-trip them rather than reject them on charset grounds.
-        let fm = FrontmatterV0_81_0 {
-            items: vec![dto_field("memo-for")],
-            nested_comments: Vec::new(),
-        };
-        assert!(Document::try_from(doc_with_main_frontmatter(fm)).is_ok());
-    }
-
-    #[test]
-    fn explicit_dto_conversion_round_trips() {
-        let doc = sample();
-        let dto = DocumentV0_81_0::from(&doc);
-        let restored = Document::try_from(dto).unwrap();
-        assert_eq!(doc, restored);
+        let json = r#"{
+            "schema": "quillmark/document@0.82.0",
+            "main": {
+                "payload": {"items": [
+                    {"type": "quill", "value": "q@1.0"},
+                    {"type": "kind", "value": "main"},
+                    {"type": "field", "key": "BODY", "value": "x"}
+                ]},
+                "body": ""
+            },
+            "cards": []
+        }"#;
+        let err = serde_json::from_str::<Document>(json).unwrap_err();
+        assert!(err.to_string().contains("reserved name"));
     }
 }

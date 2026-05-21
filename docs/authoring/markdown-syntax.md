@@ -2,11 +2,11 @@
 
 Quillmark Markdown is a **strict superset of [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)** with a small set of [GitHub Flavored Markdown](https://github.github.com/gfm/) extensions and **one declared deviation**. If you already know CommonMark, you only need to learn what is on this page.
 
-For the authoritative grammar, fence-detection rules, normalization, and limits, see the formal specification: [prose/canon/MARKDOWN.md](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/MARKDOWN.md).
+For the authoritative grammar, block-detection rules, normalization, and limits, see the formal specification: [prose/canon/MARKDOWN.md](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/MARKDOWN.md).
 
 ## Foundation
 
-Body content (the prose between frontmatter and any [card](cards.md), and inside each card) is parsed as CommonMark 0.31.2. Headings, emphasis, links, lists, code blocks, blockquotes, thematic breaks, and inline code all behave exactly as the [CommonMark spec](https://spec.commonmark.org/0.31.2/) defines them.
+Body content (the prose after each [card-yaml block](card-yaml.md), including any [card](cards.md)) is parsed as CommonMark 0.31.2. Headings, emphasis, links, lists, code blocks, blockquotes, thematic breaks, and inline code all behave exactly as the [CommonMark spec](https://spec.commonmark.org/0.31.2/) defines them.
 
 For the conventional syntax of these elements, refer to:
 
@@ -58,15 +58,21 @@ The following are recognised by the parser (so they will not corrupt surrounding
 
 Some constructs (like link titles) are accepted by the parser but may be dropped during rendering when the active backend has no target for them. Those losses are backend-specific — see each backend's documentation.
 
-## The `---` marker is reserved
+## Structured metadata: card-yaml blocks
 
-Quillmark uses `---` to delimit [frontmatter](yaml-frontmatter.md). A `---` line that follows the fence-detection rules opens or closes the frontmatter fence; otherwise it falls through to CommonMark and behaves as a thematic break or setext heading underline as usual. The full detection rules are in [§4 of the spec](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/MARKDOWN.md#4-fence-detection-rules).
+Quillmark carries structured metadata in [card-yaml blocks](card-yaml.md) —
+blocks delimited by `~~~card-yaml` / `~~~` fences, optionally led by a run of
+`$`-prefixed system metadata lines. Each block is followed by its Markdown
+prose body. The document's first block (the root block) names the rendering
+format; later blocks are composable [cards](cards.md).
 
-In practice: use `***` or `___` if you want a thematic break inside body content, and reserve `---` for the frontmatter.
-
-[Cards](cards.md) use a fenced code block with the info string `card <kind>`. The legacy `---`/`CARD:` card fence is still accepted on input but `---` is no longer the canonical card delimiter.
+Because metadata lives inside `~~~card-yaml` fences, ordinary Markdown markers
+keep their CommonMark meaning. A `---` line in body content is a thematic
+break or a setext heading underline, exactly as CommonMark defines it — it has
+no special role in Quillmark. The full block-detection rules are in
+[§4 of the spec](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/MARKDOWN.md#4-block-detection).
 
 ## Next steps
 
-- [YAML Frontmatter](yaml-frontmatter.md)
+- [card-yaml Blocks](card-yaml.md)
 - [Cards](cards.md)

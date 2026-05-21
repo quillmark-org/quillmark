@@ -27,12 +27,13 @@ def main():
     engine = Quillmark()
     quill = engine.quill_from_path(str(taro_dir))
 
-    markdown = """---
-QUILL: taro
+    markdown = """~~~card-yaml
+#@quill: taro
+#@kind: main
 author: Alice
 ice_cream: Taro
 title: My Favorite Ice Cream
----
+~~~
 
 # Introduction
 

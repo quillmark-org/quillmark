@@ -1568,8 +1568,8 @@ main:
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
 
-    let mut frontmatter = indexmap::IndexMap::new();
-    frontmatter.insert(
+    let mut payload = indexmap::IndexMap::new();
+    payload.insert(
         "scores".to_string(),
         crate::value::QuillValue::from_json(serde_json::json!([
             {"name": "Math", "value": "95", "active": "true"},
@@ -1577,7 +1577,7 @@ main:
         ])),
     );
 
-    let coerced = config.coerce_frontmatter(&frontmatter).unwrap();
+    let coerced = config.coerce_payload(&payload).unwrap();
     let scores = coerced.get("scores").unwrap();
     let arr = scores.as_array().unwrap();
 
@@ -1613,25 +1613,25 @@ main:
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
-    let mut frontmatter = indexmap::IndexMap::new();
-    frontmatter.insert(
+    let mut payload = indexmap::IndexMap::new();
+    payload.insert(
         "count".to_string(),
         QuillValue::from_json(serde_json::json!("42")),
     );
-    frontmatter.insert(
+    payload.insert(
         "active".to_string(),
         QuillValue::from_json(serde_json::json!("true")),
     );
-    frontmatter.insert(
+    payload.insert(
         "signed_on".to_string(),
         QuillValue::from_json(serde_json::json!("2026-04-13")),
     );
-    frontmatter.insert(
+    payload.insert(
         "created_at".to_string(),
         QuillValue::from_json(serde_json::json!("2026-04-13T20:00:00Z")),
     );
 
-    let coerced = config.coerce_frontmatter(&frontmatter).unwrap();
+    let coerced = config.coerce_payload(&payload).unwrap();
     assert_eq!(coerced.get("count").unwrap().as_i64(), Some(42));
     assert_eq!(coerced.get("active").unwrap().as_bool(), Some(true));
     assert_eq!(
@@ -1660,13 +1660,13 @@ main:
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
-    let mut frontmatter = indexmap::IndexMap::new();
-    frontmatter.insert(
+    let mut payload = indexmap::IndexMap::new();
+    payload.insert(
         "count".to_string(),
         QuillValue::from_json(serde_json::json!("42")),
     );
 
-    let coerced = config.coerce_frontmatter(&frontmatter).unwrap();
+    let coerced = config.coerce_payload(&payload).unwrap();
     assert_eq!(coerced.get("count").unwrap().as_i64(), Some(42));
 }
 
@@ -1686,13 +1686,13 @@ main:
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
-    let mut frontmatter = indexmap::IndexMap::new();
-    frontmatter.insert(
+    let mut payload = indexmap::IndexMap::new();
+    payload.insert(
         "count".to_string(),
         QuillValue::from_json(serde_json::json!("42.5")),
     );
 
-    let error = config.coerce_frontmatter(&frontmatter).unwrap_err();
+    let error = config.coerce_payload(&payload).unwrap_err();
     assert!(matches!(
         error,
         super::CoercionError::Uncoercible { ref path, ref target, .. }
@@ -1721,8 +1721,8 @@ main:
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
-    let mut frontmatter = indexmap::IndexMap::new();
-    frontmatter.insert(
+    let mut payload = indexmap::IndexMap::new();
+    payload.insert(
         "items".to_string(),
         QuillValue::from_json(serde_json::json!([
             {"score": "90", "active": "true"},
@@ -1730,7 +1730,7 @@ main:
         ])),
     );
 
-    let coerced = config.coerce_frontmatter(&frontmatter).unwrap();
+    let coerced = config.coerce_payload(&payload).unwrap();
     let items = coerced.get("items").unwrap().as_array().unwrap();
     let first = items[0].as_object().unwrap();
     let second = items[1].as_object().unwrap();
@@ -1790,13 +1790,13 @@ main:
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
-    let mut frontmatter = indexmap::IndexMap::new();
-    frontmatter.insert(
+    let mut payload = indexmap::IndexMap::new();
+    payload.insert(
         "signed_on".to_string(),
         QuillValue::from_json(serde_json::json!("13-04-2026")),
     );
 
-    let error = config.coerce_frontmatter(&frontmatter).unwrap_err();
+    let error = config.coerce_payload(&payload).unwrap_err();
     assert!(matches!(
         error,
         super::CoercionError::Uncoercible { ref path, ref target, .. }
@@ -1820,13 +1820,13 @@ main:
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
-    let mut frontmatter = indexmap::IndexMap::new();
-    frontmatter.insert(
+    let mut payload = indexmap::IndexMap::new();
+    payload.insert(
         "count".to_string(),
         QuillValue::from_json(serde_json::json!("forty-two")),
     );
 
-    let error = config.coerce_frontmatter(&frontmatter).unwrap_err();
+    let error = config.coerce_payload(&payload).unwrap_err();
     assert!(matches!(
         error,
         super::CoercionError::Uncoercible { ref path, ref target, .. }
@@ -2277,12 +2277,13 @@ card_kinds:
 }
 
 #[test]
-fn body_example_with_bare_fence_line_is_an_error() {
+fn body_example_with_card_yaml_fence_line_is_an_error() {
+    // A `~~~card-yaml` opener in a body example would be parsed as a block.
     let yaml = r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   body:
-    example: "Opening paragraph.\n\n---\n\nClosing paragraph."
+    example: "Opening paragraph.\n\n~~~card-yaml\n$kind: note\n~~~\n\nClosing paragraph."
   fields:
     title: { type: string }
 "#;
@@ -2306,7 +2307,7 @@ fn body_example_fence_line_with_leading_spaces_is_an_error() {
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   body:
-    example: "text\n   ---\nmore text"
+    example: "text\n   ~~~card-yaml\nmore text"
   fields:
     title: { type: string }
 "#;
@@ -2321,43 +2322,37 @@ fn body_example_four_leading_spaces_is_not_a_fence() {
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   body:
-    example: "text\n    ---\nmore text"
+    example: "text\n    ~~~card-yaml\nmore text"
   fields:
     title: { type: string }
 "#;
     let result = QuillConfig::from_yaml_with_warnings(yaml);
     assert!(
         result.is_ok(),
-        "four-space indented --- should not trigger fence error"
+        "four-space indented ~~~card-yaml should not trigger fence error"
     );
 }
 
 #[test]
-fn body_example_card_fence_line_is_an_error() {
-    // A ```card <kind> opener in a body example would be parsed as a card.
+fn body_example_bare_triple_dash_is_not_a_fence() {
+    // A bare `---` thematic break is no longer a metadata fence — allowed.
     let yaml = r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   body:
-    example: "Intro.\n\n```card note\nauthor: x\n```"
+    example: "Opening paragraph.\n\n---\n\nClosing paragraph."
   fields:
     title: { type: string }
 "#;
     let result = QuillConfig::from_yaml_with_warnings(yaml);
-    let errors = result.unwrap_err();
     assert!(
-        errors.iter().any(|d| d
-            .code
-            .as_deref()
-            .map(|c| c == "quill::body_example_contains_fence")
-            .unwrap_or(false)),
-        "expected body_example_contains_fence error for card fence, got: {:?}",
-        errors
+        result.is_ok(),
+        "a bare --- thematic break should not trigger a fence error"
     );
 }
 
 #[test]
-fn body_example_card_kind_fence_line_is_an_error() {
+fn body_example_card_yaml_fence_line_in_card_kind_is_an_error() {
     // The fence check applies to card-kind body examples too.
     let yaml = r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
@@ -2367,7 +2362,7 @@ main:
 card_kinds:
   note:
     body:
-      example: "See below:\n---\nEnd."
+      example: "See below:\n~~~card-yaml\n$kind: other\n~~~\nEnd."
     fields:
       author: { type: string }
 "#;
@@ -2386,7 +2381,7 @@ card_kinds:
 
 #[test]
 fn quill_yaml_deep_nesting_is_rejected() {
-    // Mirrors the frontmatter depth-budget regression in
+    // Mirrors the card-yaml payload depth-budget regression in
     // crates/quillmark/tests/security_tests.rs::test_yaml_depth_limit_attack.
     // Deeply nested YAML under any `quill` subtree must be refused by the
     // shared depth budget (`MAX_YAML_DEPTH`).

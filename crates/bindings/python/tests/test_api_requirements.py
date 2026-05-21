@@ -5,13 +5,33 @@ from quillmark import Quillmark, Document, OutputFormat, ParseError, EditError
 from conftest import QUILLS_PATH, _latest_version
 
 
+def field(card, key):
+    """Return the value of a named field from a card's payload_items list."""
+    for item in card["payload_items"]:
+        if item["type"] == "field" and item["key"] == key:
+            return item["value"]
+    return None
+
+
+def has_field(card, key):
+    """True when a named field exists in a card's payload_items."""
+    return any(
+        i["type"] == "field" and i["key"] == key for i in card["payload_items"]
+    )
+
+
+def field_keys(card):
+    """Iterable of all field keys in a card, in source order."""
+    return [i["key"] for i in card["payload_items"] if i["type"] == "field"]
+
+
 def test_parsed_document_quill_ref():
     """Test that Document exposes quill_ref method."""
-    markdown_with_quill = "---\nQUILL: my_quill\ntitle: Test\n---\n\n# Content\n"
+    markdown_with_quill = "~~~card-yaml\n#@quill: my_quill\n#@kind: main\ntitle: Test\n~~~\n\n# Content\n"
     parsed = Document.from_markdown(markdown_with_quill)
     assert parsed.quill_ref() == "my_quill"
 
-    markdown_without_quill = "---\ntitle: Test\n---\n\n# Content\n"
+    markdown_without_quill = "# Just content\n\nNo card-yaml block here.\n"
     with pytest.raises(ParseError):
         Document.from_markdown(markdown_without_quill)
 
@@ -30,8 +50,13 @@ def test_quill_properties(taro_quill_dir):
     assert isinstance(metadata, dict)
 
     schema = quill.schema
-    assert isinstance(schema, str)
-    assert "fields:" in schema
+    assert isinstance(schema, dict)
+    assert "main" in schema
+    assert "fields" in schema["main"]
+
+    schema_yaml = quill.schema_yaml
+    assert isinstance(schema_yaml, str)
+    assert "fields:" in schema_yaml
 
     supported_formats = quill.supported_formats
     assert isinstance(supported_formats, list)
@@ -44,7 +69,7 @@ def test_full_workflow():
     taro_dir = QUILLS_PATH / "taro"
     quill = engine.quill_from_path(str(_latest_version(taro_dir)))
 
-    markdown = "---\nQUILL: taro\nauthor: Test Author\nice_cream: Chocolate\ntitle: Test\n---\n\nContent.\n"
+    markdown = "~~~card-yaml\n#@quill: taro\n#@kind: main\nauthor: Test Author\nice_cream: Chocolate\ntitle: Test\n~~~\n\nContent.\n"
     parsed = Document.from_markdown(markdown)
     assert parsed.quill_ref() == "taro"
 
@@ -62,41 +87,44 @@ def test_full_workflow():
 # Phase 3 — editor surface tests
 # ---------------------------------------------------------------------------
 
-SIMPLE_MD = "---\nQUILL: test_quill\ntitle: Hello\nauthor: Alice\n---\n\nBody text.\n"
+SIMPLE_MD = "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Hello\nauthor: Alice\n~~~\n\nBody text.\n"
 
 MD_WITH_CARDS = """\
----
-QUILL: test_quill
+~~~card-yaml
+#@quill: test_quill
+#@kind: main
 title: Hello
----
+~~~
 
 Body.
 
-```card note
+~~~card-yaml
+#@kind: note
 foo: bar
-```
+~~~
 
 Card one.
 
-```card summary
-```
+~~~card-yaml
+#@kind: summary
+~~~
 
 Card two.
 """
 
 
 def test_set_field_inserts():
-    """set_field adds a new frontmatter field."""
+    """set_field adds a new payload field."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.set_field("subtitle", "A subtitle")
-    assert doc.frontmatter["subtitle"] == "A subtitle"
+    assert field(doc.main, "subtitle") == "A subtitle"
 
 
 def test_set_field_updates():
-    """set_field updates an existing frontmatter field."""
+    """set_field updates an existing payload field."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.set_field("title", "New Title")
-    assert doc.frontmatter["title"] == "New Title"
+    assert field(doc.main, "title") == "New Title"
 
 
 def test_set_field_reserved_name_matrix():
@@ -127,7 +155,7 @@ def test_remove_field_existing():
     doc = Document.from_markdown(SIMPLE_MD)
     val = doc.remove_field("title")
     assert val == "Hello"
-    assert "title" not in doc.frontmatter
+    assert not has_field(doc.main, "title")
 
 
 def test_remove_field_absent():
@@ -160,32 +188,32 @@ def test_replace_body():
 def test_push_card():
     """push_card appends a card to the list."""
     doc = Document.from_markdown(SIMPLE_MD)
-    doc.push_card({"tag": "note", "body": "Card body."})
+    doc.push_card({"kind": "note", "body": "Card body."})
     assert len(doc.cards) == 1
-    assert doc.cards[0]["tag"] == "note"
+    assert doc.cards[0]["kind"] == "note"
     assert doc.cards[0]["body"] == "Card body."
 
 
-def test_push_card_invalid_tag():
-    """push_card raises EditError for an invalid tag."""
+def test_push_card_invalid_kind():
+    """push_card raises EditError for an invalid kind."""
     doc = Document.from_markdown(SIMPLE_MD)
-    with pytest.raises(EditError, match="InvalidTagName"):
-        doc.push_card({"tag": "BadTag"})
+    with pytest.raises(EditError, match="InvalidKindName"):
+        doc.push_card({"kind": "BadKind"})
 
 
 def test_insert_card_at_front():
     """insert_card at index 0 prepends the card."""
     doc = Document.from_markdown(MD_WITH_CARDS)
-    doc.insert_card(0, {"tag": "intro"})
-    assert doc.cards[0]["tag"] == "intro"
-    assert doc.cards[1]["tag"] == "note"
+    doc.insert_card(0, {"kind": "intro"})
+    assert doc.cards[0]["kind"] == "intro"
+    assert doc.cards[1]["kind"] == "note"
 
 
 def test_insert_card_out_of_range():
     """insert_card raises EditError when index > len."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
     with pytest.raises(EditError, match="IndexOutOfRange"):
-        doc.insert_card(5, {"tag": "note"})
+        doc.insert_card(5, {"kind": "note"})
 
 
 def test_remove_card():
@@ -193,9 +221,9 @@ def test_remove_card():
     doc = Document.from_markdown(MD_WITH_CARDS)
     removed = doc.remove_card(0)
     assert removed is not None
-    assert removed["tag"] == "note"
+    assert removed["kind"] == "note"
     assert len(doc.cards) == 1
-    assert doc.cards[0]["tag"] == "summary"
+    assert doc.cards[0]["kind"] == "summary"
 
 
 def test_remove_card_out_of_range():
@@ -208,8 +236,8 @@ def test_move_card_no_op():
     """move_card(0, 0) is a no-op."""
     doc = Document.from_markdown(MD_WITH_CARDS)
     doc.move_card(0, 0)
-    assert doc.cards[0]["tag"] == "note"
-    assert doc.cards[1]["tag"] == "summary"
+    assert doc.cards[0]["kind"] == "note"
+    assert doc.cards[1]["kind"] == "summary"
 
 
 def test_move_card_last_to_first():
@@ -217,8 +245,8 @@ def test_move_card_last_to_first():
     doc = Document.from_markdown(MD_WITH_CARDS)
     last = len(doc.cards) - 1
     doc.move_card(last, 0)
-    assert doc.cards[0]["tag"] == "summary"
-    assert doc.cards[1]["tag"] == "note"
+    assert doc.cards[0]["kind"] == "summary"
+    assert doc.cards[1]["kind"] == "note"
 
 
 def test_move_card_out_of_range():
@@ -232,7 +260,7 @@ def test_update_card_field():
     """update_card_field sets a field on a specific card."""
     doc = Document.from_markdown(MD_WITH_CARDS)
     doc.update_card_field(0, "content", "hello")
-    assert doc.cards[0]["fields"]["content"] == "hello"
+    assert field(doc.cards[0], "content") == "hello"
 
 
 def test_update_card_field_reserved_name():
@@ -269,7 +297,7 @@ def test_mutators_do_not_touch_warnings():
     initial = list(doc.warnings)
     doc.set_field("extra", "value")
     doc.replace_body("New body.")
-    doc.push_card({"tag": "new_card"})
+    doc.push_card({"kind": "new_card"})
     assert list(doc.warnings) == initial
 
 
@@ -278,26 +306,26 @@ def test_invariants_after_mutation_sequence():
     doc = Document.from_markdown(SIMPLE_MD)
 
     # Add and manipulate cards
-    doc.push_card({"tag": "note", "fields": {"text": "hi"}})
-    doc.push_card({"tag": "summary"})
-    doc.push_card({"tag": "appendix"})
-    doc.insert_card(1, {"tag": "intro"})  # note, intro, summary, appendix
+    doc.push_card({"kind": "note", "fields": {"text": "hi"}})
+    doc.push_card({"kind": "summary"})
+    doc.push_card({"kind": "appendix"})
+    doc.insert_card(1, {"kind": "intro"})  # note, intro, summary, appendix
     doc.move_card(3, 0)                    # appendix, note, intro, summary
     doc.remove_card(2)                     # appendix, note, summary
 
-    # Mutate frontmatter
+    # Mutate payload
     doc.set_field("extra_author", "Bob")
     doc.remove_field("extra_author")
 
-    # Assertions: no reserved key in frontmatter
+    # Assertions: no reserved key in payload
     RESERVED = {"BODY", "CARDS", "QUILL", "CARD"}
-    for key in doc.frontmatter:
-        assert key not in RESERVED, f"reserved key '{key}' found in frontmatter"
+    for key in field_keys(doc.main):
+        assert key not in RESERVED, f"reserved key '{key}' found in payload"
 
-    # Every card tag is lowercase-valid (just check non-empty and lowercase)
+    # Every card kind is lowercase-valid (just check non-empty and lowercase)
     for card in doc.cards:
-        tag = card["tag"]
-        assert tag and tag == tag.lower(), f"invalid tag '{tag}'"
+        kind = card["kind"]
+        assert kind and kind == kind.lower(), f"invalid kind '{kind}'"
 
     # Document identity preserved
     assert doc.quill_ref() == "test_quill"
@@ -315,7 +343,7 @@ def test_to_markdown_general_round_trip():
 
     # Mutate
     doc.set_field("title", "New Title")
-    doc.push_card({"tag": "note", "fields": {"author": "Alice"}, "body": "Hello"})
+    doc.push_card({"kind": "note", "fields": {"author": "Alice"}, "body": "Hello"})
     doc.replace_body("Updated body")
 
     # Emit
@@ -325,11 +353,11 @@ def test_to_markdown_general_round_trip():
 
     # Re-parse and assert structure survives
     doc2 = Document.from_markdown(emitted)
-    assert doc2.frontmatter["title"] == "New Title"
+    assert field(doc2.main, "title") == "New Title"
     assert doc2.body.rstrip("\n") == "Updated body"
     assert len(doc2.cards) == original_card_count + 1
-    assert doc2.cards[0]["tag"] == "note"
-    assert doc2.cards[0]["fields"]["author"] == "Alice"
+    assert doc2.cards[0]["kind"] == "note"
+    assert field(doc2.cards[0], "author") == "Alice"
     assert doc2.cards[0]["body"] == "Hello"
 
 
@@ -355,12 +383,12 @@ def test_to_markdown_ambiguous_string_survival():
     doc2 = Document.from_markdown(emitted)
 
     # Every value must survive as a string, not be re-interpreted
-    assert doc2.frontmatter["flag_on"] == "on"
-    assert doc2.frontmatter["flag_off"] == "off"
-    assert doc2.frontmatter["flag_yes"] == "yes"
-    assert doc2.frontmatter["flag_no"] == "no"
-    assert doc2.frontmatter["str_true"] == "true"
-    assert doc2.frontmatter["str_false"] == "false"
-    assert doc2.frontmatter["str_null"] == "null"
-    assert doc2.frontmatter["octal_str"] == "01234"
-    assert doc2.frontmatter["date_str"] == "2024-01-15"
+    assert field(doc2.main, "flag_on") == "on"
+    assert field(doc2.main, "flag_off") == "off"
+    assert field(doc2.main, "flag_yes") == "yes"
+    assert field(doc2.main, "flag_no") == "no"
+    assert field(doc2.main, "str_true") == "true"
+    assert field(doc2.main, "str_false") == "false"
+    assert field(doc2.main, "str_null") == "null"
+    assert field(doc2.main, "octal_str") == "01234"
+    assert field(doc2.main, "date_str") == "2024-01-15"

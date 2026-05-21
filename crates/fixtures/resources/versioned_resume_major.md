@@ -1,11 +1,12 @@
----
-QUILL: classic_resume@2
+~~~card-yaml
+$quill: classic_resume@2
+$kind: main
 name: John Smith
 email: john.smith@example.com
 phone: (555) 987-6543
 location: Austin, TX
 website: johnsmith.dev
----
+~~~
 
 # Professional Summary
 

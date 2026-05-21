@@ -49,8 +49,8 @@ card_kinds:
         type: string
 """
 
-MD_WITH_TITLE = "---\nQUILL: py_form_smoke\ntitle: \"Hello\"\n---\n"
-MD_EMPTY = "---\nQUILL: py_form_smoke\n---\n"
+MD_WITH_TITLE = "~~~card-yaml\n#@quill: py_form_smoke\n#@kind: main\ntitle: \"Hello\"\n~~~\n"
+MD_EMPTY = "~~~card-yaml\n#@quill: py_form_smoke\n#@kind: main\n~~~\n"
 
 
 def make_quill(tmp_path, yaml_content=QUILL_YAML_CONTENT):
@@ -138,20 +138,20 @@ def test_form_json_serializable(tmp_path):
 
 
 def test_form_unknown_card_diagnostic(tmp_path):
-    """Unknown card tags produce a diagnostic and are excluded from cards."""
+    """Unknown card kinds produce a diagnostic and are excluded from cards."""
     quill = make_quill(tmp_path)
     md = (
-        "---\nQUILL: py_form_smoke\ntitle: \"T\"\n---\n\n"
-        "```card ghost_card\nnote: \"B\"\n```\n"
+        "~~~card-yaml\n#@quill: py_form_smoke\n#@kind: main\ntitle: \"T\"\n~~~\n\n"
+        "~~~card-yaml\n#@kind: ghost_card\nnote: \"B\"\n~~~\n"
     )
     doc = Document.from_markdown(md)
 
     form = quill.form(doc)
 
-    assert form["cards"] == [], "unknown-tag card must be excluded"
+    assert form["cards"] == [], "unknown-kind card must be excluded"
     diag_codes = [d.get("code") for d in form["diagnostics"]]
-    assert "form::unknown_card_tag" in diag_codes, (
-        f"expected form::unknown_card_tag diagnostic; got: {diag_codes}"
+    assert "form::unknown_card_kind" in diag_codes, (
+        f"expected form::unknown_card_kind diagnostic; got: {diag_codes}"
     )
 
 

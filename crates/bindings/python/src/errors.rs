@@ -21,7 +21,8 @@ pub fn convert_edit_error(err: EditError) -> PyErr {
     let variant = match &err {
         EditError::ReservedName(_) => "ReservedName",
         EditError::InvalidFieldName(_) => "InvalidFieldName",
-        EditError::InvalidTagName(_) => "InvalidTagName",
+        EditError::InvalidKindName(_) => "InvalidKindName",
+        EditError::ReservedKind => "ReservedKind",
         EditError::IndexOutOfRange { .. } => "IndexOutOfRange",
     };
     PyEditError::new_err(format!("[EditError::{}] {}", variant, err))
@@ -42,9 +43,7 @@ pub fn convert_render_error(err: RenderError) -> PyErr {
                 "Compilation failed with {} error(s)",
                 diags.len()
             )),
-            RenderError::InvalidFrontmatter { diags } => {
-                ParseError::new_err(primary_message(diags))
-            }
+            RenderError::InvalidPayload { diags } => ParseError::new_err(primary_message(diags)),
             RenderError::QuillConfig { diags } => {
                 QuillmarkError::new_err(summary_message("Quill configuration has", diags))
             }

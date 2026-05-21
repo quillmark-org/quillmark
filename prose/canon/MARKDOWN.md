@@ -5,9 +5,9 @@
 > **Implementation**: `crates/core/src/document/`
 
 Quillmark Markdown is a **strict superset of CommonMark** with one declared
-deviation. It layers a structured-data system (YAML frontmatter + named
-card blocks) on top of ordinary markdown, and selects a small, stable set of
-GFM extensions. This document is the authoritative syntax standard.
+deviation. It layers a structured-data system — the **card-yaml** format — on
+top of ordinary markdown, and selects a small, stable set of GFM extensions.
+This document is the authoritative syntax standard.
 
 ## 1. Superset Statement
 
@@ -15,248 +15,237 @@ Every valid CommonMark 0.31.2 document parses to the same block / inline
 structure under this spec, *except* for the deviation declared in §6.2.
 Additionally, this spec defines:
 
-- **Structured data** — YAML frontmatter and card blocks (§3).
+- **Structured data** — card-yaml blocks (§3).
 - **Extensions** — strikethrough, pipe tables, and `<u>` for underline
   (§6.1).
 
-Documents containing neither frontmatter nor card blocks are ordinary
-CommonMark, parsed as such.
+A document containing no card-yaml blocks is ordinary CommonMark, parsed as
+such.
 
-## 2. Document Grammar
+## 2. The card-yaml Format
 
-A document is a sequence of three kinds of regions, in order:
+The card-yaml format isolates structured metadata from markdown prose. By
+keeping the data payload inside an explicitly delimited block, separate from
+the unstructured body that follows it, the format keeps LLM generation stable
+and prevents state corruption — a generator editing prose cannot accidentally
+disturb the structured fields, and vice versa.
+
+A document is a sequence of **blocks**. Each block is one card-yaml block
+followed by its prose body:
 
 ```
-Document  = Frontmatter Body (CardFence CardBody)*
-CardFence = FencedCard | LegacyCardFence
+Document = (CardYamlBlock ProseBody)+
 ```
 
-- **Frontmatter** — required. One `---` metadata fence at the top of the
-  document, carrying `QUILL` plus any document-level fields.
-- **Body** — markdown content between the frontmatter close and the first
-  card fence (or EOF).
-- **Card fence + card body** — zero or more. Each card fence declares a
-  typed structured record with its own fields; its body is the markdown
-  that follows, up to the next card fence or EOF.
+- **Root block** — the first block, identified purely by position. Its
+  `$quill` metadata declares the quill that renders the document.
+- **Subsequent blocks** — zero or more *cards*. Each declares a composable
+  structured record.
+- **Prose body** — the markdown content between one block's closing fence and
+  the next block's opening fence (or EOF).
 
-A composable card may be written in either of two interchangeable syntaxes:
+### 2.1 Worked Example
 
-- **`FencedCard`** — the canonical syntax: a CommonMark fenced code block
-  whose info string is `card <kind>` (§3.2).
-- **`LegacyCardFence`** — a `---` metadata fence carrying a `CARD:` sentinel
-  (§3.1). Accepted on input for backwards compatibility.
+```
+~~~card-yaml
+$quill: example@0.1.0
+$kind: main
+from: "bob"
+to: "alice"
+~~~
 
-Both parse to the same in-memory card. `toMarkdown` always emits the
-canonical `FencedCard` form — a document authored with `LegacyCardFence`
-cards round-trips to `FencedCard` cards.
+This is the primary document container body text.
 
-The frontmatter is always a `---` fence and must carry `QUILL`; it has no
-fenced-code-block form.
+~~~card-yaml
+$kind: endorsement
+$id: rev-1
+from: "charlie"
+role: "reviewer"
+clearance: "alpha"
+~~~
 
-## 3. Card and Frontmatter Fences
+I have reviewed the contents and officially endorse this flight plan.
+```
 
-### 3.1 The `---` Metadata Fence
+The first block is the root block (by position); its `$quill` entry binds
+the document to the `example` quill at version `0.1.0`. The second block is a
+card whose `$kind` is `endorsement`. The text after each closing `~~~` fence
+is that block's prose body.
 
-A metadata fence is a pair of lines each containing exactly `---` (with
-optional trailing whitespace). The content between is parsed as YAML. The
-frontmatter is always a metadata fence; a composable card may also be
-written as a metadata fence carrying a `CARD:` sentinel (the
-`LegacyCardFence` form — see §3.2 for the canonical `FencedCard` form).
+## 3. card-yaml Blocks
 
+### 3.1 Structural Rules
+
+A card-yaml block has three parts, in order:
+
+1. **Opening fence** — exactly `~~~card-yaml` (see §3.2). The info string
+   alone identifies the block; no further declaration is needed.
+2. **YAML payload** — a standard YAML mapping containing both system
+   metadata (`$`-prefixed reserved keys; see §3.3) and the block's data
+   fields (see §3.4).
+3. **Closing fence** — exactly `~~~` (see §3.2).
+
+The prose body begins immediately after the closing `~~~` fence and runs to
+the next opening fence or EOF.
+
+### 3.2 Delimiter and Info String
+
+- **Delimiter.** Blocks open and close exclusively with `~~~` — three tildes,
+  no more, no fewer. The closing fence is exactly `~~~` and carries no info
+  string.
+- **Info string.** The opening fence must be exactly `~~~card-yaml`. No other
+  info string opens a card-yaml block.
+- **Indentation.** The `~~~card-yaml` opener and its closing `~~~` are at
+  column zero — no leading spaces.
 - **Line endings.** `\n` and `\r\n` are equally accepted.
-- **Whitespace-only content.** A fence whose content is only whitespace
-  yields an empty field set.
-- **Fences inside fenced code blocks.** `---` lines inside an open
-  CommonMark fenced code block (triple-backtick or triple-tilde) are
-  ignored for fence-detection purposes.
-- **Reserved keys.** `QUILL`, `CARD`, `BODY`, and `CARDS` are reserved and
-  may not appear as user-defined field names. `QUILL` is permitted only in
-  the frontmatter; `CARD` is required in every non-frontmatter fence.
-- **YAML comments.** Own-line comments (`# …`) between the fence
-  delimiters are preserved as first-class ordered items and round-trip
-  through `toMarkdown`. Trailing comments on value lines
-  (`key: value  # note`) are normalised to own-line comments on the next
-  line as a canonical-formatting choice — the parser produces a `Field`
-  followed by a `Comment` item and the emitter emits them on separate
-  lines. Comments *inside* nested YAML values (arrays, maps) are also
-  preserved: the pre-scan captures each nested comment with a structural
-  path (key/index sequence) and the emitter re-injects it at the matching
-  position when serialising the value tree.
-- **The `!fill` tag.** `!fill` is the single supported YAML tag; it marks
-  a top-level field as a placeholder awaiting user input and round-trips
-  through emit. `!fill` may be applied to scalars (string, integer,
-  float, bool, null) and sequences; it is rejected on mappings because
-  Quillmark's schema has no top-level `type: object`. Any other custom
-  tag (`!include`, `!env`, …) is dropped with a
-  `parse::unsupported_yaml_tag` warning; the scalar value is kept but
-  the tag does not round-trip.
+- **Blank-line rule.** A blank line is required immediately above every
+  `~~~card-yaml` opener, *except* when the opener is the very first line of
+  the document. A `~~~card-yaml` line without a blank line above it is **not**
+  a card-yaml opener — it is treated as an ordinary CommonMark fenced code
+  block. Requiring the blank line keeps prose-body round-tripping stable and
+  prevents a card-yaml block from being absorbed into a preceding paragraph.
 
-### 3.2 The Canonical Card Fence
+### 3.3 System Metadata (`$`)
 
-The canonical syntax for a composable card is a CommonMark fenced code
-block whose info string is `card <kind>`:
+A block's YAML payload may contain **`$`-prefixed reserved keys** that carry
+system metadata. The set is **closed**: only `$quill`, `$kind`, and `$id`
+are accepted. Any other `$`-prefixed key is a parse error. These keys are
+ordinary YAML — they are read by the same YAML parser that handles the rest
+of the payload — but they are **extracted** from the user field set after
+parsing; they are not part of the data model's field map (§3.4).
 
-````markdown
-```card indorsement
-from: ORG1/SYMBOL
-for: ORG2/SYMBOL
-signature_block:
-  - "JOHN DOE, Lt Col, USAF"
-  - "Commander"
+In the typed model, the `$` entries live as typed variants of the
+unified payload-item list (`PayloadItem::Quill`, `PayloadItem::Kind`,
+`PayloadItem::Id`), interleaved in source order with user fields and
+YAML comments. They are surfaced through typed accessors —
+`card.quill()`, `card.kind()`, `card.id()` — which return `Option<…>`.
+On a successfully parsed document the root card always returns
+`Some(_)` for both `quill()` and `kind()` (with `kind() == "main"`);
+composable cards return `None` for `quill()` and `Some(_)` for `kind()`
+(any value other than `"main"`).
+
+- **`$quill: <name>@<version>`** — binds the document to a quill (see §3.5
+  for the version-selector forms). The root block (the first block) must
+  declare it; no other block may. The value is parsed into a typed quill
+  reference as the block is read.
+- **`$kind: <value>`** — identifies a card's kind. The value is
+  name-validated at parse time and must match `[a-z_][a-z0-9_]*`. The kind
+  `main` is **reserved for the document root**: the root block must declare
+  `$kind: main`, and no composable card may declare `$kind: main`.
+- **`$id: <value>`** — an opaque, optional identifier. Plain metadata: no
+  validation, no uniqueness requirement; carried through round-trip
+  unchanged.
+
+Rules:
+
+- The root block must declare both `$quill: <ref>` and `$kind: main`. A
+  composable (non-root) block must declare `$kind: <kind>` for some
+  `<kind>` other than `main`, and must not declare `$quill`.
+- `$` metadata entries may appear at any position within the payload, and
+  may be interleaved with data fields. The emitter preserves source order
+  (see §9); newly constructed metadata that does not have a source-order
+  is emitted in the canonical key order `$quill`, `$kind`, `$id`.
+- A duplicate `$key` within a single block is a parse error (a YAML mapping
+  cannot carry two entries under the same key).
+- An unknown `$key` (anything outside `{quill, kind, id}`) is a parse error.
+- An invalid `$quill` reference is a parse error.
+- A `$`-prefixed key whose value type is wrong for the key (e.g. a sequence
+  under `$quill`) is a parse error.
+- **YAML comments on `$` lines.** Inline trailing comments (`$quill: foo  #
+  bound at build`) and adjacent own-line comments round-trip through the
+  unified payload-item list — the same mechanism that preserves comments
+  on data fields (§3.4). Both flavors survive parse → emit → parse.
+
+### 3.4 Data Payload
+
+User-defined fields sit in the same YAML payload as the `$` metadata keys
+(§3.3); after metadata extraction, the remaining mapping entries are the
+data payload.
+
+- **Field names.** Every field name matches `/^[a-z_][a-z0-9_]*$/`. The
+  pattern excludes `$`, so a data field name can never collide with the
+  metadata sigil.
+- **Reserved names.** `QUILL`, `CARD`, `BODY`, and `CARDS` are reserved and
+  may not be used as field names.
+- **Whitespace-only payload.** A block whose payload (after metadata
+  extraction) is only whitespace yields an empty field set.
+- **YAML comments.** Both own-line comments (`# …` on their own line) and
+  inline comments (`field: value  # note`) are supported on data fields and
+  round-trip through `toMarkdown`. (Comments targeting `$` metadata lines
+  are the one exception — see §3.3.) Comments inside nested YAML values
+  (arrays, maps) are also preserved: the pre-scan captures each nested
+  comment with a structural path and the emitter re-injects it at the
+  matching position.
+- **The `!fill` tag.** `!fill` is the single supported YAML tag; it marks a
+  top-level data field as a placeholder awaiting user input and round-trips
+  through emit. `!fill` may be applied to scalars (string, integer, float,
+  bool, null) and sequences; it is rejected on mappings because Quillmark's
+  schema has no top-level `type: object`. `!fill` may not be applied to a
+  `$` metadata key. Any other custom tag (`!include`, `!env`, …) is
+  dropped with a `parse::unsupported_yaml_tag` warning; the scalar value is
+  kept but the tag does not round-trip.
+
+### 3.5 Version Selectors
+
+The `$quill` value is `<name>@<version>`, where `<version>` is one
+of:
+
+| Form | Meaning |
+|---|---|
+| `name@2.1.0` | exact version |
+| `name@2.1` | latest `2.1.x` |
+| `name@2` | latest `2.x.x` |
+| `name@latest` | latest overall (explicit) |
+| `name` | latest overall (default — `@version` omitted) |
+
+Quill names match `/^[a-z][a-z0-9_]*$/`. See [VERSIONING.md](./VERSIONING.md)
+for resolution semantics.
+
+## 4. Block Detection
+
+A single detector runs over the line stream. A `~~~card-yaml` line opens a
+card-yaml block **iff** both of the following hold:
+
+**D1 — Blank line above.** The `~~~card-yaml` line is line 1 of the document,
+or the line immediately above it is blank.
+
+**D2 — Closing fence.** A matching `~~~` line appears later in the document.
+
+YAML content between recognised fence markers is opaque to detection — a
+`~~~card-yaml` line inside an open block is part of that block's payload, not
+a new opener (though the canonical payload never produces such a line).
+
+A `~~~card-yaml` line that fails D1 is delegated to CommonMark as an ordinary
+fenced code block. A `~~~card-yaml` opener with no matching `~~~` closer
+before EOF is a hard parse error (§9).
+
+### 4.1 Worked Example
+
 ```
-
-Indorsement body content.
-````
-
-- **Info string.** The info string is exactly two whitespace-separated
-  tokens: the literal `card`, then the card `<kind>`. The kind takes the
-  place of the `CARD:` sentinel and must match `/^[a-z_][a-z0-9_]*$/`.
-- **Fence markers.** The opening and closing markers follow CommonMark
-  fenced-code-block rules (§4.5 of CommonMark): three or more backticks or
-  tildes, indented zero to three spaces. The closing fence uses the same
-  character, is at least as long as the opener, and carries no info string.
-- **Body content.** The text between the fence markers is parsed as YAML,
-  with the same comment, `!fill`, reserved-key, and limit rules as a `---`
-  metadata fence (§3.1, §8). The kind lives in the info string, so the
-  YAML body carries no sentinel key; `QUILL`, `CARD`, `BODY`, and `CARDS`
-  are all rejected as user-defined fields.
-- **Card body.** As with a `---` card fence, the card's body is the
-  markdown that follows the closing fence, up to the next card fence or
-  EOF.
-- **Canonical emission.** `toMarkdown` always emits cards with three
-  backticks. Canonically emitted YAML never produces a line beginning with
-  a backtick (keys are identifiers, sequence items begin with `-`, strings
-  are double-quoted), so a three-backtick fence is never closed early. An
-  inline comment carried over from a legacy `CARD: <kind> # note` source
-  has no sentinel line to attach to and degrades to an own-line comment as
-  the first body line.
-
-## 4. Fence Detection Rules
-
-Two detectors run over the line stream. A fenced code block whose info
-string leads with `card` is tested for the card-fence rules (§4.3); a
-`---` line is tested for the metadata-fence rules (F1–F3 below). YAML
-content between recognised fence markers is opaque to detection.
-
-A `---` line opens a metadata fence **iff both** of the following hold:
-
-**F1 — Sentinel.** The first non-blank, non-comment line of content between
-the opening `---` and the next `---` line matches `KEY: value`, where `KEY`
-is:
-
-- `QUILL` if this is the first metadata fence in the document, or
-- `CARD` if any metadata fence has already been recognised.
-
-For F1 purposes a *comment line* is any line whose first non-whitespace
-character is `#`; such lines are skipped when locating the first content
-line. This mirrors YAML's own treatment of `#` comments and lets fences
-carry banner comments above the sentinel (e.g. `# Essential`).
-
-**F2 — Leading blank.** The opening `---` is on line 1 of the document, or
-the line immediately above it is blank.
-
-**F3 — Column.** The `---` marker is preceded by zero to three spaces of
-indentation. A line with four or more leading spaces (or any leading tab,
-which counts as four columns under CommonMark) is never a fence marker;
-per CommonMark §4.4 such a line is indented code. This rule applies
-symmetrically to the opening and closing fence markers, and piggy-backs on
-the same indentation rule CommonMark already uses for thematic breaks, so
-`---` lines that appear inside indented code blocks are automatically
-excluded without special tracking.
-
-A `---` line that fails any of F1, F2, or F3 is delegated to CommonMark
-unchanged:
-
-- If the line above is non-blank paragraph text, `---` is a setext H2
-  underline.
-- If the line is indented by four or more columns, `---` is part of an
-  indented code block.
-- Otherwise, `---` is a thematic break.
-
-### 4.1 Worked Examples
-
-```markdown
----
-QUILL: resume
+~~~card-yaml
+$quill: resume@1.0.0
+$kind: main
 title: CV
----
+~~~
 
-Main Body Heading
------------------      # Setext H2 — F2 fails (paragraph above)
+Main body text.
 
-Some prose.
+***
 
----                    # Thematic break — F1 fails (no QUILL:/CARD: after)
+A thematic break in prose stays a thematic break.
 
-More prose.
-
----
-CARD: profile
-name: Alice
----
+~~~card-yaml
+$kind: profile
+name: "Alice"
+~~~
 
 Profile body.
 ```
 
-### 4.2 Failure Mode and Linter Guidance
-
-A `---`/`---` pair whose content's first key is almost-but-not-quite
-`CARD` (e.g. `Card:`, `CARDS:`, `card:`) fails F1 and is interpreted as
-two thematic breaks with literal YAML between. Implementations **should**
-emit a lint warning when they encounter a `---`/`---` pair whose content's
-first non-blank, non-comment line matches `[A-Za-z][A-Za-z0-9_]*:` but whose
-key is not the expected sentinel.
-
-### 4.3 Card-Fence Detection
-
-A fenced code block opens a composable card **iff both** of the following
-hold:
-
-**C1 — Info string.** The opener's info string is `card <kind>` — exactly
-the literal `card` followed by one more whitespace-separated token. The
-`<kind>` token must match `/^[a-z_][a-z0-9_]*$/`.
-
-**C2 — Leading blank.** The opener is on line 1 of the document, or the
-line immediately above it is blank. This mirrors F2: a card is a
-block-level construct, and requiring the blank line keeps body
-round-tripping stable.
-
-A fenced code block whose info string does **not** lead with `card` is an
-ordinary CommonMark fenced code block. A `card`-leading opener that
-satisfies C1 but fails C2 is delegated to CommonMark as an ordinary code
-block, with a `parse::card_fence_missing_blank` lint warning.
-
-A `card`-leading opener that satisfies C2 but fails C1 is a hard parse
-error (§9): the author clearly intended a card. The error distinguishes a
-missing kind (```` ```card ````), an invalid kind, and a multi-token info
-string.
-
-The card fence is closed by the matching CommonMark closing fence (same
-character, length at least the opener's, no info string). An opener with
-no matching closer before EOF is a hard parse error.
-
-### 4.4 Worked Card-Fence Examples
-
-````markdown
----
-QUILL: resume
----
-
-```card job             # FencedCard — C1 + C2 hold
-title: Senior Engineer
-```
-
-Job body.
-
-```rust                  # Ordinary code block — C1 fails (not `card`)
-let x = 1;
-```
-
----
-CARD: job                # LegacyCardFence — accepted, emits as FencedCard
-title: Staff Engineer
----
-````
+The first `~~~card-yaml` is the root block (line 1, D1 satisfied). The second
+opens a `profile` card (blank line above). The `***` is an ordinary
+CommonMark thematic break — card-yaml does not reserve any thematic-break
+syntax.
 
 ## 5. Data Model
 
@@ -264,29 +253,29 @@ Parsing yields:
 
 ```typescript
 interface Document {
-  QUILL: string;          // template name, from frontmatter
-  BODY: string;           // body prose between frontmatter and first card
+  QUILL: string;          // quill name@version, from the root block $quill
+  BODY: string;           // prose body of the root block
   CARDS: Card[];          // zero or more cards, in document order
-  [field: string]: any;   // other frontmatter fields
+  [field: string]: any;   // other root-block payload fields
 }
 
 interface Card {
   CARD: string;           // card kind, matches /^[a-z_][a-z0-9_]*$/
-  BODY: string;           // card body prose
-  [field: string]: any;   // other card fields
+  BODY: string;           // card prose body
+  [field: string]: any;   // other card payload fields
 }
 ```
 
 - `CARDS` is always present, possibly empty.
-- Frontmatter fields and card-field names may collide freely; each card is
-  its own scope.
+- Root-block fields and card-field names may collide freely; each card is its
+  own scope.
 - Body text is preserved verbatim — whitespace, line endings, and inline
   CommonMark are untouched by the splitter.
 
 ## 6. Markdown Content
 
-Body regions (the document body and every card body) are rendered as
-CommonMark 0.31.2 with the extensions and deviations below.
+Body regions (the root body and every card body) are rendered as CommonMark
+0.31.2 with the extensions and deviations below.
 
 ### 6.1 Extensions
 
@@ -319,7 +308,8 @@ implemented in a future revision:
 - Images (`![alt](src)`) — reserved for the asset-resolver integration;
   required for v1 of this spec.
 - Math (`$…$`, `$$…$$`), footnotes, task lists, definition lists — not
-  supported; `$` is literal.
+  supported. In markdown body text `$` is literal; inside a `~~~card-yaml`
+  payload `$` is reserved as the prefix for system-metadata keys (§3.3).
 - HTML comments — accepted syntactically, not rendered (see §6.2).
 - `<br>`, `<br/>`, `<br />` — follow the raw-HTML rule (non-rendering);
   authors use CommonMark-native hard breaks (trailing two spaces plus
@@ -347,8 +337,8 @@ Before CommonMark parsing, each body region is normalized:
    text reaches the paragraph parser instead of being consumed by the
    CommonMark HTML-block rule (type 2).
 
-Normalization is applied identically to the document body and every card
-body. It is not applied to YAML field values.
+Normalization is applied identically to the root body and every card
+body. It is not applied to YAML payload values.
 
 ## 8. Limits
 
@@ -358,34 +348,84 @@ error when any is exceeded:
 | Limit | Value |
 |---|---|
 | Document size | 10 MB |
-| YAML size per fence | 1 MB |
+| YAML payload size per block | 1 MB |
 | YAML nesting depth | 100 |
 | Markdown block nesting depth | 100 |
-| Field count per fence | 1000 |
+| Field count per block | 1000 |
 | Card count per document | 1000 |
 
-## 9. Errors
+## 9. Emission Contract
+
+`toMarkdown` always emits the **canonical form** of every block:
+
+```
+~~~card-yaml
+<payload items in source order>
+~~~
+```
+
+That is: a `~~~card-yaml` opener, the YAML payload (typed `$` system
+metadata, user data fields, and YAML comments interleaved in source
+order), and a `~~~` closer. The root block must declare `$quill` and
+`$kind: main`; composable cards must declare `$kind: <kind>`. A document
+round-trips to this canonical shape — fence markers and YAML quoting are
+normalised. `!fill` tags and YAML comments (own-line and inline, including
+those adjacent to `$` lines) survive the round-trip.
+
+Programmatically constructed metadata that does not have a source-order
+emits in the canonical key order `$quill`, `$kind`, `$id` — the typed
+mutators (`set_quill` / `set_kind` / `set_id`) insert at these positions.
+
+### 9.1 Canonical Idempotence
+
+A document in canonical form round-trips byte-equal under both
+`toMarkdown ∘ fromMarkdown` and `fromJson ∘ toJson`:
+
+- **`toMarkdown(fromMarkdown(canonical)) == canonical`** — the canonical
+  form is a parse-emit fixed point.
+- **`toMarkdown(fromMarkdown(arbitrary)) == toMarkdown(fromMarkdown(
+  toMarkdown(fromMarkdown(arbitrary))))`** — at most one round-trip
+  canonicalises any valid input; further round-trips are no-ops.
+- **`toJson(fromJson(toJson(x))) == toJson(x)`** for any in-memory
+  `Document x` — JSON serialization is byte-deterministic within a schema
+  version.
+- **The Markdown and JSON forms agree:** `toMarkdown(fromJson(toJson(x)))
+  == toMarkdown(x)` for every `Document x` produced by
+  `fromMarkdown(arbitrary)`. The two persistence formats canonicalise to
+  the same in-memory model.
+
+Arbitrary (non-canonical) input parses successfully when it satisfies §1–8
+and converges to the canonical form on the first emit. Type fidelity (a
+quoted `"42"` survives as a string, an unquoted `42` survives as an
+integer) is preserved, along with the source positions of `$` metadata
+keys and YAML comments; fence-marker length and quoting style are not.
+The canonical form is what consumers should content-hash, content-address,
+or compare for equality.
+
+## 10. Errors
 
 Parse errors include:
 
-- Missing frontmatter (no opening `---` on line 1, or no closing `---`
-  before EOF).
-- Frontmatter missing the `QUILL` key.
-- Legacy card fence missing the `CARD` key.
-- A `card`-fenced block satisfying C2 but with a malformed info string:
-  missing kind, multi-token info string, or a kind failing
-  `/^[a-z_][a-z0-9_]*$/`.
-- A `card` fence opened but not closed before EOF.
-- `QUILL` appearing outside the frontmatter.
-- Card kind / `CARD` value failing the `/^[a-z_][a-z0-9_]*$/` pattern.
-- Invalid YAML inside any fence.
-- Use of a reserved key (`QUILL`, `CARD`, `BODY`, `CARDS`) as a
-  user-defined field.
+- A `~~~card-yaml` opener with no matching `~~~` closer before EOF.
+- The root block missing its `$quill` entry.
+- The root block missing its `$kind: main` entry, or declaring a
+  non-`main` `$kind`.
+- A composable (non-root) block declaring `$quill`, or declaring
+  `$kind: main` (which is reserved for the document root).
+- A duplicate `$key` within a single block (caught by the YAML parser as a
+  duplicate mapping key).
+- An unknown `$key` outside the closed set `{quill, kind, id}`.
+- An invalid `$quill` reference.
+- A `$` metadata key whose value type is incompatible with the key.
+- A data-field name failing `/^[a-z_][a-z0-9_]*$/`.
+- Use of a reserved name (`QUILL`, `CARD`, `BODY`, `CARDS`) as a field name.
+- Invalid YAML inside any block payload.
 - Any §8 limit exceeded.
 
-## 10. References
+## 11. References
 
 - [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)
 - [GitHub Flavored Markdown](https://github.github.com/gfm/) (pipe tables,
   strikethrough)
+- [`VERSIONING.md`](./VERSIONING.md) — quill version-selector resolution
 - [`CARDS.md`](./CARDS.md) — downstream card-handling semantics

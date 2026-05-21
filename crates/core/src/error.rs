@@ -30,11 +30,11 @@
 //!
 //! ```text
 //! path        := segment ( "." field_name | "[" index "]" )*
-//! field_name  := [a-z_][a-z0-9_]*       // same charset enforced for fields/tags
+//! field_name  := [a-z_][a-z0-9_]*       // same charset enforced for fields/kinds
 //! index       := [0-9]+
 //! ```
 //!
-//! Because field and card tag names are validated to that charset (no `.`,
+//! Because field names and card kinds are validated to that charset (no `.`,
 //! `[`, `]`, or whitespace can appear in any segment), the dotted form
 //! round-trips unambiguously.
 //!
@@ -42,15 +42,15 @@
 //!
 //! | Anchor                        | Path                                          |
 //! |-------------------------------|-----------------------------------------------|
-//! | Main frontmatter field        | `title`                                       |
+//! | Root-block field              | `title`                                       |
 //! | Nested in array of objects    | `recipients[0].name`                          |
 //! | Main card body                | `main.body`                                   |
 //! | Typed card (whole)            | `cards.indorsement[0]`                        |
 //! | Field on typed card           | `cards.indorsement[0].signature_block`        |
 //! | Body on typed card            | `cards.indorsement[0].body`                   |
-//! | Card with unknown tag         | `cards[0]`                                    |
+//! | Card with unknown kind        | `cards[0]`                                    |
 //!
-//! The `cards.<tag>[<index>]` form fuses the card tag and the document
+//! The `cards.<kind>[<index>]` form fuses the card kind and the document
 //! array index into one segment so consumers receive both pieces of
 //! information without a second lookup.
 //!
@@ -59,7 +59,7 @@
 //! ### RenderError Variants
 //!
 //! - [`RenderError::EngineCreation`]: Failed to create rendering engine
-//! - [`RenderError::InvalidFrontmatter`]: Malformed YAML frontmatter
+//! - [`RenderError::InvalidPayload`]: Malformed YAML in a card-yaml block
 //! - [`RenderError::CompilationFailed`]: Backend compilation errors
 //! - [`RenderError::FormatNotSupported`]: Requested format not supported
 //! - [`RenderError::UnsupportedBackend`]: Backend not registered
@@ -325,12 +325,13 @@ pub enum ParseError {
     #[error("{0}")]
     EmptyInput(String),
 
-    /// Frontmatter is missing the required `QUILL:` field.
+    /// The document is missing its root `~~~card-yaml` block, or that block
+    /// does not declare the required `$quill` system metadata.
     ///
-    /// Emitted as code `parse::missing_quill_field` so consumers can
+    /// Emitted as code `parse::missing_quill` so consumers can
     /// pattern-match without inspecting the message text.
     #[error("{0}")]
-    MissingQuillField(String),
+    MissingQuill(String),
 
     /// YAML parsing error with location context
     #[error("YAML error at line {line}: {message}")]
@@ -342,10 +343,6 @@ pub enum ParseError {
         /// Index of the metadata block (0-indexed)
         block_index: usize,
     },
-
-    /// Other parsing errors
-    #[error("{0}")]
-    Other(String),
 }
 
 impl ParseError {
@@ -361,8 +358,8 @@ impl ParseError {
                 .with_code("parse::invalid_structure".to_string()),
             ParseError::EmptyInput(msg) => Diagnostic::new(Severity::Error, msg.clone())
                 .with_code("parse::empty_input".to_string()),
-            ParseError::MissingQuillField(msg) => Diagnostic::new(Severity::Error, msg.clone())
-                .with_code("parse::missing_quill_field".to_string()),
+            ParseError::MissingQuill(msg) => Diagnostic::new(Severity::Error, msg.clone())
+                .with_code("parse::missing_quill".to_string()),
             ParseError::YamlErrorWithLocation {
                 message,
                 line,
@@ -375,26 +372,7 @@ impl ParseError {
                 ),
             )
             .with_code("parse::yaml_error_with_location".to_string()),
-            ParseError::Other(msg) => Diagnostic::new(Severity::Error, msg.clone()),
         }
-    }
-}
-
-impl From<Box<dyn std::error::Error + Send + Sync>> for ParseError {
-    fn from(err: Box<dyn std::error::Error + Send + Sync>) -> Self {
-        ParseError::Other(err.to_string())
-    }
-}
-
-impl From<String> for ParseError {
-    fn from(msg: String) -> Self {
-        ParseError::Other(msg)
-    }
-}
-
-impl From<&str> for ParseError {
-    fn from(msg: &str) -> Self {
-        ParseError::Other(msg.to_string())
     }
 }
 
@@ -415,8 +393,8 @@ pub enum RenderError {
         diags: Vec<Diagnostic>,
     },
 
-    /// Invalid YAML frontmatter in markdown document.
-    InvalidFrontmatter {
+    /// Invalid YAML in a card-yaml block.
+    InvalidPayload {
         /// Diagnostics describing the failure. Always non-empty.
         diags: Vec<Diagnostic>,
     },
@@ -461,7 +439,7 @@ impl RenderError {
     pub fn diagnostics(&self) -> &[Diagnostic] {
         match self {
             RenderError::EngineCreation { diags }
-            | RenderError::InvalidFrontmatter { diags }
+            | RenderError::InvalidPayload { diags }
             | RenderError::CompilationFailed { diags }
             | RenderError::FormatNotSupported { diags }
             | RenderError::UnsupportedBackend { diags }
@@ -474,7 +452,7 @@ impl RenderError {
     pub fn into_diagnostics(self) -> Vec<Diagnostic> {
         match self {
             RenderError::EngineCreation { diags }
-            | RenderError::InvalidFrontmatter { diags }
+            | RenderError::InvalidPayload { diags }
             | RenderError::CompilationFailed { diags }
             | RenderError::FormatNotSupported { diags }
             | RenderError::UnsupportedBackend { diags }
@@ -488,17 +466,25 @@ impl std::fmt::Display for RenderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RenderError::CompilationFailed { diags } => {
-                write!(f, "Backend compilation failed with {} error(s)", diags.len())
+                write!(
+                    f,
+                    "Backend compilation failed with {} error(s)",
+                    diags.len()
+                )
             }
             RenderError::ValidationFailed { diags } => {
                 write!(f, "Validation failed with {} error(s)", diags.len())
             }
             RenderError::QuillConfig { diags } => {
-                write!(f, "Quill configuration failed with {} error(s)", diags.len())
+                write!(
+                    f,
+                    "Quill configuration failed with {} error(s)",
+                    diags.len()
+                )
             }
             // Single-diagnostic kinds display their primary diagnostic message.
             RenderError::EngineCreation { .. }
-            | RenderError::InvalidFrontmatter { .. }
+            | RenderError::InvalidPayload { .. }
             | RenderError::FormatNotSupported { .. }
             | RenderError::UnsupportedBackend { .. } => match self.diagnostics().first() {
                 Some(d) => write!(f, "{}", d.message),
@@ -513,7 +499,7 @@ impl std::error::Error for RenderError {}
 /// Convert ParseError to RenderError
 impl From<ParseError> for RenderError {
     fn from(err: ParseError) -> Self {
-        RenderError::InvalidFrontmatter {
+        RenderError::InvalidPayload {
             diags: vec![Diagnostic::new(Severity::Error, err.to_string())
                 .with_code("parse::error".to_string())],
         }
@@ -604,7 +590,10 @@ mod tests {
         // Single-diagnostic kinds carry a one-element vector and expose it
         // through the same accessors as the multi-diagnostic kinds.
         let err = RenderError::UnsupportedBackend {
-            diags: vec![Diagnostic::new(Severity::Error, "no such backend".to_string())],
+            diags: vec![Diagnostic::new(
+                Severity::Error,
+                "no such backend".to_string(),
+            )],
         };
         assert_eq!(err.diagnostics().len(), 1);
         assert_eq!(err.to_string(), "no such backend");

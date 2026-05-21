@@ -6,7 +6,7 @@ Maintained by [TTQ](https://tonguetoquill.com).
 
 ## Overview
 
-`quillmark-cli` is a standalone executable that renders Markdown files with YAML frontmatter into PDF, SVG, and other formats using Quillmark templates.
+`quillmark-cli` is a standalone executable that renders Markdown files with card-yaml blocks into PDF, SVG, and other formats using Quillmark templates.
 
 ## Installation
 
@@ -98,7 +98,7 @@ quillmark render [OPTIONS] <QUILL_PATH> [MARKDOWN_FILE]
 
 **Arguments:**
 - `<QUILL_PATH>` - Path to quill directory
-- `[MARKDOWN_FILE]` - Path to markdown file with YAML frontmatter (optional; when omitted, the quill's generated blueprint is used)
+- `[MARKDOWN_FILE]` - Path to markdown file with card-yaml blocks (optional; when omitted, the quill's generated blueprint is used)
 
 **Options:**
 - `-o, --output <FILE>` - Output file path (default: derived from input filename)

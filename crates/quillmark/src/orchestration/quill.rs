@@ -6,9 +6,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use quillmark_core::{
-    normalize::normalize_document, Backend, Card, Diagnostic, Document, Frontmatter, OutputFormat,
-    QuillSource, QuillValue, RenderError, RenderOptions, RenderResult, RenderSession, Sentinel,
-    Severity,
+    normalize::normalize_document, Backend, Card, Diagnostic, Document, OutputFormat, Payload,
+    QuillSource, QuillValue, RenderError, RenderOptions, RenderResult, RenderSession, Severity,
 };
 
 use crate::form::{self, Form, FormCard};
@@ -96,9 +95,9 @@ impl Quill {
         // Normalize: strip bidi + fix HTML comment fences in body regions.
         let normalized = normalize_document(coerced)?;
 
-        // Apply schema defaults to main + per-card frontmatter.
+        // Apply schema defaults to main + per-card payload.
         let main_with_defaults = apply_defaults(
-            &normalized.main().frontmatter().to_index_map(),
+            &normalized.main().payload().to_index_map(),
             self.source.config().main.defaults(),
         );
         let cards_with_defaults: Vec<Card> = normalized
@@ -108,24 +107,22 @@ impl Quill {
                 let defaults = self
                     .source
                     .config()
-                    .card_kind(&card.tag())
+                    .card_kind(card.kind().unwrap_or(""))
                     .map(|c| c.defaults())
                     .unwrap_or_default();
-                let fields = apply_defaults(&card.frontmatter().to_index_map(), defaults);
-                Card::new_with_sentinel(
-                    Sentinel::Card(card.tag()),
-                    Frontmatter::from_index_map(fields),
+                let fields = apply_defaults(&card.payload().to_index_map(), defaults);
+                Card::from_parts(
+                    rebuild_payload_with_meta(card, fields),
                     card.body().to_string(),
                 )
             })
             .collect();
 
-        let final_main = Card::new_with_sentinel(
-            Sentinel::Main(normalized.quill_reference().clone()),
-            Frontmatter::from_index_map(main_with_defaults),
+        let final_main = Card::from_parts(
+            rebuild_payload_with_meta(normalized.main(), main_with_defaults),
             normalized.main().body().to_string(),
         );
-        let final_doc = Document::from_main_and_cards(final_main, cards_with_defaults);
+        let final_doc = Document::from_main_and_cards(final_main, cards_with_defaults, Vec::new());
 
         Ok(final_doc.to_plate_json())
     }
@@ -142,28 +139,26 @@ impl Quill {
     fn coerce_and_validate(&self, doc: &Document) -> Result<Document, RenderError> {
         let config = self.source.config();
 
-        let coerced_frontmatter = config
-            .coerce_frontmatter(&doc.main().frontmatter().to_index_map())
+        let coerced_payload = config
+            .coerce_payload(&doc.main().payload().to_index_map())
             .map_err(coercion_error)?;
 
         let mut coerced_cards: Vec<Card> = Vec::with_capacity(doc.cards().len());
         for card in doc.cards() {
             let coerced_fields = config
-                .coerce_card(&card.tag(), &card.frontmatter().to_index_map())
+                .coerce_card(card.kind().unwrap_or(""), &card.payload().to_index_map())
                 .map_err(coercion_error)?;
-            coerced_cards.push(Card::new_with_sentinel(
-                Sentinel::Card(card.tag()),
-                Frontmatter::from_index_map(coerced_fields),
+            coerced_cards.push(Card::from_parts(
+                rebuild_payload_with_meta(card, coerced_fields),
                 card.body().to_string(),
             ));
         }
 
-        let coerced_main = Card::new_with_sentinel(
-            Sentinel::Main(doc.quill_reference().clone()),
-            Frontmatter::from_index_map(coerced_frontmatter),
+        let coerced_main = Card::from_parts(
+            rebuild_payload_with_meta(doc.main(), coerced_payload),
             doc.main().body().to_string(),
         );
-        let coerced_doc = Document::from_main_and_cards(coerced_main, coerced_cards);
+        let coerced_doc = Document::from_main_and_cards(coerced_main, coerced_cards, Vec::new());
 
         self.validate_document(&coerced_doc)?;
 
@@ -171,8 +166,8 @@ impl Quill {
     }
 
     fn ref_mismatch_warning(&self, doc: &Document) -> Option<Diagnostic> {
-        let doc_ref = doc.quill_reference().name.as_str();
-        if doc_ref != self.source.name() {
+        let doc_ref = doc.quill_reference();
+        if doc_ref.name.as_str() != self.source.name() {
             Some(
                 Diagnostic::new(
                     Severity::Warning,
@@ -203,8 +198,8 @@ impl Quill {
     /// **Snapshot semantics.** The result is a read-only snapshot — re-call
     /// after editing `doc`.
     ///
-    /// **Unknown card tags** are dropped from [`Form::cards`] and surface as
-    /// `form::unknown_card_tag` diagnostics. Validation errors are appended
+    /// **Unknown card kinds** are dropped from [`Form::cards`] and surface as
+    /// `form::unknown_card_kind` diagnostics. Validation errors are appended
     /// as `form::validation_error` diagnostics; the view itself is never
     /// altered or filtered by validation failures.
     pub fn form(&self, doc: &Document) -> Form {
@@ -228,7 +223,7 @@ impl Quill {
     /// This is the "user is about to add a new card" view: the UI can render
     /// the form before the card is committed to the document.
     pub fn blank_card(&self, card_kind: &str) -> Option<FormCard> {
-        form::blank_card_for_tag(self, card_kind)
+        form::blank_card_for_kind(self, card_kind)
     }
 
     fn validate_document(&self, doc: &Document) -> Result<(), RenderError> {
@@ -256,7 +251,7 @@ impl Quill {
     }
 }
 
-/// Wrap a coercion error from `QuillConfig::coerce_frontmatter` /
+/// Wrap a coercion error from `QuillConfig::coerce_payload` /
 /// `coerce_card` into a `RenderError::ValidationFailed` with a uniform hint.
 ///
 /// Coercion happens before validation walks the typed document, so we don't
@@ -282,6 +277,29 @@ fn apply_defaults(
         result.entry(k).or_insert(v);
     }
     result
+}
+
+/// Build a fresh [`Payload`] from a coerced/defaulted user-field map,
+/// carrying the source card's `$` system-metadata entries forward.
+///
+/// Used by the orchestration coercion path: the coerced field map is the
+/// product of schema-aware coercion, so it doesn't carry `$` entries or
+/// comments. We rebuild from the map and re-attach `$quill` / `$kind` /
+/// `$id` from `source` so the resulting payload still identifies its
+/// quill and kind. Comments are intentionally dropped — the coerced
+/// payload feeds backend rendering, not round-trip storage.
+fn rebuild_payload_with_meta(source: &Card, fields: IndexMap<String, QuillValue>) -> Payload {
+    let mut payload = Payload::from_index_map(fields);
+    if let Some(q) = source.quill() {
+        payload.set_quill(q.clone());
+    }
+    if let Some(k) = source.kind() {
+        payload.set_kind(k.to_string());
+    }
+    if let Some(id) = source.id() {
+        payload.set_id(id.to_string());
+    }
+    payload
 }
 
 impl std::fmt::Debug for Quill {

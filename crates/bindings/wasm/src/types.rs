@@ -162,13 +162,13 @@ pub struct RenderResult {
     pub render_time_ms: f64,
 }
 
-/// A single frontmatter item — either a field or a comment line.
+/// A single payload item — either a field or a comment line.
 ///
-/// Exposed via `Card.frontmatterItems`.
+/// Exposed via `Card.payloadItems`.
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-pub enum FrontmatterItem {
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum PayloadItem {
     Field {
         key: String,
         #[tsify(type = "unknown")]
@@ -182,9 +182,8 @@ pub enum FrontmatterItem {
         text: String,
         /// `true` when the comment was a trailing inline comment in source
         /// (`field: value # text`). Inline comments attach to the previous
-        /// field on emit; `Comment{inline:true}` at index 0 attaches to the
-        /// sentinel line. Inline comments without a host degrade to
-        /// own-line on emit.
+        /// field on emit; an inline comment without a host degrades to an
+        /// own-line comment on emit.
         #[serde(default)]
         inline: bool,
     },
@@ -193,64 +192,57 @@ pub enum FrontmatterItem {
 /// A single card block parsed from a Quillmark Markdown document.
 ///
 /// Exposed as a plain JS object via `Document.main`, `Document.cards`, etc.
-/// Carries a sentinel that distinguishes the document entry (main) card from
-/// composable cards, a `tag` string (the QUILL reference or CARD tag), typed
-/// frontmatter (map view under `frontmatter`, ordered item list under
-/// `frontmatterItems`), and the body.
+/// Carries a `kind` string (the block's `$kind`, empty when the block
+/// declares none), an ordered `payloadItems` list (fields + comments in
+/// source order), and the body. To read a specific field by name, filter
+/// `payloadItems` for `{type: "field", key: "..."}`. Whether a card is the
+/// document entry (main) card or a composable card is positional — it is
+/// whichever `Document` accessor it came from (`main` vs `cards`).
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
 pub struct Card {
-    /// `"main"` for the document entry (QUILL) card; `"card"` for composable cards.
-    pub sentinel: String,
-    /// The CARD sentinel value (e.g. `"indorsement"`) or the QUILL reference
-    /// string for the main card.
-    pub tag: String,
-    /// Map-keyed view of frontmatter values (no `CARD`/`QUILL` key, comments invisible).
-    #[tsify(type = "Record<string, unknown>")]
-    pub frontmatter: serde_json::Value,
-    /// Ordered frontmatter item list — fields and comments, in source order.
-    #[tsify(type = "FrontmatterItem[]")]
-    pub frontmatter_items: Vec<FrontmatterItem>,
-    /// Markdown body after the card's closing `---`. Empty string when absent.
+    /// The block's `$kind` value (e.g. `"endorsement"`); empty string when
+    /// the block declares no `$kind`.
+    pub kind: String,
+    /// Ordered payload item list — fields and comments, in source order.
+    /// Typed `$` entries (`$quill`, `$kind`, `$id`) are exposed via the
+    /// typed accessors (`card.kind` etc.) and are absent from this list.
+    #[tsify(type = "PayloadItem[]")]
+    pub payload_items: Vec<PayloadItem>,
+    /// Markdown body after the card's closing `~~~`. Empty string when absent.
     pub body: String,
 }
 
 impl From<&quillmark_core::Card> for Card {
     fn from(card: &quillmark_core::Card) -> Self {
-        let mut fields_map = serde_json::Map::new();
-        for (k, v) in card.frontmatter().iter() {
-            fields_map.insert(k.clone(), v.as_json().clone());
-        }
-
-        let items: Vec<FrontmatterItem> = card
-            .frontmatter()
+        let payload_items = card
+            .payload()
             .items()
             .iter()
-            .map(|item| match item {
-                quillmark_core::FrontmatterItem::Field { key, value, fill } => {
-                    FrontmatterItem::Field {
+            .filter_map(|item| match item {
+                quillmark_core::PayloadItem::Field { key, value, fill } => {
+                    Some(PayloadItem::Field {
                         key: key.clone(),
                         value: value.as_json().clone(),
                         fill: *fill,
-                    }
+                    })
                 }
-                quillmark_core::FrontmatterItem::Comment { text, inline } => {
-                    FrontmatterItem::Comment {
+                quillmark_core::PayloadItem::Comment { text, inline } => {
+                    Some(PayloadItem::Comment {
                         text: text.clone(),
                         inline: *inline,
-                    }
+                    })
                 }
+                quillmark_core::PayloadItem::Quill { .. }
+                | quillmark_core::PayloadItem::Kind { .. }
+                | quillmark_core::PayloadItem::Id { .. } => None,
             })
             .collect();
 
-        let sentinel = if card.is_main() { "main" } else { "card" };
-
         Card {
-            sentinel: sentinel.to_string(),
-            tag: card.tag(),
-            frontmatter: serde_json::Value::Object(fields_map),
-            frontmatter_items: items,
+            kind: card.kind().unwrap_or("").to_string(),
+            payload_items,
             body: card.body().to_string(),
         }
     }
@@ -302,109 +294,104 @@ impl From<RenderOptions> for quillmark_core::RenderOptions {
 mod tests {
     use super::*;
 
-    // ── FrontmatterItem ───────────────────────────────────────────────────────
+    // ── PayloadItem ───────────────────────────────────────────────────────
 
     #[test]
-    fn frontmatter_item_field_serializes_with_kind_tag() {
-        let item = FrontmatterItem::Field {
+    fn payload_item_field_serializes_with_type_tag_and_fill_flag() {
+        let plain = PayloadItem::Field {
             key: "title".into(),
             value: serde_json::json!("Hello"),
             fill: false,
         };
-        let json = serde_json::to_string(&item).unwrap();
-        assert!(json.contains("\"kind\":\"field\""));
-        assert!(json.contains("\"key\":\"title\""));
-        assert!(json.contains("\"value\":\"Hello\""));
-        assert!(json.contains("\"fill\":false"));
-    }
+        let plain_json = serde_json::to_string(&plain).unwrap();
+        assert!(plain_json.contains("\"type\":\"field\""));
+        assert!(plain_json.contains("\"key\":\"title\""));
+        assert!(plain_json.contains("\"value\":\"Hello\""));
+        assert!(plain_json.contains("\"fill\":false"));
 
-    #[test]
-    fn frontmatter_item_field_fill_flag() {
-        let item = FrontmatterItem::Field {
+        let filled = PayloadItem::Field {
             key: "dept".into(),
             value: serde_json::json!("Sales"),
             fill: true,
         };
-        let json = serde_json::to_string(&item).unwrap();
-        assert!(json.contains("\"fill\":true"));
+        assert!(serde_json::to_string(&filled)
+            .unwrap()
+            .contains("\"fill\":true"));
     }
 
     #[test]
-    fn frontmatter_item_own_line_comment_serializes() {
-        let item = FrontmatterItem::Comment {
+    fn payload_item_own_line_comment_serializes() {
+        let item = PayloadItem::Comment {
             text: "required".into(),
             inline: false,
         };
         let json = serde_json::to_string(&item).unwrap();
-        assert!(json.contains("\"kind\":\"comment\""));
+        assert!(json.contains("\"type\":\"comment\""));
         assert!(json.contains("\"text\":\"required\""));
         // inline:false is the default — presence in JSON is an implementation
         // detail, but the round-trip must deserialize back to false.
-        let back: FrontmatterItem = serde_json::from_str(&json).unwrap();
-        assert!(matches!(
-            back,
-            FrontmatterItem::Comment { inline: false, .. }
-        ));
+        let back: PayloadItem = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, PayloadItem::Comment { inline: false, .. }));
     }
 
     #[test]
-    fn frontmatter_item_inline_comment_round_trips() {
-        let item = FrontmatterItem::Comment {
+    fn payload_item_inline_comment_round_trips() {
+        let item = PayloadItem::Comment {
             text: "sentinel".into(),
             inline: true,
         };
         let json = serde_json::to_string(&item).unwrap();
-        assert!(json.contains("\"kind\":\"comment\""));
+        assert!(json.contains("\"type\":\"comment\""));
         assert!(json.contains("\"inline\":true"));
-        let back: FrontmatterItem = serde_json::from_str(&json).unwrap();
-        assert!(matches!(
-            back,
-            FrontmatterItem::Comment { inline: true, .. }
-        ));
+        let back: PayloadItem = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, PayloadItem::Comment { inline: true, .. }));
     }
 
     #[test]
-    fn frontmatter_item_inline_default_is_false() {
+    fn payload_item_inline_default_is_false() {
         // `inline` is serde(default) — omitting it from JSON must deserialize as false.
-        let json = r#"{"kind":"comment","text":"note"}"#;
-        let item: FrontmatterItem = serde_json::from_str(json).unwrap();
-        assert!(matches!(
-            item,
-            FrontmatterItem::Comment { inline: false, .. }
-        ));
+        let json = r#"{"type":"comment","text":"note"}"#;
+        let item: PayloadItem = serde_json::from_str(json).unwrap();
+        assert!(matches!(item, PayloadItem::Comment { inline: false, .. }));
     }
 
     #[test]
-    fn card_from_core_carries_frontmatter_items() {
+    fn card_from_core_carries_payload_items() {
         use quillmark_core::Document;
 
-        let md = "---\nQUILL: q\ntitle: Hi # inline note\nauthor: Alice\n---\n";
+        let md =
+            "~~~card-yaml\n$quill: q\n$kind: main\ntitle: Hi # inline note\nauthor: Alice\n~~~\n";
         let doc = Document::from_markdown(md).unwrap();
         let card = Card::from(doc.main());
 
-        // Map view: title and author present, QUILL absent.
-        assert_eq!(card.frontmatter["title"], "Hi");
-        assert_eq!(card.frontmatter["author"], "Alice");
-        assert!(card.frontmatter.get("QUILL").is_none());
+        let field = |key: &str| -> Option<&serde_json::Value> {
+            card.payload_items.iter().find_map(|it| match it {
+                PayloadItem::Field { key: k, value, .. } if k == key => Some(value),
+                _ => None,
+            })
+        };
+        assert_eq!(field("title").and_then(|v| v.as_str()), Some("Hi"));
+        assert_eq!(field("author").and_then(|v| v.as_str()), Some("Alice"));
+        assert!(field("quill").is_none());
 
         // Item list: field + inline comment + field.
         let fields: Vec<&str> = card
-            .frontmatter_items
+            .payload_items
             .iter()
             .filter_map(|it| match it {
-                FrontmatterItem::Field { key, .. } => Some(key.as_str()),
+                PayloadItem::Field { key, .. } => Some(key.as_str()),
                 _ => None,
             })
             .collect();
         assert_eq!(fields, vec!["title", "author"]);
 
         let inline_comment = card
-            .frontmatter_items
+            .payload_items
             .iter()
-            .find(|it| matches!(it, FrontmatterItem::Comment { inline: true, .. }));
+            .find(|it| matches!(it, PayloadItem::Comment { inline: true, .. }));
         assert!(
             inline_comment.is_some(),
-            "inline comment must appear in frontmatter_items"
+            "inline comment must appear in payload_items"
         );
     }
 
@@ -538,7 +525,7 @@ mod tests {
             })
             .with_hint("This is a hint".to_string());
 
-        let render_err = quillmark_core::RenderError::InvalidFrontmatter { diags: vec![diag] };
+        let render_err = quillmark_core::RenderError::InvalidPayload { diags: vec![diag] };
         let wasm_err: WasmError = render_err.into();
 
         assert_eq!(wasm_err.message(), "Test error message");

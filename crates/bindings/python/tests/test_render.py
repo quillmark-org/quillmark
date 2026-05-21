@@ -51,12 +51,13 @@ def test_quill_render_ref_mismatch_warning(taro_quill_dir):
 
     # Build a document that names a different quill
     mismatch_md = (
-        "---\n"
-        "QUILL: completely_different_quill\n"
+        "~~~card-yaml\n"
+        "#@quill: completely_different_quill\n"
+        "#@kind: main\n"
         "author: Test Author\n"
         "ice_cream: Chocolate\n"
         "title: Mismatch Test\n"
-        "---\n\nContent.\n"
+        "~~~\n\nContent.\n"
     )
     parsed = Document.from_markdown(mismatch_md)
     result = quill.render(parsed)
@@ -79,6 +80,26 @@ def test_quill_open_session_page_selection(taro_quill_dir, taro_md):
     assert subset.output_format == OutputFormat.SVG
 
 
+def test_render_session_metadata(taro_quill_dir, taro_md):
+    """RenderSession exposes backend_id, supports_canvas, and warnings."""
+    engine = Quillmark()
+    quill = engine.quill_from_path(str(taro_quill_dir))
+    parsed = Document.from_markdown(taro_md)
+
+    session = quill.open(parsed)
+    assert session.backend_id == quill.backend
+    assert session.supports_canvas == quill.supports_canvas
+    assert isinstance(session.warnings, list)
+
+
+def test_quill_supports_canvas(taro_quill_dir):
+    """Quill.supports_canvas is True for the typst backend."""
+    engine = Quillmark()
+    quill = engine.quill_from_path(str(taro_quill_dir))
+    # The fixture quill uses the typst backend, which is canvas-capable.
+    assert quill.supports_canvas is True
+
+
 def test_quill_render_full_document(taro_quill_dir, taro_md):
     """quill.render(doc) renders successfully."""
     engine = Quillmark()
@@ -98,9 +119,11 @@ def test_parse_error_carries_diagnostic_payload():
     exception carries the diagnostic list; the singular shim is set only
     when there is exactly one diagnostic.
     """
-    invalid_md = """---
+    invalid_md = """~~~card-yaml
+#@quill: test_quill
+#@kind: main
 title: [unclosed bracket
----
+~~~
 
 Content
 """

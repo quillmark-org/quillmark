@@ -72,43 +72,29 @@ card_kinds:
           group: Addressing
 ```
 
-`QuillConfig::schema()` emits the schema (with `ui` and `body` hints retained) and `schema_yaml()` is the YAML wrapper. The output keeps the same `card_kinds.<name>.fields` shape as `Quill.yaml` and injects a required `CARD` sentinel field whose `const` value is the card name. The `card_kinds` key is omitted entirely when no named card-kinds are defined. See `SCHEMAS.md` for the full surface.
+`QuillConfig::schema()` emits the schema (with `ui` and `body` hints retained) and `schema_yaml()` is the YAML wrapper. The output keeps the same `card_kinds.<name>.fields` shape as `Quill.yaml` and injects a required `CARD` discriminator field whose `const` value is the card name. The `card_kinds` key is omitted entirely when no named card-kinds are defined. See `SCHEMAS.md` for the full surface.
 
 ## Markdown Syntax
 
-The canonical syntax for a composable card is a fenced code block whose info
-string is `card <kind>`. The kind is the on-the-wire `CARD` discriminator;
-the fenced block's content is the card's YAML data, and the markdown after
-the closing fence is the card's body.
+A composable card is a `~~~card-yaml` block, optionally led by a
+`$kind: <kind>` system-metadata line. The kind is the on-the-wire `CARD`
+discriminator; the block's payload is the card's YAML data, and the markdown
+after the closing `~~~` fence is the card's body.
 
 ````markdown
-```card indorsement
+~~~card-yaml
+$kind: indorsement
 from: ORG1/SYMBOL
 for: ORG2/SYMBOL
 signature_block:
   - "JOHN DOE, Lt Col, USAF"
   - "Commander"
-```
+~~~
 
 Indorsement body content.
 ````
 
-The legacy `---` metadata-fence syntax (a `CARD:` sentinel inside a
-`---`/`---` pair) is still accepted on input:
-
-```markdown
----
-CARD: indorsement
-from: ORG1/SYMBOL
----
-
-Indorsement body content.
-```
-
-Both syntaxes parse to the same card. `Document::to_markdown` only ever
-emits the canonical fenced form, so a document authored with legacy fences
-round-trips to fenced cards. See [`MARKDOWN.md`](./MARKDOWN.md) §3 for the
-full syntax specification.
+See [`MARKDOWN.md`](./MARKDOWN.md) §3 for the full syntax specification.
 
 ## Backend Consumption
 

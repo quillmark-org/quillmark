@@ -4,11 +4,11 @@
 
 ## TL;DR
 
-Quillmark converts Markdown with YAML frontmatter into output artifacts (PDF, SVG, PNG, TXT). A `Quill` (the renderable shape) orchestrates the pipeline; backends do the heavy compilation.
+Quillmark converts Markdown with card-yaml metadata blocks into output artifacts (PDF, SVG, PNG, TXT). A `Quill` (the renderable shape) orchestrates the pipeline; backends do the heavy compilation.
 
 ## Data Flow
 
-1. **Parse** — YAML frontmatter extraction, bidi stripping, HTML fence normalization
+1. **Parse** — card-yaml block extraction, bidi stripping, HTML fence normalization
 2. **Normalize** — Type coercion, schema defaults, field validation
 3. **Compile** — Backend's `open()` receives plate + JSON data and returns a `RenderSession`; `RenderSession::render()` produces artifacts
 
@@ -31,6 +31,11 @@ Implements `Backend` for PDF, SVG, and PNG. Converts Markdown fields to Typst ma
 ### `bindings/quillmark-python`
 
 PyO3 bindings published as `quillmark` on PyPI.
+
+> **Status: experimental, second-class binding.** The Python surface lags
+> the WASM binding in coverage and in error-shape uniformity. New
+> diagnostics / contract work lands in WASM first; Python catches up on a
+> best-effort basis. Do not gate releases on Python parity.
 
 ### `bindings/quillmark-wasm`
 
@@ -57,7 +62,7 @@ Fuzz tests for parsing, templating, and rendering.
 - **`QuillSource`** — Pure data in `quillmark-core`: file bundle + config + metadata; no render ability
 - **`Backend`** — Trait for output formats (`Send + Sync`): `id()`, `supported_formats()`, `open(plate, &QuillSource, json)`
 - **`RenderSession`** — Opaque handle returned by `Backend::open()`; call `render(opts)` to produce artifacts. Exposes `page_count()` and `warnings()` for consumers (e.g. canvas previews) that don't go through `render()`. Backends with richer typed surfaces expose them via a downcast helper that goes through `RenderSession::handle()` + `SessionHandle::as_any` (Typst uses this for canvas preview — see `quillmark_typst::typst_session_of`).
-- **`Document`** — Typed in-memory representation of a Quillmark Markdown file (frontmatter, body, cards). Serializes via `serde` to a versioned JSON envelope (`StoredDocument`) for database persistence, decoupled from the evolving Markdown syntax — see [DOCUMENT_STORAGE.md](DOCUMENT_STORAGE.md)
+- **`Document`** — Typed in-memory representation of a Quillmark Markdown file (root block, body, cards). Serializes via `serde` to a versioned JSON envelope (`StoredDocument`) for database persistence, decoupled from the evolving Markdown syntax — see [DOCUMENT_STORAGE.md](DOCUMENT_STORAGE.md)
 - **`Diagnostic`** — Structured error with severity, code, message, location, hint, source chain
 - **`RenderResult`** — Output artifacts + accumulated warnings
 

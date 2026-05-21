@@ -83,11 +83,11 @@ impl QuillConfig {
         let mut obj = serde_json::Map::new();
 
         let mut main_value = serde_json::to_value(&self.main).unwrap_or(serde_json::Value::Null);
-        Self::prepend_sentinel_field(
+        Self::prepend_reserved_field(
             &mut main_value,
             "QUILL",
             &canonical_ref,
-            "Canonical quill reference. Must be exactly this value as the QUILL: sentinel in the document frontmatter.",
+            "Canonical quill reference. Must be exactly this value as the $quill system metadata in the root card-yaml block.",
         );
         obj.insert("main".to_string(), main_value);
 
@@ -98,11 +98,11 @@ impl QuillConfig {
                 .map(|card| {
                     let mut card_value =
                         serde_json::to_value(card).unwrap_or(serde_json::Value::Null);
-                    Self::prepend_sentinel_field(
+                    Self::prepend_reserved_field(
                         &mut card_value,
                         "CARD",
                         &card.name,
-                        "Card kind name. Must match the card kind in the card block's ```card <kind>``` info string.",
+                        "Card kind name. Must match the card kind in the card block's $kind system metadata.",
                     );
                     (card.name.clone(), card_value)
                 })
@@ -116,14 +116,14 @@ impl QuillConfig {
         serde_json::Value::Object(obj)
     }
 
-    /// Insert a `QUILL`/`CARD` sentinel as the first entry of a card's `fields`.
-    fn prepend_sentinel_field(
+    /// Insert a `QUILL`/`CARD` reserved field as the first entry of a card's `fields`.
+    fn prepend_reserved_field(
         card_value: &mut serde_json::Value,
         key: &str,
         const_value: &str,
         description: &str,
     ) {
-        let sentinel = serde_json::json!({
+        let reserved = serde_json::json!({
             "type": "string",
             "const": const_value,
             "description": description,
@@ -131,18 +131,18 @@ impl QuillConfig {
         });
         if let Some(serde_json::Value::Object(fields)) = card_value.get_mut("fields") {
             let existing = std::mem::take(fields);
-            fields.insert(key.to_string(), sentinel);
+            fields.insert(key.to_string(), reserved);
             fields.extend(existing);
         }
     }
 
-    /// Coerce typed frontmatter fields (IndexMap, no CARDS/BODY keys).
-    pub fn coerce_frontmatter(
+    /// Coerce typed payload fields (IndexMap, no CARDS/BODY keys).
+    pub fn coerce_payload(
         &self,
-        frontmatter: &IndexMap<String, QuillValue>,
+        payload: &IndexMap<String, QuillValue>,
     ) -> Result<IndexMap<String, QuillValue>, CoercionError> {
         let mut coerced: IndexMap<String, QuillValue> = IndexMap::new();
-        for (field_name, field_value) in frontmatter {
+        for (field_name, field_value) in payload {
             if let Some(field_schema) = self.main.fields.get(field_name) {
                 let path = field_name.as_str();
                 coerced.insert(
@@ -158,19 +158,19 @@ impl QuillConfig {
 
     /// Coerce typed fields for a single card (IndexMap, no CARD/BODY keys).
     ///
-    /// Returns the input unchanged when the card tag is unknown.
+    /// Returns the input unchanged when the card kind is unknown.
     pub fn coerce_card(
         &self,
-        card_tag: &str,
+        card_kind: &str,
         fields: &IndexMap<String, QuillValue>,
     ) -> Result<IndexMap<String, QuillValue>, CoercionError> {
-        let Some(card_schema) = self.card_kind(card_tag) else {
+        let Some(card_schema) = self.card_kind(card_kind) else {
             return Ok(fields.clone());
         };
         let mut coerced: IndexMap<String, QuillValue> = IndexMap::new();
         for (field_name, field_value) in fields {
             if let Some(field_schema) = card_schema.fields.get(field_name) {
-                let path = format!("card_kinds.{card_tag}.{field_name}");
+                let path = format!("card_kinds.{card_kind}.{field_name}");
                 coerced.insert(
                     field_name.clone(),
                     Self::coerce_value_strict(field_value, field_schema, &path)?,
@@ -1204,9 +1204,8 @@ impl QuillConfig {
         }
 
         // Error when `body.example` contains a line that the document parser
-        // would interpret as a metadata fence (`---` with up to 3 leading
-        // spaces and optional trailing whitespace). Such a line would split the
-        // blueprint body region into a new fence, corrupting document structure.
+        // would interpret as a `~~~card-yaml` block opener. Such a line would
+        // start a new metadata block, corrupting document structure.
         let err_example_contains_fence = |label: &str,
                                           body: &Option<BodyCardSchema>|
          -> Option<Diagnostic> {
@@ -1216,12 +1215,12 @@ impl QuillConfig {
                     Diagnostic::new(
                         Severity::Error,
                         format!(
-                            "`{label}.body.example` contains a line that would be parsed as a metadata fence (`---`); this would corrupt the blueprint"
+                            "`{label}.body.example` contains a line that would be parsed as a `~~~card-yaml` block opener; this would corrupt the blueprint"
                         ),
                     )
                     .with_code("quill::body_example_contains_fence".to_string())
                     .with_hint(
-                        "Remove or reword any line that is exactly `---` (with up to 3 leading spaces and optional trailing whitespace).".to_string(),
+                        "Remove or reword any line that is exactly `~~~card-yaml` (with up to 3 leading spaces and optional trailing whitespace).".to_string(),
                     ),
                 )
             } else {
@@ -1260,16 +1259,13 @@ impl QuillConfig {
     }
 }
 
-/// Returns true if any line in `text` would be parsed as a card-fence or
-/// metadata-fence marker by the document parser — either of which would
-/// corrupt the blueprint's document structure when the example is embedded
-/// verbatim as body content.
+/// Returns true if any line in `text` would be parsed as a `~~~card-yaml`
+/// block opener by the document parser, which would corrupt the blueprint's
+/// document structure when the example is embedded verbatim as body content.
 ///
-/// Two markers are flagged, both after up to 3 leading spaces (no leading
-/// tab):
-/// - a legacy `---` metadata fence marker (`---` then only whitespace);
-/// - a canonical ```` ```card ```` fenced-card opener (3+ backticks or tildes
-///   followed by an info string whose first token is `card`).
+/// The marker is flagged after up to 3 leading spaces (no leading tab): a
+/// `~~~card-yaml` opener — exactly three tildes followed by the `card-yaml`
+/// info string.
 fn example_contains_fence_line(text: &str) -> bool {
     text.lines().any(|line| {
         let line = line.strip_suffix('\r').unwrap_or(line);
@@ -1278,17 +1274,10 @@ fn example_contains_fence_line(text: &str) -> bool {
             return false;
         }
         let rest = &line[indent..];
-        // Legacy `---` metadata fence marker.
-        if matches!(rest.strip_prefix("---"), Some(r) if r.chars().all(|c| c == ' ' || c == '\t')) {
-            return true;
-        }
-        // Canonical ```card <kind> fenced-card opener.
-        if let Some(&fence) = rest.as_bytes().first() {
-            if fence == b'`' || fence == b'~' {
-                let run = rest.bytes().take_while(|&b| b == fence).count();
-                if run >= 3 && rest[run..].split_whitespace().next() == Some("card") {
-                    return true;
-                }
+        // A `~~~card-yaml` block opener.
+        if let Some(after) = rest.strip_prefix("~~~") {
+            if !after.starts_with('~') && after.trim() == "card-yaml" {
+                return true;
             }
         }
         false

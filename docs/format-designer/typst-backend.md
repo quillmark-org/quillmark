@@ -1,6 +1,6 @@
 # Typst Backend
 
-The Typst backend generates PDF, SVG, and PNG documents using the [Typst](https://typst.app/) typesetting system. It converts Markdown frontmatter fields to Typst markup, injects them into the plate as JSON via a helper package, and compiles to the requested format.
+The Typst backend generates PDF, SVG, and PNG documents using the [Typst](https://typst.app/) typesetting system. It converts card-yaml metadata fields to Typst markup, injects them into the plate as JSON via a helper package, and compiles to the requested format.
 
 ## Basic Usage
 
@@ -21,7 +21,7 @@ typst:
 
 ## Data Access
 
-Plates are plain Typst code. Frontmatter reaches the plate as a JSON dictionary exposed by the virtual `@local/quillmark-helper` package:
+Plates are plain Typst code. Document metadata reaches the plate as a JSON dictionary exposed by the virtual `@local/quillmark-helper` package:
 
 ```typst
 #import "@local/quillmark-helper:0.1.0": data

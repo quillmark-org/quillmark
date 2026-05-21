@@ -30,7 +30,7 @@ The package includes:
 
 - **Sample Markdown Files**: Example markdown files for testing
   - `sample.md` - Basic markdown example
-  - `frontmatter_demo.md` - Demonstrates YAML frontmatter
+  - `card_yaml_demo.md` - Demonstrates a card-yaml document
   - `extended_metadata_demo.md` - Extended metadata examples
   - `*.md` - Various markdown test files
 

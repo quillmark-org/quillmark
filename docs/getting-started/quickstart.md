@@ -18,10 +18,11 @@ Get started with Quillmark in Python or JavaScript.
     engine = Quillmark()
     quill = engine.quill_from_path("path/to/quill")
 
-    markdown = """---
-    QUILL: my_quill
+    markdown = """~~~card-yaml
+    $quill: my_quill
+    $kind: main
     title: Example Document
-    ---
+    ~~~
 
     # Hello World
     """
@@ -54,10 +55,11 @@ Get started with Quillmark in Python or JavaScript.
       ["plate.typ", enc.encode("#import \"@local/quillmark-helper:0.1.0\": data\n#data.BODY\n")],
     ]));
 
-    const markdown = `---
-    QUILL: my_quill
+    const markdown = `~~~card-yaml
+    $quill: my_quill
+    $kind: main
     title: Example Document
-    ---
+    ~~~
 
     # Hello World`;
 

@@ -1,12 +1,13 @@
----
-QUILL: classic_resume@2.1
+~~~card-yaml
+$quill: classic_resume@2.1
+$kind: main
 name: Jane Doe
 email: jane.doe@example.com
 phone: (555) 123-4567
 location: San Francisco, CA
 github: janedoe
 linkedin: janedoe
----
+~~~
 
 # Summary
 

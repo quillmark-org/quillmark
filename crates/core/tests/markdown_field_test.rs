@@ -35,12 +35,12 @@ main:
 #[test]
 fn test_markdown_field_normalization() {
     // Create a document via from_markdown
-    let md = "---\nQUILL: test\nmarkdown_field: This has <<guillemets>>\nstring_field: This has <<stripped>>\n---\n";
+    let md = "~~~card-yaml\n$quill: test\n$kind: main\nmarkdown_field: This has <<guillemets>>\nstring_field: This has <<stripped>>\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();
 
     // Normalize
     let normalized = normalize_document(doc).expect("Failed to normalize document");
-    let fm = normalized.main().frontmatter();
+    let fm = normalized.main().payload();
 
     // Both fields pass through unchanged (no stripping on YAML fields)
     assert_eq!(
@@ -51,12 +51,4 @@ fn test_markdown_field_normalization() {
         fm.get("string_field").unwrap().as_str().unwrap(),
         "This has <<stripped>>"
     );
-}
-
-#[test]
-fn test_normalize_document_body_is_str_not_option() {
-    // body() now returns &str (not Option<&str>)
-    let doc = Document::from_markdown("---\nQUILL: t\n---\n\nHello body.").unwrap();
-    let normalized = normalize_document(doc).unwrap();
-    assert!(normalized.main().body().contains("Hello body."));
 }

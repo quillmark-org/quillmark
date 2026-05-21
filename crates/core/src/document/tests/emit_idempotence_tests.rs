@@ -1,9 +1,8 @@
-//! Emit-idempotence corpus tests
+//! Canonical-form convergence corpus tests
 //!
-//! `doc.to_markdown()` must be a pure function of `doc`: two calls return
-//! byte-equal strings.  These tests run that invariant over the full fixture
-//! corpus.
-//!
+//! For every fixture, the markdown and JSON persistence paths must
+//! canonicalise to the same in-memory document. This is the non-trivial
+//! consequence of byte-stable, lossless round-trips through both formats.
 
 use crate::document::Document;
 
@@ -25,66 +24,65 @@ fn collect_md_files(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     }
 }
 
-// ── Corpus idempotence ────────────────────────────────────────────────────────
+// ── Markdown↔JSON canonical convergence (MARKDOWN.md §9.1) ────────────────────
 
-/// For every parseable `.md` in the fixture corpus: `to_markdown()` called
-/// twice on the same `Document` must return byte-equal strings.
+/// `to_markdown(from_json(to_json(from_markdown(x)))) == to_markdown(from_markdown(x))`
+/// for every fixture: the markdown and JSON persistence paths canonicalise
+/// to the same in-memory document.
 #[test]
-fn emit_idempotence_over_fixture_corpus() {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let resources_dir = std::path::Path::new(manifest_dir)
-        .join("..")
-        .join("fixtures")
-        .join("resources");
+fn markdown_and_json_converge_on_canonical_form() {
+    use crate::document::Document;
 
-    let mut paths: Vec<std::path::PathBuf> = Vec::new();
-    collect_md_files(&resources_dir, &mut paths);
+    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("crate dir has parent")
+        .parent()
+        .expect("crates dir has parent");
+    let fixtures_root = workspace_root.join("crates/fixtures/resources");
 
-    assert!(
-        !paths.is_empty(),
-        "no fixture files found under {}",
-        resources_dir.display()
-    );
+    let mut all_md = Vec::new();
+    collect_md_files(&fixtures_root, &mut all_md);
 
-    let mut passed = 0usize;
-    let mut skipped = 0usize;
-    let mut failures: Vec<String> = Vec::new();
+    let mut passed = 0;
+    let mut skipped = 0;
+    let mut failures = Vec::new();
 
-    for path in &paths {
-        let label = path.to_string_lossy();
-        let src = match std::fs::read_to_string(path) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("SKIP {}: read error: {}", label, e);
-                skipped += 1;
-                continue;
-            }
+    for path in &all_md {
+        let label = path
+            .strip_prefix(workspace_root)
+            .unwrap_or(path)
+            .display()
+            .to_string();
+
+        let Ok(src) = std::fs::read_to_string(path) else {
+            skipped += 1;
+            continue;
+        };
+        let Ok(doc) = Document::from_markdown(&src) else {
+            skipped += 1;
+            continue;
         };
 
-        let doc = match Document::from_markdown(&src) {
-            Ok(d) => d,
-            Err(_) => {
-                skipped += 1;
-                continue;
-            }
-        };
+        let md_canonical = doc.to_markdown();
 
-        let first = doc.to_markdown();
-        let second = doc.to_markdown();
+        // Round through the versioned JSON DTO.
+        let json = serde_json::to_string(&doc).expect("to_json should succeed");
+        let restored: Document = serde_json::from_str(&json).expect("from_json should round-trip");
+        let md_after_json_round = restored.to_markdown();
 
-        if first == second {
+        if md_canonical == md_after_json_round {
             passed += 1;
         } else {
             failures.push(format!(
-                "FAIL {}: to_markdown() not idempotent\nFirst  (first 400 chars): {:.400}\nSecond (first 400 chars): {:.400}",
-                label, first, second
+                "FAIL {}: markdown/JSON canonical forms diverge\nMarkdown direct:    {:.400}\nThrough JSON DTO:   {:.400}",
+                label, md_canonical, md_after_json_round
             ));
         }
     }
 
     if !failures.is_empty() {
         panic!(
-            "Emit-idempotence failures ({} failed, {} passed, {} skipped):\n{}",
+            "Canonical-convergence failures ({} failed, {} passed, {} skipped):\n{}",
             failures.len(),
             passed,
             skipped,
@@ -92,13 +90,9 @@ fn emit_idempotence_over_fixture_corpus() {
         );
     }
 
-    assert!(
-        passed > 0,
-        "No fixtures passed idempotence check — did all files get skipped?"
-    );
-
+    assert!(passed > 0, "no fixtures passed convergence check");
     eprintln!(
-        "emit_idempotence_over_fixture_corpus: {} passed, {} skipped",
+        "markdown_and_json_converge_on_canonical_form: {} passed, {} skipped",
         passed, skipped
     );
 }

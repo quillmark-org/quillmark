@@ -37,14 +37,14 @@ fn parse_fixture() -> Document {
         .unwrap_or_else(|e| panic!("ambiguous_strings.md failed to parse: {}", e))
 }
 
-/// Assert that a frontmatter field is `QuillValue::String` with exactly the
+/// Assert that a payload field is `QuillValue::String` with exactly the
 /// expected bytes, then perform a round-trip and assert byte-identical.
 fn assert_string_field_round_trips(doc: &Document, key: &str, expected: &str) {
     let value = doc
         .main()
-        .frontmatter()
+        .payload()
         .get(key)
-        .unwrap_or_else(|| panic!("field '{}' not found in frontmatter", key));
+        .unwrap_or_else(|| panic!("field '{}' not found in payload", key));
 
     // Must be a string, not a bool / number / null.
     assert!(
@@ -74,7 +74,7 @@ fn assert_round_trip_strings(keys_and_values: &[(&str, &str)]) {
         // Re-parsed: byte-identical.
         let v2 = doc2
             .main()
-            .frontmatter()
+            .payload()
             .get(*key)
             .unwrap_or_else(|| panic!("field '{}' missing after round-trip", key));
         assert!(
@@ -201,7 +201,7 @@ fn all_ambiguous_fields_are_strings() {
     for field in &expected_string_fields {
         let value = doc
             .main()
-            .frontmatter()
+            .payload()
             .get(*field)
             .unwrap_or_else(|| panic!("field '{}' not found", field));
         assert!(

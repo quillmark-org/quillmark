@@ -38,28 +38,47 @@ bindings) and never a storage option.
 
 ## The Format
 
+The current schema (`quillmark/document@0.82.0`) carries each card's full
+ordered payload — typed `$` system metadata, user fields, and YAML
+comments interleaved in source order — as a single discriminated-union
+item list. This is what makes inline-comment preservation symmetric across
+the `$`/non-`$` boundary.
+
 ```json
 {
-  "schema": "quillmark/document@0.81.0",
-  "main":  { "sentinel": { ... }, "frontmatter": { ... }, "body": "..." },
+  "schema": "quillmark/document@0.82.0",
+  "main": {
+    "payload": {
+      "items": [
+        { "type": "quill", "value": "usaf_memo@0.1" },
+        { "type": "kind",  "value": "main" },
+        { "type": "field", "key": "title", "value": "Hi" }
+      ]
+    },
+    "body": "..."
+  },
   "cards": [ ... ]
 }
 ```
 
 `StoredDocument` is an internally-tagged enum (`#[serde(tag = "schema")]`);
 each variant carries a frozen DTO tree. Quill references are stored as
-strings (parsed back via `QuillReference::from_str`). Parse-time warnings are
-not part of `Document` — they are returned separately by
-`Document::from_markdown_with_warnings` — so they never reach this format.
+strings (parsed back via `QuillReference::from_str`). The discriminator on
+payload items is `type` (not `kind`) to keep it unambiguous next to the
+`$kind` metadata semantic. Parse-time warnings are not part of `Document`
+— they are returned separately by `Document::from_markdown_with_warnings`
+— so they never reach this format.
 
-```rust
-use quillmark_core::Document;
+### Legacy schema (V0_81_0)
 
-let doc = Document::from_markdown(src)?;
-let json = serde_json::to_string(&doc)?;          // store
-let restored: Document = serde_json::from_str(&json)?;  // load
-assert_eq!(doc, restored);
-```
+Documents written by `quillmark-core` `0.81.x` carry
+`"schema": "quillmark/document@0.81.0"` and a separate `sentinel` + `frontmatter`
+shape. Readers accept them and migrate forward to V0_82_0 on load via
+`From<DocumentV0_81_0> for DocumentV0_82_0`; writers no longer produce this
+shape. The migration is structural — no defaults are invented and no
+field-level information is dropped — so a `0.81.x`-stored document and the
+same document re-parsed from its Markdown source produce equal `Document`
+values.
 
 ## Byte-stability
 
@@ -72,7 +91,7 @@ detection, cache keys).
 
 The guarantee follows from: struct field order is fixed in the frozen
 DTO tree; `Vec` fields preserve order by definition; `serde_json::Value`
-inside frontmatter field values keeps YAML insertion order via the
+inside payload field values keeps YAML insertion order via the
 workspace's `serde_json/preserve_order` feature. No key sorting or
 whitespace normalization is applied — the output is `serde_json`'s
 compact form. Bumping the `schema` version is the only event that may
@@ -81,44 +100,52 @@ change the byte layout.
 ## Schema Versioning
 
 The schema version is tied to the **crate version at which the `Document`
-model was last changed** — not the running crate version. The current model
-was fixed in `0.81.0`, so the version is `quillmark/document@0.81.0`; every
-`0.81.x` patch release writes that same value, because patches do not
-change the model.
+wire format was last changed** — not the running crate version. The
+current format was fixed in `0.82.0`, so the version tag is
+`quillmark/document@0.82.0`; every `0.82.x` patch release writes that same
+value, because patches do not change the format.
 
-`0.81.0` is the **baseline** schema: it has no predecessor and requires no
-migration. The first migration work occurs at the next model change.
+The first schema version was `0.81.0`. `0.82.0` migrated `Document` to a
+unified payload-item list (typed `$` entries living alongside user fields
+and comments in a single `Vec<PayloadItem>` instead of a separate
+`sentinel + frontmatter` pair). The migration is structural: the V0_81_0
+sentinel becomes a prelude of typed `$` items, then user fields and
+comments append in their original order.
 
 ## Adding a Schema Version
 
-When the `Document` model changes (planned for `0.82.0`):
+When the `Document` wire format changes again:
 
-1. **Freeze** the `DocumentV0_81_0` type tree — leave its struct/enum
-   definitions and serde derives untouched so existing rows still parse.
+1. **Freeze** the current `DocumentV0_82_0` type tree — leave its struct
+   /enum definitions and serde derives untouched so existing rows still parse.
 2. **Remove** the conversions binding the old DTO to the *live* `Document`
    (`From<&Document>` and `TryFrom<… for Document>`); they no longer compile
    and are superseded below.
-3. **Add** a new frozen tree `DocumentV0_82_0` reflecting the new model, plus
-   its `From<&Document>` and `TryFrom<… for Document>` conversions.
-4. **Add** the `StoredDocument::V0_82_0` variant, tagged
-   `#[serde(rename = "quillmark/document@0.82.0")]`.
-5. **Write the migration** — `From<DocumentV0_81_0> for DocumentV0_82_0`.
+3. **Add** a new frozen tree `DocumentV0_NN_0` reflecting the new model,
+   plus its `From<&Document>` and `TryFrom<… for Document>` conversions.
+4. **Add** the `StoredDocument::V0_NN_0` variant, tagged
+   `#[serde(rename = "quillmark/document@0.NN.0")]`.
+5. **Write the migration** — `From<DocumentV0_82_0> for DocumentV0_NN_0`.
    This is the only real labor: it encodes how old fields map to the new
    model (renames, restructures, defaults for new fields).
 6. **Extend** the reader:
    ```rust
    match stored {
-       StoredDocument::V0_82_0(p) => Document::try_from(p),
-       StoredDocument::V0_81_0(p) => Document::try_from(DocumentV0_82_0::from(p)),
+       StoredDocument::V0_NN_0(p) => Document::try_from(p),
+       StoredDocument::V0_82_0(p) => Document::try_from(DocumentV0_NN_0::from(p)),
+       StoredDocument::V0_81_0(p) => {
+           let v82 = DocumentV0_82_0::from(p);
+           Document::try_from(DocumentV0_NN_0::from(v82))
+       }
    }
    ```
 
 Old and new DTOs **coexist permanently** in `dto.rs`. Migrations chain
-(`V0_81_0 → V0_82_0 → …`); only the newest DTO converts to the live
-`Document`, so each migration step stays small as versions accumulate. The
-cost of this design is one frozen type tree per schema version plus one
-migration function per version bump; the benefit is that a row written by
-any past version always loads.
+(`V0_81_0 → V0_82_0 → V0_NN_0 → …`); only the newest DTO converts to the
+live `Document`, so each migration step stays small as versions accumulate.
+The cost of this design is one frozen type tree per schema version plus
+one migration function per version bump; the benefit is that a row written
+by any past version always loads.
 
 ## Gotchas
 
@@ -133,4 +160,4 @@ any past version always loads.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — `Document` in the core type overview
 - [MARKDOWN.md](MARKDOWN.md) — Markdown syntax and the in-memory data model
 - [VERSIONING.md](VERSIONING.md) — quill version resolution (a separate concern)
-- [QUILL_VALUE.md](QUILL_VALUE.md) — value type stored inside frontmatter fields
+- [QUILL_VALUE.md](QUILL_VALUE.md) — value type stored inside payload fields

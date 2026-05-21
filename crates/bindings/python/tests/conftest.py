@@ -42,18 +42,20 @@ def taro_quill_dir():
     return fixture_path
 
 
-TARO_MARKDOWN = '''---
-QUILL: taro@0.1
+TARO_MARKDOWN = '''~~~card-yaml
+#@quill: taro@0.1
+#@kind: main
 author: Nibs
 ice_cream: Taro
 title: "My Favorite Ice Cream Flavor"
----
+~~~
 
 I love Taro ice cream for its subtly sweet, nutty flavor and creamy, earthy undertones.
 
-```card quotes
+~~~card-yaml
+#@kind: quotes
 author: Albert Einstein
-```
+~~~
 Without taro ice cream, life would be a mistake.
 '''
 

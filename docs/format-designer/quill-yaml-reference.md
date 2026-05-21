@@ -59,7 +59,7 @@ quill:
 
 ## `main` Section
 
-The main document card holds **frontmatter field schemas** under `main.fields`. Optional `main.description` describes the schema itself (independent of `quill.description`, which describes the quill package). Optional `main.ui` sets container-level UI for that card. `quill.ui` is merged with `main.ui` when building the main card.
+The main document card holds **root-block field schemas** under `main.fields`. Optional `main.description` describes the schema itself (independent of `quill.description`, which describes the quill package). Optional `main.ui` sets container-level UI for that card. `quill.ui` is merged with `main.ui` when building the main card.
 
 Field order under `main.fields` determines display order in UIs — the first field gets `order: 0`, the second gets `order: 1`, and so on.
 
@@ -68,7 +68,7 @@ Field keys must be `snake_case` (`^[a-z][a-z0-9_]*$`). Capitalized field keys ar
 ```yaml
 main:
   fields:
-    subject:          # Field name (used as the YAML frontmatter key)
+    subject:          # Field name (used as the card-yaml payload key)
       type: string
       required: true
       description: Be brief and clear.
@@ -381,38 +381,41 @@ card_kinds:
 
 ### Using Cards in Markdown
 
-Cards appear as fenced code blocks with the info string `card <kind>` in the document body:
+Cards appear as `~~~card-yaml` blocks with a `$kind: <kind>` metadata line in the document body:
 
-````markdown
----
-QUILL: usaf_memo
+```markdown
+~~~card-yaml
+$quill: usaf_memo
+$kind: main
 subject: Example
 # ... other fields ...
----
+~~~
 
 Main memo body text here.
 
-```card indorsement
+~~~card-yaml
+$kind: indorsement
 from: ORG/SYMBOL
 for: RECIPIENT/SYMBOL
 signature_block:
   - JANE A. DOE, Colonel, USAF
   - Commander
-```
+~~~
 
 Body of the first endorsement.
 
-```card indorsement
+~~~card-yaml
+$kind: indorsement
 from: ANOTHER/ORG
 for: FINAL/RECIPIENT
 format: informal
 signature_block:
   - JOHN B. SMITH, Lt Col, USAF
   - Deputy Commander
-```
+~~~
 
 Body of the second endorsement.
-````
+```
 
 ---
 

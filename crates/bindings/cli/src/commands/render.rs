@@ -13,7 +13,7 @@ pub struct RenderArgs {
     #[arg(value_name = "QUILL_PATH")]
     quill: PathBuf,
 
-    /// Path to markdown file with YAML frontmatter
+    /// Path to markdown file with card-yaml blocks
     #[arg(value_name = "MARKDOWN_FILE")]
     markdown_file: Option<PathBuf>,
 

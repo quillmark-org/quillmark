@@ -1,6 +1,6 @@
 //! # Document Module
 //!
-//! Parsing functionality for markdown documents with YAML frontmatter.
+//! Parsing functionality for markdown documents with card-yaml blocks.
 //!
 //! ## Overview
 //!
@@ -10,10 +10,13 @@
 //! ## Key Types
 //!
 //! - [`Document`]: Typed in-memory Quillmark document — `main` card plus composable cards.
-//! - [`Card`]: A single card block, main or composable, with a sentinel,
-//!   typed frontmatter, and a body.
-//! - [`Sentinel`]: Discriminates the `QUILL:` frontmatter from composable card blocks.
-//! - [`Frontmatter`]: Ordered list of items (fields + comments) parsed from a YAML fence.
+//! - [`Card`]: A single card block, root or composable, carrying a typed
+//!   payload and a body.
+//! - [`Payload`]: Ordered items parsed from a block's YAML payload, carrying
+//!   typed `$`-system entries (`$quill`, `$kind`, `$id`), user fields, and
+//!   comments interleaved in source order.
+//! - [`PayloadItem`]: The item variant — `Quill` / `Kind` / `Id` / `Field` /
+//!   `Comment`.
 //!
 //! ## Examples
 //!
@@ -22,11 +25,12 @@
 //! ```
 //! use quillmark_core::Document;
 //!
-//! let markdown = r#"---
-//! QUILL: my_quill
+//! let markdown = r#"~~~card-yaml
+//! $quill: my_quill
+//! $kind: main
 //! title: My Document
 //! author: John Doe
-//! ---
+//! ~~~
 //!
 //! # Introduction
 //!
@@ -35,7 +39,7 @@
 //!
 //! let doc = Document::from_markdown(markdown).unwrap();
 //! let title = doc.main()
-//!     .frontmatter()
+//!     .payload()
 //!     .get("title")
 //!     .and_then(|v| v.as_str())
 //!     .unwrap_or("Untitled");
@@ -49,7 +53,7 @@
 //! use quillmark_core::Document;
 //!
 //! let doc = Document::from_markdown(
-//!     "---\nQUILL: my_quill\ntitle: Hi\n---\n\nBody here.\n"
+//!     "~~~card-yaml\n$quill: my_quill\n$kind: main\ntitle: Hi\n~~~\n\nBody here.\n"
 //! ).unwrap();
 //! let json = doc.to_plate_json();
 //! assert_eq!(json["QUILL"], "my_quill");
@@ -62,14 +66,13 @@
 //!
 //! [`Document::from_markdown`] returns errors for:
 //! - Malformed YAML syntax
-//! - Unclosed frontmatter blocks
-//! - Multiple global frontmatter blocks
-//! - Both QUILL and CARD specified in the same block
+//! - Unclosed `~~~card-yaml` blocks
+//! - A root block missing its required `$quill` system metadata
+//! - An unknown `$key` outside the closed set `{$quill, $kind, $id}`
 //! - Reserved field name usage
-//! - Name collisions
 //!
 //! See [MARKDOWN.md](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/MARKDOWN.md)
-//! for the Quillmark Markdown specification, including frontmatter and card syntax.
+//! for comprehensive documentation of the card-yaml format.
 
 use serde::{Deserialize, Serialize};
 
@@ -82,23 +85,21 @@ pub mod dto;
 pub mod edit;
 pub mod emit;
 pub mod fences;
-pub mod frontmatter;
 pub mod limits;
+pub mod meta;
+pub mod payload;
 pub mod prescan;
-pub mod sentinel;
 
-pub use dto::{peek_schema_version, StorageError, StoredDocument, SCHEMA_V0_81_0};
+pub use dto::{peek_schema_version, StorageError, StoredDocument, SCHEMA_V0_81_0, SCHEMA_V0_82_0};
 pub use edit::EditError;
-pub use frontmatter::{Frontmatter, FrontmatterItem};
-
-// Re-export the sentinel type (defined below in this module file).
-// `Sentinel` is exported at the crate root via `lib.rs`.
+pub use meta::{is_valid_kind_name, validate_composable_kind, CardKindError};
+pub use payload::{Payload, PayloadItem};
 
 #[cfg(test)]
 mod tests;
 
 /// Parse result carrying both the parsed document and any non-fatal warnings
-/// (e.g. near-miss sentinel lints emitted per spec §4.2).
+/// (e.g. a `~~~card-yaml` opener missing its blank line, unsupported YAML tags).
 #[derive(Debug)]
 pub struct ParseOutput {
     /// The successfully parsed document.
@@ -107,48 +108,20 @@ pub struct ParseOutput {
     pub warnings: Vec<Diagnostic>,
 }
 
-/// Discriminator for a [`Card`].
+/// A single card-yaml block parsed from a Quillmark Markdown document.
 ///
-/// The document frontmatter carries `QUILL: <ref>` and is the document-level
-/// *main* card; every composable card carries a kind — written as the
-/// ```` ```card <kind> ```` info string (canonical) or a legacy `CARD: <kind>`
-/// sentinel. `Sentinel` captures that distinction in the typed model so every
-/// card is one uniform shape.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Sentinel {
-    /// The document entry card, carrying the `QUILL` reference.
-    Main(QuillReference),
-    /// A composable card with the given kind tag.
-    Card(String),
-}
-
-impl Sentinel {
-    /// String form of this sentinel's value: the quill reference for `Main`,
-    /// the tag for `Card`.
-    pub fn as_str(&self) -> String {
-        match self {
-            Sentinel::Main(r) => r.to_string(),
-            Sentinel::Card(t) => t.clone(),
-        }
-    }
-
-    /// Returns `true` if this is a `Main` sentinel.
-    pub fn is_main(&self) -> bool {
-        matches!(self, Sentinel::Main(_))
-    }
-}
-
-/// A single metadata fence parsed from a Quillmark Markdown document.
-///
-/// A `Card` is the uniform shape for both the document entry (main) fence and
-/// composable card fences. `sentinel` distinguishes the two.
+/// A `Card` is the uniform shape for both the document's root block and
+/// composable card blocks. Root vs. composable is purely positional — the
+/// root is the document's first block, held in [`Document::main`]; composable
+/// cards live in [`Document::cards`]. A `Card` carries no flag of its own
+/// recording which collection it belongs to.
 ///
 /// Every card has:
-/// - `sentinel` — the `QUILL` reference (for main) or `CARD` tag (for composable).
-/// - `frontmatter` — ordered items parsed from the YAML fence body (with the
-///   sentinel key already removed).
-/// - `body` — the Markdown text that follows the closing fence, up to the next
-///   fence (or EOF).
+/// - `payload` — ordered items parsed from the block's YAML payload,
+///   carrying typed `$` system metadata, user fields, and comments
+///   interleaved in source order.
+/// - `body` — the Markdown text that follows the closing `~~~` fence, up to
+///   the next block (or EOF).
 ///
 /// ## Card body absence
 ///
@@ -158,44 +131,43 @@ impl Sentinel {
 /// should check `card.body().is_empty()`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Card {
-    sentinel: Sentinel,
-    frontmatter: Frontmatter,
+    payload: Payload,
     body: String,
 }
 
 impl Card {
-    /// Create a `Card` directly from a sentinel, a typed frontmatter, and a
-    /// body. Does **not** validate the sentinel tag or any field names —
-    /// callers are responsible for providing already-valid data. For
-    /// user-facing construction of composable cards use [`Card::new`]
-    /// (defined in `edit.rs`).
-    pub fn new_with_sentinel(sentinel: Sentinel, frontmatter: Frontmatter, body: String) -> Self {
-        Self {
-            sentinel,
-            frontmatter,
-            body,
-        }
+    /// Create a `Card` from its parts. Does **not** validate metadata or
+    /// field names — callers are responsible for providing already-valid
+    /// data. For user-facing construction of composable cards use
+    /// [`Card::new`] (defined in `edit.rs`).
+    pub fn from_parts(payload: Payload, body: String) -> Self {
+        Self { payload, body }
     }
 
-    /// The sentinel discriminating this card as main or composable.
-    pub fn sentinel(&self) -> &Sentinel {
-        &self.sentinel
+    /// The `$quill` reference, if the block declares one.
+    pub fn quill(&self) -> Option<&QuillReference> {
+        self.payload.quill()
     }
 
-    /// The card tag — the card kind for composable cards, or the string
-    /// form of the quill reference for main cards.
-    pub fn tag(&self) -> String {
-        self.sentinel.as_str()
+    /// The `$kind` card kind, if the block declares one.
+    pub fn kind(&self) -> Option<&str> {
+        self.payload.kind()
     }
 
-    /// Typed frontmatter (map-keyed view and ordered item list).
-    pub fn frontmatter(&self) -> &Frontmatter {
-        &self.frontmatter
+    /// The `$id` opaque identifier, if the block declares one.
+    pub fn id(&self) -> Option<&str> {
+        self.payload.id()
     }
 
-    /// Mutable access to the frontmatter.
-    pub fn frontmatter_mut(&mut self) -> &mut Frontmatter {
-        &mut self.frontmatter
+    /// Typed payload (map-keyed view and ordered item list, including `$`
+    /// entries).
+    pub fn payload(&self) -> &Payload {
+        &self.payload
+    }
+
+    /// Mutable access to the payload.
+    pub fn payload_mut(&mut self) -> &mut Payload {
+        &mut self.payload
     }
 
     /// Markdown body that follows this card's closing fence.
@@ -203,17 +175,6 @@ impl Card {
     /// Empty string when no trailing content is present.
     pub fn body(&self) -> &str {
         &self.body
-    }
-
-    /// Returns `true` if this is the document entry (main) card.
-    pub fn is_main(&self) -> bool {
-        self.sentinel.is_main()
-    }
-
-    /// Replace this card's sentinel. Internal helper; public mutators
-    /// ([`Document::set_quill_ref`], the parser) call this.
-    pub(crate) fn replace_sentinel(&mut self, sentinel: Sentinel) {
-        self.sentinel = sentinel;
     }
 
     /// Overwrite the body string. Internal helper used by [`Card::replace_body`].
@@ -230,8 +191,8 @@ impl Card {
 ///
 /// ## Structure
 ///
-/// - `main` — the entry `Card` (sentinel is `Sentinel::Main(reference)`).
-/// - `cards` — ordered composable cards (each with `Sentinel::Card(tag)`).
+/// - `main` — the document's root `Card`.
+/// - `cards` — ordered composable cards.
 ///
 /// Backend plates consume the flat JSON wire shape produced by
 /// [`Document::to_plate_json`]. That method is the **only** place in core
@@ -246,25 +207,41 @@ impl Card {
 /// this struct's in-memory layout. This is distinct from the plate wire
 /// shape ([`to_plate_json`](Document::to_plate_json), a one-way export for
 /// backends) and from Markdown ([`to_markdown`](Document::to_markdown)).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(into = "StoredDocument", try_from = "StoredDocument")]
 pub struct Document {
     main: Card,
     cards: Vec<Card>,
+    warnings: Vec<Diagnostic>,
+}
+
+// Equality is defined over the structural content only — `warnings` are
+// parse-time observations that depend on what the source text happened to
+// contain (unsupported tag drops, missing-blank-line lints, etc.) and so differ
+// between a source document and its round-tripped emission. Two documents
+// are equal when their `main` and `cards` match.
+impl PartialEq for Document {
+    fn eq(&self, other: &Self) -> bool {
+        self.main == other.main && self.cards == other.cards
+    }
 }
 
 impl Document {
     /// Create a `Document` from a pre-built main `Card` and composable cards.
     ///
-    /// The caller must guarantee that `main.sentinel` is `Sentinel::Main(_)`
-    /// and every card in `cards` has `sentinel` = `Sentinel::Card(_)`.
-    pub fn from_main_and_cards(main: Card, cards: Vec<Card>) -> Self {
-        debug_assert!(main.sentinel.is_main(), "main card must be Sentinel::Main");
+    /// The caller must guarantee that `main`'s `$quill` metadata is present
+    /// and valid, and that composable cards do not carry `$quill`.
+    pub fn from_main_and_cards(main: Card, cards: Vec<Card>, warnings: Vec<Diagnostic>) -> Self {
+        debug_assert!(main.quill().is_some(), "main card must carry `$quill`");
         debug_assert!(
-            cards.iter().all(|c| !c.sentinel.is_main()),
-            "composable cards must be Sentinel::Card"
+            cards.iter().all(|c| c.quill().is_none()),
+            "composable cards must not carry `$quill`"
         );
-        Self { main, cards }
+        Self {
+            main,
+            cards,
+            warnings,
+        }
     }
 
     /// Parse a Quillmark Markdown document, discarding any non-fatal warnings.
@@ -290,15 +267,16 @@ impl Document {
         &mut self.main
     }
 
-    /// The quill reference (`name@version-selector`) carried by the main card's
-    /// sentinel. Convenience reader over `doc.main().sentinel()`.
-    pub fn quill_reference(&self) -> &QuillReference {
-        match &self.main.sentinel {
-            Sentinel::Main(r) => r,
-            Sentinel::Card(_) => {
-                unreachable!("main card must carry Sentinel::Main by construction")
-            }
-        }
+    /// The quill reference (`name@version-selector`) the document binds to,
+    /// parsed from the root block's `$quill` system metadata.
+    ///
+    /// The root `$quill` is validated when the document is parsed, so this
+    /// never fails for a `Document` produced by [`Document::from_markdown`].
+    pub fn quill_reference(&self) -> QuillReference {
+        self.main
+            .quill()
+            .cloned()
+            .expect("root block's $quill is validated at parse time")
     }
 
     /// Ordered list of composable card blocks.
@@ -309,6 +287,13 @@ impl Document {
     /// Mutable access to the composable cards slice.
     pub fn cards_mut(&mut self) -> &mut [Card] {
         &mut self.cards
+    }
+
+    /// Non-fatal warnings collected during the parse that produced this
+    /// document. Empty for documents reconstructed from a storage DTO or
+    /// built programmatically.
+    pub fn warnings(&self) -> &[Diagnostic] {
+        &self.warnings
     }
 
     /// Internal mutable access to the backing `Vec<Card>`. Used by edit
@@ -350,8 +335,8 @@ impl Document {
             serde_json::Value::String(self.quill_reference().to_string()),
         );
 
-        // Frontmatter fields in insertion order.
-        for (key, value) in self.main.frontmatter.iter() {
+        // Payload fields in insertion order.
+        for (key, value) in self.main.payload.iter() {
             map.insert(key.clone(), value.as_json().clone());
         }
 
@@ -367,8 +352,11 @@ impl Document {
             .iter()
             .map(|card| {
                 let mut card_map = serde_json::Map::new();
-                card_map.insert("CARD".to_string(), serde_json::Value::String(card.tag()));
-                for (key, value) in card.frontmatter.iter() {
+                card_map.insert(
+                    "CARD".to_string(),
+                    serde_json::Value::String(card.kind().unwrap_or("").to_string()),
+                );
+                for (key, value) in card.payload.iter() {
                     card_map.insert(key.clone(), value.as_json().clone());
                 }
                 card_map.insert(

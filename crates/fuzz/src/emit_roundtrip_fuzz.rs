@@ -62,15 +62,15 @@ proptest! {
         );
     }
 
-    /// Inputs that look like valid frontmatter with a QUILL field.
+    /// Inputs that look like a valid card-yaml block with a `$quill:` metadata key.
     #[test]
-    fn fuzz_emit_roundtrip_frontmatter_shaped(
+    fn fuzz_emit_roundtrip_payload_shaped(
         quill in "[a-z][a-z0-9_]{0,20}",
         key in "[a-z][a-z0-9_]{0,15}",
         value in "\\PC{0,100}"
     ) {
         // Build a minimal Quillmark document.
-        let src = format!("---\nQUILL: {}\n{}: \"{}\"\n---\n\nBody.\n",
+        let src = format!("~~~card-yaml\n$quill: {}\n$kind: main\n{}: \"{}\"\n~~~\n\nBody.\n",
             quill, key, value.replace('\\', "\\\\").replace('"', "\\\""));
 
         let doc_a = match Document::from_markdown(&src) {
@@ -82,7 +82,7 @@ proptest! {
 
         let doc_b = Document::from_markdown(&emit1).unwrap_or_else(|e| {
             panic!(
-                "fuzz frontmatter-shaped: re-parse failed.\nError: {}\nSrc:\n{}\nEmitted:\n{}",
+                "fuzz payload-shaped: re-parse failed.\nError: {}\nSrc:\n{}\nEmitted:\n{}",
                 e, src, emit1
             )
         });
@@ -90,7 +90,7 @@ proptest! {
         prop_assert_eq!(
             &doc_a,
             &doc_b,
-            "fuzz frontmatter-shaped: doc_a != doc_b.\nEmitted:\n{}",
+            "fuzz payload-shaped: doc_a != doc_b.\nEmitted:\n{}",
             emit1
         );
 
@@ -98,7 +98,7 @@ proptest! {
         prop_assert_eq!(
             &emit1,
             &emit2,
-            "fuzz frontmatter-shaped: emit not idempotent."
+            "fuzz payload-shaped: emit not idempotent."
         );
     }
 
@@ -106,13 +106,13 @@ proptest! {
     #[test]
     fn fuzz_emit_roundtrip_with_cards(
         quill in "[a-z][a-z0-9_]{0,20}",
-        card_tag in "[a-z][a-z0-9_]{0,15}",
+        card_kind in "[a-z][a-z0-9_]{0,15}",
         card_key in "[a-z][a-z0-9_]{0,15}",
         card_value in "[a-zA-Z0-9 ]{0,50}"
     ) {
         let src = format!(
-            "---\nQUILL: {}\ntitle: \"test\"\n---\n\nBody here.\n\n```card {}\n{}: \"{}\"\n```\n\nCard body.\n",
-            quill, card_tag, card_key, card_value
+            "~~~card-yaml\n$quill: {}\n$kind: main\ntitle: \"test\"\n~~~\n\nBody here.\n\n~~~card-yaml\n$kind: {}\n{}: \"{}\"\n~~~\n\nCard body.\n",
+            quill, card_kind, card_key, card_value
         );
 
         let doc_a = match Document::from_markdown(&src) {

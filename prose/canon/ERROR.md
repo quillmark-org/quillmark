@@ -18,7 +18,7 @@ language bindings) handle errors through one code path. The variant records
 only the *kind* of failure; `diagnostics()` borrows the vector and
 `into_diagnostics()` consumes the error into it. Variants:
 - `EngineCreation` — failed to create engine
-- `InvalidFrontmatter` — malformed YAML frontmatter (also wraps `ParseError`)
+- `InvalidPayload` — malformed YAML in a card-yaml block (also wraps `ParseError`)
 - `CompilationFailed` — backend compilation failed
 - `FormatNotSupported` — requested output format not supported
 - `UnsupportedBackend` — backend not registered
@@ -36,7 +36,7 @@ vector.
 
 Python and WASM bindings delegate to core types:
 
-- **Python**: `PyDiagnostic` wraps `Diagnostic`. `RenderError` is mapped to typed Python exceptions: `CompilationError` (compilation failures), `ParseError` (frontmatter errors), and `QuillmarkError` (all other variants). Every exception carries a `diagnostics` list; the convenience singular `diagnostic` attribute is attached when there is exactly one diagnostic. Base hierarchy: `QuillmarkError → PyException`.
+- **Python**: `PyDiagnostic` wraps `Diagnostic`. `RenderError` is mapped to typed Python exceptions: `CompilationError` (compilation failures), `ParseError` (card-yaml parse errors), and `QuillmarkError` (all other variants). Every exception carries a `diagnostics` list; the convenience singular `diagnostic` attribute is attached when there is exactly one diagnostic. Base hierarchy: `QuillmarkError → PyException`.
 - **WASM**: `WasmError` carries a single `diagnostics: Vec<Diagnostic>` (always non-empty). The thrown JS `Error` has a `.diagnostics` array attached and a `.message` derived from `diagnostics`: `diagnostics[0].message` for single-diagnostic errors, an aggregate `"<N> error(s): <first.message>"` summary for backend compilation failures. Same shape regardless of underlying variant; consumers read `err.diagnostics[0]` for the primary diagnostic and iterate `err.diagnostics` for compilation errors. Parse failures (`Document.fromMarkdown`) carry the same shape — including the `parse::input_too_large` diagnostic for inputs over `MAX_INPUT_SIZE` (10 MB) and the various `EditError::*` variants for post-parse mutators.
 
 ## Backend Error Mapping

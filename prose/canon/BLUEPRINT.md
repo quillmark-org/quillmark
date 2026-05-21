@@ -10,35 +10,37 @@ constraint hints. It is the **authoring surface** for LLM and MCP
 consumers; [SCHEMAS.md](SCHEMAS.md) covers the validation/form surface.
 
 A blueprint is the document, not a description of the document. Fill in
-the placeholders; the structure, sentinels, and body markers come for
+the placeholders; the structure, `$` metadata, and body markers come for
 free.
 
 ## Output shape
 
 ````
----
+~~~card-yaml
+$quill: <name>@<version>
+$kind: main
 # <description>
-QUILL: <name>@<version>  # sentinel; required, verbatim
 
 # <field description>
 # e.g. <example value>
 field: value  # <type>; <role>
----
+~~~
 
 Write main body here.
 
-```card <card_kind>
+~~~card-yaml
+$kind: <card_kind>
 # composable (0..N)
 # <card description>
 ...fields...
-```
+~~~
 
 Write <card_kind> body here.
 ````
 
-The frontmatter is a `---` fence; each composable card is a fenced code
-block with the info string `card <kind>` (the canonical card syntax — see
-[MARKDOWN.md](MARKDOWN.md) §3.2).
+Every block is a `~~~card-yaml` block (see [MARKDOWN.md](MARKDOWN.md) §3):
+the root block carries the `$quill` system-metadata line; each composable
+card carries a `$kind: <card_kind>` metadata line.
 
 When `body.example` is set, its text replaces the body marker entirely.
 When `body.enabled` is false the marker is omitted entirely.
@@ -74,7 +76,7 @@ Form: **`# <type>[<format>]; <role>[, <extra>...]`**
 
 - **Type slot** (mandatory, first): one of
   `string`, `integer`, `number`, `boolean`, `array`, `object`,
-  `markdown`, `date`, `datetime`, `enum`, `sentinel`.
+  `markdown`, `date`, `datetime`, `enum`.
   Every field is labeled — there is no "self-evident" exemption.
   (`object` requires a `properties` map; freeform untyped objects are not
   supported. `object` also appears in the format slot of typed-table fields
@@ -89,13 +91,17 @@ Form: **`# <type>[<format>]; <role>[, <extra>...]`**
     `markdown` (nothing meaningful to refine).
 - **Role slot** (mandatory, after `;`): `required` or `optional`.
 - **Extras** (optional, comma-separated, after the role): additional
-  qualifiers. Currently used for `verbatim` on the QUILL sentinel,
-  signaling that the rendered value is fixed and must not be modified.
+  qualifiers.
 
-A composable card has no inline-annotation slot — its kind is carried in
-the ```` ```card <kind> ```` info string. Its `composable (0..N)` role is
-emitted as an own-line `# composable (0..N)` comment directly under the
-opener, ahead of the card description.
+The `$`-prefixed system-metadata keys (`$quill`, `$kind`, …) have no
+inline-annotation slot — they are not user-defined data fields. (The YAML
+parser accepts a trailing ` # comment` on a `$` line, but the blueprint
+emitter does not attach one, and the canonical form drops every comment
+attached to a `$` line.) The root block's `$quill` line is emitted
+verbatim; its value is fixed and must not be modified. A composable
+card's kind is carried in its `$kind: <card_kind>` metadata line. Its
+`composable (0..N)` role is emitted as an own-line `# composable (0..N)`
+comment directly under the `$kind` line, ahead of the card description.
 
 Examples:
 
@@ -110,8 +116,8 @@ Examples:
 | `date: ""  # date<YYYY-MM-DD>; required` | required date in `YYYY-MM-DD` format |
 | `published: ""  # datetime<ISO 8601>; required` | required datetime in ISO 8601 |
 | `level: low  # enum<low \| medium \| high>; optional` | optional enum, default is first value |
-| `QUILL: cmu_letter@0.1.0  # sentinel; required, verbatim` | quill binding, do not modify |
-| ```` ```card skill ```` followed by `# composable (0..N)` | repeat the entire ```` ```card … ``` ```` block per instance |
+| `$quill: cmu_letter@0.1.0` | quill binding metadata, emitted verbatim, do not modify |
+| `$kind: skill` followed by `# composable (0..N)` | repeat the entire `~~~card-yaml` … `~~~` block per instance |
 
 ## Placeholder value precedence
 
@@ -257,25 +263,26 @@ within the same `ui.group` still cluster together via `ui.order`.
 
 ## Body markers
 
-- `Write main body here.` after the main fence
-- `Write <card_kind> body here.` after each card fence
+- `Write main body here.` after the root block's closing `~~~`
+- `Write <card_kind> body here.` after each card block's closing `~~~`
 - When `body.example` is set, its text replaces the marker verbatim.
 
 `body.enabled: false` suppresses the marker entirely for body-less cards
 (e.g., a `skills` card whose data is purely structured).
 
-A `body.example` whose text contains a line that would parse as a card
-fence — a ```` ```card ```` opener or a legacy `---` metadata fence, with
-up to three leading spaces — is rejected at `Quill.yaml` parse time
+A `body.example` whose text contains a line that would parse as a
+`~~~card-yaml` opener is rejected at `Quill.yaml` parse time
 (`quill::body_example_contains_fence`) to prevent corrupting the
 blueprint's document structure.
 
 ## Worked example
 
 ```
----
+~~~card-yaml
+$quill: cmu_letter@0.1.0
+$kind: main
 # Typeset letters that comply with Carnegie Mellon University letterhead standards.
-QUILL: cmu_letter@0.1.0  # sentinel; required, verbatim
+
 # The recipient's name and full mailing address.
 # e.g. [Mr. John Doe, 123 Main St, "Anytown, USA"]
 recipient: []  # array<string>; optional
@@ -293,7 +300,7 @@ address: []  # array<string>; optional
 url: ""  # string; optional
 # The date to appear on the letter.
 date: ""  # date<YYYY-MM-DD>; optional
----
+~~~
 
 Write main body here.
 ```
@@ -332,7 +339,7 @@ requires:
 
 The contract is enforced by a fixture test that renders every bundled
 quill's blueprint and asserts success
-(`crates/quillmark/tests/blueprint_render_test.rs`).
+(`crates/quillmark/tests/quiver_test.rs::every_quill_in_quiver_renders`).
 
 ## Bindings surface
 

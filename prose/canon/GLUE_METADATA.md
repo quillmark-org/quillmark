@@ -7,12 +7,12 @@
 
 Quillmark does not use a template engine for plates. Data flows in two stages:
 
-1. `Quill::compile_data()` coerces, validates, normalizes, and applies schema defaults to frontmatter, producing a plain JSON object.
+1. `Quill::compile_data()` coerces, validates, normalizes, and applies schema defaults to the root-block fields, producing a plain JSON object.
 2. `Backend::open()` receives that JSON and performs any backend-specific field transformations (e.g., converting markdown strings to Typst markup) before compilation.
 
 ### Data Shape
 
-- Keys mirror normalized frontmatter fields (including `BODY` and `CARDS`)
+- Keys mirror normalized root-block fields (including `BODY` and `CARDS`)
 - Defaults from the Quill schema are applied before serialization in stage 1
 - Markdown-to-Typst conversion and date parsing happen in stage 2, inside the backend
 

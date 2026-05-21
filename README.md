@@ -6,9 +6,9 @@
 [![CI](https://github.com/quillmark-org/quillmark/workflows/CI/badge.svg)](https://github.com/quillmark-org/quillmark/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-lightgray.svg)](LICENSE)
 
-A format-first Markdown rendering system that converts Markdown with YAML frontmatter into PDF, SVG, PNG, and other output formats.
+A format-first Markdown rendering system that converts Markdown with card-yaml metadata blocks into PDF, SVG, PNG, and other output formats.
 
-Maintained by [quillmark-org]([url](https://github.com/quillmark-org)).
+Maintained by [quillmark-org](https://github.com/quillmark-org).
 
 **UNDER DEVELOPMENT** — APIs may change.
 
@@ -38,10 +38,11 @@ use quillmark::{Document, OutputFormat, Quillmark, RenderOptions};
 let engine = Quillmark::new();
 let quill = engine.quill_from_path("path/to/quill")?;
 
-let markdown = r#"---
-QUILL: my_quill
+let markdown = r#"~~~card-yaml
+$quill: my_quill
+$kind: main
 title: Example
----
+~~~
 
 # Hello World
 "#;

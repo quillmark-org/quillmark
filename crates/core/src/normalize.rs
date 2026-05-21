@@ -19,7 +19,6 @@
 //!
 //! - [`strip_bidi_formatting`] - Remove Unicode bidi control characters
 //! - [`normalize_markdown`] - Apply all markdown-specific normalizations
-//! - [`normalize_fields`] - Normalize document frontmatter fields (bidi stripping on body only)
 //! - [`normalize_document`] - Normalize a typed [`crate::document::Document`] in-place
 //!
 //! ## Why Normalize?
@@ -51,8 +50,6 @@
 //! ```
 
 use crate::document::Card;
-use crate::value::QuillValue;
-use indexmap::IndexMap;
 use unicode_normalization::UnicodeNormalization;
 
 /// Errors that can occur during normalization
@@ -253,10 +250,6 @@ pub fn fix_html_comment_fences(s: &str) -> String {
 /// 1. Strip Unicode bidirectional formatting characters
 /// 2. Fix HTML comment closing fences (ensure text after `-->` is preserved)
 ///
-/// Note: Guillemet preprocessing (`<<text>>` → `«text»`) is handled separately
-/// in [`normalize_fields`] because it needs to be applied after schema defaults
-/// and coercion.
-///
 /// # Examples
 ///
 /// ```
@@ -304,44 +297,6 @@ fn normalize_line_endings(s: &str) -> String {
     out
 }
 
-/// Normalizes document frontmatter fields per the Quillmark §7 spec.
-///
-/// This is an internal helper used by [`normalize_document`]. It operates on
-/// the typed `IndexMap<String, QuillValue>` frontmatter; it does **not** touch
-/// `body` or `cards` (those are normalized separately by the caller).
-///
-/// Field names at the top level are NFC-normalized (see [`normalize_field_name`]).
-/// Only **body regions** receive content normalization (bidi stripping + HTML comment
-/// fence repair). All other field values pass through verbatim.
-///
-/// # Examples
-///
-/// ```
-/// use quillmark_core::normalize::normalize_fields;
-/// use quillmark_core::QuillValue;
-/// use indexmap::IndexMap;
-///
-/// let mut fields = IndexMap::new();
-/// fields.insert("title".to_string(), QuillValue::from_json(serde_json::json!("<<hello>>")));
-///
-/// let result = normalize_fields(fields);
-///
-/// // Title passes through verbatim
-/// assert_eq!(result.get("title").unwrap().as_str().unwrap(), "<<hello>>");
-/// ```
-pub fn normalize_fields(fields: IndexMap<String, QuillValue>) -> IndexMap<String, QuillValue> {
-    fields
-        .into_iter()
-        .map(|(key, value)| {
-            // Normalize field name to NFC form for consistent key comparison.
-            let normalized_key = normalize_field_name(&key);
-            // All top-level frontmatter fields pass through verbatim — body
-            // regions are handled separately in normalize_document.
-            (normalized_key, value)
-        })
-        .collect()
-}
-
 /// Normalize field name to Unicode NFC (Canonical Decomposition, followed by Canonical Composition)
 ///
 /// This ensures that equivalent Unicode strings (e.g., "café" composed vs decomposed)
@@ -372,10 +327,10 @@ pub fn normalize_field_name(name: &str) -> String {
 ///
 /// # Normalization Steps
 ///
-/// 1. **Unicode NFC normalization** — Frontmatter field names are normalized to NFC form.
+/// 1. **Unicode NFC normalization** — Payload field names are normalized to NFC form.
 /// 2. **Bidi stripping** — Invisible bidirectional control characters are removed from
 ///    body regions (each `Card::body`). YAML field values in every
-///    `Card::frontmatter` pass through verbatim (spec §7).
+///    `Card::payload` pass through verbatim (spec §7).
 /// 3. **HTML comment fence fixing** — Trailing text after `-->` is preserved in body
 ///    regions only.
 ///
@@ -390,46 +345,43 @@ pub fn normalize_field_name(name: &str) -> String {
 /// ```no_run
 /// use quillmark_core::{Document, normalize::normalize_document};
 ///
-/// let markdown = "---\nQUILL: my_quill\ntitle: Example\n---\n\nBody with <<placeholder>>";
+/// let markdown = "~~~card-yaml\n$quill: my_quill\n$kind: main\ntitle: Example\n~~~\n\nBody with <<placeholder>>";
 /// let doc = Document::from_markdown(markdown).unwrap();
 /// let normalized = normalize_document(doc).unwrap();
 /// ```
 pub fn normalize_document(
     doc: crate::document::Document,
 ) -> Result<crate::document::Document, crate::error::ParseError> {
-    use crate::document::{Document, Sentinel};
+    use crate::document::Document;
 
-    // NFC-normalize main-card field names; values pass through verbatim.
-    let normalized_main_fm_map = normalize_fields(doc.main().frontmatter().to_index_map());
-    let normalized_main_body = normalize_markdown(doc.main().body());
-    let main_sentinel = doc.main().sentinel().clone();
-    let main = Card::new_with_sentinel(
-        main_sentinel,
-        crate::document::Frontmatter::from_index_map(normalized_main_fm_map),
-        normalized_main_body,
-    );
+    let main = normalize_card(doc.main());
+    let normalized_cards: Vec<Card> = doc.cards().iter().map(normalize_card).collect();
 
-    // Normalize each composable card's body; NFC-normalize its field names;
-    // values pass through verbatim.
-    let normalized_cards: Vec<Card> = doc
-        .cards()
-        .iter()
-        .map(|card| {
-            let normalized_card_fields: IndexMap<String, QuillValue> = card
-                .frontmatter()
-                .iter()
-                .map(|(k, v)| (normalize_field_name(k), v.clone()))
-                .collect();
-            let normalized_card_body = normalize_markdown(card.body());
-            Card::new_with_sentinel(
-                Sentinel::Card(card.tag()),
-                crate::document::Frontmatter::from_index_map(normalized_card_fields),
-                normalized_card_body,
-            )
-        })
-        .collect();
+    Ok(Document::from_main_and_cards(
+        main,
+        normalized_cards,
+        doc.warnings().to_vec(),
+    ))
+}
 
-    Ok(Document::from_main_and_cards(main, normalized_cards))
+/// Build a new `Card` with NFC-normalized field names and a normalized body.
+///
+/// The card's payload is cloned and walked: each user-field `key` is
+/// rewritten to NFC, and the body has Unicode normalization plus HTML
+/// comment fence repair applied. `$` system metadata, fill markers, and
+/// comments pass through verbatim.
+fn normalize_card(card: &Card) -> Card {
+    use crate::document::PayloadItem;
+    let mut payload = card.payload().clone();
+    for item in payload.items_mut() {
+        if let PayloadItem::Field { key, .. } = item {
+            let normalized = normalize_field_name(key);
+            if normalized != *key {
+                *key = normalized;
+            }
+        }
+    }
+    Card::from_parts(payload, normalize_markdown(card.body()))
 }
 
 #[cfg(test)]
@@ -669,53 +621,6 @@ mod tests {
         );
     }
 
-    // Tests for normalize_fields (frontmatter only)
-
-    #[test]
-    fn test_normalize_fields_other_field_chevrons_preserved() {
-        let mut fields = IndexMap::new();
-        fields.insert(
-            "title".to_string(),
-            QuillValue::from_json(serde_json::json!("<<hello>>")),
-        );
-
-        let result = normalize_fields(fields);
-        // Chevrons are passed through unchanged
-        assert_eq!(result.get("title").unwrap().as_str().unwrap(), "<<hello>>");
-    }
-
-    #[test]
-    fn test_normalize_fields_other_field_bidi_preserved() {
-        // Per spec §7: bidi stripping is NOT applied to YAML field values.
-        // Only body regions are normalized.
-        let mut fields = IndexMap::new();
-        fields.insert(
-            "title".to_string(),
-            QuillValue::from_json(serde_json::json!("a\u{202D}b")),
-        );
-
-        let result = normalize_fields(fields);
-        // Bidi character must be PRESERVED in non-body fields
-        assert_eq!(result.get("title").unwrap().as_str().unwrap(), "a\u{202D}b");
-    }
-
-    #[test]
-    fn test_normalize_fields_non_string_unchanged() {
-        let mut fields = IndexMap::new();
-        fields.insert(
-            "count".to_string(),
-            QuillValue::from_json(serde_json::json!(42)),
-        );
-        fields.insert(
-            "enabled".to_string(),
-            QuillValue::from_json(serde_json::json!(true)),
-        );
-
-        let result = normalize_fields(fields);
-        assert_eq!(result.get("count").unwrap().as_i64().unwrap(), 42);
-        assert!(result.get("enabled").unwrap().as_bool().unwrap());
-    }
-
     // Tests for normalize_document
 
     #[test]
@@ -723,7 +628,7 @@ mod tests {
         use crate::document::Document;
 
         let doc = Document::from_markdown(
-            "---\nQUILL: test\ntitle: <<placeholder>>\n---\n\n<<content>> \u{202D}**bold**",
+            "~~~card-yaml\n$quill: test\n$kind: main\ntitle: <<placeholder>>\n~~~\n\n<<content>> \u{202D}**bold**",
         )
         .unwrap();
         let normalized = super::normalize_document(doc).unwrap();
@@ -732,7 +637,7 @@ mod tests {
         assert_eq!(
             normalized
                 .main()
-                .frontmatter()
+                .payload()
                 .get("title")
                 .unwrap()
                 .as_str()
@@ -748,7 +653,8 @@ mod tests {
     fn test_normalize_document_preserves_quill_tag() {
         use crate::document::Document;
 
-        let doc = Document::from_markdown("---\nQUILL: custom_quill\n---\n").unwrap();
+        let doc = Document::from_markdown("~~~card-yaml\n$quill: custom_quill\n$kind: main\n~~~\n")
+            .unwrap();
         let normalized = super::normalize_document(doc).unwrap();
 
         assert_eq!(normalized.quill_reference().name, "custom_quill");
@@ -758,7 +664,9 @@ mod tests {
     fn test_normalize_document_idempotent() {
         use crate::document::Document;
 
-        let doc = Document::from_markdown("---\nQUILL: test\n---\n\n<<content>>").unwrap();
+        let doc =
+            Document::from_markdown("~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\n<<content>>")
+                .unwrap();
         let normalized_once = super::normalize_document(doc).unwrap();
         let normalized_twice = super::normalize_document(normalized_once.clone()).unwrap();
 
@@ -772,7 +680,10 @@ mod tests {
     fn test_normalize_document_body_bidi_stripped() {
         use crate::document::Document;
 
-        let doc = Document::from_markdown("---\nQUILL: test\n---\n\nhello\u{202D}world").unwrap();
+        let doc = Document::from_markdown(
+            "~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\nhello\u{202D}world",
+        )
+        .unwrap();
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(normalized.main().body(), "\nhelloworld");
     }
@@ -781,13 +692,16 @@ mod tests {
     fn test_normalize_document_yaml_field_bidi_preserved() {
         use crate::document::Document;
 
-        let doc = Document::from_markdown("---\nQUILL: test\ntitle: a\u{202D}b\n---\n").unwrap();
+        let doc = Document::from_markdown(
+            "~~~card-yaml\n$quill: test\n$kind: main\ntitle: a\u{202D}b\n~~~\n",
+        )
+        .unwrap();
         let normalized = super::normalize_document(doc).unwrap();
         // Bidi preserved in YAML fields
         assert_eq!(
             normalized
                 .main()
-                .frontmatter()
+                .payload()
                 .get("title")
                 .unwrap()
                 .as_str()
@@ -800,7 +714,7 @@ mod tests {
     fn test_normalize_document_card_body_bidi_stripped() {
         use crate::document::Document;
 
-        let md = "---\nQUILL: test\n---\n\nbody\n\n```card note\n```\ncard\u{202D}body\n";
+        let md = "~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\nbody\n\n~~~card-yaml\n$kind: note\n~~~\ncard\u{202D}body\n";
         let doc = Document::from_markdown(md).unwrap();
         assert_eq!(doc.cards().len(), 1, "expected 1 card");
         let normalized = super::normalize_document(doc).unwrap();
@@ -811,13 +725,13 @@ mod tests {
     fn test_normalize_document_card_field_bidi_preserved() {
         use crate::document::Document;
 
-        let md = "---\nQUILL: test\n---\n\nbody\n\n```card note\nname: Ali\u{202D}ce\n```\n";
+        let md = "~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\nbody\n\n~~~card-yaml\n$kind: note\nname: Ali\u{202D}ce\n~~~\n";
         let doc = Document::from_markdown(md).unwrap();
         assert_eq!(doc.cards().len(), 1, "expected 1 card");
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(
             normalized.cards()[0]
-                .frontmatter()
+                .payload()
                 .get("name")
                 .unwrap()
                 .as_str()
@@ -830,7 +744,7 @@ mod tests {
     fn test_normalize_document_card_body_html_comment_repair() {
         use crate::document::Document;
 
-        let md = "---\nQUILL: test\n---\n\n```card note\n```\n<!-- comment -->Trailing text\n";
+        let md = "~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\n~~~card-yaml\n$kind: note\n~~~\n<!-- comment -->Trailing text\n";
         let doc = Document::from_markdown(md).unwrap();
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(
@@ -843,7 +757,7 @@ mod tests {
     fn test_normalize_document_toplevel_body_html_comment_repair() {
         use crate::document::Document;
 
-        let md = "---\nQUILL: test\n---\n\n<!-- note -->Content here";
+        let md = "~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\n<!-- note -->Content here";
         let doc = Document::from_markdown(md).unwrap();
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(normalized.main().body(), "\n<!-- note -->\nContent here");

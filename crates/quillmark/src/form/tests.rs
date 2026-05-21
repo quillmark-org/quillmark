@@ -44,7 +44,7 @@ main:
 "#,
     );
 
-    let md = "---\nQUILL: form_test\ntitle: \"My Title\"\nstatus: \"final\"\n---\n";
+    let md = "~~~card-yaml\n$quill: form_test\n$kind: main\ntitle: \"My Title\"\nstatus: \"final\"\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();
 
     let form = quill.form(&doc);
@@ -99,7 +99,7 @@ main:
     // `title` is required — that produces a validation diagnostic.
     // `status` is absent but has a default.
     // `notes` is absent and has no default.
-    let md = "---\nQUILL: form_defaults_test\n---\n";
+    let md = "~~~card-yaml\n$quill: form_defaults_test\n$kind: main\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();
 
     let form = quill.form(&doc);
@@ -129,14 +129,14 @@ main:
 }
 
 #[test]
-fn form_unknown_card_tag_drops_card_and_emits_diagnostic() {
+fn form_unknown_card_kind_drops_card_and_emits_diagnostic() {
     let quill = quill_from_yaml(
         r#"
 quill:
   name: unknown_card_test
   version: "1.0"
   backend: typst
-  description: Unknown card tag test
+  description: Unknown card kind test
 
 main:
   fields:
@@ -151,9 +151,9 @@ card_kinds:
 "#,
     );
 
-    let md = "---\nQUILL: unknown_card_test\ntitle: \"T\"\n---\n\n\
-              ```card known_card\nnote: \"A\"\n```\n\n\
-              ```card ghost_card\nnote: \"B\"\n```\n";
+    let md = "~~~card-yaml\n$quill: unknown_card_test\n$kind: main\ntitle: \"T\"\n~~~\n\n\
+              ~~~card-yaml\n$kind: known_card\nnote: \"A\"\n~~~\n\n\
+              ~~~card-yaml\n$kind: ghost_card\nnote: \"B\"\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();
 
     let form = quill.form(&doc);
@@ -166,11 +166,11 @@ card_kinds:
     let unknown_diag = form
         .diagnostics
         .iter()
-        .find(|d| d.code.as_deref() == Some("form::unknown_card_tag"))
-        .expect("expected unknown_card_tag diagnostic");
+        .find(|d| d.code.as_deref() == Some("form::unknown_card_kind"))
+        .expect("expected unknown_card_kind diagnostic");
     assert!(
         unknown_diag.message.contains("ghost_card"),
-        "diagnostic should name the tag: {:?}",
+        "diagnostic should name the kind: {:?}",
         unknown_diag.message
     );
 }
@@ -205,8 +205,8 @@ card_kinds:
     );
 
     // signature_block present, office absent (has default), extra absent (no default)
-    let md = "---\nQUILL: card_fields_test\ntitle: \"T\"\n---\n\n\
-              ```card indorsement\nsignature_block: \"Col Smith\"\n```\n";
+    let md = "~~~card-yaml\n$quill: card_fields_test\n$kind: main\ntitle: \"T\"\n~~~\n\n\
+              ~~~card-yaml\n$kind: indorsement\nsignature_block: \"Col Smith\"\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();
 
     let form = quill.form(&doc);
@@ -250,7 +250,8 @@ main:
     );
 
     // `count` is a string, not an integer → TypeMismatch validation error
-    let md = "---\nQUILL: validation_diag_test\ncount: \"not-a-number\"\n---\n";
+    let md =
+        "~~~card-yaml\n$quill: validation_diag_test\n$kind: main\ncount: \"not-a-number\"\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();
 
     let form = quill.form(&doc);
@@ -288,7 +289,7 @@ main:
 "#,
     );
 
-    let md = "---\nQUILL: serial_test\ntitle: \"Hello\"\n---\n";
+    let md = "~~~card-yaml\n$quill: serial_test\n$kind: main\ntitle: \"Hello\"\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();
     let form = quill.form(&doc);
 

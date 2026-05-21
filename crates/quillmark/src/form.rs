@@ -37,11 +37,11 @@
 //! the call returned. Subsequent edits to the document are not reflected;
 //! call `quill.form(doc)` again to obtain an updated snapshot.
 //!
-//! # Unknown card tags
+//! # Unknown card kinds
 //!
-//! Cards whose tag is not declared in the schema are dropped from
+//! Cards whose kind is not declared in the schema are dropped from
 //! [`Form::cards`]. Each such card produces one [`Diagnostic`] in
-//! [`Form::diagnostics`] with code `"form::unknown_card_tag"`.
+//! [`Form::diagnostics`] with code `"form::unknown_card_kind"`.
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -55,7 +55,7 @@ use crate::Quill;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FormFieldSource {
-    /// Value was present in the document's frontmatter or card fields.
+    /// Value was present in the document's payload or card fields.
     Document,
     /// Value was absent from the document; the schema provides a default.
     Default,
@@ -93,7 +93,7 @@ impl FormCard {
     /// schema declares a default) or [`FormFieldSource::Missing`].
     ///
     /// This is the "user is about to add a new card" view. Reach it through
-    /// [`Quill::blank_card`] or [`Quill::blank_main`] when you have a tag in
+    /// [`Quill::blank_card`] or [`Quill::blank_main`] when you have a kind in
     /// hand instead of a [`CardSchema`].
     pub fn blank(schema: &CardSchema) -> Self {
         project_card(schema, &IndexMap::new())
@@ -107,24 +107,24 @@ impl FormCard {
 ///
 /// # Unknown cards
 ///
-/// Document cards whose tag is not declared in the schema are dropped and
-/// each produces a [`Diagnostic`] with code `"form::unknown_card_tag"` in
+/// Document cards whose kind is not declared in the schema are dropped and
+/// each produces a [`Diagnostic`] with code `"form::unknown_card_kind"` in
 /// [`Form::diagnostics`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Form {
-    /// View of the main document card (frontmatter fields).
+    /// View of the main document card (payload fields).
     pub main: FormCard,
     /// View of each recognised card, in document order.
     ///
-    /// Cards with unknown tags are excluded; see [`Form::diagnostics`].
+    /// Cards with unknown kinds are excluded; see [`Form::diagnostics`].
     pub cards: Vec<FormCard>,
-    /// Diagnostics from unknown card tags and validation.
+    /// Diagnostics from unknown card kinds and validation.
     pub diagnostics: Vec<Diagnostic>,
 }
 
 // ── Internal projection ─────────────────────────────────────────────────────
 //
-// `project_card`, `build_form`, and `blank_card_for_tag` are the internal
+// `project_card`, `build_form`, and `blank_card_for_kind` are the internal
 // machinery used by `Quill::form`, `Quill::blank_main`, and
 // `Quill::blank_card`. They are **deliberately not public**: consumers
 // reach the form module through methods on `Quill`, never by holding a
@@ -132,10 +132,10 @@ pub struct Form {
 
 /// Build the [`Form`] for a document. Composes:
 /// - `QuillConfig::main` — the main card schema.
-/// - `QuillConfig::card_kind` — to look up card schemas by tag.
+/// - `QuillConfig::card_kind` — to look up card schemas by kind.
 /// - `QuillConfig::validate_document` — to gather validation diagnostics.
 ///
-/// Coercion (`coerce_frontmatter` / `coerce_card`) is **not** applied here:
+/// Coercion (`coerce_payload` / `coerce_card`) is **not** applied here:
 /// the form view is the document as-is so the editor sees what the user typed.
 /// Validation diagnostics already inform the consumer when values are
 /// type-mismatched.
@@ -143,15 +143,15 @@ pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
 
     let main_schema = &quill.source().config().main;
-    let main_fields = doc.main().frontmatter().to_index_map();
+    let main_fields = doc.main().payload().to_index_map();
     let main = project_card(main_schema, &main_fields);
 
     let mut cards: Vec<FormCard> = Vec::new();
     for (index, card) in doc.cards().iter().enumerate() {
-        let tag = card.tag();
-        match quill.source().config().card_kind(&tag) {
+        let kind = card.kind().unwrap_or("").to_string();
+        match quill.source().config().card_kind(&kind) {
             Some(card_schema) => {
-                let card_fields = card.frontmatter().to_index_map();
+                let card_fields = card.payload().to_index_map();
                 cards.push(project_card(card_schema, &card_fields));
             }
             None => {
@@ -159,12 +159,12 @@ pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
                     Diagnostic::new(
                         Severity::Warning,
                         format!(
-                            "card at index {index} has unknown tag \"{tag}\"; \
+                            "card at index {index} has unknown kind \"{kind}\"; \
                              it is not declared in the quill schema and has been \
                              excluded from the form view"
                         ),
                     )
-                    .with_code("form::unknown_card_tag".to_string()),
+                    .with_code("form::unknown_card_kind".to_string()),
                 );
             }
         }
@@ -186,9 +186,9 @@ pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
     }
 }
 
-/// Build a blank [`FormCard`] for a card kind by tag, or `None` if the tag
+/// Build a blank [`FormCard`] for a card kind, or `None` if the kind
 /// isn't declared in the quill's schema.
-pub(crate) fn blank_card_for_tag(quill: &Quill, card_kind: &str) -> Option<FormCard> {
+pub(crate) fn blank_card_for_kind(quill: &Quill, card_kind: &str) -> Option<FormCard> {
     quill
         .source()
         .config()

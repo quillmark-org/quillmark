@@ -37,7 +37,7 @@ main:
       description: Letter date
 ```
 
-`name`, `backend`, `version`, and `description` are all required. `name` must be `snake_case`. Define your document's expected frontmatter fields under `main.fields`. Each field has a `type`, optional `default`, `description`, and validation constraints. Use `integer` for whole numbers only and `number` for values that may include decimals. For the full list of field types, UI hints, typed arrays, and enum constraints, see the [Quill.yaml Reference](quill-yaml-reference.md).
+`name`, `backend`, `version`, and `description` are all required. `name` must be `snake_case`. Define your document's expected root-block fields under `main.fields`. Each field has a `type`, optional `default`, `description`, and validation constraints. Use `integer` for whole numbers only and `number` for values that may include decimals. For the full list of field types, UI hints, typed arrays, and enum constraints, see the [Quill.yaml Reference](quill-yaml-reference.md).
 
 ## 3. Write `plate.typ`
 
@@ -64,12 +64,13 @@ For data access patterns, helper package details, optional fields, and CARDS ite
 Create a `document.md` that matches the fields you defined:
 
 ```markdown
----
-QUILL: my_quill
+~~~card-yaml
+$quill: my_quill
+$kind: main
 sender: Jane Doe
 recipient: John Smith
 date: 2026-01-15
----
+~~~
 
 Thank you for your time.
 ```

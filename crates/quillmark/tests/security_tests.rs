@@ -3,7 +3,7 @@
 //! These tests verify that the system properly handles malicious input
 //! and prevents common attack vectors like injection, DoS, and path traversal.
 
-use quillmark_core::Document;
+use quillmark_core::{Card, Document};
 
 /// Test deeply nested YAML structures hit the depth limit
 #[test]
@@ -14,7 +14,10 @@ fn test_yaml_depth_limit_attack() {
         deep_yaml.push_str(&"  ".repeat(i));
         deep_yaml.push_str("a:\n");
     }
-    let markdown = format!("---\nQUILL: test_quill\n{}---\n\nBody", deep_yaml);
+    let markdown = format!(
+        "~~~card-yaml\n$quill: test_quill\n$kind: main\n{}~~~\n\nBody",
+        deep_yaml
+    );
     let result = Document::from_markdown(&markdown);
 
     // Should fail with YAML depth limit error
@@ -31,9 +34,13 @@ fn test_yaml_depth_limit_attack() {
 #[test]
 fn test_card_count_limit_attack() {
     // Generate more than MAX_CARD_COUNT (1000) card blocks
-    let mut markdown = String::from("---\nQUILL: test_quill\ntitle: Test\n---\n\nBody\n\n");
+    let mut markdown =
+        String::from("~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\nBody\n\n");
     for i in 0..1002 {
-        markdown.push_str(&format!("```card item{}\nvalue: {}\n```\n\n", i, i));
+        markdown.push_str(&format!(
+            "~~~card-yaml\n$kind: item{}\nvalue: {}\n~~~\n\n",
+            i, i
+        ));
     }
     let result = Document::from_markdown(&markdown);
 
@@ -59,7 +66,10 @@ fn test_typst_injection_via_special_chars() {
     ];
 
     for input in malicious_inputs {
-        let markdown = format!("---\nQUILL: test_quill\n---\n\n{}", input);
+        let markdown = format!(
+            "~~~card-yaml\n$quill: test_quill\n$kind: main\n~~~\n\n{}",
+            input
+        );
         let result = Document::from_markdown(&markdown);
         // Should parse without error (escaping happens during conversion)
         assert!(
@@ -75,7 +85,7 @@ fn test_typst_injection_via_special_chars() {
 fn test_input_size_limit() {
     let large_content = "a".repeat(11 * 1024 * 1024); // 11 MB
     let markdown = format!(
-        "---\nQUILL: test_quill\ntitle: Large\n---\n\n{}",
+        "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Large\n~~~\n\n{}",
         large_content
     );
     let result = Document::from_markdown(&markdown);
@@ -93,7 +103,10 @@ fn test_input_size_limit() {
 #[test]
 fn test_yaml_size_limit() {
     let large_value = "x".repeat(1024 * 1024 + 100);
-    let markdown = format!("---\nQUILL: test_quill\ndata: {}\n---\n\nBody", large_value);
+    let markdown = format!(
+        "~~~card-yaml\n$quill: test_quill\n$kind: main\ndata: {}\n~~~\n\nBody",
+        large_value
+    );
     let result = Document::from_markdown(&markdown);
 
     assert!(result.is_err(), "Should reject oversized YAML");
@@ -110,10 +123,13 @@ fn test_yaml_size_limit() {
 fn test_reserved_field_injection() {
     let reserved_tests = vec![
         (
-            "---\nQUILL: test_quill\nBODY: injected\n---\n\nBody",
+            "~~~card-yaml\n$quill: test_quill\n$kind: main\nBODY: injected\n~~~\n\nBody",
             "BODY",
         ),
-        ("---\nQUILL: test_quill\nCARDS: []\n---\n\nBody", "CARDS"),
+        (
+            "~~~card-yaml\n$quill: test_quill\n$kind: main\nCARDS: []\n~~~\n\nBody",
+            "CARDS",
+        ),
     ];
 
     for (markdown, reserved) in reserved_tests {
@@ -132,31 +148,31 @@ fn test_reserved_field_injection() {
     }
 }
 
-/// Test that CARD directive validation prevents invalid names
+/// Test that card kind validation prevents invalid names via the edit API.
+///
+/// `$kind` is now opaque system metadata at parse time, so `from_markdown`
+/// no longer validates kind names. The `[a-z_][a-z0-9_]*` rule is still
+/// enforced by the structural edit API (`Card::new`), which is what this
+/// test now exercises.
 #[test]
 fn test_card_name_validation() {
-    let invalid_names = vec![
-        "---\nQUILL: test_quill\n---\n\n---\nCARD: Invalid-Name\n---\n\n",
-        "---\nQUILL: test_quill\n---\n\n---\nCARD: 123start\n---\n\n",
-        "---\nQUILL: test_quill\n---\n\n---\nCARD: UPPERCASE\n---\n\n",
-        "---\nQUILL: test_quill\n---\n\n---\nCARD: spaces here\n---\n\n",
-    ];
+    let invalid_names = vec!["Invalid-Name", "123start", "UPPERCASE", "spaces here"];
 
-    for markdown in invalid_names {
-        let result = Document::from_markdown(markdown);
-        assert!(
-            result.is_err(),
-            "Should reject invalid card name in: {}",
-            markdown
-        );
+    for name in invalid_names {
+        let result = Card::new(name);
+        assert!(result.is_err(), "Should reject invalid card name: {}", name);
     }
+
+    // Valid lowercase/underscore names are accepted.
+    assert!(Card::new("valid_name").is_ok());
+    assert!(Card::new("item1").is_ok());
 }
 
 /// Test YAML error includes line number context
 #[test]
 fn test_yaml_error_location() {
     let markdown =
-        "---\nQUILL: test_quill\ntitle: Test\n---\n\nBody\n\n```card test\ninvalid yaml: {\n```\n\n";
+        "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\nBody\n\n~~~card-yaml\n$kind: test\ninvalid yaml: {\n~~~\n\n";
     let result = Document::from_markdown(markdown);
 
     assert!(result.is_err(), "Should reject invalid YAML");
@@ -168,49 +184,18 @@ fn test_yaml_error_location() {
     );
 }
 
-/// Test both QUILL and CARD in same block is rejected
-#[test]
-fn test_quill_card_conflict() {
-    let markdown = "---\nQUILL: template\nCARD: item\n---\n\n";
-    let result = Document::from_markdown(markdown);
-
-    assert!(result.is_err(), "Should reject QUILL + CARD in same block");
-    let err_msg = result.unwrap_err().to_string();
-    assert!(
-        err_msg.contains("QUILL") && err_msg.contains("CARD"),
-        "Error should mention both keys: {}",
-        err_msg
-    );
-}
-
-/// Test that CommonMark 4+ backtick fences hide `---` lines from metadata parsing
+/// Test that `~~~card-yaml` fences inside backtick code blocks are not parsed as metadata
 #[test]
 fn test_strict_fence_detection() {
     let markdown =
-        "---\nQUILL: test_quill\ntitle: Test\n---\n\n````\n---\nCARD: test\nvalue: 1\n---\n````";
+        "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\n````\n~~~card-yaml\n$kind: test\nvalue: 1\n~~~\n````";
     let result = Document::from_markdown(markdown);
 
-    assert!(result.is_ok(), "Should parse successfully");
+    assert!(result.is_ok(), "Should parse successfully: {:?}", result);
     let doc = result.unwrap();
     assert_eq!(
         doc.cards().len(),
         0,
-        "--- inside ```` fence should not be parsed as metadata"
-    );
-}
-
-/// Test that CommonMark tilde fences hide `---` lines from metadata parsing
-#[test]
-fn test_tilde_fence_hides_metadata() {
-    let markdown =
-        "---\nQUILL: test_quill\ntitle: Test\n---\n\n~~~\n---\nCARD: test\nvalue: 1\n---\n~~~";
-    let result = Document::from_markdown(markdown);
-
-    assert!(result.is_ok(), "Should parse successfully");
-    let doc = result.unwrap();
-    assert_eq!(
-        doc.cards().len(),
-        0,
-        "--- inside ~~~ fence should not be parsed as metadata"
+        "card-yaml fence inside ```` code block should not be parsed as metadata"
     );
 }

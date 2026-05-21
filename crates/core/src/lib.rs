@@ -6,7 +6,7 @@
 //!
 //! This crate provides the foundational types and traits for Quillmark:
 //!
-//! - **Parsing**: YAML frontmatter extraction with Extended YAML Metadata Standard support
+//! - **Parsing**: card-yaml block extraction (`~~~card-yaml` metadata blocks)
 //! - **Format model**: [`QuillSource`] type for managing format bundles with in-memory file system
 //! - **Backend trait**: Extensible interface for implementing output format backends
 //! - **Error handling**: Structured diagnostics with source location tracking
@@ -17,11 +17,11 @@
 //! ```no_run
 //! use quillmark_core::Document;
 //!
-//! // Parse markdown with frontmatter
-//! let markdown = "---\nQUILL: my_quill\ntitle: Example\n---\n\n# Content";
+//! // Parse markdown with a card-yaml metadata block
+//! let markdown = "~~~card-yaml\n$quill: my_quill\n$kind: main\ntitle: Example\n~~~\n\n# Content";
 //! let doc = Document::from_markdown(markdown).unwrap();
 //! let title = doc.main()
-//!     .frontmatter()
+//!     .payload()
 //!     .get("title")
 //!     .and_then(|v| v.as_str())
 //!     .unwrap_or("Untitled");
@@ -32,7 +32,7 @@
 //!
 //! The crate is organized into modules:
 //!
-//! - [`document`]: Markdown parsing with YAML frontmatter support
+//! - [`document`]: Markdown parsing with card-yaml block support
 //! - [`backend`]: Backend trait for output format implementations
 //! - [`error`]: Structured error handling and diagnostics
 //! - [`types`]: Core rendering types (OutputFormat, Artifact, RenderOptions)
@@ -44,9 +44,7 @@
 //! - [Examples](https://github.com/quillmark-org/quillmark/tree/main/crates/core/examples) - Working examples
 
 pub mod document;
-pub use document::{
-    Card, Document, EditError, Frontmatter, FrontmatterItem, ParseOutput, Sentinel,
-};
+pub use document::{Card, Document, EditError, ParseOutput, Payload, PayloadItem};
 
 pub mod backend;
 pub use backend::Backend;

@@ -30,7 +30,7 @@ fn assert_round_trip(label: &str, src: &str) {
 // ── Fixture corpus round-trip ─────────────────────────────────────────────────
 
 /// Every top-level `.md` file under `crates/fixtures/resources` — files
-/// without a QUILL field are skipped at parse time.
+/// without a root `~~~card-yaml` block are skipped at parse time.
 #[test]
 fn fixture_corpus_round_trip() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -42,7 +42,7 @@ fn fixture_corpus_round_trip() {
 
     let mut fixture_paths: Vec<std::path::PathBuf> = Vec::new();
 
-    // Top-level resource .md files that have a QUILL field.
+    // Top-level resource .md files that have a root card-yaml block.
     for entry in std::fs::read_dir(&resources_dir).unwrap().flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) == Some("md") {
@@ -71,7 +71,7 @@ fn fixture_corpus_round_trip() {
             }
         };
 
-        // Skip files that are not parseable Quillmark documents (no QUILL field).
+        // Skip files that are not parseable Quillmark documents (no card-yaml block).
         match Document::from_markdown(&src) {
             Err(_) => {
                 skipped += 1;
@@ -129,8 +129,9 @@ fn fixture_corpus_round_trip() {
 #[test]
 fn emit_twice_is_byte_equal() {
     let src = "\
----
-QUILL: test@1.0.0
+~~~card-yaml
+$quill: test@1.0.0
+$kind: main
 title: Stability Test
 flags:
   - on
@@ -139,7 +140,7 @@ flags:
 count: 42
 nested:
   key: value
----
+~~~
 
 Body content here.
 ";
@@ -156,60 +157,63 @@ Body content here.
 
 #[test]
 fn round_trip_booleans() {
-    let src = "---\nQUILL: q\nflag_true: true\nflag_false: false\n---\n";
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\nflag_true: true\nflag_false: false\n~~~\n";
     assert_round_trip("booleans", src);
 }
 
 #[test]
 fn round_trip_null() {
-    let src = "---\nQUILL: q\nnull_field: null\n---\n";
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\nnull_field: null\n~~~\n";
     assert_round_trip("null", src);
 }
 
 #[test]
 fn round_trip_numbers() {
-    let src = "---\nQUILL: q\ncount: 42\nfloat: 3.14\n---\n";
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\ncount: 42\nfloat: 3.14\n~~~\n";
     assert_round_trip("numbers", src);
 }
 
 #[test]
 fn round_trip_string_ambiguous() {
     // These are the strings most likely to be mis-parsed as booleans/numbers.
-    let src = "---\nQUILL: q\nfield_on: \"on\"\nfield_yes: \"yes\"\nfield_01234: \"01234\"\n---\n";
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\nfield_on: \"on\"\nfield_yes: \"yes\"\nfield_01234: \"01234\"\n~~~\n";
     assert_round_trip("ambiguous strings", src);
 }
 
 #[test]
 fn round_trip_nested_map() {
-    let src = "---\nQUILL: q\nsender:\n  name: Alice\n  city: Springfield\n---\n";
+    let src =
+        "~~~card-yaml\n$quill: q\n$kind: main\nsender:\n  name: Alice\n  city: Springfield\n~~~\n";
     assert_round_trip("nested map", src);
 }
 
 #[test]
 fn round_trip_sequence() {
-    let src = "---\nQUILL: q\ntags:\n  - demo\n  - test\n---\n";
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\ntags:\n  - demo\n  - test\n~~~\n";
     assert_round_trip("sequence", src);
 }
 
 #[test]
 fn round_trip_empty_sequence() {
-    let src = "---\nQUILL: q\nempty: []\n---\n";
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\nempty: []\n~~~\n";
     assert_round_trip("empty sequence", src);
 }
 
 #[test]
 fn round_trip_cards() {
     let src = "\
----
-QUILL: q
+~~~card-yaml
+$quill: q
+$kind: main
 title: Test
----
+~~~
 
 Body text.
 
-```card section
+~~~card-yaml
+$kind: section
 heading: Chapter 1
-```
+~~~
 
 Card body here.
 ";
@@ -219,14 +223,16 @@ Card body here.
 #[test]
 fn round_trip_card_empty_body() {
     let src = "\
----
-QUILL: q
+~~~card-yaml
+$quill: q
+$kind: main
 title: Test
----
+~~~
 
-```card empty_body_card
+~~~card-yaml
+$kind: empty_body_card
 title: No body
-```
+~~~
 ";
     assert_round_trip("card with empty body", src);
 }
@@ -234,21 +240,24 @@ title: No body
 #[test]
 fn round_trip_string_with_escapes() {
     // String containing backslash and quotes — must survive as a string.
-    let src = "---\nQUILL: q\npath: \"C:\\\\Users\\\\test\"\n---\n";
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\npath: \"C:\\\\Users\\\\test\"\n~~~\n";
     assert_round_trip("string with backslash", src);
 }
 
 #[test]
 fn round_trip_multiline_string() {
     // A string containing a literal newline.
-    let src = "---\nQUILL: q\nbio: \"Line one\\nLine two\"\n---\n";
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\nbio: \"Line one\\nLine two\"\n~~~\n";
     assert_round_trip("multiline string", src);
 }
 
 #[test]
 fn round_trip_quill_version_selectors() {
     for qref in &["q", "q@1", "q@1.2", "q@1.2.3", "q@latest"] {
-        let src = format!("---\nQUILL: {}\ntitle: t\n---\n", qref);
+        let src = format!(
+            "~~~card-yaml\n$quill: {}\n$kind: main\ntitle: t\n~~~\n",
+            qref
+        );
         assert_round_trip(&format!("quill ref {}", qref), &src);
     }
 }
@@ -260,27 +269,22 @@ fn empty_map_omitted_from_emit() {
     use crate::value::QuillValue;
     use indexmap::IndexMap;
 
-    let mut frontmatter: IndexMap<String, QuillValue> = IndexMap::new();
-    frontmatter.insert(
+    let mut payload: IndexMap<String, QuillValue> = IndexMap::new();
+    payload.insert(
         "empty_obj".to_string(),
         QuillValue::from_json(serde_json::json!({})),
     );
-    frontmatter.insert(
+    payload.insert(
         "real_field".to_string(),
         QuillValue::from_json(serde_json::json!("hello")),
     );
 
-    use crate::document::{Card, Frontmatter, Sentinel};
-    use crate::version::{QuillReference, VersionSelector};
-    let main = Card::new_with_sentinel(
-        Sentinel::Main(QuillReference::new(
-            "test".to_string(),
-            VersionSelector::Latest,
-        )),
-        Frontmatter::from_index_map(frontmatter),
-        String::new(),
-    );
-    let doc = crate::document::Document::from_main_and_cards(main, vec![]);
+    use crate::document::{Card, Payload};
+    let mut p = Payload::from_index_map(payload);
+    p.set_quill("test".parse().unwrap());
+    p.set_kind("main");
+    let main = Card::from_parts(p, String::new());
+    let doc = crate::document::Document::from_main_and_cards(main, vec![], vec![]);
 
     let md = doc.to_markdown();
     assert!(
@@ -289,8 +293,8 @@ fn empty_map_omitted_from_emit() {
         md
     );
     assert!(
-        md.contains("\"hello\""),
-        "real field should appear double-quoted, got:\n{}",
+        md.contains("real_field: hello"),
+        "real field should appear in emit, got:\n{}",
         md
     );
 }

@@ -1,21 +1,21 @@
-//! Property-based fuzz tests for `QuillConfig::coerce_frontmatter`.
+//! Property-based fuzz tests for `QuillConfig::coerce_payload`.
 //!
 //! Targets the typed-coercion pipeline (`coerce_value_strict` /
 //! `coerce_object_props`). Exercised entirely through the public
-//! [`QuillConfig::coerce_frontmatter`] entry point so the tests don't depend
+//! [`QuillConfig::coerce_payload`] entry point so the tests don't depend
 //! on internal helpers.
 //!
 //! ## Properties under test
 //!
-//! - **T1 (no-panic):** `coerce_frontmatter` returns `Ok | Err(_)` for any
+//! - **T1 (no-panic):** `coerce_payload` returns `Ok | Err(_)` for any
 //!   `(FieldSchema, serde_json::Value)` pair within the generator's bounded
 //!   depth. No panics, no overflows.
 //! - **T2 (well-formed path):** when coercion fails, the
 //!   `CoercionError::Uncoercible.path` matches a small grammar
 //!   `root_field ( '.' ident | '[' digits ']' )*`, where `ident` and
 //!   `root_field` are drawn from the generator's character set.
-//! - **T3 (idempotence):** for any input where `coerce_frontmatter` returns
-//!   `Ok(x)`, `coerce_frontmatter(x) == Ok(x)`.
+//! - **T3 (idempotence):** for any input where `coerce_payload` returns
+//!   `Ok(x)`, `coerce_payload(x) == Ok(x)`.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -108,7 +108,7 @@ fn arb_json_value(max_depth: u32) -> impl Strategy<Value = serde_json::Value> {
 /// named [`ROOT_FIELD`] with the given schema. Bypasses `from_yaml` so the
 /// generator is free to produce schemas the YAML parser would reject (e.g.
 /// `Object` nested inside `Object`) — exactly the adversarial surface we want
-/// `coerce_frontmatter` to survive.
+/// `coerce_payload` to survive.
 fn config_with_one_field(schema: FieldSchema) -> QuillConfig {
     let mut schema = schema;
     schema.name = ROOT_FIELD.to_string();
@@ -134,7 +134,7 @@ fn config_with_one_field(schema: FieldSchema) -> QuillConfig {
     }
 }
 
-fn single_field_frontmatter(value: serde_json::Value) -> IndexMap<String, QuillValue> {
+fn single_field_payload(value: serde_json::Value) -> IndexMap<String, QuillValue> {
     let mut fm = IndexMap::new();
     fm.insert(ROOT_FIELD.to_string(), QuillValue::from_json(value));
     fm
@@ -184,8 +184,8 @@ proptest! {
         value in arb_json_value(4),
     ) {
         let config = config_with_one_field(schema);
-        let fm = single_field_frontmatter(value);
-        let _ = config.coerce_frontmatter(&fm);
+        let fm = single_field_payload(value);
+        let _ = config.coerce_payload(&fm);
     }
 
     // T2 — when coercion fails, the error path is structurally well-formed.
@@ -195,8 +195,8 @@ proptest! {
         value in arb_json_value(4),
     ) {
         let config = config_with_one_field(schema);
-        let fm = single_field_frontmatter(value);
-        if let Err(CoercionError::Uncoercible { path, .. }) = config.coerce_frontmatter(&fm) {
+        let fm = single_field_payload(value);
+        if let Err(CoercionError::Uncoercible { path, .. }) = config.coerce_payload(&fm) {
             prop_assert!(
                 validate_path_grammar(&path),
                 "path `{}` does not match `{} ( '.' [a-z]{{1,4}} | '[' digits ']' )*`",
@@ -213,10 +213,10 @@ proptest! {
         value in arb_json_value(4),
     ) {
         let config = config_with_one_field(schema);
-        let fm = single_field_frontmatter(value);
-        if let Ok(first) = config.coerce_frontmatter(&fm) {
+        let fm = single_field_payload(value);
+        if let Ok(first) = config.coerce_payload(&fm) {
             let second = config
-                .coerce_frontmatter(&first)
+                .coerce_payload(&first)
                 .expect("second coerce must succeed when first did");
             prop_assert_eq!(first, second);
         }
@@ -243,7 +243,7 @@ fn regression_t2_array_of_object_path() {
     // [ { "x": "not-an-int" } ] — should fail at f[0].x
     let val = serde_json::json!([{ "x": "not-an-int" }]);
     let err = config
-        .coerce_frontmatter(&single_field_frontmatter(val))
+        .coerce_payload(&single_field_payload(val))
         .expect_err("string-to-integer should fail");
     let CoercionError::Uncoercible { path, .. } = err;
     assert_eq!(path, "f[0].x");
@@ -256,9 +256,9 @@ fn regression_t3_string_array_singleton_collapses_once() {
     // and stay "x" on the second.
     let schema = FieldSchema::new(ROOT_FIELD.to_string(), FieldType::String, None);
     let config = config_with_one_field(schema);
-    let fm = single_field_frontmatter(serde_json::json!(["hello"]));
-    let first = config.coerce_frontmatter(&fm).unwrap();
-    let second = config.coerce_frontmatter(&first).unwrap();
+    let fm = single_field_payload(serde_json::json!(["hello"]));
+    let first = config.coerce_payload(&fm).unwrap();
+    let second = config.coerce_payload(&first).unwrap();
     assert_eq!(first, second);
     assert_eq!(
         first.get(ROOT_FIELD).unwrap().as_json(),

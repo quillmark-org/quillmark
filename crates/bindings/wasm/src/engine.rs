@@ -60,7 +60,7 @@ export interface QuillCardSchema {
  * Document schema returned by `Quill.schema`. Includes optional `ui` keys.
  *
  * `main.fields.QUILL` and `card_kinds[name].fields.CARD` are required
- * sentinels with `const` values telling consumers what to write.
+ * reserved fields with `const` values telling consumers what to write.
  */
 export interface QuillSchema {
     main: QuillCardSchema;
@@ -112,8 +112,8 @@ export interface FormCard {
  * Schema-aware form view of a document, returned by `Quill.form`.
  *
  * - `main` — the main card viewed through the quill's main schema.
- * - `cards` — composable card blocks, in document order (unknown tags excluded).
- * - `diagnostics` — diagnostics from unknown card tags and validation.
+ * - `cards` — composable card blocks, in document order (unknown kinds excluded).
+ * - `diagnostics` — diagnostics from unknown card kinds and validation.
  */
 export interface Form {
     main: FormCard;
@@ -124,7 +124,7 @@ export interface Form {
 
 /// TypeScript declaration for the `pushCard` / `insertCard` input shape.
 ///
-/// `tag` is required; `fields` and `body` are optional (defaulted by serde).
+/// `kind` is required; `fields` and `body` are optional (defaulted by serde).
 /// Emitted via `typescript_custom_section` so it lands in the generated
 /// `.d.ts` without forcing consumers to import a nominal type — the
 /// `unchecked_param_type` attribute on each method references it by name.
@@ -133,10 +133,10 @@ const CARD_INPUT_TS: &'static str = r#"
 /**
  * Input shape for `Document.pushCard` and `Document.insertCard`.
  *
- * Only `tag` is required. `fields` defaults to `{}`, `body` to `""`.
+ * Only `kind` is required. `fields` defaults to `{}`, `body` to `""`.
  */
 export interface CardInput {
-    tag: string;
+    kind: string;
     fields?: Record<string, unknown>;
     body?: string;
 }
@@ -209,9 +209,9 @@ pub struct RenderSession {
 ///
 /// Created via `Document.fromMarkdown(markdown)`. Exposes:
 /// - `quillRef` (string)
-/// - `frontmatter` (JS object/Record)
 /// - `body` (string)
-/// - `cards` (array of Card objects)
+/// - `main` / `cards` (entry / composable Card objects, each carrying
+///   `kind`, `payloadItems`, and `body`)
 /// - `warnings` (array of Diagnostic objects)
 ///
 /// `toMarkdown()` emits canonical Quillmark Markdown that round-trips back to
@@ -219,7 +219,7 @@ pub struct RenderSession {
 #[wasm_bindgen]
 pub struct Document {
     inner: quillmark_core::Document,
-    /// Parse-time warnings (e.g. near-miss sentinel lints).
+    /// Parse-time warnings (e.g. a `~~~card-yaml` opener missing its blank line).
     parse_warnings: Vec<quillmark_core::Diagnostic>,
 }
 
@@ -571,7 +571,7 @@ impl Document {
     /// new schema variant ships.
     #[wasm_bindgen(js_name = currentSchemaVersion)]
     pub fn current_schema_version() -> String {
-        quillmark_core::document::SCHEMA_V0_81_0.to_string()
+        quillmark_core::document::SCHEMA_V0_82_0.to_string()
     }
 
     /// Emit canonical Quillmark Markdown.
@@ -646,8 +646,8 @@ impl Document {
 
     /// The document's main (entry) card.
     ///
-    /// Carries the QUILL sentinel, the document-level frontmatter, and the
-    /// global body. Frontmatter/body reads and mutations go through this
+    /// Carries the QUILL metadata, the document-level payload, and the
+    /// global body. Payload/body reads and mutations go through this
     /// handle — there are no document-level shortcuts after the rework.
     ///
     /// Allocates and serializes on each call — cache locally if read in a hot loop.
@@ -703,7 +703,7 @@ impl Document {
 
     // ── Mutators ──────────────────────────────────────────────────────────────
 
-    /// Update a frontmatter field on the main card.
+    /// Update a payload field on the main card.
     ///
     /// Convenience method: equivalent to `doc.mainMut().setField(name, value)`.
     /// Clears any existing `!fill` marker on the field.
@@ -725,7 +725,7 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Update a frontmatter field on the main card AND mark it as `!fill`.
+    /// Update a payload field on the main card AND mark it as `!fill`.
     ///
     /// Convenience method: equivalent to `doc.mainMut().setFill(name, value)`.
     ///
@@ -743,7 +743,7 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Remove a frontmatter field on the main card, returning the removed value or `undefined`.
+    /// Remove a payload field on the main card, returning the removed value or `undefined`.
     ///
     /// Throws an `Error` whose message includes the `EditError` variant name
     /// and details if `name` is reserved (`BODY`, `CARDS`, `QUILL`, `CARD`)
@@ -798,10 +798,10 @@ impl Document {
 
     /// Append a card to the end of the card list.
     ///
-    /// `card` must be a JS object with a `tag` string field and optional
+    /// `card` must be a JS object with a `kind` string field and optional
     /// `fields` (object) and `body` (string).
     ///
-    /// Throws an `Error` if `card.tag` is not a valid tag name.
+    /// Throws an `Error` if `card.kind` is not a valid kind name.
     ///
     /// Mutators never modify `warnings`.
     #[wasm_bindgen(js_name = pushCard)]
@@ -860,21 +860,21 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Replace the tag of the composable card at `index`.
+    /// Replace the `$kind` of the composable card at `index`.
     ///
-    /// Mutates only the sentinel — the card's frontmatter and body are
+    /// Mutates only the `$kind` — the card's payload and body are
     /// untouched. Schema-aware migration (clearing orphan fields, applying
-    /// new defaults) is the caller's responsibility; `setCardTag` is a
+    /// new defaults) is the caller's responsibility; `setCardKind` is a
     /// structural primitive.
     ///
-    /// Throws if `index` is out of range or if `newTag` does not match
+    /// Throws if `index` is out of range or if `newKind` does not match
     /// `[a-z_][a-z0-9_]*`.
     ///
     /// Mutators never modify `warnings`.
-    #[wasm_bindgen(js_name = setCardTag)]
-    pub fn set_card_tag(&mut self, index: usize, new_tag: &str) -> Result<(), JsValue> {
+    #[wasm_bindgen(js_name = setCardKind)]
+    pub fn set_card_kind(&mut self, index: usize, new_kind: &str) -> Result<(), JsValue> {
         self.inner
-            .set_card_tag(index, new_tag)
+            .set_card_kind(index, new_kind)
             .map_err(|e| edit_error_to_js(&e))
     }
 
@@ -904,7 +904,7 @@ impl Document {
         card.set_field(name, qv).map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Remove a frontmatter field on the card at `index`, returning the
+    /// Remove a payload field on the card at `index`, returning the
     /// removed value or `undefined` if the field was absent.
     ///
     /// Throws if `index` is out of range, `name` is reserved, or `name` does
@@ -954,18 +954,19 @@ fn edit_error_to_js(err: &quillmark_core::EditError) -> JsValue {
     let variant = match err {
         quillmark_core::EditError::ReservedName(_) => "ReservedName",
         quillmark_core::EditError::InvalidFieldName(_) => "InvalidFieldName",
-        quillmark_core::EditError::InvalidTagName(_) => "InvalidTagName",
+        quillmark_core::EditError::InvalidKindName(_) => "InvalidKindName",
+        quillmark_core::EditError::ReservedKind => "ReservedKind",
         quillmark_core::EditError::IndexOutOfRange { .. } => "IndexOutOfRange",
     };
     WasmError::from(format!("[EditError::{}] {}", variant, err)).to_js_value()
 }
 
-/// Deserialise a JS object `{ tag: string, fields?: object, body?: string }`
-/// into a [`quillmark_core::Card`].  Throws on invalid tag.
+/// Deserialise a JS object `{ kind: string, fields?: object, body?: string }`
+/// into a [`quillmark_core::Card`].  Throws on invalid kind.
 fn js_value_to_card(value: &JsValue) -> Result<quillmark_core::Card, JsValue> {
     #[derive(Deserialize)]
     struct CardInput {
-        tag: String,
+        kind: String,
         #[serde(default)]
         fields: serde_json::Map<String, serde_json::Value>,
         #[serde(default)]
@@ -973,11 +974,11 @@ fn js_value_to_card(value: &JsValue) -> Result<quillmark_core::Card, JsValue> {
     }
 
     let input: CardInput = serde_wasm_bindgen::from_value(value.clone()).map_err(|e| {
-        WasmError::from(format!("card must be {{ tag, fields?, body? }}: {}", e)).to_js_value()
+        WasmError::from(format!("card must be {{ kind, fields?, body? }}: {}", e)).to_js_value()
     })?;
 
-    // Validate tag via Card::new, then upgrade with fields and body.
-    let mut card = quillmark_core::Card::new(input.tag).map_err(|e| edit_error_to_js(&e))?;
+    // Validate kind via Card::new, then upgrade with fields and body.
+    let mut card = quillmark_core::Card::new(input.kind).map_err(|e| edit_error_to_js(&e))?;
 
     for (k, v) in input.fields {
         let qv = quillmark_core::QuillValue::from_json(v);
@@ -1181,7 +1182,7 @@ impl RenderSession {
     /// Snapshot of any non-fatal diagnostics emitted while opening the
     /// session (e.g. version compatibility shims). Stable across the
     /// session's lifetime. These are also appended to
-    /// [`RenderResult.warnings`] on every `render()` call; the accessor
+    /// `RenderResult.warnings` on every `render()` call; the accessor
     /// surfaces them to canvas-preview consumers that don't go through
     /// `render()`.
     #[wasm_bindgen(getter, js_name = warnings, unchecked_return_type = "Diagnostic[]")]

@@ -16,7 +16,8 @@ fn small_quill_tree() -> wasm_bindgen::JsValue {
     ])
 }
 
-const SIMPLE_MARKDOWN: &str = "---\nQUILL: test_quill\ntitle: Hello\n---\n\n# Hello\n";
+const SIMPLE_MARKDOWN: &str =
+    "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Hello\n~~~\n\n# Hello\n";
 
 #[wasm_bindgen_test]
 fn test_parse_markdown_static() {
@@ -27,7 +28,7 @@ fn test_parse_markdown_static() {
 #[wasm_bindgen_test]
 fn test_document_body_and_warnings() {
     let doc = Document::from_markdown(SIMPLE_MARKDOWN).expect("fromMarkdown failed");
-    // Body at EOF: no F2 separator to strip, so trailing content newlines are
+    // Body at EOF: no blank-line separator to strip, so trailing content newlines are
     // preserved verbatim. `toMarkdown` carries the body through unchanged.
     assert!(doc.to_markdown().contains("# Hello\n"));
     // warnings() returns JsValue (array) — just verify it's defined
@@ -42,14 +43,15 @@ fn test_quill_from_tree() {
     let _ = quill;
 }
 
-/// Rendering with a QUILL ref that differs from the quill name must yield
+/// Rendering with a `$quill` ref that differs from the quill name must yield
 /// exactly one warning with code `quill::ref_mismatch` and still produce an artifact.
 #[wasm_bindgen_test]
 fn test_render_ref_mismatch_warning() {
     let engine = Quillmark::new();
     let quill = engine.quill(small_quill_tree()).expect("quill failed");
 
-    let mismatch_md = "---\nQUILL: other_quill\ntitle: Mismatch\n---\n\n# Content\n";
+    let mismatch_md =
+        "~~~card-yaml\n$quill: other_quill\n$kind: main\ntitle: Mismatch\n~~~\n\n# Content\n";
     let doc = Document::from_markdown(mismatch_md).expect("fromMarkdown failed");
     let result = quill
         .render(&doc, Some(RenderOptions::default()))
@@ -163,13 +165,13 @@ fn test_to_markdown_round_trip() {
 /// round-trips it back to an equal `Document`.
 #[wasm_bindgen_test]
 fn test_json_dto_round_trip() {
-    let md = "---\nQUILL: test_quill\ntitle: Hello\nsubject: !fill A Subject\n---\n\n# Hello\n\n```card note\nfor: someone\n```\n\nNote body.\n";
+    let md = "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Hello\nsubject: !fill A Subject\n~~~\n\n# Hello\n\n~~~card-yaml\n$kind: note\nfor: someone\n~~~\n\nNote body.\n";
     let doc = Document::from_markdown(md).expect("fromMarkdown failed");
 
     // toJson yields a string carrying the schema version.
     let dto = doc.to_json();
     assert!(
-        dto.contains("\"quillmark/document@0.81.0\""),
+        dto.contains("\"quillmark/document@0.82.0\""),
         "DTO string must carry the schema version, got: {dto}"
     );
 
@@ -187,7 +189,8 @@ fn test_json_dto_round_trip() {
 #[wasm_bindgen_test]
 fn test_json_dto_drops_parse_warnings() {
     // An unknown YAML tag triggers a `parse::unsupported_yaml_tag` warning.
-    let warn_md = "---\nQUILL: test_quill\ntitle: Hi\nweird: !custom value\n---\n\nBody\n";
+    let warn_md =
+        "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Hi\nweird: !custom value\n~~~\n\nBody\n";
     let doc = Document::from_markdown(warn_md).expect("fromMarkdown failed");
     assert!(
         js_sys::Array::from(&doc.warnings()).length() > 0,
@@ -252,7 +255,7 @@ fn test_quill_from_object_tree() {
     assert_eq!(r_map.artifacts.len(), r_obj.artifacts.len());
 }
 
-/// `metadata` is identity only; `schema` keeps ui hints and injects QUILL/CARD sentinels.
+/// `metadata` is identity only; `schema` keeps ui hints and injects QUILL/CARD reserved fields.
 #[wasm_bindgen_test]
 fn test_quill_metadata_and_schemas() {
     use js_sys::Reflect;
@@ -284,7 +287,7 @@ fn test_quill_metadata_and_schemas() {
     assert!(js_sys::Array::from(&get(&meta, "supportedFormats")).length() > 0);
     assert!(get(&meta, "schema").is_undefined());
 
-    // schema: QUILL/CARD sentinels with const values, ui hints included.
+    // schema: QUILL/CARD reserved fields with const values, ui hints included.
     let schema = quill.schema();
     let main_fields = get(&get(&schema, "main"), "fields");
     assert!(get(&get(&main_fields, "title"), "ui").is_object());
@@ -319,12 +322,12 @@ fn test_document_clone_independence() {
 
     assert!(
         original_md.contains("title: \"Hello\""),
-        "original frontmatter must be untouched after clone mutation\nGot:\n{}",
+        "original payload must be untouched after clone mutation\nGot:\n{}",
         original_md
     );
     assert!(
         clone_md.contains("title: \"Changed\""),
-        "clone frontmatter must reflect the mutation\nGot:\n{}",
+        "clone payload must reflect the mutation\nGot:\n{}",
         clone_md
     );
 
