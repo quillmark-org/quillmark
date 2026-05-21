@@ -19,7 +19,6 @@
 //!
 //! - [`strip_bidi_formatting`] - Remove Unicode bidi control characters
 //! - [`normalize_markdown`] - Apply all markdown-specific normalizations
-//! - [`normalize_fields`] - Normalize document payload fields (bidi stripping on body only)
 //! - [`normalize_document`] - Normalize a typed [`crate::document::Document`] in-place
 //!
 //! ## Why Normalize?
@@ -51,8 +50,6 @@
 //! ```
 
 use crate::document::Card;
-use crate::value::QuillValue;
-use indexmap::IndexMap;
 use unicode_normalization::UnicodeNormalization;
 
 /// Errors that can occur during normalization
@@ -302,44 +299,6 @@ fn normalize_line_endings(s: &str) -> String {
         }
     }
     out
-}
-
-/// Normalizes document payload fields per the Quillmark §7 spec.
-///
-/// This is an internal helper used by [`normalize_document`]. It operates on
-/// the typed `IndexMap<String, QuillValue>` payload; it does **not** touch
-/// `body` or `cards` (those are normalized separately by the caller).
-///
-/// Field names at the top level are NFC-normalized (see [`normalize_field_name`]).
-/// Only **body regions** receive content normalization (bidi stripping + HTML comment
-/// fence repair). All other field values pass through verbatim.
-///
-/// # Examples
-///
-/// ```
-/// use quillmark_core::normalize::normalize_fields;
-/// use quillmark_core::QuillValue;
-/// use indexmap::IndexMap;
-///
-/// let mut fields = IndexMap::new();
-/// fields.insert("title".to_string(), QuillValue::from_json(serde_json::json!("<<hello>>")));
-///
-/// let result = normalize_fields(fields);
-///
-/// // Title passes through verbatim
-/// assert_eq!(result.get("title").unwrap().as_str().unwrap(), "<<hello>>");
-/// ```
-pub fn normalize_fields(fields: IndexMap<String, QuillValue>) -> IndexMap<String, QuillValue> {
-    fields
-        .into_iter()
-        .map(|(key, value)| {
-            // Normalize field name to NFC form for consistent key comparison.
-            let normalized_key = normalize_field_name(&key);
-            // All top-level payload fields pass through verbatim — body
-            // regions are handled separately in normalize_document.
-            (normalized_key, value)
-        })
-        .collect()
 }
 
 /// Normalize field name to Unicode NFC (Canonical Decomposition, followed by Canonical Composition)
@@ -664,53 +623,6 @@ mod tests {
             fix_html_comment_fences("<!---\ncomment\n--->Trailing text"),
             "<!---\ncomment\n--->\nTrailing text"
         );
-    }
-
-    // Tests for normalize_fields (payload only)
-
-    #[test]
-    fn test_normalize_fields_other_field_chevrons_preserved() {
-        let mut fields = IndexMap::new();
-        fields.insert(
-            "title".to_string(),
-            QuillValue::from_json(serde_json::json!("<<hello>>")),
-        );
-
-        let result = normalize_fields(fields);
-        // Chevrons are passed through unchanged
-        assert_eq!(result.get("title").unwrap().as_str().unwrap(), "<<hello>>");
-    }
-
-    #[test]
-    fn test_normalize_fields_other_field_bidi_preserved() {
-        // Per spec §7: bidi stripping is NOT applied to YAML field values.
-        // Only body regions are normalized.
-        let mut fields = IndexMap::new();
-        fields.insert(
-            "title".to_string(),
-            QuillValue::from_json(serde_json::json!("a\u{202D}b")),
-        );
-
-        let result = normalize_fields(fields);
-        // Bidi character must be PRESERVED in non-body fields
-        assert_eq!(result.get("title").unwrap().as_str().unwrap(), "a\u{202D}b");
-    }
-
-    #[test]
-    fn test_normalize_fields_non_string_unchanged() {
-        let mut fields = IndexMap::new();
-        fields.insert(
-            "count".to_string(),
-            QuillValue::from_json(serde_json::json!(42)),
-        );
-        fields.insert(
-            "enabled".to_string(),
-            QuillValue::from_json(serde_json::json!(true)),
-        );
-
-        let result = normalize_fields(fields);
-        assert_eq!(result.get("count").unwrap().as_i64().unwrap(), 42);
-        assert!(result.get("enabled").unwrap().as_bool().unwrap());
     }
 
     // Tests for normalize_document

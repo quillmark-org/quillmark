@@ -58,16 +58,6 @@ fn test_invalid_field_names() {
 // ── is_reserved_name ────────────────────────────────────────────────────────
 
 #[test]
-fn test_reserved_names_constant() {
-    // All four names are present
-    assert!(RESERVED_NAMES.contains(&"BODY"));
-    assert!(RESERVED_NAMES.contains(&"CARDS"));
-    assert!(RESERVED_NAMES.contains(&"QUILL"));
-    assert!(RESERVED_NAMES.contains(&"CARD"));
-    assert_eq!(RESERVED_NAMES.len(), 4);
-}
-
-#[test]
 fn test_is_reserved_name() {
     assert!(is_reserved_name("BODY"));
     assert!(is_reserved_name("CARDS"));
@@ -139,22 +129,6 @@ fn test_document_set_field_rejects_all_reserved_names() {
     for &name in RESERVED_NAMES {
         let mut doc = make_doc();
         let result = doc.main_mut().set_field(name, qv("value"));
-        assert_eq!(
-            result,
-            Err(EditError::ReservedName(name.to_string())),
-            "expected ReservedName for '{}'",
-            name
-        );
-    }
-}
-
-// ── Reserved-name matrix: Card::set_field ────────────────────────────────────
-
-#[test]
-fn test_card_set_field_rejects_all_reserved_names() {
-    for &name in RESERVED_NAMES {
-        let mut card = Card::new("note").unwrap();
-        let result = card.set_field(name, qv("value"));
         assert_eq!(
             result,
             Err(EditError::ReservedName(name.to_string())),

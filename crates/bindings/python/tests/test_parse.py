@@ -7,6 +7,21 @@ from quillmark import Document, ParseError
 import os
 from pathlib import Path
 
+
+def field(card, key):
+    """Return the value of a named field from a card's payload_items list."""
+    for item in card["payload_items"]:
+        if item["type"] == "field" and item["key"] == key:
+            return item["value"]
+    return None
+
+
+def has_field(card, key):
+    """True when a named field exists in a card's payload_items."""
+    return any(
+        i["type"] == "field" and i["key"] == key for i in card["payload_items"]
+    )
+
 WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
 RESOURCES_PATH = WORKSPACE_ROOT / "crates" / "fixtures" / "resources"
 QUILLS_PATH = RESOURCES_PATH / "quills"
@@ -15,7 +30,7 @@ QUILLS_PATH = RESOURCES_PATH / "quills"
 def test_parse_markdown(taro_md):
     """Test parsing markdown with payload."""
     doc = Document.from_markdown(taro_md)
-    assert "Ice Cream" in str(doc.payload.get("title", ""))
+    assert "Ice Cream" in str(field(doc.main, "title") or "")
 
 
 def test_parse_invalid_yaml():
@@ -32,15 +47,13 @@ def test_parse_invalid_yaml():
 
 
 def test_payload_access(taro_md):
-    """Test accessing typed payload (no BODY/CARDS/QUILL)."""
+    """Test accessing typed payload_items (no BODY/CARDS/QUILL)."""
     doc = Document.from_markdown(taro_md)
-    fm = doc.payload
-    assert "title" in fm
-    assert "Ice Cream" in fm["title"]
-    # BODY, CARDS, QUILL must NOT appear in payload
-    assert "BODY" not in fm
-    assert "CARDS" not in fm
-    assert "QUILL" not in fm
+    assert "Ice Cream" in (field(doc.main, "title") or "")
+    # BODY, CARDS, QUILL must NOT appear as field entries
+    assert not has_field(doc.main, "BODY")
+    assert not has_field(doc.main, "CARDS")
+    assert not has_field(doc.main, "QUILL")
 
 
 def test_body_is_str(taro_md):
@@ -67,7 +80,7 @@ def test_cards_access():
     assert len(doc.cards) == 1
     card = doc.cards[0]
     assert card["kind"] == "note"
-    assert card["fields"]["foo"] == "bar"
+    assert field(card, "foo") == "bar"
     assert "Card body." in card["body"]
 
 
@@ -194,8 +207,8 @@ def test_clone_isolates_mutations(taro_md):
     cloned = doc.clone()
 
     cloned.set_field("title", "Updated Title")
-    assert doc.payload["title"] != "Updated Title"
-    assert cloned.payload["title"] == "Updated Title"
+    assert field(doc.main, "title") != "Updated Title"
+    assert field(cloned.main, "title") == "Updated Title"
 
 
 def test_copy_module_clones(taro_md):
@@ -211,7 +224,7 @@ def test_copy_module_clones(taro_md):
     assert deep == doc
 
     shallow.set_field("title", "Shallow Edit")
-    assert doc.payload["title"] != "Shallow Edit"
+    assert field(doc.main, "title") != "Shallow Edit"
 
 
 def test_equals_and_eq(taro_md):
@@ -262,8 +275,8 @@ def test_remove_card_field_returns_value():
 
     removed = doc.remove_card_field(0, "foo")
     assert removed == "bar"
-    assert "foo" not in doc.cards[0]["fields"]
-    assert doc.cards[0]["fields"]["baz"] == "qux"
+    assert not has_field(doc.cards[0], "foo")
+    assert field(doc.cards[0], "baz") == "qux"
 
 
 def test_remove_card_field_absent_returns_none():

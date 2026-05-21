@@ -209,9 +209,9 @@ pub struct RenderSession {
 ///
 /// Created via `Document.fromMarkdown(markdown)`. Exposes:
 /// - `quillRef` (string)
-/// - `payload` (JS object/Record)
 /// - `body` (string)
-/// - `cards` (array of Card objects)
+/// - `main` / `cards` (entry / composable Card objects, each carrying
+///   `kind`, `payloadItems`, and `body`)
 /// - `warnings` (array of Diagnostic objects)
 ///
 /// `toMarkdown()` emits canonical Quillmark Markdown that round-trips back to
@@ -571,7 +571,7 @@ impl Document {
     /// new schema variant ships.
     #[wasm_bindgen(js_name = currentSchemaVersion)]
     pub fn current_schema_version() -> String {
-        quillmark_core::document::SCHEMA_V0_81_0.to_string()
+        quillmark_core::document::SCHEMA_V0_82_0.to_string()
     }
 
     /// Emit canonical Quillmark Markdown.

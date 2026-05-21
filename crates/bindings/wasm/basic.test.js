@@ -11,6 +11,14 @@ import { describe, it, expect } from 'vitest'
 import { Quillmark, Document } from '@quillmark-wasm'
 import { makeQuill } from './test-helpers.js'
 
+/** Read a field value from a card's payloadItems list by key. */
+const field = (card, key) =>
+  card.payloadItems.find((i) => i.type === 'field' && i.key === key)?.value
+
+/** True when a field key is absent from a card's payloadItems. */
+const hasField = (card, key) =>
+  card.payloadItems.some((i) => i.type === 'field' && i.key === key)
+
 const TEST_MARKDOWN = `~~~card-yaml
 $quill: test_quill
 $kind: main
@@ -41,15 +49,13 @@ describe('Document.fromMarkdown', () => {
   it('should expose typed payload (no QUILL/BODY/CARDS)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
-    expect(doc.main.payload).toBeDefined()
-    expect(doc.main.payload instanceof Object).toBe(true)
-    expect(doc.main.payload.title).toBe('Test Document')
-    expect(doc.main.payload.author).toBe('Test Author')
-    // QUILL, BODY, CARDS must NOT appear in payload
-    expect(doc.main.payload.quill).toBeUndefined()
-    expect(doc.main.payload.QUILL).toBeUndefined()
-    expect(doc.main.payload.BODY).toBeUndefined()
-    expect(doc.main.payload.CARDS).toBeUndefined()
+    expect(field(doc.main, 'title')).toBe('Test Document')
+    expect(field(doc.main, 'author')).toBe('Test Author')
+    // $quill/$kind and reserved names must NOT appear in payloadItems
+    expect(hasField(doc.main, 'quill')).toBe(false)
+    expect(hasField(doc.main, 'QUILL')).toBe(false)
+    expect(hasField(doc.main, 'BODY')).toBe(false)
+    expect(hasField(doc.main, 'CARDS')).toBe(false)
   })
 
   it('should expose body as a string', () => {
@@ -85,7 +91,7 @@ Card body.
 
     expect(doc.cards.length).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
-    expect(doc.cards[0].payload.foo).toBe('bar')
+    expect(field(doc.cards[0], 'foo')).toBe('bar')
     expect(doc.cards[0].body).toContain('Card body.')
   })
 
@@ -169,11 +175,11 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
     // stripped but the terminator stays, so `doc2.main.body === 'Updated body\n'`. The card
     // body is at EOF and has no F2 separator, so it survives byte-for-byte.
     const doc2 = Document.fromMarkdown(emitted)
-    expect(doc2.main.payload.title).toBe('New Title')
+    expect(field(doc2.main, 'title')).toBe('New Title')
     expect(doc2.main.body).toBe('Updated body\n')
     expect(doc2.cards.length).toBe(originalCardCount + 1)
     expect(doc2.cards[0].kind).toBe('note')
-    expect(doc2.cards[0].payload.author).toBe('Alice')
+    expect(field(doc2.cards[0], 'author')).toBe('Alice')
     expect(doc2.cards[0].body).toBe('Hello')
   })
 
@@ -196,15 +202,15 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
     const doc2 = Document.fromMarkdown(emitted)
 
     // Every value must survive as a string, not be re-interpreted as bool/null/number
-    expect(doc2.main.payload.flag_on).toBe('on')
-    expect(doc2.main.payload.flag_off).toBe('off')
-    expect(doc2.main.payload.flag_yes).toBe('yes')
-    expect(doc2.main.payload.flag_no).toBe('no')
-    expect(doc2.main.payload.str_true).toBe('true')
-    expect(doc2.main.payload.str_false).toBe('false')
-    expect(doc2.main.payload.str_null).toBe('null')
-    expect(doc2.main.payload.octal_str).toBe('01234')
-    expect(doc2.main.payload.date_str).toBe('2024-01-15')
+    expect(field(doc2.main, 'flag_on')).toBe('on')
+    expect(field(doc2.main, 'flag_off')).toBe('off')
+    expect(field(doc2.main, 'flag_yes')).toBe('yes')
+    expect(field(doc2.main, 'flag_no')).toBe('no')
+    expect(field(doc2.main, 'str_true')).toBe('true')
+    expect(field(doc2.main, 'str_false')).toBe('false')
+    expect(field(doc2.main, 'str_null')).toBe('null')
+    expect(field(doc2.main, 'octal_str')).toBe('01234')
+    expect(field(doc2.main, 'date_str')).toBe('2024-01-15')
   })
 })
 
@@ -217,7 +223,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const dto = doc.toJson()
     expect(typeof dto).toBe('string')
-    expect(dto).toContain('quillmark/document@0.81.0')
+    expect(dto).toContain('quillmark/document@0.82.0')
   })
 
   it('round-trips losslessly: fromJson(toJson(doc)) equals doc', () => {
@@ -234,16 +240,16 @@ describe('Document JSON DTO — toJson / fromJson', () => {
     const restored = Document.fromJson(doc.toJson())
 
     expect(restored.equals(doc)).toBe(true)
-    expect(restored.main.payload.title).toBe('New Title')
+    expect(field(restored.main, 'title')).toBe('New Title')
     expect(restored.cards[0].kind).toBe('note')
-    expect(restored.cards[0].payload.author).toBe('Alice')
+    expect(field(restored.cards[0], 'author')).toBe('Alice')
     expect(restored.cards[0].body).toBe('Hello')
   })
 
   it('toJson output is standard JSON parseable by the JSON global', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const parsed = JSON.parse(doc.toJson())
-    expect(parsed.schema).toBe('quillmark/document@0.81.0')
+    expect(parsed.schema).toBe('quillmark/document@0.82.0')
   })
 
   it('drops parse-time warnings on reconstruction', () => {
@@ -431,13 +437,13 @@ describe('Document editor surface — setField / removeField', () => {
   it('setField inserts a new payload field', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.setField('subtitle', 'A subtitle')
-    expect(doc.main.payload.subtitle).toBe('A subtitle')
+    expect(field(doc.main, 'subtitle')).toBe('A subtitle')
   })
 
   it('setField updates an existing field', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.setField('title', 'Updated')
-    expect(doc.main.payload.title).toBe('Updated')
+    expect(field(doc.main, 'title')).toBe('Updated')
   })
 
   it('setField throws EditError::ReservedName for BODY', () => {
@@ -469,7 +475,7 @@ describe('Document editor surface — setField / removeField', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const removed = doc.removeField('title')
     expect(removed).toBe('Test Document')
-    expect(doc.main.payload.title).toBeUndefined()
+    expect(hasField(doc.main, 'title')).toBe(false)
   })
 
   it('removeField returns undefined when field absent', () => {
@@ -597,8 +603,8 @@ Card two.
     const doc = Document.fromMarkdown(MD_WITH_CARDS)
     doc.setCardKind(0, 'annotation')
     expect(doc.cards[0].kind).toBe('annotation')
-    // Payload preserved across rename.
-    expect(doc.cards[0].payload).toBeDefined()
+    // Payload items preserved across rename.
+    expect(Array.isArray(doc.cards[0].payloadItems)).toBe(true)
   })
 
   it('setCardKind throws InvalidKindName for empty/uppercase/dashed kinds', () => {
@@ -686,7 +692,7 @@ Card body.
   it('updateCardField sets a field on a card', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
     doc.updateCardField(0, 'content', 'hello')
-    expect(doc.cards[0].payload.content).toBe('hello')
+    expect(field(doc.cards[0], 'content')).toBe('hello')
   })
 
   it('updateCardField throws EditError::ReservedName for BODY', () => {
@@ -703,7 +709,7 @@ Card body.
     const doc = Document.fromMarkdown(MD_WITH_CARD)
     const removed = doc.removeCardField(0, 'foo')
     expect(removed).toBe('bar')
-    expect('foo' in doc.cards[0].payload).toBe(false)
+    expect(hasField(doc.cards[0], 'foo')).toBe(false)
   })
 
   it('removeCardField returns undefined when field absent', () => {
@@ -739,7 +745,7 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
     doc.setQuillRef('updated_quill')
 
     // Assert state
-    expect(doc.main.payload.author).toBe('Bob')
+    expect(field(doc.main, 'author')).toBe('Bob')
     expect(doc.main.body).toBe('New body text.')
     expect(doc.cards.length).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
@@ -747,7 +753,7 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
     expect(doc.quillRef).toBe('updated_quill')
 
     // Original title still present
-    expect(doc.main.payload.title).toBe('Test Document')
+    expect(field(doc.main, 'title')).toBe('Test Document')
 
     // Warnings untouched
     expect(Array.isArray(doc.warnings)).toBe(true)
@@ -875,8 +881,8 @@ describe('Document.clone', () => {
 
     clone.setField('title', 'Changed')
 
-    expect(doc.main.payload.title).toBe('Test Document')
-    expect(clone.main.payload.title).toBe('Changed')
+    expect(field(doc.main, 'title')).toBe('Test Document')
+    expect(field(clone.main, 'title')).toBe('Changed')
   })
 
   it('preserves parse-time warnings on the clone', () => {

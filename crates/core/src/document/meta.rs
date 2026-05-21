@@ -1,16 +1,16 @@
 //! Validation helpers for card-yaml `$`-prefixed system metadata.
 //!
 //! The closed set of `$` keys (`$quill`, `$kind`, `$id`) and their typed
-//! values are now stored as variants of [`super::PayloadItem`] inside a
-//! card's unified [`super::Payload`] item list — they sit alongside user
-//! fields and comments in source order, which is what makes inline-comment
+//! values are stored as variants of [`super::PayloadItem`] inside a card's
+//! unified [`super::Payload`] item list — they sit alongside user fields
+//! and comments in source order, which is what makes inline-comment
 //! preservation symmetric across the `$`/non-`$` boundary.
 //!
 //! This module retains only the validation primitives shared between the
 //! parser, the editor surface, and the storage DTO:
 //!
-//! - [`extract_meta_from_payload`] — strip `$` keys from a parsed YAML
-//!   mapping and validate each into a typed [`MetaValue`].
+//! - [`extract_meta_items`] — strip `$` keys from a parsed YAML mapping
+//!   and validate each into a typed system-metadata [`super::PayloadItem`].
 //! - [`is_valid_kind_name`] / [`validate_composable_kind`] — name checks
 //!   for `$kind`.
 
@@ -18,36 +18,26 @@ use std::str::FromStr;
 
 use serde_json::Value as JsonValue;
 
+use super::payload::PayloadItem;
 use crate::error::ParseError;
 use crate::version::QuillReference;
 
-/// A typed `$`-prefixed metadata value, decoupled from its position in the
-/// containing card's item list.
-///
-/// `extract_meta_from_payload` returns these in source order; the assembler
-/// then interleaves them with comments and user fields when building the
-/// final [`super::Payload`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum MetaValue {
-    Quill(QuillReference),
-    Kind(String),
-    Id(String),
-}
-
-impl MetaValue {
-    /// The `$key` string this value corresponds to.
-    pub(super) fn key(&self) -> &'static str {
-        match self {
-            MetaValue::Quill(_) => "$quill",
-            MetaValue::Kind(_) => "$kind",
-            MetaValue::Id(_) => "$id",
-        }
+/// The `$key` string a system-metadata [`PayloadItem`] variant corresponds
+/// to, or `None` for non-system variants ([`PayloadItem::Field`] and
+/// [`PayloadItem::Comment`]).
+pub(super) fn meta_key(item: &PayloadItem) -> Option<&'static str> {
+    match item {
+        PayloadItem::Quill { .. } => Some("$quill"),
+        PayloadItem::Kind { .. } => Some("$kind"),
+        PayloadItem::Id { .. } => Some("$id"),
+        PayloadItem::Field { .. } | PayloadItem::Comment { .. } => None,
     }
 }
 
 /// Walk the parsed YAML payload, extracting `$`-prefixed reserved keys into
-/// typed [`MetaValue`]s in source order. The keys are removed from `payload`
-/// so the caller can build the user-field portion from what remains.
+/// typed system-metadata [`PayloadItem`]s (`Quill` / `Kind` / `Id`) in
+/// source order. The keys are removed from `payload` so the caller can
+/// build the user-field portion from what remains.
 ///
 /// The accepted keys are the closed set `{$quill, $kind, $id}`. Any other
 /// `$`-prefixed key is a parse error. Duplicate keys cannot arise here —
@@ -56,9 +46,9 @@ impl MetaValue {
 ///
 /// `$quill` and `$kind` require string scalars (non-string YAML types are
 /// rejected). `$id` accepts any scalar and stringifies it.
-pub(super) fn extract_meta_from_payload(
+pub(super) fn extract_meta_items(
     payload: &mut JsonValue,
-) -> Result<Vec<MetaValue>, ParseError> {
+) -> Result<Vec<PayloadItem>, ParseError> {
     let map = match payload {
         JsonValue::Object(m) => m,
         _ => return Ok(Vec::new()),
@@ -84,7 +74,7 @@ pub(super) fn extract_meta_from_payload(
                         s, e
                     ))
                 })?;
-                MetaValue::Quill(reference)
+                PayloadItem::Quill { reference }
             }
             "$kind" => {
                 let s = match value {
@@ -104,9 +94,11 @@ pub(super) fn extract_meta_from_payload(
                         s
                     )));
                 }
-                MetaValue::Kind(s)
+                PayloadItem::Kind { value: s }
             }
-            "$id" => MetaValue::Id(scalar_to_string(&key, value)?),
+            "$id" => PayloadItem::Id {
+                value: scalar_to_string(&key, value)?,
+            },
             other => {
                 return Err(ParseError::InvalidStructure(format!(
                     "Unknown `{}` system-metadata key — the card-yaml block \
@@ -234,38 +226,38 @@ mod tests {
             "$kind": "main",
             "title": "Doc",
         });
-        let meta = extract_meta_from_payload(&mut payload).unwrap();
-        assert_eq!(meta.len(), 2);
-        assert!(matches!(meta[0], MetaValue::Quill(_)));
-        assert!(matches!(meta[1], MetaValue::Kind(_)));
+        let items = extract_meta_items(&mut payload).unwrap();
+        assert_eq!(items.len(), 2);
+        assert!(matches!(items[0], PayloadItem::Quill { .. }));
+        assert!(matches!(items[1], PayloadItem::Kind { .. }));
         assert_eq!(payload, json!({"title": "Doc"}));
     }
 
     #[test]
     fn extracts_id_from_number() {
         let mut payload = json!({"$id": 42});
-        let meta = extract_meta_from_payload(&mut payload).unwrap();
-        assert!(matches!(meta[0], MetaValue::Id(ref s) if s == "42"));
+        let items = extract_meta_items(&mut payload).unwrap();
+        assert!(matches!(items[0], PayloadItem::Id { ref value } if value == "42"));
     }
 
     #[test]
     fn rejects_unknown_dollar_key() {
         let mut payload = json!({"$unknown": "x"});
-        let err = extract_meta_from_payload(&mut payload).unwrap_err();
+        let err = extract_meta_items(&mut payload).unwrap_err();
         assert!(err.to_string().contains("Unknown `$unknown`"));
     }
 
     #[test]
     fn rejects_non_string_quill() {
         let mut payload = json!({"$quill": 42});
-        let err = extract_meta_from_payload(&mut payload).unwrap_err();
+        let err = extract_meta_items(&mut payload).unwrap_err();
         assert!(err.to_string().contains("$quill reference"));
     }
 
     #[test]
     fn rejects_invalid_kind_pattern() {
         let mut payload = json!({"$kind": "Bad-Kind"});
-        let err = extract_meta_from_payload(&mut payload).unwrap_err();
+        let err = extract_meta_items(&mut payload).unwrap_err();
         assert!(err.to_string().contains("Invalid `$kind`"));
     }
 

@@ -315,11 +315,19 @@ impl TryFrom<DocumentV0_82_0> for Document {
                 ));
             }
             if let Some(kind) = card.kind() {
-                if let Err(_) = validate_composable_kind(kind) {
-                    return Err(StorageError::Malformed(format!(
-                        "invalid composable card kind {kind:?}: must match \
-                         [a-z_][a-z0-9_]* and not be \"main\""
-                    )));
+                match validate_composable_kind(kind) {
+                    Ok(()) => {}
+                    Err(super::meta::CardKindError::InvalidName) => {
+                        return Err(StorageError::Malformed(format!(
+                            "invalid composable card kind {kind:?}: must match \
+                             [a-z_][a-z0-9_]*"
+                        )));
+                    }
+                    Err(super::meta::CardKindError::Reserved) => {
+                        return Err(StorageError::Malformed(format!(
+                            "composable card kind {kind:?} is reserved (root only)"
+                        )));
+                    }
                 }
             }
         }
@@ -456,16 +464,8 @@ pub struct CardV0_81_0 {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum SentinelV0_81_0 {
-    Main {
-        quill: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        id: Option<String>,
-    },
-    Card {
-        tag: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        id: Option<String>,
-    },
+    Main { quill: String },
+    Card { tag: String },
 }
 
 /// Frozen `0.81.0` representation of a card payload (user fields only).
@@ -535,20 +535,14 @@ impl From<CardV0_81_0> for CardV0_82_0 {
         // reconstructed model carries the canonical kind so the markdown
         // emit produces a parseable document.
         match c.sentinel {
-            SentinelV0_81_0::Main { quill, id } => {
+            SentinelV0_81_0::Main { quill } => {
                 items.push(PayloadItemV0_82_0::Quill { value: quill });
                 items.push(PayloadItemV0_82_0::Kind {
                     value: "main".into(),
                 });
-                if let Some(id) = id {
-                    items.push(PayloadItemV0_82_0::Id { value: id });
-                }
             }
-            SentinelV0_81_0::Card { tag, id } => {
+            SentinelV0_81_0::Card { tag } => {
                 items.push(PayloadItemV0_82_0::Kind { value: tag });
-                if let Some(id) = id {
-                    items.push(PayloadItemV0_82_0::Id { value: id });
-                }
             }
         }
 
@@ -799,7 +793,7 @@ title: Hi
             ]
         }"#;
         let err = serde_json::from_str::<Document>(json).unwrap_err();
-        assert!(err.to_string().contains("invalid composable card kind"));
+        assert!(err.to_string().contains("reserved (root only)"));
     }
 
     #[test]

@@ -276,9 +276,9 @@ impl PyQuill {
 /// - `to_markdown()` — emit canonical Quillmark Markdown
 /// - `to_json()` — emit the versioned storage DTO string
 /// - `quill_ref()` — quill reference string
-/// - `payload` — dict of typed YAML fields (no QUILL/BODY/CARDS)
 /// - `body` — global Markdown body (str, never None)
-/// - `cards` — list of `Card` dicts
+/// - `main` / `cards` — entry card / composable card dicts, each carrying
+///   `kind`, `payload_items` (ordered field/comment list), and `body`
 /// - `warnings` — list of `Diagnostic` objects
 #[pyclass(name = "Document")]
 pub struct PyDocument {
@@ -377,7 +377,7 @@ impl PyDocument {
     /// model version, not the running crate version.
     #[staticmethod]
     fn current_schema_version() -> &'static str {
-        quillmark_core::document::SCHEMA_V0_81_0
+        quillmark_core::document::SCHEMA_V0_82_0
     }
 
     /// Emit canonical Quillmark Markdown.
@@ -481,22 +481,11 @@ impl PyDocument {
         self.inner.main().body()
     }
 
-    /// Typed YAML payload fields on the main card (no QUILL, BODY, or CARDS keys).
-    ///
-    /// Convenience accessor equivalent to `doc.main['payload']`.
-    #[getter]
-    fn payload<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        let dict = PyDict::new(py);
-        for (key, value) in self.inner.main().payload().iter() {
-            dict.set_item(key, quillvalue_to_py(py, value)?)?;
-        }
-        Ok(dict)
-    }
-
     /// The document's main (entry) card as a dict.
     ///
-    /// Keys: `kind` (str), `payload` (dict), `payload_items` (list),
-    /// `fields` (dict — alias of `payload`), `body` (str).
+    /// Keys: `kind` (str), `payload_items` (list of field/comment dicts),
+    /// `body` (str). Each item in `payload_items` has `type` (str —
+    /// `"field"` or `"comment"`), plus type-specific keys.
     #[getter]
     fn main<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         card_to_pydict(py, self.inner.main())
@@ -504,8 +493,8 @@ impl PyDocument {
 
     /// Ordered list of composable card blocks.
     ///
-    /// Each card is a dict with keys: `kind` (str), `payload` (dict),
-    /// `payload_items` (list), `fields` (dict), `body` (str).
+    /// Each card is a dict with keys: `kind` (str), `payload_items`
+    /// (list), `body` (str).
     #[getter]
     fn cards<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         let mut result = Vec::new();
@@ -943,30 +932,21 @@ fn card_to_pydict<'py>(
     let d = PyDict::new(py);
     d.set_item("kind", card.kind().unwrap_or(""))?;
 
-    // Map-keyed payload view (values only, no comments).
-    let fm = PyDict::new(py);
-    for (k, v) in card.payload().iter() {
-        fm.set_item(k, quillvalue_to_py(py, v)?)?;
-    }
-    d.set_item("payload", fm.clone())?;
-    d.set_item("fields", fm)?;
-
-    // Ordered item list with comments and fill flags. Typed `$` entries
-    // are exposed via the typed accessors (e.g. `card["kind"]`); for full
-    // round-trip fidelity through the binding, callers use the versioned
-    // storage DTO via `Document.to_json()`.
+    // Ordered item list — fields and comments in source order. Typed `$`
+    // entries are exposed via the typed accessors (e.g. `card["kind"]`);
+    // for full round-trip fidelity callers use `Document.to_json()`.
     let items = pyo3::types::PyList::empty(py);
     for item in card.payload().items() {
         let entry = PyDict::new(py);
         match item {
             quillmark_core::PayloadItem::Field { key, value, fill } => {
-                entry.set_item("kind", "field")?;
+                entry.set_item("type", "field")?;
                 entry.set_item("key", key)?;
                 entry.set_item("value", quillvalue_to_py(py, value)?)?;
                 entry.set_item("fill", *fill)?;
             }
             quillmark_core::PayloadItem::Comment { text, inline } => {
-                entry.set_item("kind", "comment")?;
+                entry.set_item("type", "comment")?;
                 entry.set_item("text", text)?;
                 entry.set_item("inline", *inline)?;
             }

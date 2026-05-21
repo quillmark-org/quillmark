@@ -14,10 +14,10 @@
 //! is what keeps inline-comment preservation symmetric across the
 //! `$`/non-`$` boundary.
 //!
-//! `extract_meta_from_payload` returns typed [`MetaValue`]s in source order;
-//! `build_payload` then walks the prescan items, replacing `$` field
-//! markers with the corresponding typed `Quill`/`Kind`/`Id` payload item
-//! and preserving every comment as-authored.
+//! `extract_meta_items` returns typed system [`PayloadItem`]s in source
+//! order; `build_payload` then walks the prescan items, splicing each `$`
+//! field marker back to the typed item produced from the parsed YAML and
+//! preserving every comment as-authored.
 
 use std::collections::HashMap;
 
@@ -26,7 +26,7 @@ use crate::value::QuillValue;
 use crate::Diagnostic;
 
 use super::fences::find_metadata_blocks;
-use super::meta::{extract_meta_from_payload, validate_payload_yaml, MetaValue};
+use super::meta::{extract_meta_items, meta_key, validate_payload_yaml};
 use super::payload::{Payload, PayloadItem};
 use super::prescan::{prescan_fence_content, NestedComment, PreItem};
 use super::{Card, Document};
@@ -54,8 +54,8 @@ pub(super) struct MetadataBlock {
     pub(super) start: usize, // Position of the opening `~~~card-yaml`
     pub(super) end: usize,   // Position after the closing `~~~`
     pub(super) yaml_value: Option<serde_json::Value>, // Parsed YAML payload as JSON
-    /// Typed `$` system metadata values in source order.
-    pub(super) meta_values: Vec<MetaValue>,
+    /// Typed `$` system-metadata payload items in source order.
+    pub(super) meta_items: Vec<PayloadItem>,
     /// Pre-scan items (comments + fill-tagged field keys) in source order.
     pub(super) pre_items: Vec<PreItem>,
     /// Pre-scan nested comments (with structural paths).
@@ -109,7 +109,7 @@ pub(super) fn build_block(
     }
 
     let content = pre.cleaned_yaml.trim().to_string();
-    let (meta_values, yaml_value) = if content.is_empty() {
+    let (meta_items, yaml_value) = if content.is_empty() {
         (Vec::new(), None)
     } else {
         let mut parsed = match serde_saphyr::from_str_with_options::<serde_json::Value>(
@@ -126,7 +126,7 @@ pub(super) fn build_block(
                 });
             }
         };
-        let meta = extract_meta_from_payload(&mut parsed)?;
+        let meta = extract_meta_items(&mut parsed)?;
         (meta, Some(validate_payload_yaml(parsed)?))
     };
 
@@ -145,7 +145,7 @@ pub(super) fn build_block(
         start: block_start,
         end: block_end,
         yaml_value,
-        meta_values,
+        meta_items,
         pre_items: pre.items,
         pre_nested_comments: pre.nested_comments,
         pre_warnings: pre.warnings,
@@ -196,9 +196,9 @@ pub(super) fn decompose_with_warnings(
     // The root block must declare a `$quill` reference.
     let root_block = &blocks[0];
     let has_root_quill = root_block
-        .meta_values
+        .meta_items
         .iter()
-        .any(|m| matches!(m, MetaValue::Quill(_)));
+        .any(|m| matches!(m, PayloadItem::Quill { .. }));
     if !has_root_quill {
         return Err(ParseError::MissingQuill(
             "The document's root card-yaml block must declare `$quill: <name>`.".to_string(),
@@ -206,8 +206,8 @@ pub(super) fn decompose_with_warnings(
     }
 
     // The root block must declare `$kind: main`.
-    let root_kind = root_block.meta_values.iter().find_map(|m| match m {
-        MetaValue::Kind(k) => Some(k.as_str()),
+    let root_kind = root_block.meta_items.iter().find_map(|m| match m {
+        PayloadItem::Kind { value } => Some(value.as_str()),
         _ => None,
     });
     match root_kind {
@@ -230,7 +230,7 @@ pub(super) fn decompose_with_warnings(
 
     // Build the root block's payload.
     let main_payload = build_payload(
-        &root_block.meta_values,
+        &root_block.meta_items,
         &root_block.pre_items,
         &root_block.pre_nested_comments,
         &root_block.yaml_value,
@@ -264,9 +264,9 @@ pub(super) fn decompose_with_warnings(
 
         // Only the root block binds the document to a quill.
         if block
-            .meta_values
+            .meta_items
             .iter()
-            .any(|m| matches!(m, MetaValue::Quill(_)))
+            .any(|m| matches!(m, PayloadItem::Quill { .. }))
         {
             return Err(ParseError::InvalidStructure(
                 "A composable card-yaml block must not declare `$quill` — only \
@@ -276,8 +276,8 @@ pub(super) fn decompose_with_warnings(
         }
 
         // `main` is reserved for the document root.
-        let kind_is_main = block.meta_values.iter().any(|m| match m {
-            MetaValue::Kind(k) => k == "main",
+        let kind_is_main = block.meta_items.iter().any(|m| match m {
+            PayloadItem::Kind { value } => value == "main",
             _ => false,
         });
         if kind_is_main {
@@ -289,7 +289,7 @@ pub(super) fn decompose_with_warnings(
         }
 
         let card_payload = build_payload(
-            &block.meta_values,
+            &block.meta_items,
             &block.pre_items,
             &block.pre_nested_comments,
             &block.yaml_value,
@@ -328,15 +328,15 @@ pub(super) fn decompose_with_warnings(
 }
 
 /// Build a unified [`Payload`] from the pre-scan items, the typed `$`
-/// metadata values, and the parsed YAML mapping.
+/// system-metadata items, and the parsed YAML mapping.
 ///
 /// Walks `pre_items` in source order. Each non-`$` field pulls its typed
 /// value from `yaml_value`; each `$` field is replaced with the matching
-/// typed [`MetaValue`] from `meta_values`; comments pass through verbatim.
-/// Any parsed-map keys the pre-scan didn't capture are appended at the end
-/// so we never silently drop values.
+/// typed system [`PayloadItem`] from `meta_items`; comments pass through
+/// verbatim. Any parsed-map keys the pre-scan didn't capture are appended
+/// at the end so we never silently drop values.
 fn build_payload(
-    meta_values: &[MetaValue],
+    meta_items: &[PayloadItem],
     pre_items: &[PreItem],
     pre_nested_comments: &[NestedComment],
     yaml_value: &Option<serde_json::Value>,
@@ -351,11 +351,19 @@ fn build_payload(
         }
     };
 
-    // Look up typed `$` values by `$key`. Each entry is consumed at most
+    // Look up typed `$` items by `$key`. Each entry is consumed at most
     // once; anything left over at the end is appended in source order.
-    let mut typed_by_key: HashMap<&'static str, MetaValue> = HashMap::with_capacity(meta_values.len());
-    for m in meta_values {
-        typed_by_key.insert(m.key(), m.clone());
+    // `extract_meta_items` only ever returns the three system variants;
+    // assert that contract here so a regression upstream is loud, not a
+    // silent drop of user fields/comments.
+    let mut typed_by_key: HashMap<&'static str, PayloadItem> =
+        HashMap::with_capacity(meta_items.len());
+    for m in meta_items {
+        let k = meta_key(m).expect(
+            "build_payload: meta_items must contain only system variants \
+             ($quill/$kind/$id); got a Field or Comment",
+        );
+        typed_by_key.insert(k, m.clone());
     }
 
     let mut items: Vec<PayloadItem> = Vec::new();
@@ -373,7 +381,7 @@ fn build_payload(
             PreItem::Field { key, fill } => {
                 if key.starts_with('$') {
                     if let Some(meta) = typed_by_key.remove(key.as_str()) {
-                        items.push(meta_to_payload_item(meta));
+                        items.push(meta);
                     }
                     continue;
                 }
@@ -397,12 +405,12 @@ fn build_payload(
 
     // Drain any typed `$` entries the prescan didn't reach (shouldn't
     // happen in well-formed input but keeps the conversion total). Walk
-    // `meta_values` in source order so the relative `$` ordering is
+    // `meta_items` in source order so the relative `$` ordering is
     // preserved.
-    for meta in meta_values {
-        if typed_by_key.contains_key(meta.key()) {
-            items.push(meta_to_payload_item(meta.clone()));
-            typed_by_key.remove(meta.key());
+    for meta in meta_items {
+        let k = meta_key(meta).expect("see invariant above");
+        if typed_by_key.remove(k).is_some() {
+            items.push(meta.clone());
         }
     }
 
@@ -422,12 +430,4 @@ fn build_payload(
         items,
         pre_nested_comments.to_vec(),
     ))
-}
-
-fn meta_to_payload_item(meta: MetaValue) -> PayloadItem {
-    match meta {
-        MetaValue::Quill(reference) => PayloadItem::Quill { reference },
-        MetaValue::Kind(value) => PayloadItem::Kind { value },
-        MetaValue::Id(value) => PayloadItem::Id { value },
-    }
 }

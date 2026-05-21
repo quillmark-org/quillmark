@@ -2381,7 +2381,7 @@ card_kinds:
 
 #[test]
 fn quill_yaml_deep_nesting_is_rejected() {
-    // Mirrors the frontmatter depth-budget regression in
+    // Mirrors the card-yaml payload depth-budget regression in
     // crates/quillmark/tests/security_tests.rs::test_yaml_depth_limit_attack.
     // Deeply nested YAML under any `quill` subtree must be refused by the
     // shared depth budget (`MAX_YAML_DEPTH`).

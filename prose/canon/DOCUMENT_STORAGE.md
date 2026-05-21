@@ -73,17 +73,12 @@ payload items is `type` (not `kind`) to keep it unambiguous next to the
 
 Documents written by `quillmark-core` `0.81.x` carry
 `"schema": "quillmark/document@0.81.0"` and a separate `sentinel` + `frontmatter`
-shape. Readers accept them and migrate forward on load; writers no longer
-produce this shape.
-
-```rust
-use quillmark_core::Document;
-
-let doc = Document::from_markdown(src)?;
-let json = serde_json::to_string(&doc)?;          // store
-let restored: Document = serde_json::from_str(&json)?;  // load
-assert_eq!(doc, restored);
-```
+shape. Readers accept them and migrate forward to V0_82_0 on load via
+`From<DocumentV0_81_0> for DocumentV0_82_0`; writers no longer produce this
+shape. The migration is structural — no defaults are invented and no
+field-level information is dropped — so a `0.81.x`-stored document and the
+same document re-parsed from its Markdown source produce equal `Document`
+values.
 
 ## Byte-stability
 
