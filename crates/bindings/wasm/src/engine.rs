@@ -1,6 +1,6 @@
 //! Quillmark WASM Engine - Simplified API
 
-use crate::error::WasmError;
+use crate::error::{catch_render_panic, WasmError};
 use crate::types::{Card, Diagnostic, RenderOptions, RenderResult};
 use js_sys::{Array, Uint8Array};
 use serde::{Deserialize, Serialize};
@@ -243,10 +243,14 @@ impl Quill {
     ) -> Result<RenderResult, JsValue> {
         let start = now_ms();
         let rust_opts: quillmark_core::RenderOptions = opts.unwrap_or_default().into();
-        let result = self
-            .inner
-            .render(&doc.inner, &rust_opts)
-            .map_err(|e| WasmError::from(e).to_js_value())?;
+        let inner = std::panic::AssertUnwindSafe(&self.inner);
+        let doc_inner = std::panic::AssertUnwindSafe(&doc.inner);
+        let result = catch_render_panic(move || {
+            inner
+                .render(*doc_inner, &rust_opts)
+                .map_err(WasmError::from)
+        })
+        .map_err(|e| e.to_js_value())?;
         let mut warnings: Vec<Diagnostic> =
             doc.parse_warnings.iter().cloned().map(Into::into).collect();
         warnings.extend(result.warnings.into_iter().map(Into::into));
@@ -260,10 +264,10 @@ impl Quill {
 
     #[wasm_bindgen(js_name = open)]
     pub fn open(&self, doc: &Document) -> Result<RenderSession, JsValue> {
-        let session = self
-            .inner
-            .open(&doc.inner)
-            .map_err(|e| WasmError::from(e).to_js_value())?;
+        let inner = std::panic::AssertUnwindSafe(&self.inner);
+        let doc_inner = std::panic::AssertUnwindSafe(&doc.inner);
+        let session = catch_render_panic(move || inner.open(*doc_inner).map_err(WasmError::from))
+            .map_err(|e| e.to_js_value())?;
         Ok(RenderSession {
             inner: session,
             backend_id: self.inner.backend_id().to_string(),
@@ -954,10 +958,9 @@ impl RenderSession {
         let start = now_ms();
         let rust_opts: quillmark_core::RenderOptions = opts.unwrap_or_default().into();
 
-        let result = self
-            .inner
-            .render(&rust_opts)
-            .map_err(|e| WasmError::from(e).to_js_value())?;
+        let inner = std::panic::AssertUnwindSafe(&self.inner);
+        let result = catch_render_panic(move || inner.render(&rust_opts).map_err(WasmError::from))
+            .map_err(|e| e.to_js_value())?;
 
         Ok(RenderResult {
             artifacts: result.artifacts.into_iter().map(Into::into).collect(),

@@ -86,6 +86,40 @@ impl From<&str> for WasmError {
     }
 }
 
+/// Run `f` and convert any Rust panic into a `render::internal` diagnostic so
+/// MCP/JS callers never see a raw Rust panic string. With `panic = "unwind"`
+/// (dev profile) the panic is caught here; with `panic = "abort"` (release
+/// WASM) the wrapper is a passthrough — fix the root cause in that case.
+pub(crate) fn catch_render_panic<F, R>(f: F) -> Result<R, WasmError>
+where
+    F: FnOnce() -> Result<R, WasmError> + std::panic::UnwindSafe,
+{
+    match std::panic::catch_unwind(f) {
+        Ok(result) => result,
+        Err(payload) => {
+            let detail = if let Some(s) = payload.downcast_ref::<&'static str>() {
+                (*s).to_string()
+            } else if let Some(s) = payload.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "unknown panic payload".to_string()
+            };
+            Err(WasmError {
+                diagnostics: vec![Diagnostic::new(
+                    Severity::Error,
+                    format!("internal render error: {detail}"),
+                )
+                .with_code("render::internal".to_string())
+                .with_hint(
+                    "This is a bug in Quillmark, not a problem with the input. \
+                     Please file an issue with the document that triggered it."
+                        .to_string(),
+                )],
+            })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,5 +193,31 @@ mod tests {
         assert_eq!(wasm_err.message(), "Simple error");
         assert_eq!(wasm_err.diagnostics.len(), 1);
         assert_eq!(wasm_err.diagnostics[0].message, "Simple error");
+    }
+
+    #[test]
+    #[cfg_attr(
+        not(panic = "unwind"),
+        ignore = "panic=abort cannot catch the unwind; the production fix is to make rendering panic-free"
+    )]
+    fn catch_render_panic_converts_panic_to_internal_diagnostic() {
+        // A &str-slice past a char boundary mirrors the production panic this
+        // wrapper was added to contain (`byte index 2 is not a char boundary`).
+        let result: Result<(), WasmError> = catch_render_panic(|| {
+            let s = "\u{2013}";
+            #[allow(clippy::no_effect)]
+            let _ = &s[..2];
+            Ok(())
+        });
+        let err = result.expect_err("panic should be caught");
+        assert_eq!(err.diagnostics.len(), 1);
+        let diag = &err.diagnostics[0];
+        assert_eq!(diag.code.as_deref(), Some("render::internal"));
+        assert!(
+            diag.message.contains("internal render error"),
+            "got: {}",
+            diag.message
+        );
+        assert!(diag.hint.is_some(), "hint should suggest filing an issue");
     }
 }

@@ -153,7 +153,10 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
                 stack.pop();
             }
 
-            let after_dash_full = if trimmed == "-" { "" } else { &trimmed[2..] };
+            // `trimmed` is either `"-"` or starts with `"- "` (case 2 guard).
+            // `strip_prefix` keeps this categorically free of byte-range
+            // slicing on user content even though `"- "` is two ASCII bytes.
+            let after_dash_full = trimmed.strip_prefix("- ").unwrap_or("");
             let (after_dash, trailing_comment) = split_trailing_comment(after_dash_full);
             let after_dash_trimmed = after_dash.trim_start();
             let inline_indent_offset = indent + 2 + (after_dash.len() - after_dash_trimmed.len());
@@ -684,6 +687,30 @@ mod tests {
                 fill: true,
             }]
         );
+    }
+
+    #[test]
+    fn sequence_with_multibyte_after_dash_does_not_panic() {
+        // En-dash (3 bytes), em-dash (3 bytes), smart quote (3 bytes), and emoji
+        // (4 bytes) appearing immediately after `- ` or as a sibling bullet
+        // marker. Earlier versions sliced `&trimmed[2..]` here; if that ever
+        // regresses to indexing inside a multi-byte codepoint, this test will
+        // panic with `"byte index 2 is not a char boundary"`.
+        let inputs = [
+            "arr:\n  - – en-dash\n  - — em-dash\n",
+            "arr:\n  - \u{2013}line\n  - \u{2014}line\n",
+            "arr:\n  - \u{201C}smart-quoted\u{201D}\n",
+            "arr:\n  - \u{1F600} emoji\n",
+            // A literal block scalar holding mixed dashes — mirrors the eval
+            // payload (`bullets: |` with `–` substituted for `-`).
+            "bullets: |\n  - (U) **A:** text\n  – (U) **B:** text\n",
+        ];
+        for input in inputs {
+            let out = prescan_fence_content(input);
+            // We don't care about the exact items; just that no panic occurred
+            // and that the cleaned YAML round-trips line count.
+            assert_eq!(out.cleaned_yaml.lines().count(), input.lines().count());
+        }
     }
 
     #[test]
