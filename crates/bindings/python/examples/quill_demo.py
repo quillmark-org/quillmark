@@ -28,8 +28,8 @@ def main():
     quill = engine.quill_from_path(str(taro_dir))
 
     markdown = """~~~card-yaml
-#@quill: taro
-#@kind: main
+$quill: taro
+$kind: main
 author: Alice
 ice_cream: Taro
 title: My Favorite Ice Cream
@@ -42,19 +42,19 @@ I love **Taro** ice cream!
 
     parsed = Document.from_markdown(markdown)
 
-    print(f"Loaded quill: {quill.name}")
-    print(f"Backend: {quill.backend}")
-    print(f"Supported formats: {quill.supported_formats()}")
+    print(f"Loaded quill: {quill.metadata['name']}")
+    print(f"Backend: {quill.backend_id}")
+    print(f"Supported formats: {quill.supported_formats}")
 
     result = quill.render(parsed, OutputFormat.PDF)
 
-    print(f"Generated {len(result.artifacts)} artifact(s)")
+    print(f"Generated {len(result.artifacts)} artifact(s) in {result.render_time_ms:.1f} ms")
     for i, artifact in enumerate(result.artifacts):
         output_name = (
             "pdf"
-            if artifact.output_format == OutputFormat.PDF
+            if artifact.format == OutputFormat.PDF
             else "svg"
-            if artifact.output_format == OutputFormat.SVG
+            if artifact.format == OutputFormat.SVG
             else "txt"
         )
         output_path = Path(f"/tmp/taro_example_{i}.{output_name}")

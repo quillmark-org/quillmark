@@ -2,7 +2,7 @@
 
 import pytest
 
-from quillmark import Document, ParseError
+from quillmark import Document, QuillmarkError
 
 import os
 from pathlib import Path
@@ -37,12 +37,12 @@ def test_parse_invalid_yaml():
     """Test parsing invalid YAML payload."""
     invalid_md = (
         "~~~card-yaml\n"
-        "#@quill: test_quill\n"
-        "#@kind: main\n"
+        "$quill: test_quill\n"
+        "$kind: main\n"
         "title: [unclosed bracket\n"
         "~~~\n\nContent\n"
     )
-    with pytest.raises(ParseError):
+    with pytest.raises(QuillmarkError):
         Document.from_markdown(invalid_md)
 
 
@@ -65,7 +65,7 @@ def test_body_is_str(taro_md):
 
 def test_body_empty_when_absent():
     """Test that body is empty string when no body content."""
-    md = "~~~card-yaml\n#@quill: taro\n#@kind: main\nauthor: Test\ntitle: Test\nice_cream: Vanilla\n~~~\n"
+    md = "~~~card-yaml\n$quill: taro\n$kind: main\nauthor: Test\ntitle: Test\nice_cream: Vanilla\n~~~\n"
     doc = Document.from_markdown(md)
     assert doc.body == ""
 
@@ -73,8 +73,8 @@ def test_body_empty_when_absent():
 def test_cards_access():
     """Test accessing typed cards list."""
     md = (
-        "~~~card-yaml\n#@quill: my_quill\n#@kind: main\ntitle: Main\n~~~\n\nGlobal body.\n\n"
-        "~~~card-yaml\n#@kind: note\nfoo: bar\n~~~\n\nCard body.\n"
+        "~~~card-yaml\n$quill: my_quill\n$kind: main\ntitle: Main\n~~~\n\nGlobal body.\n\n"
+        "~~~card-yaml\n$kind: note\nfoo: bar\n~~~\n\nCard body.\n"
     )
     doc = Document.from_markdown(md)
     assert len(doc.cards) == 1
@@ -86,7 +86,7 @@ def test_cards_access():
 
 def test_cards_empty_when_none():
     """Test that cards is an empty list when no cards present."""
-    md = "~~~card-yaml\n#@quill: taro\n#@kind: main\nauthor: Test\ntitle: Test\nice_cream: Vanilla\n~~~\n\nBody.\n"
+    md = "~~~card-yaml\n$quill: taro\n$kind: main\nauthor: Test\ntitle: Test\nice_cream: Vanilla\n~~~\n\nBody.\n"
     doc = Document.from_markdown(md)
     assert doc.cards == []
 
@@ -117,7 +117,7 @@ def test_json_dto_round_trip(taro_md):
 
     dto = doc.to_json()
     assert isinstance(dto, str)
-    assert "quillmark/document@0.81.0" in dto
+    assert "quillmark/document@0.82.0" in dto
 
     restored = Document.from_json(dto)
     assert restored.quill_ref() == doc.quill_ref()
@@ -126,16 +126,16 @@ def test_json_dto_round_trip(taro_md):
 
 def test_json_dto_rejects_invalid_input():
     """from_json rejects an unknown schema tag and malformed JSON."""
-    with pytest.raises(ParseError):
+    with pytest.raises(QuillmarkError):
         Document.from_json('{"schema":"quillmark/document@0.99.0","main":{}}')
-    with pytest.raises(ParseError):
+    with pytest.raises(QuillmarkError):
         Document.from_json("not json at all")
 
 
 def test_json_dto_drops_parse_warnings():
     """A DTO-reconstructed document carries no parse-time warnings."""
     # An unknown YAML tag triggers a `parse::unsupported_yaml_tag` warning.
-    warn_md = "~~~card-yaml\n#@quill: my_quill\n#@kind: main\ntitle: Hi\nweird: !custom value\n~~~\n\nBody\n"
+    warn_md = "~~~card-yaml\n$quill: my_quill\n$kind: main\ntitle: Hi\nweird: !custom value\n~~~\n\nBody\n"
     doc = Document.from_markdown(warn_md)
     assert len(doc.warnings) > 0, "source document should have a parse warning"
 
@@ -165,7 +165,7 @@ def test_schema_version_of_reads_dto(taro_md):
     doc = Document.from_markdown(taro_md)
     dto = doc.to_json()
 
-    assert Document.schema_version_of(dto) == "quillmark/document@0.81.0"
+    assert Document.schema_version_of(dto) == "quillmark/document@0.82.0"
 
 
 def test_schema_version_of_returns_unknown_future_versions():
@@ -248,9 +248,9 @@ def test_eq_after_mutation(taro_md):
 def test_card_count_matches_cards_len():
     """card_count is O(1) shortcut for len(cards)."""
     md = (
-        "~~~card-yaml\n#@quill: q\n#@kind: main\ntitle: T\n~~~\n\nBody.\n\n"
-        "~~~card-yaml\n#@kind: note\n~~~\n\nFirst.\n\n"
-        "~~~card-yaml\n#@kind: summary\n~~~\n\nSecond.\n"
+        "~~~card-yaml\n$quill: q\n$kind: main\ntitle: T\n~~~\n\nBody.\n\n"
+        "~~~card-yaml\n$kind: note\n~~~\n\nFirst.\n\n"
+        "~~~card-yaml\n$kind: summary\n~~~\n\nSecond.\n"
     )
     doc = Document.from_markdown(md)
     assert doc.card_count == 2
@@ -268,8 +268,8 @@ def test_repr_includes_quill_ref(taro_md):
 def test_remove_card_field_returns_value():
     """remove_card_field removes and returns the field's value."""
     md = (
-        "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\nBody.\n\n"
-        "~~~card-yaml\n#@kind: note\nfoo: bar\nbaz: qux\n~~~\n"
+        "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\nBody.\n\n"
+        "~~~card-yaml\n$kind: note\nfoo: bar\nbaz: qux\n~~~\n"
     )
     doc = Document.from_markdown(md)
 
@@ -282,8 +282,8 @@ def test_remove_card_field_returns_value():
 def test_remove_card_field_absent_returns_none():
     """remove_card_field returns None when the field doesn't exist."""
     md = (
-        "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\nBody.\n\n"
-        "~~~card-yaml\n#@kind: note\n~~~\n"
+        "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\nBody.\n\n"
+        "~~~card-yaml\n$kind: note\n~~~\n"
     )
     doc = Document.from_markdown(md)
     assert doc.remove_card_field(0, "missing") is None
@@ -291,22 +291,20 @@ def test_remove_card_field_absent_returns_none():
 
 def test_remove_card_field_out_of_range():
     """remove_card_field raises EditError for an out-of-range card index."""
-    from quillmark import EditError
 
-    md = "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n"
+    md = "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n"
     doc = Document.from_markdown(md)
-    with pytest.raises(EditError, match="IndexOutOfRange"):
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
         doc.remove_card_field(0, "foo")
 
 
 def test_remove_card_field_legacy_uppercase_rejected():
     """remove_card_field rejects legacy uppercase names as InvalidFieldName."""
-    from quillmark import EditError
 
     md = (
-        "~~~card-yaml\n#@quill: q\n#@kind: main\n~~~\n\nBody.\n\n"
-        "~~~card-yaml\n#@kind: note\n~~~\n"
+        "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\nBody.\n\n"
+        "~~~card-yaml\n$kind: note\n~~~\n"
     )
     doc = Document.from_markdown(md)
-    with pytest.raises(EditError, match="InvalidFieldName"):
+    with pytest.raises(QuillmarkError, match="InvalidFieldName"):
         doc.remove_card_field(0, "BODY")

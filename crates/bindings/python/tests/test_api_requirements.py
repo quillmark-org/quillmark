@@ -3,7 +3,7 @@
 import re
 
 import pytest
-from quillmark import Quillmark, Document, OutputFormat, ParseError, EditError
+from quillmark import Quillmark, Document, OutputFormat, QuillmarkError
 from conftest import QUILLS_PATH, _latest_version
 
 
@@ -29,12 +29,12 @@ def field_keys(card):
 
 def test_parsed_document_quill_ref():
     """Test that Document exposes quill_ref method."""
-    markdown_with_quill = "~~~card-yaml\n#@quill: my_quill\n#@kind: main\ntitle: Test\n~~~\n\n# Content\n"
+    markdown_with_quill = "~~~card-yaml\n$quill: my_quill\n$kind: main\ntitle: Test\n~~~\n\n# Content\n"
     parsed = Document.from_markdown(markdown_with_quill)
     assert parsed.quill_ref() == "my_quill"
 
     markdown_without_quill = "# Just content\n\nNo card-yaml block here.\n"
-    with pytest.raises(ParseError):
+    with pytest.raises(QuillmarkError):
         Document.from_markdown(markdown_without_quill)
 
 
@@ -43,22 +43,16 @@ def test_quill_properties(taro_quill_dir):
     engine = Quillmark()
     quill = engine.quill_from_path(str(taro_quill_dir))
 
-    assert quill.name == "taro"
-    assert quill.backend == "typst"
-    assert quill.plate is not None
-    assert isinstance(quill.plate, str)
-
     metadata = quill.metadata
     assert isinstance(metadata, dict)
+    assert metadata["name"] == "taro"
+    assert quill.backend_id == "typst"
+    assert isinstance(quill.blueprint, str) and quill.blueprint != ""
 
     schema = quill.schema
     assert isinstance(schema, dict)
     assert "main" in schema
     assert "fields" in schema["main"]
-
-    schema_yaml = quill.schema_yaml
-    assert isinstance(schema_yaml, str)
-    assert "fields:" in schema_yaml
 
     supported_formats = quill.supported_formats
     assert isinstance(supported_formats, list)
@@ -71,17 +65,17 @@ def test_full_workflow():
     taro_dir = QUILLS_PATH / "taro"
     quill = engine.quill_from_path(str(_latest_version(taro_dir)))
 
-    markdown = "~~~card-yaml\n#@quill: taro\n#@kind: main\nauthor: Test Author\nice_cream: Chocolate\ntitle: Test\n~~~\n\nContent.\n"
+    markdown = "~~~card-yaml\n$quill: taro\n$kind: main\nauthor: Test Author\nice_cream: Chocolate\ntitle: Test\n~~~\n\nContent.\n"
     parsed = Document.from_markdown(markdown)
     assert parsed.quill_ref() == "taro"
 
     assert "taro" in quill.quill_ref
-    assert quill.backend == "typst"
+    assert quill.backend_id == "typst"
     assert OutputFormat.PDF in quill.supported_formats
 
     result = quill.render(parsed, OutputFormat.PDF)
     assert len(result.artifacts) > 0
-    assert result.artifacts[0].output_format == OutputFormat.PDF
+    assert result.artifacts[0].format == OutputFormat.PDF
     assert len(result.artifacts[0].bytes) > 0
 
 
@@ -89,26 +83,26 @@ def test_full_workflow():
 # Phase 3 — editor surface tests
 # ---------------------------------------------------------------------------
 
-SIMPLE_MD = "~~~card-yaml\n#@quill: test_quill\n#@kind: main\ntitle: Hello\nauthor: Alice\n~~~\n\nBody text.\n"
+SIMPLE_MD = "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Hello\nauthor: Alice\n~~~\n\nBody text.\n"
 
 MD_WITH_CARDS = """\
 ~~~card-yaml
-#@quill: test_quill
-#@kind: main
+$quill: test_quill
+$kind: main
 title: Hello
 ~~~
 
 Body.
 
 ~~~card-yaml
-#@kind: note
+$kind: note
 foo: bar
 ~~~
 
 Card one.
 
 ~~~card-yaml
-#@kind: summary
+$kind: summary
 ~~~
 
 Card two.
@@ -133,7 +127,7 @@ def test_set_field_legacy_uppercase_rejected_matrix():
     """set_field raises InvalidFieldName for the legacy uppercase sentinels."""
     for name in ("BODY", "CARDS", "QUILL", "CARD"):
         doc = Document.from_markdown(SIMPLE_MD)
-        with pytest.raises(EditError, match="InvalidFieldName"):
+        with pytest.raises(QuillmarkError, match="InvalidFieldName"):
             doc.set_field(name, "value")
 
 
@@ -141,7 +135,7 @@ def test_card_set_field_legacy_uppercase_rejected_matrix():
     """Card update_card_field raises InvalidFieldName for legacy uppercase names."""
     for name in ("BODY", "CARDS", "QUILL", "CARD"):
         doc = Document.from_markdown(MD_WITH_CARDS)
-        with pytest.raises(EditError, match="InvalidFieldName"):
+        with pytest.raises(QuillmarkError, match="InvalidFieldName"):
             doc.update_card_field(0, name, "value")
 
 
@@ -149,14 +143,14 @@ def test_set_field_dollar_prefix_rejected_matrix():
     """set_field raises InvalidFieldName for `$`-prefixed names."""
     for name in ("$body", "$cards", "$quill", "$kind"):
         doc = Document.from_markdown(SIMPLE_MD)
-        with pytest.raises(EditError, match="InvalidFieldName"):
+        with pytest.raises(QuillmarkError, match="InvalidFieldName"):
             doc.set_field(name, "value")
 
 
 def test_set_field_invalid_field_name():
     """set_field raises EditError for an uppercase/invalid name."""
     doc = Document.from_markdown(SIMPLE_MD)
-    with pytest.raises(EditError, match="InvalidFieldName"):
+    with pytest.raises(QuillmarkError, match="InvalidFieldName"):
         doc.set_field("Title", "value")
 
 
@@ -177,7 +171,7 @@ def test_remove_field_absent():
 def test_remove_field_legacy_uppercase_rejected():
     """remove_field raises InvalidFieldName for legacy uppercase names."""
     doc = Document.from_markdown(SIMPLE_MD)
-    with pytest.raises(EditError, match="InvalidFieldName"):
+    with pytest.raises(QuillmarkError, match="InvalidFieldName"):
         doc.remove_field("BODY")
 
 
@@ -207,7 +201,7 @@ def test_push_card():
 def test_push_card_invalid_kind():
     """push_card raises EditError for an invalid kind."""
     doc = Document.from_markdown(SIMPLE_MD)
-    with pytest.raises(EditError, match="InvalidKindName"):
+    with pytest.raises(QuillmarkError, match="InvalidKindName"):
         doc.push_card({"kind": "BadKind"})
 
 
@@ -222,7 +216,7 @@ def test_insert_card_at_front():
 def test_insert_card_out_of_range():
     """insert_card raises EditError when index > len."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
-    with pytest.raises(EditError, match="IndexOutOfRange"):
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
         doc.insert_card(5, {"kind": "note"})
 
 
@@ -262,7 +256,7 @@ def test_move_card_last_to_first():
 def test_move_card_out_of_range():
     """move_card raises EditError for an out-of-range index."""
     doc = Document.from_markdown(MD_WITH_CARDS)
-    with pytest.raises(EditError, match="IndexOutOfRange"):
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
         doc.move_card(10, 0)
 
 
@@ -276,14 +270,14 @@ def test_update_card_field():
 def test_update_card_field_legacy_uppercase_rejected():
     """update_card_field raises InvalidFieldName for legacy uppercase names."""
     doc = Document.from_markdown(MD_WITH_CARDS)
-    with pytest.raises(EditError, match="InvalidFieldName"):
+    with pytest.raises(QuillmarkError, match="InvalidFieldName"):
         doc.update_card_field(0, "BODY", "value")
 
 
 def test_update_card_field_out_of_range():
     """update_card_field raises EditError when card index is out of range."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
-    with pytest.raises(EditError, match="IndexOutOfRange"):
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
         doc.update_card_field(0, "title", "x")
 
 
@@ -297,7 +291,7 @@ def test_update_card_body():
 def test_update_card_body_out_of_range():
     """update_card_body raises EditError when card index is out of range."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
-    with pytest.raises(EditError, match="IndexOutOfRange"):
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
         doc.update_card_body(0, "x")
 
 

@@ -8,8 +8,8 @@ def test_quill_from_path(taro_quill_dir):
     engine = Quillmark()
     quill = engine.quill_from_path(str(taro_quill_dir))
     assert quill is not None
-    assert quill.name == "taro"
-    assert quill.backend == "typst"
+    assert quill.metadata["name"] == "taro"
+    assert quill.backend_id == "typst"
 
 
 def test_quill_from_path_bad_backend(tmp_path):

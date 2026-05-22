@@ -8,5 +8,5 @@ def test_quill_metadata_from_engine(taro_quill_dir):
     engine = Quillmark()
     quill = engine.quill_from_path(str(taro_quill_dir))
 
-    assert quill.name in quill.quill_ref
-    assert quill.backend == "typst"
+    assert quill.metadata["name"] in quill.quill_ref
+    assert quill.backend_id == "typst"

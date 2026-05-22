@@ -49,8 +49,8 @@ card_kinds:
         type: string
 """
 
-MD_WITH_TITLE = "~~~card-yaml\n#@quill: py_form_smoke\n#@kind: main\ntitle: \"Hello\"\n~~~\n"
-MD_EMPTY = "~~~card-yaml\n#@quill: py_form_smoke\n#@kind: main\n~~~\n"
+MD_WITH_TITLE = "~~~card-yaml\n$quill: py_form_smoke\n$kind: main\ntitle: \"Hello\"\n~~~\n"
+MD_EMPTY = "~~~card-yaml\n$quill: py_form_smoke\n$kind: main\n~~~\n"
 
 
 def make_quill(tmp_path, yaml_content=QUILL_YAML_CONTENT):
@@ -141,8 +141,8 @@ def test_form_unknown_card_diagnostic(tmp_path):
     """Unknown card kinds produce a diagnostic and are excluded from cards."""
     quill = make_quill(tmp_path)
     md = (
-        "~~~card-yaml\n#@quill: py_form_smoke\n#@kind: main\ntitle: \"T\"\n~~~\n\n"
-        "~~~card-yaml\n#@kind: ghost_card\nnote: \"B\"\n~~~\n"
+        "~~~card-yaml\n$quill: py_form_smoke\n$kind: main\ntitle: \"T\"\n~~~\n\n"
+        "~~~card-yaml\n$kind: ghost_card\nnote: \"B\"\n~~~\n"
     )
     doc = Document.from_markdown(md)
 
