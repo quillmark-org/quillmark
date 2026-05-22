@@ -41,7 +41,7 @@ is removed. The `default:` key alone determines a field's cell:
 | Schema | Author intent | Omission semantic |
 |---|---|---|
 | `default: <value>` | Endorsed — the rendered value is shippable; LLM may keep or override | pass `<value>` |
-| (no `default:`) | Must Fill — LLM must provide content before shipping | `validation::required_field_absent` error |
+| (no `default:`) | Must Fill — LLM must provide content before shipping | `validation::must_fill_absent` error |
 
 There is no third cell. "Skippable" use cases (the field may be left
 empty in the document) are expressed as Endorsed with a type-empty
@@ -155,7 +155,7 @@ Examples:
 - **Sentinel detection first.** Before per-type coercion runs, the raw
   YAML value is compared against the literal `<must-fill>`. For block
   scalars (markdown), the trimmed content is compared. On match: emit
-  `validation::unfilled_placeholder` with the field path; skip
+  `validation::must_fill_sentinel` with the field path; skip
   per-type coercion for this field.
 - **Type-only coercion otherwise.** Every present value that is not
   the sentinel is coerced to its declared type. Type mismatch fires
@@ -166,12 +166,12 @@ Examples:
   cell is fully valid.
 - **Absence falls back.** A missing field with a `default:` accepts
   the default. A missing field without a `default:` fires
-  `validation::required_field_absent`. (Blueprint flow never produces
+  `validation::must_fill_absent`. (Blueprint flow never produces
   absence; this branch matters for non-blueprint authoring paths.)
 - **Errors accumulate.** The walker collects all errors per pass; it
   does not short-circuit on the first placeholder.
 
-The `validation::unfilled_placeholder` error consumes the uniform
+The `validation::must_fill_sentinel` error consumes the uniform
 error format defined by the spun-off document-parser proposal. Its
 message names the field path, shows the literal `<must-fill>` source
 token, and points at the exit (replace with a value of the declared
@@ -308,7 +308,7 @@ landing order.
 2. **Schema model refactor** in `crates/core/src/quill/`:
    - Remove `required:` / `optional:` from `FieldSchema`.
    - Add sentinel detection in the coercion path.
-   - Add `validation::unfilled_placeholder` error code.
+   - Add `validation::must_fill_sentinel` error code.
 3. **Blueprint emitter rewrite** in `crates/core/src/quill/`:
    - New annotation grammar (drop role slot).
    - Sentinel rendering at the right position per type.
@@ -334,7 +334,7 @@ landing order.
 - **Required non-empty arrays.** Deferred (see "What this proposal
   does not do"). Revisit if migration surfaces material need.
 - **Dependency on the spun-off uniform error format.** The
-  `validation::unfilled_placeholder` error uses that format. If the
+  `validation::must_fill_sentinel` error uses that format. If the
   spinoff lands first, the new code drops in cleanly. If this
   proposal lands first, the placeholder error uses a predecessor
   format and gets retrofitted later. Either order is safe.

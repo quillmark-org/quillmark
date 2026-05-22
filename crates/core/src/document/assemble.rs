@@ -205,7 +205,7 @@ pub(super) fn decompose_with_warnings(
         ));
     }
 
-    // The root block's `$kind` is `main` by position (MARKDOWN.md §3.3).
+    // The root block's `$kind` is `main` by position (markdown-spec.md §3.3).
     // An explicit `$kind: main` is accepted; an omitted `$kind` is accepted
     // and synthesised below at the canonical position; any other value is a
     // parse error.
@@ -229,7 +229,7 @@ pub(super) fn decompose_with_warnings(
     // source omitted it. Using `set_kind` here inserts at the canonical
     // position (after `$quill`, before any `$id`/`$ext`/user fields), so
     // canonical input round-trips byte-equal and non-canonical input
-    // converges on first emit (MARKDOWN.md §9).
+    // converges on first emit (markdown-spec.md §9).
     let mut main_payload = build_payload(
         &root_block.meta_items,
         &root_block.pre_items,

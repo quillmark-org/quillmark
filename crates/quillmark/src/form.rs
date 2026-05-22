@@ -106,11 +106,13 @@ pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
     }
 
     if let Err(validation_errors) = quill.source().config().validate_document(doc) {
+        // Forward the structured diagnostic produced by `ValidationError`
+        // verbatim — same `validation::*` code, same path, same hint —
+        // instead of wrapping in `form::validation_error` and dropping
+        // those fields. Consumers can route on the code without parsing
+        // the message text.
         for err in validation_errors {
-            diagnostics.push(
-                Diagnostic::new(Severity::Error, err.to_string())
-                    .with_code("form::validation_error".to_string()),
-            );
+            diagnostics.push(err.to_diagnostic());
         }
     }
 

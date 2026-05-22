@@ -118,8 +118,8 @@ doc.push_card({"kind": "note", "fields": {"x": 1}, "body": "..."})
 A field's *cell* is inferred from whether the schema declares a `default:`:
 
 - **Must Fill** (no `default:`) — the blueprint renders `<must-fill>`
-  and validation reports `validation::required_field_absent` if the
-  field is absent at validate time, or `validation::unfilled_placeholder`
+  and validation reports `validation::must_fill_absent` if the
+  field is absent at validate time, or `validation::must_fill_sentinel`
   if the `<must-fill>` sentinel survives into the rendered document.
 - **Endorsed** (with `default:`) — the blueprint renders the default
   value with a `; skip-ok` annotation, and the default is used when

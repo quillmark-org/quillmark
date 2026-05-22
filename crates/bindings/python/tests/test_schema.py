@@ -3,8 +3,8 @@
 A field's *cell* is determined by whether the schema declares a `default:`.
 
 - No `default:` -> **Must Fill**: the blueprint renders `<must-fill>` and
-  validation reports ``validation::required_field_absent`` if the field
-  is absent at validate time and ``validation::unfilled_placeholder`` if
+  validation reports ``validation::must_fill_absent`` if the field
+  is absent at validate time and ``validation::must_fill_sentinel`` if
   the `<must-fill>` sentinel survives into the rendered document.
 - With `default:` -> **Endorsed**: the blueprint renders the default
   value with a ``; skip-ok`` annotation; the field is optional and the
@@ -138,9 +138,9 @@ def _diag_codes(exc):
     return [d.code for d in exc.diagnostics]
 
 
-def test_render_reports_required_field_absent(tmp_path):
+def test_render_reports_must_fill_absent(tmp_path):
     """A Must Fill field absent from the document fails validation with
-    ``validation::required_field_absent``.
+    ``validation::must_fill_absent``.
     """
     quill = make_quill(tmp_path)
     md = (
@@ -157,14 +157,14 @@ def test_render_reports_required_field_absent(tmp_path):
         quill.render(doc, OutputFormat.PDF)
 
     codes = _diag_codes(exc_info.value)
-    assert "validation::required_field_absent" in codes, (
-        f"expected validation::required_field_absent; got: {codes}"
+    assert "validation::must_fill_absent" in codes, (
+        f"expected validation::must_fill_absent; got: {codes}"
     )
 
 
-def test_render_reports_unfilled_placeholder(tmp_path):
+def test_render_reports_must_fill_sentinel(tmp_path):
     """A field whose value is still the literal `<must-fill>` sentinel
-    fails validation with ``validation::unfilled_placeholder``.
+    fails validation with ``validation::must_fill_sentinel``.
     """
     quill = make_quill(tmp_path)
     md = (
@@ -181,8 +181,8 @@ def test_render_reports_unfilled_placeholder(tmp_path):
         quill.render(doc, OutputFormat.PDF)
 
     codes = _diag_codes(exc_info.value)
-    assert "validation::unfilled_placeholder" in codes, (
-        f"expected validation::unfilled_placeholder; got: {codes}"
+    assert "validation::must_fill_sentinel" in codes, (
+        f"expected validation::must_fill_sentinel; got: {codes}"
     )
 
 
@@ -190,7 +190,10 @@ def test_render_does_not_emit_legacy_missing_required(tmp_path):
     """The legacy ``validation::missing_required`` code must be gone.
 
     Triggering the same condition (absent Must Fill field) must surface
-    the new ``validation::required_field_absent`` code instead.
+    the new ``validation::must_fill_absent`` code instead. The
+    intermediate codes ``validation::required_field_absent`` and
+    ``validation::unfilled_placeholder`` were also retired in favor of
+    ``validation::must_fill_absent`` and ``validation::must_fill_sentinel``.
     """
     quill = make_quill(tmp_path)
     md = (
@@ -208,6 +211,14 @@ def test_render_does_not_emit_legacy_missing_required(tmp_path):
     assert "validation::missing_required" not in codes, (
         "legacy code `validation::missing_required` must no longer appear; "
         f"got: {codes}"
+    )
+    assert "validation::required_field_absent" not in codes, (
+        "retired code `validation::required_field_absent` must no longer "
+        f"appear; got: {codes}"
+    )
+    assert "validation::unfilled_placeholder" not in codes, (
+        "retired code `validation::unfilled_placeholder` must no longer "
+        f"appear; got: {codes}"
     )
 
 

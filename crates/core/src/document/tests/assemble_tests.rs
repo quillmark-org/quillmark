@@ -736,7 +736,7 @@ Section 1 body.";
 
 #[test]
 fn test_root_without_kind_is_accepted_and_synthesised() {
-    // MARKDOWN.md §3.3: the root's `$kind` is `main` by position. An omitted
+    // markdown-spec.md §3.3: the root's `$kind` is `main` by position. An omitted
     // `$kind` parses successfully; the parser synthesises the entry at the
     // canonical position so `doc.main().kind()` is always `Some("main")`
     // and canonical emission writes `$kind: main` back out.
@@ -1927,7 +1927,7 @@ Body content.";
     assert_eq!(doc.main().body(), "\nBody content.");
 }
 
-/// Test the exact example from EXTENDED_MARKDOWN.md
+/// Test the exact example from markdown-spec.md
 #[test]
 fn test_spec_example() {
     let markdown = "~~~card-yaml

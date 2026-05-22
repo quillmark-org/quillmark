@@ -158,7 +158,7 @@ impl FieldType {
 /// is **Endorsed** (the rendered value is shippable as-is), while a field
 /// without a `default:` is **Must Fill** (the blueprint carries a
 /// `<must-fill>` sentinel and validation reports
-/// `validation::required_field_absent` if the field is missing at
+/// `validation::must_fill_absent` if the field is missing at
 /// validate time). There is no separate `required:` axis.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FieldSchema {

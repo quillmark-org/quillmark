@@ -38,7 +38,7 @@ export interface QuillCardBody {
  * is **Endorsed** (the rendered value is shippable as-is), while a field
  * without a `default` is **Must Fill** (the blueprint carries a
  * `<must-fill>` sentinel and validation reports
- * `validation::required_field_absent` if the field is absent at validate
+ * `validation::must_fill_absent` if the field is absent at validate
  * time). There is no separate `required` axis.
  */
 export interface QuillFieldSchema {

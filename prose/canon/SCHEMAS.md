@@ -52,11 +52,11 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
 - Enforces `body.enabled: false` on the main card and on each card kind — body content for a body-disabled card emits `ValidationError::BodyDisabled` (whitespace-only bodies are treated as empty)
 - **Sentinel detection runs first.** Before per-type checks, any value
   equal to the literal string `<must-fill>` (for markdown, the trimmed
-  block-scalar content) fires `validation::unfilled_placeholder` and
+  block-scalar content) fires `validation::must_fill_sentinel` and
   skips the type check for that field.
 - **Required-field semantics**: a missing field with a `default:` accepts
   the default (no error). A missing field without a `default:` fires
-  `validation::required_field_absent`.
+  `validation::must_fill_absent`.
 
 Field-level type and presence errors render under a uniform shape —
 field path, verbatim source token, schema declaration, and both exits
@@ -85,7 +85,7 @@ Top-level schema keys: `main`, optional `card_kinds` (map keyed by card name). `
 
 A field is **Must Fill** when no `default:` is declared; the schema author
 expects the LLM or user to supply a value before shipping. A missing
-Must Fill field at validate time fires `validation::required_field_absent`.
+Must Fill field at validate time fires `validation::must_fill_absent`.
 
 A field is **Endorsed** when `default:` is declared; the rendered default
 is shippable as-is (the author can keep or override it). Endorsed

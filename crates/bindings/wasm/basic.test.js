@@ -1040,9 +1040,9 @@ title: "Hello"
 // These tests pin the JS-facing contract:
 //   - `QuillFieldSchema` no longer carries a `required` axis.
 //   - `quill.blueprint` carries `<must-fill>` and `; skip-ok` annotations.
-//   - `quill.render(doc)` raises `validation::required_field_absent` when a
+//   - `quill.render(doc)` raises `validation::must_fill_absent` when a
 //     Must Fill field is absent at validate time.
-//   - `quill.render(doc)` raises `validation::unfilled_placeholder` when the
+//   - `quill.render(doc)` raises `validation::must_fill_sentinel` when the
 //     `<must-fill>` sentinel is left in.
 //   - `quill.form(doc)` flags both situations under `diagnostics`.
 
@@ -1128,7 +1128,7 @@ main:
     expect(blueprint).not.toContain('; optional')
   })
 
-  it('render throws `validation::required_field_absent` when a Must Fill field is absent', () => {
+  it('render throws `validation::must_fill_absent` when a Must Fill field is absent', () => {
     const quill = buildQuill()
 
     // Document omits `title`. Schema declares no default → Must Fill.
@@ -1148,19 +1148,21 @@ subtitle: "Just a subtitle"
     } catch (err) {
       expect(Array.isArray(err.diagnostics)).toBe(true)
       const codes = err.diagnostics.map((d) => d.code)
-      expect(codes).toContain('validation::required_field_absent')
+      expect(codes).toContain('validation::must_fill_absent')
       // The diagnostic must anchor to the offending field path.
       const required = err.diagnostics.find(
-        (d) => d.code === 'validation::required_field_absent',
+        (d) => d.code === 'validation::must_fill_absent',
       )
       expect(required.path).toBe('title')
       expect(required.severity).toBe('error')
-      // The legacy code must be gone.
+      // The legacy codes must be gone.
       expect(codes).not.toContain('validation::missing_required')
+      expect(codes).not.toContain('validation::required_field_absent')
+      expect(codes).not.toContain('validation::unfilled_placeholder')
     }
   })
 
-  it('render throws `validation::unfilled_placeholder` when the `<must-fill>` sentinel is left in', () => {
+  it('render throws `validation::must_fill_sentinel` when the `<must-fill>` sentinel is left in', () => {
     const quill = buildQuill()
 
     // Document supplies the literal sentinel — the LLM forgot to fill it.
@@ -1180,15 +1182,15 @@ title: <must-fill>
     } catch (err) {
       expect(Array.isArray(err.diagnostics)).toBe(true)
       const codes = err.diagnostics.map((d) => d.code)
-      expect(codes).toContain('validation::unfilled_placeholder')
+      expect(codes).toContain('validation::must_fill_sentinel')
       const placeholder = err.diagnostics.find(
-        (d) => d.code === 'validation::unfilled_placeholder',
+        (d) => d.code === 'validation::must_fill_sentinel',
       )
       expect(placeholder.path).toBe('title')
       expect(placeholder.severity).toBe('error')
       // Hint nudges the caller toward the action they need to take.
       expect(placeholder.hint).toBeDefined()
-      expect(placeholder.hint).toMatch(/<must-fill>/)
+      expect(placeholder.hint).toContain('<must-fill>')
     }
   })
 
@@ -1223,12 +1225,13 @@ subtitle: "Just a subtitle"
     // so the form view marks the value as `missing`.
     expect(formAbsent.main.values.title.source).toBe('missing')
     expect(formAbsent.main.values.title.default).toBeNull()
-    // The validation error surfaces under `diagnostics` (form re-codes
-    // structured validation errors as `form::validation_error`).
+    // The validation error surfaces under `diagnostics` with its canonical
+    // `validation::*` code, path, and hint — the form view forwards the
+    // structured diagnostic verbatim.
     expect(formAbsent.diagnostics.length).toBeGreaterThan(0)
     expect(
       formAbsent.diagnostics.some(
-        (d) => d.severity === 'error' && /title/.test(d.message),
+        (d) => d.severity === 'error' && d.path === 'title',
       ),
     ).toBe(true)
 
@@ -1245,7 +1248,11 @@ title: <must-fill>
     expect(formSentinel.main.values.title.value).toBe('<must-fill>')
     expect(
       formSentinel.diagnostics.some(
-        (d) => d.severity === 'error' && /<must-fill>/.test(d.message),
+        (d) =>
+          d.severity === 'error' &&
+          d.path === 'title' &&
+          typeof d.hint === 'string' &&
+          d.hint.includes('<must-fill>'),
       ),
     ).toBe(true)
   })

@@ -171,7 +171,9 @@ impl Quill {
 
     /// Schema-aware form view of `doc`. Read-only snapshot — re-call after edits.
     /// Unknown card kinds surface as `form::unknown_card_kind` diagnostics;
-    /// validation errors as `form::validation_error` diagnostics.
+    /// validation errors forward through with their canonical
+    /// `validation::*` codes, paths, and hints (same as
+    /// [`Quill::render`]'s `RenderError::diagnostics`).
     pub fn form(&self, doc: &Document) -> Form {
         form::build_form(self, doc)
     }

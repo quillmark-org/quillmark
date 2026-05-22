@@ -53,8 +53,8 @@ See `crates/backends/typst/src/error_mapping.rs`.
 ## Validation message contract
 
 Field-level validation diagnostics — `validation::type_mismatch`,
-`validation::required_field_absent`, and
-`validation::unfilled_placeholder` — emit a single canonical shape:
+`validation::must_fill_absent`, and
+`validation::must_fill_sentinel` — emit a single canonical shape:
 
 - **Field path** — the document-model anchor of the offending field
   (`recipient`, `cards[2].author`).

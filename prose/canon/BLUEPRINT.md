@@ -324,7 +324,7 @@ field key is present, every value is YAML-valid, the document round-trips
 through `Document::from_markdown` and back. Endorsed cells coerce and
 validate successfully; Must Fill cells carry the `<must-fill>` sentinel
 in the value cell (or inside a markdown block scalar), which validation
-reports as `validation::unfilled_placeholder` until the LLM replaces it
+reports as `validation::must_fill_sentinel` until the LLM replaces it
 with a typed value.
 
 `blueprint()` does **not**, on its own, guarantee the document

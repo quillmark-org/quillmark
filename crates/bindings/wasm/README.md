@@ -250,8 +250,8 @@ A field's *cell* is inferred from whether its schema declares a `default:`:
 
 - **Must Fill** (no `default:`) — `quill.blueprint` renders `<must-fill>`
   in the value cell, and `quill.render(doc)` throws with
-  `validation::required_field_absent` when the field is absent at
-  validate time, or `validation::unfilled_placeholder` when the
+  `validation::must_fill_absent` when the field is absent at
+  validate time, or `validation::must_fill_sentinel` when the
   `<must-fill>` sentinel survives into the document.
 - **Endorsed** (with `default:`) — `quill.blueprint` renders the
   default value followed by a `; skip-ok` annotation, and the default
@@ -259,9 +259,8 @@ A field's *cell* is inferred from whether its schema declares a `default:`:
 
 `QuillFieldSchema` no longer carries a `required` axis. The legacy
 `validation::missing_required` code has been replaced by
-`validation::required_field_absent`; the new
-`validation::unfilled_placeholder` code is added for unreplaced
-sentinels.
+`validation::must_fill_absent`; the `validation::must_fill_sentinel`
+code covers unreplaced sentinels.
 
 ### Errors
 
