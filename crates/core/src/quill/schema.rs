@@ -164,7 +164,7 @@ main:
     refs:
       type: array
       properties:
-        org: { type: string, required: true }
+        org: { type: string }
         year: { type: integer }
 "#;
         let schema = build_from_yaml(yaml);
@@ -189,7 +189,7 @@ main:
     address:
       type: object
       properties:
-        street: { type: string, required: true }
+        street: { type: string }
         city: { type: string }
 "#;
         let schema = build_from_yaml(yaml);

@@ -8,8 +8,10 @@ fn make_test_quill_path(temp_dir: &TempDir, with_required_field: bool) -> std::p
     let quill_path = temp_dir.path().join("test_quill");
     fs::create_dir_all(&quill_path).unwrap();
 
+    // `title` has no default → Must Fill. `author` has a default →
+    // Endorsed (absence is OK).
     let fields_section = if with_required_field {
-        "main:\n  fields:\n    title:\n      type: \"string\"\n      required: true\n    author:\n      type: \"string\"\n      required: false\n"
+        "main:\n  fields:\n    title:\n      type: \"string\"\n    author:\n      type: \"string\"\n      default: \"\"\n"
     } else {
         ""
     };
@@ -44,7 +46,7 @@ fn test_dry_run_success() {
 }
 
 #[test]
-fn test_dry_run_missing_required_field() {
+fn test_dry_run_missing_must_fill_field() {
     let temp_dir = TempDir::new().unwrap();
     let quill_path = make_test_quill_path(&temp_dir, true);
 
@@ -60,7 +62,7 @@ fn test_dry_run_missing_required_field() {
     let result = quill.dry_run(&parsed);
     assert!(
         result.is_err(),
-        "dry_run should fail for missing required field"
+        "dry_run should fail for missing Must-Fill field"
     );
 
     let err = result.unwrap_err();

@@ -113,6 +113,20 @@ doc.push_card({"kind": "note", "fields": {"x": 1}, "body": "..."})
 # update_card_field, remove_card_field, update_card_body, ...
 ```
 
+## Schema model
+
+A field's *cell* is inferred from whether the schema declares a `default:`:
+
+- **Must Fill** (no `default:`) — the blueprint renders `<must-fill>`
+  and validation reports `validation::required_field_absent` if the
+  field is absent at validate time, or `validation::unfilled_placeholder`
+  if the `<must-fill>` sentinel survives into the rendered document.
+- **Endorsed** (with `default:`) — the blueprint renders the default
+  value with a `; skip-ok` annotation, and the default is used when
+  the document omits the field.
+
+There is no `required:` axis on `FieldSchema`.
+
 ## Error contract
 
 A single exception type — `QuillmarkError` — is raised for every failure

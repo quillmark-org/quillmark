@@ -44,7 +44,6 @@ card_kinds:
         description: Office symbol receiving the endorsed memo.
       signature_block:
         type: array
-        required: true
         ui:
           group: Addressing
         description: Name, grade, and duty title.
@@ -67,7 +66,6 @@ card_kinds:
         type: string
       signature_block:
         type: array
-        required: true
         ui:
           group: Addressing
 ```

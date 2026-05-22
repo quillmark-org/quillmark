@@ -520,7 +520,7 @@ mod tests {
     #[test]
     fn test_diagnostic_with_path() {
         let diag = Diagnostic::new(Severity::Error, "Missing field".to_string())
-            .with_code("validation::missing_required".to_string())
+            .with_code("validation::required_field_absent".to_string())
             .with_path("cards.indorsement[0].signature_block".to_string());
 
         assert_eq!(

@@ -28,6 +28,7 @@ main:
 
     department:
       type: string
+      default: ""
       example: Department of Electrical and Computer Engineering
       ui:
         group: Letterhead
@@ -44,6 +45,7 @@ main:
 
     url:
       type: string
+      default: ""
       example: www.ece.cmu.edu
       ui:
         group: Letterhead

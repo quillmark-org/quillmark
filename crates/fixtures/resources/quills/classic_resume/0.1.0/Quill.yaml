@@ -9,14 +9,12 @@ main:
   fields:
     name:
       type: string
-      required: true
       example: John Doe
       ui:
         group: Personal Info
 
     contacts:
       type: array
-      required: true
       example:
         - john.doe@example.com
         - 123-456-7890
@@ -36,7 +34,6 @@ card_kinds:
         default: Experience
       heading_left:
         type: string
-        required: true
       heading_right:
         type: string
       subheading_left:
@@ -54,7 +51,6 @@ card_kinds:
         default: Skills
       cells:
         type: array
-        required: true
         example:
           - category: Languages
             skills: Python, Rust, C++
@@ -63,10 +59,8 @@ card_kinds:
         properties:
           category:
             type: string
-            required: true
           skills:
             type: string
-            required: true
 
   projects_section:
     description: A project entry with a name and optional URL.
@@ -78,7 +72,6 @@ card_kinds:
         default: Projects
       name:
         type: string
-        required: true
       url:
         type: string
 
@@ -92,7 +85,6 @@ card_kinds:
         default: Certifications
       cells:
         type: array
-        required: true
         example:
           - AWS Certified Solutions Architect
           - CKA

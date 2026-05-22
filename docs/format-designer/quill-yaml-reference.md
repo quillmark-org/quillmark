@@ -70,7 +70,6 @@ main:
   fields:
     subject:          # Field name (used as the card-yaml payload key)
       type: string
-      required: true
       description: Be brief and clear.
 ```
 
@@ -80,9 +79,8 @@ main:
 |---------------|-------------------|----------|-------------|
 | `type`        | string            | yes      | Data type (see [Field Types](#field-types)) |
 | `description` | string            | no       | Detailed help text |
-| `default`     | any               | no       | Default value when not provided |
+| `default`     | any               | no       | Default value when not provided. **Declaring `default` makes the field Endorsed**: the blueprint renders the default plus a `; skip-ok` tag. Omitting `default` makes the field **Must Fill**: the blueprint renders the `<must-fill>` sentinel and validation fires `validation::required_field_absent` if the field is absent at validate time. |
 | `example`     | any               | no       | Illustrative value surfaced in the [blueprint](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/BLUEPRINT.md) for documentation and LLM authoring |
-| `required`    | boolean           | no       | Whether the field must be present (default: `false`) |
 | `enum`        | array of strings  | no       | Restrict to specific values |
 | `ui`          | object            | no       | UI rendering hints (see [UI Properties](#ui-properties)) |
 | `properties`  | object            | no       | Nested field schemas (for `array` typed-table rows or `object` typed dictionaries) |
@@ -132,7 +130,6 @@ main:
       properties:
         category:
           type: string
-          required: true
         score:
           type: number
 ```
@@ -147,7 +144,6 @@ main:
       properties:
         street:
           type: string
-          required: true
         city:
           type: string
 ```
@@ -461,19 +457,18 @@ main:
   fields:
     project_name:
       type: string
-      required: true
       ui:
         group: Header
 
     status:
       type: string
-      required: true
       enum: [on_track, at_risk, blocked]
       ui:
         group: Header
 
     risk_description:
       type: string
+      default: ""
       ui:
         group: Header
       description: Describe the risk or blocker. Only needed when status is not on_track.
@@ -485,6 +480,7 @@ main:
 
     team_members:
       type: array
+      default: []
       ui:
         group: Team
 
@@ -500,7 +496,6 @@ card_kinds:
     fields:
       name:
         type: string
-        required: true
       target_date:
         type: date
       completed:

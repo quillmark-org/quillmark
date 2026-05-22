@@ -8,16 +8,36 @@ use crate::quill::formats::DATE_FORMAT;
 use crate::quill::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
 
+/// Literal sentinel string the blueprint emitter writes into the value
+/// cell of every Must Fill field. Validation detects unreplaced sentinels
+/// and reports `validation::unfilled_placeholder` under the uniform
+/// validation message contract (see `ERROR.md`).
+pub const MUST_FILL_SENTINEL: &str = "<must-fill>";
+
 /// Validation error with a structured field path.
 ///
-/// Field-level type and presence errors (`MissingRequired`,
-/// `TypeMismatch`) carry the field path, the verbatim YAML source
-/// token, the schema-declared type, and any default — enough for the
-/// `Display` impl to render the uniform diagnostic message described
-/// in `ERROR.md` ("Validation message contract").
+/// Field-level type and presence errors (`RequiredFieldAbsent`,
+/// `UnfilledPlaceholder`, `TypeMismatch`) carry the field path, the
+/// verbatim YAML source token, the schema-declared type, and any default
+/// — enough for the `Display` impl to render the uniform diagnostic
+/// message described in `ERROR.md` ("Validation message contract"). The
+/// spinoff proposal's cross-reference clause retrofits the placeholder
+/// error to the uniform shape, so `RequiredFieldAbsent` and
+/// `UnfilledPlaceholder` both carry an `expected` slot for the
+/// declared-type line of the message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidationError {
-    MissingRequired {
+    /// A Must Fill field (no `default:`) is absent from the document.
+    RequiredFieldAbsent {
+        path: String,
+        /// Schema-declared type (`string`, `integer`, …).
+        expected: String,
+    },
+
+    /// The blueprint sentinel `<must-fill>` survived into the document
+    /// and reached validation. Treated under the uniform format with
+    /// `<must-fill>` as the source token.
+    UnfilledPlaceholder {
         path: String,
         /// Schema-declared type (`string`, `integer`, …).
         expected: String,
@@ -65,11 +85,22 @@ impl std::error::Error for ValidationError {}
 impl std::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ValidationError::MissingRequired { path, expected } => {
+            ValidationError::RequiredFieldAbsent { path, expected } => {
                 write!(
                     f,
                     "Field `{path}` is missing, schema declares `{expected}` with no default. \
                      Provide a value of type `{expected}`."
+                )
+            }
+            ValidationError::UnfilledPlaceholder { path, expected } => {
+                // The mcp-feedback proposal's §5 routes this through the
+                // uniform format. The "either / or" pair collapses to one
+                // exit because there is no quote-or-omit alternative — the
+                // sentinel always means "replace me".
+                write!(
+                    f,
+                    "Field `{path}` still carries the `{MUST_FILL_SENTINEL}` blueprint sentinel, \
+                     schema declares `{expected}`. Replace `{MUST_FILL_SENTINEL}` with a value of type `{expected}`."
                 )
             }
             ValidationError::TypeMismatch {
@@ -164,7 +195,8 @@ impl ValidationError {
     /// See [`crate::error`] module docs for the path grammar and conventions.
     pub fn path(&self) -> &str {
         match self {
-            ValidationError::MissingRequired { path, .. }
+            ValidationError::RequiredFieldAbsent { path, .. }
+            | ValidationError::UnfilledPlaceholder { path, .. }
             | ValidationError::TypeMismatch { path, .. }
             | ValidationError::EnumViolation { path, .. }
             | ValidationError::FormatViolation { path, .. }
@@ -177,7 +209,8 @@ impl ValidationError {
     /// instead of the message text.
     pub fn code(&self) -> &'static str {
         match self {
-            ValidationError::MissingRequired { .. } => "validation::missing_required",
+            ValidationError::RequiredFieldAbsent { .. } => "validation::required_field_absent",
+            ValidationError::UnfilledPlaceholder { .. } => "validation::unfilled_placeholder",
             ValidationError::TypeMismatch { .. } => "validation::type_mismatch",
             ValidationError::EnumViolation { .. } => "validation::enum_violation",
             ValidationError::FormatViolation { .. } => "validation::format_violation",
@@ -300,10 +333,13 @@ fn validate_fields_for_card_indexmap(
         let path = child_path(base_path, field_name);
         match fields.get(field_name) {
             Some(value) => errors.extend(validate_field(schema, value, &path)),
-            None if schema.required => errors.push(ValidationError::MissingRequired {
-                path,
-                expected: expected_type_name(&schema.r#type).to_string(),
-            }),
+            None if schema.default.is_none() => {
+                // Must Fill (no `default:`) field absent from the document.
+                errors.push(ValidationError::RequiredFieldAbsent {
+                    path,
+                    expected: expected_type_name(&schema.r#type).to_string(),
+                })
+            }
             None => {}
         }
     }
@@ -319,6 +355,25 @@ pub(crate) fn validate_field(
     path: &str,
 ) -> Vec<ValidationError> {
     let mut errors = Vec::new();
+
+    // Sentinel detection runs before per-type coercion / validation.
+    // Scalar fields carry the sentinel in the value cell; markdown carries
+    // it as the trimmed content of the block scalar. On match, emit
+    // `UnfilledPlaceholder` and skip per-type checks for this field.
+    if let Some(text) = value.as_str() {
+        let candidate = if matches!(field.r#type, FieldType::Markdown) {
+            text.trim()
+        } else {
+            text
+        };
+        if candidate == MUST_FILL_SENTINEL {
+            errors.push(ValidationError::UnfilledPlaceholder {
+                path: path.to_string(),
+                expected: expected_type_name(&field.r#type).to_string(),
+            });
+            return errors;
+        }
+    }
 
     let type_valid = match field.r#type {
         FieldType::String | FieldType::Markdown => value.as_str().is_some(),
@@ -383,8 +438,8 @@ pub(crate) fn validate_field(
                                     &QuillValue::from_json(v.clone()),
                                     &prop_path,
                                 )),
-                                None if prop_schema.required => {
-                                    errors.push(ValidationError::MissingRequired {
+                                None if prop_schema.default.is_none() => {
+                                    errors.push(ValidationError::RequiredFieldAbsent {
                                         path: prop_path,
                                         expected: expected_type_name(&prop_schema.r#type)
                                             .to_string(),
@@ -413,8 +468,8 @@ pub(crate) fn validate_field(
                                 &QuillValue::from_json(property_value.clone()),
                                 &property_path,
                             )),
-                            None if property_schema.required => {
-                                errors.push(ValidationError::MissingRequired {
+                            None if property_schema.default.is_none() => {
+                                errors.push(ValidationError::RequiredFieldAbsent {
                                     path: property_path,
                                     expected: expected_type_name(&property_schema.r#type)
                                         .to_string(),
@@ -553,14 +608,14 @@ main:
 
     #[test]
     fn validates_simple_string_field() {
-        let config = config_with("    title:\n      type: string\n      required: true", "");
+        let config = config_with("    title:\n      type: string", "");
         let doc = doc_from_fm(&[("title", json!("Memo"))]);
         assert!(validate_typed_document(&config, &doc).is_ok());
     }
 
     #[test]
     fn rejects_simple_string_type_mismatch() {
-        let config = config_with("    title:\n      type: string", "");
+        let config = config_with("    title:\n      type: string\n      default: \"\"", "");
         let doc = doc_from_fm(&[("title", json!(9))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
@@ -572,14 +627,14 @@ main:
 
     #[test]
     fn validates_integer_field_with_integer_value() {
-        let config = config_with("    count:\n      type: integer", "");
+        let config = config_with("    count:\n      type: integer\n      default: 0", "");
         let doc = doc_from_fm(&[("count", json!(9))]);
         assert!(validate_typed_document(&config, &doc).is_ok());
     }
 
     #[test]
     fn rejects_integer_field_with_decimal_value() {
-        let config = config_with("    count:\n      type: integer", "");
+        let config = config_with("    count:\n      type: integer\n      default: 0", "");
         let doc = doc_from_fm(&[("count", json!(9.5))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
@@ -590,24 +645,77 @@ main:
     }
 
     #[test]
-    fn reports_missing_required_field() {
-        let config = config_with(
-            "    memo_for:\n      type: string\n      required: true",
-            "",
-        );
+    fn reports_absent_must_fill_field() {
+        // A field with no `default:` is Must Fill. Missing from the document
+        // → `required_field_absent`.
+        let config = config_with("    memo_for:\n      type: string", "");
         let doc = doc_from_fm(&[]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::MissingRequired { path, expected } if path == "memo_for" && expected == "string")
+            matches!(e, ValidationError::RequiredFieldAbsent { path, expected } if path == "memo_for" && expected == "string")
         }));
     }
 
     #[test]
-    fn reports_required_field_wrong_type() {
+    fn missing_field_with_default_is_ok() {
+        // Endorsed field absent from document → no error; default applies.
         let config = config_with(
-            "    memo_for:\n      type: string\n      required: true",
+            "    memo_for:\n      type: string\n      default: \"\"",
             "",
         );
+        let doc = doc_from_fm(&[]);
+        assert!(validate_typed_document(&config, &doc).is_ok());
+    }
+
+    #[test]
+    fn detects_unfilled_placeholder_sentinel() {
+        let config = config_with("    memo_for:\n      type: string", "");
+        let doc = doc_from_fm(&[("memo_for", json!(MUST_FILL_SENTINEL))]);
+        let errors = validate_typed_document(&config, &doc).unwrap_err();
+        assert!(has_error(&errors, |e| {
+            matches!(e, ValidationError::UnfilledPlaceholder { path, expected } if path == "memo_for" && expected == "string")
+        }));
+    }
+
+    #[test]
+    fn detects_unfilled_placeholder_in_markdown_block() {
+        // Markdown block scalars carry the sentinel inside the block; the
+        // detector trims whitespace before comparing.
+        let config = config_with("    body:\n      type: markdown", "");
+        let doc = doc_from_fm(&[("body", json!(format!("  {}\n", MUST_FILL_SENTINEL)))]);
+        let errors = validate_typed_document(&config, &doc).unwrap_err();
+        assert!(has_error(&errors, |e| {
+            matches!(e, ValidationError::UnfilledPlaceholder { path, .. } if path == "body")
+        }));
+    }
+
+    #[test]
+    fn unfilled_placeholder_message_names_field_and_exit() {
+        // The mcp-feedback proposal's §5 routes this through the uniform
+        // format; assert the message names the field, shows the sentinel,
+        // and points at the exit.
+        let config = config_with("    memo_for:\n      type: string", "");
+        let doc = doc_from_fm(&[("memo_for", json!(MUST_FILL_SENTINEL))]);
+        let errors = validate_typed_document(&config, &doc).unwrap_err();
+        let msg = errors
+            .iter()
+            .find_map(|e| match e {
+                ValidationError::UnfilledPlaceholder { .. } => Some(e.to_string()),
+                _ => None,
+            })
+            .expect("expected UnfilledPlaceholder");
+        assert!(
+            msg.contains("Field `memo_for`")
+                && msg.contains(MUST_FILL_SENTINEL)
+                && msg.contains("schema declares `string`")
+                && msg.contains("Replace"),
+            "wrong message: {msg}"
+        );
+    }
+
+    #[test]
+    fn reports_must_fill_field_wrong_type() {
+        let config = config_with("    memo_for:\n      type: string", "");
         let doc = doc_from_fm(&[("memo_for", json!(true))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
@@ -619,7 +727,7 @@ main:
     #[test]
     fn validates_enum_value() {
         let config = config_with(
-            "    status:\n      type: string\n      enum:\n        - draft\n        - final",
+            "    status:\n      type: string\n      default: draft\n      enum:\n        - draft\n        - final",
             "",
         );
         let doc = doc_from_fm(&[("status", json!("draft"))]);
@@ -629,7 +737,7 @@ main:
     #[test]
     fn rejects_invalid_enum_value() {
         let config = config_with(
-            "    status:\n      type: string\n      enum:\n        - draft\n        - final",
+            "    status:\n      type: string\n      default: draft\n      enum:\n        - draft\n        - final",
             "",
         );
         let doc = doc_from_fm(&[("status", json!("invalid"))]);
@@ -643,14 +751,14 @@ main:
 
     #[test]
     fn validates_date_format() {
-        let config = config_with("    signed_on:\n      type: date", "");
+        let config = config_with("    signed_on:\n      type: date\n      default: \"\"", "");
         let doc = doc_from_fm(&[("signed_on", json!("2026-04-13"))]);
         assert!(validate_typed_document(&config, &doc).is_ok());
     }
 
     #[test]
     fn rejects_invalid_date_format() {
-        let config = config_with("    signed_on:\n      type: date", "");
+        let config = config_with("    signed_on:\n      type: date\n      default: \"\"", "");
         let doc = doc_from_fm(&[("signed_on", json!("13-04-2026"))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
@@ -660,14 +768,20 @@ main:
 
     #[test]
     fn validates_datetime_format() {
-        let config = config_with("    created_at:\n      type: datetime", "");
+        let config = config_with(
+            "    created_at:\n      type: datetime\n      default: \"\"",
+            "",
+        );
         let doc = doc_from_fm(&[("created_at", json!("2026-04-13T19:24:55Z"))]);
         assert!(validate_typed_document(&config, &doc).is_ok());
     }
 
     #[test]
     fn rejects_invalid_datetime_format() {
-        let config = config_with("    created_at:\n      type: datetime", "");
+        let config = config_with(
+            "    created_at:\n      type: datetime\n      default: \"\"",
+            "",
+        );
         let doc = doc_from_fm(&[("created_at", json!("2026-04-13 19:24:55"))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
@@ -679,7 +793,7 @@ main:
 
     #[test]
     fn markdown_accepts_any_string() {
-        let config = config_with("    body:\n      type: markdown", "");
+        let config = config_with("    body:\n      type: markdown\n      default: \"\"", "");
         let doc = doc_from_fm(&[("body", json!("# Heading\n\nBody text"))]);
         assert!(validate_typed_document(&config, &doc).is_ok());
     }
@@ -687,7 +801,7 @@ main:
     #[test]
     fn validates_array_of_objects() {
         let config = config_with(
-            "    recipients:\n      type: array\n      properties:\n        name:\n          type: string\n          required: true\n        org:\n          type: string",
+            "    recipients:\n      type: array\n      default: []\n      properties:\n        name:\n          type: string\n        org:\n          type: string\n          default: \"\"",
             "",
         );
         let doc = doc_from_fm(&[("recipients", json!([{ "name": "Sam", "org": "HQ" }]))]);
@@ -695,15 +809,17 @@ main:
     }
 
     #[test]
-    fn reports_missing_required_field_in_array_object() {
+    fn reports_must_fill_property_absent_in_array_object() {
+        // Property `name` is Must Fill (no default); `org` is Endorsed.
+        // Missing `name` in a row → `required_field_absent`.
         let config = config_with(
-            "    recipients:\n      type: array\n      properties:\n        name:\n          type: string\n          required: true\n        org:\n          type: string",
+            "    recipients:\n      type: array\n      default: []\n      properties:\n        name:\n          type: string\n        org:\n          type: string\n          default: \"\"",
             "",
         );
         let doc = doc_from_fm(&[("recipients", json!([{ "org": "HQ" }]))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::MissingRequired { path, .. } if path == "recipients[0].name")
+            matches!(e, ValidationError::RequiredFieldAbsent { path, .. } if path == "recipients[0].name")
         }));
     }
 
@@ -713,9 +829,9 @@ main:
     // rejected at config parse time.
 
     #[test]
-    fn accumulates_multiple_missing_required_errors() {
+    fn accumulates_multiple_absent_must_fill_errors() {
         let config = config_with(
-            "    memo_for:\n      type: string\n      required: true\n    memo_from:\n      type: string\n      required: true",
+            "    memo_for:\n      type: string\n    memo_from:\n      type: string",
             "",
         );
         let doc = doc_from_fm(&[]);
@@ -723,7 +839,7 @@ main:
         let missing_paths: Vec<&str> = errors
             .iter()
             .filter_map(|e| match e {
-                ValidationError::MissingRequired { path, .. } => Some(path.as_str()),
+                ValidationError::RequiredFieldAbsent { path, .. } => Some(path.as_str()),
                 _ => None,
             })
             .collect();
@@ -734,8 +850,8 @@ main:
     #[test]
     fn validates_card_with_valid_discriminator() {
         let config = config_with(
-            "    title:\n      type: string",
-            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
+            "    title:\n      type: string\n      default: \"\"",
+            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string",
         );
         let doc = doc_with_typed_cards(
             &[],
@@ -750,7 +866,7 @@ main:
     #[test]
     fn rejects_unknown_card_discriminator() {
         let config = config_with(
-            "    title:\n      type: string",
+            "    title:\n      type: string\n      default: \"\"",
             "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string",
         );
         let doc = doc_with_typed_cards(&[], vec![typed_card("unknown", &[])]);
@@ -763,8 +879,8 @@ main:
     #[test]
     fn validates_multiple_card_instances_same_type() {
         let config = config_with(
-            "    title:\n      type: string",
-            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
+            "    title:\n      type: string\n      default: \"\"",
+            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string",
         );
         let doc = doc_with_typed_cards(
             &[],
@@ -779,8 +895,8 @@ main:
     #[test]
     fn validates_multiple_card_kinds_mixed() {
         let config = config_with(
-            "    title:\n      type: string",
-            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true\n  routing:\n    fields:\n      office:\n        type: string\n        required: true",
+            "    title:\n      type: string\n      default: \"\"",
+            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n  routing:\n    fields:\n      office:\n        type: string",
         );
         let doc = doc_with_typed_cards(
             &[],
@@ -795,21 +911,21 @@ main:
     #[test]
     fn reports_card_field_paths_with_card_name_and_index() {
         let config = config_with(
-            "    title:\n      type: string",
-            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n        required: true",
+            "    title:\n      type: string\n      default: \"\"",
+            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string",
         );
         let doc = doc_with_typed_cards(&[], vec![typed_card("indorsement", &[])]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::MissingRequired { path, .. } if path == "cards.indorsement[0].signature_block")
+            matches!(e, ValidationError::RequiredFieldAbsent { path, .. } if path == "cards.indorsement[0].signature_block")
         }));
     }
 
     #[test]
     fn body_disabled_card_enforces_trim_boundary() {
         let config = config_with(
-            "    title:\n      type: string",
-            "card_kinds:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        required: true",
+            "    title:\n      type: string\n      default: \"\"",
+            "card_kinds:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        default: []",
         );
         // Prose triggers the error; whitespace-only does not.
         let mut prose_card = typed_card("skills", &[("items", json!(["Rust"]))]);
@@ -830,12 +946,15 @@ main:
 
     #[test]
     fn to_diagnostic_carries_path_and_code() {
-        let err = ValidationError::MissingRequired {
+        let err = ValidationError::RequiredFieldAbsent {
             path: "cards.indorsement[0].signature_block".to_string(),
             expected: "string".to_string(),
         };
         let diag = err.to_diagnostic();
-        assert_eq!(diag.code.as_deref(), Some("validation::missing_required"));
+        assert_eq!(
+            diag.code.as_deref(),
+            Some("validation::required_field_absent")
+        );
         assert_eq!(
             diag.path.as_deref(),
             Some("cards.indorsement[0].signature_block")
@@ -846,7 +965,7 @@ main:
     #[test]
     fn type_mismatch_message_has_canonical_shape_quote_exit() {
         // Integer source under a `string` schema → quote-the-value exit.
-        let config = config_with("    build_number:\n      type: string", "");
+        let config = config_with("    build_number:\n      type: string\n      default: \"\"", "");
         let doc = doc_from_fm(&[("build_number", json!(42))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         let msg = errors
@@ -899,20 +1018,17 @@ main:
     }
 
     #[test]
-    fn missing_required_message_names_expected_type() {
-        let config = config_with(
-            "    memo_for:\n      type: string\n      required: true",
-            "",
-        );
+    fn required_field_absent_message_names_expected_type() {
+        let config = config_with("    memo_for:\n      type: string", "");
         let doc = doc_from_fm(&[]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         let msg = errors
             .iter()
             .find_map(|e| match e {
-                ValidationError::MissingRequired { .. } => Some(e.to_string()),
+                ValidationError::RequiredFieldAbsent { .. } => Some(e.to_string()),
                 _ => None,
             })
-            .expect("expected MissingRequired");
+            .expect("expected RequiredFieldAbsent");
         assert!(
             msg.contains("Field `memo_for` is missing")
                 && msg.contains("schema declares `string` with no default")
@@ -936,6 +1052,7 @@ main:
   fields:
     title:
       type: string
+      default: ""
 "#,
         )
         .unwrap();

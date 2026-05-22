@@ -143,13 +143,12 @@ fn test_validation_fails_without_defaults() {
   version: "1.0"
   backend: "typst"
   plate_file: "plate.typ"
-  description: "Test quill with required field"
+  description: "Test quill with a Must-Fill field"
 
 main:
   fields:
     title:
       type: "string"
-      required: true
     status:
       type: "string"
       default: "draft"
@@ -168,7 +167,7 @@ main:
     let result = quill.dry_run(&parsed);
     assert!(
         result.is_err(),
-        "Should fail validation - title is required"
+        "Should fail validation — `title` is Must-Fill and absent"
     );
 
     let err = result.unwrap_err();

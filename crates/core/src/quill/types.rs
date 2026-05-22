@@ -5,9 +5,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::value::QuillValue;
 
-fn is_false(value: &bool) -> bool {
-    !*value
-}
 /// Semantic constants for field schema keys used in parsing and JSON Schema generation.
 /// Using constants provides IDE support (find references, autocomplete) and ensures
 /// consistency between parsing and output.
@@ -17,7 +14,6 @@ pub mod field_key {
     pub const DEFAULT: &str = "default";
     pub const EXAMPLE: &str = "example";
     pub const UI: &str = "ui";
-    pub const REQUIRED: &str = "required";
     pub const ENUM: &str = "enum";
     pub const FORMAT: &str = "format";
 }
@@ -156,7 +152,14 @@ impl FieldType {
     }
 }
 
-/// Schema definition for a template field
+/// Schema definition for a template field.
+///
+/// A field's *cell* is determined by `default`: a field with a `default:`
+/// is **Endorsed** (the rendered value is shippable as-is), while a field
+/// without a `default:` is **Must Fill** (the blueprint carries a
+/// `<must-fill>` sentinel and validation reports
+/// `validation::required_field_absent` if the field is missing at
+/// validate time). There is no separate `required:` axis.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FieldSchema {
     /// The map key carries this on the wire; skipped during serialization to avoid duplication.
@@ -172,9 +175,6 @@ pub struct FieldSchema {
     pub example: Option<QuillValue>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui: Option<UiFieldSchema>,
-    /// Fields are optional by default.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub required: bool,
     /// Restricts valid values on string fields.
     #[serde(rename = "enum", skip_serializing_if = "Option::is_none")]
     pub enum_values: Option<Vec<String>>,
@@ -191,8 +191,6 @@ struct FieldSchemaDef {
     pub default: Option<QuillValue>,
     pub example: Option<QuillValue>,
     pub ui: Option<UiFieldSchema>,
-    #[serde(default)]
-    pub required: bool,
     #[serde(rename = "enum")]
     pub enum_values: Option<Vec<String>>,
     // Nested schema support
@@ -208,7 +206,6 @@ impl FieldSchema {
             default: None,
             example: None,
             ui: None,
-            required: false,
             enum_values: None,
             properties: None,
         }
@@ -224,7 +221,6 @@ impl FieldSchema {
             default: def.default,
             example: def.example,
             ui: def.ui,
-            required: def.required,
             enum_values: def.enum_values,
             properties: if let Some(props) = def.properties {
                 let mut p = BTreeMap::new();

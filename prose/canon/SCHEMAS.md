@@ -36,6 +36,9 @@ Supported field types:
 - Coerces top-level fields and per-card fields to their declared types
 - Fails fast (`Err`) on the first value that cannot be coerced
 - Coercion rules per type: array wrapping, boolean from string/int/float, number/integer from string, string/markdown pass-through, date/datetime format validation, object property recursion
+- The Must-Fill sentinel string `<must-fill>` passes through coercion
+  unchanged so the validation layer can surface a placeholder diagnostic
+  rather than a type-coercion error
 
 ## Native validation
 
@@ -47,6 +50,13 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
 - Emits path-aware errors for top-level fields and card fields
 - Validates each card's `$kind` matches a known card kind
 - Enforces `body.enabled: false` on the main card and on each card kind — body content for a body-disabled card emits `ValidationError::BodyDisabled` (whitespace-only bodies are treated as empty)
+- **Sentinel detection runs first.** Before per-type checks, any value
+  equal to the literal string `<must-fill>` (for markdown, the trimmed
+  block-scalar content) fires `validation::unfilled_placeholder` and
+  skips the type check for that field.
+- **Required-field semantics**: a missing field with a `default:` accepts
+  the default (no error). A missing field without a `default:` fires
+  `validation::required_field_absent`.
 
 Field-level type and presence errors render under a uniform shape —
 field path, verbatim source token, schema declaration, and both exits
@@ -69,7 +79,22 @@ metadata, not schema fields, and do not appear in `fields`.
 
 For LLM/MCP authoring, see [BLUEPRINT.md](BLUEPRINT.md) — `blueprint()` emits a document-shaped, pre-filled Markdown reference that's denser than schema for prompt-time use.
 
-Top-level schema keys: `main`, optional `card_kinds` (map keyed by card name). `main` and each entry in `card_kinds` share the same `CardSchema` shape: `fields` (map keyed by field name), optional `description`, optional `ui`, optional `body`. Each `FieldSchema` includes `type`, optional `description`/`default`/`example`/`enum`/`properties`/`ui`, and optional `required` (omitted when false).
+Top-level schema keys: `main`, optional `card_kinds` (map keyed by card name). `main` and each entry in `card_kinds` share the same `CardSchema` shape: `fields` (map keyed by field name), optional `description`, optional `ui`, optional `body`. Each `FieldSchema` includes `type`, optional `description`/`default`/`example`/`enum`/`properties`/`ui`.
+
+### Must-Fill vs. Endorsed fields
+
+A field is **Must Fill** when no `default:` is declared; the schema author
+expects the LLM or user to supply a value before shipping. A missing
+Must Fill field at validate time fires `validation::required_field_absent`.
+
+A field is **Endorsed** when `default:` is declared; the rendered default
+is shippable as-is (the author can keep or override it). Endorsed
+defaults include type-empty values — `default: ""`, `default: []`,
+`default: false`, `default: 0` — which standardize the "skippable" cell.
+
+There is no separate `required:` axis; the presence or absence of
+`default:` is the sole author choice per field. See
+[BLUEPRINT.md](BLUEPRINT.md) for how the two cells render.
 
 Identity fields (`name`, `version`, `backend`, `author`, `description`) live on the parent metadata object (Wasm: `Quill.metadata`; Python: `Quill.metadata` plus dedicated getters).
 

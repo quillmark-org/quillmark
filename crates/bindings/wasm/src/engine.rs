@@ -32,13 +32,20 @@ export interface QuillCardBody {
     example?: string;
 }
 
-/** Schema entry for a single field declared in a quill's `Quill.yaml`. */
+/** Schema entry for a single field declared in a quill's `Quill.yaml`.
+ *
+ * A field's *cell* is determined by `default`: a field with a `default`
+ * is **Endorsed** (the rendered value is shippable as-is), while a field
+ * without a `default` is **Must Fill** (the blueprint carries a
+ * `<must-fill>` sentinel and validation reports
+ * `validation::required_field_absent` if the field is absent at validate
+ * time). There is no separate `required` axis.
+ */
 export interface QuillFieldSchema {
     type: "string" | "number" | "integer" | "boolean" | "array" | "object" | "date" | "datetime" | "markdown";
     description?: string;
     default?: unknown;
     example?: unknown;
-    required?: boolean;
     enum?: string[];
     ui?: QuillFieldUi;
     properties?: Record<string, QuillFieldSchema>;

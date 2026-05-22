@@ -1176,7 +1176,6 @@ card_kinds:
       name:
         type: string
         description: Name of the endorsing official
-        required: true
       org:
         type: string
         description: Endorser's organization
@@ -1197,7 +1196,8 @@ card_kinds:
 
     let name_field = card.fields.get("name").unwrap();
     assert_eq!(name_field.r#type, FieldType::String);
-    assert!(name_field.required);
+    // Must Fill: no default declared.
+    assert!(name_field.default.is_none());
 
     let org_field = card.fields.get("org").unwrap();
     assert_eq!(org_field.r#type, FieldType::String);
@@ -1471,10 +1471,8 @@ main:
       properties:
         street:
           type: string
-          required: true
         city:
           type: string
-          required: true
 "#;
 
     let (config, warnings) = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap();
@@ -2262,7 +2260,7 @@ card_kinds:
       enabled: false
       example: This example is unused
     fields:
-      items: { type: array, required: true }
+      items: { type: array }
 "#;
     let (_config, warnings) = QuillConfig::from_yaml_with_warnings(yaml).unwrap();
     assert!(

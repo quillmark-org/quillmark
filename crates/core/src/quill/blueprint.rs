@@ -11,15 +11,17 @@
 //! Annotation grammar:
 //! - **Leading `# …` lines** carry prose: `# <description>` (single line,
 //!   whitespace-collapsed) and `# e.g. <value>` (whenever an `example:` is
-//!   configured, regardless of role or type).
+//!   configured, regardless of cell or type).
 //! - **Inline `# …` annotation** on the value line is structural:
-//!   `# <type>[<format>]; <role>[, <extras>...]`. Type is mandatory on every
-//!   field. Format slot uses angle brackets (`array<string>`,
-//!   `date<YYYY-MM-DD>`, `enum<a | b | c>`). Role is `required` or
-//!   `optional`.
+//!   `# <type>[<format>][; skip-ok]`. Type is mandatory on every field.
+//!   Format slot uses angle brackets (`array<string>`, `date<YYYY-MM-DD>`,
+//!   `enum<a | b | c>`). The optional `; skip-ok` tag marks **Endorsed**
+//!   cells whose rendered default is shippable as-is; its absence marks
+//!   **Must Fill** cells, which carry the `<must-fill>` sentinel in the
+//!   value cell instead.
 //! - **Metadata annotation.** The `$quill` / `$kind` system-metadata lines
 //!   have no inline-annotation slot, so their role annotation
-//!   (`system metadata; required, verbatim` for the root block,
+//!   (`system metadata; verbatim` for the root block,
 //!   `composable (0..N)` for cards) is emitted as an own-line `# …` comment
 //!   directly under the `$` line.
 //! - **Body regions** are signalled by `Write main body here.` after the main
@@ -32,6 +34,7 @@
 
 use std::collections::BTreeMap;
 
+use super::validation::MUST_FILL_SENTINEL;
 use super::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::document::emit::{saphyr_emit_flow, saphyr_emit_scalar};
 use crate::value::QuillValue;
@@ -106,7 +109,7 @@ fn write_main_fence(
     )));
     out.push('\n');
     out.push_str("$kind: main\n");
-    write_comment(out, "system metadata; required, verbatim");
+    write_comment(out, "system metadata; verbatim");
     if let Some(desc) = description {
         write_comment(out, desc);
     }
@@ -188,12 +191,12 @@ fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
     // Markdown fields render as a YAML block scalar so multi-line content has
     // a consistent shape regardless of whether a default is configured.
     if matches!(field.r#type, FieldType::Markdown) {
-        let inline = inline_annotation(field, false);
+        let inline = inline_annotation(field, false, None);
         write_markdown_block(out, field, &pad, &inline);
         return;
     }
 
-    let inline = format!("  # {}", inline_annotation(field, false));
+    let inline = format!("  # {}", inline_annotation(field, false, None));
     let value = field_value(field);
     write_value(out, &field.name, &value, &inline, &pad);
 }
@@ -208,7 +211,7 @@ fn write_description(out: &mut String, field: &FieldSchema, pad: &str) {
 }
 
 /// `# e.g. <value>` — emitted whenever `example:` is configured on the field.
-/// Independent of role, type, or enum-ness; examples never become rendered
+/// Independent of cell, type, or enum-ness; examples never become rendered
 /// values.
 fn write_eg_comment(out: &mut String, field: &FieldSchema, pad: &str) {
     if let Some(eg) = field.example.as_ref().map(eg_hint) {
@@ -219,8 +222,10 @@ fn write_eg_comment(out: &mut String, field: &FieldSchema, pad: &str) {
 fn write_markdown_block(out: &mut String, field: &FieldSchema, pad: &str, inline: &str) {
     out.push_str(&format!("{}{}: |-  # {}\n", pad, field.name, inline));
     let body_pad = format!("{}  ", pad);
-    // Render default content if present; otherwise leave one indented blank
-    // line so the block scalar has a body for the author to fill in.
+    // Endorsed cell with content → render the default. Endorsed cell with
+    // empty/absent string default → one indented blank line (the
+    // "skippable" markdown cell). Must Fill cell → the sentinel on one
+    // line inside the block scalar.
     let content = field.default.as_ref().and_then(|v| match v.as_json() {
         serde_json::Value::String(s) => Some(s),
         _ => None,
@@ -231,8 +236,11 @@ fn write_markdown_block(out: &mut String, field: &FieldSchema, pad: &str, inline
                 out.push_str(&format!("{}{}\n", body_pad, line));
             }
         }
-        _ => {
+        Some(_) => {
             out.push_str(&format!("{}\n", body_pad));
+        }
+        None => {
+            out.push_str(&format!("{}{}\n", body_pad, MUST_FILL_SENTINEL));
         }
     }
 }
@@ -248,10 +256,16 @@ fn sort_props(props: &BTreeMap<String, Box<FieldSchema>>) -> Vec<&FieldSchema> {
 }
 
 /// Emit a typed-table field: description + `# e.g.` line (whenever an example
-/// is configured), then the field key with its `array<object>; <role>` inline
+/// is configured), then the field key with its `array<object>` inline
 /// annotation, then either default rows or a synthetic template row. An
 /// example never renders as rows — like every other field type it surfaces
 /// only in the `# e.g.` leading line.
+///
+/// Cell rule: an Endorsed container (with a non-empty `default:`) carries
+/// `; skip-ok` on the outer key and renders concrete rows without
+/// per-property annotations. A Must Fill container (no default) drops
+/// `; skip-ok` from the outer key (state is a leaf concern) and recurses
+/// into one synthetic row whose leaves carry their own cell signals.
 fn write_typed_table_field(
     out: &mut String,
     field: &FieldSchema,
@@ -268,7 +282,8 @@ fn write_typed_table_field(
     write_description(out, field, &pad);
     write_eg_comment(out, field, &pad);
 
-    let inline = inline_annotation(field, true);
+    let container_endorsed = concrete_rows.is_some();
+    let inline = inline_annotation(field, true, Some(container_endorsed));
     out.push_str(&format!("{}{}:  # {}\n", pad, field.name, inline));
 
     match concrete_rows {
@@ -284,10 +299,17 @@ fn write_typed_table_field(
 }
 
 /// Emit a typed-dictionary field: description + `# e.g.` line (whenever an
-/// example is configured), then the field key with its `object; <role>` inline
+/// example is configured), then the field key with its `object` inline
 /// annotation, then either a concrete mapping from `default` or per-property
 /// annotations. An example never renders as a concrete mapping — like every
 /// other field type it surfaces only in the `# e.g.` leading line.
+///
+/// Cell rule: an Endorsed container (with a non-empty `default:`) carries
+/// `; skip-ok` on the outer key and renders a concrete block mapping
+/// without per-property annotations. A Must Fill container (no default)
+/// drops `; skip-ok` from the outer key (state is a leaf concern) and
+/// recurses into per-property annotations whose leaves carry their own
+/// cell signals.
 fn write_typed_object_field(
     out: &mut String,
     field: &FieldSchema,
@@ -304,7 +326,8 @@ fn write_typed_object_field(
     write_description(out, field, &pad);
     write_eg_comment(out, field, &pad);
 
-    let inline = inline_annotation(field, false);
+    let container_endorsed = concrete.is_some();
+    let inline = inline_annotation(field, false, Some(container_endorsed));
     out.push_str(&format!("{}{}:  # {}\n", pad, field.name, inline));
 
     match concrete {
@@ -323,16 +346,32 @@ fn write_typed_object_field(
 }
 
 /// Build the inline annotation body (without the leading `# `).
-/// `force_array_object` is `true` for typed-table outer fields, which always
-/// renders as `array<object>`; plain arrays render as `array<string>`.
-fn inline_annotation(field: &FieldSchema, force_array_object: bool) -> String {
-    let role = if field.required {
-        "required"
-    } else {
-        "optional"
-    };
+///
+/// `force_array_object` is `true` for typed-table outer fields, which
+/// always render as `array<object>`; plain arrays render as `array<string>`.
+/// `endorsed_override` short-circuits the schema-driven cell decision —
+/// it's used for the typed-table / typed-dict outer key when the container
+/// is a leaf, or for property leaves whose cell decision differs from the
+/// container.
+fn inline_annotation(
+    field: &FieldSchema,
+    force_array_object: bool,
+    endorsed_override: Option<bool>,
+) -> String {
+    let endorsed = endorsed_override.unwrap_or_else(|| is_endorsed(field));
     let type_expr = type_expression(field, force_array_object);
-    format!("{}; {}", type_expr, role)
+    if endorsed {
+        format!("{}; skip-ok", type_expr)
+    } else {
+        type_expr
+    }
+}
+
+/// A field is **Endorsed** when its schema declares a `default:`. Otherwise
+/// it is **Must Fill** and the blueprint emits a `<must-fill>` sentinel in
+/// the value cell.
+fn is_endorsed(field: &FieldSchema) -> bool {
+    field.default.is_some()
 }
 
 fn type_expression(field: &FieldSchema, force_array_object: bool) -> String {
@@ -359,8 +398,8 @@ fn type_expression(field: &FieldSchema, force_array_object: bool) -> String {
     }
 }
 
-/// The value to render for a field. Single cascade independent of role:
-/// default → first enum value → type-empty.
+/// The value to render for a field. Endorsed cells render their default;
+/// Must Fill cells render the `<must-fill>` sentinel in the value cell.
 enum FieldValue {
     Inline(String),
     Block(Vec<serde_json::Value>),
@@ -370,22 +409,10 @@ fn field_value(field: &FieldSchema) -> FieldValue {
     if let Some(v) = field.default.as_ref() {
         return json_to_value(v.as_json());
     }
-    if let Some(first) = field.enum_values.as_ref().and_then(|v| v.first()) {
-        return FieldValue::Inline(first.clone());
-    }
-    type_empty(&field.r#type)
-}
-
-fn type_empty(t: &FieldType) -> FieldValue {
-    match t {
-        FieldType::Array => FieldValue::Inline("[]".into()),
-        FieldType::Boolean => FieldValue::Inline("false".into()),
-        FieldType::Number | FieldType::Integer => FieldValue::Inline("0".into()),
-        FieldType::Date | FieldType::DateTime => FieldValue::Inline("\"\"".into()),
-        // String, markdown, object: empty string. Markdown is special-cased
-        // earlier in `write_field` and never reaches this code path.
-        _ => FieldValue::Inline("\"\"".into()),
-    }
+    // No default → Must Fill cell. The sentinel sits in the value cell
+    // regardless of declared type (markdown is special-cased earlier and
+    // never reaches this code path).
+    FieldValue::Inline(MUST_FILL_SENTINEL.to_string())
 }
 
 fn json_to_value(val: &serde_json::Value) -> FieldValue {
@@ -463,32 +490,34 @@ mod tests {
     }
 
     #[test]
-    fn required_string_renders_empty_with_required_role() {
+    fn must_fill_string_renders_sentinel_with_no_skip_ok() {
+        // No `default:` → Must Fill. Sentinel sits in the value cell; the
+        // inline annotation drops `; skip-ok`.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
-    author: { type: string, required: true }
+    author: { type: string }
 "#)
         .blueprint();
-        assert!(t.contains("author: \"\"  # string; required\n"));
+        assert!(t.contains("author: <must-fill>  # string\n"));
     }
 
     #[test]
-    fn required_field_with_example_does_not_use_example_as_value() {
+    fn endorsed_field_with_example_does_not_use_example_as_value() {
         // Examples never render as values — they always surface in `# e.g.`.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
-    status: { type: string, required: true, default: draft, example: final }
+    status: { type: string, default: draft, example: final }
 "#)
         .blueprint();
-        assert!(t.contains("# e.g. final\nstatus: draft  # string; required\n"));
+        assert!(t.contains("# e.g. final\nstatus: draft  # string; skip-ok\n"));
     }
 
     #[test]
-    fn optional_field_default_renders_as_value_with_eg_line() {
+    fn endorsed_empty_default_renders_value_with_skip_ok_and_eg_line() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -496,11 +525,11 @@ main:
     classification: { type: string, default: "", example: CONFIDENTIAL }
 "#)
         .blueprint();
-        assert!(t.contains("# e.g. CONFIDENTIAL\nclassification: \"\"  # string; optional\n"));
+        assert!(t.contains("# e.g. CONFIDENTIAL\nclassification: \"\"  # string; skip-ok\n"));
     }
 
     #[test]
-    fn optional_array_example_renders_as_flow_sequence_with_context_quoting() {
+    fn must_fill_array_example_renders_as_flow_sequence_with_context_quoting() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -514,12 +543,12 @@ main:
 "#)
         .blueprint();
         assert!(t.contains(
-            "# e.g. [Mr. John Doe, 123 Main St, \"Anytown, USA\"]\nrecipient: []  # array<string>; optional\n"
+            "# e.g. [Mr. John Doe, 123 Main St, \"Anytown, USA\"]\nrecipient: <must-fill>  # array<string>\n"
         ));
     }
 
     #[test]
-    fn enum_field_uses_enum_format_slot_and_no_eg() {
+    fn enum_endorsed_uses_enum_format_slot_and_no_eg() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -527,13 +556,27 @@ main:
     format: { type: string, enum: [standard, informal], default: standard }
 "#)
         .blueprint();
-        assert!(t.contains("format: standard  # enum<standard | informal>; optional\n"));
+        assert!(t.contains("format: standard  # enum<standard | informal>; skip-ok\n"));
         assert!(!t.contains("e.g."));
     }
 
     #[test]
-    fn required_array_with_example_renders_eg_only_not_value() {
-        // Plain (non-typed-table) required arrays render type-empty; the
+    fn enum_must_fill_renders_sentinel_in_value_cell() {
+        // An enum field with no `default:` renders `<must-fill>` rather than
+        // the first enum value — the cell is Must Fill regardless.
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    severity: { type: string, enum: [low, medium, high] }
+"#)
+        .blueprint();
+        assert!(t.contains("severity: <must-fill>  # enum<low | medium | high>\n"));
+    }
+
+    #[test]
+    fn must_fill_array_with_example_renders_eg_only_not_value() {
+        // Plain (non-typed-table) Must Fill arrays render the sentinel; the
         // example surfaces in the leading `# e.g.` line.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
@@ -541,14 +584,13 @@ main:
   fields:
     memo_from:
       type: array
-      required: true
       example:
         - ORG/SYMBOL
         - City ST 12345
 "#)
         .blueprint();
         assert!(t.contains(
-            "# e.g. [ORG/SYMBOL, City ST 12345]\nmemo_from: []  # array<string>; required\n"
+            "# e.g. [ORG/SYMBOL, City ST 12345]\nmemo_from: <must-fill>  # array<string>\n"
         ));
     }
 
@@ -560,15 +602,16 @@ main:
   fields:
     subject:
       type: string
-      required: true
       description: Be brief and clear.
 "#)
         .blueprint();
-        assert!(t.contains("# Be brief and clear.\nsubject: \"\"  # string; required\n"));
+        assert!(t.contains("# Be brief and clear.\nsubject: <must-fill>  # string\n"));
     }
 
     #[test]
-    fn every_field_carries_inline_type_and_role() {
+    fn every_field_carries_inline_type_and_cell_signal() {
+        // Endorsed cells carry `; skip-ok`; Must Fill cells carry the
+        // sentinel in the value cell and drop the tag.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -578,19 +621,19 @@ main:
     flag: { type: boolean, default: false }
     issued: { type: date }
     published: { type: datetime }
-    refs: { type: array }
+    refs: { type: array, default: [] }
 "#)
         .blueprint();
-        assert!(t.contains("title: \"\"  # string; optional\n"));
-        assert!(t.contains("size: 11  # number; optional\n"));
-        assert!(t.contains("flag: false  # boolean; optional\n"));
-        assert!(t.contains("issued: \"\"  # date<YYYY-MM-DD>; optional\n"));
-        assert!(t.contains("published: \"\"  # datetime<ISO 8601>; optional\n"));
-        assert!(t.contains("refs: []  # array<string>; optional\n"));
+        assert!(t.contains("title: <must-fill>  # string\n"));
+        assert!(t.contains("size: 11  # number; skip-ok\n"));
+        assert!(t.contains("flag: false  # boolean; skip-ok\n"));
+        assert!(t.contains("issued: <must-fill>  # date<YYYY-MM-DD>\n"));
+        assert!(t.contains("published: <must-fill>  # datetime<ISO 8601>\n"));
+        assert!(t.contains("refs: []  # array<string>; skip-ok\n"));
     }
 
     #[test]
-    fn markdown_field_renders_as_block_scalar() {
+    fn must_fill_markdown_renders_sentinel_inside_block_scalar() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -598,11 +641,24 @@ main:
     bio: { type: markdown }
 "#)
         .blueprint();
-        assert!(t.contains("bio: |-  # markdown; optional\n  \n"));
+        assert!(t.contains("bio: |-  # markdown\n  <must-fill>\n"));
     }
 
     #[test]
-    fn markdown_field_with_default_fills_block() {
+    fn endorsed_empty_markdown_renders_blank_line_with_skip_ok() {
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    bio: { type: markdown, default: "" }
+"#)
+        .blueprint();
+        assert!(t.contains("bio: |-  # markdown; skip-ok\n  \n"));
+        assert!(!t.contains("<must-fill>"));
+    }
+
+    #[test]
+    fn endorsed_markdown_default_fills_block() {
         let t = cfg(r###"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -612,11 +668,11 @@ main:
       default: "## About me\n\nHello."
 "###)
         .blueprint();
-        assert!(t.contains("bio: |-  # markdown; optional\n  ## About me\n  \n  Hello.\n"));
+        assert!(t.contains("bio: |-  # markdown; skip-ok\n  ## About me\n  \n  Hello.\n"));
     }
 
     #[test]
-    fn quill_metadata_line_is_required_verbatim() {
+    fn quill_metadata_line_is_verbatim() {
         let t = cfg(r#"
 quill: { name: taro, version: 0.1.0, backend: typst, description: x }
 main:
@@ -625,7 +681,7 @@ main:
 "#)
         .blueprint();
         assert!(t.starts_with(
-            "~~~card-yaml\n$quill: taro@0.1.0\n$kind: main\n# system metadata; required, verbatim\n# x\n"
+            "~~~card-yaml\n$quill: taro@0.1.0\n$kind: main\n# system metadata; verbatim\n# x\n"
         ));
         assert!(t.contains("\nWrite main body here.\n"));
     }
@@ -660,7 +716,7 @@ card_kinds:
   skills:
     body: { enabled: false }
     fields:
-      items: { type: array, required: true }
+      items: { type: array }
 "#)
         .blueprint();
         let after = &t[t.find("$kind: skills").unwrap()..];
@@ -724,8 +780,8 @@ card_kinds:
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
-    memo_for: { type: array, required: true, ui: { group: Addressing } }
-    subject: { type: string, required: true, ui: { group: Addressing } }
+    memo_for: { type: array, ui: { group: Addressing } }
+    subject: { type: string, ui: { group: Addressing } }
     letterhead_title: { type: string, default: HQ, ui: { group: Letterhead } }
     notes: { type: string }
 "#)
@@ -742,7 +798,9 @@ main:
     }
 
     #[test]
-    fn typed_table_emits_synthetic_row_when_no_example() {
+    fn typed_table_must_fill_emits_synthetic_row_with_leaf_sentinels() {
+        // Must Fill container → outer key has no `; skip-ok` (state is a
+        // leaf concern). Property leaves carry their own cell signals.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -751,13 +809,13 @@ main:
       type: array
       description: Cited works.
       properties:
-        org: { type: string, required: true, description: Citing organization. }
-        year: { type: integer, description: Publication year. }
+        org: { type: string, description: Citing organization. }
+        year: { type: integer, default: 0, description: Publication year. }
 "#)
         .blueprint();
-        assert!(t.contains("# Cited works.\nreferences:  # array<object>; optional\n  -\n"));
-        assert!(t.contains("    # Citing organization.\n    org: \"\"  # string; required\n"));
-        assert!(t.contains("    # Publication year.\n    year: 0  # integer; optional\n"));
+        assert!(t.contains("# Cited works.\nreferences:  # array<object>\n  -\n"));
+        assert!(t.contains("    # Citing organization.\n    org: <must-fill>  # string\n"));
+        assert!(t.contains("    # Publication year.\n    year: 0  # integer; skip-ok\n"));
     }
 
     #[test]
@@ -773,18 +831,18 @@ main:
       example:
         - { org: ACME, year: 2020 }
       properties:
-        org: { type: string, required: true }
-        year: { type: integer }
+        org: { type: string }
+        year: { type: integer, default: 0 }
 "#)
         .blueprint();
         assert!(t.contains("# e.g. [{org: ACME, year: 2020}]\n"));
-        assert!(t.contains("refs:  # array<object>; optional\n  -\n"));
-        assert!(t.contains("    org: \"\"  # string; required\n"));
-        assert!(t.contains("    year: 0  # integer; optional\n"));
+        assert!(t.contains("refs:  # array<object>\n  -\n"));
+        assert!(t.contains("    org: <must-fill>  # string\n"));
+        assert!(t.contains("    year: 0  # integer; skip-ok\n"));
     }
 
     #[test]
-    fn typed_table_with_default_renders_default_rows() {
+    fn typed_table_endorsed_renders_default_rows_with_skip_ok() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -794,15 +852,18 @@ main:
       default:
         - { org: ACME }
       properties:
-        org: { type: string, required: true }
+        org: { type: string }
 "#)
         .blueprint();
-        assert!(t.contains("refs:  # array<object>; optional\n  - org: ACME\n"));
-        assert!(!t.contains("refs:  # array<object>; optional\n  -\n"));
+        assert!(t.contains("refs:  # array<object>; skip-ok\n  - org: ACME\n"));
+        assert!(!t.contains("refs:  # array<object>; skip-ok\n  -\n"));
     }
 
     #[test]
     fn typed_table_with_empty_default_falls_through_to_synthetic_row() {
+        // An empty default array is treated like a Must Fill container
+        // for rendering purposes (we need a synthetic row to show the
+        // shape), and the outer key drops `; skip-ok`.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -811,16 +872,18 @@ main:
       type: array
       default: []
       properties:
-        org: { type: string, required: true }
+        org: { type: string }
 "#)
         .blueprint();
         assert!(t.contains(
-            "refs:  # array<object>; optional\n  -\n    org: \"\"  # string; required\n"
+            "refs:  # array<object>\n  -\n    org: <must-fill>  # string\n"
         ));
     }
 
     #[test]
-    fn typed_dict_emits_per_property_annotations() {
+    fn typed_dict_must_fill_emits_per_property_annotations() {
+        // Must Fill container → outer key has no `; skip-ok`; per-property
+        // recursion with leaf cell signals.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -829,35 +892,19 @@ main:
       type: object
       description: Mailing address.
       properties:
-        street: { type: string, required: true, description: Street line. }
-        city:   { type: string, required: true }
-        zip:    { type: string }
+        street: { type: string, description: Street line. }
+        city:   { type: string }
+        zip:    { type: string, default: "" }
 "#)
         .blueprint();
-        assert!(t.contains("# Mailing address.\naddress:  # object; optional\n"));
-        assert!(t.contains("  # Street line.\n  street: \"\"  # string; required\n"));
-        assert!(t.contains("  city: \"\"  # string; required\n"));
-        assert!(t.contains("  zip: \"\"  # string; optional\n"));
+        assert!(t.contains("# Mailing address.\naddress:  # object\n"));
+        assert!(t.contains("  # Street line.\n  street: <must-fill>  # string\n"));
+        assert!(t.contains("  city: <must-fill>  # string\n"));
+        assert!(t.contains("  zip: \"\"  # string; skip-ok\n"));
     }
 
     #[test]
-    fn typed_dict_required_carries_role() {
-        let t = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    address:
-      type: object
-      required: true
-      properties:
-        street: { type: string, required: true }
-"#)
-        .blueprint();
-        assert!(t.contains("address:  # object; required\n"));
-    }
-
-    #[test]
-    fn typed_dict_with_default_renders_block_mapping_no_annotations() {
+    fn typed_dict_endorsed_renders_block_mapping_with_skip_ok() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -866,18 +913,18 @@ main:
       type: object
       default: { street: "5000 Forbes Ave", city: Pittsburgh }
       properties:
-        street: { type: string, required: true }
-        city:   { type: string, required: true }
+        street: { type: string }
+        city:   { type: string }
 "#)
         .blueprint();
-        assert!(t.contains("address:  # object; optional\n"));
+        assert!(t.contains("address:  # object; skip-ok\n"));
         assert!(
             t.contains("  street: 5000 Forbes Ave\n")
                 || t.contains("  street: \"5000 Forbes Ave\"\n")
         );
         assert!(t.contains("  city: Pittsburgh\n"));
         // No per-property annotations when concrete values are present.
-        assert!(!t.contains("# string; required"));
+        assert!(!t.contains("# string"));
     }
 
     #[test]
@@ -892,17 +939,17 @@ main:
       type: object
       example: { street: "1 Infinite Loop", city: Cupertino }
       properties:
-        street: { type: string, required: true }
-        city:   { type: string }
+        street: { type: string }
+        city:   { type: string, default: "" }
 "#)
         .blueprint();
-        assert!(t.contains("address:  # object; optional\n"));
+        assert!(t.contains("address:  # object\n"));
         assert!(
             t.contains("# e.g. {street: 1 Infinite Loop, city: Cupertino}\n")
                 || t.contains("# e.g. {city: Cupertino, street: 1 Infinite Loop}\n")
         );
-        assert!(t.contains("  street: \"\"  # string; required\n"));
-        assert!(t.contains("  city: \"\"  # string; optional\n"));
+        assert!(t.contains("  street: <must-fill>  # string\n"));
+        assert!(t.contains("  city: \"\"  # string; skip-ok\n"));
     }
 
     const LETTER_QUILL: &str = r#"
@@ -911,11 +958,9 @@ main:
   fields:
     to:
       type: string
-      required: true
       description: Recipient name.
     subject:
       type: string
-      required: true
     date:
       type: date
     priority:
@@ -924,13 +969,14 @@ main:
       default: normal
     attachments:
       type: array
+      default: []
       example:
         - report.pdf
 card_kinds:
   enclosure:
     description: An enclosure attached to the letter.
     fields:
-      label: { type: string, required: true }
+      label: { type: string }
       pages: { type: integer, default: 1 }
 "#;
 

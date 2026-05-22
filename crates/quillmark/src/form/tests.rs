@@ -86,7 +86,6 @@ main:
   fields:
     title:
       type: string
-      required: true
     status:
       type: string
       default: draft
@@ -95,19 +94,19 @@ main:
 "#,
     );
 
-    // `title` and `notes` are absent from the document.
-    // `title` is required — that produces a validation diagnostic.
-    // `status` is absent but has a default.
-    // `notes` is absent and has no default.
+    // `title` and `notes` are absent from the document and have no
+    // default → both produce validation diagnostics
+    // (`validation::required_field_absent`).
+    // `status` is absent but has a default — it falls back to the default.
     let md = "~~~card-yaml\n$quill: form_defaults_test\n$kind: main\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();
 
     let form = quill.form(&doc);
 
-    // `title` is required and missing → validation diagnostic
+    // `title` is Must Fill and absent → validation diagnostic
     assert!(
         form.diagnostics.iter().any(|d| d.message.contains("title")),
-        "expected validation diagnostic for required 'title'; got: {:?}",
+        "expected validation diagnostic for absent Must-Fill 'title'; got: {:?}",
         form.diagnostics
     );
 
@@ -195,7 +194,6 @@ card_kinds:
     fields:
       signature_block:
         type: string
-        required: true
       office:
         type: string
         default: HQ
@@ -245,7 +243,6 @@ main:
   fields:
     count:
       type: integer
-      required: true
 "#,
     );
 

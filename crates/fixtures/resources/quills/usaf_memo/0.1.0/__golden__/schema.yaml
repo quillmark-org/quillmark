@@ -83,7 +83,6 @@ main:
       ui:
         group: Addressing
         order: 0
-      required: true
     memo_from:
       type: array
       description: >-
@@ -98,7 +97,6 @@ main:
       ui:
         group: Addressing
         order: 1
-      required: true
     references:
       type: array
       description: Cite by organization, type, date, and title.
@@ -117,7 +115,6 @@ main:
       ui:
         group: Addressing
         order: 3
-      required: true
     subject:
       type: string
       description: >-
@@ -128,7 +125,6 @@ main:
       ui:
         group: Addressing
         order: 2
-      required: true
     tag_line:
       type: string
       description: Organizational motto at the bottom of the page.
@@ -197,4 +193,3 @@ card_kinds:
         ui:
           group: Addressing
           order: 2
-        required: true
