@@ -7,7 +7,7 @@
 
 ## Components
 
-- **[MARKDOWN.md](MARKDOWN.md)** - Quillmark Markdown specification (superset of CommonMark)
+- **[../references/markdown-spec.md](../references/markdown-spec.md)** - Quillmark Markdown specification (superset of CommonMark)
 - **[DOCUMENT_STORAGE.md](DOCUMENT_STORAGE.md)** - Versioned JSON serialization of `Document` for database persistence
 - **[QUILL.md](QUILL.md)** - Quill bundle structure and file tree API
 - **[QUILL_VALUE.md](QUILL_VALUE.md)** - Unified value type for YAML/JSON conversions

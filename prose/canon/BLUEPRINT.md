@@ -38,7 +38,7 @@ $kind: <card_kind>
 Write <card_kind> body here.
 ````
 
-Every block is a `~~~card-yaml` block (see [MARKDOWN.md](MARKDOWN.md) §3):
+Every block is a `~~~card-yaml` block (see [markdown-spec.md](../references/markdown-spec.md) §3):
 the root block carries the `$quill` system-metadata line; each composable
 card carries a `$kind: <card_kind>` metadata line.
 

@@ -1662,7 +1662,7 @@ fn test_body_with_trailing_newlines() {
 }
 
 // ── Blank-line separator stripping: parse-side normalisation ─────────────────
-// See `assemble.rs::strip_blank_separator` and `MARKDOWN.md §4` (rule D1).
+// See `assemble.rs::strip_blank_separator` and `markdown-spec.md §4` (rule D1).
 
 #[test]
 fn test_blank_separator_strip_global_body_followed_by_card_lf() {

@@ -162,6 +162,6 @@ by any past version always loads.
 ## Links
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — `Document` in the core type overview
-- [MARKDOWN.md](MARKDOWN.md) — Markdown syntax and the in-memory data model
+- [markdown-spec.md](../references/markdown-spec.md) — Markdown syntax and the in-memory data model
 - [VERSIONING.md](VERSIONING.md) — quill version resolution (a separate concern)
 - [QUILL_VALUE.md](QUILL_VALUE.md) — value type stored inside payload fields

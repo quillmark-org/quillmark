@@ -22,7 +22,7 @@ fn collect_md_files(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     }
 }
 
-// ── Markdown↔JSON canonical convergence (MARKDOWN.md §9.1) ────────────────────
+// ── Markdown↔JSON canonical convergence (markdown-spec.md §9.1) ──────────────
 
 /// `to_markdown(from_json(to_json(from_markdown(x)))) == to_markdown(from_markdown(x))`
 /// for every fixture: the markdown and JSON persistence paths canonicalise

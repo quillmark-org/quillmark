@@ -6,7 +6,7 @@
 //!
 //! Every block is a `~~~card-yaml` fence: the root block declares
 //! `$quill: <name>@<version>` and each composable card declares
-//! `$kind: <kind>` (see `MARKDOWN.md`).
+//! `$kind: <kind>` (see `prose/references/markdown-spec.md`).
 //!
 //! Annotation grammar:
 //! - **Leading `# …` lines** carry prose: `# <description>` (single line,

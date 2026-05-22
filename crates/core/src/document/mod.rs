@@ -13,7 +13,7 @@
 //! [`Document::from_markdown`] returns errors for malformed YAML, unclosed
 //! fences, a missing root `$quill`, or unknown `$`-prefixed system keys.
 //!
-//! See [MARKDOWN.md](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/MARKDOWN.md)
+//! See [markdown-spec.md](https://github.com/quillmark-org/quillmark/blob/main/prose/references/markdown-spec.md)
 //! for the card-yaml format specification.
 
 use serde::{Deserialize, Serialize};
