@@ -735,6 +735,69 @@ Section 1 body.";
 }
 
 #[test]
+fn test_root_without_kind_is_accepted_and_synthesised() {
+    // MARKDOWN.md §3.3: the root's `$kind` is `main` by position. An omitted
+    // `$kind` parses successfully; the parser synthesises the entry at the
+    // canonical position so `doc.main().kind()` is always `Some("main")`
+    // and canonical emission writes `$kind: main` back out.
+    let markdown = "~~~card-yaml
+$quill: test_quill
+title: Test
+~~~
+
+Body content.";
+
+    let doc = decompose(markdown).expect("root without $kind should parse");
+    assert_eq!(doc.main().kind(), Some("main"));
+    assert_eq!(doc.main().quill().unwrap().name.as_str(), "test_quill");
+
+    let emitted = doc.to_markdown();
+    assert!(
+        emitted.contains("$kind: main"),
+        "canonical emission should synthesise $kind: main; got: {emitted}"
+    );
+
+    // The synthesised line lives in canonical position: after $quill, before
+    // any user field.
+    let quill_pos = emitted.find("$quill:").expect("emitted lacks $quill");
+    let kind_pos = emitted.find("$kind:").expect("emitted lacks $kind");
+    let title_pos = emitted.find("title:").expect("emitted lacks title");
+    assert!(
+        quill_pos < kind_pos && kind_pos < title_pos,
+        "canonical order is $quill < $kind < user fields; got: {emitted}"
+    );
+
+    // Round-trip the emitted form: it parses again and equals the original.
+    let reparsed = decompose(&emitted).expect("emitted form re-parses");
+    assert_eq!(doc, reparsed);
+}
+
+#[test]
+fn test_root_with_non_main_kind_is_error() {
+    // Only `$kind: main` is valid on the root. Other values still error.
+    let markdown = "~~~card-yaml
+$quill: test_quill
+$kind: other
+title: Test
+~~~";
+    let err = decompose(markdown).unwrap_err().to_string();
+    assert!(
+        err.contains("$kind: other") && err.contains("reserved for the document root"),
+        "expected non-main-root error, got: {err}"
+    );
+}
+
+#[test]
+fn test_canonical_root_with_kind_round_trips_byte_equal() {
+    // §9.1: a canonical document is a parse-emit fixed point. Adding the
+    // implicit-kind synthesis must not perturb canonical input — when
+    // `$kind: main` is already written, the emitter produces the same line.
+    let canonical = "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\nBody.";
+    let doc = decompose(canonical).unwrap();
+    assert_eq!(doc.to_markdown(), canonical);
+}
+
+#[test]
 fn test_non_root_block_declaring_quill_is_error() {
     // Only the root block binds the document to a quill. A composable card
     // declaring `$quill` is a structural parse error.
