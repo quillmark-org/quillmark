@@ -251,33 +251,26 @@ main:
       # no default → Must Fill
 ```
 
-Blueprint:
+Rough example:
 
 ````
 ~~~card-yaml
 $quill: cmu_letter@0.1.0
-# Typeset letters that comply with Carnegie Mellon University letterhead standards.
-
 # The recipient's name and full mailing address.
 # e.g. [Mr. John Doe, 123 Main St, "Anytown, USA"]
 recipient: <must-fill>  # array<string>
-
 # The signer's information. Line 1: Name. Line 2: Title.
 # e.g. [First M. Last, Title]
 signature_block: <must-fill>  # array<string>
-
 # The department or organizational unit name for the letterhead.
 # e.g. Department of Electrical and Computer Engineering
 department: ""  # string; skip-ok
-
 # The sender's institutional mailing address.
 # e.g. [5000 Forbes Avenue, "Pittsburgh, PA 15213-3890"]
 address: <must-fill>  # array<string>
-
 # The department or university website URL.
 # e.g. www.ece.cmu.edu
 url: ""  # string; skip-ok
-
 # The date to appear on the letter.
 date: <must-fill>  # date<YYYY-MM-DD>
 ~~~
