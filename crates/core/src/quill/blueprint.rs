@@ -191,12 +191,12 @@ fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
     // Markdown fields render as a YAML block scalar so multi-line content has
     // a consistent shape regardless of whether a default is configured.
     if matches!(field.r#type, FieldType::Markdown) {
-        let inline = inline_annotation(field, false, None);
+        let inline = inline_annotation(field, false, field.default.is_some());
         write_markdown_block(out, field, &pad, &inline);
         return;
     }
 
-    let inline = format!("  # {}", inline_annotation(field, false, None));
+    let inline = format!("  # {}", inline_annotation(field, false, field.default.is_some()));
     let value = field_value(field);
     write_value(out, &field.name, &value, &inline, &pad);
 }
@@ -282,8 +282,7 @@ fn write_typed_table_field(
     write_description(out, field, &pad);
     write_eg_comment(out, field, &pad);
 
-    let container_endorsed = concrete_rows.is_some();
-    let inline = inline_annotation(field, true, Some(container_endorsed));
+    let inline = inline_annotation(field, true, concrete_rows.is_some());
     out.push_str(&format!("{}{}:  # {}\n", pad, field.name, inline));
 
     match concrete_rows {
@@ -326,8 +325,7 @@ fn write_typed_object_field(
     write_description(out, field, &pad);
     write_eg_comment(out, field, &pad);
 
-    let container_endorsed = concrete.is_some();
-    let inline = inline_annotation(field, false, Some(container_endorsed));
+    let inline = inline_annotation(field, false, concrete.is_some());
     out.push_str(&format!("{}{}:  # {}\n", pad, field.name, inline));
 
     match concrete {
@@ -347,31 +345,19 @@ fn write_typed_object_field(
 
 /// Build the inline annotation body (without the leading `# `).
 ///
-/// `force_array_object` is `true` for typed-table outer fields, which
-/// always render as `array<object>`; plain arrays render as `array<string>`.
-/// `endorsed_override` short-circuits the schema-driven cell decision —
-/// it's used for the typed-table / typed-dict outer key when the container
-/// is a leaf, or for property leaves whose cell decision differs from the
-/// container.
-fn inline_annotation(
-    field: &FieldSchema,
-    force_array_object: bool,
-    endorsed_override: Option<bool>,
-) -> String {
-    let endorsed = endorsed_override.unwrap_or_else(|| is_endorsed(field));
+/// `force_array_object` is `true` for typed-table outer fields, which always
+/// render as `array<object>`; plain arrays render as `array<string>`.
+/// `endorsed` carries the cell decision: scalars use `field.default.is_some()`
+/// (any default, even `""`, is shippable); containers (typed-table /
+/// typed-dict) use "default present AND non-empty" so an empty default
+/// still recurses into the synthetic row / per-property shape.
+fn inline_annotation(field: &FieldSchema, force_array_object: bool, endorsed: bool) -> String {
     let type_expr = type_expression(field, force_array_object);
     if endorsed {
         format!("{}; skip-ok", type_expr)
     } else {
         type_expr
     }
-}
-
-/// A field is **Endorsed** when its schema declares a `default:`. Otherwise
-/// it is **Must Fill** and the blueprint emits a `<must-fill>` sentinel in
-/// the value cell.
-fn is_endorsed(field: &FieldSchema) -> bool {
-    field.default.is_some()
 }
 
 fn type_expression(field: &FieldSchema, force_array_object: bool) -> String {

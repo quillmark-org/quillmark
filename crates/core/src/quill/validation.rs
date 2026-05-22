@@ -487,9 +487,23 @@ pub(crate) fn validate_field(
             Some(items) => {
                 if let Some(properties) = &field.properties {
                     for (idx, item) in items.iter().enumerate() {
+                        let row_path = format!("{}[{}]", path, idx);
+                        // Hand-edited edge case: a row collapsed to the literal
+                        // sentinel string (the user replaced the synthetic row
+                        // with `<must-fill>` instead of expanding it). Report
+                        // it once against the row path rather than emitting an
+                        // Absent error per Must Fill property.
+                        if item.as_str() == Some(MUST_FILL_SENTINEL) {
+                            errors.push(ValidationError::MustFillUnset {
+                                path: row_path,
+                                expected: "object".to_string(),
+                                source: MustFillSource::Sentinel,
+                            });
+                            continue;
+                        }
                         let obj = item.as_object();
                         for (prop_name, prop_schema) in properties {
-                            let prop_path = format!("{}[{}].{}", path, idx, prop_name);
+                            let prop_path = format!("{}.{}", row_path, prop_name);
                             match obj.and_then(|o| o.get(prop_name)) {
                                 Some(v) => errors.extend(validate_field(
                                     prop_schema,
@@ -884,6 +898,38 @@ main:
         assert!(has_error(&errors, |e| {
             matches!(e, ValidationError::MustFillUnset { path, source: MustFillSource::Absent, .. } if path == "recipients[0].name")
         }));
+    }
+
+    #[test]
+    fn detects_must_fill_sentinel_as_typed_table_row() {
+        // Hand-edit edge case: the user collapses a synthetic row down to the
+        // literal sentinel string instead of expanding it into a mapping.
+        // One Sentinel error at the row path beats N noisy Absent errors per
+        // Must Fill property.
+        let config = config_with(
+            "    recipients:\n      type: array\n      properties:\n        name:\n          type: string\n        org:\n          type: string",
+            "",
+        );
+        let doc = doc_from_fm(&[("recipients", json!([MUST_FILL_SENTINEL]))]);
+        let errors = validate_typed_document(&config, &doc).unwrap_err();
+        assert!(
+            has_error(&errors, |e| matches!(
+                e,
+                ValidationError::MustFillUnset { path, source: MustFillSource::Sentinel, .. }
+                if path == "recipients[0]"
+            )),
+            "expected sentinel error at row path; got {errors:?}"
+        );
+        // And no per-property Absent errors for that row — the row-level
+        // sentinel diagnostic supersedes them.
+        assert!(
+            !has_error(&errors, |e| matches!(
+                e,
+                ValidationError::MustFillUnset { path, source: MustFillSource::Absent, .. }
+                if path.starts_with("recipients[0].")
+            )),
+            "row-level sentinel should suppress per-property Absent errors; got {errors:?}"
+        );
     }
 
     // NOTE: top-level typed-dictionary fields (`type: object` with `properties`)
