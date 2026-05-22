@@ -48,3 +48,42 @@ relies on `serde_json/preserve_order` and consumers may have started
 content-hashing the result. Touch `crates/backends/typst/src/lib.rs`
 (`transform_markdown_fields`) at the same time so the schema
 walker uses the same shape.
+
+---
+
+## Typed container empty default loses inline shape documentation
+
+**Where:** `write_typed_table_field` / `write_typed_object_field` in
+`crates/core/src/quill/blueprint.rs`.
+
+**What:** When a typed container declares `default: []` (or `default: {}`)
+the blueprint now renders the value inline — `refs: []  # array<object>;
+skip-ok` — and emits no row/property shape. Inner shape is only surfaced
+when the container is Must Fill (no `default:` at all), via the synthetic
+row / per-property recursion path.
+
+**Why we accepted the loss:** prior to this, an empty container default
+asymmetrically forced a synthetic row with leaf sentinels — the field's
+own cell signal said "Must Fill" even though `default: []` is a fully
+shippable value per `prose/canon/SCHEMAS.md`. The asymmetry leaked into
+the rendering code (an override parameter on `inline_annotation`) and
+disagreed with the canonical "type-empty defaults are Endorsed" rule.
+Removing the asymmetry was a one-rule simplification — uniform cascade:
+`default.is_some()` → Endorsed → render the default; `default` absent →
+Must Fill → render the shape with sentinels.
+
+**What's left for a future pass:** schema authors who want both "shippable
+empty" *and* inline shape documentation now have no single knob. Options
+when this comes up:
+
+- Add a leading `# rows shaped like: {…}` comment for typed containers
+  with an empty default, derived from `properties:`. Cheap to emit, no
+  semantic conflict (it's a comment).
+- Promote `example:` rendering for typed containers so an `example:
+  [{…}]` under an empty default actually shows a shape sketch — today
+  the example collapses to a single-line `# e.g. …` regardless.
+- Add an explicit `ui.show_shape: true` flag on the field.
+
+Defer until a real authoring case asks for it. The canon update lives
+in `prose/canon/BLUEPRINT.md` "Typed tables" / "Typed dictionaries"
+which already point readers here.

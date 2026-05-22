@@ -208,14 +208,21 @@ fallback; authors needing these characters must reshape their values.
 
 ## Typed tables
 
-A field of `type: array` with a `properties` map renders with full
-per-property annotations:
+A field of `type: array` with a `properties` map follows the uniform
+cell cascade — `default:` (any default, including `[]`) is Endorsed and
+shippable as-is; no `default:` is Must Fill:
 
 - A non-empty `default:` renders as actual rows (no per-property
   annotations on each row). The outer key carries `# array<object>; skip-ok`.
-- Otherwise one synthetic row is emitted with each property carrying its
-  own description, inline annotation, and cell signal (sentinel or
-  `; skip-ok`). The outer key carries `# array<object>` (no `; skip-ok`).
+- `default: []` renders inline as `[]` with `# array<object>; skip-ok` —
+  shippable empty. Inline row shape is not surfaced under an empty
+  default; use `example:` to document row shape. See
+  `prose/BOOKMARKS.md` "Typed container empty default loses inline
+  shape documentation."
+- No `default:` is Must Fill: one synthetic row is emitted with each
+  property carrying its own description, inline annotation, and cell
+  signal (sentinel or `; skip-ok`). The outer key carries
+  `# array<object>` (no `; skip-ok`).
 
 An `example:` never renders as rows. Like every other field type, it
 surfaces only in the `# e.g.` leading line — as a one-line flow
@@ -223,16 +230,19 @@ sequence, e.g. `# e.g. [{org: ACME, year: 2020}]`.
 
 ## Typed dictionaries
 
-A field of `type: object` with a `properties` map renders as an indented
-block mapping with per-property annotations — no outer value on the key
-line:
+A field of `type: object` with a `properties` map follows the uniform
+cell cascade — `default:` (any default, including `{}`) is Endorsed and
+shippable as-is; no `default:` is Must Fill:
 
 - A non-empty `default:` renders as a concrete block mapping (property
   values only, no annotations). The outer key carries
   `# object; skip-ok`.
-- Otherwise each property is emitted with its own description, inline
-  annotation, and cell signal — the same rules as any other field. The
-  outer key carries `# object` (no `; skip-ok`); state is a leaf concern.
+- `default: {}` renders inline as `{}` with `# object; skip-ok` —
+  shippable empty. Inline property shape is not surfaced under an empty
+  default; use `example:` to document property shape.
+- No `default:` is Must Fill: each property is emitted with its own
+  description, inline annotation, and cell signal. The outer key
+  carries `# object` (no `; skip-ok`).
 
 An `example:` never renders as a concrete mapping. Like every other
 field type, it surfaces only in the `# e.g.` leading line — as a
