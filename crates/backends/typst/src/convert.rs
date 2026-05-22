@@ -1689,7 +1689,7 @@ mod tests {
 
     #[test]
     fn test_table_br_tag_in_cell_is_stripped() {
-        // Per MARKDOWN.md §6.2 / §6.3, raw HTML (including <br>) produces no output.
+        // Per markdown-spec.md §6.2 / §6.3, raw HTML (including <br>) produces no output.
         let md = "| A |\n|---|\n| line1<br>line2 |";
         let out = mark_to_typst(md).unwrap();
         assert!(

@@ -6,10 +6,15 @@ Long-form project documentation, in two tiers by maturity:
   codebase's systems, specifications, and intent. The settled truth. Start at
   [`canon/INDEX.md`](canon/INDEX.md). Canon describes *what is* and points into
   the code; it does not re-document implementation detail.
+- **`references/`** — authoritative, standalone specifications. Each
+  reference is self-contained: it makes no outbound links to other prose
+  docs, so it can be cited freely from canon, user docs, and code comments
+  without forming a cycle.
 - **`proposals/`** — fleshed-out proposed changes, not yet implemented. Each is
   a concrete plan. Removed once landed or abandoned.
 - **`BOOKMARKS.md`** — known simplifications and refactors deliberately
   deferred. Lighter-weight than a proposal: just a placeholder so the
   insight isn't lost between releases.
 
-Canonical docs never reference proposals or plans.
+Canonical docs never reference proposals or plans. References never link
+out to other prose docs.

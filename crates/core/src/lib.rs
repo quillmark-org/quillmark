@@ -40,7 +40,7 @@
 //!
 //! ## Further Reading
 //!
-//! - [MARKDOWN.md](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/MARKDOWN.md) - Quillmark Markdown parsing specification
+//! - [markdown-spec.md](https://github.com/quillmark-org/quillmark/blob/main/prose/references/markdown-spec.md) - Quillmark Markdown parsing specification
 //! - [Examples](https://github.com/quillmark-org/quillmark/tree/main/crates/core/examples) - Working examples
 
 pub mod document;

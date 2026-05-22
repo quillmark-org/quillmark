@@ -1,6 +1,6 @@
-# Quillmark Markdown
+# Quillmark Markdown Specification
 
-> **Status**: Draft specification
+> **Status**: Authoritative specification
 > **Base**: [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)
 > **Implementation**: `crates/core/src/document/`
 
@@ -217,8 +217,9 @@ of:
 | `name@latest` | latest overall (explicit) |
 | `name` | latest overall (default — `@version` omitted) |
 
-Quill names match `/^[a-z][a-z0-9_]*$/`. See [VERSIONING.md](./VERSIONING.md)
-for resolution semantics.
+Quill names match `/^[a-z][a-z0-9_]*$/`. Resolution of partial selectors to
+concrete versions is performed by the quill registry; this spec fixes only
+the surface syntax accepted on the `$quill` line.
 
 ## 4. Block Detection
 
@@ -236,7 +237,7 @@ a new opener (though the canonical payload never produces such a line).
 
 A `~~~card-yaml` line that fails D1 is delegated to CommonMark as an ordinary
 fenced code block. A `~~~card-yaml` opener with no matching `~~~` closer
-before EOF is a hard parse error (§9).
+before EOF is a hard parse error (§10).
 
 ### 4.1 Worked Example
 
@@ -451,7 +452,5 @@ Parse errors include:
 ## 11. References
 
 - [CommonMark 0.31.2](https://spec.commonmark.org/0.31.2/)
-- [GitHub Flavored Markdown](https://github.github.com/gfm/) (pipe tables,
-  strikethrough)
-- [`VERSIONING.md`](./VERSIONING.md) — quill version-selector resolution
-- [`CARDS.md`](./CARDS.md) — downstream card-handling semantics
+- [GitHub Flavored Markdown](https://github.github.com/gfm/) — pipe tables
+  and strikethrough.
