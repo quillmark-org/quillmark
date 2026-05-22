@@ -1,50 +1,25 @@
-//! # Quillmark Helper Package Generator
-//!
-//! This module generates the virtual `@local/quillmark-helper:0.1.0` package
-//! that provides document data and helper functions to Typst plates.
-//!
-//! ## Package Contents
-//!
-//! The generated package exports:
-//! - `data` - A dictionary containing all document fields, with markdown fields
-//!   and date fields automatically converted to Typst values
-//!
-//! ## Usage in Plates
-//!
-//! ```typst
-//! #import "@local/quillmark-helper:0.1.0": data
-//!
-//! #data.title
-//! #data.BODY
-//! #data.date
-//! ```
+//! Generates the virtual `@local/quillmark-helper:0.1.0` package that
+//! provides document data and helper functions to Typst plates.
+//! The package exports `data` — a dictionary of document fields with markdown
+//! and date fields auto-converted to Typst values.
 
 use crate::convert::escape_string;
 
-/// Helper function to inject JSON into Typst code.
 /// Exposed for fuzzing tests.
 #[doc(hidden)]
 pub fn inject_json(bytes: &str) -> String {
     format!("json(bytes(\"{}\"))", escape_string(bytes))
 }
 
-/// Helper package version
 pub const HELPER_VERSION: &str = "0.1.0";
-
-/// Helper package namespace
 pub const HELPER_NAMESPACE: &str = "local";
-
-/// Helper package name
 pub const HELPER_NAME: &str = "quillmark-helper";
 
-/// Template for the `lib.typ` file, loaded at compile time
 const LIB_TYP_TEMPLATE: &str = include_str!("lib.typ.template");
 
-/// Generate the `lib.typ` content for the quillmark-helper package.
-///
-/// The generated file contains:
-/// - Embedded JSON data (including `__meta__` injected by `transform_fields`)
-///   with markdown and date fields auto-normalized
+/// Generate `lib.typ` for the quillmark-helper package from JSON data.
+/// Embeds JSON (including `__meta__` injected by `transform_fields`) so
+/// markdown and date fields are auto-normalized by the Typst template.
 pub fn generate_lib_typ(json_data: &str) -> String {
     let escaped_json = escape_string(json_data);
 
@@ -53,7 +28,6 @@ pub fn generate_lib_typ(json_data: &str) -> String {
         .replace("{escaped_json}", &escaped_json)
 }
 
-/// Generate the `typst.toml` content for the quillmark-helper package.
 pub fn generate_typst_toml() -> String {
     format!(
         r#"[package]
@@ -77,16 +51,9 @@ mod tests {
         let json = r#"{"title":"Test","BODY":"Hello","date":"2025-01-15","__meta__":{"content_fields":["BODY"],"card_content_fields":{},"date_fields":["date"],"card_date_fields":{}}}"#;
         let lib = generate_lib_typ(json);
 
-        // Should contain the version comment
         assert!(lib.contains("Version: 0.1.0"));
-
-        // Should contain the raw JSON data
         assert!(lib.contains("json(bytes("));
-
-        // Should NOT contain eval-markup (auto-eval replaces it)
         assert!(!lib.contains("eval-markup"));
-
-        // Should contain private date parser and conversion metadata handling
         assert!(lib.contains("#let _parse-date(s)"));
         assert!(!lib.contains("#let parse-date(s)"));
         assert!(lib.contains("meta.date_fields"));
@@ -95,11 +62,9 @@ mod tests {
 
     #[test]
     fn test_generate_lib_typ_escapes_json() {
-        // JSON with special characters that need escaping
         let json = r#"{"title": "Test \"quoted\""}"#;
         let lib = generate_lib_typ(json);
 
-        // The quotes in JSON should be escaped for Typst string literal
         assert!(lib.contains("\\\""));
     }
 
@@ -108,7 +73,6 @@ mod tests {
         let json = "{\n\"title\": \"Test\"\n}";
         let lib = generate_lib_typ(json);
 
-        // Newlines should be escaped
         assert!(lib.contains("\\n"));
     }
 

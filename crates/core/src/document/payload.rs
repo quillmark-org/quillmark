@@ -75,7 +75,6 @@ impl PayloadItem {
         }
     }
 
-    /// Build an own-line comment item.
     pub fn comment(text: impl Into<String>) -> Self {
         PayloadItem::Comment {
             text: text.into(),
@@ -83,7 +82,6 @@ impl PayloadItem {
         }
     }
 
-    /// Build an inline (trailing) comment item.
     pub fn comment_inline(text: impl Into<String>) -> Self {
         PayloadItem::Comment {
             text: text.into(),

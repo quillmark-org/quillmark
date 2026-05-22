@@ -1,78 +1,20 @@
-//! # Document Module
+//! Parsing and typed in-memory model for Quillmark card-yaml documents.
 //!
-//! Parsing functionality for markdown documents with card-yaml blocks.
+//! ## Key types
 //!
-//! ## Overview
+//! - [`Document`]: Root card plus ordered composable cards.
+//! - [`Card`]: A single card block carrying a [`Payload`] and a Markdown body.
+//! - [`Payload`]: Source-ordered items — `$quill`/`$kind`/`$id` metadata, user
+//!   fields, and comments — from a block's YAML content.
+//! - [`PayloadItem`]: The item variant — `Quill`/`Kind`/`Id`/`Field`/`Comment`.
 //!
-//! The `document` module provides the [`Document::from_markdown`] function for parsing
-//! markdown documents into a typed in-memory model.
+//! ## Errors
 //!
-//! ## Key Types
-//!
-//! - [`Document`]: Typed in-memory Quillmark document — `main` card plus composable cards.
-//! - [`Card`]: A single card block, root or composable, carrying a typed
-//!   payload and a body.
-//! - [`Payload`]: Ordered items parsed from a block's YAML payload, carrying
-//!   typed `$`-system entries (`$quill`, `$kind`, `$id`), user fields, and
-//!   comments interleaved in source order.
-//! - [`PayloadItem`]: The item variant — `Quill` / `Kind` / `Id` / `Field` /
-//!   `Comment`.
-//!
-//! ## Examples
-//!
-//! ### Basic Parsing
-//!
-//! ```
-//! use quillmark_core::Document;
-//!
-//! let markdown = r#"~~~card-yaml
-//! $quill: my_quill
-//! $kind: main
-//! title: My Document
-//! author: John Doe
-//! ~~~
-//!
-//! # Introduction
-//!
-//! Document content here.
-//! "#;
-//!
-//! let doc = Document::from_markdown(markdown).unwrap();
-//! let title = doc.main()
-//!     .payload()
-//!     .get("title")
-//!     .and_then(|v| v.as_str())
-//!     .unwrap_or("Untitled");
-//! assert_eq!(title, "My Document");
-//! assert_eq!(doc.cards().len(), 0);
-//! ```
-//!
-//! ### Accessing the plate wire format
-//!
-//! ```
-//! use quillmark_core::Document;
-//!
-//! let doc = Document::from_markdown(
-//!     "~~~card-yaml\n$quill: my_quill\n$kind: main\ntitle: Hi\n~~~\n\nBody here.\n"
-//! ).unwrap();
-//! let json = doc.to_plate_json();
-//! assert_eq!(json["QUILL"], "my_quill");
-//! assert_eq!(json["title"], "Hi");
-//! assert_eq!(json["BODY"], "\nBody here.\n");
-//! assert!(json["CARDS"].is_array());
-//! ```
-//!
-//! ## Error Handling
-//!
-//! [`Document::from_markdown`] returns errors for:
-//! - Malformed YAML syntax
-//! - Unclosed `~~~card-yaml` blocks
-//! - A root block missing its required `$quill` system metadata
-//! - An unknown `$key` outside the closed set `{$quill, $kind, $id}`
-//! - Reserved field name usage
+//! [`Document::from_markdown`] returns errors for malformed YAML, unclosed
+//! fences, a missing root `$quill`, unknown `$` keys, or reserved field names.
 //!
 //! See [MARKDOWN.md](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/MARKDOWN.md)
-//! for comprehensive documentation of the card-yaml format.
+//! for the card-yaml format specification.
 
 use serde::{Deserialize, Serialize};
 
@@ -98,37 +40,15 @@ pub use payload::{Payload, PayloadItem};
 #[cfg(test)]
 mod tests;
 
-/// Parse result carrying both the parsed document and any non-fatal warnings
-/// (e.g. a `~~~card-yaml` opener missing its blank line, unsupported YAML tags).
+/// Parse result with the document and any non-fatal warnings.
 #[derive(Debug)]
 pub struct ParseOutput {
-    /// The successfully parsed document.
     pub document: Document,
-    /// Non-fatal warnings collected during parsing.
     pub warnings: Vec<Diagnostic>,
 }
 
-/// A single card-yaml block parsed from a Quillmark Markdown document.
-///
-/// A `Card` is the uniform shape for both the document's root block and
-/// composable card blocks. Root vs. composable is purely positional — the
-/// root is the document's first block, held in [`Document::main`]; composable
-/// cards live in [`Document::cards`]. A `Card` carries no flag of its own
-/// recording which collection it belongs to.
-///
-/// Every card has:
-/// - `payload` — ordered items parsed from the block's YAML payload,
-///   carrying typed `$` system metadata, user fields, and comments
-///   interleaved in source order.
-/// - `body` — the Markdown text that follows the closing `~~~` fence, up to
-///   the next block (or EOF).
-///
-/// ## Card body absence
-///
-/// If a card block has no trailing Markdown content (e.g. the next block or
-/// EOF immediately follows the closing fence), `body` is the empty string `""`.
-/// It is never `None`; callers that need to distinguish "absent" from "empty"
-/// should check `card.body().is_empty()`.
+/// A single card-yaml block (root or composable). `body` is `""` when no
+/// content follows the closing fence; check `card.body().is_empty()`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Card {
     payload: Payload,
@@ -136,77 +56,43 @@ pub struct Card {
 }
 
 impl Card {
-    /// Create a `Card` from its parts. Does **not** validate metadata or
-    /// field names — callers are responsible for providing already-valid
-    /// data. For user-facing construction of composable cards use
-    /// [`Card::new`] (defined in `edit.rs`).
+    /// Create a `Card` from its parts without validation. For user-facing
+    /// construction of composable cards use [`Card::new`].
     pub fn from_parts(payload: Payload, body: String) -> Self {
         Self { payload, body }
     }
 
-    /// The `$quill` reference, if the block declares one.
     pub fn quill(&self) -> Option<&QuillReference> {
         self.payload.quill()
     }
 
-    /// The `$kind` card kind, if the block declares one.
     pub fn kind(&self) -> Option<&str> {
         self.payload.kind()
     }
 
-    /// The `$id` opaque identifier, if the block declares one.
     pub fn id(&self) -> Option<&str> {
         self.payload.id()
     }
 
-    /// Typed payload (map-keyed view and ordered item list, including `$`
-    /// entries).
     pub fn payload(&self) -> &Payload {
         &self.payload
     }
 
-    /// Mutable access to the payload.
     pub fn payload_mut(&mut self) -> &mut Payload {
         &mut self.payload
     }
 
-    /// Markdown body that follows this card's closing fence.
-    ///
-    /// Empty string when no trailing content is present.
     pub fn body(&self) -> &str {
         &self.body
     }
 
-    /// Overwrite the body string. Internal helper used by [`Card::replace_body`].
     pub(crate) fn overwrite_body(&mut self, body: String) {
         self.body = body;
     }
 }
 
-/// A fully-parsed, typed in-memory Quillmark document.
-///
-/// `Document` is the canonical representation of a Quillmark Markdown file.
-/// Markdown is both the import and export format; the structured data here
-/// is primary.
-///
-/// ## Structure
-///
-/// - `main` — the document's root `Card`.
-/// - `cards` — ordered composable cards.
-///
-/// Backend plates consume the flat JSON wire shape produced by
-/// [`Document::to_plate_json`]. That method is the **only** place in core
-/// that reconstructs `{"QUILL": ..., "CARDS": [...], "BODY": "..."}`.
-///
-/// ## Serialization
-///
-/// `Document` implements `serde::Serialize`/`Deserialize` for persistence
-/// (e.g. storing documents in a database). Serialization is routed through
-/// the versioned [`StoredDocument`] envelope — see the [`dto`] module — so
-/// the stored JSON is decoupled from both the evolving Markdown syntax and
-/// this struct's in-memory layout. This is distinct from the plate wire
-/// shape ([`to_plate_json`](Document::to_plate_json), a one-way export for
-/// backends) and from Markdown ([`to_markdown`](Document::to_markdown)).
+/// A fully-parsed Quillmark document. Serde routes through [`StoredDocument`];
+/// for the plate wire shape see [`Document::to_plate_json`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(into = "StoredDocument", try_from = "StoredDocument")]
 pub struct Document {
@@ -215,11 +101,8 @@ pub struct Document {
     warnings: Vec<Diagnostic>,
 }
 
-// Equality is defined over the structural content only — `warnings` are
-// parse-time observations that depend on what the source text happened to
-// contain (unsupported tag drops, missing-blank-line lints, etc.) and so differ
-// between a source document and its round-tripped emission. Two documents
-// are equal when their `main` and `cards` match.
+// `warnings` are parse-time observations and vary on round-trips; equality
+// covers only structural content (`main` and `cards`).
 impl PartialEq for Document {
     fn eq(&self, other: &Self) -> bool {
         self.main == other.main && self.cards == other.cards
@@ -227,10 +110,8 @@ impl PartialEq for Document {
 }
 
 impl Document {
-    /// Create a `Document` from a pre-built main `Card` and composable cards.
-    ///
-    /// The caller must guarantee that `main`'s `$quill` metadata is present
-    /// and valid, and that composable cards do not carry `$quill`.
+    /// Create a `Document` from a pre-built main card and composable cards.
+    /// `main` must carry `$quill`; composable cards must not.
     pub fn from_main_and_cards(main: Card, cards: Vec<Card>, warnings: Vec<Diagnostic>) -> Self {
         debug_assert!(main.quill().is_some(), "main card must carry `$quill`");
         debug_assert!(
@@ -244,34 +125,24 @@ impl Document {
         }
     }
 
-    /// Parse a Quillmark Markdown document, discarding any non-fatal warnings.
     pub fn from_markdown(markdown: &str) -> Result<Self, ParseError> {
         assemble::decompose(markdown)
     }
 
-    /// Parse a Quillmark Markdown document, returning warnings alongside the document.
     pub fn from_markdown_with_warnings(markdown: &str) -> Result<ParseOutput, ParseError> {
         assemble::decompose_with_warnings(markdown)
             .map(|(document, warnings)| ParseOutput { document, warnings })
     }
 
-    // ── Accessors ──────────────────────────────────────────────────────────────
-
-    /// The document's main (entry) card.
     pub fn main(&self) -> &Card {
         &self.main
     }
 
-    /// Mutable access to the main card.
     pub fn main_mut(&mut self) -> &mut Card {
         &mut self.main
     }
 
-    /// The quill reference (`name@version-selector`) the document binds to,
-    /// parsed from the root block's `$quill` system metadata.
-    ///
-    /// The root `$quill` is validated when the document is parsed, so this
-    /// never fails for a `Document` produced by [`Document::from_markdown`].
+    /// The `$quill` reference from the root block. Always present on parsed documents.
     pub fn quill_reference(&self) -> QuillReference {
         self.main
             .quill()
@@ -279,74 +150,50 @@ impl Document {
             .expect("root block's $quill is validated at parse time")
     }
 
-    /// Ordered list of composable card blocks.
     pub fn cards(&self) -> &[Card] {
         &self.cards
     }
 
-    /// Mutable access to the composable cards slice.
     pub fn cards_mut(&mut self) -> &mut [Card] {
         &mut self.cards
     }
 
-    /// Non-fatal warnings collected during the parse that produced this
-    /// document. Empty for documents reconstructed from a storage DTO or
-    /// built programmatically.
+    /// Non-fatal warnings from the parse; empty for programmatically built documents.
     pub fn warnings(&self) -> &[Diagnostic] {
         &self.warnings
     }
 
-    /// Internal mutable access to the backing `Vec<Card>`. Used by edit
-    /// operations ([`Document::push_card`], etc.) that need to insert or
-    /// remove elements.
     pub(crate) fn cards_vec_mut(&mut self) -> &mut Vec<Card> {
         &mut self.cards
     }
 
-    // ── Wire format ────────────────────────────────────────────────────────────
-
-    /// Serialize this document to the JSON shape expected by backend plates.
-    ///
-    /// The output has the following top-level keys, which match what
-    /// `lib.typ.template` reads at Typst runtime:
+    /// Serialize to the JSON wire shape consumed by backend plates. This is
+    /// the **only** place in `quillmark-core` that produces this shape:
     ///
     /// ```json
     /// {
-    ///   "QUILL": "<ref>",
-    ///   "<field>": <value>,
-    ///   ...
+    ///   "QUILL": "<ref>", "<field>": <value>, ...,
     ///   "BODY": "<global-body>",
-    ///   "CARDS": [
-    ///     { "CARD": "<tag>", "<field>": <value>, ..., "BODY": "<card-body>" },
-    ///     ...
-    ///   ]
+    ///   "CARDS": [{ "CARD": "<tag>", "<field>": <value>, ..., "BODY": "<card-body>" }]
     /// }
     /// ```
-    ///
-    /// This is the **only** place in `quillmark-core` that knows about the plate
-    /// wire format. All internal consumers (Quill, backends) call this instead
-    /// of constructing the shape by hand.
     pub fn to_plate_json(&self) -> serde_json::Value {
         let mut map = serde_json::Map::new();
 
-        // QUILL first — plate authors expect this at the top.
         map.insert(
             "QUILL".to_string(),
             serde_json::Value::String(self.quill_reference().to_string()),
         );
 
-        // Payload fields in insertion order.
         for (key, value) in self.main.payload.iter() {
             map.insert(key.clone(), value.as_json().clone());
         }
 
-        // Global body.
         map.insert(
             "BODY".to_string(),
             serde_json::Value::String(self.main.body.clone()),
         );
 
-        // Cards array.
         let cards_array: Vec<serde_json::Value> = self
             .cards
             .iter()

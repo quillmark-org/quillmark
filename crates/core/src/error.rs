@@ -1,28 +1,14 @@
 //! # Error Handling
 //!
-//! Structured error handling with diagnostics and source location tracking.
+//! Error types and diagnostics for parsing and rendering, with source location tracking.
 //!
-//! ## Overview
+//! ## Document path anchors
 //!
-//! The `error` module provides error types and diagnostic types for actionable
-//! error reporting with source location tracking.
+//! A [`Diagnostic`] carries two independent "where" anchors, both optional:
 //!
-//! ## Key Types
-//!
-//! - [`RenderError`]: Main error enum for rendering operations
-
-//! - [`Diagnostic`]: Structured diagnostic information
-//! - [`Location`]: Source file location (file, line, column)
-//! - [`Severity`]: Error severity levels (Error, Warning, Note)
-//! - [`RenderResult`]: Result type with artifacts and warnings
-//!
-//! ## Document Anchors
-//!
-//! A [`Diagnostic`] can carry two independent "where" anchors, both optional:
-//!
-//! - [`Diagnostic::location`] — a source-text anchor (`file:line:column`).
-//!   Produced by parsers and backend compilers that operate on raw text.
-//! - [`Diagnostic::path`] — a document-model anchor pointing into the typed
+//! - [`Diagnostic::location`] — source-text anchor (`file:line:column`).
+//!   Produced by parsers and backend compilers operating on raw text.
+//! - [`Diagnostic::path`] — document-model anchor into the typed
 //!   [`crate::document::Document`]. Produced by schema validation and
 //!   coercion, which run on the typed model after line spans are gone.
 //!
@@ -35,87 +21,20 @@
 //! ```
 //!
 //! Because field names and card kinds are validated to that charset (no `.`,
-//! `[`, `]`, or whitespace can appear in any segment), the dotted form
-//! round-trips unambiguously.
+//! `[`, `]`, or whitespace), the dotted form round-trips unambiguously.
 //!
-//! ### Path conventions
+//! | Anchor                     | Path                                      |
+//! |----------------------------|-------------------------------------------|
+//! | Root-block field           | `title`                                   |
+//! | Nested in array of objects | `recipients[0].name`                      |
+//! | Main card body             | `main.body`                               |
+//! | Typed card (whole)         | `cards.indorsement[0]`                    |
+//! | Field on typed card        | `cards.indorsement[0].signature_block`    |
+//! | Body on typed card         | `cards.indorsement[0].body`               |
+//! | Card with unknown kind     | `cards[0]`                                |
 //!
-//! | Anchor                        | Path                                          |
-//! |-------------------------------|-----------------------------------------------|
-//! | Root-block field              | `title`                                       |
-//! | Nested in array of objects    | `recipients[0].name`                          |
-//! | Main card body                | `main.body`                                   |
-//! | Typed card (whole)            | `cards.indorsement[0]`                        |
-//! | Field on typed card           | `cards.indorsement[0].signature_block`        |
-//! | Body on typed card            | `cards.indorsement[0].body`                   |
-//! | Card with unknown kind        | `cards[0]`                                    |
-//!
-//! The `cards.<kind>[<index>]` form fuses the card kind and the document
-//! array index into one segment so consumers receive both pieces of
-//! information without a second lookup.
-//!
-//! ## Error Hierarchy
-//!
-//! ### RenderError Variants
-//!
-//! - [`RenderError::EngineCreation`]: Failed to create rendering engine
-//! - [`RenderError::InvalidPayload`]: Malformed YAML in a card-yaml block
-//! - [`RenderError::CompilationFailed`]: Backend compilation errors
-//! - [`RenderError::FormatNotSupported`]: Requested format not supported
-//! - [`RenderError::UnsupportedBackend`]: Backend not registered
-//! - [`RenderError::ValidationFailed`]: Field coercion/validation failure
-//! - [`RenderError::QuillConfig`]: Quill configuration error
-//!
-//! ## Examples
-//!
-//! ### Creating Diagnostics
-//!
-//! ```
-//! use quillmark_core::{Diagnostic, Location, Severity};
-//!
-//! let diag = Diagnostic::new(Severity::Error, "Undefined variable".to_string())
-//!     .with_code("E001".to_string())
-//!     .with_location(Location {
-//!         file: "template.typ".to_string(),
-//!         line: 10,
-//!         column: 5,
-//!     })
-//!     .with_hint("Check variable spelling".to_string());
-//!
-//! println!("{}", diag.fmt_pretty());
-//! ```
-//!
-//! Example output:
-//! ```text
-//! [ERROR] Undefined variable (E001) at template.typ:10:5
-//!   hint: Check variable spelling
-//! ```
-//!
-//! ### Result with Warnings
-//!
-//! ```no_run
-//! # use quillmark_core::{RenderResult, Diagnostic, Severity, OutputFormat};
-//! # let artifacts = vec![];
-//! let result = RenderResult::new(artifacts, OutputFormat::Pdf)
-//!     .with_warning(Diagnostic::new(
-//!         Severity::Warning,
-//!         "Deprecated field used".to_string(),
-//!     ));
-//! ```
-//!
-//! ## Pretty Printing
-//!
-//! The [`Diagnostic`] type provides [`Diagnostic::fmt_pretty()`] for human-readable output with error code, location, and hints.
-//!
-//! ## Machine-Readable Output
-//!
-//! All diagnostic types implement `serde::Serialize` for JSON export:
-//!
-//! ```no_run
-//! # use quillmark_core::{Diagnostic, Severity};
-//! # let diagnostic = Diagnostic::new(Severity::Error, "Test".to_string());
-//! let json = serde_json::to_string(&diagnostic).unwrap();
-//! ```
+//! The `cards.<kind>[<index>]` form fuses card kind and document array index so
+//! consumers receive both without a second lookup.
 
 use crate::OutputFormat;
 
@@ -128,21 +47,15 @@ pub const MAX_YAML_SIZE: usize = 1024 * 1024;
 /// Maximum nesting depth for markdown structures (100 levels)
 pub const MAX_NESTING_DEPTH: usize = 100;
 
-/// Maximum YAML nesting depth (100 levels)
-/// Prevents stack overflow from deeply nested YAML structures
-///
 /// Re-exported from [`crate::document::limits::MAX_YAML_DEPTH`].
 pub use crate::document::limits::MAX_YAML_DEPTH;
 
 /// Maximum number of CARD blocks allowed per document
-/// Prevents memory exhaustion from documents with excessive card blocks
 pub const MAX_CARD_COUNT: usize = 1000;
 
 /// Maximum number of fields allowed per document
-/// Prevents memory exhaustion from documents with excessive fields
 pub const MAX_FIELD_COUNT: usize = 1000;
 
-/// Error severity levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
@@ -154,7 +67,6 @@ pub enum Severity {
     Note,
 }
 
-/// Location information for diagnostics
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Location {
@@ -175,12 +87,10 @@ pub struct Location {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
-    /// Error severity level
     pub severity: Severity,
     /// Optional error code (e.g., "E001", "typst::syntax")
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub code: Option<String>,
-    /// Human-readable error message
     pub message: String,
     /// Primary source location (text anchor: file/line/column).
     ///
@@ -195,7 +105,6 @@ pub struct Diagnostic {
     /// the path grammar and conventions. May co-exist with [`Self::location`].
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub path: Option<String>,
-    /// Optional hint for fixing the error
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub hint: Option<String>,
     /// Flattened cause chain (outermost first).
@@ -204,7 +113,6 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
-    /// Create a new diagnostic
     pub fn new(severity: Severity, message: String) -> Self {
         Self {
             severity,
@@ -217,13 +125,11 @@ impl Diagnostic {
         }
     }
 
-    /// Set the error code
     pub fn with_code(mut self, code: String) -> Self {
         self.code = Some(code);
         self
     }
 
-    /// Set the primary location
     pub fn with_location(mut self, location: Location) -> Self {
         self.location = Some(location);
         self
@@ -237,7 +143,6 @@ impl Diagnostic {
         self
     }
 
-    /// Set a hint
     pub fn with_hint(mut self, hint: String) -> Self {
         self.hint = Some(hint);
         self
@@ -253,7 +158,6 @@ impl Diagnostic {
         self
     }
 
-    /// Format diagnostic for pretty printing
     pub fn fmt_pretty(&self) -> String {
         let mut result = format!(
             "[{}] {}",
@@ -284,7 +188,7 @@ impl Diagnostic {
         result
     }
 
-    /// Format diagnostic with source chain for debugging
+    /// Format diagnostic with source chain for debugging.
     pub fn fmt_pretty_with_source(&self) -> String {
         let mut result = self.fmt_pretty();
 
@@ -302,19 +206,11 @@ impl std::fmt::Display for Diagnostic {
     }
 }
 
-/// Error type for parsing operations
 #[derive(thiserror::Error, Debug)]
 pub enum ParseError {
-    /// Input too large
     #[error("Input too large: {size} bytes (max: {max} bytes)")]
-    InputTooLarge {
-        /// Actual size
-        size: usize,
-        /// Maximum allowed size
-        max: usize,
-    },
+    InputTooLarge { size: usize, max: usize },
 
-    /// Invalid YAML structure
     #[error("Invalid YAML structure: {0}")]
     InvalidStructure(String),
 
@@ -333,10 +229,8 @@ pub enum ParseError {
     #[error("{0}")]
     MissingQuill(String),
 
-    /// YAML parsing error with location context
     #[error("YAML error at line {line}: {message}")]
     YamlErrorWithLocation {
-        /// Error message
         message: String,
         /// Line number in the source document (1-indexed)
         line: usize,
@@ -346,7 +240,6 @@ pub enum ParseError {
 }
 
 impl ParseError {
-    /// Convert the parse error into a structured diagnostic
     pub fn to_diagnostic(&self) -> Diagnostic {
         match self {
             ParseError::InputTooLarge { size, max } => Diagnostic::new(
@@ -435,7 +328,7 @@ pub enum RenderError {
 }
 
 impl RenderError {
-    /// All diagnostics carried by this error, in order. Always non-empty.
+    /// Returns all diagnostics for this error. Always non-empty.
     pub fn diagnostics(&self) -> &[Diagnostic] {
         match self {
             RenderError::EngineCreation { diags }
@@ -448,7 +341,7 @@ impl RenderError {
         }
     }
 
-    /// Consume the error and return its diagnostics. Always non-empty.
+    /// Consume the error and return its diagnostics.
     pub fn into_diagnostics(self) -> Vec<Diagnostic> {
         match self {
             RenderError::EngineCreation { diags }
@@ -482,7 +375,6 @@ impl std::fmt::Display for RenderError {
                     diags.len()
                 )
             }
-            // Single-diagnostic kinds display their primary diagnostic message.
             RenderError::EngineCreation { .. }
             | RenderError::InvalidPayload { .. }
             | RenderError::FormatNotSupported { .. }
@@ -496,7 +388,6 @@ impl std::fmt::Display for RenderError {
 
 impl std::error::Error for RenderError {}
 
-/// Convert ParseError to RenderError
 impl From<ParseError> for RenderError {
     fn from(err: ParseError) -> Self {
         RenderError::InvalidPayload {
@@ -506,19 +397,14 @@ impl From<ParseError> for RenderError {
     }
 }
 
-/// Result type containing artifacts and warnings
 #[derive(Debug)]
 pub struct RenderResult {
-    /// Generated output artifacts
     pub artifacts: Vec<crate::Artifact>,
-    /// Non-fatal diagnostic messages
     pub warnings: Vec<Diagnostic>,
-    /// Output format that was produced
     pub output_format: OutputFormat,
 }
 
 impl RenderResult {
-    /// Create a new result with artifacts and output format
     pub fn new(artifacts: Vec<crate::Artifact>, output_format: OutputFormat) -> Self {
         Self {
             artifacts,
@@ -527,14 +413,12 @@ impl RenderResult {
         }
     }
 
-    /// Add a warning to the result
     pub fn with_warning(mut self, warning: Diagnostic) -> Self {
         self.warnings.push(warning);
         self
     }
 }
 
-/// Helper to print structured errors
 pub fn print_errors(err: &RenderError) {
     for d in err.diagnostics() {
         eprintln!("{}", d.fmt_pretty());
