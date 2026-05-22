@@ -58,6 +58,10 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
   the default (no error). A missing field without a `default:` fires
   `validation::required_field_absent`.
 
+Field-level type and presence errors render under a uniform shape —
+field path, verbatim source token, schema declaration, and both exits
+when applicable. See `ERROR.md` § "Validation message contract".
+
 ## Schema emission
 
 `QuillConfig::schema()` returns the structural schema as `serde_json::Value`. It includes:

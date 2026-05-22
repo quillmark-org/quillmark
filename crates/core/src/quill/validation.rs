@@ -10,46 +10,183 @@ use crate::value::QuillValue;
 
 /// Literal sentinel string the blueprint emitter writes into the value
 /// cell of every Must Fill field. Validation detects unreplaced sentinels
-/// and reports `validation::unfilled_placeholder`.
+/// and reports `validation::unfilled_placeholder` under the uniform
+/// validation message contract (see `ERROR.md`).
 pub const MUST_FILL_SENTINEL: &str = "<must-fill>";
 
 /// Validation error with a structured field path.
-#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
+///
+/// Field-level type and presence errors (`RequiredFieldAbsent`,
+/// `UnfilledPlaceholder`, `TypeMismatch`) carry the field path, the
+/// verbatim YAML source token, the schema-declared type, and any default
+/// — enough for the `Display` impl to render the uniform diagnostic
+/// message described in `ERROR.md` ("Validation message contract"). The
+/// spinoff proposal's cross-reference clause retrofits the placeholder
+/// error to the uniform shape, so `RequiredFieldAbsent` and
+/// `UnfilledPlaceholder` both carry an `expected` slot for the
+/// declared-type line of the message.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidationError {
-    #[error(
-        "field `{path}` has no value and the schema declares no default; supply a value before shipping"
-    )]
-    RequiredFieldAbsent { path: String },
-
-    #[error(
-        "field `{path}` still carries the `<must-fill>` blueprint sentinel; replace it with a value of the declared type"
-    )]
-    UnfilledPlaceholder { path: String },
-
-    #[error("field `{path}` has type `{actual}`, expected `{expected}`")]
-    TypeMismatch {
+    /// A Must Fill field (no `default:`) is absent from the document.
+    RequiredFieldAbsent {
         path: String,
+        /// Schema-declared type (`string`, `integer`, …).
         expected: String,
-        actual: String,
     },
 
-    #[error("field `{path}` value `{value}` not in allowed set {allowed:?}")]
+    /// The blueprint sentinel `<must-fill>` survived into the document
+    /// and reached validation. Treated under the uniform format with
+    /// `<must-fill>` as the source token.
+    UnfilledPlaceholder {
+        path: String,
+        /// Schema-declared type (`string`, `integer`, …).
+        expected: String,
+    },
+
+    TypeMismatch {
+        path: String,
+        /// Schema-declared type (`string`, `integer`, …).
+        expected: String,
+        /// YAML-parsed type of the source token (`integer`, `number`,
+        /// `boolean`, `null`, `string`, `array`, `object`).
+        actual: String,
+        /// Verbatim YAML scalar that triggered the error, rendered in
+        /// its canonical YAML form (`42`, `null`, `"hello"`, `""`).
+        source_token: String,
+        /// Pre-rendered default token from the schema, when present.
+        /// Same canonical YAML form as `source_token`.
+        default: Option<String>,
+    },
+
     EnumViolation {
         path: String,
         value: String,
         allowed: Vec<String>,
     },
 
-    #[error("field `{path}` does not match expected format `{format}`")]
-    FormatViolation { path: String, format: String },
+    FormatViolation {
+        path: String,
+        format: String,
+    },
 
-    #[error("unknown card kind `{card}` at `{path}`")]
-    UnknownCard { path: String, card: String },
+    UnknownCard {
+        path: String,
+        card: String,
+    },
 
-    #[error(
-        "card `{card}` at `{path}` has body content but the card kind declares `body.enabled: false` — remove the body content or set `body.enabled: true` on the card kind"
-    )]
-    BodyDisabled { path: String, card: String },
+    BodyDisabled {
+        path: String,
+        card: String,
+    },
+}
+
+impl std::error::Error for ValidationError {}
+
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValidationError::RequiredFieldAbsent { path, expected } => {
+                write!(
+                    f,
+                    "Field `{path}` is missing, schema declares `{expected}` with no default. \
+                     Provide a value of type `{expected}`."
+                )
+            }
+            ValidationError::UnfilledPlaceholder { path, expected } => {
+                // The mcp-feedback proposal's §5 routes this through the
+                // uniform format. The "either / or" pair collapses to one
+                // exit because there is no quote-or-omit alternative — the
+                // sentinel always means "replace me".
+                write!(
+                    f,
+                    "Field `{path}` still carries the `{MUST_FILL_SENTINEL}` blueprint sentinel, \
+                     schema declares `{expected}`. Replace `{MUST_FILL_SENTINEL}` with a value of type `{expected}`."
+                )
+            }
+            ValidationError::TypeMismatch {
+                path,
+                expected,
+                actual,
+                source_token,
+                default,
+            } => {
+                // Line 1: what we got vs what the schema says.
+                write!(f, "Field `{path}` got {actual} `{source_token}`, schema declares `{expected}`")?;
+                if let Some(d) = default {
+                    write!(f, " with default `{d}`")?;
+                }
+                write!(f, ". ")?;
+
+                // Exits depend on (expected, actual, has_default). The two
+                // patterns from `ERROR.md` cover the common LLM mistakes:
+                //   - null on a field with a default → omit the line, or
+                //     replace null with a real value of the declared type;
+                //   - string field receives an unquoted scalar → quote it,
+                //     or accept the scalar by changing the schema type.
+                if default.is_some() && actual == "null" {
+                    write!(
+                        f,
+                        "Either omit the line (the default will fill in) or set the value to a {expected}."
+                    )
+                } else if expected == "string" && quotable_actual(actual).is_some() {
+                    let bare = strip_string_quotes(source_token);
+                    write!(
+                        f,
+                        "Either quote the value (`{path}: \"{bare}\"`) or change the schema's `type:` to `{actual}`."
+                    )
+                } else if default.is_some() {
+                    write!(
+                        f,
+                        "Either omit the line (the default will fill in) or provide a value of type `{expected}`."
+                    )
+                } else {
+                    write!(
+                        f,
+                        "Either provide a value of type `{expected}` or change the schema's `type:` to `{actual}`."
+                    )
+                }
+            }
+            ValidationError::EnumViolation { path, value, allowed } => {
+                write!(
+                    f,
+                    "field `{path}` value `{value}` not in allowed set {allowed:?}"
+                )
+            }
+            ValidationError::FormatViolation { path, format } => {
+                write!(
+                    f,
+                    "field `{path}` does not match expected format `{format}`"
+                )
+            }
+            ValidationError::UnknownCard { path, card } => {
+                write!(f, "unknown card kind `{card}` at `{path}`")
+            }
+            ValidationError::BodyDisabled { path, card } => {
+                write!(
+                    f,
+                    "card `{card}` at `{path}` has body content but the card kind declares `body.enabled: false` — remove the body content or set `body.enabled: true` on the card kind"
+                )
+            }
+        }
+    }
+}
+
+/// `Some(_)` when `actual` (a YAML-parsed type name) is a primitive scalar
+/// the author could lift to a string by quoting the source token. `null`
+/// is excluded — quoting `null` produces the literal string `"null"`,
+/// which is rarely what an LLM author intended.
+fn quotable_actual(actual: &str) -> Option<()> {
+    matches!(actual, "integer" | "number" | "boolean").then_some(())
+}
+
+/// Strip leading/trailing `"` from a verbatim string token; pass primitives
+/// through unchanged. Used to render the quoted-value exit cleanly when the
+/// token is already a string (we still re-quote in the suggested rewrite).
+fn strip_string_quotes(token: &str) -> &str {
+    token
+        .strip_prefix('"')
+        .and_then(|t| t.strip_suffix('"'))
+        .unwrap_or(token)
 }
 
 impl ValidationError {
@@ -58,8 +195,8 @@ impl ValidationError {
     /// See [`crate::error`] module docs for the path grammar and conventions.
     pub fn path(&self) -> &str {
         match self {
-            ValidationError::RequiredFieldAbsent { path }
-            | ValidationError::UnfilledPlaceholder { path }
+            ValidationError::RequiredFieldAbsent { path, .. }
+            | ValidationError::UnfilledPlaceholder { path, .. }
             | ValidationError::TypeMismatch { path, .. }
             | ValidationError::EnumViolation { path, .. }
             | ValidationError::FormatViolation { path, .. }
@@ -83,38 +220,44 @@ impl ValidationError {
     }
 
     /// Convert this error into a structured [`Diagnostic`] carrying the
-    /// stable code, the document-model `path`, and an optional hint.
+    /// stable code, the document-model `path`, and the canonical message.
     pub fn to_diagnostic(&self) -> Diagnostic {
-        let mut diag = Diagnostic::new(Severity::Error, self.to_string())
+        Diagnostic::new(Severity::Error, self.to_string())
             .with_code(self.code().to_string())
-            .with_path(self.path().to_string());
-
-        if let Some(hint) = self.hint() {
-            diag = diag.with_hint(hint);
-        }
-        diag
+            .with_path(self.path().to_string())
     }
+}
 
-    fn hint(&self) -> Option<String> {
-        match self {
-            ValidationError::RequiredFieldAbsent { .. } => {
-                Some("Add this field to the document.".to_string())
+/// Render a JSON scalar as the verbatim YAML token it would parse from.
+/// Primitives appear bare (`42`, `true`, `null`); strings appear quoted
+/// (`"hello"`, `""`); compound values render as a short placeholder.
+fn verbatim_yaml_scalar(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => "null".to_string(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => format!("\"{s}\""),
+        serde_json::Value::Array(_) => "[…]".to_string(),
+        serde_json::Value::Object(_) => "{…}".to_string(),
+    }
+}
+
+/// YAML-parsed type name for a JSON value. Distinguishes `integer` from
+/// `number` (the proposal's example messages need that split).
+fn yaml_scalar_type(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "boolean",
+        serde_json::Value::Number(n) => {
+            if n.is_i64() || n.is_u64() {
+                "integer"
+            } else {
+                "number"
             }
-            ValidationError::UnfilledPlaceholder { .. } => Some(format!(
-                "Replace the `{}` sentinel with a value of the declared type.",
-                MUST_FILL_SENTINEL
-            )),
-            ValidationError::TypeMismatch { expected, .. } => {
-                Some(format!("Provide a value of type `{}`.", expected))
-            }
-            ValidationError::EnumViolation { allowed, .. } => {
-                Some(format!("Use one of: {}.", allowed.join(", ")))
-            }
-            ValidationError::FormatViolation { format, .. } => {
-                Some(format!("Use the `{}` format.", format))
-            }
-            _ => None,
         }
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
     }
 }
 
@@ -191,7 +334,11 @@ fn validate_fields_for_card_indexmap(
         match fields.get(field_name) {
             Some(value) => errors.extend(validate_field(schema, value, &path)),
             None if schema.default.is_none() => {
-                errors.push(ValidationError::RequiredFieldAbsent { path })
+                // Must Fill (no `default:`) field absent from the document.
+                errors.push(ValidationError::RequiredFieldAbsent {
+                    path,
+                    expected: expected_type_name(&schema.r#type).to_string(),
+                })
             }
             None => {}
         }
@@ -222,6 +369,7 @@ pub(crate) fn validate_field(
         if candidate == MUST_FILL_SENTINEL {
             errors.push(ValidationError::UnfilledPlaceholder {
                 path: path.to_string(),
+                expected: expected_type_name(&field.r#type).to_string(),
             });
             return errors;
         }
@@ -290,9 +438,13 @@ pub(crate) fn validate_field(
                                     &QuillValue::from_json(v.clone()),
                                     &prop_path,
                                 )),
-                                None if prop_schema.default.is_none() => errors.push(
-                                    ValidationError::RequiredFieldAbsent { path: prop_path },
-                                ),
+                                None if prop_schema.default.is_none() => {
+                                    errors.push(ValidationError::RequiredFieldAbsent {
+                                        path: prop_path,
+                                        expected: expected_type_name(&prop_schema.r#type)
+                                            .to_string(),
+                                    })
+                                }
                                 None => {}
                             }
                         }
@@ -319,6 +471,8 @@ pub(crate) fn validate_field(
                             None if property_schema.default.is_none() => {
                                 errors.push(ValidationError::RequiredFieldAbsent {
                                     path: property_path,
+                                    expected: expected_type_name(&property_schema.r#type)
+                                        .to_string(),
                                 })
                             }
                             None => {}
@@ -340,7 +494,12 @@ pub(crate) fn validate_field(
         errors.push(ValidationError::TypeMismatch {
             path: path.to_string(),
             expected: expected_type_name(&field.r#type).to_string(),
-            actual: json_type_name(value.as_json()).to_string(),
+            actual: yaml_scalar_type(value.as_json()).to_string(),
+            source_token: verbatim_yaml_scalar(value.as_json()),
+            default: field
+                .default
+                .as_ref()
+                .map(|d| verbatim_yaml_scalar(d.as_json())),
         });
     }
 
@@ -375,17 +534,6 @@ fn expected_type_name(field_type: &FieldType) -> &'static str {
         FieldType::Boolean => "boolean",
         FieldType::Array => "array",
         FieldType::Object => "object",
-    }
-}
-
-fn json_type_name(value: &serde_json::Value) -> &'static str {
-    match value {
-        serde_json::Value::Null => "null",
-        serde_json::Value::Bool(_) => "boolean",
-        serde_json::Value::Number(_) => "number",
-        serde_json::Value::String(_) => "string",
-        serde_json::Value::Array(_) => "array",
-        serde_json::Value::Object(_) => "object",
     }
 }
 
@@ -472,8 +620,8 @@ main:
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
             e,
-            ValidationError::TypeMismatch { path, expected, actual }
-            if path == "title" && expected == "string" && actual == "number"
+            ValidationError::TypeMismatch { path, expected, actual, source_token, .. }
+            if path == "title" && expected == "string" && actual == "integer" && source_token == "9"
         )));
     }
 
@@ -491,8 +639,8 @@ main:
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
             e,
-            ValidationError::TypeMismatch { path, expected, actual }
-            if path == "count" && expected == "integer" && actual == "number"
+            ValidationError::TypeMismatch { path, expected, actual, source_token, .. }
+            if path == "count" && expected == "integer" && actual == "number" && source_token == "9.5"
         )));
     }
 
@@ -504,7 +652,7 @@ main:
         let doc = doc_from_fm(&[]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::RequiredFieldAbsent { path } if path == "memo_for")
+            matches!(e, ValidationError::RequiredFieldAbsent { path, expected } if path == "memo_for" && expected == "string")
         }));
     }
 
@@ -525,7 +673,7 @@ main:
         let doc = doc_from_fm(&[("memo_for", json!(MUST_FILL_SENTINEL))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::UnfilledPlaceholder { path } if path == "memo_for")
+            matches!(e, ValidationError::UnfilledPlaceholder { path, expected } if path == "memo_for" && expected == "string")
         }));
     }
 
@@ -537,29 +685,36 @@ main:
         let doc = doc_from_fm(&[("body", json!(format!("  {}\n", MUST_FILL_SENTINEL)))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::UnfilledPlaceholder { path } if path == "body")
+            matches!(e, ValidationError::UnfilledPlaceholder { path, .. } if path == "body")
         }));
     }
 
     #[test]
-    fn quoted_must_fill_string_is_content_not_sentinel() {
-        // Once parsed YAML decodes both forms to the same string, exact
-        // string equality is the detector. Document this expectation by
-        // confirming the literal sentinel always fires the placeholder
-        // error (no escape hatch besides quoting at the YAML layer, which
-        // produces the same decoded string and therefore still fires).
-        // The behavior is documented in BLUEPRINT.md authoring guidance.
-        let config = config_with("    name:\n      type: string", "");
-        let doc = doc_from_fm(&[("name", json!(MUST_FILL_SENTINEL))]);
+    fn unfilled_placeholder_message_names_field_and_exit() {
+        // The mcp-feedback proposal's §5 routes this through the uniform
+        // format; assert the message names the field, shows the sentinel,
+        // and points at the exit.
+        let config = config_with("    memo_for:\n      type: string", "");
+        let doc = doc_from_fm(&[("memo_for", json!(MUST_FILL_SENTINEL))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
-        assert!(has_error(&errors, |e| matches!(
-            e,
-            ValidationError::UnfilledPlaceholder { .. }
-        )));
+        let msg = errors
+            .iter()
+            .find_map(|e| match e {
+                ValidationError::UnfilledPlaceholder { .. } => Some(e.to_string()),
+                _ => None,
+            })
+            .expect("expected UnfilledPlaceholder");
+        assert!(
+            msg.contains("Field `memo_for`")
+                && msg.contains(MUST_FILL_SENTINEL)
+                && msg.contains("schema declares `string`")
+                && msg.contains("Replace"),
+            "wrong message: {msg}"
+        );
     }
 
     #[test]
-    fn reports_wrong_type_on_must_fill_field() {
+    fn reports_must_fill_field_wrong_type() {
         let config = config_with("    memo_for:\n      type: string", "");
         let doc = doc_from_fm(&[("memo_for", json!(true))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
@@ -664,7 +819,7 @@ main:
         let doc = doc_from_fm(&[("recipients", json!([{ "org": "HQ" }]))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::RequiredFieldAbsent { path } if path == "recipients[0].name")
+            matches!(e, ValidationError::RequiredFieldAbsent { path, .. } if path == "recipients[0].name")
         }));
     }
 
@@ -684,7 +839,7 @@ main:
         let missing_paths: Vec<&str> = errors
             .iter()
             .filter_map(|e| match e {
-                ValidationError::RequiredFieldAbsent { path } => Some(path.as_str()),
+                ValidationError::RequiredFieldAbsent { path, .. } => Some(path.as_str()),
                 _ => None,
             })
             .collect();
@@ -762,7 +917,7 @@ main:
         let doc = doc_with_typed_cards(&[], vec![typed_card("indorsement", &[])]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::RequiredFieldAbsent { path } if path == "cards.indorsement[0].signature_block")
+            matches!(e, ValidationError::RequiredFieldAbsent { path, .. } if path == "cards.indorsement[0].signature_block")
         }));
     }
 
@@ -793,6 +948,7 @@ main:
     fn to_diagnostic_carries_path_and_code() {
         let err = ValidationError::RequiredFieldAbsent {
             path: "cards.indorsement[0].signature_block".to_string(),
+            expected: "string".to_string(),
         };
         let diag = err.to_diagnostic();
         assert_eq!(
@@ -804,6 +960,81 @@ main:
             Some("cards.indorsement[0].signature_block")
         );
         assert_eq!(diag.severity, Severity::Error);
+    }
+
+    #[test]
+    fn type_mismatch_message_has_canonical_shape_quote_exit() {
+        // Integer source under a `string` schema → quote-the-value exit.
+        let config = config_with("    build_number:\n      type: string\n      default: \"\"", "");
+        let doc = doc_from_fm(&[("build_number", json!(42))]);
+        let errors = validate_typed_document(&config, &doc).unwrap_err();
+        let msg = errors
+            .iter()
+            .find_map(|e| match e {
+                ValidationError::TypeMismatch { .. } => Some(e.to_string()),
+                _ => None,
+            })
+            .expect("expected TypeMismatch");
+        assert!(
+            msg.contains("Field `build_number` got integer `42`, schema declares `string`"),
+            "wrong head: {msg}"
+        );
+        assert!(
+            msg.contains("quote the value (`build_number: \"42\"`)"),
+            "missing quote exit: {msg}"
+        );
+        assert!(
+            msg.contains("change the schema's `type:` to `integer`"),
+            "missing schema-change exit: {msg}"
+        );
+    }
+
+    #[test]
+    fn type_mismatch_message_has_canonical_shape_default_exit() {
+        // Null under a `string` schema with a default → omit-the-line exit.
+        let config = config_with(
+            "    subtitle:\n      type: string\n      default: \"My Subtitle\"",
+            "",
+        );
+        let doc = doc_from_fm(&[("subtitle", json!(null))]);
+        let errors = validate_typed_document(&config, &doc).unwrap_err();
+        let msg = errors
+            .iter()
+            .find_map(|e| match e {
+                ValidationError::TypeMismatch { .. } => Some(e.to_string()),
+                _ => None,
+            })
+            .expect("expected TypeMismatch");
+        assert!(
+            msg.contains(
+                "Field `subtitle` got null `null`, schema declares `string` with default `\"My Subtitle\"`"
+            ),
+            "wrong head: {msg}"
+        );
+        assert!(
+            msg.contains("omit the line (the default will fill in)"),
+            "missing omit-line exit: {msg}"
+        );
+    }
+
+    #[test]
+    fn required_field_absent_message_names_expected_type() {
+        let config = config_with("    memo_for:\n      type: string", "");
+        let doc = doc_from_fm(&[]);
+        let errors = validate_typed_document(&config, &doc).unwrap_err();
+        let msg = errors
+            .iter()
+            .find_map(|e| match e {
+                ValidationError::RequiredFieldAbsent { .. } => Some(e.to_string()),
+                _ => None,
+            })
+            .expect("expected RequiredFieldAbsent");
+        assert!(
+            msg.contains("Field `memo_for` is missing")
+                && msg.contains("schema declares `string` with no default")
+                && msg.contains("Provide a value of type `string`"),
+            "wrong message: {msg}"
+        );
     }
 
     #[test]
@@ -821,6 +1052,7 @@ main:
   fields:
     title:
       type: string
+      default: ""
 "#,
         )
         .unwrap();

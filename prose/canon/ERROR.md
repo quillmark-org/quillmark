@@ -50,6 +50,51 @@ Typst diagnostics mapped via `map_typst_errors()`:
 
 See `crates/backends/typst/src/error_mapping.rs`.
 
+## Validation message contract
+
+Field-level validation diagnostics — `validation::type_mismatch`,
+`validation::required_field_absent`, and
+`validation::unfilled_placeholder` — emit a single canonical shape:
+
+- **Field path** — the document-model anchor of the offending field
+  (`recipient`, `cards[2].author`).
+- **Source token** — the YAML scalar that triggered the error, rendered
+  verbatim in its YAML-canonical form (`42`, `null`, `true`, `""`). The
+  Must-Fill sentinel renders as `<must-fill>`. Strings appear quoted;
+  primitives appear bare. (Absent fields have no source token.)
+- **Schema declaration** — the field's declared type and, when present,
+  its default. Defaults render with the same verbatim formatting.
+- **Both exits when applicable** — the message names two ways out. The
+  parser does not silently coerce; the message is the lever.
+
+Example messages:
+
+```
+Field `build_number` got integer `42`, schema declares `string`.
+Either quote the value (`build_number: "42"`) or change the schema's
+`type:` to `integer`.
+```
+
+```
+Field `subtitle` got `null`, schema declares `string` with default
+`"My Subtitle"`. Either omit the line (the default will fill in) or
+set the value to a string.
+```
+
+```
+Field `memo_for` is missing, schema declares `string` with no default.
+Provide a value of type `string`.
+```
+
+```
+Field `name` still carries the `<must-fill>` blueprint sentinel,
+schema declares `string`. Replace `<must-fill>` with a value of type
+`string`.
+```
+
+Implementation: `crates/core/src/quill/validation.rs` (the
+`ValidationError` `Display` impl).
+
 ## Error Presentation
 
 **Pretty printing** (`Diagnostic::fmt_pretty()`):

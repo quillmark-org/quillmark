@@ -205,36 +205,40 @@ pub(super) fn decompose_with_warnings(
         ));
     }
 
-    // The root block must declare `$kind: main`.
+    // The root block's `$kind` is `main` by position (MARKDOWN.md §3.3).
+    // An explicit `$kind: main` is accepted; an omitted `$kind` is accepted
+    // and synthesised below at the canonical position; any other value is a
+    // parse error.
     let root_kind = root_block.meta_items.iter().find_map(|m| match m {
         PayloadItem::Kind { value } => Some(value.as_str()),
         _ => None,
     });
-    match root_kind {
-        Some("main") => {}
-        Some(other) => {
+    if let Some(other) = root_kind {
+        if other != "main" {
             return Err(ParseError::InvalidStructure(format!(
-                "The document's root card-yaml block must declare `$kind: main`, \
-                 not `$kind: {}` — `main` is reserved for the document root.",
+                "The document's root card-yaml block has `$kind: {}`, but \
+                 `main` is reserved for the document root. Remove the line \
+                 (the root's kind is `main` by position) or change it to \
+                 `$kind: main`.",
                 other
             )));
         }
-        None => {
-            return Err(ParseError::InvalidStructure(
-                "The document's root card-yaml block must declare `$kind: main` \
-                 alongside `$quill:`."
-                    .to_string(),
-            ));
-        }
     }
 
-    // Build the root block's payload.
-    let main_payload = build_payload(
+    // Build the root block's payload, then synthesise `$kind: main` if the
+    // source omitted it. Using `set_kind` here inserts at the canonical
+    // position (after `$quill`, before any `$id`/`$ext`/user fields), so
+    // canonical input round-trips byte-equal and non-canonical input
+    // converges on first emit (MARKDOWN.md §9).
+    let mut main_payload = build_payload(
         &root_block.meta_items,
         &root_block.pre_items,
         &root_block.pre_nested_comments,
         &root_block.yaml_value,
     )?;
+    if main_payload.kind().is_none() {
+        main_payload.set_kind("main");
+    }
     let mut warnings = warnings;
     for w in &root_block.pre_warnings {
         warnings.push(w.clone());
