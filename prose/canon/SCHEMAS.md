@@ -48,6 +48,10 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
 - Validates each card's `$kind` matches a known card kind
 - Enforces `body.enabled: false` on the main card and on each card kind — body content for a body-disabled card emits `ValidationError::BodyDisabled` (whitespace-only bodies are treated as empty)
 
+Field-level type and presence errors render under a uniform shape —
+field path, verbatim source token, schema declaration, and both exits
+when applicable. See `ERROR.md` § "Validation message contract".
+
 ## Schema emission
 
 `QuillConfig::schema()` returns the structural schema as `serde_json::Value`. It includes:

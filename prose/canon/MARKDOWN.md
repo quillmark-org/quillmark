@@ -122,7 +122,10 @@ accessors — `card.quill()`, `card.kind()`, `card.id()`, `card.ext()` —
 which return `Option<…>`. On a successfully parsed document the root
 card always returns `Some(_)` for both `quill()` and `kind()` (with
 `kind() == "main"`); composable cards return `None` for `quill()` and
-`Some(_)` for `kind()` (any value other than `"main"`).
+`Some(_)` for `kind()` (any value other than `"main"`). The root's
+`$kind: main` is synthesised when omitted in source (see §3.3 rules),
+so the typed-accessor invariant holds regardless of whether the
+author wrote the line.
 
 - **`$quill: <name>@<version>`** — binds the document to a quill (see §3.5
   for the version-selector forms). The root block (the first block) must
@@ -130,8 +133,12 @@ card always returns `Some(_)` for both `quill()` and `kind()` (with
   reference as the block is read.
 - **`$kind: <value>`** — identifies a card's kind. The value is
   name-validated at parse time and must match `[a-z_][a-z0-9_]*`. The kind
-  `main` is **reserved for the document root**: the root block must declare
-  `$kind: main`, and no composable card may declare `$kind: main`.
+  `main` is **reserved for the document root**: the root block's kind is
+  `main` by virtue of position. An explicit `$kind: main` on the root is
+  accepted and round-trips byte-equal; omitting it is also accepted, in
+  which case the parser synthesises the entry at the canonical position
+  so the in-memory model is uniform. A non-`main` `$kind` on the root is
+  a parse error, and no composable card may declare `$kind: main`.
 - **`$id: <value>`** — an opaque, optional identifier. Plain metadata: no
   validation, no uniqueness requirement; carried through round-trip
   unchanged.
@@ -146,9 +153,12 @@ card always returns `Some(_)` for both `quill()` and `kind()` (with
 
 Rules:
 
-- The root block must declare both `$quill: <ref>` and `$kind: main`. A
-  composable (non-root) block must declare `$kind: <kind>` for some
-  `<kind>` other than `main`, and must not declare `$quill`.
+- The root block must declare `$quill: <ref>`. Its `$kind` is `main`
+  by position: an explicit `$kind: main` is accepted, an omitted `$kind`
+  is accepted (and synthesised on parse), and any other `$kind` value
+  is a parse error. A composable (non-root) block must declare
+  `$kind: <kind>` for some `<kind>` other than `main`, and must not
+  declare `$quill`.
 - `$` metadata entries may appear at any position within the payload, and
   may be interleaved with data fields. The emitter preserves source order
   (see §9); newly constructed metadata that does not have a source-order
@@ -379,11 +389,13 @@ error when any is exceeded:
 
 That is: a `~~~card-yaml` opener, the YAML payload (typed `$` system
 metadata, user data fields, and YAML comments interleaved in source
-order), and a `~~~` closer. The root block must declare `$quill` and
-`$kind: main`; composable cards must declare `$kind: <kind>`. A document
-round-trips to this canonical shape — fence markers and YAML quoting are
-normalised. `!fill` tags and YAML comments (own-line and inline, including
-those adjacent to `$` lines) survive the round-trip.
+order), and a `~~~` closer. The root block must declare `$quill`;
+canonical emission also writes `$kind: main` on the root, synthesising
+it when the input omitted the line (see §3.3). Composable cards must
+declare `$kind: <kind>`. A document round-trips to this canonical
+shape — fence markers and YAML quoting are normalised. `!fill` tags
+and YAML comments (own-line and inline, including those adjacent to
+`$` lines) survive the round-trip.
 
 Programmatically constructed metadata that does not have a source-order
 emits in the canonical key order `$quill`, `$kind`, `$id`, `$ext` — the
@@ -422,8 +434,9 @@ Parse errors include:
 
 - A `~~~card-yaml` opener with no matching `~~~` closer before EOF.
 - The root block missing its `$quill` entry.
-- The root block missing its `$kind: main` entry, or declaring a
-  non-`main` `$kind`.
+- The root block declaring a non-`main` `$kind` (an omitted `$kind` on
+  the root is accepted and synthesised; only an explicit non-`main`
+  value is rejected).
 - A composable (non-root) block declaring `$quill`, or declaring
   `$kind: main` (which is reserved for the document root).
 - A duplicate `$key` within a single block (caught by the YAML parser as a
