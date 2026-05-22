@@ -353,15 +353,15 @@ fn build_payload(
 
     // Look up typed `$` items by `$key`. Each entry is consumed at most
     // once; anything left over at the end is appended in source order.
-    // `extract_meta_items` only ever returns the three system variants;
-    // assert that contract here so a regression upstream is loud, not a
-    // silent drop of user fields/comments.
+    // `extract_meta_items` only ever returns the closed-set system
+    // variants; assert that contract here so a regression upstream is
+    // loud, not a silent drop of user fields/comments.
     let mut typed_by_key: HashMap<&'static str, PayloadItem> =
         HashMap::with_capacity(meta_items.len());
     for m in meta_items {
         let k = meta_key(m).expect(
             "build_payload: meta_items must contain only system variants \
-             ($quill/$kind/$id); got a Field or Comment",
+             ($quill/$kind/$id/$ext); got a Field or Comment",
         );
         typed_by_key.insert(k, m.clone());
     }
@@ -396,6 +396,7 @@ fn build_payload(
                         key: key.clone(),
                         value: QuillValue::from_json(value),
                         fill: *fill,
+                        nested_comments: Vec::new(),
                     });
                     consumed_user_keys.insert(key.clone());
                 }
@@ -423,10 +424,13 @@ fn build_payload(
             key: key.clone(),
             value: QuillValue::from_json(value.clone()),
             fill: false,
+            nested_comments: Vec::new(),
         });
     }
 
-    Ok(Payload::from_items_with_nested(
+    // Partition the prescan's flat `nested_comments` onto the matching
+    // Field / Ext items (paths become relative to the owning value).
+    Ok(Payload::from_items_with_flat_nested(
         items,
         pre_nested_comments.to_vec(),
     ))

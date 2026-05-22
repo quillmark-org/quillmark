@@ -173,7 +173,8 @@ data payload.
 
 - **Field names.** Every field name matches `/^[a-z_][a-z0-9_]*$/`. The
   pattern excludes `$` and uppercase, so a data field name can never collide
-  with the metadata sigil (`$quill`, `$kind`, `$id`, `$body`, `$cards`) and
+  with the metadata sigil (`$quill`, `$kind`, `$id`, `$ext`, `$body`,
+  `$cards`) and
   is consistently lowercase across the wire format.
 - **Whitespace-only payload.** A block whose payload (after metadata
   extraction) is only whitespace yields an empty field set.
@@ -385,8 +386,9 @@ normalised. `!fill` tags and YAML comments (own-line and inline, including
 those adjacent to `$` lines) survive the round-trip.
 
 Programmatically constructed metadata that does not have a source-order
-emits in the canonical key order `$quill`, `$kind`, `$id` — the typed
-mutators (`set_quill` / `set_kind` / `set_id`) insert at these positions.
+emits in the canonical key order `$quill`, `$kind`, `$id`, `$ext` — the
+typed mutators (`set_quill` / `set_kind` / `set_id` / `set_ext`) insert
+at these positions.
 
 ### 9.1 Canonical Idempotence
 
@@ -426,7 +428,7 @@ Parse errors include:
   `$kind: main` (which is reserved for the document root).
 - A duplicate `$key` within a single block (caught by the YAML parser as a
   duplicate mapping key).
-- An unknown `$key` outside the closed set `{quill, kind, id}`.
+- An unknown `$key` outside the closed set `{quill, kind, id, ext}`.
 - An invalid `$quill` reference.
 - A `$` metadata key whose value type is incompatible with the key.
 - A data-field name failing `/^[a-z_][a-z0-9_]*$/`.

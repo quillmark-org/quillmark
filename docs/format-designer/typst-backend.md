@@ -54,7 +54,7 @@ Use Typst's `in` operator to check for optional fields:
 
 ### Body, arrays, and cards
 
-The document body is at `data.$body` (accessed via `data.at("$body")` because Typst identifiers exclude `$`). Arrays come through as Typst arrays. Cards live under `data.$cards`, each carrying its own `$kind` discriminator, fields, and `$body`:
+The document body is exposed under the `$body` key, accessed via `data.at("$body")` because Typst identifiers exclude `$`. Arrays come through as Typst arrays. Cards live under the `$cards` key, each carrying its own `$kind` discriminator, fields, and `$body`:
 
 ```typst
 #data.at("$body", default: "")

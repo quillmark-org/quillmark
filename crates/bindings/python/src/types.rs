@@ -757,7 +757,9 @@ fn card_to_pydict<'py>(
     for item in card.payload().items() {
         let entry = PyDict::new(py);
         match item {
-            quillmark_core::PayloadItem::Field { key, value, fill } => {
+            quillmark_core::PayloadItem::Field {
+                key, value, fill, ..
+            } => {
                 entry.set_item("type", "field")?;
                 entry.set_item("key", key)?;
                 entry.set_item("value", quillvalue_to_py(py, value)?)?;

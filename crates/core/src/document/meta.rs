@@ -94,7 +94,10 @@ pub(super) fn extract_meta_items(payload: &mut JsonValue) -> Result<Vec<PayloadI
                 value: scalar_to_string(&key, value)?,
             },
             "$ext" => match value {
-                JsonValue::Object(map) => PayloadItem::Ext { value: map },
+                JsonValue::Object(map) => PayloadItem::Ext {
+                    value: map,
+                    nested_comments: Vec::new(),
+                },
                 other => {
                     return Err(ParseError::InvalidStructure(format!(
                         "Invalid `$ext` value — expected a mapping, got {}",

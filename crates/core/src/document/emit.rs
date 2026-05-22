@@ -130,9 +130,10 @@ fn emit_meta_line(out: &mut String, key: &str, value: &str, trailer: Option<&str
 
 /// Emit the `$ext: …` block. An empty map emits inline as `$ext: {}` so the
 /// declaration survives the round-trip; a non-empty map emits as a `$ext:`
-/// header followed by indented block-style children. Nested comments
-/// captured under the `$ext` key are re-injected by the child mapping
-/// walker.
+/// header followed by indented block-style children. `nested` carries
+/// comments with paths relative to the `$ext` value tree (the `$ext` key
+/// itself is not in the path) — the child mapping walker re-injects them
+/// at the matching positions.
 fn emit_ext_block(
     out: &mut String,
     value: &serde_json::Map<String, JsonValue>,
@@ -148,23 +149,23 @@ fn emit_ext_block(
     out.push_str("$ext:");
     push_trailer(out, trailer);
     out.push('\n');
-    let path = vec![CommentPathSegment::Key("$ext".to_string())];
+    let path: Vec<CommentPathSegment> = Vec::new();
     emit_mapping_children(out, value, 2, &path, nested);
 }
 
 fn emit_block(out: &mut String, card: &Card) {
     out.push_str("~~~card-yaml\n");
-    emit_payload_items(
-        out,
-        card.payload().items(),
-        card.payload().nested_comments(),
-    );
+    emit_payload_items(out, card.payload().items());
     out.push_str("~~~\n");
 }
 
 /// Walk the unified item list and emit each entry. An `inline: true` comment
 /// immediately following a non-comment item is consumed as that item's trailer.
-fn emit_payload_items(out: &mut String, items: &[PayloadItem], nested: &[NestedComment]) {
+///
+/// Each `Field` / `Ext` item carries its own `nested_comments` slice with
+/// paths relative to the field's value tree, so emission of nested
+/// structures starts with an empty container path.
+fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
     let mut i = 0;
     while i < items.len() {
         // Peek for a trailing inline comment to use as the line trailer.
@@ -184,12 +185,31 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem], nested: &[NestedC
             PayloadItem::Id { value } => {
                 emit_meta_line(out, "id", value, trailer);
             }
-            PayloadItem::Ext { value } => {
-                emit_ext_block(out, value, trailer, nested);
+            PayloadItem::Ext {
+                value,
+                nested_comments,
+            } => {
+                emit_ext_block(out, value, trailer, nested_comments);
             }
-            PayloadItem::Field { key, value, fill } => {
-                let path = vec![CommentPathSegment::Key(key.clone())];
-                emit_field(out, key, value.as_json(), 0, *fill, &path, nested, trailer);
+            PayloadItem::Field {
+                key,
+                value,
+                fill,
+                nested_comments,
+            } => {
+                // Paths in `nested_comments` are relative to this field's
+                // value, so the container path starts empty.
+                let path: Vec<CommentPathSegment> = Vec::new();
+                emit_field(
+                    out,
+                    key,
+                    value.as_json(),
+                    0,
+                    *fill,
+                    &path,
+                    nested_comments,
+                    trailer,
+                );
             }
             PayloadItem::Comment { text, .. } => {
                 out.push_str("# ");

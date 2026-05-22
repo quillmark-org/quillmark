@@ -34,9 +34,6 @@ pub enum ValidationError {
     #[error("unknown card kind `{card}` at `{path}`")]
     UnknownCard { path: String, card: String },
 
-    #[error("card at `{path}` missing `CARD` discriminator")]
-    MissingCardDiscriminator { path: String },
-
     #[error(
         "card `{card}` at `{path}` has body content but the card kind declares `body.enabled: false` — remove the body content or set `body.enabled: true` on the card kind"
     )]
@@ -54,7 +51,6 @@ impl ValidationError {
             | ValidationError::EnumViolation { path, .. }
             | ValidationError::FormatViolation { path, .. }
             | ValidationError::UnknownCard { path, .. }
-            | ValidationError::MissingCardDiscriminator { path }
             | ValidationError::BodyDisabled { path, .. } => path,
         }
     }
@@ -68,9 +64,6 @@ impl ValidationError {
             ValidationError::EnumViolation { .. } => "validation::enum_violation",
             ValidationError::FormatViolation { .. } => "validation::format_violation",
             ValidationError::UnknownCard { .. } => "validation::unknown_card",
-            ValidationError::MissingCardDiscriminator { .. } => {
-                "validation::missing_card_discriminator"
-            }
             ValidationError::BodyDisabled { .. } => "validation::body_disabled",
         }
     }

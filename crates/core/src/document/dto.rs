@@ -223,17 +223,21 @@ impl From<&Card> for CardV0_82_0 {
 
 impl From<&Payload> for PayloadV0_82_0 {
     fn from(payload: &Payload) -> Self {
+        // The wire format keeps `nested_comments` as a flat sidecar at
+        // the payload level. The in-memory model carries them per-item
+        // with relative paths, so we re-prefix and flatten here.
+        let nested_comments = payload
+            .flat_nested_comments()
+            .iter()
+            .map(NestedCommentV0_82_0::from)
+            .collect();
         PayloadV0_82_0 {
             items: payload
                 .items()
                 .iter()
                 .map(PayloadItemV0_82_0::from)
                 .collect(),
-            nested_comments: payload
-                .nested_comments()
-                .iter()
-                .map(NestedCommentV0_82_0::from)
-                .collect(),
+            nested_comments,
         }
     }
 }
@@ -250,10 +254,18 @@ impl From<&PayloadItem> for PayloadItemV0_82_0 {
             PayloadItem::Id { value } => PayloadItemV0_82_0::Id {
                 value: value.clone(),
             },
-            PayloadItem::Ext { value } => PayloadItemV0_82_0::Ext {
+            // The wire `Ext` variant has no `nested_comments` field —
+            // its comments live in the payload-level sidecar after
+            // `flat_nested_comments` re-prefixes them with `$ext`.
+            PayloadItem::Ext { value, .. } => PayloadItemV0_82_0::Ext {
                 value: value.clone(),
             },
-            PayloadItem::Field { key, value, fill } => PayloadItemV0_82_0::Field {
+            // Same story for `Field` — the per-item `nested_comments`
+            // are flattened onto the payload-level sidecar with the
+            // field's key as the leading path segment.
+            PayloadItem::Field {
+                key, value, fill, ..
+            } => PayloadItemV0_82_0::Field {
                 key: key.clone(),
                 value: value.as_json().clone(),
                 fill: *fill,
@@ -366,7 +378,9 @@ impl TryFrom<PayloadV0_82_0> for Payload {
             .into_iter()
             .map(NestedComment::from)
             .collect();
-        Ok(Payload::from_items_with_nested(items, nested))
+        // Partition the flat wire-format sidecar onto the matching
+        // Field / Ext items (paths become relative to the owning value).
+        Ok(Payload::from_items_with_flat_nested(items, nested))
     }
 }
 
@@ -386,11 +400,15 @@ impl TryFrom<PayloadItemV0_82_0> for PayloadItem {
             }
             PayloadItemV0_82_0::Kind { value } => PayloadItem::Kind { value },
             PayloadItemV0_82_0::Id { value } => PayloadItem::Id { value },
-            PayloadItemV0_82_0::Ext { value } => PayloadItem::Ext { value },
+            PayloadItemV0_82_0::Ext { value } => PayloadItem::Ext {
+                value,
+                nested_comments: Vec::new(),
+            },
             PayloadItemV0_82_0::Field { key, value, fill } => PayloadItem::Field {
                 key,
                 value: QuillValue::from_json(value),
                 fill,
+                nested_comments: Vec::new(),
             },
             PayloadItemV0_82_0::Comment { text, inline } => PayloadItem::Comment { text, inline },
         })

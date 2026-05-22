@@ -4,8 +4,6 @@
 //! canonicalise to the same in-memory document. This is the non-trivial
 //! consequence of byte-stable, lossless round-trips through both formats.
 
-use crate::document::Document;
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Collect all `.md` files reachable from `root`, walking recursively.

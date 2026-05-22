@@ -231,13 +231,13 @@ impl From<&quillmark_core::Card> for Card {
             .items()
             .iter()
             .filter_map(|item| match item {
-                quillmark_core::PayloadItem::Field { key, value, fill } => {
-                    Some(PayloadItem::Field {
-                        key: key.clone(),
-                        value: value.as_json().clone(),
-                        fill: *fill,
-                    })
-                }
+                quillmark_core::PayloadItem::Field {
+                    key, value, fill, ..
+                } => Some(PayloadItem::Field {
+                    key: key.clone(),
+                    value: value.as_json().clone(),
+                    fill: *fill,
+                }),
                 quillmark_core::PayloadItem::Comment { text, inline } => {
                     Some(PayloadItem::Comment {
                         text: text.clone(),

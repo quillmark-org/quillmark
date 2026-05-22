@@ -4,7 +4,8 @@
 //! YAML content. It carries — in source order, as variants of a single
 //! [`PayloadItem`] enum:
 //!
-//! - **System metadata** — typed `$quill` / `$kind` / `$id` entries.
+//! - **System metadata** — typed `$quill` / `$kind` / `$id` / `$ext`
+//!   entries.
 //! - **User fields** — `key: value` pairs with an optional `!fill` flag.
 //! - **Comments** — own-line or trailing inline, attached to whichever
 //!   item they immediately follow at emit time.
@@ -14,6 +15,16 @@
 //! line round-trips through the same mechanism as a comment adjacent to a
 //! user field. No "metadata region" vs "payload region" routing decision is
 //! ever made — there is only the source-ordered list.
+//!
+//! ## Comments at every level
+//!
+//! Top-level YAML comments (own-line and trailing inline) live as
+//! `PayloadItem::Comment` entries interleaved with fields and `$` items.
+//! Comments **inside** a structured value (mapping or sequence) live on
+//! the [`PayloadItem::Field`] / [`PayloadItem::Ext`] that owns that
+//! value, as a `nested_comments` slice with paths relative to the
+//! field's value tree. One storage surface, scoped to the item that
+//! "owns" each comment — no sidecar Vec hanging off `Payload`.
 //!
 //! ## Two faces
 //!
@@ -31,7 +42,7 @@
 use indexmap::IndexMap;
 use serde_json::{Map as JsonMap, Value as JsonValue};
 
-use super::prescan::NestedComment;
+use super::prescan::{CommentPathSegment, NestedComment};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
 
@@ -52,15 +63,26 @@ pub enum PayloadItem {
     /// `$ext` system metadata — an opaque mapping reserved for out-of-band
     /// extension data (UI editor state, agent annotations, …). Never
     /// emitted into the plate JSON, always round-trips through Markdown
-    /// and the storage DTO.
-    Ext { value: JsonMap<String, JsonValue> },
+    /// and the storage DTO. `nested_comments` carries YAML comments
+    /// inside the `$ext` mapping; paths are **relative** to the `$ext`
+    /// value tree (the `$ext` key itself is not part of the path).
+    Ext {
+        value: JsonMap<String, JsonValue>,
+        nested_comments: Vec<NestedComment>,
+    },
     /// A user-defined YAML field, optionally tagged `!fill`.
+    ///
+    /// `nested_comments` carries YAML comments inside the field's value
+    /// (only meaningful when the value is a mapping or sequence); paths
+    /// are **relative** to the field's value tree (the field's key is
+    /// not part of the path).
     Field {
         key: String,
         value: QuillValue,
         /// `true` when the field was written as `key: !fill <value>` or
         /// `key: !fill` in source.
         fill: bool,
+        nested_comments: Vec<NestedComment>,
     },
     /// A YAML comment. Text excludes the leading `#` and one optional space.
     ///
@@ -73,12 +95,27 @@ pub enum PayloadItem {
 }
 
 impl PayloadItem {
-    /// Build a plain (non-fill) field entry.
+    /// Build a plain (non-fill) field entry with no nested comments.
     pub fn field(key: impl Into<String>, value: QuillValue) -> Self {
         PayloadItem::Field {
             key: key.into(),
             value,
             fill: false,
+            nested_comments: Vec::new(),
+        }
+    }
+
+    /// Borrow the field/ext nested-comments slice. Returns `&[]` for
+    /// variants that don't carry nested comments.
+    pub fn nested_comments(&self) -> &[NestedComment] {
+        match self {
+            PayloadItem::Field {
+                nested_comments, ..
+            }
+            | PayloadItem::Ext {
+                nested_comments, ..
+            } => nested_comments,
+            _ => &[],
         }
     }
 
@@ -117,7 +154,6 @@ impl PayloadItem {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Payload {
     items: Vec<PayloadItem>,
-    nested_comments: Vec<NestedComment>,
 }
 
 impl Payload {
@@ -135,31 +171,105 @@ impl Payload {
                 key,
                 value,
                 fill: false,
+                nested_comments: Vec::new(),
             })
             .collect();
-        Self {
-            items,
-            nested_comments: Vec::new(),
-        }
+        Self { items }
     }
 
     /// Build from a pre-computed item list (parser and DTO entry point).
     pub fn from_items(items: Vec<PayloadItem>) -> Self {
-        Self {
-            items,
-            nested_comments: Vec::new(),
-        }
+        Self { items }
     }
 
-    /// Build from a pre-computed item list and nested comments.
-    pub fn from_items_with_nested(
-        items: Vec<PayloadItem>,
+    /// Build from a pre-computed item list plus a flat absolute-path
+    /// `nested_comments` Vec, partitioning the latter onto the matching
+    /// [`PayloadItem::Field`] / [`PayloadItem::Ext`] items.
+    ///
+    /// The first segment of each comment's `container_path` must be a
+    /// `Key(field)` matching a Field or Ext (`$ext`) entry in `items`;
+    /// that first segment is stripped and the remainder attached to the
+    /// owning item. Comments whose first segment matches nothing in
+    /// `items` are dropped silently — this can only arise from a
+    /// hand-crafted storage DTO that references a non-existent field.
+    pub(crate) fn from_items_with_flat_nested(
+        mut items: Vec<PayloadItem>,
         nested_comments: Vec<NestedComment>,
     ) -> Self {
-        Self {
-            items,
-            nested_comments,
+        for nc in nested_comments {
+            let Some((first, rest)) = nc.container_path.split_first() else {
+                // Empty path can't address any user field; drop.
+                continue;
+            };
+            let target_key = match first {
+                CommentPathSegment::Key(k) => k.clone(),
+                CommentPathSegment::Index(_) => continue,
+            };
+
+            let relative = NestedComment {
+                container_path: rest.to_vec(),
+                position: nc.position,
+                text: nc.text,
+                inline: nc.inline,
+            };
+
+            // `$ext` is encoded with the literal key "$ext" at the head of
+            // the path; everything else is a user field.
+            if target_key == "$ext" {
+                if let Some(slot) = items.iter_mut().find_map(|i| match i {
+                    PayloadItem::Ext {
+                        nested_comments, ..
+                    } => Some(nested_comments),
+                    _ => None,
+                }) {
+                    slot.push(relative);
+                }
+            } else if let Some(slot) = items.iter_mut().find_map(|i| match i {
+                PayloadItem::Field {
+                    key,
+                    nested_comments,
+                    ..
+                } if key == &target_key => Some(nested_comments),
+                _ => None,
+            }) {
+                slot.push(relative);
+            }
         }
+        Self { items }
+    }
+
+    /// Walk every Field/Ext item and yield each nested comment with its
+    /// path re-prefixed by the owning item's key (`$ext` for Ext, the
+    /// field key for Field). Used by the storage DTO conversion to
+    /// flatten the per-item storage back to the wire format's
+    /// payload-level sidecar.
+    pub(crate) fn flat_nested_comments(&self) -> Vec<NestedComment> {
+        let mut out = Vec::new();
+        for item in &self.items {
+            let (prefix, comments) = match item {
+                PayloadItem::Field {
+                    key,
+                    nested_comments,
+                    ..
+                } => (key.clone(), nested_comments),
+                PayloadItem::Ext {
+                    nested_comments, ..
+                } => ("$ext".to_string(), nested_comments),
+                _ => continue,
+            };
+            for nc in comments {
+                let mut path = Vec::with_capacity(nc.container_path.len() + 1);
+                path.push(CommentPathSegment::Key(prefix.clone()));
+                path.extend(nc.container_path.iter().cloned());
+                out.push(NestedComment {
+                    container_path: path,
+                    position: nc.position,
+                    text: nc.text.clone(),
+                    inline: nc.inline,
+                });
+            }
+        }
+        out
     }
 
     // ── Item-level access ───────────────────────────────────────────────────
@@ -170,18 +280,11 @@ impl Payload {
     }
 
     /// Mutable access to the raw item list. Callers must preserve the
-    /// invariants (at most one `Quill`/`Kind`/`Id`, no duplicate field
-    /// keys, every field name matches `[a-z_][a-z0-9_]*`) — use the
-    /// typed mutators when in doubt.
+    /// invariants (at most one `Quill`/`Kind`/`Id`/`Ext`, no duplicate
+    /// field keys, every field name matches `[a-z_][a-z0-9_]*`) — use
+    /// the typed mutators when in doubt.
     pub fn items_mut(&mut self) -> &mut [PayloadItem] {
         &mut self.items
-    }
-
-    /// Comments captured inside nested mappings/sequences. The emitter
-    /// re-injects these at the matching position when serialising the
-    /// value tree.
-    pub fn nested_comments(&self) -> &[NestedComment] {
-        &self.nested_comments
     }
 
     // ── Typed `$` access ────────────────────────────────────────────────────
@@ -214,7 +317,7 @@ impl Payload {
     /// interpret its contents and never emits them into the plate JSON.
     pub fn ext(&self) -> Option<&JsonMap<String, JsonValue>> {
         self.items.iter().find_map(|i| match i {
-            PayloadItem::Ext { value } => Some(value),
+            PayloadItem::Ext { value, .. } => Some(value),
             _ => None,
         })
     }
@@ -241,8 +344,15 @@ impl Payload {
     /// Set or replace the `$ext` entry. Same insertion rules as
     /// [`set_quill`](Self::set_quill); the canonical position is after
     /// `$quill` / `$kind` / `$id` and before any user field.
+    ///
+    /// Any nested comments previously attached to a replaced `$ext`
+    /// entry are dropped (the new value tree may not contain matching
+    /// positions).
     pub fn set_ext(&mut self, value: JsonMap<String, JsonValue>) {
-        self.upsert_meta(PayloadItem::Ext { value });
+        self.upsert_meta(PayloadItem::Ext {
+            value,
+            nested_comments: Vec::new(),
+        });
     }
 
     /// Remove the `$quill` entry, returning the previous value if any.
@@ -257,14 +367,15 @@ impl Payload {
         }
     }
 
-    /// Remove the `$ext` entry, returning the previous map if any.
+    /// Remove the `$ext` entry, returning the previous map if any. Any
+    /// nested comments attached to the entry are dropped.
     pub fn take_ext(&mut self) -> Option<JsonMap<String, JsonValue>> {
         let pos = self
             .items
             .iter()
             .position(|i| matches!(i, PayloadItem::Ext { .. }))?;
         match self.items.remove(pos) {
-            PayloadItem::Ext { value } => Some(value),
+            PayloadItem::Ext { value, .. } => Some(value),
             _ => unreachable!(),
         }
     }
@@ -355,7 +466,9 @@ impl Payload {
     /// Insert or update a user field. Always clears the `fill` marker
     /// (field is no longer a placeholder). Preserves position for existing
     /// keys; appends new keys at the end. `$` entries and comments are
-    /// untouched.
+    /// untouched. Replacing an existing field discards its
+    /// `nested_comments` because the new value tree may not contain
+    /// matching positions.
     pub fn insert(&mut self, key: impl Into<String>, value: QuillValue) -> Option<QuillValue> {
         let key = key.into();
         for item in self.items.iter_mut() {
@@ -363,11 +476,13 @@ impl Payload {
                 key: k,
                 value: v,
                 fill,
+                nested_comments,
             } = item
             {
                 if k == &key {
                     let old = std::mem::replace(v, value);
                     *fill = false;
+                    nested_comments.clear();
                     return Some(old);
                 }
             }
@@ -376,12 +491,14 @@ impl Payload {
             key,
             value,
             fill: false,
+            nested_comments: Vec::new(),
         });
         None
     }
 
     /// Insert or update a user field and mark it as a `!fill` placeholder.
     /// Preserves position for existing keys; appends new keys at the end.
+    /// Replacing an existing field discards its `nested_comments`.
     pub fn insert_fill(&mut self, key: impl Into<String>, value: QuillValue) -> Option<QuillValue> {
         let key = key.into();
         for item in self.items.iter_mut() {
@@ -389,11 +506,13 @@ impl Payload {
                 key: k,
                 value: v,
                 fill,
+                nested_comments,
             } = item
             {
                 if k == &key {
                     let old = std::mem::replace(v, value);
                     *fill = true;
+                    nested_comments.clear();
                     return Some(old);
                 }
             }
@@ -402,6 +521,7 @@ impl Payload {
             key,
             value,
             fill: true,
+            nested_comments: Vec::new(),
         });
         None
     }

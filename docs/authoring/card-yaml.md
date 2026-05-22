@@ -26,8 +26,8 @@ A card-yaml block has three parts, in order:
    string). No leading indentation. The info string alone identifies a
    metadata block.
 2. **YAML payload** — a standard YAML mapping. The reserved keys `$quill`,
-   `$kind`, and `$id` carry system metadata (see below); every other key is
-   a user-defined data field.
+   `$kind`, `$id`, and `$ext` carry system metadata (see below); every other
+   key is a user-defined data field.
 3. **Closing fence** — exactly `~~~`.
 
 The unstructured Markdown body begins immediately after the closing `~~~`
@@ -40,7 +40,7 @@ treated as an ordinary code block.
 
 ## System Metadata (`$`)
 
-The block's YAML payload may contain three reserved `$`-prefixed keys.
+The block's YAML payload may contain four reserved `$`-prefixed keys.
 After parsing, these keys are extracted from the user field set and exposed
 on the block's typed metadata.
 
@@ -53,10 +53,18 @@ on the block's typed metadata.
   `[a-z_][a-z0-9_]*` other than `main`.
 - **`$id: <value>`** is an opaque, optional identifier — plain metadata with
   no validation or uniqueness requirement, carried through the round-trip.
+- **`$ext: <mapping>`** is an opaque YAML mapping reserved for out-of-band
+  extension data — UI editor state, agent annotations, anything bespoke to a
+  consumer that should not reach the rendered output. Round-trips through
+  Markdown and the storage DTO; **never** appears in the plate JSON consumed
+  by backends. The value must be a mapping (scalars and sequences are
+  parse errors); an empty `$ext: {}` is preserved as a distinct, explicit
+  declaration.
 
 `$` metadata entries may appear anywhere in the block's payload (the
 canonical emission puts them first, in the order `$quill`, `$kind`,
-`$id`). Any other `$`-prefixed key is a parse error — the set is closed.
+`$id`, `$ext`). Any other `$`-prefixed key is a parse error — the set is
+closed.
 
 ### Version Selectors
 
@@ -139,9 +147,10 @@ YAML comments are supported in the payload and round-trip through
 title: My Document  # an inline comment
 ```
 
-Comments adjacent to a `$` metadata key (whether inline or own-line) are
-accepted by the YAML parser but **not preserved** through emit — the
-canonical form drops them.
+Comments adjacent to a `$` metadata key (whether inline trailing
+or own-line) round-trip through emit the same way comments on data fields
+do — the unified payload-item list attaches each comment to the adjacent
+item regardless of whether that item is a `$` entry or a user field.
 
 ## Placeholder Fields (`!fill`)
 
@@ -163,9 +172,9 @@ dropped with a warning.
 
 User field names match `[a-z_][a-z0-9_]*`. Uppercase, hyphens, and the
 `$` sigil are not allowed — the `$` prefix is reserved for system
-metadata that the engine projects onto the plate JSON (`$quill`,
-`$kind`, `$id`, `$body`, `$cards`). Keeping user fields lowercase
-guarantees they can never shadow that metadata.
+metadata (`$quill`, `$kind`, `$id`, `$ext`, plus the plate-JSON keys
+`$body` and `$cards`). Keeping user fields lowercase guarantees they
+can never shadow that metadata.
 
 ## Card Blocks
 
@@ -188,12 +197,14 @@ See [Cards](cards.md) for details on card syntax and usage.
 
 ## Emission
 
-`toMarkdown` always emits the canonical block form — a `~~~card-yaml` opener,
-the `$` metadata lines in the canonical order `$quill`, `$kind`, `$id`, the
-remaining data fields, and a `~~~` closer. The root block emits both
-`$quill` and `$kind: main`; composable cards emit `$kind: <kind>` plus any
-`$id` they declared. Fence markers, key ordering, and YAML quoting are
-normalised; `!fill` tags and data-field comments survive the round-trip.
+`toMarkdown` always emits the canonical block form — a `~~~card-yaml`
+opener, the `$` metadata lines in the canonical order `$quill`, `$kind`,
+`$id`, `$ext`, the remaining data fields, and a `~~~` closer. The root
+block emits both `$quill` and `$kind: main`; composable cards emit
+`$kind: <kind>` plus any `$id` / `$ext` they declared. Fence markers,
+key ordering, and YAML quoting are normalised; `!fill` tags and YAML
+comments (own-line and inline trailing, including those adjacent to `$`
+lines) survive the round-trip.
 
 The payload is coerced and validated against the schema declared in the
 Quill's `Quill.yaml` (`main.fields`). See the

@@ -53,9 +53,9 @@ All card blocks are collected into the plate JSON's `$cards` array.
 - A blank line is required immediately above every `~~~card-yaml` opener
   (unless the block is the very first line of the document). A `~~~card-yaml`
   line without a blank line above it is treated as an ordinary code block.
-- YAML comments adjacent to `$`-prefixed metadata keys are accepted on parse
-  but dropped from the canonical form. Comments on data fields round-trip
-  normally.
+- YAML comments round-trip through the canonical form. Own-line comments
+  and inline trailing comments are preserved on both `$` metadata lines
+  and data-field lines.
 
 The document is positional: the **first** `~~~card-yaml` block is the root
 block, and it must declare a `$quill: <name>@<version>` metadata line. Every
@@ -66,6 +66,27 @@ subsequent block is a card.
 Each card carries a `$body` value on the plate JSON containing the
 Markdown between that card's closing `~~~` fence and the next block's
 opening fence (or document end).
+
+## Out-of-band Metadata (`$ext`)
+
+A card may declare `$ext: <mapping>` — an opaque YAML map reserved for
+state that belongs with the card but should not reach the rendered
+output (UI editor renames, collapse flags, agent annotations,
+anything bespoke to a consumer). The map round-trips through Markdown
+and the storage DTO but is stripped from the plate JSON before backends
+see it, so template renders are unaffected. Consumers namespace inside
+the map (`$ext.presentation`, `$ext.agent`, …) to avoid collisions when
+more than one tool carries state on the same card.
+
+```
+~~~card-yaml
+$kind: indorsement
+$ext:
+  presentation:
+    title: "Cmdr's response"
+from: ORG/SYMBOL
+~~~
+```
 
 ## Emission
 
