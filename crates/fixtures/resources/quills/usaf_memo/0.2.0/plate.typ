@@ -38,7 +38,7 @@
 
 // Mainmatter configuration
 #mainmatter[
-  #data.BODY
+  #data.at("$body")
 ]
 
 // Backmatter
@@ -56,9 +56,9 @@
   ..if "attachments" in data { (attachments: data.attachments) },
 )
 
-// Indorsements - iterate through CARDS array and filter by CARD type
-#for card in data.CARDS {
-  if card.CARD == "indorsement" {
+// Indorsements - iterate through `$cards` and filter by `$kind`
+#for card in data.at("$cards") {
+  if card.at("$kind") == "indorsement" {
     indorsement(
       from: card.at("from", default: ""),
       to: card.at("for", default: ""),
@@ -69,7 +69,7 @@
       ..if "date" in card { (date: card.date) },
       ..if "action" in card { (action: card.action) },
     )[
-      #card.BODY
+      #card.at("$body")
     ]
   }
 }

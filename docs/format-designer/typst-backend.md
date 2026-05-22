@@ -54,16 +54,16 @@ Use Typst's `in` operator to check for optional fields:
 
 ### Body, arrays, and cards
 
-The document body is at `data.BODY`. Arrays come through as Typst arrays. Cards live under `data.CARDS`, each carrying its own `CARD` discriminator, fields, and `BODY`:
+The document body is at `data.$body` (accessed via `data.at("$body")` because Typst identifiers exclude `$`). Arrays come through as Typst arrays. Cards live under `data.$cards`, each carrying its own `$kind` discriminator, fields, and `$body`:
 
 ```typst
-#data.at("BODY", default: "")
+#data.at("$body", default: "")
 
 #for author in data.authors [- #author]
 
-#for card in data.at("CARDS", default: ()) {
-  if card.CARD == "product" {
-    [Product: #card.name — #card.BODY]
+#for card in data.at("$cards", default: ()) {
+  if card.at("$kind") == "product" {
+    [Product: #card.name — #card.at("$body")]
   }
 }
 ```

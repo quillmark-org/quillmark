@@ -38,7 +38,7 @@ price: 29.99
 Gadget description.
 ```
 
-All card blocks are collected into the `CARDS` array.
+All card blocks are collected into the plate JSON's `$cards` array.
 
 ## Structural Rules
 
@@ -48,8 +48,8 @@ All card blocks are collected into the `CARDS` array.
   card kind. The kind must match `[a-z_][a-z0-9_]*` and must not be `main`
   (reserved for the document root). Invalid examples: `BadCard`, `my-card`,
   `2nd_card`, `main`.
-- `QUILL`, `CARD`, `BODY`, and `CARDS` are reserved and cannot be used as field
-  names inside a card.
+- Field names must match `[a-z_][a-z0-9_]*`. Uppercase and `$`-prefixed
+  keys are reserved for system metadata and cannot be used as user fields.
 - A blank line is required immediately above every `~~~card-yaml` opener
   (unless the block is the very first line of the document). A `~~~card-yaml`
   line without a blank line above it is treated as an ordinary code block.
@@ -63,8 +63,9 @@ subsequent block is a card.
 
 ## Card Body Content
 
-Each card includes a `BODY` field containing the Markdown between that card's
-closing `~~~` fence and the next block's opening fence (or document end).
+Each card carries a `$body` value on the plate JSON containing the
+Markdown between that card's closing `~~~` fence and the next block's
+opening fence (or document end).
 
 ## Emission
 

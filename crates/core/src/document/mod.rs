@@ -11,7 +11,7 @@
 //! ## Errors
 //!
 //! [`Document::from_markdown`] returns errors for malformed YAML, unclosed
-//! fences, a missing root `$quill`, unknown `$` keys, or reserved field names.
+//! fences, a missing root `$quill`, or unknown `$`-prefixed system keys.
 //!
 //! See [MARKDOWN.md](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/MARKDOWN.md)
 //! for the card-yaml format specification.
@@ -172,25 +172,27 @@ impl Document {
     ///
     /// ```json
     /// {
-    ///   "QUILL": "<ref>", "<field>": <value>, ...,
-    ///   "BODY": "<global-body>",
-    ///   "CARDS": [{ "CARD": "<tag>", "<field>": <value>, ..., "BODY": "<card-body>" }]
+    ///   "$quill": "<ref>",
+    ///   "$body": "<global-body>",
+    ///   "$cards": [{ "$kind": "<tag>", "$body": "<card-body>", "<field>": <value>, ... }],
+    ///   "<field>": <value>, ...
     /// }
     /// ```
+    ///
+    /// `$`-prefixed keys carry document-level metadata (quill ref, body
+    /// text, card list, card kind). User payload fields stay flat at the
+    /// root — they cannot collide with `$` keys because field names must
+    /// match `[a-z_][a-z0-9_]*`.
     pub fn to_plate_json(&self) -> serde_json::Value {
         let mut map = serde_json::Map::new();
 
         map.insert(
-            "QUILL".to_string(),
+            "$quill".to_string(),
             serde_json::Value::String(self.quill_reference().to_string()),
         );
 
-        for (key, value) in self.main.payload.iter() {
-            map.insert(key.clone(), value.as_json().clone());
-        }
-
         map.insert(
-            "BODY".to_string(),
+            "$body".to_string(),
             serde_json::Value::String(self.main.body.clone()),
         );
 
@@ -200,21 +202,25 @@ impl Document {
             .map(|card| {
                 let mut card_map = serde_json::Map::new();
                 card_map.insert(
-                    "CARD".to_string(),
+                    "$kind".to_string(),
                     serde_json::Value::String(card.kind().unwrap_or("").to_string()),
+                );
+                card_map.insert(
+                    "$body".to_string(),
+                    serde_json::Value::String(card.body.clone()),
                 );
                 for (key, value) in card.payload.iter() {
                     card_map.insert(key.clone(), value.as_json().clone());
                 }
-                card_map.insert(
-                    "BODY".to_string(),
-                    serde_json::Value::String(card.body.clone()),
-                );
                 serde_json::Value::Object(card_map)
             })
             .collect();
 
-        map.insert("CARDS".to_string(), serde_json::Value::Array(cards_array));
+        map.insert("$cards".to_string(), serde_json::Value::Array(cards_array));
+
+        for (key, value) in self.main.payload.iter() {
+            map.insert(key.clone(), value.as_json().clone());
+        }
 
         serde_json::Value::Object(map)
     }

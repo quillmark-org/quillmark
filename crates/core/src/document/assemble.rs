@@ -26,7 +26,7 @@ use crate::value::QuillValue;
 use crate::Diagnostic;
 
 use super::fences::find_metadata_blocks;
-use super::meta::{extract_meta_items, meta_key, validate_payload_yaml};
+use super::meta::{extract_meta_items, meta_key};
 use super::payload::{Payload, PayloadItem};
 use super::prescan::{prescan_fence_content, NestedComment, PreItem};
 use super::{Card, Document};
@@ -127,7 +127,7 @@ pub(super) fn build_block(
             }
         };
         let meta = extract_meta_items(&mut parsed)?;
-        (meta, Some(validate_payload_yaml(parsed)?))
+        (meta, Some(parsed))
     };
 
     // Per-block field-count check (spec §8) — applied after `$`-key

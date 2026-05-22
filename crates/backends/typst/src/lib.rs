@@ -237,7 +237,7 @@ fn is_date_field(field_schema: &serde_json::Value) -> bool {
 ///
 /// Identifies fields with `contentMediaType = "text/markdown"` and converts
 /// their content using `mark_to_typst()`. This includes recursive handling
-/// of CARDS arrays.
+/// of the `$cards` array.
 ///
 /// Also injects a `__meta__` key into the result containing the names of
 /// converted fields, which the quillmark-helper package uses to auto-evaluate
@@ -279,12 +279,12 @@ fn transform_markdown_fields(
         .map(|(name, _)| name.as_str())
         .collect();
 
-    // Handle CARDS array recursively
-    if let Some(cards_value) = result.get("CARDS") {
+    // Handle `$cards` array recursively
+    if let Some(cards_value) = result.get("$cards") {
         if let Some(cards_array) = cards_value.as_array() {
             let transformed_cards = transform_cards_array(schema, cards_array);
             result.insert(
-                "CARDS".to_string(),
+                "$cards".to_string(),
                 QuillValue::from_json(serde_json::Value::Array(transformed_cards)),
             );
         }
@@ -359,7 +359,7 @@ fn transform_markdown_fields(
     result
 }
 
-/// Transform markdown fields in CARDS array items.
+/// Transform markdown fields in `$cards` array items.
 fn transform_cards_array(
     document_schema: &QuillValue,
     cards_array: &[serde_json::Value],
@@ -374,7 +374,7 @@ fn transform_cards_array(
 
     for card in cards_array {
         if let Some(card_obj) = card.as_object() {
-            if let Some(card_kind) = card_obj.get("CARD").and_then(|v| v.as_str()) {
+            if let Some(card_kind) = card_obj.get("$kind").and_then(|v| v.as_str()) {
                 // Construct the definition name: {kind}_card
                 let def_name = format!("{}_card", card_kind);
 
@@ -404,7 +404,7 @@ fn transform_cards_array(
             }
         }
 
-        // If not an object, no CARD kind, or no matching schema, keep as-is
+        // If not an object, no `$kind`, or no matching schema, keep as-is
         transformed_cards.push(card.clone());
     }
 
@@ -471,7 +471,7 @@ mod tests {
             "type": "object",
             "properties": {
                 "title": { "type": "string" },
-                "BODY": { "type": "string", "contentMediaType": "text/markdown" }
+                "$body": { "type": "string", "contentMediaType": "text/markdown" }
             }
         }));
 
@@ -481,7 +481,7 @@ mod tests {
             QuillValue::from_json(json!("My Title")),
         );
         fields.insert(
-            "BODY".to_string(),
+            "$body".to_string(),
             QuillValue::from_json(json!("This is **bold** text.")),
         );
 
@@ -490,8 +490,8 @@ mod tests {
         // title should be unchanged
         assert_eq!(result.get("title").unwrap().as_str(), Some("My Title"));
 
-        // BODY should be converted to Typst markup
-        let body = result.get("BODY").unwrap().as_str().unwrap();
+        // `$body` should be converted to Typst markup
+        let body = result.get("$body").unwrap().as_str().unwrap();
         assert!(body.contains("#strong[bold]"));
     }
 
@@ -524,19 +524,19 @@ mod tests {
         let schema = QuillValue::from_json(json!({
             "type": "object",
             "properties": {
-                "BODY": { "type": "string", "contentMediaType": "text/markdown" }
+                "$body": { "type": "string", "contentMediaType": "text/markdown" }
             }
         }));
 
         let mut fields = HashMap::new();
         fields.insert(
-            "BODY".to_string(),
+            "$body".to_string(),
             QuillValue::from_json(json!("_italic_ text")),
         );
 
         let result = transform_markdown_fields(&fields, &schema);
 
-        let body = result.get("BODY").unwrap().as_str().unwrap();
+        let body = result.get("$body").unwrap().as_str().unwrap();
         assert!(body.contains("#emph[italic]"));
     }
 
@@ -574,7 +574,7 @@ mod tests {
                     "properties": {
                         "date": { "type": "string", "format": "date" },
                         "created_at": { "type": "string", "format": "date-time" },
-                        "BODY": { "type": "string", "contentMediaType": "text/markdown" }
+                        "$body": { "type": "string", "contentMediaType": "text/markdown" }
                     }
                 }
             }

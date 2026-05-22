@@ -47,13 +47,13 @@ def test_parse_invalid_yaml():
 
 
 def test_payload_access(taro_md):
-    """Test accessing typed payload_items (no BODY/CARDS/QUILL)."""
+    """Test accessing typed payload_items (no $-prefixed metadata as fields)."""
     doc = Document.from_markdown(taro_md)
     assert "Ice Cream" in (field(doc.main, "title") or "")
-    # BODY, CARDS, QUILL must NOT appear as field entries
-    assert not has_field(doc.main, "BODY")
-    assert not has_field(doc.main, "CARDS")
-    assert not has_field(doc.main, "QUILL")
+    # `$`-prefixed metadata is not exposed as payload fields
+    assert not has_field(doc.main, "$body")
+    assert not has_field(doc.main, "$cards")
+    assert not has_field(doc.main, "$quill")
 
 
 def test_body_is_str(taro_md):
@@ -299,8 +299,8 @@ def test_remove_card_field_out_of_range():
         doc.remove_card_field(0, "foo")
 
 
-def test_remove_card_field_reserved_name():
-    """remove_card_field rejects reserved names."""
+def test_remove_card_field_legacy_uppercase_rejected():
+    """remove_card_field rejects legacy uppercase names as InvalidFieldName."""
     from quillmark import EditError
 
     md = (
@@ -308,5 +308,5 @@ def test_remove_card_field_reserved_name():
         "~~~card-yaml\n#@kind: note\n~~~\n"
     )
     doc = Document.from_markdown(md)
-    with pytest.raises(EditError, match="ReservedName"):
+    with pytest.raises(EditError, match="InvalidFieldName"):
         doc.remove_card_field(0, "BODY")

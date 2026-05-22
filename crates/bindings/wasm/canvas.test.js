@@ -86,7 +86,7 @@ title: Canvas Test
 const TEST_PLATE = `#import "@local/quillmark-helper:0.1.0": data
 = #data.title
 
-#data.BODY`
+#data.at("$body")`
 
 function openQuill() {
   const engine = new Quillmark()

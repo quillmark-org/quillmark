@@ -153,14 +153,14 @@ impl Quill {
                 Diagnostic::new(
                     Severity::Warning,
                     format!(
-                        "document declares QUILL '{}' but was rendered with '{}'",
+                        "document declares $quill '{}' but was rendered with '{}'",
                         doc_ref,
                         self.source.name()
                     ),
                 )
                 .with_code("quill::ref_mismatch".to_string())
                 .with_hint(
-                    "the QUILL field is informational; ensure you are rendering with the intended quill"
+                    "the $quill reference is informational; ensure you are rendering with the intended quill"
                         .to_string(),
                 ),
             )

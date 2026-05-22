@@ -159,19 +159,20 @@ tags: !fill []
 rejected on mappings. Other custom YAML tags (`!include`, `!env`, …) are
 dropped with a warning.
 
-## Reserved Field Names
+## Field-name Rules
 
-`QUILL`, `CARD`, `BODY`, and `CARDS` are reserved and cannot be used as field
-names — the parser rejects documents that include them. `BODY` holds the
-block's Markdown body; `CARDS` holds the array of card blocks; `QUILL` and
-`CARD` hold the values declared by the `$quill` and `$kind` metadata.
+User field names match `[a-z_][a-z0-9_]*`. Uppercase, hyphens, and the
+`$` sigil are not allowed — the `$` prefix is reserved for system
+metadata that the engine projects onto the plate JSON (`$quill`,
+`$kind`, `$id`, `$body`, `$cards`). Keeping user fields lowercase
+guarantees they can never shadow that metadata.
 
 ## Card Blocks
 
 Every card-yaml block after the root block is a **card**. It must declare a
 `$kind: <kind>` entry, where `<kind>` matches `[a-z_][a-z0-9_]*` and is not
-`main`. All card blocks are collected into the `CARDS` array available to
-templates.
+`main`. All card blocks are collected into the `$cards` array on the
+plate JSON available to templates.
 
 ```
 ~~~card-yaml

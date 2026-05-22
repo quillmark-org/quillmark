@@ -15,12 +15,12 @@
 *Favorite Ice Cream: #data.ice_cream*__
 
 
-#data.BODY
+#data.at("$body")
 
 // Present each sub-document programatically
-#for card in data.CARDS {
-  if card.CARD == "quotes" [
-    *#card.author*: _#card.BODY _
+#for card in data.at("$cards") {
+  if card.at("$kind") == "quotes" [
+    *#card.author*: _#card.at("$body") _
   ]
 }
 

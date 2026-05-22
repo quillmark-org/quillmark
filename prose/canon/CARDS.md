@@ -5,7 +5,7 @@
 
 ## Overview
 
-Cards are structured metadata blocks inline within document content. All cards are stored in a single `CARDS` array, discriminated by the `CARD` field.
+Cards are structured metadata blocks inline within document content. All cards are stored in a single `$cards` array on the plate JSON, discriminated by each card's `$kind` value.
 
 ## Data Model
 
@@ -50,7 +50,7 @@ card_kinds:
         description: Name, grade, and duty title.
 ```
 
-`ui.title` is the display label for UI consumers (section headers, chips, picker entries, per-instance list titles). It may be a literal string or a template containing `{field_name}` tokens that consumers interpolate with live field values (e.g. `"{from} → {for}"`). It's decoupled from the snake_case map key (`indorsement`), which is the on-the-wire `CARD` discriminator — so authors can rename the label without breaking stored documents.
+`ui.title` is the display label for UI consumers (section headers, chips, picker entries, per-instance list titles). It may be a literal string or a template containing `{field_name}` tokens that consumers interpolate with live field values (e.g. `"{from} → {for}"`). It's decoupled from the snake_case map key (`indorsement`), which is the on-the-wire `$kind` discriminator — so authors can rename the label without breaking stored documents.
 
 ## Public Schema YAML Output
 
@@ -72,14 +72,15 @@ card_kinds:
           group: Addressing
 ```
 
-`QuillConfig::schema()` emits the schema (with `ui` and `body` hints retained) and `schema_yaml()` is the YAML wrapper. The output keeps the same `card_kinds.<name>.fields` shape as `Quill.yaml` and injects a required `CARD` discriminator field whose `const` value is the card name. The `card_kinds` key is omitted entirely when no named card-kinds are defined. See `SCHEMAS.md` for the full surface.
+`QuillConfig::schema()` emits the schema (with `ui` and `body` hints retained) and `schema_yaml()` is the YAML wrapper. The output keeps the same `card_kinds.<name>.fields` shape as `Quill.yaml` — only the user-fillable fields, no sentinel discriminator. The `card_kinds` map key (e.g. `indorsement`) is itself the `$kind` discriminator value. The `card_kinds` key is omitted entirely when no named card-kinds are defined. See `SCHEMAS.md` for the full surface.
 
 ## Markdown Syntax
 
 A composable card is a `~~~card-yaml` block, optionally led by a
-`$kind: <kind>` system-metadata line. The kind is the on-the-wire `CARD`
-discriminator; the block's payload is the card's YAML data, and the markdown
-after the closing `~~~` fence is the card's body.
+`$kind: <kind>` system-metadata line. The kind surfaces on the plate
+JSON as the card's `$kind` discriminator; the block's payload is the
+card's YAML data, and the markdown after the closing `~~~` fence is the
+card's body.
 
 ````markdown
 ~~~card-yaml
@@ -98,5 +99,5 @@ See [`MARKDOWN.md`](./MARKDOWN.md) §3 for the full syntax specification.
 
 ## Backend Consumption
 
-- **All backends**: cards are delivered as `data.CARDS`, an array of objects each containing a `CARD` discriminator field, the card's metadata fields, and a `BODY` field with the card's body Markdown.
-- **`Quill::compile_data()`** returns the fully coerced and validated JSON, including `CARDS`.
+- **All backends**: cards are delivered as `data.$cards`, an array of objects each containing a `$kind` discriminator, the card's metadata fields, and a `$body` key with the card's body Markdown.
+- **`Quill::compile_data()`** returns the fully coerced and validated JSON, including `$cards`.

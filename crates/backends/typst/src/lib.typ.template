@@ -82,11 +82,11 @@
     }
   }
 
-  // Auto-eval content fields within each CARD
-  if "CARDS" in d {
+  // Auto-eval content fields within each card under `$cards`
+  if "$cards" in d {
     let cards = ()
-    for card in d.at("CARDS") {
-      let card-type = card.at("CARD", default: none)
+    for card in d.at("$cards") {
+      let card-type = card.at("$kind", default: none)
       let fields = meta.card_content_fields.at(card-type, default: ())
       for key in fields {
         if key in card {
@@ -110,7 +110,7 @@
 
       cards.push(card)
     }
-    d.insert("CARDS", cards)
+    d.insert("$cards", cards)
   }
 
   d

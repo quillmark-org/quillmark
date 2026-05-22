@@ -73,22 +73,14 @@ impl QuillConfig {
 
     /// Full schema including `ui` hints.
     ///
-    /// `main.fields` is prefixed with a required `QUILL` entry (`const = name@version`);
-    /// each `card_kinds[<name>].fields` is prefixed with a required `CARD` entry
-    /// (`const = <name>`). Identity (`name`, `version`, etc.) lives elsewhere
-    /// on the host's metadata surface.
+    /// Describes the user-fillable fields of the main card and each named
+    /// card kind. The quill reference (constructed as `name@version` from
+    /// quill metadata) and card-kind discriminators are document-level
+    /// metadata, not fields, so they do not appear here.
     pub fn schema(&self) -> serde_json::Value {
-        let canonical_ref = format!("{}@{}", self.name, self.version);
-
         let mut obj = serde_json::Map::new();
 
-        let mut main_value = serde_json::to_value(&self.main).unwrap_or(serde_json::Value::Null);
-        Self::prepend_reserved_field(
-            &mut main_value,
-            "QUILL",
-            &canonical_ref,
-            "Canonical quill reference. Must be exactly this value as the $quill system metadata in the root card-yaml block.",
-        );
+        let main_value = serde_json::to_value(&self.main).unwrap_or(serde_json::Value::Null);
         obj.insert("main".to_string(), main_value);
 
         if !self.card_kinds.is_empty() {
@@ -96,14 +88,7 @@ impl QuillConfig {
                 .card_kinds
                 .iter()
                 .map(|card| {
-                    let mut card_value =
-                        serde_json::to_value(card).unwrap_or(serde_json::Value::Null);
-                    Self::prepend_reserved_field(
-                        &mut card_value,
-                        "CARD",
-                        &card.name,
-                        "Card kind name. Must match the card kind in the card block's $kind system metadata.",
-                    );
+                    let card_value = serde_json::to_value(card).unwrap_or(serde_json::Value::Null);
                     (card.name.clone(), card_value)
                 })
                 .collect();
@@ -116,27 +101,7 @@ impl QuillConfig {
         serde_json::Value::Object(obj)
     }
 
-    /// Insert a `QUILL`/`CARD` reserved field as the first entry of a card's `fields`.
-    fn prepend_reserved_field(
-        card_value: &mut serde_json::Value,
-        key: &str,
-        const_value: &str,
-        description: &str,
-    ) {
-        let reserved = serde_json::json!({
-            "type": "string",
-            "const": const_value,
-            "description": description,
-            "required": true
-        });
-        if let Some(serde_json::Value::Object(fields)) = card_value.get_mut("fields") {
-            let existing = std::mem::take(fields);
-            fields.insert(key.to_string(), reserved);
-            fields.extend(existing);
-        }
-    }
-
-    /// Coerce typed payload fields (IndexMap, no CARDS/BODY keys).
+    /// Coerce typed payload fields (IndexMap of user fields only).
     pub fn coerce_payload(
         &self,
         payload: &IndexMap<String, QuillValue>,
@@ -156,7 +121,7 @@ impl QuillConfig {
         Ok(coerced)
     }
 
-    /// Coerce typed fields for a single card (IndexMap, no CARD/BODY keys).
+    /// Coerce typed fields for a single card (IndexMap of user fields only).
     ///
     /// Returns the input unchanged when the card kind is unknown.
     pub fn coerce_card(

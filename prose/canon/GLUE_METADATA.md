@@ -12,7 +12,9 @@ Quillmark does not use a template engine for plates. Data flows in two stages:
 
 ### Data Shape
 
-- Keys mirror normalized root-block fields (including `BODY` and `CARDS`)
+- Document-level metadata uses `$`-prefixed keys: `$quill` (quill ref string), `$body` (root prose body), `$cards` (array of card objects)
+- Each card object carries `$kind` (discriminator), `$body` (card prose body), and the card's user fields flat
+- User payload fields sit flat at the root next to the `$` keys; field names match `[a-z_][a-z0-9_]*` and therefore never collide with `$` metadata
 - Defaults from the Quill schema are applied before serialization in stage 1
 - Markdown-to-Typst conversion and date parsing happen in stage 2, inside the backend
 
@@ -23,10 +25,18 @@ The Typst backend injects a virtual package `@local/quillmark-helper:<version>` 
 ```typst
 #import "@local/quillmark-helper:0.1.0": data
 
-#data.title          // plain field access
-#data.BODY           // BODY is automatically converted to content
-#data.date           // date fields are auto-converted to datetime
+#data.title                  // plain field access
+#data.at("$body")            // $body is automatically converted to content
+#data.date                   // date fields are auto-converted to datetime
+#for card in data.at("$cards") {
+  if card.at("$kind") == "indorsement" {
+    // ... per-kind handling using card.<field> and card.at("$body")
+  }
+}
 ```
+
+The `$`-prefixed keys must be accessed via `.at("$...")` because Typst
+identifiers do not include the `$` character.
 
 Helper contents (generated in `backends/typst/helper.rs` from `lib.typ.template`):
 - `data`: parsed JSON dictionary of all fields; a `__meta__` key injected by the backend carries the list of markdown and date fields to process, then is consumed by the helper before `data` is exposed to plates — plates never see `__meta__`

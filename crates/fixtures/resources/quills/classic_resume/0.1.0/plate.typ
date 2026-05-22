@@ -8,20 +8,21 @@
   contacts: data.contacts,
 )
 
-#for card in data.CARDS {
+#for card in data.at("$cards") {
   if "title" in card and card.title != "" {
     section-header(card.title)
   }
 
-  if card.CARD == "experience_section" {
+  let kind = card.at("$kind")
+  if kind == "experience_section" {
     timeline-entry(
       heading-left: card.at("heading_left", default: ""),
       heading-right: card.at("heading_right", default: ""),
       subheading-left: card.at("subheading_left", default: none),
       subheading-right: card.at("subheading_right", default: none),
-      body: card.at("BODY", default: ""),
+      body: card.at("$body", default: ""),
     )
-  } else if card.CARD == "skills_section" {
+  } else if kind == "skills_section" {
     table(
       columns: 2,
       items: card.cells.map(item => (
@@ -29,13 +30,13 @@
         text: item.skills,
       ))
     )
-  } else if card.CARD == "projects_section" {
+  } else if kind == "projects_section" {
     project-entry(
       name: card.name,
       url: card.at("url", default: none),
-      body: card.at("BODY", default: ""),
+      body: card.at("$body", default: ""),
     )
-  } else if card.CARD == "certifications_section" {
+  } else if kind == "certifications_section" {
     table(
       columns: 2,
       items: card.cells

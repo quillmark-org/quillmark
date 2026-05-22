@@ -163,8 +163,8 @@ impl Payload {
 
     /// Mutable access to the raw item list. Callers must preserve the
     /// invariants (at most one `Quill`/`Kind`/`Id`, no duplicate field
-    /// keys, no reserved field names) — use the typed mutators when in
-    /// doubt.
+    /// keys, every field name matches `[a-z_][a-z0-9_]*`) — use the
+    /// typed mutators when in doubt.
     pub fn items_mut(&mut self) -> &mut [PayloadItem] {
         &mut self.items
     }

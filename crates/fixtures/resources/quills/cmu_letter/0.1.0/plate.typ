@@ -12,7 +12,7 @@
 
 #show: mainmatter
 
-#data.BODY
+#data.at("$body")
 
 #backmatter(
   signature_block: data.signature_block,

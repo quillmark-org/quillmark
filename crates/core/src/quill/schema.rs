@@ -112,7 +112,7 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
         properties.insert(name.clone(), field_to_schema(field));
     }
     properties.insert(
-        "BODY".to_string(),
+        "$body".to_string(),
         serde_json::json!({ "type": "string", "contentMediaType": "text/markdown" }),
     );
 
@@ -123,7 +123,7 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
             card_properties.insert(name.clone(), field_to_schema(field));
         }
         card_properties.insert(
-            "BODY".to_string(),
+            "$body".to_string(),
             serde_json::json!({ "type": "string", "contentMediaType": "text/markdown" }),
         );
         defs.insert(
@@ -228,19 +228,19 @@ card_kinds:
         let schema = build_from_yaml(yaml);
         let json = schema.as_json();
 
-        let main_body = &json["properties"]["BODY"];
+        let main_body = &json["properties"]["$body"];
         assert_eq!(main_body["type"], "string");
         assert_eq!(main_body["contentMediaType"], "text/markdown");
 
         for def_name in ["indorsement_card", "note_card"] {
-            let card_body = &json["$defs"][def_name]["properties"]["BODY"];
+            let card_body = &json["$defs"][def_name]["properties"]["$body"];
             assert_eq!(
                 card_body["type"], "string",
-                "{def_name} BODY type should be string"
+                "{def_name} $body type should be string"
             );
             assert_eq!(
                 card_body["contentMediaType"], "text/markdown",
-                "{def_name} BODY should be markdown"
+                "{def_name} $body should be markdown"
             );
         }
     }

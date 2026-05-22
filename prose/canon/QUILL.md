@@ -97,7 +97,7 @@ typst:
     - "@preview/some-package:1.0.0"
 ```
 
-Field names must be `snake_case`. Capitalized keys (e.g. `BODY`, `CARDS`, `CARD`) are reserved by the engine. Standalone `object` fields require a `properties` map; use `type: array` with `properties:` for a list of objects.
+Field names must be `snake_case` (match `[a-z_][a-z0-9_]*`). Capitalized or `$`-prefixed keys are rejected by the editor surface — document-level metadata sits on dedicated `$`-prefixed keys in the plate JSON (`$quill`, `$body`, `$cards`, `$kind`), and user fields stay lowercase so they cannot shadow it. Standalone `object` fields require a `properties` map; use `type: array` with `properties:` for a list of objects.
 
 Metadata resolution:
 - `name`, `description`, `backend`, `version`, `author` are direct struct fields on `QuillConfig`. `description` (required, non-empty in the `quill:` section) describes the quill itself; it is independent of `QuillConfig.main.description`, which is the optional schema description authored under `main:` like any other card kind.

@@ -399,8 +399,12 @@ Item 1 body";
 }
 
 #[test]
-fn test_reserved_field_body_rejected() {
-    // BODY reserved inside a card block.
+fn test_uppercase_payload_keys_pass_parser() {
+    // Uppercase YAML keys (e.g. legacy `BODY`/`CARDS`) used to be rejected
+    // because they collided with the flat plate-JSON wire format. The wire
+    // format now namespaces metadata under `$`-prefixed keys, so user
+    // payload keys can be arbitrary — they're filtered downstream by the
+    // editor surface's `[a-z_][a-z0-9_]*` rule, not the parser.
     let markdown = "~~~card-yaml
 $quill: test_quill
 $kind: main
@@ -412,29 +416,7 @@ BODY: Test
 ~~~";
 
     let result = decompose(markdown);
-    assert!(result.is_err(), "BODY is a reserved field name");
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("Reserved field name"));
-}
-
-#[test]
-fn test_reserved_field_cards_rejected() {
-    // CARDS reserved inside the root payload.
-    let markdown = "~~~card-yaml
-$quill: test_quill
-$kind: main
-title: Test
-CARDS: []
-~~~";
-
-    let result = decompose(markdown);
-    assert!(result.is_err(), "CARDS is a reserved field name");
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("Reserved field name"));
+    assert!(result.is_ok(), "uppercase payload keys parse fine");
 }
 
 #[test]
@@ -1577,7 +1559,7 @@ Some text with --- dashes in it.";
     assert!(doc.cards()[0].body().contains("--- dashes"));
 }
 
-// QUILL directive edge cases
+// `$quill` reference edge cases
 
 #[test]
 fn test_quill_with_underscore_prefix() {
@@ -1972,14 +1954,15 @@ fn test_to_plate_json_simple() {
     .unwrap();
     let json = doc.to_plate_json();
 
-    assert_eq!(json["QUILL"], "my_quill");
+    assert_eq!(json["$quill"], "my_quill");
     assert_eq!(json["title"], "Hello");
-    assert_eq!(json["BODY"], "\nBody text.\n");
-    assert!(json["CARDS"].is_array());
-    assert_eq!(json["CARDS"].as_array().unwrap().len(), 0);
+    assert_eq!(json["$body"], "\nBody text.\n");
+    assert!(json["$cards"].is_array());
+    assert_eq!(json["$cards"].as_array().unwrap().len(), 0);
 }
 
-/// to_plate_json with cards produces CARDS array with CARD, fields, BODY.
+/// to_plate_json with cards produces a `$cards` array containing `$kind`,
+/// fields, and `$body`.
 #[test]
 fn test_to_plate_json_with_cards() {
     let markdown = "~~~card-yaml
@@ -2000,20 +1983,20 @@ Card body here.
     let doc = Document::from_markdown(markdown).unwrap();
     let json = doc.to_plate_json();
 
-    assert_eq!(json["QUILL"], "usaf_memo");
+    assert_eq!(json["$quill"], "usaf_memo");
     assert_eq!(json["title"], "Test");
-    // Blank-line separator stripped on parse; plate `BODY` reflects the same
+    // Blank-line separator stripped on parse; plate `$body` reflects the same
     // content-only string as `Document::body()`.
-    assert_eq!(json["BODY"], "\nGlobal body.\n");
+    assert_eq!(json["$body"], "\nGlobal body.\n");
 
-    let cards = json["CARDS"].as_array().unwrap();
+    let cards = json["$cards"].as_array().unwrap();
     assert_eq!(cards.len(), 1);
-    assert_eq!(cards[0]["CARD"], "indorsement");
+    assert_eq!(cards[0]["$kind"], "indorsement");
     assert_eq!(cards[0]["for"], "ORG");
-    assert_eq!(cards[0]["BODY"], "\nCard body here.\n");
+    assert_eq!(cards[0]["$body"], "\nCard body here.\n");
 }
 
-/// to_plate_json parity: the QUILL key appears first.
+/// to_plate_json parity: the `$quill` key appears first.
 #[test]
 fn test_to_plate_json_quill_first() {
     let doc = Document::from_markdown(
@@ -2023,7 +2006,7 @@ fn test_to_plate_json_quill_first() {
     let json = doc.to_plate_json();
     let obj = json.as_object().unwrap();
     let keys: Vec<&String> = obj.keys().collect();
-    assert_eq!(keys[0], "QUILL");
+    assert_eq!(keys[0], "$quill");
 }
 
 /// Snapshot test over a representative usaf_memo-shaped document.
@@ -2051,20 +2034,20 @@ This body and the metadata above are an indorsement card.
     let doc = Document::from_markdown(markdown).unwrap();
     let json = doc.to_plate_json();
 
-    // QUILL key is present
-    assert_eq!(json["QUILL"], "usaf_memo@0.1");
+    // `$quill` is present
+    assert_eq!(json["$quill"], "usaf_memo@0.1");
     // payload fields are present at top level
     assert!(json.get("memo_for").is_some());
     assert!(json.get("date").is_some());
-    // BODY and CARDS present
-    assert!(json.get("BODY").is_some());
-    assert!(json["CARDS"].is_array());
+    // `$body` and `$cards` are present
+    assert!(json.get("$body").is_some());
+    assert!(json["$cards"].is_array());
     // One indorsement card
-    let cards = json["CARDS"].as_array().unwrap();
+    let cards = json["$cards"].as_array().unwrap();
     assert_eq!(cards.len(), 1);
-    assert_eq!(cards[0]["CARD"], "indorsement");
-    // Card has BODY
-    assert!(cards[0].get("BODY").is_some());
+    assert_eq!(cards[0]["$kind"], "indorsement");
+    // Card has `$body`
+    assert!(cards[0].get("$body").is_some());
 }
 
 /// Regression test for the `serde_json::Map::remove` / `shift_remove` bug.

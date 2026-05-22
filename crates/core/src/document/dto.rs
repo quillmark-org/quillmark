@@ -87,10 +87,9 @@ pub enum StoredDocument {
 /// The taxonomy is intentionally minimal: only [`Self::InvalidQuillReference`]
 /// is typed, because that is the one error a non-malicious caller hits at
 /// the document/quill boundary. Every other defect — wrong-role card,
-/// invalid kind, reserved field name, duplicate key, too many fields —
-/// can only arise from a hand-crafted storage DTO (the markdown parser
-/// already rejects them) and is reported through [`Self::Malformed`] with
-/// a descriptive message.
+/// invalid kind, duplicate key, too many fields — can only arise from a
+/// hand-crafted storage DTO (the markdown parser already rejects them)
+/// and is reported through [`Self::Malformed`] with a descriptive message.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StorageError {
     /// A stored quill reference string could not be parsed.
@@ -413,9 +412,8 @@ impl From<CommentPathSegmentV0_82_0> for CommentPathSegment {
 }
 
 /// Reject a payload no markdown-parsed `Document` could produce: too many
-/// fields, a reserved sentinel key, or a duplicate user-field key. The
-/// markdown parser already rejects all three; this only guards hand-crafted
-/// storage DTOs.
+/// fields or a duplicate user-field key. The markdown parser already
+/// rejects both; this only guards hand-crafted storage DTOs.
 fn validate_dto_payload(payload: &Payload) -> Result<(), StorageError> {
     if payload.len() > crate::error::MAX_FIELD_COUNT {
         return Err(StorageError::Malformed(format!(
@@ -426,11 +424,6 @@ fn validate_dto_payload(payload: &Payload) -> Result<(), StorageError> {
     }
     let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for key in payload.keys() {
-        if super::edit::is_reserved_name(key) {
-            return Err(StorageError::Malformed(format!(
-                "reserved name {key:?} cannot be used as a field name"
-            )));
-        }
         if !seen.insert(key.as_str()) {
             return Err(StorageError::Malformed(format!(
                 "duplicate user-field key {key:?}"
@@ -813,21 +806,4 @@ title: Hi
         assert!(err.to_string().contains("invalid quill reference"));
     }
 
-    #[test]
-    fn rejects_reserved_field_name() {
-        let json = r#"{
-            "schema": "quillmark/document@0.82.0",
-            "main": {
-                "payload": {"items": [
-                    {"type": "quill", "value": "q@1.0"},
-                    {"type": "kind", "value": "main"},
-                    {"type": "field", "key": "BODY", "value": "x"}
-                ]},
-                "body": ""
-            },
-            "cards": []
-        }"#;
-        let err = serde_json::from_str::<Document>(json).unwrap_err();
-        assert!(err.to_string().contains("reserved name"));
-    }
 }

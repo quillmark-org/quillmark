@@ -163,10 +163,9 @@ User-defined fields sit in the same YAML payload as the `$` metadata keys
 data payload.
 
 - **Field names.** Every field name matches `/^[a-z_][a-z0-9_]*$/`. The
-  pattern excludes `$`, so a data field name can never collide with the
-  metadata sigil.
-- **Reserved names.** `QUILL`, `CARD`, `BODY`, and `CARDS` are reserved and
-  may not be used as field names.
+  pattern excludes `$` and uppercase, so a data field name can never collide
+  with the metadata sigil (`$quill`, `$kind`, `$id`, `$body`, `$cards`) and
+  is consistently lowercase across the wire format.
 - **Whitespace-only payload.** A block whose payload (after metadata
   extraction) is only whitespace yields an empty field set.
 - **YAML comments.** Both own-line comments (`# …` on their own line) and
@@ -249,24 +248,28 @@ syntax.
 
 ## 5. Data Model
 
-Parsing yields:
+Parsing yields the `Document` model, which serialises via
+`to_plate_json` into the following wire shape for backend templates.
+All system-metadata keys are `$`-prefixed; user payload fields live flat
+at the root and cannot collide with metadata because field names exclude
+the `$` sigil.
 
 ```typescript
-interface Document {
-  QUILL: string;          // quill name@version, from the root block $quill
-  BODY: string;           // prose body of the root block
-  CARDS: Card[];          // zero or more cards, in document order
-  [field: string]: any;   // other root-block payload fields
+interface PlateJson {
+  $quill: string;         // quill name@version, from the root block $quill
+  $body: string;          // prose body of the root block
+  $cards: Card[];         // zero or more cards, in document order
+  [field: string]: any;   // root-block payload fields, flat
 }
 
 interface Card {
-  CARD: string;           // card kind, matches /^[a-z_][a-z0-9_]*$/
-  BODY: string;           // card prose body
-  [field: string]: any;   // other card payload fields
+  $kind: string;          // card kind, matches /^[a-z_][a-z0-9_]*$/
+  $body: string;          // card prose body
+  [field: string]: any;   // card payload fields, flat
 }
 ```
 
-- `CARDS` is always present, possibly empty.
+- `$cards` is always present, possibly empty.
 - Root-block fields and card-field names may collide freely; each card is its
   own scope.
 - Body text is preserved verbatim — whitespace, line endings, and inline
@@ -418,7 +421,6 @@ Parse errors include:
 - An invalid `$quill` reference.
 - A `$` metadata key whose value type is incompatible with the key.
 - A data-field name failing `/^[a-z_][a-z0-9_]*$/`.
-- Use of a reserved name (`QUILL`, `CARD`, `BODY`, `CARDS`) as a field name.
 - Invalid YAML inside any block payload.
 - Any §8 limit exceeded.
 

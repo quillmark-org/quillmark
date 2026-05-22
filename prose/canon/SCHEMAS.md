@@ -45,7 +45,7 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
 - Returns `Result<(), Vec<ValidationError>>`
 - Collects all errors (does not short-circuit)
 - Emits path-aware errors for top-level fields and card fields
-- Validates each card has a `CARD` discriminator matching a known card kind
+- Validates each card's `$kind` matches a known card kind
 - Enforces `body.enabled: false` on the main card and on each card kind — body content for a body-disabled card emits `ValidationError::BodyDisabled` (whitespace-only bodies are treated as empty)
 
 ## Schema emission
@@ -55,8 +55,11 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
 - Field types, constraints, and `enum`/`default`/`example` annotations
 - `ui` hints on fields and card kinds (`group`, `order`, `compact`, `multiline`, `title`)
 - `body` blocks on cards (`enabled`, `description`)
-- A required `QUILL` discriminator field prepended to `main.fields` (`const = "<name>@<version>"`)
-- A required `CARD` discriminator field prepended to each `card_kinds.<name>.fields` (`const = "<name>"`)
+
+The schema describes only the user-fillable fields. The quill reference
+(`name@version`, available from quill metadata) and card-kind
+discriminators (the `card_kinds` map keys themselves) are document-level
+metadata, not schema fields, and do not appear in `fields`.
 
 `QuillConfig::schema_yaml()` is a YAML wrapper over the same value. The schema is pinned by serde attributes on `FieldSchema`, `CardSchema`, `UiFieldSchema`, `UiCardSchema`, and `BodyCardSchema` — there is no parallel mirror struct.
 
@@ -75,11 +78,13 @@ Identity fields (`name`, `version`, `backend`, `author`, `description`) live on 
 | Python | `Quill.schema` getter (YAML) |
 | CLI | `quillmark schema <path>` |
 
-### `main.fields` and `card_kinds.<name>.fields` discriminators
+### Where the discriminators come from
 
-`schema()` prepends a synthetic discriminator field to each card's `fields` map so consumers know exactly which discriminator value to use — the `QUILL` reference for the main card, and the card kind (the `$kind: <kind>` metadata value) for each card kind:
+The schema response omits discriminator fields. Consumers that need to
+construct a document derive the discriminators from elsewhere:
 
-- `main.fields.QUILL` — `{ type: string, const: "<name>@<version>", required: true, description: ... }`
-- `card_kinds.<name>.fields.CARD` — `{ type: string, const: "<name>", required: true, description: ... }`
-
-These appear ahead of the author's declared fields. They are not present in `Quill.yaml`; the projection injects them.
+- The root block's `$quill` value is `<name>@<version>`, built from
+  `quill.metadata.name` and `quill.metadata.version`.
+- Each composable card's `$kind` is the key under which it is declared
+  in `card_kinds` (e.g. a card listed under `card_kinds.indorsement` is
+  written as `$kind: indorsement`).

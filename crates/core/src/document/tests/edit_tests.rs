@@ -1,6 +1,6 @@
 //! Unit tests for the document editor surface.
 
-use crate::document::edit::{is_reserved_name, is_valid_field_name, EditError, RESERVED_NAMES};
+use crate::document::edit::{is_valid_field_name, EditError};
 use crate::document::meta::is_valid_kind_name;
 use crate::document::{Card, Document};
 use crate::value::QuillValue;
@@ -51,31 +51,12 @@ fn test_invalid_field_names() {
     assert!(!is_valid_field_name("123abc")); // starts with digit
     assert!(!is_valid_field_name("my-field")); // hyphen not allowed
     assert!(!is_valid_field_name("my field")); // space not allowed
-    assert!(!is_valid_field_name("BODY")); // uppercase (reserved)
-    assert!(!is_valid_field_name("CARDS")); // uppercase (reserved)
-}
-
-// ── is_reserved_name ────────────────────────────────────────────────────────
-
-#[test]
-fn test_is_reserved_name() {
-    assert!(is_reserved_name("BODY"));
-    assert!(is_reserved_name("CARDS"));
-    assert!(is_reserved_name("QUILL"));
-    assert!(is_reserved_name("CARD"));
-    assert!(!is_reserved_name("body")); // case-sensitive
-    assert!(!is_reserved_name("title"));
-    assert!(!is_reserved_name(""));
+    assert!(!is_valid_field_name("BODY")); // uppercase
+    assert!(!is_valid_field_name("CARDS")); // uppercase
+    assert!(!is_valid_field_name("$body")); // $-prefix reserved for metadata
 }
 
 // ── EditError variants ───────────────────────────────────────────────────────
-
-#[test]
-fn test_edit_error_reserved_name() {
-    let mut doc = make_doc();
-    let result = doc.main_mut().set_field("BODY", qv("value"));
-    assert_eq!(result, Err(EditError::ReservedName("BODY".to_string())));
-}
 
 #[test]
 fn test_edit_error_invalid_field_name() {
@@ -84,6 +65,16 @@ fn test_edit_error_invalid_field_name() {
     assert_eq!(
         result,
         Err(EditError::InvalidFieldName("My-Field".to_string()))
+    );
+}
+
+#[test]
+fn test_edit_error_uppercase_rejected() {
+    let mut doc = make_doc();
+    let result = doc.main_mut().set_field("BODY", qv("value"));
+    assert_eq!(
+        result,
+        Err(EditError::InvalidFieldName("BODY".to_string()))
     );
 }
 
@@ -108,9 +99,6 @@ fn test_edit_error_index_out_of_range() {
 
 #[test]
 fn test_edit_error_display() {
-    assert!(EditError::ReservedName("BODY".to_string())
-        .to_string()
-        .contains("BODY"));
     assert!(EditError::InvalidFieldName("Bad-Name".to_string())
         .to_string()
         .contains("Bad-Name"));
@@ -122,17 +110,19 @@ fn test_edit_error_display() {
         .contains("3"));
 }
 
-// ── Reserved-name matrix: Document::set_field ────────────────────────────────
+// ── Uppercase/`$`-prefixed names: Document::set_field ────────────────────────
 
 #[test]
-fn test_document_set_field_rejects_all_reserved_names() {
-    for &name in RESERVED_NAMES {
+fn test_document_set_field_rejects_legacy_uppercase_names() {
+    // Names that used to be reserved sentinels — now rejected by the
+    // field-name regex like any other uppercase or `$`-prefixed input.
+    for name in ["BODY", "CARDS", "QUILL", "CARD", "$body", "$cards"] {
         let mut doc = make_doc();
         let result = doc.main_mut().set_field(name, qv("value"));
         assert_eq!(
             result,
-            Err(EditError::ReservedName(name.to_string())),
-            "expected ReservedName for '{}'",
+            Err(EditError::InvalidFieldName(name.to_string())),
+            "expected InvalidFieldName for '{}'",
             name
         );
     }
@@ -178,14 +168,14 @@ fn test_document_remove_field_absent() {
 }
 
 #[test]
-fn test_document_remove_field_reserved_throws() {
-    // Symmetric with set_field: reserved names are programmer errors and
-    // throw, rather than silently returning None.
+fn test_document_remove_field_legacy_uppercase_rejected() {
+    // Symmetric with set_field: the legacy uppercase sentinels are now
+    // rejected like any other invalid field name.
     let mut doc = make_doc();
-    for reserved in ["BODY", "CARDS", "QUILL", "CARD"] {
-        match doc.main_mut().remove_field(reserved) {
-            Err(EditError::ReservedName(name)) => assert_eq!(name, reserved),
-            other => panic!("expected ReservedName for {reserved}, got {other:?}"),
+    for name in ["BODY", "CARDS", "QUILL", "CARD"] {
+        match doc.main_mut().remove_field(name) {
+            Err(EditError::InvalidFieldName(got)) => assert_eq!(got, name),
+            other => panic!("expected InvalidFieldName for {name}, got {other:?}"),
         }
     }
 }
@@ -449,12 +439,12 @@ fn test_card_remove_field_absent() {
 }
 
 #[test]
-fn test_card_remove_field_reserved_throws() {
+fn test_card_remove_field_legacy_uppercase_rejected() {
     let mut card = Card::new("note").unwrap();
-    for reserved in ["BODY", "CARDS", "QUILL", "CARD"] {
-        match card.remove_field(reserved) {
-            Err(EditError::ReservedName(name)) => assert_eq!(name, reserved),
-            other => panic!("expected ReservedName for {reserved}, got {other:?}"),
+    for name in ["BODY", "CARDS", "QUILL", "CARD"] {
+        match card.remove_field(name) {
+            Err(EditError::InvalidFieldName(got)) => assert_eq!(got, name),
+            other => panic!("expected InvalidFieldName for {name}, got {other:?}"),
         }
     }
 }
@@ -480,7 +470,7 @@ fn test_card_set_body() {
 // ── Invariant check: sequence of mutations ───────────────────────────────────
 
 /// After a deterministic sequence of mutations, the document must satisfy:
-/// - No reserved key in payload
+/// - Every payload key passes is_valid_field_name
 /// - Every card kind passes is_valid_kind_name
 /// - The plate JSON can be produced without panicking
 #[test]
@@ -519,11 +509,11 @@ fn test_invariants_after_mutation_sequence() {
 
     // --- Assertions ---
 
-    // No reserved key in payload
+    // Every payload key is valid
     for key in doc.main().payload().keys() {
         assert!(
-            !is_reserved_name(key),
-            "reserved key '{}' found in payload",
+            is_valid_field_name(key),
+            "invalid key '{}' found in payload",
             key
         );
     }
@@ -538,9 +528,9 @@ fn test_invariants_after_mutation_sequence() {
     // Can produce plate JSON without panicking
     let json = doc.to_plate_json();
     assert!(json.is_object());
-    assert_eq!(json["QUILL"].as_str(), Some("test_quill"));
-    assert!(json["CARDS"].is_array());
-    assert_eq!(json["BODY"].as_str(), Some("Updated body."));
+    assert_eq!(json["$quill"].as_str(), Some("test_quill"));
+    assert!(json["$cards"].is_array());
+    assert_eq!(json["$body"].as_str(), Some("Updated body."));
 
     // Payload still has expected keys
     assert_eq!(

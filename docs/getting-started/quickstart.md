@@ -52,7 +52,7 @@ Get started with Quillmark in Python or JavaScript.
 
     const quill = engine.quill(new Map([
       ["Quill.yaml", enc.encode("quill:\n  name: my_quill\n  backend: typst\n  version: \"1.0.0\"\n  description: Demo\n  plate_file: plate.typ\n")],
-      ["plate.typ", enc.encode("#import \"@local/quillmark-helper:0.1.0\": data\n#data.BODY\n")],
+      ["plate.typ", enc.encode("#import \"@local/quillmark-helper:0.1.0\": data\n#data.at(\"$body\")\n")],
     ]));
 
     const markdown = `~~~card-yaml

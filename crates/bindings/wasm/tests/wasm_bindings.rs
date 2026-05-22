@@ -287,19 +287,13 @@ fn test_quill_metadata_and_schemas() {
     assert!(js_sys::Array::from(&get(&meta, "supportedFormats")).length() > 0);
     assert!(get(&meta, "schema").is_undefined());
 
-    // schema: QUILL/CARD reserved fields with const values, ui hints included.
+    // schema: user-fillable fields with ui hints. No QUILL/CARD sentinels.
     let schema = quill.schema();
     let main_fields = get(&get(&schema, "main"), "fields");
     assert!(get(&get(&main_fields, "title"), "ui").is_object());
-    assert_eq!(
-        get_str(&get(&main_fields, "QUILL"), "const").as_deref(),
-        Some("meta_quill@0.2.1")
-    );
+    assert!(get(&main_fields, "QUILL").is_undefined());
     let card_fields = get(&get(&get(&schema, "card_kinds"), "indorsement"), "fields");
-    assert_eq!(
-        get_str(&get(&card_fields, "CARD"), "const").as_deref(),
-        Some("indorsement")
-    );
+    assert!(get(&card_fields, "CARD").is_undefined());
 }
 
 /// `doc.clone()` returns an independent handle: mutations on the clone

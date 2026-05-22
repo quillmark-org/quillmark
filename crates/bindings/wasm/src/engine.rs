@@ -56,8 +56,9 @@ export interface QuillCardSchema {
 /**
  * Document schema returned by `Quill.schema`. Includes optional `ui` keys.
  *
- * `main.fields.QUILL` and `card_kinds[name].fields.CARD` are required
- * reserved fields with `const` values telling consumers what to write.
+ * Describes only the user-fillable fields. The quill reference
+ * (constructed as `${metadata.name}@${metadata.version}`) and card-kind
+ * discriminators are document-level metadata, not schema fields.
  */
 export interface QuillSchema {
     main: QuillCardSchema;
@@ -550,8 +551,7 @@ impl Document {
 
     /// Update a payload field on the main card. Clears any existing `!fill` marker.
     ///
-    /// Throws if `name` is reserved (`BODY`, `CARDS`, `QUILL`, `CARD`) or does
-    /// not match `[a-z_][a-z0-9_]*`.
+    /// Throws if `name` does not match `[a-z_][a-z0-9_]*`.
     #[wasm_bindgen(js_name = setField)]
     pub fn set_field(&mut self, name: &str, value: JsValue) -> Result<(), JsValue> {
         let json: serde_json::Value = serde_wasm_bindgen::from_value(value).map_err(|e| {
@@ -578,8 +578,7 @@ impl Document {
     }
 
     /// Remove a payload field on the main card, returning the removed value or
-    /// `undefined`. Throws if `name` is reserved or does not match
-    /// `[a-z_][a-z0-9_]*`.
+    /// `undefined`. Throws if `name` does not match `[a-z_][a-z0-9_]*`.
     #[wasm_bindgen(js_name = removeField)]
     pub fn remove_field(&mut self, name: &str) -> Result<JsValue, JsValue> {
         let removed = self
@@ -732,7 +731,6 @@ impl Document {
 /// Maps `EditError` to a JS `Error` with the variant name and details in the message.
 fn edit_error_to_js(err: &quillmark_core::EditError) -> JsValue {
     let variant = match err {
-        quillmark_core::EditError::ReservedName(_) => "ReservedName",
         quillmark_core::EditError::InvalidFieldName(_) => "InvalidFieldName",
         quillmark_core::EditError::InvalidKindName(_) => "InvalidKindName",
         quillmark_core::EditError::ReservedKind => "ReservedKind",

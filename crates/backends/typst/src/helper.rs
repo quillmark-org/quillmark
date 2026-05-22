@@ -48,7 +48,7 @@ mod tests {
 
     #[test]
     fn test_generate_lib_typ_basic() {
-        let json = r#"{"title":"Test","BODY":"Hello","date":"2025-01-15","__meta__":{"content_fields":["BODY"],"card_content_fields":{},"date_fields":["date"],"card_date_fields":{}}}"#;
+        let json = r#"{"title":"Test","$body":"Hello","date":"2025-01-15","__meta__":{"content_fields":["$body"],"card_content_fields":{},"date_fields":["date"],"card_date_fields":{}}}"#;
         let lib = generate_lib_typ(json);
 
         assert!(lib.contains("Version: 0.1.0"));

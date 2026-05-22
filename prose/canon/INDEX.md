@@ -14,7 +14,7 @@
 - **[VERSIONING.md](VERSIONING.md)** - Quill version resolution
 - **[SCHEMAS.md](SCHEMAS.md)** - `QuillConfig` schema model, native validation, and emission overview
 - **[BLUEPRINT.md](BLUEPRINT.md)** - Annotated Markdown blueprint for LLM/MCP authoring
-- **[CARDS.md](CARDS.md)** - Composable cards with unified CARDS array
+- **[CARDS.md](CARDS.md)** - Composable cards delivered on the `$cards` plate-JSON array
 - **[GLUE_METADATA.md](GLUE_METADATA.md)** - Plate data injection
 
 ## Backends

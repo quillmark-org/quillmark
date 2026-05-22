@@ -144,25 +144,6 @@ fn yaml_type_name(value: &JsonValue) -> &'static str {
     }
 }
 
-/// Reject the reserved wire-format keys (`QUILL`, `CARD`, `BODY`, `CARDS`)
-/// appearing as user-defined fields — they would collide with
-/// [`crate::Document::to_plate_json`]'s output.
-pub(super) fn validate_payload_yaml(
-    parsed: serde_json::Value,
-) -> Result<serde_json::Value, ParseError> {
-    if let Some(mapping) = parsed.as_object() {
-        for reserved in ["QUILL", "CARD", "BODY", "CARDS"] {
-            if mapping.contains_key(reserved) {
-                return Err(ParseError::InvalidStructure(format!(
-                    "Reserved field name '{}' cannot be used in a card-yaml block",
-                    reserved
-                )));
-            }
-        }
-    }
-    Ok(parsed)
-}
-
 /// `true` when `name` matches `[a-z_][a-z0-9_]*`.
 pub fn is_valid_kind_name(name: &str) -> bool {
     if name.is_empty() {

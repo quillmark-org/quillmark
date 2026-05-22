@@ -1,9 +1,10 @@
 //! Typed mutators for [`Document`] and [`Card`] with invariant enforcement.
 //!
-//! Every successful mutator leaves the document free of reserved keys in any
-//! payload, with every composable `$kind` passing `meta::is_valid_kind_name`,
-//! and safely serializable via [`Document::to_plate_json`]. Mutators never
-//! modify `warnings` — those are immutable parse-time observations.
+//! Every successful mutator leaves the document with every user field name
+//! matching `[a-z_][a-z0-9_]*` and every composable `$kind` passing
+//! `meta::is_valid_kind_name`, so the result is safely serializable via
+//! [`Document::to_plate_json`]. Mutators never modify `warnings` — those
+//! are immutable parse-time observations.
 //!
 //! Payload/body mutators live on [`Card`] (`set_field`, `set_fill`,
 //! `remove_field`, `replace_body`); [`Document`] keeps document-level ops
@@ -15,15 +16,6 @@ use crate::document::meta::{validate_composable_kind, CardKindError};
 use crate::document::{Card, Document, Payload};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
-
-/// Reserved field names (`BODY`, `CARDS`, `QUILL`, `CARD`). Their presence in
-/// user fields would corrupt the plate wire format or structural invariants.
-pub const RESERVED_NAMES: &[&str] = &["BODY", "CARDS", "QUILL", "CARD"];
-
-#[inline]
-pub fn is_reserved_name(name: &str) -> bool {
-    RESERVED_NAMES.contains(&name)
-}
 
 /// `true` if `name` matches `[a-z_][a-z0-9_]*` after NFC normalisation.
 pub fn is_valid_field_name(name: &str) -> bool {
@@ -47,9 +39,6 @@ pub fn is_valid_field_name(name: &str) -> bool {
 /// Errors returned by document and card mutators.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum EditError {
-    #[error("reserved name '{0}' cannot be used as a field name")]
-    ReservedName(String),
-
     #[error("invalid field name '{0}': must match [a-z_][a-z0-9_]*")]
     InvalidFieldName(String),
 
@@ -154,11 +143,9 @@ impl Card {
 
     /// Set a payload field, clearing any `!fill` marker on that key.
     ///
-    /// Returns [`EditError::ReservedName`] or [`EditError::InvalidFieldName`].
+    /// Returns [`EditError::InvalidFieldName`] when `name` does not match
+    /// `[a-z_][a-z0-9_]*`.
     pub fn set_field(&mut self, name: &str, value: QuillValue) -> Result<(), EditError> {
-        if is_reserved_name(name) {
-            return Err(EditError::ReservedName(name.to_string()));
-        }
         if !is_valid_field_name(name) {
             return Err(EditError::InvalidFieldName(name.to_string()));
         }
@@ -170,9 +157,6 @@ impl Card {
     /// `Null` emits as `key: !fill`; scalars/sequences as `key: !fill <value>`.
     /// Same validation as [`Card::set_field`].
     pub fn set_fill(&mut self, name: &str, value: QuillValue) -> Result<(), EditError> {
-        if is_reserved_name(name) {
-            return Err(EditError::ReservedName(name.to_string()));
-        }
         if !is_valid_field_name(name) {
             return Err(EditError::InvalidFieldName(name.to_string()));
         }
@@ -183,9 +167,6 @@ impl Card {
     /// Remove a payload field; returns `Ok(None)` if the name is absent.
     /// Same validation as [`Card::set_field`].
     pub fn remove_field(&mut self, name: &str) -> Result<Option<QuillValue>, EditError> {
-        if is_reserved_name(name) {
-            return Err(EditError::ReservedName(name.to_string()));
-        }
         if !is_valid_field_name(name) {
             return Err(EditError::InvalidFieldName(name.to_string()));
         }

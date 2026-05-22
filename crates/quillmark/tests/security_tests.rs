@@ -118,31 +118,27 @@ fn test_yaml_size_limit() {
     );
 }
 
-/// Test reserved field names are rejected
+/// `$`-prefixed payload keys other than the documented system metadata
+/// (`$quill`, `$kind`, `$id`) are rejected — including any key that could
+/// collide with the plate wire format's `$body` / `$cards` keys.
 #[test]
-fn test_reserved_field_injection() {
-    let reserved_tests = vec![
-        (
-            "~~~card-yaml\n$quill: test_quill\n$kind: main\nBODY: injected\n~~~\n\nBody",
-            "BODY",
-        ),
-        (
-            "~~~card-yaml\n$quill: test_quill\n$kind: main\nCARDS: []\n~~~\n\nBody",
-            "CARDS",
-        ),
-    ];
+fn test_unknown_dollar_metadata_rejected() {
+    let injections = ["$body", "$cards", "$arbitrary"];
 
-    for (markdown, reserved) in reserved_tests {
-        let result = Document::from_markdown(markdown);
+    for key in injections {
+        let markdown = format!(
+            "~~~card-yaml\n$quill: test_quill\n$kind: main\n{key}: injected\n~~~\n\nBody",
+        );
+        let result = Document::from_markdown(&markdown);
         assert!(
             result.is_err(),
-            "Should reject reserved field '{}' in YAML",
-            reserved
+            "Should reject unknown `$`-prefixed key '{}' in YAML",
+            key
         );
         let err_msg = result.unwrap_err().to_string();
         assert!(
-            err_msg.contains("Reserved") || err_msg.contains(reserved),
-            "Error should mention reserved field: {}",
+            err_msg.contains("system-metadata") || err_msg.contains(key),
+            "Error should mention the rejected `$` key: {}",
             err_msg
         );
     }

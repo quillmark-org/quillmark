@@ -19,7 +19,6 @@ create_exception!(_quillmark, PyEditError, QuillmarkError);
 /// Convert an [`EditError`] to a `PyErr` (raises `quillmark.EditError`).
 pub fn convert_edit_error(err: EditError) -> PyErr {
     let variant = match &err {
-        EditError::ReservedName(_) => "ReservedName",
         EditError::InvalidFieldName(_) => "InvalidFieldName",
         EditError::InvalidKindName(_) => "InvalidKindName",
         EditError::ReservedKind => "ReservedKind",

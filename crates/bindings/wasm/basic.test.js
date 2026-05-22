@@ -32,7 +32,7 @@ This is a test document.`
 
 const TEST_PLATE = `#import "@local/quillmark-helper:0.1.0": data
 #let title = data.title
-#let body = data.BODY
+#let body = data.at("$body")
 
 = #title
 
@@ -46,16 +46,16 @@ describe('Document.fromMarkdown', () => {
     expect(doc.quillRef).toBe('test_quill')
   })
 
-  it('should expose typed payload (no QUILL/BODY/CARDS)', () => {
+  it('should expose typed payload (no $quill / $body / $cards as fields)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
     expect(field(doc.main, 'title')).toBe('Test Document')
     expect(field(doc.main, 'author')).toBe('Test Author')
-    // $quill/$kind and reserved names must NOT appear in payloadItems
+    // $-prefixed system metadata must NOT appear as payload fields
     expect(hasField(doc.main, 'quill')).toBe(false)
-    expect(hasField(doc.main, 'QUILL')).toBe(false)
-    expect(hasField(doc.main, 'BODY')).toBe(false)
-    expect(hasField(doc.main, 'CARDS')).toBe(false)
+    expect(hasField(doc.main, '$quill')).toBe(false)
+    expect(hasField(doc.main, '$body')).toBe(false)
+    expect(hasField(doc.main, '$cards')).toBe(false)
   })
 
   it('should expose body as a string', () => {
@@ -116,7 +116,7 @@ this is not valid yaml
     }).toThrow()
   })
 
-  it('should throw when QUILL field is absent', () => {
+  it('should throw when $quill metadata is absent', () => {
     const markdownWithoutQuill = `~~~card-yaml
 title: Default Test
 author: Test Author
@@ -408,7 +408,7 @@ describe('Quillmark.quill', () => {
     expect(svg.artifacts[0].mimeType).toBe('image/svg+xml')
   })
 
-  it('should emit a quill::ref_mismatch warning when Document QUILL differs from quill name', () => {
+  it('should emit a quill::ref_mismatch warning when the document quill ref differs from the quill name', () => {
     const engine = new Quillmark()
     const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
 
@@ -446,24 +446,18 @@ describe('Document editor surface — setField / removeField', () => {
     expect(field(doc.main, 'title')).toBe('Updated')
   })
 
-  it('setField throws EditError::ReservedName for BODY', () => {
+  it('setField throws EditError::InvalidFieldName for legacy uppercase names', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.setField('BODY', 'x')).toThrow(/ReservedName/)
+    for (const name of ['BODY', 'CARDS', 'QUILL', 'CARD']) {
+      expect(() => doc.setField(name, 'x')).toThrow(/InvalidFieldName/)
+    }
   })
 
-  it('setField throws EditError::ReservedName for CARDS', () => {
+  it('setField throws EditError::InvalidFieldName for `$`-prefixed names', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.setField('CARDS', [])).toThrow(/ReservedName/)
-  })
-
-  it('setField throws EditError::ReservedName for QUILL', () => {
-    const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.setField('QUILL', 'x')).toThrow(/ReservedName/)
-  })
-
-  it('setField throws EditError::ReservedName for CARD', () => {
-    const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.setField('CARD', 'x')).toThrow(/ReservedName/)
+    for (const name of ['$body', '$cards', '$quill', '$kind']) {
+      expect(() => doc.setField(name, 'x')).toThrow(/InvalidFieldName/)
+    }
   })
 
   it('setField throws EditError::InvalidFieldName for uppercase name', () => {
@@ -483,15 +477,17 @@ describe('Document editor surface — setField / removeField', () => {
     expect(doc.removeField('nonexistent')).toBeUndefined()
   })
 
-  it('removeField throws EditError::ReservedName for QUILL', () => {
+  it('removeField throws EditError::InvalidFieldName for legacy uppercase names', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.removeField('QUILL')).toThrow(/ReservedName/)
+    for (const name of ['BODY', 'CARDS', 'QUILL', 'CARD']) {
+      expect(() => doc.removeField(name)).toThrow(/InvalidFieldName/)
+    }
   })
 
-  it('removeField throws EditError::ReservedName for BODY/CARDS/CARD', () => {
+  it('removeField throws EditError::InvalidFieldName for `$`-prefixed names', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    for (const reserved of ['BODY', 'CARDS', 'CARD']) {
-      expect(() => doc.removeField(reserved)).toThrow(/ReservedName/)
+    for (const name of ['$body', '$cards', '$quill', '$kind']) {
+      expect(() => doc.removeField(name)).toThrow(/InvalidFieldName/)
     }
   })
 
@@ -695,9 +691,9 @@ Card body.
     expect(field(doc.cards[0], 'content')).toBe('hello')
   })
 
-  it('updateCardField throws EditError::ReservedName for BODY', () => {
+  it('updateCardField throws EditError::InvalidFieldName for uppercase names', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
-    expect(() => doc.updateCardField(0, 'BODY', 'x')).toThrow(/ReservedName/)
+    expect(() => doc.updateCardField(0, 'BODY', 'x')).toThrow(/InvalidFieldName/)
   })
 
   it('updateCardField throws IndexOutOfRange when card absent', () => {
@@ -852,14 +848,14 @@ card_kinds:
     expect(meta.supportedFormats.length).toBeGreaterThan(0)
     expect(meta.schema).toBeUndefined()
 
-    // schema: structure + ui hints. QUILL/CARD reserved fields with const values.
+    // schema: user-fillable fields + ui hints. No QUILL/CARD sentinels.
     const schema = quill.schema
     expect(schema.main.description).toBe('The main card schema')
     expect(schema.main.fields.title).toBeDefined()
-    expect(schema.main.fields.QUILL.const).toBe('meta_test_quill@0.2.1')
+    expect(schema.main.fields.QUILL).toBeUndefined()
     expect(schema.card_kinds.main).toBeUndefined()
     expect(schema.card_kinds.indorsement.fields.signature_block).toBeDefined()
-    expect(schema.card_kinds.indorsement.fields.CARD.const).toBe('indorsement')
+    expect(schema.card_kinds.indorsement.fields.CARD).toBeUndefined()
   })
 
   it('metadata and schema are JSON.stringify-able (plain objects)', () => {
@@ -870,7 +866,8 @@ card_kinds:
     const meta = JSON.parse(JSON.stringify(quill.metadata))
     expect(meta.name).toBe('meta_test_quill')
     const schema = JSON.parse(JSON.stringify(quill.schema))
-    expect(schema.main.fields.QUILL.const).toBe('meta_test_quill@0.2.1')
+    expect(schema.main.fields.title).toBeDefined()
+    expect(schema.main.fields.QUILL).toBeUndefined()
   })
 })
 

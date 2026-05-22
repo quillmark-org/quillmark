@@ -70,19 +70,21 @@ fn fences_inside_code_blocks_are_ignored() {
     );
 }
 
-// Reserved keys BODY/CARDS cannot be user-defined.
+// `$`-prefixed payload keys other than `$quill`/`$kind`/`$id` are
+// rejected, so user content can't shadow the plate wire format's `$body`
+// or `$cards` metadata.
 #[test]
-fn reserved_keys_in_payload_are_rejected() {
-    for reserved in ["BODY", "CARDS"] {
+fn unknown_dollar_keys_in_payload_are_rejected() {
+    for key in ["$body", "$cards", "$arbitrary"] {
         let md = format!(
             "~~~card-yaml\n$quill: t\n$kind: main\n{}: nope\n~~~\n\nBody.",
-            reserved
+            key
         );
         let err = Document::from_markdown(&md).unwrap_err().to_string();
         assert!(
-            err.contains(&format!("Reserved field name '{}'", reserved)),
-            "reserved key {} must error, got: {}",
-            reserved,
+            err.contains("system-metadata") || err.contains(key),
+            "unknown $-key {} must error, got: {}",
+            key,
             err
         );
     }

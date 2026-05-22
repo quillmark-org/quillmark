@@ -104,8 +104,9 @@ impl PyQuill {
     }
 
     /// Document schema as a structured dict (matches the wasm `schema` shape).
-    /// Includes optional `ui` keys. `main.fields.QUILL` and `card_kinds[name].fields.CARD`
-    /// are reserved fields with `const` values telling consumers what to write.
+    /// Includes optional `ui` keys. Describes only the user-fillable fields;
+    /// the quill reference and card-kind discriminators live on the quill's
+    /// metadata, not the schema.
     #[getter]
     fn schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let value = self.inner.source().config().schema();
@@ -403,7 +404,7 @@ impl PyDocument {
     }
 
     /// Set a payload field on the main card. Clears any `!fill` marker.
-    /// Raises `quillmark.EditError` if `name` is reserved or does not match `[a-z_][a-z0-9_]*`.
+    /// Raises `quillmark.EditError` if `name` does not match `[a-z_][a-z0-9_]*`.
     fn set_field(&mut self, name: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
         let qv = py_to_quillvalue(&value)?;
         self.inner
@@ -422,7 +423,7 @@ impl PyDocument {
     }
 
     /// Remove a payload field from the main card, returning the value or `None` if absent.
-    /// Raises `quillmark.EditError` if `name` is reserved or invalid.
+    /// Raises `quillmark.EditError` if `name` is invalid.
     fn remove_field<'py>(&mut self, py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
         match self
             .inner
@@ -435,7 +436,7 @@ impl PyDocument {
         }
     }
 
-    /// Replace the QUILL reference string. Raises `ValueError` if `ref_str` is not a valid `QuillReference`.
+    /// Replace the quill reference string. Raises `ValueError` if `ref_str` is not a valid `QuillReference`.
     fn set_quill_ref(&mut self, ref_str: &str) -> PyResult<()> {
         let qr: quillmark_core::QuillReference = ref_str.parse().map_err(|e| {
             PyValueError::new_err(format!("invalid QuillReference '{}': {}", ref_str, e))
@@ -493,7 +494,7 @@ impl PyDocument {
     }
 
     /// Update a field on the card at `index`. Raises `quillmark.EditError` if `index` is out of range
-    /// or `name` is reserved or invalid.
+    /// or `name` is invalid.
     fn update_card_field(
         &mut self,
         index: usize,
@@ -509,7 +510,7 @@ impl PyDocument {
     }
 
     /// Remove a field from the card at `index`, returning the value or `None` if absent.
-    /// Raises `quillmark.EditError` if `index` is out of range or `name` is reserved or invalid.
+    /// Raises `quillmark.EditError` if `index` is out of range or `name` is invalid.
     fn remove_card_field<'py>(
         &mut self,
         py: Python<'py>,

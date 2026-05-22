@@ -1,5 +1,7 @@
 """Tests for the API requirements."""
 
+import re
+
 import pytest
 from quillmark import Quillmark, Document, OutputFormat, ParseError, EditError
 from conftest import QUILLS_PATH, _latest_version
@@ -127,20 +129,28 @@ def test_set_field_updates():
     assert field(doc.main, "title") == "New Title"
 
 
-def test_set_field_reserved_name_matrix():
-    """set_field raises EditError for all four reserved names."""
+def test_set_field_legacy_uppercase_rejected_matrix():
+    """set_field raises InvalidFieldName for the legacy uppercase sentinels."""
     for name in ("BODY", "CARDS", "QUILL", "CARD"):
         doc = Document.from_markdown(SIMPLE_MD)
-        with pytest.raises(EditError, match="ReservedName"):
+        with pytest.raises(EditError, match="InvalidFieldName"):
             doc.set_field(name, "value")
 
 
-def test_card_set_field_reserved_name_matrix():
-    """Card set_field raises EditError for all four reserved names."""
+def test_card_set_field_legacy_uppercase_rejected_matrix():
+    """Card update_card_field raises InvalidFieldName for legacy uppercase names."""
     for name in ("BODY", "CARDS", "QUILL", "CARD"):
         doc = Document.from_markdown(MD_WITH_CARDS)
-        with pytest.raises(EditError, match="ReservedName"):
+        with pytest.raises(EditError, match="InvalidFieldName"):
             doc.update_card_field(0, name, "value")
+
+
+def test_set_field_dollar_prefix_rejected_matrix():
+    """set_field raises InvalidFieldName for `$`-prefixed names."""
+    for name in ("$body", "$cards", "$quill", "$kind"):
+        doc = Document.from_markdown(SIMPLE_MD)
+        with pytest.raises(EditError, match="InvalidFieldName"):
+            doc.set_field(name, "value")
 
 
 def test_set_field_invalid_field_name():
@@ -164,15 +174,15 @@ def test_remove_field_absent():
     assert doc.remove_field("nonexistent") is None
 
 
-def test_remove_field_reserved_raises():
-    """remove_field raises EditError for reserved names."""
+def test_remove_field_legacy_uppercase_rejected():
+    """remove_field raises InvalidFieldName for legacy uppercase names."""
     doc = Document.from_markdown(SIMPLE_MD)
-    with pytest.raises(EditError, match="ReservedName"):
+    with pytest.raises(EditError, match="InvalidFieldName"):
         doc.remove_field("BODY")
 
 
 def test_set_quill_ref():
-    """set_quill_ref changes the QUILL reference."""
+    """set_quill_ref changes the quill reference."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.set_quill_ref("new_quill")
     assert doc.quill_ref() == "new_quill"
@@ -263,10 +273,10 @@ def test_update_card_field():
     assert field(doc.cards[0], "content") == "hello"
 
 
-def test_update_card_field_reserved_name():
-    """update_card_field raises EditError for reserved names."""
+def test_update_card_field_legacy_uppercase_rejected():
+    """update_card_field raises InvalidFieldName for legacy uppercase names."""
     doc = Document.from_markdown(MD_WITH_CARDS)
-    with pytest.raises(EditError, match="ReservedName"):
+    with pytest.raises(EditError, match="InvalidFieldName"):
         doc.update_card_field(0, "BODY", "value")
 
 
@@ -317,10 +327,10 @@ def test_invariants_after_mutation_sequence():
     doc.set_field("extra_author", "Bob")
     doc.remove_field("extra_author")
 
-    # Assertions: no reserved key in payload
-    RESERVED = {"BODY", "CARDS", "QUILL", "CARD"}
+    # Assertions: every payload key passes the user-field regex.
+    field_name_re = re.compile(r"^[a-z_][a-z0-9_]*$")
     for key in field_keys(doc.main):
-        assert key not in RESERVED, f"reserved key '{key}' found in payload"
+        assert field_name_re.match(key), f"invalid key '{key}' found in payload"
 
     # Every card kind is lowercase-valid (just check non-empty and lowercase)
     for card in doc.cards:
