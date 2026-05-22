@@ -1026,3 +1026,227 @@ title: "Hello"
     expect(quill.blankCard('does_not_exist')).toBeNull()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema / blueprint / validation — Must Fill vs Endorsed
+// ---------------------------------------------------------------------------
+//
+// Post-mcp-feedback the schema axis is implicit: a field with a `default:` is
+// Endorsed (the rendered default is shippable as-is and the blueprint emits
+// the value + `; skip-ok` annotation); a field without a `default:` is Must
+// Fill (the blueprint emits the `<must-fill>` sentinel and validation flags
+// either the absence or the unreplaced sentinel).
+//
+// These tests pin the JS-facing contract:
+//   - `QuillFieldSchema` no longer carries a `required` axis.
+//   - `quill.blueprint` carries `<must-fill>` and `; skip-ok` annotations.
+//   - `quill.render(doc)` raises `validation::required_field_absent` when a
+//     Must Fill field is absent at validate time.
+//   - `quill.render(doc)` raises `validation::unfilled_placeholder` when the
+//     `<must-fill>` sentinel is left in.
+//   - `quill.form(doc)` flags both situations under `diagnostics`.
+
+describe('Must Fill / Endorsed schema model', () => {
+  // The plate `unwrap`s `data.title` (Must Fill) and substitutes the optional
+  // `data.subtitle` if present. Authoring a quill with both Must Fill and
+  // Endorsed fields lets us exercise both validation codes without having to
+  // ship two separate test quills.
+  const SCHEMA_QUILL_YAML = `quill:
+  name: schema_test
+  version: "1.0"
+  backend: typst
+  plate_file: plate.typ
+  description: Must Fill / Endorsed coverage
+
+main:
+  fields:
+    title:
+      type: string
+      description: Document title (Must Fill — no default)
+    subtitle:
+      type: string
+      default: "Untitled subtitle"
+      description: Document subtitle (Endorsed — default shippable)
+`
+
+  const SCHEMA_PLATE = `#import "@local/quillmark-helper:0.1.0": data
+#let title = data.title
+#let subtitle = data.at("subtitle", default: "")
+#let body = data.at("$body")
+
+= #title
+
+#subtitle
+
+#body`
+
+  const buildQuill = () => {
+    const engine = new Quillmark()
+    return engine.quill(
+      makeQuill({
+        name: 'schema_test',
+        plate: SCHEMA_PLATE,
+        quillYaml: SCHEMA_QUILL_YAML,
+      }),
+    )
+  }
+
+  it('schema fields carry no legacy `required` axis', () => {
+    const quill = buildQuill()
+    const fields = quill.schema.main.fields
+
+    expect(fields.title).toBeDefined()
+    expect(fields.subtitle).toBeDefined()
+
+    // The `required` axis was removed; cell is implied by `default:` presence.
+    expect('required' in fields.title).toBe(false)
+    expect('required' in fields.subtitle).toBe(false)
+
+    // Must Fill fields have no `default`; Endorsed fields do.
+    expect(fields.title.default).toBeUndefined()
+    expect(fields.subtitle.default).toBe('Untitled subtitle')
+  })
+
+  it('blueprint carries `<must-fill>` for Must Fill fields and `; skip-ok` for Endorsed', () => {
+    const quill = buildQuill()
+    const blueprint = quill.blueprint
+
+    expect(typeof blueprint).toBe('string')
+    expect(blueprint.length).toBeGreaterThan(0)
+
+    // Must Fill: value cell is the literal sentinel; no `; skip-ok` tag.
+    expect(blueprint).toContain('title: <must-fill>  # string')
+    expect(blueprint).not.toMatch(/title: <must-fill>.*skip-ok/)
+
+    // Endorsed: rendered default + `; skip-ok` tag. The emitter does not
+    // quote strings that don't need quoting (`Untitled subtitle` has no YAML
+    // ambiguity), so the value cell is bare.
+    expect(blueprint).toContain('subtitle: Untitled subtitle  # string; skip-ok')
+
+    // The legacy `; required` / `; optional` role tag must not appear anywhere.
+    expect(blueprint).not.toContain('; required')
+    expect(blueprint).not.toContain('; optional')
+  })
+
+  it('render throws `validation::required_field_absent` when a Must Fill field is absent', () => {
+    const quill = buildQuill()
+
+    // Document omits `title`. Schema declares no default → Must Fill.
+    const md = `~~~card-yaml
+$quill: schema_test
+$kind: main
+subtitle: "Just a subtitle"
+~~~
+
+# Body
+`
+    const doc = Document.fromMarkdown(md)
+
+    try {
+      quill.render(doc, { format: 'svg' })
+      throw new Error('render should have thrown ValidationFailed')
+    } catch (err) {
+      expect(Array.isArray(err.diagnostics)).toBe(true)
+      const codes = err.diagnostics.map((d) => d.code)
+      expect(codes).toContain('validation::required_field_absent')
+      // The diagnostic must anchor to the offending field path.
+      const required = err.diagnostics.find(
+        (d) => d.code === 'validation::required_field_absent',
+      )
+      expect(required.path).toBe('title')
+      expect(required.severity).toBe('error')
+      // The legacy code must be gone.
+      expect(codes).not.toContain('validation::missing_required')
+    }
+  })
+
+  it('render throws `validation::unfilled_placeholder` when the `<must-fill>` sentinel is left in', () => {
+    const quill = buildQuill()
+
+    // Document supplies the literal sentinel — the LLM forgot to fill it.
+    const md = `~~~card-yaml
+$quill: schema_test
+$kind: main
+title: <must-fill>
+~~~
+
+# Body
+`
+    const doc = Document.fromMarkdown(md)
+
+    try {
+      quill.render(doc, { format: 'svg' })
+      throw new Error('render should have thrown ValidationFailed')
+    } catch (err) {
+      expect(Array.isArray(err.diagnostics)).toBe(true)
+      const codes = err.diagnostics.map((d) => d.code)
+      expect(codes).toContain('validation::unfilled_placeholder')
+      const placeholder = err.diagnostics.find(
+        (d) => d.code === 'validation::unfilled_placeholder',
+      )
+      expect(placeholder.path).toBe('title')
+      expect(placeholder.severity).toBe('error')
+      // Hint nudges the caller toward the action they need to take.
+      expect(placeholder.hint).toBeDefined()
+      expect(placeholder.hint).toMatch(/<must-fill>/)
+    }
+  })
+
+  it('render succeeds when every Must Fill field is supplied with a real value', () => {
+    const quill = buildQuill()
+
+    const md = `~~~card-yaml
+$quill: schema_test
+$kind: main
+title: "A Real Title"
+~~~
+
+# Body
+`
+    const doc = Document.fromMarkdown(md)
+    const result = quill.render(doc, { format: 'svg' })
+    expect(result.artifacts.length).toBeGreaterThan(0)
+  })
+
+  it('form surfaces validation diagnostics for both absent and sentinel cases', () => {
+    const quill = buildQuill()
+
+    // Case 1: `title` absent — form should flag it.
+    const mdAbsent = `~~~card-yaml
+$quill: schema_test
+$kind: main
+subtitle: "Just a subtitle"
+~~~
+`
+    const formAbsent = quill.form(Document.fromMarkdown(mdAbsent))
+    // `title` is missing in the document, and the schema declares no default,
+    // so the form view marks the value as `missing`.
+    expect(formAbsent.main.values.title.source).toBe('missing')
+    expect(formAbsent.main.values.title.default).toBeNull()
+    // The validation error surfaces under `diagnostics` (form re-codes
+    // structured validation errors as `form::validation_error`).
+    expect(formAbsent.diagnostics.length).toBeGreaterThan(0)
+    expect(
+      formAbsent.diagnostics.some(
+        (d) => d.severity === 'error' && /title/.test(d.message),
+      ),
+    ).toBe(true)
+
+    // Case 2: sentinel left in — form should also flag it.
+    const mdSentinel = `~~~card-yaml
+$quill: schema_test
+$kind: main
+title: <must-fill>
+~~~
+`
+    const formSentinel = quill.form(Document.fromMarkdown(mdSentinel))
+    // The sentinel is a literal string value, so the source is `document`.
+    expect(formSentinel.main.values.title.source).toBe('document')
+    expect(formSentinel.main.values.title.value).toBe('<must-fill>')
+    expect(
+      formSentinel.diagnostics.some(
+        (d) => d.severity === 'error' && /<must-fill>/.test(d.message),
+      ),
+    ).toBe(true)
+  })
+})
