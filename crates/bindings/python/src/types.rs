@@ -1,9 +1,9 @@
 use pyo3::conversion::IntoPyObjectExt;
 use pyo3::exceptions::PyValueError;
-use pyo3::prelude::*; // PyResult, Python, etc.
-use pyo3::pycell::PyRef; // PyRef
-use pyo3::types::PyDict; // PyDict
-use pyo3::Bound; // Bound
+use pyo3::prelude::*;
+use pyo3::pycell::PyRef;
+use pyo3::types::PyDict;
+use pyo3::Bound;
 
 use quillmark::{
     Diagnostic, Document, Location, OutputFormat, Quill, Quillmark, RenderResult, RenderSession,
@@ -18,7 +18,6 @@ use crate::errors::{convert_edit_error, convert_render_error};
 /// replace this with a richer check.
 const CANVAS_BACKEND_ID: &str = "typst";
 
-// Quillmark Engine wrapper
 #[pyclass(name = "Quillmark")]
 pub struct PyQuillmark {
     inner: Quillmark,
@@ -50,7 +49,6 @@ impl PyQuillmark {
     }
 }
 
-// Quill wrapper
 #[pyclass(name = "Quill")]
 #[derive(Clone)]
 pub struct PyQuill {
@@ -74,10 +72,7 @@ impl PyQuill {
         self.inner.backend_id().to_string()
     }
 
-    /// Whether this quill's backend supports canvas preview.
-    ///
-    /// Mirrors the wasm binding's `Quill.supportsCanvas` — `True` iff the
-    /// resolved backend is the canvas-capable one (currently `"typst"`).
+    /// `True` iff the resolved backend is canvas-capable (currently `"typst"`).
     #[getter]
     fn supports_canvas(&self) -> bool {
         self.inner.backend_id() == CANVAS_BACKEND_ID
@@ -109,19 +104,15 @@ impl PyQuill {
     }
 
     /// Document schema as a structured dict (matches the wasm `schema` shape).
-    ///
-    /// Includes optional `ui` keys. `main.fields.QUILL` and
-    /// `card_kinds[name].fields.CARD` are required reserved fields with
-    /// `const` values telling consumers what to write.
+    /// Includes optional `ui` keys. `main.fields.QUILL` and `card_kinds[name].fields.CARD`
+    /// are reserved fields with `const` values telling consumers what to write.
     #[getter]
     fn schema<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let value = self.inner.source().config().schema();
         json_to_py(py, &value)
     }
 
-    /// Document schema as a YAML string. Equivalent to
-    /// `yaml.safe_dump(quill.schema)` but produced by the engine, which is
-    /// useful for rendering documentation or feeding into LLM prompts.
+    /// Document schema as a YAML string, useful for documentation or LLM prompts.
     #[getter]
     fn schema_yaml(&self) -> PyResult<String> {
         self.inner
@@ -182,31 +173,18 @@ impl PyQuill {
         })
     }
 
-    /// Perform a dry run validation without backend compilation.
-    ///
-    /// Raises QuillmarkError with diagnostic payload on validation failure.
+    /// Validate without backend compilation. Raises `QuillmarkError` with diagnostic payload on failure.
     fn dry_run(&self, doc: PyRef<'_, PyDocument>) -> PyResult<()> {
         self.inner.dry_run(&doc.inner).map_err(convert_render_error)
     }
 
-    /// The schema-aware form view of `doc`.
+    /// Schema-aware form view of `doc`.
     ///
-    /// Returns a dict with keys `main`, `cards`, and `diagnostics`:
-    ///
-    /// - `main`: dict with `schema` (dict) and `values` (dict of field → value info)
-    /// - `cards`: list of dicts in the same shape as `main`
-    /// - `diagnostics`: list of dicts with `severity`, `code`, `message`, etc.
-    ///
-    /// Each `values` entry is a dict with:
-    /// - `value`: the current document value, or `None` if absent
-    /// - `default`: the schema default value, or `None` if none declared
-    /// - `source`: one of `"document"`, `"default"`, or `"missing"`
-    ///
-    /// This is a **read-only snapshot**. Call `form` again after any edits
-    /// to the document to obtain an updated view.
-    ///
-    /// Cards with unknown kinds are excluded from `cards`; each produces a
-    /// diagnostic with code `"form::unknown_card_kind"`.
+    /// Returns a dict with keys `main`, `cards`, and `diagnostics`. `main` and each
+    /// entry in `cards` contain `schema` (dict) and `values` (dict of field → value info).
+    /// Each `values` entry has `value`, `default`, and `source`
+    /// (`"document"` | `"default"` | `"missing"`). Read-only snapshot — call again after edits.
+    /// Cards with unknown kinds are excluded and produce a `"form::unknown_card_kind"` diagnostic.
     fn form<'py>(
         &self,
         py: Python<'py>,
@@ -228,11 +206,7 @@ impl PyQuill {
         Ok(dict.clone())
     }
 
-    /// A blank form for the main card — no document values supplied.
-    ///
-    /// Returns a dict shaped like one entry in `form()['main']`. Every
-    /// declared field's `source` is `"default"` (when the schema declares a
-    /// default) or `"missing"`.
+    /// Blank form for the main card — shaped like `form()['main']` with no document values.
     fn blank_main<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let card = self.inner.blank_main();
         let json_value = serde_json::to_value(&card).map_err(|e| {
@@ -245,10 +219,7 @@ impl PyQuill {
         Ok(dict.clone())
     }
 
-    /// A blank form for a card of the given kind — no document values supplied.
-    ///
-    /// Returns `None` if `card_kind` is not declared in this quill's schema.
-    /// Otherwise returns a dict shaped like a single entry in `form()['cards']`.
+    /// Blank form for `card_kind` — shaped like a `form()['cards']` entry, or `None` if kind unknown.
     fn blank_card<'py>(
         &self,
         py: Python<'py>,
@@ -269,17 +240,6 @@ impl PyQuill {
 }
 
 /// Python wrapper for the typed Quillmark `Document`.
-///
-/// Exposes:
-/// - `from_markdown(markdown)` — static constructor
-/// - `from_json(json)` — static constructor from a versioned storage DTO
-/// - `to_markdown()` — emit canonical Quillmark Markdown
-/// - `to_json()` — emit the versioned storage DTO string
-/// - `quill_ref()` — quill reference string
-/// - `body` — global Markdown body (str, never None)
-/// - `main` / `cards` — entry card / composable card dicts, each carrying
-///   `kind`, `payload_items` (ordered field/comment list), and `body`
-/// - `warnings` — list of `Diagnostic` objects
 #[pyclass(name = "Document")]
 pub struct PyDocument {
     pub(crate) inner: Document,
@@ -314,16 +274,8 @@ impl PyDocument {
 
     /// Reconstruct a `Document` from its versioned storage DTO string.
     ///
-    /// `json` must be a string produced by [`to_json`](PyDocument::to_json).
-    /// Parsing and schema dispatch happen via `serde_json`; unknown `schema`
-    /// tags are rejected.
-    ///
-    /// The reconstructed document carries no parse-time warnings — the DTO
-    /// describes content, not source text — so `warnings` is always empty.
-    ///
-    /// Raises `quillmark.ParseError` if `json` is not a valid storage DTO
-    /// (malformed JSON, unknown `schema`, missing fields, or an unparseable
-    /// quill reference).
+    /// Raises `quillmark.ParseError` on malformed JSON, unknown `schema`, missing fields,
+    /// or unparseable quill reference. `warnings` is always empty (DTO has no source text).
     #[staticmethod]
     fn from_json(json: &str) -> PyResult<Self> {
         let inner: Document = serde_json::from_str(json).map_err(|e| {
@@ -335,19 +287,8 @@ impl PyDocument {
         })
     }
 
-    /// Reconstruct a `Document` from a storage DTO string, or `None`.
-    ///
-    /// Like [`from_json`](PyDocument::from_json), but returns `None` instead
-    /// of raising when `json` is not a valid storage DTO. Use this to detect
-    /// "is this content a stored DTO or raw Markdown?" without exception
-    /// control flow:
-    ///
-    /// ```python
-    /// doc = Document.try_from_json(content) or Document.from_markdown(content)
-    /// ```
-    ///
-    /// `None` only ever means "not a storage DTO" — `from_markdown` still
-    /// raises on genuinely malformed markdown.
+    /// Like [`from_json`](PyDocument::from_json) but returns `None` instead of raising.
+    /// Use to detect "is this a stored DTO or raw Markdown?" without exception control flow.
     #[staticmethod]
     fn try_from_json(json: &str) -> Option<Self> {
         let inner: Document = serde_json::from_str(json).ok()?;
@@ -357,65 +298,39 @@ impl PyDocument {
         })
     }
 
-    /// Read the schema version from a raw storage DTO string without a full
-    /// parse, or `None`.
-    ///
-    /// Returns the `schema` field as-is — including unknown future versions
-    /// that `from_json` would reject. Use this to distinguish "build too old
-    /// for the payload" from "payload is corrupt" when
-    /// [`from_json`](PyDocument::from_json) raises.
+    /// Read the `schema` version tag from a raw DTO string without a full parse, or `None`.
+    /// Returns unknown future versions that `from_json` would reject — use this to distinguish
+    /// "build too old" from "payload is corrupt" when [`from_json`](PyDocument::from_json) raises.
     #[staticmethod]
     fn schema_version_of(json: &str) -> Option<String> {
         quillmark_core::document::peek_schema_version(json)
     }
 
-    /// Schema version this build writes via [`to_json`](PyDocument::to_json).
-    ///
-    /// Compare a payload's [`schema_version_of`](PyDocument::schema_version_of)
-    /// against this to detect mismatches before calling
-    /// [`from_json`](PyDocument::from_json). The tag tracks the `Document`
-    /// model version, not the running crate version.
+    /// Schema version this build writes. Compare against [`schema_version_of`](PyDocument::schema_version_of)
+    /// to detect mismatches before calling [`from_json`](PyDocument::from_json).
     #[staticmethod]
     fn current_schema_version() -> &'static str {
         quillmark_core::document::SCHEMA_V0_82_0
     }
 
-    /// Emit canonical Quillmark Markdown.
-    ///
-    /// Returns the document serialised as a Quillmark Markdown string.
-    /// The output is type-fidelity round-trip safe: re-parsing the result
-    /// produces a `Document` equal to `self` by value and by type.
+    /// Emit canonical Quillmark Markdown. Round-trip safe: re-parsing produces an equal `Document`.
     fn to_markdown(&self) -> String {
         self.inner.to_markdown()
     }
 
-    /// Serialize this document to a versioned storage DTO string.
-    ///
-    /// Returns the document as a JSON string carrying a `schema` version
-    /// tag. Round-trips losslessly back to an equal `Document` via
-    /// [`from_json`](PyDocument::from_json).
-    ///
-    /// Use this — not [`to_markdown`](PyDocument::to_markdown) — to persist a
-    /// document across a process restart or crate upgrade; the wire format
-    /// is frozen per `schema` version, whereas Markdown syntax evolves.
-    /// Parse-time `warnings` are not part of the DTO.
+    /// Serialize to a versioned storage DTO string. Prefer this over `to_markdown` for persistence —
+    /// the wire format is frozen per `schema` version. Parse-time `warnings` are not included.
     fn to_json(&self) -> PyResult<String> {
         serde_json::to_string(&self.inner).map_err(|e| {
             PyErr::new::<crate::errors::QuillmarkError, _>(format!("serialization failed: {e}"))
         })
     }
 
-    /// The QUILL reference string (e.g. `"usaf_memo@0.1"`).
     fn quill_ref(&self) -> String {
         self.inner.quill_reference().to_string()
     }
 
-    /// Return a fresh `Document` handle with the same parsed state.
-    ///
-    /// Mutations on the returned handle do not affect the original and vice
-    /// versa. Parse-time warnings are snapshotted alongside the document —
-    /// they describe the original parse, not the edit history of either
-    /// handle.
+    /// Return a fresh `Document` handle with the same parsed state. Mutations are independent.
     fn clone(&self) -> Self {
         PyDocument {
             inner: self.inner.clone(),
@@ -431,11 +346,7 @@ impl PyDocument {
         self.clone()
     }
 
-    /// Structural equality against another `Document`.
-    ///
-    /// Compares `main` and `cards` by value (matching core's `PartialEq`).
-    /// Parse-time `warnings` are intentionally excluded — they describe the
-    /// source text, not the document's content. Identical to `__eq__`.
+    /// Structural equality — compares `main` and `cards` by value. Excludes `warnings`.
     fn equals(&self, other: PyRef<'_, PyDocument>) -> bool {
         self.inner == other.inner
     }
@@ -455,16 +366,12 @@ impl PyDocument {
         )
     }
 
-    /// Number of composable cards (excludes the main card).
-    ///
-    /// O(1). Use this to validate indices before calling card mutators
-    /// instead of materialising the full `cards` list.
+    /// Number of composable cards (excludes the main card). O(1).
     #[getter]
     fn card_count(&self) -> usize {
         self.inner.cards().len()
     }
 
-    /// Non-fatal parse-time warnings.
     #[getter]
     fn warnings(&self) -> Vec<PyDiagnostic> {
         self.parse_warnings
@@ -474,27 +381,18 @@ impl PyDocument {
     }
 
     /// Main card's global Markdown body (str, never None).
-    ///
-    /// Convenience accessor equivalent to `doc.main['body']`.
     #[getter]
     fn body(&self) -> &str {
         self.inner.main().body()
     }
 
-    /// The document's main (entry) card as a dict.
-    ///
-    /// Keys: `kind` (str), `payload_items` (list of field/comment dicts),
-    /// `body` (str). Each item in `payload_items` has `type` (str —
-    /// `"field"` or `"comment"`), plus type-specific keys.
+    /// Main (entry) card as a dict with `kind`, `payload_items`, and `body`.
     #[getter]
     fn main<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         card_to_pydict(py, self.inner.main())
     }
 
-    /// Ordered list of composable card blocks.
-    ///
-    /// Each card is a dict with keys: `kind` (str), `payload_items`
-    /// (list), `body` (str).
+    /// Ordered list of composable card blocks, each a dict with `kind`, `payload_items`, and `body`.
     #[getter]
     fn cards<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         let mut result = Vec::new();
@@ -504,17 +402,8 @@ impl PyDocument {
         Ok(result)
     }
 
-    // ── Mutators ──────────────────────────────────────────────────────────────
-
-    /// Set a payload field by name on the main card.
-    ///
-    /// Convenience method equivalent to `doc.main_mut().set_field(name, value)`.
-    /// Clears any `!fill` marker on the field.
-    ///
-    /// Raises `quillmark.EditError` if `name` is a reserved name
-    /// (`BODY`, `CARDS`, `QUILL`, `CARD`) or does not match `[a-z_][a-z0-9_]*`.
-    ///
-    /// This method never modifies `warnings`.
+    /// Set a payload field on the main card. Clears any `!fill` marker.
+    /// Raises `quillmark.EditError` if `name` is reserved or does not match `[a-z_][a-z0-9_]*`.
     fn set_field(&mut self, name: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
         let qv = py_to_quillvalue(&value)?;
         self.inner
@@ -523,9 +412,7 @@ impl PyDocument {
             .map_err(convert_edit_error)
     }
 
-    /// Set a payload field on the main card AND mark it as `!fill`.
-    ///
-    /// Convenience method equivalent to `doc.main_mut().set_fill(name, value)`.
+    /// Set a payload field on the main card and mark it as `!fill`.
     fn set_fill(&mut self, name: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
         let qv = py_to_quillvalue(&value)?;
         self.inner
@@ -534,13 +421,8 @@ impl PyDocument {
             .map_err(convert_edit_error)
     }
 
-    /// Remove a payload field from the main card, returning the value or `None`.
-    ///
-    /// Raises `quillmark.EditError` if `name` is reserved (`BODY`, `CARDS`,
-    /// `QUILL`, `CARD`) or does not match `[a-z_][a-z0-9_]*`. Absence of an
-    /// otherwise-valid name returns `None`.
-    ///
-    /// This method never modifies `warnings`.
+    /// Remove a payload field from the main card, returning the value or `None` if absent.
+    /// Raises `quillmark.EditError` if `name` is reserved or invalid.
     fn remove_field<'py>(&mut self, py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
         match self
             .inner
@@ -553,11 +435,7 @@ impl PyDocument {
         }
     }
 
-    /// Replace the QUILL reference string.
-    ///
-    /// Raises `ValueError` if `ref_str` is not a valid `QuillReference`.
-    ///
-    /// This method never modifies `warnings`.
+    /// Replace the QUILL reference string. Raises `ValueError` if `ref_str` is not a valid `QuillReference`.
     fn set_quill_ref(&mut self, ref_str: &str) -> PyResult<()> {
         let qr: quillmark_core::QuillReference = ref_str.parse().map_err(|e| {
             PyValueError::new_err(format!("invalid QuillReference '{}': {}", ref_str, e))
@@ -566,33 +444,19 @@ impl PyDocument {
         Ok(())
     }
 
-    /// Replace the main card's body (the global Markdown body).
-    ///
-    /// This method never modifies `warnings`.
     fn replace_body(&mut self, body: &str) {
         self.inner.main_mut().replace_body(body);
     }
 
-    /// Append a card to the card list.
-    ///
-    /// `card` must be a dict with a `kind` key (str) and optional `fields` (dict)
-    /// and `body` (str).
-    ///
-    /// Raises `quillmark.EditError` if `card["kind"]` is not a valid kind name or
-    /// if any field name is invalid.
-    ///
-    /// This method never modifies `warnings`.
+    /// Append a card dict (`kind`, optional `fields`, optional `body`) to the card list.
+    /// Raises `quillmark.EditError` if `card["kind"]` or any field name is invalid.
     fn push_card(&mut self, card: Bound<'_, PyAny>) -> PyResult<()> {
         let core_card = py_dict_to_card(&card)?;
         self.inner.push_card(core_card);
         Ok(())
     }
 
-    /// Insert a card at the given index.
-    ///
-    /// `index` must be in `0..=len`. Out-of-range raises `quillmark.EditError`.
-    ///
-    /// This method never modifies `warnings`.
+    /// Insert a card at `index` (must be in `0..=len`). Out-of-range raises `quillmark.EditError`.
     fn insert_card(&mut self, index: usize, card: Bound<'_, PyAny>) -> PyResult<()> {
         let core_card = py_dict_to_card(&card)?;
         self.inner
@@ -601,8 +465,6 @@ impl PyDocument {
     }
 
     /// Remove and return the card at `index`, or `None` if out of range.
-    ///
-    /// This method never modifies `warnings`.
     fn remove_card<'py>(
         &mut self,
         py: Python<'py>,
@@ -614,41 +476,24 @@ impl PyDocument {
         }
     }
 
-    /// Move the card at `from_idx` to position `to_idx`.
-    ///
-    /// `from_idx == to_idx` is a no-op. Both indices must be in `0..len`.
-    /// Out-of-range raises `quillmark.EditError`.
-    ///
-    /// This method never modifies `warnings`.
+    /// Move the card at `from_idx` to `to_idx`. Both must be in `0..len`; raises `quillmark.EditError` otherwise.
     fn move_card(&mut self, from_idx: usize, to_idx: usize) -> PyResult<()> {
         self.inner
             .move_card(from_idx, to_idx)
             .map_err(convert_edit_error)
     }
 
-    /// Replace the `$kind` of the composable card at `index`.
-    ///
-    /// Mutates only the `$kind` — the card's payload and body are
-    /// untouched. Schema-aware migration (clearing orphan fields, applying
-    /// new defaults) is the caller's responsibility; `set_card_kind` is a
-    /// structural primitive.
-    ///
-    /// Raises `quillmark.EditError` if `index` is out of range or `new_kind`
-    /// does not match `[a-z_][a-z0-9_]*`.
-    ///
-    /// This method never modifies `warnings`.
+    /// Replace the `$kind` of the card at `index`. Payload and body are untouched;
+    /// schema-aware migration is the caller's responsibility.
+    /// Raises `quillmark.EditError` if `index` is out of range or `new_kind` is invalid.
     fn set_card_kind(&mut self, index: usize, new_kind: &str) -> PyResult<()> {
         self.inner
             .set_card_kind(index, new_kind)
             .map_err(convert_edit_error)
     }
 
-    /// Update a field on the card at `index`.
-    ///
-    /// Raises `quillmark.EditError` if `index` is out of range, `name` is
-    /// reserved or invalid, or `value` cannot be converted.
-    ///
-    /// This method never modifies `warnings`.
+    /// Update a field on the card at `index`. Raises `quillmark.EditError` if `index` is out of range
+    /// or `name` is reserved or invalid.
     fn update_card_field(
         &mut self,
         index: usize,
@@ -663,13 +508,8 @@ impl PyDocument {
         card.set_field(name, qv).map_err(convert_edit_error)
     }
 
-    /// Remove a payload field from the card at `index`, returning the value
-    /// or `None` if the field was absent.
-    ///
-    /// Raises `quillmark.EditError` if `index` is out of range, `name` is
-    /// reserved, or `name` does not match `[a-z_][a-z0-9_]*`.
-    ///
-    /// This method never modifies `warnings`.
+    /// Remove a field from the card at `index`, returning the value or `None` if absent.
+    /// Raises `quillmark.EditError` if `index` is out of range or `name` is reserved or invalid.
     fn remove_card_field<'py>(
         &mut self,
         py: Python<'py>,
@@ -686,11 +526,7 @@ impl PyDocument {
         }
     }
 
-    /// Replace the body of the card at `index`.
-    ///
-    /// Raises `quillmark.EditError` if `index` is out of range.
-    ///
-    /// This method never modifies `warnings`.
+    /// Replace the body of the card at `index`. Raises `quillmark.EditError` if out of range.
     fn update_card_body(&mut self, index: usize, body: &str) -> PyResult<()> {
         let len = self.inner.cards().len();
         let card = self.inner.card_mut(index).ok_or_else(|| {
@@ -701,7 +537,6 @@ impl PyDocument {
     }
 }
 
-// RenderResult wrapper
 #[pyclass(name = "RenderResult")]
 pub struct PyRenderResult {
     pub(crate) inner: RenderResult,
@@ -721,30 +556,19 @@ impl PyRenderSession {
     }
 
     /// The backend that produced this session (e.g. `"typst"`).
-    ///
-    /// Equal to the `backend` of the [`Quill`] that opened this session
-    /// (sessions inherit their quill's backend).
     #[getter]
     fn backend_id(&self) -> &str {
         &self.backend_id
     }
 
-    /// Whether this session's backend supports canvas preview.
-    ///
-    /// Currently equal to `backend_id == "typst"`. Matches the wasm binding's
-    /// `RenderSession.supportsCanvas` shape.
+    /// Whether this session's backend supports canvas preview (currently `backend_id == "typst"`).
     #[getter]
     fn supports_canvas(&self) -> bool {
         self.backend_id == CANVAS_BACKEND_ID
     }
 
-    /// Session-level warnings attached at `quill.open(...)` time.
-    ///
-    /// Snapshot of any non-fatal diagnostics emitted while opening the
-    /// session (e.g. version-compatibility shims). Stable across the
-    /// session's lifetime. These are also appended to
-    /// `RenderResult.warnings` on every `render()` call; this accessor
-    /// surfaces them for consumers that don't go through `render()`.
+    /// Non-fatal diagnostics from `quill.open(...)` (e.g. version-compatibility shims).
+    /// Also appended to `RenderResult.warnings` on each `render()` call.
     #[getter]
     fn warnings(&self) -> Vec<PyDiagnostic> {
         self.inner
@@ -799,7 +623,6 @@ impl PyRenderResult {
     }
 }
 
-// Artifact wrapper
 #[pyclass(name = "Artifact")]
 #[derive(Clone)]
 pub struct PyArtifact {
@@ -839,7 +662,6 @@ impl PyArtifact {
     }
 }
 
-// Diagnostic wrapper
 #[pyclass(name = "Diagnostic")]
 #[derive(Clone)]
 pub struct PyDiagnostic {
@@ -891,7 +713,6 @@ impl PyDiagnostic {
     }
 }
 
-// Location wrapper
 #[pyclass(name = "Location")]
 #[derive(Clone)]
 pub struct PyLocation {
@@ -916,7 +737,6 @@ impl PyLocation {
     }
 }
 
-// Helper function to convert QuillValue (backed by JSON) to Python objects
 fn quillvalue_to_py<'py>(
     py: Python<'py>,
     value: &quillmark_core::QuillValue,
@@ -924,7 +744,6 @@ fn quillvalue_to_py<'py>(
     json_to_py(py, value.as_json())
 }
 
-// Helper: convert a typed Card into the Python dict shape exposed to callers.
 fn card_to_pydict<'py>(
     py: Python<'py>,
     card: &quillmark_core::Card,
@@ -932,9 +751,6 @@ fn card_to_pydict<'py>(
     let d = PyDict::new(py);
     d.set_item("kind", card.kind().unwrap_or(""))?;
 
-    // Ordered item list — fields and comments in source order. Typed `$`
-    // entries are exposed via the typed accessors (e.g. `card["kind"]`);
-    // for full round-trip fidelity callers use `Document.to_json()`.
     let items = pyo3::types::PyList::empty(py);
     for item in card.payload().items() {
         let entry = PyDict::new(py);
@@ -962,7 +778,6 @@ fn card_to_pydict<'py>(
     Ok(d)
 }
 
-// Helper function to convert JSON values to Python objects
 fn json_to_py<'py>(py: Python<'py>, value: &serde_json::Value) -> PyResult<Bound<'py, PyAny>> {
     match value {
         serde_json::Value::Null => py.None().into_bound_py_any(py),
@@ -998,11 +813,6 @@ fn json_to_py<'py>(py: Python<'py>, value: &serde_json::Value) -> PyResult<Bound
     }
 }
 
-// ── Python → Rust conversion helpers ─────────────────────────────────────────
-
-/// Convert a Python object to a [`quillmark_core::QuillValue`].
-///
-/// Supports: `None` → null, `bool`, `int`, `float`, `str`, `list`, `dict`.
 fn py_to_quillvalue(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::QuillValue> {
     let json = py_to_json(value)?;
     Ok(quillmark_core::QuillValue::from_json(json))
@@ -1045,13 +855,10 @@ fn py_to_json(value: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
         }
         return Ok(serde_json::Value::Object(map));
     }
-    // Fallback: convert to string
     let s = value.str()?.to_string();
     Ok(serde_json::Value::String(s))
 }
 
-/// Convert a Python dict `{"kind": str, "fields"?: dict, "body"?: str}` to a
-/// [`quillmark_core::Card`].  Raises `EditError` on invalid kind or field names.
 fn py_dict_to_card(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::Card> {
     let dict = value
         .downcast::<PyDict>()

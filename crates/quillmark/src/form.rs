@@ -1,47 +1,15 @@
 //! Schema-aware form views for form editors.
 //!
-//! This module provides [`Form`] — a read-only snapshot of a [`Document`]
-//! viewed through its [`Quill`] schema — and [`FormCard`], the per-card view.
-//! For each schema-declared field the view records the current value, the
-//! schema default, and the source of the effective value.
+//! Provides [`Form`] — a read-only snapshot of a [`Document`] viewed through
+//! its [`Quill`] schema — and [`FormCard`], the per-card view. Each
+//! schema-declared field records the current value, schema default, and source.
 //!
-//! # Entry points
-//!
-//! Consumers reach this module through methods on [`Quill`]:
-//!
-//! ```rust,no_run
-//! # use quillmark::{Quill, Document};
-//! # use quillmark::form::FormFieldSource;
-//! # fn example(quill: &Quill, doc: &Document) {
-//! let form = quill.form(doc);
-//!
-//! for (name, fv) in &form.main.values {
-//!     match fv.source {
-//!         FormFieldSource::Document => println!("{name}: {:?}", fv.value),
-//!         FormFieldSource::Default  => println!("{name}: (default) {:?}", fv.default),
-//!         FormFieldSource::Missing  => println!("{name}: MISSING"),
-//!     }
-//! }
-//!
-//! // A blank form for a fresh card the user is about to add:
-//! if let Some(blank) = quill.blank_card("indorsement") {
-//!     // render `blank.values`...
-//!     # let _ = blank;
-//! }
-//! # }
-//! ```
-//!
-//! # Snapshot semantics
-//!
-//! A [`Form`] (or [`FormCard`]) is a read-only snapshot built at the moment
-//! the call returned. Subsequent edits to the document are not reflected;
-//! call `quill.form(doc)` again to obtain an updated snapshot.
-//!
-//! # Unknown card kinds
+//! Consumers reach this module through [`Quill::form`], [`Quill::blank_main`],
+//! and [`Quill::blank_card`]. A [`Form`] is a snapshot — re-call after edits.
 //!
 //! Cards whose kind is not declared in the schema are dropped from
-//! [`Form::cards`]. Each such card produces one [`Diagnostic`] in
-//! [`Form::diagnostics`] with code `"form::unknown_card_kind"`.
+//! [`Form::cards`]; each produces a [`Diagnostic`] with code
+//! `"form::unknown_card_kind"` in [`Form::diagnostics`].
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -51,7 +19,7 @@ use quillmark_core::{Diagnostic, Document, QuillValue, Severity};
 
 use crate::Quill;
 
-/// Source of a field's effective value in a form view.
+/// Source of a field's effective value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FormFieldSource {
@@ -63,14 +31,10 @@ pub enum FormFieldSource {
     Missing,
 }
 
-/// A single field's view within a [`FormCard`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FormFieldValue {
-    /// Current value from the document, if present.
     pub value: Option<QuillValue>,
-    /// Schema default value, if declared.
     pub default: Option<QuillValue>,
-    /// Where the effective value comes from.
     pub source: FormFieldSource,
 }
 
@@ -78,67 +42,38 @@ pub struct FormFieldValue {
 /// named card block.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FormCard {
-    /// The schema that governs this card.
     pub schema: CardSchema,
-    /// View of each schema-declared field.
-    ///
-    /// Keys follow `IndexMap` insertion order: schema field definition order,
-    /// stably re-sorted by `ui.order` when present.
+    /// Keys follow schema field definition order, re-sorted by `ui.order` when present.
     pub values: IndexMap<String, FormFieldValue>,
 }
 
 impl FormCard {
-    /// A blank form card for `schema` — no document values supplied. Every
-    /// declared field's source is [`FormFieldSource::Default`] (when the
-    /// schema declares a default) or [`FormFieldSource::Missing`].
-    ///
-    /// This is the "user is about to add a new card" view. Reach it through
-    /// [`Quill::blank_card`] or [`Quill::blank_main`] when you have a kind in
-    /// hand instead of a [`CardSchema`].
+    /// Blank form for `schema` with no document values — fields are
+    /// [`FormFieldSource::Default`] or [`FormFieldSource::Missing`].
+    /// Prefer [`Quill::blank_card`] / [`Quill::blank_main`] over this.
     pub fn blank(schema: &CardSchema) -> Self {
         project_card(schema, &IndexMap::new())
     }
 }
 
 /// Read-only snapshot of a [`Document`] viewed through a [`Quill`]'s schema.
-///
-/// Produced by [`Quill::form`]. Subsequent edits to the document are **not**
-/// reflected here — call `quill.form(doc)` again after editing.
-///
-/// # Unknown cards
-///
-/// Document cards whose kind is not declared in the schema are dropped and
-/// each produces a [`Diagnostic`] with code `"form::unknown_card_kind"` in
-/// [`Form::diagnostics`].
+/// Produced by [`Quill::form`]; re-call after editing the document.
+/// Unknown card kinds are dropped; each surfaces in [`Form::diagnostics`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Form {
-    /// View of the main document card (payload fields).
     pub main: FormCard,
-    /// View of each recognised card, in document order.
-    ///
     /// Cards with unknown kinds are excluded; see [`Form::diagnostics`].
     pub cards: Vec<FormCard>,
-    /// Diagnostics from unknown card kinds and validation.
     pub diagnostics: Vec<Diagnostic>,
 }
 
-// ── Internal projection ─────────────────────────────────────────────────────
-//
-// `project_card`, `build_form`, and `blank_card_for_kind` are the internal
-// machinery used by `Quill::form`, `Quill::blank_main`, and
-// `Quill::blank_card`. They are **deliberately not public**: consumers
-// reach the form module through methods on `Quill`, never by holding a
-// `CardSchema` and a field map directly.
+// Internal: `project_card`, `build_form`, and `blank_card_for_kind` are not
+// public — consumers go through `Quill` methods, never raw `CardSchema`.
 
-/// Build the [`Form`] for a document. Composes:
-/// - `QuillConfig::main` — the main card schema.
-/// - `QuillConfig::card_kind` — to look up card schemas by kind.
-/// - `QuillConfig::validate_document` — to gather validation diagnostics.
+/// Build the [`Form`] for a document.
 ///
-/// Coercion (`coerce_payload` / `coerce_card`) is **not** applied here:
-/// the form view is the document as-is so the editor sees what the user typed.
-/// Validation diagnostics already inform the consumer when values are
-/// type-mismatched.
+/// Coercion is **not** applied — the view shows the document as-is so the
+/// editor sees what the user typed; validation diagnostics flag mismatches.
 pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
 
@@ -186,8 +121,6 @@ pub(crate) fn build_form(quill: &Quill, doc: &Document) -> Form {
     }
 }
 
-/// Build a blank [`FormCard`] for a card kind, or `None` if the kind
-/// isn't declared in the quill's schema.
 pub(crate) fn blank_card_for_kind(quill: &Quill, card_kind: &str) -> Option<FormCard> {
     quill
         .source()
@@ -196,8 +129,6 @@ pub(crate) fn blank_card_for_kind(quill: &Quill, card_kind: &str) -> Option<Form
         .map(FormCard::blank)
 }
 
-/// Build a [`FormCard`] by walking each schema-declared field and looking up
-/// its value in `fields`.
 fn project_card(schema: &CardSchema, fields: &IndexMap<String, QuillValue>) -> FormCard {
     let mut values: IndexMap<String, FormFieldValue> = IndexMap::new();
 

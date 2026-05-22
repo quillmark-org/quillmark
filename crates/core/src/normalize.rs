@@ -1,71 +1,34 @@
 //! # Input Normalization
 //!
-//! This module provides input normalization for markdown content before parsing.
-//! Normalization ensures that invisible control characters and other artifacts
-//! that can interfere with markdown parsing are handled consistently.
+//! Preprocessing for markdown content before parsing. Handles invisible Unicode
+//! control characters (especially from copy-paste) that interfere with delimiter
+//! recognition, and HTML comment fences that would silently drop trailing text.
 //!
-//! ## Overview
+//! Double chevrons (`<<` and `>>`) are passed through unchanged.
 //!
-//! Input text may contain invisible Unicode characters (especially from copy-paste)
-//! that interfere with markdown parsing. This module provides functions to:
-//!
-//! - Strip Unicode bidirectional formatting characters that break delimiter recognition
-//! - Fix HTML comment fences to preserve trailing text
-//! - Apply all normalizations in the correct order
-//!
-//! Double chevrons (`<<` and `>>`) are passed through unchanged without conversion.
-//!
-//! ## Functions
-//!
-//! - [`strip_bidi_formatting`] - Remove Unicode bidi control characters
-//! - [`normalize_markdown`] - Apply all markdown-specific normalizations
-//! - [`normalize_document`] - Normalize a typed [`crate::document::Document`] in-place
-//!
-//! ## Why Normalize?
+//! ## Why normalize bidi characters?
 //!
 //! Unicode bidirectional formatting characters (LRO, RLO, LRE, RLE, etc.) are invisible
-//! control characters used for bidirectional text layout. When placed adjacent to markdown
-//! delimiters like `**`, they can prevent parsers from recognizing the delimiters:
+//! and when placed adjacent to markdown delimiters like `**` prevent parsers from
+//! recognizing them:
 //!
 //! ```text
 //! **bold** or <U+202D>**(1234**
-//!             ^^^^^^^^ invisible LRO here prevents second ** from being recognized as bold
+//!             ^^^^^^^^ invisible LRO prevents second ** from being recognized as bold
 //! ```
 //!
-//! These characters commonly appear when copying text from:
-//! - Web pages with mixed LTR/RTL content
-//! - PDF documents
-//! - Word processors
-//! - Some clipboard managers
-//!
-//! ## Examples
-//!
-//! ```
-//! use quillmark_core::normalize::strip_bidi_formatting;
-//!
-//! // Input with invisible U+202D (LRO) before second **
-//! let input = "**asdf** or \u{202D}**(1234**";
-//! let cleaned = strip_bidi_formatting(input);
-//! assert_eq!(cleaned, "**asdf** or **(1234**");
-//! ```
+//! These appear commonly when copying from web pages with mixed LTR/RTL content,
+//! PDFs, and word processors.
 
 use crate::document::Card;
 use unicode_normalization::UnicodeNormalization;
 
-/// Errors that can occur during normalization
 #[derive(Debug, thiserror::Error)]
 pub enum NormalizationError {
-    /// JSON nesting depth exceeded maximum allowed
     #[error("JSON nesting too deep: {depth} levels (max: {max} levels)")]
-    NestingTooDeep {
-        /// Actual depth
-        depth: usize,
-        /// Maximum allowed depth
-        max: usize,
-    },
+    NestingTooDeep { depth: usize, max: usize },
 }
 
-/// Check if a character is a Unicode bidirectional formatting character
 #[inline]
 fn is_bidi_char(c: char) -> bool {
     matches!(
@@ -87,41 +50,9 @@ fn is_bidi_char(c: char) -> bool {
 
 /// Strips Unicode bidirectional formatting characters that can interfere with markdown parsing.
 ///
-/// These invisible control characters are used for bidirectional text layout but can
-/// break markdown delimiter recognition when placed adjacent to `**`, `*`, `_`, etc.
-///
-/// # Characters Stripped
-///
-/// - U+061C (ARABIC LETTER MARK, ALM)
-/// - U+200E (LEFT-TO-RIGHT MARK, LRM)
-/// - U+200F (RIGHT-TO-LEFT MARK, RLM)
-/// - U+202A (LEFT-TO-RIGHT EMBEDDING, LRE)
-/// - U+202B (RIGHT-TO-LEFT EMBEDDING, RLE)
-/// - U+202C (POP DIRECTIONAL FORMATTING, PDF)
-/// - U+202D (LEFT-TO-RIGHT OVERRIDE, LRO)
-/// - U+202E (RIGHT-TO-LEFT OVERRIDE, RLO)
-/// - U+2066 (LEFT-TO-RIGHT ISOLATE, LRI)
-/// - U+2067 (RIGHT-TO-LEFT ISOLATE, RLI)
-/// - U+2068 (FIRST STRONG ISOLATE, FSI)
-/// - U+2069 (POP DIRECTIONAL ISOLATE, PDI)
-///
-/// # Examples
-///
-/// ```
-/// use quillmark_core::normalize::strip_bidi_formatting;
-///
-/// // Normal text is unchanged
-/// assert_eq!(strip_bidi_formatting("hello"), "hello");
-///
-/// // LRO character is stripped
-/// assert_eq!(strip_bidi_formatting("he\u{202D}llo"), "hello");
-///
-/// // All bidi characters are stripped
-/// let input = "\u{200E}\u{200F}\u{202A}\u{202B}\u{202C}\u{202D}\u{202E}";
-/// assert_eq!(strip_bidi_formatting(input), "");
-/// ```
+/// Removes all of ALM (U+061C), LRM/RLM (U+200E/F), LRE/RLE/PDF/LRO/RLO
+/// (U+202A–202E), and LRI/RLI/FSI/PDI (U+2066–2069).
 pub fn strip_bidi_formatting(s: &str) -> String {
-    // Early return optimization: avoid allocation if no bidi characters present
     if !s.chars().any(is_bidi_char) {
         return s.to_string();
     }
@@ -129,66 +60,29 @@ pub fn strip_bidi_formatting(s: &str) -> String {
     s.chars().filter(|c| !is_bidi_char(*c)).collect()
 }
 
-/// Fixes HTML comment closing fences to prevent content loss.
+/// Inserts a newline after `-->` when followed by non-whitespace content.
 ///
-/// According to CommonMark, HTML block type 2 (comments) ends with the line containing `-->`.
-/// This means any text on the same line after `-->` is included in the HTML block and would
-/// be discarded by markdown parsers that ignore HTML blocks.
-///
-/// This function inserts a newline after `-->` when followed by non-whitespace content,
-/// ensuring the trailing text is parsed as regular markdown.
-///
-/// # Examples
-///
-/// ```
-/// use quillmark_core::normalize::fix_html_comment_fences;
-///
-/// // Text on same line as --> is moved to next line
-/// assert_eq!(
-///     fix_html_comment_fences("<!-- comment -->Some text"),
-///     "<!-- comment -->\nSome text"
-/// );
-///
-/// // Already on separate line - no change
-/// assert_eq!(
-///     fix_html_comment_fences("<!-- comment -->\nSome text"),
-///     "<!-- comment -->\nSome text"
-/// );
-///
-/// // Only whitespace after --> - no change needed
-/// assert_eq!(
-///     fix_html_comment_fences("<!-- comment -->   \nSome text"),
-///     "<!-- comment -->   \nSome text"
-/// );
-///
-/// // Multi-line comments with trailing text
-/// assert_eq!(
-///     fix_html_comment_fences("<!--\nmultiline\n-->Trailing text"),
-///     "<!--\nmultiline\n-->\nTrailing text"
-/// );
-/// ```
+/// CommonMark HTML block type 2 ends with the line containing `-->`, so any
+/// text on the same line after `-->` would be swallowed. This function is
+/// context-aware: only closing fences inside a `<!-- ... -->` pair are fixed;
+/// bare `-->` outside a comment is left untouched.
 pub fn fix_html_comment_fences(s: &str) -> String {
-    // Early return if no HTML comment closing fence present
     if !s.contains("-->") {
         return s.to_string();
     }
 
-    // Context-aware processing: only fix `-->` if we are inside a comment started by `<!--`
     let mut result = String::with_capacity(s.len() + 16);
     let mut current_pos = 0;
 
-    // Find first opener
     while let Some(open_idx) = s[current_pos..].find("<!--") {
         let abs_open = current_pos + open_idx;
 
-        // Find matching closer AFTER the opener
         if let Some(close_idx) = s[abs_open..].find("-->") {
             let abs_close = abs_open + close_idx;
             let mut after_fence = abs_close + 3;
 
-            // Handle `<!--- ... --->` style fences by treating the extra
-            // hyphen as part of the comment content, not leaked trailing text.
-            // 4 == "<!--".len(); check whether opener is `<!---` (extra hyphen).
+            // Handle `<!--- ... --->` style fences: the extra hyphen is part of
+            // the fence, not leaked trailing text.
             let opener_has_extra_hyphen = s
                 .get(abs_open + 4..)
                 .is_some_and(|rest| rest.starts_with('-'));
@@ -199,20 +93,16 @@ pub fn fix_html_comment_fences(s: &str) -> String {
                 after_fence += 1;
             }
 
-            // Append everything up to and including the closing fence
             result.push_str(&s[current_pos..after_fence]);
 
-            // Check what comes after the fence
             let after_content = &s[after_fence..];
 
-            // Determine if we need to insert a newline
             let needs_newline = if after_content.is_empty()
                 || after_content.starts_with('\n')
                 || after_content.starts_with("\r\n")
             {
                 false
             } else {
-                // Check if there's only whitespace until end of line
                 let next_newline = after_content.find('\n');
                 let until_newline = match next_newline {
                     Some(pos) => &after_content[..pos],
@@ -225,18 +115,15 @@ pub fn fix_html_comment_fences(s: &str) -> String {
                 result.push('\n');
             }
 
-            // Move position to after the fence (we'll process the rest in next iteration)
             current_pos = after_fence;
         } else {
-            // Unclosed comment at end of string - just append the rest and break
-            // The opener was found but no closer exists.
+            // Unclosed comment — append the rest and stop.
             result.push_str(&s[current_pos..]);
             current_pos = s.len();
             break;
         }
     }
 
-    // Append remaining content (text after last closed comment, or text if no comments found)
     if current_pos < s.len() {
         result.push_str(&s[current_pos..]);
     }
@@ -244,27 +131,8 @@ pub fn fix_html_comment_fences(s: &str) -> String {
     result
 }
 
-/// Normalizes markdown content by applying all preprocessing steps.
-///
-/// This function applies normalizations in the correct order:
-/// 1. Strip Unicode bidirectional formatting characters
-/// 2. Fix HTML comment closing fences (ensure text after `-->` is preserved)
-///
-/// # Examples
-///
-/// ```
-/// use quillmark_core::normalize::normalize_markdown;
-///
-/// // Bidi characters are stripped
-/// let input = "**bold** \u{202D}**more**";
-/// let normalized = normalize_markdown(input);
-/// assert_eq!(normalized, "**bold** **more**");
-///
-/// // HTML comment trailing text is preserved
-/// let with_comment = "<!-- comment -->Some text";
-/// let normalized = normalize_markdown(with_comment);
-/// assert_eq!(normalized, "<!-- comment -->\nSome text");
-/// ```
+/// Applies all markdown normalizations in order: CRLF → LF, bidi strip,
+/// HTML comment fence repair.
 pub fn normalize_markdown(markdown: &str) -> String {
     let cleaned = normalize_line_endings(markdown);
     let cleaned = strip_bidi_formatting(&cleaned);
@@ -273,11 +141,9 @@ pub fn normalize_markdown(markdown: &str) -> String {
 
 /// Convert CRLF (`\r\n`) and bare CR (`\r`) line endings to LF (`\n`).
 ///
-/// YAML parsing already normalizes line endings inside scalar values, but the
-/// Markdown body is passed through verbatim. Authoring on Windows or pasting
-/// from some clipboard sources leaves `\r` bytes in the body which some
-/// backends render as visible garbage. This canonicalization is performed
-/// only on the Markdown body (see §7); YAML scalars are unaffected.
+/// Applied only to the Markdown body (spec §7); YAML scalars are unaffected.
+/// Necessary because YAML parsing normalizes its own scalars but passes the
+/// body verbatim, and some Windows/clipboard sources leave bare `\r` bytes.
 fn normalize_line_endings(s: &str) -> String {
     if !s.contains('\r') {
         return s.to_string();
@@ -297,58 +163,20 @@ fn normalize_line_endings(s: &str) -> String {
     out
 }
 
-/// Normalize field name to Unicode NFC (Canonical Decomposition, followed by Canonical Composition)
-///
-/// This ensures that equivalent Unicode strings (e.g., "café" composed vs decomposed)
-/// are treated as identical field names, preventing subtle bugs where visually
-/// identical keys are treated as different.
-///
-/// # Examples
-///
-/// ```
-/// use quillmark_core::normalize::normalize_field_name;
-///
-/// // Composed form (single code point for é)
-/// let composed = "café";
-/// // Decomposed form (e + combining acute accent)
-/// let decomposed = "cafe\u{0301}";
-///
-/// // Both normalize to the same NFC form
-/// assert_eq!(normalize_field_name(composed), normalize_field_name(decomposed));
-/// ```
+/// Normalize field name to Unicode NFC, so visually identical keys
+/// (e.g., composed `"café"` vs decomposed `"cafe\u{0301}"`) are treated as equal.
 pub fn normalize_field_name(name: &str) -> String {
     name.nfc().collect()
 }
 
-/// Normalizes a typed [`crate::document::Document`] by applying all field-level normalizations.
+/// Primary entry point for normalizing a [`crate::document::Document`] after parsing.
 ///
-/// This is the **primary entry point** for normalizing documents after parsing.
-/// It ensures consistent processing regardless of how the document was created.
+/// Per-card normalization:
+/// 1. Payload field names → Unicode NFC.
+/// 2. Card body → bidi-stripped + HTML comment fence repair (spec §7).
+///    YAML field *values* pass through verbatim.
 ///
-/// # Normalization Steps
-///
-/// 1. **Unicode NFC normalization** — Payload field names are normalized to NFC form.
-/// 2. **Bidi stripping** — Invisible bidirectional control characters are removed from
-///    body regions (each `Card::body`). YAML field values in every
-///    `Card::payload` pass through verbatim (spec §7).
-/// 3. **HTML comment fence fixing** — Trailing text after `-->` is preserved in body
-///    regions only.
-///
-/// Double chevrons (`<<` and `>>`) are passed through unchanged without conversion.
-///
-/// # Idempotency
-///
-/// This function is idempotent — calling it multiple times produces the same result.
-///
-/// # Example
-///
-/// ```no_run
-/// use quillmark_core::{Document, normalize::normalize_document};
-///
-/// let markdown = "~~~card-yaml\n$quill: my_quill\n$kind: main\ntitle: Example\n~~~\n\nBody with <<placeholder>>";
-/// let doc = Document::from_markdown(markdown).unwrap();
-/// let normalized = normalize_document(doc).unwrap();
-/// ```
+/// Idempotent — calling multiple times produces the same result.
 pub fn normalize_document(
     doc: crate::document::Document,
 ) -> Result<crate::document::Document, crate::error::ParseError> {
@@ -365,11 +193,6 @@ pub fn normalize_document(
 }
 
 /// Build a new `Card` with NFC-normalized field names and a normalized body.
-///
-/// The card's payload is cloned and walked: each user-field `key` is
-/// rewritten to NFC, and the body has Unicode normalization plus HTML
-/// comment fence repair applied. `$` system metadata, fill markers, and
-/// comments pass through verbatim.
 fn normalize_card(card: &Card) -> Card {
     use crate::document::PayloadItem;
     let mut payload = card.payload().clone();
@@ -388,8 +211,6 @@ fn normalize_card(card: &Card) -> Card {
 mod tests {
     use super::*;
 
-    // Tests for strip_bidi_formatting
-
     #[test]
     fn test_strip_bidi_no_change() {
         assert_eq!(strip_bidi_formatting("hello world"), "hello world");
@@ -399,7 +220,6 @@ mod tests {
 
     #[test]
     fn test_strip_bidi_lro() {
-        // U+202D (LEFT-TO-RIGHT OVERRIDE)
         assert_eq!(strip_bidi_formatting("he\u{202D}llo"), "hello");
         assert_eq!(
             strip_bidi_formatting("**asdf** or \u{202D}**(1234**"),
@@ -409,19 +229,16 @@ mod tests {
 
     #[test]
     fn test_strip_bidi_rlo() {
-        // U+202E (RIGHT-TO-LEFT OVERRIDE)
         assert_eq!(strip_bidi_formatting("he\u{202E}llo"), "hello");
     }
 
     #[test]
     fn test_strip_bidi_marks() {
-        // U+200E (LRM) and U+200F (RLM)
         assert_eq!(strip_bidi_formatting("a\u{200E}b\u{200F}c"), "abc");
     }
 
     #[test]
     fn test_strip_bidi_embeddings() {
-        // U+202A (LRE), U+202B (RLE), U+202C (PDF)
         assert_eq!(
             strip_bidi_formatting("\u{202A}text\u{202B}more\u{202C}"),
             "textmore"
@@ -430,7 +247,6 @@ mod tests {
 
     #[test]
     fn test_strip_bidi_isolates() {
-        // U+2066 (LRI), U+2067 (RLI), U+2068 (FSI), U+2069 (PDI)
         assert_eq!(
             strip_bidi_formatting("\u{2066}a\u{2067}b\u{2068}c\u{2069}"),
             "abc"
@@ -445,20 +261,16 @@ mod tests {
 
     #[test]
     fn test_strip_bidi_arabic_letter_mark() {
-        // U+061C ARABIC LETTER MARK (ALM) should be stripped
         assert_eq!(strip_bidi_formatting("hello\u{061C}world"), "helloworld");
         assert_eq!(strip_bidi_formatting("\u{061C}**bold**"), "**bold**");
     }
 
     #[test]
     fn test_strip_bidi_unicode_preserved() {
-        // Non-bidi unicode should be preserved
         assert_eq!(strip_bidi_formatting("你好世界"), "你好世界");
         assert_eq!(strip_bidi_formatting("مرحبا"), "مرحبا");
         assert_eq!(strip_bidi_formatting("🎉"), "🎉");
     }
-
-    // Tests for normalize_markdown
 
     #[test]
     fn test_normalize_markdown_basic() {
@@ -477,8 +289,6 @@ mod tests {
         );
     }
 
-    // Tests for fix_html_comment_fences
-
     #[test]
     fn test_fix_html_comment_no_comment() {
         assert_eq!(fix_html_comment_fences("hello world"), "hello world");
@@ -488,7 +298,6 @@ mod tests {
 
     #[test]
     fn test_fix_html_comment_single_line_trailing_text() {
-        // Text on same line as --> should be moved to next line
         assert_eq!(
             fix_html_comment_fences("<!-- comment -->Same line text"),
             "<!-- comment -->\nSame line text"
@@ -497,7 +306,6 @@ mod tests {
 
     #[test]
     fn test_fix_html_comment_already_newline() {
-        // Already has newline after --> - no change
         assert_eq!(
             fix_html_comment_fences("<!-- comment -->\nNext line text"),
             "<!-- comment -->\nNext line text"
@@ -506,7 +314,6 @@ mod tests {
 
     #[test]
     fn test_fix_html_comment_only_whitespace_after() {
-        // Only whitespace after --> until newline - no change needed
         assert_eq!(
             fix_html_comment_fences("<!-- comment -->   \nSome text"),
             "<!-- comment -->   \nSome text"
@@ -515,7 +322,6 @@ mod tests {
 
     #[test]
     fn test_fix_html_comment_multiline_trailing_text() {
-        // Multi-line comment with text on closing line
         assert_eq!(
             fix_html_comment_fences("<!--\nmultiline\ncomment\n-->Trailing text"),
             "<!--\nmultiline\ncomment\n-->\nTrailing text"
@@ -524,7 +330,6 @@ mod tests {
 
     #[test]
     fn test_fix_html_comment_multiline_proper() {
-        // Multi-line comment with proper newline after -->
         assert_eq!(
             fix_html_comment_fences("<!--\nmultiline\n-->\n\nParagraph text"),
             "<!--\nmultiline\n-->\n\nParagraph text"
@@ -533,7 +338,6 @@ mod tests {
 
     #[test]
     fn test_fix_html_comment_multiple_comments() {
-        // Multiple comments in the same document
         assert_eq!(
             fix_html_comment_fences("<!-- first -->Text\n\n<!-- second -->More text"),
             "<!-- first -->\nText\n\n<!-- second -->\nMore text"
@@ -542,7 +346,6 @@ mod tests {
 
     #[test]
     fn test_fix_html_comment_end_of_string() {
-        // Comment at end of string - no trailing content
         assert_eq!(
             fix_html_comment_fences("Some text before <!-- comment -->"),
             "Some text before <!-- comment -->"
@@ -551,7 +354,6 @@ mod tests {
 
     #[test]
     fn test_fix_html_comment_only_comment() {
-        // Just a comment with nothing after
         assert_eq!(
             fix_html_comment_fences("<!-- comment -->"),
             "<!-- comment -->"
@@ -560,16 +362,12 @@ mod tests {
 
     #[test]
     fn test_fix_html_comment_arrow_not_comment() {
-        // --> that's not part of a comment (standalone)
-        // Should NOT be touched by the context-aware fixer
         assert_eq!(fix_html_comment_fences("-->some text"), "-->some text");
     }
 
     #[test]
     fn test_fix_html_comment_nested_opener() {
-        // Nested openers are just text inside the comment
-        // <!-- <!-- -->Trailing
-        // The first <!-- opens, the first --> closes.
+        // The first <!-- opens, the first --> closes; inner <!-- is just text.
         assert_eq!(
             fix_html_comment_fences("<!-- <!-- -->Trailing"),
             "<!-- <!-- -->\nTrailing"
@@ -578,7 +376,6 @@ mod tests {
 
     #[test]
     fn test_fix_html_comment_unmatched_closer() {
-        // Closer without opener
         assert_eq!(
             fix_html_comment_fences("text --> more text"),
             "text --> more text"
@@ -587,10 +384,6 @@ mod tests {
 
     #[test]
     fn test_fix_html_comment_multiple_valid_invalid() {
-        // Mixed valid and invalid comments
-        // <!-- valid -->FixMe
-        // text --> Ignore
-        // <!-- valid2 -->FixMe2
         let input = "<!-- valid -->FixMe\ntext --> Ignore\n<!-- valid2 -->FixMe2";
         let expected = "<!-- valid -->\nFixMe\ntext --> Ignore\n<!-- valid2 -->\nFixMe2";
         assert_eq!(fix_html_comment_fences(input), expected);
@@ -598,7 +391,6 @@ mod tests {
 
     #[test]
     fn test_fix_html_comment_crlf() {
-        // CRLF line endings
         assert_eq!(
             fix_html_comment_fences("<!-- comment -->\r\nSome text"),
             "<!-- comment -->\r\nSome text"
@@ -621,8 +413,6 @@ mod tests {
         );
     }
 
-    // Tests for normalize_document
-
     #[test]
     fn test_normalize_document_basic() {
         use crate::document::Document;
@@ -633,7 +423,6 @@ mod tests {
         .unwrap();
         let normalized = super::normalize_document(doc).unwrap();
 
-        // Title has chevrons preserved (only bidi stripped on body)
         assert_eq!(
             normalized
                 .main()
@@ -645,7 +434,6 @@ mod tests {
             "<<placeholder>>"
         );
 
-        // Body has bidi stripped, chevrons preserved
         assert_eq!(normalized.main().body(), "\n<<content>> **bold**");
     }
 
@@ -697,7 +485,6 @@ mod tests {
         )
         .unwrap();
         let normalized = super::normalize_document(doc).unwrap();
-        // Bidi preserved in YAML fields
         assert_eq!(
             normalized
                 .main()

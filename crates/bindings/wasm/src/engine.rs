@@ -7,11 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
-/// TypeScript declarations for the quill metadata surface and form view.
-///
-/// Emitted via `typescript_custom_section` so the types land in the generated
-/// `.d.ts` as a single source of truth. Consumers can import these directly
-/// rather than redeclaring the shape locally.
+/// TypeScript declarations for the quill metadata and form view surfaces.
+/// Emitted via `typescript_custom_section` as the single source of truth.
 #[wasm_bindgen(typescript_custom_section)]
 const METADATA_FORM_TS: &'static str = r#"
 /** UI layout hints for a single field. */
@@ -122,12 +119,8 @@ export interface Form {
 }
 "#;
 
-/// TypeScript declaration for the `pushCard` / `insertCard` input shape.
-///
-/// `kind` is required; `fields` and `body` are optional (defaulted by serde).
-/// Emitted via `typescript_custom_section` so it lands in the generated
-/// `.d.ts` without forcing consumers to import a nominal type — the
-/// `unchecked_param_type` attribute on each method references it by name.
+/// TypeScript declaration for `pushCard`/`insertCard` input shape.
+/// Referenced by name via `unchecked_param_type` on those methods.
 #[wasm_bindgen(typescript_custom_section)]
 const CARD_INPUT_TS: &'static str = r#"
 /**
@@ -174,31 +167,22 @@ fn now_ms() -> f64 {
     }
 }
 
-/// Quillmark WASM Engine
 #[wasm_bindgen]
 pub struct Quillmark {
     inner: quillmark::Quillmark,
 }
 
-/// Opaque, shareable Quill handle.
 #[wasm_bindgen]
 pub struct Quill {
     inner: quillmark::Quill,
 }
 
-/// An iterative render handle backed by an immutable compiled snapshot.
+/// Iterative render handle backed by an immutable compiled snapshot.
 ///
-/// Created via [`Quill::open`]. Holds the compiled output so that
-/// [`RenderSession::render`], [`RenderSession::paint`], and
-/// [`RenderSession::page_size`] can be called repeatedly without
-/// recompiling.
-///
-/// **Empty documents.** A document that compiles to zero pages still
-/// produces a valid session (`pageCount === 0`). Iterating
-/// `0..pageCount` is then a no-op; calling `paint(ctx, 0)` or
-/// `pageSize(0)` throws `"... page index 0 out of range
-/// (pageCount=0)"`. Hosts that surface "no pages to preview" UI should
-/// branch on `pageCount === 0` rather than on a thrown error.
+/// **Empty documents.** A zero-page document yields a valid session
+/// (`pageCount === 0`); `paint(ctx, 0)` or `pageSize(0)` throws with
+/// `"page index 0 out of range (pageCount=0)"`. Branch on `pageCount === 0`
+/// rather than catching the error.
 #[wasm_bindgen]
 pub struct RenderSession {
     inner: quillmark_core::RenderSession,
@@ -206,16 +190,6 @@ pub struct RenderSession {
 }
 
 /// Typed in-memory Quillmark document.
-///
-/// Created via `Document.fromMarkdown(markdown)`. Exposes:
-/// - `quillRef` (string)
-/// - `body` (string)
-/// - `main` / `cards` (entry / composable Card objects, each carrying
-///   `kind`, `payloadItems`, and `body`)
-/// - `warnings` (array of Diagnostic objects)
-///
-/// `toMarkdown()` emits canonical Quillmark Markdown that round-trips back to
-/// an equal `Document` by value and by type.
 #[wasm_bindgen]
 pub struct Document {
     inner: quillmark_core::Document,
@@ -231,7 +205,6 @@ impl Default for Quillmark {
 
 #[wasm_bindgen]
 impl Quillmark {
-    /// JavaScript constructor: `new Quillmark()`
     #[wasm_bindgen(constructor)]
     pub fn new() -> Quillmark {
         Quillmark {
@@ -261,7 +234,6 @@ impl Quillmark {
 
 #[wasm_bindgen]
 impl Quill {
-    /// Render a document to final artifacts.
     #[wasm_bindgen(js_name = render)]
     pub fn render(
         &self,
@@ -285,7 +257,6 @@ impl Quill {
         })
     }
 
-    /// Open an iterative render session for page-selective rendering.
     #[wasm_bindgen(js_name = open)]
     pub fn open(&self, doc: &Document) -> Result<RenderSession, JsValue> {
         let session = self
@@ -304,18 +275,14 @@ impl Quill {
         self.inner.backend_id().to_string()
     }
 
-    /// Whether this quill's backend supports canvas preview.
-    ///
     /// `true` iff `RenderSession.paint` and `RenderSession.pageSize` will
-    /// succeed for sessions opened by this quill. Use this as a precondition
-    /// probe before mounting a canvas-based preview UI; the throw on `paint`
-    /// remains the enforcement contract.
+    /// succeed for sessions opened by this quill. Use as a precondition
+    /// probe before mounting a canvas-based preview UI.
     #[wasm_bindgen(getter, js_name = supportsCanvas)]
     pub fn supports_canvas(&self) -> bool {
         self.inner.backend_id() == CANVAS_BACKEND_ID
     }
 
-    /// Auto-generated annotated Markdown blueprint for LLM consumers.
     #[wasm_bindgen(getter, js_name = blueprint)]
     pub fn blueprint(&self) -> String {
         self.inner.source().config().blueprint()
@@ -330,13 +297,7 @@ impl Quill {
     }
 
     /// Identity snapshot of the `quill:` section of `Quill.yaml`, plus
-    /// `supportedFormats` and any custom `quill:` keys.
-    ///
-    /// Consumers that need validation run their own validator against
-    /// `metadata.schema`.
-    ///
-    /// Equivalent by value for the lifetime of the handle; the quill is
-    /// immutable once constructed.
+    /// `supportedFormats` and any extra `quill:` keys.
     #[wasm_bindgen(getter, js_name = metadata, unchecked_return_type = "QuillMetadata")]
     pub fn metadata(&self) -> JsValue {
         let source = self.inner.source();
@@ -398,23 +359,8 @@ impl Quill {
         val.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
     }
 
-    /// The schema-aware form view of `doc`.
-    ///
-    /// Returns a plain JS object (not a class) that is immediately
-    /// `JSON.stringify`-able. The shape mirrors [`Form`]:
-    ///
-    /// ```json
-    /// {
-    ///   "main":  { "schema": {...}, "values": { "field": {...} } },
-    ///   "cards": [ ... ],
-    ///   "diagnostics": [ ... ]
-    /// }
-    /// ```
-    ///
-    /// **Snapshot semantics.** This is a read-only snapshot of the document
-    /// at call time. Subsequent edits to `doc` require calling `form` again.
-    ///
-    /// [`Form`]: quillmark::form::Form
+    /// The schema-aware form view of `doc`. Read-only snapshot at call time;
+    /// subsequent edits to `doc` require calling `form` again.
     #[wasm_bindgen(js_name = form, unchecked_return_type = "Form")]
     pub fn form(&self, doc: &Document) -> Result<JsValue, JsValue> {
         let form = self.inner.form(&doc.inner);
@@ -425,13 +371,8 @@ impl Quill {
             .map_err(|e| WasmError::from(format!("form: serialization failed: {e}")).to_js_value())
     }
 
-    /// A blank form for the main card — no document values supplied.
-    ///
-    /// Returns a plain JS object with the same shape as one entry in
-    /// [`Form::main`]. Every declared field's `source` is `"default"` (when
-    /// the schema declares a default) or `"missing"`.
-    ///
-    /// [`Form::main`]: quillmark::form::Form::main
+    /// Blank `FormCard` for the main card with no document values.
+    /// Every field's `source` is `"default"` or `"missing"`.
     #[wasm_bindgen(js_name = blankMain, unchecked_return_type = "FormCard")]
     pub fn blank_main(&self) -> Result<JsValue, JsValue> {
         let card = self.inner.blank_main();
@@ -443,13 +384,8 @@ impl Quill {
         })
     }
 
-    /// A blank form for a card of the given kind — no document values supplied.
-    ///
-    /// Returns `null` if `cardKind` is not declared in this quill's schema.
-    /// Otherwise returns a plain JS object shaped like a single entry in
-    /// [`Form::cards`].
-    ///
-    /// [`Form::cards`]: quillmark::form::Form::cards
+    /// Blank `FormCard` for the given card kind. Returns `null` if `cardKind`
+    /// is not declared in this quill's schema.
     #[wasm_bindgen(js_name = blankCard, unchecked_return_type = "FormCard | null")]
     pub fn blank_card(&self, card_kind: &str) -> Result<JsValue, JsValue> {
         match self.inner.blank_card(card_kind) {
@@ -468,10 +404,7 @@ impl Quill {
 
 #[wasm_bindgen]
 impl Document {
-    /// Parse markdown into a typed Document.
-    ///
-    /// Returns the document with any parse-time warnings accessible via `.warnings`.
-    /// Throws on parse errors.
+    /// Parse markdown into a typed Document. Throws on parse errors.
     #[wasm_bindgen(js_name = fromMarkdown)]
     pub fn from_markdown(markdown: &str) -> Result<Document, JsValue> {
         let output = quillmark_core::Document::from_markdown_with_warnings(markdown)
@@ -484,19 +417,12 @@ impl Document {
         })
     }
 
-    /// Reconstruct a `Document` from its versioned storage DTO string.
+    /// Reconstruct a `Document` from a versioned storage DTO string produced
+    /// by [`toJson`](Document::to_json). Unknown `schema` tags are rejected.
+    /// The result carries no parse-time warnings (`.warnings` is always empty).
     ///
-    /// `json` must be a string produced by [`toJson`](Document::to_json) —
-    /// the versioned storage DTO. Parsing and schema dispatch happen inside
-    /// the module via `serde_json`; the JS `JSON` global is not involved.
-    /// Unknown `schema` tags are rejected.
-    ///
-    /// The reconstructed document carries no parse-time warnings — the DTO
-    /// describes content, not source text — so `.warnings` is always empty.
-    ///
-    /// Throws a JS `Error` if `json` is not a valid storage DTO (malformed
-    /// JSON, unknown `schema`, missing fields, or an unparseable quill
-    /// reference).
+    /// Throws if `json` is not a valid storage DTO (malformed JSON, unknown
+    /// `schema`, missing fields, or unparseable quill reference).
     #[wasm_bindgen(js_name = fromJson)]
     pub fn from_json(json: &str) -> Result<Document, JsValue> {
         let inner: quillmark_core::Document = serde_json::from_str(json).map_err(|e| {
@@ -508,24 +434,15 @@ impl Document {
         })
     }
 
-    /// Reconstruct a `Document` from a storage DTO string, or `undefined`.
-    ///
-    /// Like [`fromJson`](Document::from_json), but returns `undefined`
-    /// instead of throwing when `json` is not a valid storage DTO. Use this
-    /// to detect format and fall back without exceptions as control flow:
-    ///
-    /// ```js
-    /// const doc = Document.tryFromJson(content) ?? Document.fromMarkdown(content);
-    /// ```
-    ///
-    /// `undefined` only ever means "not a storage DTO" — `fromMarkdown`
-    /// still throws on genuinely malformed markdown.
+    /// Like [`fromJson`](Document::from_json) but returns `undefined` instead
+    /// of throwing when `json` is not a valid storage DTO — use to
+    /// discriminate format without exceptions as control flow.
+    /// `undefined` means "not a storage DTO"; `fromMarkdown` still throws on
+    /// genuinely malformed markdown.
     //
     // No `tryFromMarkdown` counterpart: a malformed-markdown failure is a
     // real input error the caller wants to see, not a format-discriminator
-    // signal. The asymmetry is intentional — the only motivating use case
-    // is "is this content a storage DTO, or markdown?", and JSON is the
-    // discriminating side of that test.
+    // signal.
     #[wasm_bindgen(js_name = tryFromJson)]
     pub fn try_from_json(json: &str) -> Option<Document> {
         let inner: quillmark_core::Document = serde_json::from_str(json).ok()?;
@@ -535,50 +452,25 @@ impl Document {
         })
     }
 
-    /// Read the schema version from a raw storage DTO string without
-    /// performing a full parse, or `undefined`.
-    ///
-    /// Returns the `schema` field as-is — including unknown future versions
-    /// that `fromJson` would reject. Use this to distinguish "this build is
-    /// too old for the payload" from "the payload is corrupt" when
-    /// [`fromJson`](Document::from_json) throws:
-    ///
-    /// ```js
-    /// const v = Document.schemaVersionOf(blob);
-    /// if (v === undefined) {
-    ///   // not a stored DTO at all — try fromMarkdown
-    /// } else if (v !== Document.currentSchemaVersion()) {
-    ///   // newer (or older unmigrated) schema — prompt the user to upgrade
-    /// } else {
-    ///   doc = Document.fromJson(blob);
-    /// }
-    /// ```
+    /// Read the `schema` version tag from a raw storage DTO string without a
+    /// full parse, or `undefined`. Returns unknown future versions as-is —
+    /// useful to distinguish "build too old" from "payload corrupt" when
+    /// `fromJson` throws.
     #[wasm_bindgen(js_name = schemaVersionOf)]
     pub fn schema_version_of(json: &str) -> Option<String> {
         quillmark_core::document::peek_schema_version(json)
     }
 
     /// Schema version this build writes via [`toJson`](Document::to_json).
-    ///
-    /// Compare a payload's [`schemaVersionOf`](Document::schema_version_of)
-    /// against this to detect mismatches before calling
-    /// [`fromJson`](Document::from_json).
-    ///
-    /// The tag tracks the **`Document` model version** — the crate version
-    /// at which the wire format was last changed — not the running crate
-    /// version. Every patch and minor release within the same model
-    /// generation returns the same string; the tag advances only when a
-    /// new schema variant ships.
+    /// Tracks the `Document` model version (not the running crate version):
+    /// the tag advances only when the wire format changes, not on every release.
     #[wasm_bindgen(js_name = currentSchemaVersion)]
     pub fn current_schema_version() -> String {
         quillmark_core::document::SCHEMA_V0_82_0.to_string()
     }
 
-    /// Emit canonical Quillmark Markdown.
-    ///
-    /// Returns the document serialised as a Quillmark Markdown string.
-    /// The output is type-fidelity round-trip safe: re-parsing the result
-    /// produces a `Document` equal to `self` by value and by type.
+    /// Emit canonical Quillmark Markdown. Round-trip safe: re-parsing the
+    /// result produces a `Document` equal to `self` by value and by type.
     #[wasm_bindgen(js_name = toMarkdown)]
     pub fn to_markdown(&self) -> String {
         self.inner.to_markdown()
@@ -586,36 +478,12 @@ impl Document {
 
     /// Serialize this document to a versioned storage DTO string.
     ///
-    /// Returns the document as a JSON string carrying a `schema` version
-    /// field. The string is produced inside the module via `serde_json` and
-    /// round-trips losslessly back to an equal `Document` via
-    /// [`fromJson`](Document::from_json) — the JS `JSON` global is not
-    /// involved in either direction.
+    /// Prefer this over `toMarkdown` for persistence across restarts or crate
+    /// upgrades — the wire format is frozen per `schema` version. Parse-time
+    /// `warnings` are excluded from the DTO.
     ///
-    /// Use this — not [`toMarkdown`](Document::to_markdown) — to persist a
-    /// document across a process restart or crate upgrade; the wire format
-    /// is frozen per `schema` version, whereas Markdown syntax evolves.
-    /// Parse-time `warnings` are not part of the DTO.
-    ///
-    /// The result is standard JSON text, so callers that want to inspect it
-    /// may `JSON.parse` it — but treating it as an opaque blob is the
-    /// intended use.
-    ///
-    /// ## Byte-stability
-    ///
-    /// The output is a **byte-deterministic** function of the document's
-    /// value within a given `schema` version: two documents that compare
-    /// equal under [`equals`](Document::equals) serialize to byte-equal
-    /// strings, and the same document re-serialized in a later patch or
-    /// minor release of this crate (same `schema`) produces the same bytes.
-    /// Content-hash use cases (template-divergence detection, cache keys)
-    /// can rely on this without re-canonicalizing.
-    ///
-    /// Specifics: object fields are emitted in struct-declaration order;
-    /// frontmatter field values preserve their YAML insertion order (no
-    /// key sorting); whitespace is `serde_json`'s compact form (no spaces
-    /// between tokens, no trailing newline); strings use `serde_json`'s
-    /// standard escape set. A schema-version bump may change any of these.
+    /// Output is **byte-deterministic** within a `schema` version: equal
+    /// documents produce byte-equal output, safe for content-hash use cases.
     #[wasm_bindgen(js_name = toJson)]
     pub fn to_json(&self) -> String {
         // Infallible: every field of `Document` and its DTO serializes via
@@ -624,12 +492,6 @@ impl Document {
         serde_json::to_string(&self.inner).expect("Document serialization is infallible")
     }
 
-    /// Return a fresh `Document` handle with the same parse state.
-    ///
-    /// Mutations on the returned handle do not affect the original and
-    /// vice versa. Parse-time warnings are snapshotted alongside the
-    /// document — they describe the original parse, not the edit
-    /// history of either handle.
     #[wasm_bindgen(js_name = clone)]
     pub fn clone_doc(&self) -> Document {
         Document {
@@ -638,19 +500,13 @@ impl Document {
         }
     }
 
-    /// The QUILL reference string (e.g. `"usaf_memo@0.1"`).
     #[wasm_bindgen(getter, js_name = quillRef)]
     pub fn quill_ref(&self) -> String {
         self.inner.quill_reference().to_string()
     }
 
-    /// The document's main (entry) card.
-    ///
-    /// Carries the QUILL metadata, the document-level payload, and the
-    /// global body. Payload/body reads and mutations go through this
-    /// handle — there are no document-level shortcuts after the rework.
-    ///
-    /// Allocates and serializes on each call — cache locally if read in a hot loop.
+    /// The document's main (entry) card. Allocates and serializes on each
+    /// call — cache locally if read in a hot loop.
     #[wasm_bindgen(getter, js_name = main, unchecked_return_type = "Card")]
     pub fn main(&self) -> JsValue {
         let card = Card::from(self.inner.main());
@@ -658,7 +514,6 @@ impl Document {
         card.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
     }
 
-    /// Ordered list of composable card blocks as typed `Card` objects.
     #[wasm_bindgen(getter, js_name = cards, unchecked_return_type = "Card[]")]
     pub fn cards(&self) -> JsValue {
         let cards: Vec<Card> = self.inner.cards().iter().map(Card::from).collect();
@@ -666,29 +521,19 @@ impl Document {
         cards.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
     }
 
-    /// Number of composable cards (excludes the main card).
-    ///
-    /// O(1). Use this to validate indices before calling card mutators
-    /// instead of allocating the full `cards` array.
+    /// Number of composable cards (excludes the main card). O(1).
     #[wasm_bindgen(getter, js_name = cardCount)]
     pub fn card_count(&self) -> usize {
         self.inner.cards().len()
     }
 
-    /// Structural equality against another `Document`.
-    ///
-    /// Compares `main` and `cards` by value (matching core's [`PartialEq`]).
-    /// Parse-time `warnings` are intentionally excluded — they describe the
-    /// source text, not the document's content.
-    ///
-    /// Use this to debounce upstream prop updates: keep the last parsed
-    /// `Document` and compare instead of re-parsing on every keystroke.
+    /// Structural equality (parse-time `warnings` excluded). Use to debounce
+    /// upstream prop updates instead of re-parsing on every keystroke.
     #[wasm_bindgen(js_name = equals)]
     pub fn equals(&self, other: &Document) -> bool {
         self.inner == other.inner
     }
 
-    /// Non-fatal parse-time warnings as an array of typed `Diagnostic` objects.
     #[wasm_bindgen(getter, js_name = warnings, unchecked_return_type = "Diagnostic[]")]
     pub fn warnings(&self) -> JsValue {
         let diags: Vec<Diagnostic> = self
@@ -703,16 +548,10 @@ impl Document {
 
     // ── Mutators ──────────────────────────────────────────────────────────────
 
-    /// Update a payload field on the main card.
+    /// Update a payload field on the main card. Clears any existing `!fill` marker.
     ///
-    /// Convenience method: equivalent to `doc.mainMut().setField(name, value)`.
-    /// Clears any existing `!fill` marker on the field.
-    ///
-    /// Throws an `Error` whose message includes the `EditError` variant name and
-    /// details if `name` is reserved (`BODY`, `CARDS`, `QUILL`, `CARD`) or does
+    /// Throws if `name` is reserved (`BODY`, `CARDS`, `QUILL`, `CARD`) or does
     /// not match `[a-z_][a-z0-9_]*`.
-    ///
-    /// Mutators never modify `warnings`.
     #[wasm_bindgen(js_name = setField)]
     pub fn set_field(&mut self, name: &str, value: JsValue) -> Result<(), JsValue> {
         let json: serde_json::Value = serde_wasm_bindgen::from_value(value).map_err(|e| {
@@ -725,13 +564,8 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Update a payload field on the main card AND mark it as `!fill`.
-    ///
-    /// Convenience method: equivalent to `doc.mainMut().setFill(name, value)`.
-    ///
+    /// Update a payload field on the main card and mark it as `!fill`.
     /// Throws on invalid name (see [`setField`](Document::set_field)).
-    ///
-    /// Mutators never modify `warnings`.
     #[wasm_bindgen(js_name = setFill)]
     pub fn set_fill(&mut self, name: &str, value: JsValue) -> Result<(), JsValue> {
         let json: serde_json::Value = serde_wasm_bindgen::from_value(value)
@@ -743,14 +577,9 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Remove a payload field on the main card, returning the removed value or `undefined`.
-    ///
-    /// Throws an `Error` whose message includes the `EditError` variant name
-    /// and details if `name` is reserved (`BODY`, `CARDS`, `QUILL`, `CARD`)
-    /// or does not match `[a-z_][a-z0-9_]*`. Absence of an otherwise-valid
-    /// name returns `undefined`.
-    ///
-    /// Mutators never modify `warnings`.
+    /// Remove a payload field on the main card, returning the removed value or
+    /// `undefined`. Throws if `name` is reserved or does not match
+    /// `[a-z_][a-z0-9_]*`.
     #[wasm_bindgen(js_name = removeField)]
     pub fn remove_field(&mut self, name: &str) -> Result<JsValue, JsValue> {
         let removed = self
@@ -770,11 +599,7 @@ impl Document {
         })
     }
 
-    /// Replace the QUILL reference string.
-    ///
-    /// Throws if `ref_str` is not a valid `QuillReference`.
-    ///
-    /// Mutators never modify `warnings`.
+    /// Replace the QUILL reference string. Throws if `ref_str` is invalid.
     #[wasm_bindgen(js_name = setQuillRef)]
     pub fn set_quill_ref(&mut self, ref_str: &str) -> Result<(), JsValue> {
         let qr: quillmark_core::QuillReference = ref_str.parse().map_err(|e| {
@@ -788,22 +613,13 @@ impl Document {
         Ok(())
     }
 
-    /// Replace the main card's body (the global Markdown body).
-    ///
-    /// Mutators never modify `warnings`.
     #[wasm_bindgen(js_name = replaceBody)]
     pub fn replace_body(&mut self, body: &str) {
         self.inner.main_mut().replace_body(body);
     }
 
     /// Append a card to the end of the card list.
-    ///
-    /// `card` must be a JS object with a `kind` string field and optional
-    /// `fields` (object) and `body` (string).
-    ///
-    /// Throws an `Error` if `card.kind` is not a valid kind name.
-    ///
-    /// Mutators never modify `warnings`.
+    /// Throws if `card.kind` is not a valid kind name.
     #[wasm_bindgen(js_name = pushCard)]
     pub fn push_card(
         &mut self,
@@ -814,11 +630,7 @@ impl Document {
         Ok(())
     }
 
-    /// Insert a card at the given index.
-    ///
-    /// `index` must be in `0..=cards.length`. Out-of-range throws an `Error`.
-    ///
-    /// Mutators never modify `warnings`.
+    /// Insert a card at `index` (must be in `0..=cards.length`).
     #[wasm_bindgen(js_name = insertCard)]
     pub fn insert_card(
         &mut self,
@@ -831,9 +643,6 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Remove the card at `index` and return it, or `undefined` if out of range.
-    ///
-    /// Mutators never modify `warnings`.
     #[wasm_bindgen(js_name = removeCard, unchecked_return_type = "Card | undefined")]
     pub fn remove_card(&mut self, index: usize) -> JsValue {
         match self.inner.remove_card(index) {
@@ -847,12 +656,7 @@ impl Document {
         }
     }
 
-    /// Move the card at `from` to position `to`.
-    ///
-    /// `from == to` is a no-op. Both indices must be in `0..cards.length`.
-    /// Out-of-range throws an `Error`.
-    ///
-    /// Mutators never modify `warnings`.
+    /// Move the card at `from` to position `to`. `from == to` is a no-op.
     #[wasm_bindgen(js_name = moveCard)]
     pub fn move_card(&mut self, from: usize, to: usize) -> Result<(), JsValue> {
         self.inner
@@ -860,17 +664,9 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Replace the `$kind` of the composable card at `index`.
-    ///
-    /// Mutates only the `$kind` — the card's payload and body are
-    /// untouched. Schema-aware migration (clearing orphan fields, applying
-    /// new defaults) is the caller's responsibility; `setCardKind` is a
-    /// structural primitive.
-    ///
-    /// Throws if `index` is out of range or if `newKind` does not match
-    /// `[a-z_][a-z0-9_]*`.
-    ///
-    /// Mutators never modify `warnings`.
+    /// Replace the kind of the card at `index`. Payload and body are untouched;
+    /// schema-aware migration is the caller's responsibility.
+    /// Throws if `index` is out of range or `newKind` is invalid.
     #[wasm_bindgen(js_name = setCardKind)]
     pub fn set_card_kind(&mut self, index: usize, new_kind: &str) -> Result<(), JsValue> {
         self.inner
@@ -879,13 +675,7 @@ impl Document {
     }
 
     /// Update a field on the card at `index`.
-    ///
-    /// Convenience method: equivalent to `doc.card_mut(index)?.set_field(name, value)`.
-    ///
-    /// Throws if `index` is out of range, `name` is reserved or invalid, or
-    /// `value` cannot be serialized.
-    ///
-    /// Mutators never modify `warnings`.
+    /// Throws if `index` is out of range, `name` is reserved or invalid.
     #[wasm_bindgen(js_name = updateCardField)]
     pub fn update_card_field(
         &mut self,
@@ -904,13 +694,8 @@ impl Document {
         card.set_field(name, qv).map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Remove a payload field on the card at `index`, returning the
-    /// removed value or `undefined` if the field was absent.
-    ///
-    /// Throws if `index` is out of range, `name` is reserved, or `name` does
-    /// not match `[a-z_][a-z0-9_]*`.
-    ///
-    /// Mutators never modify `warnings`.
+    /// Remove a field on the card at `index`. Returns the removed value or
+    /// `undefined`. Throws if `index` is out of range or `name` is invalid.
     #[wasm_bindgen(js_name = removeCardField)]
     pub fn remove_card_field(&mut self, index: usize, name: &str) -> Result<JsValue, JsValue> {
         let len = self.inner.cards().len();
@@ -930,11 +715,7 @@ impl Document {
         })
     }
 
-    /// Replace the body of the card at `index`.
-    ///
-    /// Throws if `index` is out of range.
-    ///
-    /// Mutators never modify `warnings`.
+    /// Replace the body of the card at `index`. Throws if out of range.
     #[wasm_bindgen(js_name = updateCardBody)]
     pub fn update_card_body(&mut self, index: usize, body: &str) -> Result<(), JsValue> {
         let len = self.inner.cards().len();
@@ -948,8 +729,7 @@ impl Document {
 
 // ── Edit helpers ──────────────────────────────────────────────────────────────
 
-/// Convert an [`quillmark_core::EditError`] into a JS `Error` value whose
-/// message includes the variant name and details.
+/// Maps `EditError` to a JS `Error` with the variant name and details in the message.
 fn edit_error_to_js(err: &quillmark_core::EditError) -> JsValue {
     let variant = match err {
         quillmark_core::EditError::ReservedName(_) => "ReservedName",
@@ -961,8 +741,6 @@ fn edit_error_to_js(err: &quillmark_core::EditError) -> JsValue {
     WasmError::from(format!("[EditError::{}] {}", variant, err)).to_js_value()
 }
 
-/// Deserialise a JS object `{ kind: string, fields?: object, body?: string }`
-/// into a [`quillmark_core::Card`].  Throws on invalid kind.
 fn js_value_to_card(value: &JsValue) -> Result<quillmark_core::Card, JsValue> {
     #[derive(Deserialize)]
     struct CardInput {
@@ -977,7 +755,6 @@ fn js_value_to_card(value: &JsValue) -> Result<quillmark_core::Card, JsValue> {
         WasmError::from(format!("card must be {{ kind, fields?, body? }}: {}", e)).to_js_value()
     })?;
 
-    // Validate kind via Card::new, then upgrade with fields and body.
     let mut card = quillmark_core::Card::new(input.kind).map_err(|e| edit_error_to_js(&e))?;
 
     for (k, v) in input.fields {
@@ -1068,13 +845,6 @@ fn js_bytes_for_tree_entry(path: &str, value: JsValue) -> Result<Vec<u8>, JsValu
 }
 
 /// TypeScript declarations for the canvas-preview surface.
-///
-/// `paint` is the single source of truth for canvas backing-store sizing —
-/// consumers do not multiply by `devicePixelRatio` themselves and do not
-/// write to `canvas.width` / `canvas.height` directly. They supply layout
-/// (`layoutScale`) and density (`densityScale`) inputs separately; the
-/// painter folds them into the rasterization scale, sizes the backing
-/// store, and reports what it picked.
 #[wasm_bindgen(typescript_custom_section)]
 const CANVAS_PREVIEW_TS: &'static str = r#"
 /**
@@ -1149,42 +919,25 @@ export interface PaintResult {
 
 #[wasm_bindgen]
 impl RenderSession {
-    /// Number of pages in this render session.
-    ///
-    /// Stable for the lifetime of the session — the underlying compiled
-    /// document is an immutable snapshot.
     #[wasm_bindgen(getter, js_name = pageCount)]
     pub fn page_count(&self) -> usize {
         self.inner.page_count()
     }
 
     /// The backend that produced this session (e.g. `"typst"`).
-    ///
-    /// Equal to the `backendId` of the [`Quill`] that opened this session
-    /// (sessions inherit their quill's backend), so checking either is fine.
     #[wasm_bindgen(getter, js_name = backendId)]
     pub fn backend_id(&self) -> String {
         self.backend_id.clone()
     }
 
-    /// Whether this session's backend supports canvas preview.
-    ///
-    /// `true` iff [`paint`](Self::paint) and [`page_size`](Self::page_size)
-    /// will succeed. Equal to `Quill.supportsCanvas` for the quill that
-    /// opened this session.
+    /// `true` iff `paint` and `pageSize` will succeed for this session.
     #[wasm_bindgen(getter, js_name = supportsCanvas)]
     pub fn supports_canvas(&self) -> bool {
         self.backend_id == CANVAS_BACKEND_ID
     }
 
-    /// Session-level warnings attached at `quill.open(...)` time.
-    ///
-    /// Snapshot of any non-fatal diagnostics emitted while opening the
-    /// session (e.g. version compatibility shims). Stable across the
-    /// session's lifetime. These are also appended to
-    /// `RenderResult.warnings` on every `render()` call; the accessor
-    /// surfaces them to canvas-preview consumers that don't go through
-    /// `render()`.
+    /// Non-fatal diagnostics emitted when opening the session. Also appended
+    /// to `RenderResult.warnings` on each `render()` call.
     #[wasm_bindgen(getter, js_name = warnings, unchecked_return_type = "Diagnostic[]")]
     pub fn warnings(&self) -> JsValue {
         let diags: Vec<Diagnostic> = self
@@ -1198,7 +951,6 @@ impl RenderSession {
         diags.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
     }
 
-    /// Render all or selected pages from this session.
     #[wasm_bindgen(js_name = render)]
     pub fn render(&self, opts: Option<RenderOptions>) -> Result<RenderResult, JsValue> {
         let start = now_ms();
@@ -1218,18 +970,7 @@ impl RenderSession {
     }
 
     /// Page dimensions in Typst points (1 pt = 1/72 inch).
-    ///
-    /// Report-only: the painter sizes the canvas itself based on
-    /// `PaintOptions`. Exposed for consumers that need page geometry
-    /// up-front (e.g. to lay out a scrollable list of canvases before
-    /// any pixels are rendered).
-    ///
-    /// Stable for a given `page` across the session's lifetime — the
-    /// compiled document is an immutable snapshot, so callers can cache
-    /// results.
-    ///
-    /// Throws if the underlying backend has no canvas painter (i.e. is not
-    /// the Typst backend) or if `page` is out of range.
+    /// Throws if the backend has no canvas painter or `page` is out of range.
     #[wasm_bindgen(js_name = pageSize, unchecked_return_type = "PageSize")]
     pub fn page_size(&self, page: usize) -> Result<JsValue, JsValue> {
         let typst = self.typst_session("pageSize")?;
@@ -1245,42 +986,14 @@ impl RenderSession {
         .map_err(|e| WasmError::from(format!("pageSize: serialization failed: {e}")).to_js_value())
     }
 
-    /// Paint `page` into a 2D canvas context.
+    /// Paint `page` into a `CanvasRenderingContext2D` or
+    /// `OffscreenCanvasRenderingContext2D`. The painter owns
+    /// `canvas.width`/`height` (no `clearRect` needed); consumers own
+    /// `canvas.style.*`. If `layoutScale * densityScale` exceeds 16384 px
+    /// per side, `densityScale` is clamped — detect via `PaintResult.pixelWidth`.
     ///
-    /// Accepts either a `CanvasRenderingContext2D` (main thread) or an
-    /// `OffscreenCanvasRenderingContext2D` (Worker / off-DOM rasterization).
-    /// Both dispatch to the same Rust rasterizer; the dispatch happens at
-    /// the JS boundary so neither context type is privileged.
-    ///
-    /// The painter owns `canvas.width` / `canvas.height` and writes them
-    /// itself; consumers must not. The painter does not touch
-    /// `canvas.style.*` — that's layout, owned by the consumer (see
-    /// `PaintResult.layoutWidth` / `layoutHeight`).
-    ///
-    /// `opts.layoutScale` (default 1.0) is layout-space pixels per Typst
-    /// point and determines the canvas's display-box size. `opts.densityScale`
-    /// (default 1.0) is the rasterization density multiplier the consumer
-    /// folds `window.devicePixelRatio`, in-app zoom, and
-    /// `visualViewport.scale` (pinch-zoom) into. The effective
-    /// rasterization scale is `layoutScale * densityScale`.
-    ///
-    /// If `layoutScale * densityScale` would exceed the safe backing-store
-    /// maximum (16384 px per side), `densityScale` is clamped
-    /// proportionally so the largest dimension fits. The actual
-    /// backing-store dimensions are reported in the returned
-    /// `PaintResult` — compare against
-    /// `round(layoutWidth * densityScale)` to detect clamping.
-    ///
-    /// Each call resets the backing store (`paint` is always a full
-    /// repaint). Consumers do not need to call `clearRect`.
-    ///
-    /// Throws when:
-    /// - the backend does not support canvas preview (message includes the
-    ///   resolved `backendId`),
-    /// - `page` is out of range,
-    /// - `ctx` is neither `CanvasRenderingContext2D` nor
-    ///   `OffscreenCanvasRenderingContext2D`,
-    /// - `opts.layoutScale` or `opts.densityScale` is non-finite or `<= 0`.
+    /// Throws if the backend has no canvas painter, `page` is out of range,
+    /// `ctx` is the wrong type, or either scale is non-finite or `<= 0`.
     #[wasm_bindgen(js_name = paint, unchecked_return_type = "PaintResult")]
     pub fn paint(
         &self,
@@ -1341,8 +1054,6 @@ impl RenderSession {
             .render_rgba(page, render_scale as f32)
             .ok_or_else(|| self.page_oob_error("paint", page))?;
 
-        // The painter owns canvas.width/height. Setting these clears the
-        // backing store automatically — no clearRect needed.
         canvas_ctx.set_canvas_dims(pixel_w, pixel_h)?;
 
         let img = web_sys::ImageData::new_with_u8_clamped_array_and_sh(
@@ -1369,8 +1080,6 @@ impl RenderSession {
 }
 
 impl RenderSession {
-    /// Borrow the Typst backend's typed session, or build a JS error citing
-    /// `op` (the public method name) and the resolved `backendId`.
     fn typst_session(&self, op: &str) -> Result<&quillmark_typst::TypstSession, JsValue> {
         quillmark_typst::typst_session_of(&self.inner).ok_or_else(|| {
             WasmError::from(format!(
@@ -1390,10 +1099,6 @@ impl RenderSession {
     }
 }
 
-/// Adapter unifying `CanvasRenderingContext2D` and
-/// `OffscreenCanvasRenderingContext2D` behind one Rust shape so `paint`
-/// can size the backing store and emit pixels without repeating the
-/// downcast.
 enum CanvasCtx<'a> {
     OnScreen(&'a web_sys::CanvasRenderingContext2d),
     OffScreen(&'a web_sys::OffscreenCanvasRenderingContext2d),
@@ -1413,10 +1118,6 @@ impl<'a> CanvasCtx<'a> {
         .to_js_value())
     }
 
-    /// Set `canvas.width` and `canvas.height`. Writing to either is
-    /// specified to clear the backing store, which is exactly the
-    /// contract `paint` wants on each call (full repaint, no stale
-    /// pixels in transparent regions).
     fn set_canvas_dims(&self, width: u32, height: u32) -> Result<(), JsValue> {
         match self {
             Self::OnScreen(c) => {

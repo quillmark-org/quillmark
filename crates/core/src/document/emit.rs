@@ -119,12 +119,6 @@ impl Document {
 
 // ── Block emission ────────────────────────────────────────────────────────────
 
-/// Emit a `$key: value` system-metadata line with optional inline trailer.
-///
-/// Three tildes around the block are always a safe fence length: canonically
-/// emitted payload lines never begin with `~` (keys are identifiers, sequence
-/// items start with `-`, saphyr quotes any string that would, comments start
-/// with `#`), so the fence can never be closed early.
 fn emit_meta_line(out: &mut String, key: &str, value: &str, trailer: Option<&str>) {
     out.push('$');
     out.push_str(key);
@@ -144,12 +138,8 @@ fn emit_block(out: &mut String, card: &Card) {
     out.push_str("~~~\n");
 }
 
-/// Emit the ordered payload items of a card-yaml block.
-///
-/// Walks the unified item list — typed `$` entries, user fields, and
-/// comments interleaved in source order. A `Comment { inline: true }` that
-/// immediately follows any non-comment item is consumed as a trailer on
-/// that item's line; otherwise comments render own-line.
+/// Walk the unified item list and emit each entry. An `inline: true` comment
+/// immediately following a non-comment item is consumed as that item's trailer.
 fn emit_payload_items(out: &mut String, items: &[PayloadItem], nested: &[NestedComment]) {
     let mut i = 0;
     while i < items.len() {
@@ -175,9 +165,6 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem], nested: &[NestedC
                 emit_field(out, key, value.as_json(), 0, *fill, &path, nested, trailer);
             }
             PayloadItem::Comment { text, .. } => {
-                // Standalone comment line. A trailer would attach to
-                // *another* comment, which doesn't make sense; render it
-                // own-line on the next iteration instead.
                 out.push_str("# ");
                 out.push_str(text);
                 out.push('\n');
@@ -188,17 +175,9 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem], nested: &[NestedC
     }
 }
 
-/// Ensures `out` ends with a `\n\n` suffix so the next card-yaml block has the
-/// required blank line above it.
-///
-/// Under the separator-never-stored invariant, stored bodies may end with
-/// their content (no newline), a content line terminator (`\n`), or an
-/// author-intended blank line (`\n\n`, `\n\n\n`, …). In every case we append
-/// exactly one `\n` to produce the blank line. If the body doesn't already
-/// end in `\n`, we also append a line terminator first so content lines are
-/// terminated in the emitted markdown.
-///
-/// Empty `out` needs no separator — a block at line 1 has no line above it.
+/// Ensure `out` ends with `\n\n` so the next fence has a blank line above it.
+/// Appends a line terminator first if `out` doesn't already end with `\n`.
+/// No-op on empty `out` (block at line 1 needs no separator).
 fn ensure_blank_before_fence(out: &mut String) {
     if out.is_empty() {
         return;
@@ -211,9 +190,8 @@ fn ensure_blank_before_fence(out: &mut String) {
 
 // ── YAML value emission ───────────────────────────────────────────────────────
 
-/// Emit own-line nested comments at `position` in `path` as `# text` lines
-/// indented by `indent` spaces. Inline comments are skipped here — they are
-/// consumed by `find_inline_trailer` at the host's emission site.
+/// Emit own-line nested comments at `position` in `path` (inline comments are
+/// handled by `find_inline_trailer`).
 fn emit_own_line_pending(
     out: &mut String,
     path: &[CommentPathSegment],
@@ -231,10 +209,8 @@ fn emit_own_line_pending(
     }
 }
 
-/// Look up the inline trailer for the child at `position` in `path`. If
-/// multiple inline comments share this slot (programmatic edge case), the
-/// first one is returned and the rest are emitted as own-line comments at
-/// `indent` to preserve their text.
+/// Return the inline trailer for `position` in `path`. If multiple inline
+/// comments share the slot, returns the first and emits the rest as own-line.
 fn find_inline_trailer<'a>(
     out: &mut String,
     path: &[CommentPathSegment],
@@ -258,9 +234,7 @@ fn find_inline_trailer<'a>(
     chosen
 }
 
-/// Emit any orphan inline comments (`inline=true` with `position >=
-/// container_len`) as own-line comments at the trailing slot. These are
-/// programmatic edge cases — well-formed prescan output never produces them.
+/// Emit orphan inline comments (`position >= container_len`) as own-line.
 fn emit_orphan_inlines(
     out: &mut String,
     path: &[CommentPathSegment],
@@ -278,8 +252,6 @@ fn emit_orphan_inlines(
     }
 }
 
-/// Append ` # trailer` to `out` if `trailer` is `Some`. Caller writes the
-/// terminating `\n` afterwards.
 fn push_trailer(out: &mut String, trailer: Option<&str>) {
     if let Some(t) = trailer {
         out.push_str(" # ");
@@ -289,24 +261,12 @@ fn push_trailer(out: &mut String, trailer: Option<&str>) {
 
 /// Emit a `key: <value>\n` pair at `indent` spaces.
 ///
-/// `path` is the path to *this* field (parent path + this key). It's used as
-/// the *container* path when recursing into the value: nested comments
-/// captured at this path are interleaved between the value's children.
-///
-/// `inline_trailer`, when `Some`, is rendered as ` # text` on the field's
-/// key/value line. For scalars this trails the value; for containers it
-/// trails the `key:` line (before the indented children).
-///
-/// - Empty objects are **omitted** (caller skips them). An empty-object
-///   field with an inline trailer degrades the trailer to an own-line
-///   comment at `indent`, so the comment text is preserved even though its
-///   host disappears.
-/// - Empty arrays emit `key: []\n`.
-/// - All other values follow the block-style rules.
-/// - When `fill` is `true`, the emitted form is `key: !fill <value>` for
-///   scalars, `key: !fill\n  - …` for non-empty sequences,
-///   `key: !fill []` for empty sequences, and `key: !fill` for null.
-///   Mappings are rejected at parse and never reach this path.
+/// `path` is the container path for nested-comment interleaving. Empty objects
+/// are omitted; their inline trailer degrades to an own-line comment to
+/// preserve the text. Empty arrays emit `key: []\n`. When `fill` is `true`:
+/// scalars → `key: !fill <value>`, empty seqs → `key: !fill []`, null →
+/// `key: !fill`, non-empty seqs → `key: !fill\n  - …`. Mappings with `fill`
+/// are rejected at parse and never reach this path.
 #[allow(clippy::too_many_arguments)]
 fn emit_field(
     out: &mut String,
@@ -345,7 +305,6 @@ fn emit_field(
                 emit_sequence_children(out, items, indent + 2, path, nested);
             }
             JsonValue::Object(_) => {
-                // Parser rejects !fill on mappings; recovery path only.
                 out.push_str(": ");
                 emit_scalar(out, value);
                 push_trailer(out, inline_trailer);
@@ -356,9 +315,6 @@ fn emit_field(
     }
     match value {
         JsonValue::Object(map) if map.is_empty() => {
-            // Empty object → omit the key entirely. If there's an inline
-            // trailer, degrade it to an own-line comment so its text isn't
-            // lost.
             if let Some(t) = inline_trailer {
                 push_indent(out, indent);
                 out.push_str("# ");
@@ -400,11 +356,6 @@ fn emit_field(
     }
 }
 
-/// Emit the children of a mapping value with comment interleaving.
-///
-/// `child_indent` is the indent at which each child key sits; nested
-/// comments inside this mapping are emitted at the same indent. `path` is
-/// the path to the mapping container (its key in the parent).
 fn emit_mapping_children(
     out: &mut String,
     map: &serde_json::Map<String, JsonValue>,
@@ -423,10 +374,6 @@ fn emit_mapping_children(
     emit_orphan_inlines(out, path, map.len(), child_indent, nested);
 }
 
-/// Emit the children of a sequence value with comment interleaving.
-///
-/// `base_indent` is the indent at which each `- ` sits; nested comments
-/// inside this sequence are emitted at the same indent.
 fn emit_sequence_children(
     out: &mut String,
     items: &[JsonValue],
@@ -445,15 +392,9 @@ fn emit_sequence_children(
     emit_orphan_inlines(out, path, items.len(), base_indent, nested);
 }
 
-/// Emit a single `- <value>\n` sequence item at `base_indent` spaces.
-///
-/// `path` is the path to *this* item (parent path + item index).
-///
-/// `inline_trailer`, when `Some`, is rendered as ` # text` on the `-` line.
-/// For mapping items the trailer co-exists with any inline trailer at index
-/// 0 of the inner mapping (the latter would be on the same physical line);
-/// in well-formed input only one of them is present, but if both appear
-/// the inner one degrades to an own-line comment beneath the `- ` line.
+/// Emit a single `- <value>\n` sequence item. When the item is a mapping,
+/// if both the seq-item trailer and the first key's trailer are present,
+/// the inner one degrades to an own-line comment.
 fn emit_sequence_item(
     out: &mut String,
     value: &JsonValue,
@@ -464,16 +405,12 @@ fn emit_sequence_item(
 ) {
     match value {
         JsonValue::Object(map) if map.is_empty() => {
-            // Empty nested object in a sequence: emit as `- {}`
             push_indent(out, base_indent);
             out.push_str("- {}");
             push_trailer(out, inline_trailer);
             out.push('\n');
         }
         JsonValue::Object(map) => {
-            // Block mapping inside a sequence. First key on the same line
-            // as `- `; subsequent keys indented by 2. Comments inside this
-            // mapping use this item's path as the container.
             emit_own_line_pending(out, path, 0, base_indent, nested);
 
             let mut first = true;
@@ -485,9 +422,6 @@ fn emit_sequence_item(
                 let mut child_path = path.to_vec();
                 child_path.push(CommentPathSegment::Key(k.clone()));
                 if first {
-                    // The seq-item's trailer and the first key's trailer
-                    // both target the `- key: ...` line. Prefer the
-                    // seq-item's; degrade the loser to own-line.
                     let line_trailer = inline_trailer.or(inner_trailer);
                     push_indent(out, base_indent);
                     out.push_str("- ");
@@ -530,7 +464,6 @@ fn emit_sequence_item(
             out.push('\n');
         }
         JsonValue::Array(inner) => {
-            // Nested sequence: `-` line then recurse.
             push_indent(out, base_indent);
             out.push('-');
             push_trailer(out, inline_trailer);
@@ -547,8 +480,7 @@ fn emit_sequence_item(
     }
 }
 
-/// Emit a `key: <value>\n` pair where the key is already on a `- ` line.
-/// The key/value go on the same line as the `- ` prefix (caller already wrote it).
+/// Emit `key: <value>\n` where the caller already wrote `- ` on the current line.
 fn emit_field_inline(
     out: &mut String,
     key: &str,
@@ -595,24 +527,13 @@ fn emit_field_inline(
     }
 }
 
-/// Emit a scalar value (no key, no newline) onto `out`.
-///
-/// Delegates to saphyr: booleans, null, and numbers emit as their
-/// type-canonical bare form; strings emit plain when the unquoted form
-/// is unambiguous, or double-quoted with `\n`/`\t`/`\uXXXX` escapes when
-/// the value would otherwise be misread (YAML 1.1 booleans like
-/// `on`/`yes`, numeric-looking strings like `01234`, leading flow
-/// indicators, control characters, `: ` runs, …).
 fn emit_scalar(out: &mut String, value: &JsonValue) {
     let s = saphyr_emit_scalar(value);
     out.push_str(&s);
 }
 
-/// Saphyr options shared by every scalar / flow emission in this module.
-///
-/// `prefer_block_scalars: false` is the load-bearing setting: it forces
-/// multi-line strings to emit as double-quoted inline scalars with `\n`
-/// escapes instead of `|` / `>` block forms (no block scalars in v1).
+/// `prefer_block_scalars: false` forces multi-line strings to double-quoted
+/// inline scalars (no `|` / `>` block forms in v1).
 fn saphyr_opts() -> SerializerOptions {
     SerializerOptions {
         prefer_block_scalars: false,
@@ -620,9 +541,6 @@ fn saphyr_opts() -> SerializerOptions {
     }
 }
 
-/// Serialize `value` with saphyr and strip the trailing newline. Caller
-/// is responsible for ensuring `value` is a scalar — arrays and objects
-/// would emit as multi-line block YAML, which is not what callers want.
 pub(crate) fn saphyr_emit_scalar(value: &JsonValue) -> String {
     let mut buf = String::new();
     serde_saphyr::to_fmt_writer_with_options(&mut buf, value, saphyr_opts())
@@ -651,9 +569,8 @@ pub(crate) fn saphyr_emit_scalar(value: &JsonValue) -> String {
     buf
 }
 
-/// JSON-style double-quoted YAML scalar — used only as a fallback for
-/// strings that saphyr would emit in a form that loses bytes on parse
-/// (currently: trailing-whitespace plain scalars).
+/// JSON-style double-quoted fallback for strings saphyr would emit in a form
+/// that loses bytes on parse (e.g. trailing-whitespace plain scalars).
 fn double_quote_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -674,11 +591,8 @@ fn double_quote_string(s: &str) -> String {
     out
 }
 
-/// Render any `JsonValue` as a one-line YAML flow form — arrays as
-/// `[a, b, c]`, objects as `{k: v, …}`, scalars in flow context (so
-/// items containing `,`/`[`/`]`/`{`/`}` get quoted). Used for `# e.g.`
-/// hint lines in blueprint output where multi-element shape needs to
-/// fit on a single comment.
+/// Render a `JsonValue` as a one-line YAML flow form (`[a, b]` / `{k: v}` /
+/// flow-quoted scalar). Used for `# e.g.` hint lines in blueprint output.
 pub(crate) fn saphyr_emit_flow(value: &JsonValue) -> String {
     let mut buf = String::new();
     let opts = saphyr_opts();
@@ -694,9 +608,7 @@ pub(crate) fn saphyr_emit_flow(value: &JsonValue) -> String {
                 .expect("saphyr flow map emission");
         }
         scalar => {
-            // Single scalar in flow context: wrap in a one-element FlowSeq
-            // so saphyr applies flow-context quoting (commas, brackets,
-            // braces become flow indicators), then strip the `[`/`]`.
+            // Wrap in FlowSeq so saphyr applies flow-context quoting, then strip `[`/`]`.
             let wrapped = FlowSeq(vec![scalar.clone()]);
             serde_saphyr::to_fmt_writer_with_options(&mut buf, &wrapped, opts)
                 .expect("saphyr flow scalar emission");
@@ -731,11 +643,6 @@ mod tests {
     use super::*;
     use crate::value::QuillValue;
 
-    /// Round-trip helper: emit a scalar as a single-field document, then
-    /// parse it back with the same machinery the rest of the pipeline
-    /// uses. The point of saphyr-backed emission is type-fidelity, not
-    /// any specific quoting form, so the test asserts the value survives
-    /// parse — not the byte layout.
     fn assert_scalar_round_trips(value: serde_json::Value) {
         let mut yaml = String::from("~~~card-yaml\n$quill: q\n$kind: main\nv: ");
         yaml.push_str(&saphyr_emit_scalar(&value));
@@ -761,7 +668,6 @@ mod tests {
 
     #[test]
     fn saphyr_scalar_round_trips_ambiguous_strings() {
-        // Saphyr quotes whatever needs quoting to stay a string on re-parse.
         for ambiguous in &[
             "on", "off", "yes", "no", "true", "false", "null", "~", "01234", "1e10",
         ] {
@@ -797,7 +703,7 @@ mod tests {
             &[],
             None,
         );
-        assert_eq!(out, ""); // omitted
+        assert_eq!(out, "");
     }
 
     #[test]
@@ -814,7 +720,6 @@ mod tests {
             &[],
             Some("orphan"),
         );
-        // Host omitted; trailer survives as own-line at the same indent.
         assert_eq!(out, "# orphan\n");
     }
 
@@ -849,9 +754,6 @@ mod tests {
             &[],
             Some("greeting"),
         );
-        // Saphyr emits "Hello" as a plain scalar — the inline trailer is
-        // what the test cares about: it lands on the same line, after the
-        // value, separated by ` # `.
         assert_eq!(out, "title: Hello # greeting\n");
     }
 
@@ -869,7 +771,6 @@ mod tests {
             &[],
             Some("note"),
         );
-        // Trailer lands on the key line, not after the children.
         assert_eq!(out, "outer: # note\n  inner: 1\n");
     }
 

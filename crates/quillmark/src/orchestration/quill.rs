@@ -12,8 +12,8 @@ use quillmark_core::{
 
 use crate::form::{self, Form, FormCard};
 
-/// Renderable quill. Composes an [`Arc<QuillSource>`] with a resolved
-/// [`Backend`]. Constructed by the engine; immutable once created.
+/// Renderable quill: an [`Arc<QuillSource>`] paired with a resolved [`Backend`].
+/// Constructed by the engine; immutable once created.
 #[derive(Clone)]
 pub struct Quill {
     source: Arc<QuillSource>,
@@ -21,15 +21,12 @@ pub struct Quill {
 }
 
 impl Quill {
-    /// Construct a Quill from a source and a resolved backend.
-    ///
-    /// Engine-internal; external callers should use
-    /// [`crate::Quillmark::quill`] or [`crate::Quillmark::quill_from_path`].
+    /// Engine-internal; external callers use [`crate::Quillmark::quill`] or
+    /// [`crate::Quillmark::quill_from_path`].
     pub(crate) fn new(source: Arc<QuillSource>, backend: Arc<dyn Backend>) -> Self {
         Self { source, backend }
     }
 
-    /// The underlying quill source.
     pub fn source(&self) -> &QuillSource {
         &self.source
     }
@@ -39,20 +36,15 @@ impl Quill {
         self.backend.id()
     }
 
-    /// Supported output formats for this quill's backend.
     pub fn supported_formats(&self) -> &'static [OutputFormat] {
         self.backend.supported_formats()
     }
 
-    /// The quill's declared name.
     pub fn name(&self) -> &str {
         self.source.name()
     }
 
-    /// Render a document to final artifacts.
-    ///
-    /// Pass `&RenderOptions::default()` for backend defaults (first supported
-    /// format, backend-chosen ppi, all pages).
+    /// Render a document. Pass `&RenderOptions::default()` for backend defaults.
     pub fn render(
         &self,
         doc: &Document,
@@ -69,7 +61,6 @@ impl Quill {
         session.render(&resolved)
     }
 
-    /// Open an iterative render session for this document.
     pub fn open(&self, doc: &Document) -> Result<RenderSession, RenderError> {
         let json_data = self.compile_data(doc)?;
         let plate_content = self
@@ -85,17 +76,11 @@ impl Quill {
         Ok(session.with_warnings(warnings))
     }
 
-    /// Compile a Document to JSON data suitable for the backend.
-    ///
-    /// Applies coercion, validation, normalization, and schema defaults, then
-    /// calls [`Document::to_plate_json`] to produce the wire format.
+    /// Compile a document to JSON wire format for the backend.
+    /// Applies coercion, validation, normalization, and schema defaults.
     pub fn compile_data(&self, doc: &Document) -> Result<serde_json::Value, RenderError> {
         let coerced = self.coerce_and_validate(doc)?;
-
-        // Normalize: strip bidi + fix HTML comment fences in body regions.
         let normalized = normalize_document(coerced)?;
-
-        // Apply schema defaults to main + per-card payload.
         let main_with_defaults = apply_defaults(
             &normalized.main().payload().to_index_map(),
             self.source.config().main.defaults(),
@@ -127,15 +112,11 @@ impl Quill {
         Ok(final_doc.to_plate_json())
     }
 
-    /// Perform a dry-run validation without backend compilation.
+    /// Validate without backend compilation.
     pub fn dry_run(&self, doc: &Document) -> Result<(), RenderError> {
         self.coerce_and_validate(doc).map(|_| ())
     }
 
-    /// Coerce main + card fields against their schemas, then validate the
-    /// resulting document. Shared entry point for [`Self::compile_data`]
-    /// (which then normalizes and applies defaults) and [`Self::dry_run`]
-    /// (which stops here).
     fn coerce_and_validate(&self, doc: &Document) -> Result<Document, RenderError> {
         let config = self.source.config();
 
@@ -188,40 +169,21 @@ impl Quill {
         }
     }
 
-    /// The schema-aware form view of `doc` — the whole-document snapshot
-    /// rendered through this quill's schema.
-    ///
-    /// For each schema-declared field on the main card and on every
-    /// recognised card, the returned [`Form`] records the current value, the
-    /// schema default, and a [`form::FormFieldSource`] label.
-    ///
-    /// **Snapshot semantics.** The result is a read-only snapshot — re-call
-    /// after editing `doc`.
-    ///
-    /// **Unknown card kinds** are dropped from [`Form::cards`] and surface as
-    /// `form::unknown_card_kind` diagnostics. Validation errors are appended
-    /// as `form::validation_error` diagnostics; the view itself is never
-    /// altered or filtered by validation failures.
+    /// Schema-aware form view of `doc`. Read-only snapshot — re-call after edits.
+    /// Unknown card kinds surface as `form::unknown_card_kind` diagnostics;
+    /// validation errors as `form::validation_error` diagnostics.
     pub fn form(&self, doc: &Document) -> Form {
         form::build_form(self, doc)
     }
 
-    /// A blank form for the main card — no document values supplied. Every
-    /// declared field's source is [`form::FormFieldSource::Default`] (when
-    /// the schema declares a default) or [`form::FormFieldSource::Missing`].
-    ///
-    /// Useful as a starting state for a fresh document, or for previewing the
-    /// main-card form without a document in hand.
+    /// Blank form for the main card — fields are [`form::FormFieldSource::Default`]
+    /// or [`form::FormFieldSource::Missing`]. Use as a starting state for a fresh document.
     pub fn blank_main(&self) -> FormCard {
         FormCard::blank(&self.source.config().main)
     }
 
-    /// A blank form for a card of the given kind — no document values
-    /// supplied. Returns `None` if `card_kind` is not declared in the
-    /// quill's schema.
-    ///
-    /// This is the "user is about to add a new card" view: the UI can render
-    /// the form before the card is committed to the document.
+    /// Blank form for a card of the given kind; `None` if the kind is not in
+    /// the schema. Use to render a new-card form before committing to the document.
     pub fn blank_card(&self, card_kind: &str) -> Option<FormCard> {
         form::blank_card_for_kind(self, card_kind)
     }
@@ -230,16 +192,8 @@ impl Quill {
         match self.source.config().validate_document(doc) {
             Ok(_) => Ok(()),
             Err(errors) => {
-                // One diagnostic per ValidationError so each carries its own
-                // `path` anchor for UI navigation. Consumers should iterate
-                // `RenderError::diagnostics()` rather than reading a single
-                // flattened message.
-                //
-                // `validate_document` only returns `Err` with a non-empty
-                // error list, but the `ValidationFailed` variant documents
-                // the same invariant — assert it here so any future
-                // refactor of the underlying validator can't quietly
-                // produce an empty-diags error.
+                // Each ValidationError gets its own Diagnostic so consumers
+                // can use `path` for UI navigation via `RenderError::diagnostics()`.
                 debug_assert!(
                     !errors.is_empty(),
                     "ValidationFailed must carry at least one diagnostic"
@@ -251,11 +205,8 @@ impl Quill {
     }
 }
 
-/// Wrap a coercion error from `QuillConfig::coerce_payload` /
-/// `coerce_card` into a `RenderError::ValidationFailed` with a uniform hint.
-///
-/// Coercion happens before validation walks the typed document, so we don't
-/// have a structured `path` here — `Diagnostic::path` is left unset.
+/// Wrap a coercion error into `RenderError::ValidationFailed`.
+/// `Diagnostic::path` is unset — coercion runs before structured validation.
 fn coercion_error(e: impl std::fmt::Display) -> RenderError {
     RenderError::ValidationFailed {
         diags: vec![Diagnostic::new(Severity::Error, e.to_string())
@@ -264,10 +215,7 @@ fn coercion_error(e: impl std::fmt::Display) -> RenderError {
     }
 }
 
-/// Merge schema `defaults` into `fields`. Fields already present in `fields`
-/// win — defaults only fill gaps. Insertion order of existing fields is
-/// preserved; new default keys append at the end (in `HashMap` iteration
-/// order, which is fine for downstream wire serialization).
+/// Merge schema `defaults` into `fields`; existing fields win.
 fn apply_defaults(
     fields: &IndexMap<String, QuillValue>,
     defaults: HashMap<String, QuillValue>,
@@ -279,15 +227,9 @@ fn apply_defaults(
     result
 }
 
-/// Build a fresh [`Payload`] from a coerced/defaulted user-field map,
-/// carrying the source card's `$` system-metadata entries forward.
-///
-/// Used by the orchestration coercion path: the coerced field map is the
-/// product of schema-aware coercion, so it doesn't carry `$` entries or
-/// comments. We rebuild from the map and re-attach `$quill` / `$kind` /
-/// `$id` from `source` so the resulting payload still identifies its
-/// quill and kind. Comments are intentionally dropped — the coerced
-/// payload feeds backend rendering, not round-trip storage.
+/// Build a [`Payload`] from a coerced/defaulted field map, re-attaching
+/// `$quill` / `$kind` / `$id` from `source`. Comments are dropped —
+/// this payload feeds backend rendering, not round-trip storage.
 fn rebuild_payload_with_meta(source: &Card, fields: IndexMap<String, QuillValue>) -> Payload {
     let mut payload = Payload::from_index_map(fields);
     if let Some(q) = source.quill() {
