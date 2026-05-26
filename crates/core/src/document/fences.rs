@@ -118,6 +118,76 @@ fn is_card_yaml_opener(line: &str) -> bool {
     }
 }
 
+/// `true` when `line` is a `---` YAML-frontmatter fence line — exactly three
+/// dashes, with up to three leading spaces and only whitespace afterward.
+///
+/// `---` is accepted ONLY as the root-block opener/closer (see
+/// [`find_metadata_blocks`]); it is never a composable-card fence.
+fn is_dash_fence_line(line: &str) -> bool {
+    let indent = line.as_bytes().iter().take_while(|&&b| b == b' ').count();
+    if indent > 3 {
+        return false;
+    }
+    let trimmed = &line[indent..];
+    let bytes = trimmed.as_bytes();
+    if bytes.len() < 3 || bytes[0] != b'-' {
+        return false;
+    }
+    let run_len = bytes.iter().take_while(|&&b| b == b'-').count();
+    if run_len != 3 {
+        return false;
+    }
+    trimmed[run_len..].chars().all(|c| c == ' ' || c == '\t')
+}
+
+/// `true` when `line` looks like a YAML mapping key (e.g. `key: value` or
+/// `$key: value`). Used to disambiguate a stray `---` thematic break from a
+/// would-be composable-card block.
+fn looks_like_yaml_key_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return false;
+    }
+    let bytes = trimmed.as_bytes();
+    let mut i;
+    if bytes[0] == b'$' {
+        if bytes.len() < 2 || !(bytes[1].is_ascii_alphabetic() || bytes[1] == b'_') {
+            return false;
+        }
+        i = 2;
+    } else if bytes[0].is_ascii_alphabetic() || bytes[0] == b'_' {
+        i = 1;
+    } else {
+        return false;
+    }
+    while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+        i += 1;
+    }
+    i < bytes.len() && bytes[i] == b':'
+}
+
+/// Look for a matching `---` line further down in the document, with at least
+/// one YAML-key-shaped line between the openers. Returns the line index of the
+/// closing `---` if found.
+///
+/// Used after the root block has already been parsed: a second `---` block
+/// further down is almost certainly a misplaced composable card.
+fn find_paired_dash_with_yaml_keys(lines: &Lines<'_>, opener_k: usize) -> Option<usize> {
+    let mut saw_yaml_key = false;
+    let mut j = opener_k + 1;
+    while j < lines.len() {
+        let text = lines.line_text(j);
+        if is_dash_fence_line(text) {
+            return if saw_yaml_key { Some(j) } else { None };
+        }
+        if looks_like_yaml_key_line(text) {
+            saw_yaml_key = true;
+        }
+        j += 1;
+    }
+    None
+}
+
 /// Outcome of the fence-detection pass: the recognised metadata blocks and any
 /// non-fatal diagnostics accumulated along the way.
 pub(super) type FenceScan = (Vec<MetadataBlock>, Vec<Diagnostic>);
@@ -201,6 +271,91 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
             )?;
             blocks.push(block);
             k = cj + 1;
+            continue;
+        }
+
+        // `---` YAML-frontmatter style: accepted ONLY for the root block.
+        //
+        // Two cases:
+        //   * `blocks.is_empty()` and this is the first non-blank construct we
+        //     hit: treat as the root opener, scan for a `---` closer, build a
+        //     block. (Mixed openers like `---` … `~~~` are NOT accepted: a
+        //     `---` opener requires a `---` closer.)
+        //   * Otherwise: if it looks like a would-be composable card
+        //     (paired `---` … `---` with YAML-key content between, blank
+        //     line above), reject with the standard "expected `~~~card-yaml`"
+        //     error so LLM authors don't silently get a body-text result.
+        //     Otherwise fall through and let CommonMark treat the line as
+        //     prose (thematic break / setext underline).
+        if is_dash_fence_line(text) {
+            let blank_above = k == 0 || lines.is_blank(k - 1);
+
+            if blocks.is_empty() && blank_above {
+                // Only accept `---` as the root opener if we have not yet
+                // seen any prose content (i.e. the `---` is at document
+                // start, modulo leading blank lines). The pre-block prefix
+                // is required to be blank for the root case so we don't
+                // race against setext headings or thematic breaks deep in
+                // a prose preamble. `blocks.is_empty()` plus "every line
+                // above is blank" guarantees this is document-start.
+                let above_all_blank = (0..k).all(|i| lines.is_blank(i));
+                if above_all_blank {
+                    // Scan for the matching `---` closer.
+                    let mut closer_k: Option<usize> = None;
+                    let mut j = k + 1;
+                    while j < lines.len() {
+                        if is_dash_fence_line(lines.line_text(j)) {
+                            closer_k = Some(j);
+                            break;
+                        }
+                        j += 1;
+                    }
+                    let Some(cj) = closer_k else {
+                        return Err(ParseError::InvalidStructure(
+                            "Root metadata block opened with `---` but never closed with a \
+                             matching `---` line. Close the block with a line containing \
+                             exactly `---` before any prose body, or rewrite the block using \
+                             `~~~card-yaml` / `~~~` fences (the canonical form)."
+                                .to_string(),
+                        ));
+                    };
+
+                    let block = super::assemble::build_block(
+                        markdown,
+                        lines.line_start(k),
+                        lines.line_end_inclusive(k),
+                        lines.line_start(cj),
+                        lines.line_end_inclusive(cj),
+                        blocks.len(),
+                    )?;
+                    blocks.push(block);
+                    k = cj + 1;
+                    continue;
+                }
+            }
+
+            // After the root block: a `---` line that pairs with another
+            // `---` further down AND has YAML-key content between is almost
+            // certainly a misplaced composable-card attempt — surface the
+            // standard error rather than silently treating it as body text.
+            if !blocks.is_empty() && blank_above {
+                if let Some(cj) = find_paired_dash_with_yaml_keys(&lines, k) {
+                    let _ = cj; // position is captured for future diagnostics
+                    return Err(ParseError::InvalidStructure(
+                        "Composable card block opened with `---` but composable cards \
+                         must use `~~~card-yaml` / `~~~` fences. Replace the opening \
+                         `---` with `~~~card-yaml` and the closing `---` with `~~~` \
+                         (three tildes, no info string). The `---` style is accepted \
+                         only for the document's root block."
+                            .to_string(),
+                    ));
+                }
+            }
+
+            // Fall through: a lone `---` is delegated to CommonMark as a
+            // thematic break / setext underline. Do not treat as a code
+            // fence opener.
+            k += 1;
             continue;
         }
 

@@ -45,7 +45,7 @@ pub use payload::{Payload, PayloadItem};
 /// rules. This is the single source of truth; bindings should call into it
 /// rather than re-stating the rules in their own glue.
 pub const FORMAT_RULES: &str = "Document format rules:
-\u{2022} Block opener is `~~~card-yaml`; closer is EXACTLY `~~~` (three tildes, no info string). Do NOT use `---` frontmatter or repeat `~~~card-yaml` as the closer.
+\u{2022} Block opener is `~~~card-yaml`; closer is EXACTLY `~~~` (three tildes, no info string). Do NOT repeat `~~~card-yaml` as the closer.
 \u{2022} A blank line must precede every `~~~card-yaml` opener (unless it is line 1).
 \u{2022} The first block is the root and MUST contain `$quill: <name>@<version>` and `$kind: main`. Additional blocks declare composable cards via `$kind: <card_kind>`.
 \u{2022} Reserved `$`-keys: `$quill`, `$kind`, `$id`, `$ext`. User fields use lowercase snake_case.
