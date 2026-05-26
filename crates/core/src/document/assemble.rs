@@ -119,10 +119,13 @@ pub(super) fn build_block(
             Ok(parsed) => parsed,
             Err(e) => {
                 let line = markdown[..block_start].lines().count() + 1;
+                let enriched =
+                    super::yaml_hints::enrich_yaml_error(&e.to_string(), &content);
                 return Err(ParseError::YamlErrorWithLocation {
-                    message: e.to_string(),
+                    message: enriched.message,
                     line,
                     block_index,
+                    hint: enriched.hint,
                 });
             }
         };
@@ -188,7 +191,11 @@ pub(super) fn decompose_with_warnings(
     if blocks.is_empty() {
         return Err(crate::error::ParseError::MissingQuill(
             "Missing required root card-yaml block. The document must open with a \
-             `~~~card-yaml` block declaring `$quill: <name>`."
+             `~~~card-yaml` block declaring `$quill: <name>` (and `$kind: main`) as \
+             the first two lines, closed by a line containing exactly `~~~`.\n\n\
+             If you used `---` YAML frontmatter, that syntax is NOT supported. \
+             Replace the `---` fences with `~~~card-yaml` (opener) and `~~~` \
+             (closer)."
                 .to_string(),
         ));
     }
@@ -201,7 +208,9 @@ pub(super) fn decompose_with_warnings(
         .any(|m| matches!(m, PayloadItem::Quill { .. }));
     if !has_root_quill {
         return Err(ParseError::MissingQuill(
-            "The document's root card-yaml block must declare `$quill: <name>`.".to_string(),
+            "The document's root card-yaml block must declare `$quill: <name>` as \
+             its first line (e.g. `$quill: usaf_memo@0.2.0`)."
+                .to_string(),
         ));
     }
 

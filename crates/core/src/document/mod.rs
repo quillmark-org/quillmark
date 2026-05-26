@@ -31,11 +31,30 @@ pub mod limits;
 pub mod meta;
 pub mod payload;
 pub mod prescan;
+pub(crate) mod yaml_hints;
 
 pub use dto::{peek_schema_version, StorageError, StoredDocument, SCHEMA_V0_81_0, SCHEMA_V0_82_0};
 pub use edit::EditError;
 pub use meta::{is_valid_kind_name, validate_composable_kind, CardKindError};
 pub use payload::{Payload, PayloadItem};
+
+/// Authoring-format rules for the card-yaml markdown surface.
+///
+/// Surfaced verbatim to LLM/MCP consumers (and to CLI / Python bindings via
+/// the same text) so error parity holds — every consumer reads the same
+/// rules. This is the single source of truth; bindings should call into it
+/// rather than re-stating the rules in their own glue.
+pub const FORMAT_RULES: &str = "Document format rules:
+\u{2022} Metadata blocks use `~~~card-yaml` as the opener and `~~~` as the closer. Do NOT use `---` YAML frontmatter.
+\u{2022} The closer is EXACTLY `~~~` (three tildes, no info string). Do NOT write `~~~card-yaml` as the closer.
+\u{2022} A blank line is required before every `~~~card-yaml` opener (except when it is the first line of the document).
+\u{2022} The first block is the root and MUST contain `$quill: <name>@<version>` and `$kind: main`.
+\u{2022} Reserved `$`-keys: `$quill`, `$kind`, `$id`, `$ext`. User fields use lowercase snake_case.
+\u{2022} Additional `~~~card-yaml` blocks declare composable cards via `$kind: <card_kind>`.
+\u{2022} Prose body is the text after a block's closing `~~~`, before the next opener or EOF.
+\u{2022} For optional fields with no value, OMIT the line entirely \u{2014} do not write `field: null`.
+\u{2022} Respect field types: numbers unquoted (`word_count: 42`), booleans unquoted (`pinned: true`), strings as plain scalars or quoted. Quoting a number turns it into a string and will fail validation.
+\u{2022} Plain-scalar values cannot start with `*` or `&` (YAML alias/anchor indicators) and cannot contain `:` followed by a space. For markdown emphasis, embedded colons, or other special prefixes, single-quote the value: `field: '**bold**'`, `field: \"Name: subtitle\"`.";
 
 #[cfg(test)]
 mod tests;

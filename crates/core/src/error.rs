@@ -236,6 +236,10 @@ pub enum ParseError {
         line: usize,
         /// Index of the metadata block (0-indexed)
         block_index: usize,
+        /// Optional actionable hint attached when the YAML parser's message
+        /// is too cryptic to be recoverable on its own. See
+        /// [`crate::document::yaml_hints`].
+        hint: Option<String>,
     },
 }
 
@@ -257,14 +261,21 @@ impl ParseError {
                 message,
                 line,
                 block_index,
-            } => Diagnostic::new(
-                Severity::Error,
-                format!(
-                    "YAML error at line {} (block {}): {}",
-                    line, block_index, message
-                ),
-            )
-            .with_code("parse::yaml_error_with_location".to_string()),
+                hint,
+            } => {
+                let mut d = Diagnostic::new(
+                    Severity::Error,
+                    format!(
+                        "YAML error at line {} (block {}): {}",
+                        line, block_index, message
+                    ),
+                )
+                .with_code("parse::yaml_error_with_location".to_string());
+                if let Some(h) = hint {
+                    d = d.with_hint(h.clone());
+                }
+                d
+            }
         }
     }
 }

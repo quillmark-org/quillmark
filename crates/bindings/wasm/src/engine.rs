@@ -477,6 +477,15 @@ impl Document {
         quillmark_core::document::SCHEMA_V0_82_0.to_string()
     }
 
+    /// Authoring-format rules for the card-yaml markdown surface — the same
+    /// text every binding (CLI, Python, MCP) shows so callers reading errors
+    /// from one binding can use the rules from any other. Read once at
+    /// startup and cache; the value never changes between calls.
+    #[wasm_bindgen(js_name = formatRules)]
+    pub fn format_rules() -> String {
+        quillmark_core::document::FORMAT_RULES.to_string()
+    }
+
     /// Emit canonical Quillmark Markdown. Round-trip safe: re-parsing the
     /// result produces a `Document` equal to `self` by value and by type.
     #[wasm_bindgen(js_name = toMarkdown)]

@@ -183,7 +183,10 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
             }
             let Some(cj) = closer_k else {
                 return Err(ParseError::InvalidStructure(
-                    "card-yaml block opened with `~~~card-yaml` but never closed with `~~~`"
+                    "card-yaml block opened with `~~~card-yaml` but never closed with `~~~`. \
+                     Close the block with a line containing exactly `~~~` (three tildes, no \
+                     info string) before any prose body. The closer is unadorned — do NOT \
+                     write `~~~card-yaml` as the closer."
                         .to_string(),
                 ));
             };
