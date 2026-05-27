@@ -2398,3 +2398,152 @@ fn quill_yaml_deep_nesting_is_rejected() {
         "error should reference the depth/YAML limit, got: {msg}"
     );
 }
+
+// ---------- example/default type-compatibility validation ----------
+
+fn example_default_yaml(field_yaml: &str) -> String {
+    format!(
+        r#"
+quill:
+  name: example_default_test
+  version: "1.0"
+  backend: typst
+  description: example/default type-compat tests
+
+main:
+  fields:
+{}
+"#,
+        field_yaml
+    )
+}
+
+#[test]
+fn example_integer_type_rejects_float_example() {
+    // type: integer with example: 20.04 fails — float is not an integer.
+    let yaml = example_default_yaml(
+        "    year:\n      type: integer\n      example: 20.04\n",
+    );
+    let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
+    assert!(
+        errors.iter().any(|d| d.code.as_deref() == Some("quill::example_type_mismatch")
+            && d.message.contains("year")
+            && d.message.contains("integer")
+            && d.message.contains("float")),
+        "expected example_type_mismatch error for integer/float, got: {:?}",
+        errors
+    );
+}
+
+#[test]
+fn example_string_type_rejects_unquoted_decimal_example() {
+    // The canonical bug: type: string with example: 20.04 — YAML parses the
+    // bare token as a float, and the LLM would copy it back unquoted.
+    let yaml = example_default_yaml(
+        "    min_os_version:\n      type: string\n      example: 20.04\n",
+    );
+    let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
+    let diag = errors
+        .iter()
+        .find(|d| d.code.as_deref() == Some("quill::example_type_mismatch"))
+        .expect("expected example_type_mismatch error");
+    assert!(diag.message.contains("min_os_version"));
+    assert!(diag.message.contains("string"));
+    assert!(diag.message.contains("float"));
+    let hint = diag.hint.as_deref().unwrap_or("");
+    assert!(
+        hint.contains("Quote") && hint.contains("\"20.04\""),
+        "hint should suggest quoting, got: {}",
+        hint
+    );
+}
+
+#[test]
+fn example_string_type_accepts_quoted_decimal_example() {
+    // The fix: quoting forces the YAML parser to keep it as a string.
+    let yaml = example_default_yaml(
+        "    min_os_version:\n      type: string\n      example: \"20.04\"\n",
+    );
+    QuillConfig::from_yaml(&yaml).expect("quoted string example should load");
+}
+
+#[test]
+fn example_boolean_type_rejects_string_example() {
+    // type: boolean with example: "true" — the LLM would emit it as a string.
+    let yaml = example_default_yaml(
+        "    flag:\n      type: boolean\n      example: \"true\"\n",
+    );
+    let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
+    assert!(
+        errors.iter().any(|d| d.code.as_deref() == Some("quill::example_type_mismatch")
+            && d.message.contains("flag")
+            && d.message.contains("boolean")
+            && d.message.contains("string")),
+        "expected example_type_mismatch error for boolean/string, got: {:?}",
+        errors
+    );
+}
+
+#[test]
+fn example_array_type_rejects_string_example() {
+    // type: array with example: foo — a sequence is required.
+    let yaml = example_default_yaml(
+        "    tags:\n      type: array\n      example: foo\n",
+    );
+    let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
+    assert!(
+        errors.iter().any(|d| d.code.as_deref() == Some("quill::example_type_mismatch")
+            && d.message.contains("tags")
+            && d.message.contains("array")
+            && d.message.contains("string")),
+        "expected example_type_mismatch error for array/string, got: {:?}",
+        errors
+    );
+}
+
+#[test]
+fn example_not_in_enum_is_rejected() {
+    let yaml = example_default_yaml(
+        "    color:\n      type: string\n      enum: [a, b]\n      example: c\n",
+    );
+    let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
+    let diag = errors
+        .iter()
+        .find(|d| d.code.as_deref() == Some("quill::example_not_in_enum"))
+        .expect("expected example_not_in_enum error");
+    assert!(diag.message.contains("color"));
+    assert!(diag.message.contains("\"c\""));
+    assert!(diag.message.contains("\"a\""));
+}
+
+#[test]
+fn example_in_enum_loads_successfully() {
+    let yaml = example_default_yaml(
+        "    color:\n      type: string\n      enum: [a, b]\n      example: a\n",
+    );
+    QuillConfig::from_yaml(&yaml).expect("enum-member example should load");
+}
+
+#[test]
+fn default_with_type_mismatch_is_rejected() {
+    // Defaults are validated the same way as examples.
+    let yaml = example_default_yaml(
+        "    version:\n      type: string\n      default: 20.04\n",
+    );
+    let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
+    let diag = errors
+        .iter()
+        .find(|d| d.code.as_deref() == Some("quill::default_type_mismatch"))
+        .expect("expected default_type_mismatch error");
+    assert!(diag.message.contains("version"));
+    assert!(diag.message.contains("string"));
+    assert!(diag.message.contains("float"));
+}
+
+#[test]
+fn field_with_no_example_or_default_loads_successfully() {
+    let yaml = example_default_yaml(
+        "    bare:\n      type: string\n      description: nothing to check\n",
+    );
+    QuillConfig::from_yaml(&yaml).expect("field with no example/default should load");
+}
