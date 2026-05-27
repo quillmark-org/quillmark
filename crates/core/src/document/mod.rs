@@ -52,7 +52,7 @@ pub const FORMAT_RULES: &str = "Document format rules:
 \u{2022} Prose body is the text after a block's closing `~~~`, up to the next opener or EOF.
 \u{2022} `; delete-ok` fields carry a default \u{2014} keep the line, override the value, or delete the entire line to use the default. Do not write `field:`, `field: null`, or `field: ~` \u{2014} all three parse as explicit YAML null and fail validation.
 \u{2022} Numbers and booleans MUST be unquoted (`year: 2025`, `pinned: true`); quoting turns them into strings and fails validation.
-\u{2022} Plain-scalar values cannot start with `*` or `&` (YAML alias/anchor markers) and cannot contain `: ` (colon-space). For markdown emphasis, embedded colons, or other special prefixes, quote the value: `field: '**bold**'` or `field: \"Name: subtitle\"`.";
+\u{2022} Plain-scalar values cannot start with `*` or `&` (YAML alias/anchor markers) and cannot contain `: ` (colon-space). For markdown emphasis, embedded colons, or other special prefixes, quote the value: `field: '**bold**'` or `field: \"Name: subtitle\"`. Multi-line values use `|-`, not multi-line quoted scalars.";
 
 /// Authoring-ergonomics header that introduces a blueprint to an LLM/MCP
 /// consumer. The `{quill}` placeholder is substituted with the quill name.
