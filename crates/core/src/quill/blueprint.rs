@@ -40,46 +40,26 @@ use crate::document::emit::{saphyr_emit_flow, saphyr_emit_scalar};
 use crate::value::QuillValue;
 use serde_json::Value as JsonValue;
 
-/// Controls how `<must-fill>` sentinels in a generated blueprint are handled
-/// before parsing.
-///
-/// A freshly emitted blueprint carries one sentinel per Must Fill cell.
-/// Downstream parsing accepts the sentinel as a literal string, but
-/// validation rejects it (or rejects the wrong-typed string for non-string
-/// fields). Use this to choose between letting that error surface
-/// (`Strict`), substituting placeholder values for a preview render
-/// (`Preview`), or substituting type-minimal values for a render-test
-/// (`TypeEmpty`).
+/// Controls how `<must-fill>` sentinels in a generated blueprint are
+/// substituted before parsing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FillBehavior {
-    /// Leave `<must-fill>` sentinels in place. Downstream parsing or
-    /// validation will reject the unfilled fields with their canonical
-    /// `validation::must_fill_sentinel` diagnostic.
+    /// Leave sentinels in place — downstream validation reports
+    /// `validation::must_fill_sentinel`.
     #[default]
     Strict,
-    /// Replace each `<must-fill>` sentinel with a preview-friendly
-    /// placeholder derived from the inline type annotation on the same
-    /// line: `Lorem ipsum` for strings/markdown, `0` for numbers, `false`
-    /// for booleans, a fixed ISO date/datetime, the first enum variant,
-    /// and `[]` / `{}` for arrays/objects.
+    /// Substitute with preview-friendly placeholders: `Lorem ipsum` for
+    /// strings/markdown, `0`, `false`, `[]`, `{}`, a fixed ISO
+    /// date/datetime, first enum variant.
     Preview,
-    /// Replace each `<must-fill>` sentinel with a *type-empty* value: `""`
-    /// for strings/dates/datetimes/objects, `0` for numbers, `false` for
-    /// booleans, `[]` for arrays, the first variant for enums, and an
-    /// empty body for markdown block scalars. This is the leanest input
-    /// the schema accepts — useful for asserting that a plate renders
-    /// every type-valid shape gracefully.
+    /// Substitute with the leanest type-valid values: `""`, `0`, `false`,
+    /// `[]`, first enum variant, empty markdown body. Used by the quiver
+    /// render-test to exercise plates on minimal input.
     TypeEmpty,
 }
 
 /// Substitute `<must-fill>` sentinels in a generated blueprint according to
-/// `behavior`. With [`FillBehavior::Strict`] the input is returned
-/// unchanged; otherwise each sentinel is replaced by a value derived from
-/// the inline type annotation on the same line (markdown block scalars
-/// substitute on the body line).
-///
-/// The output remains valid blueprint markdown — the annotation comments
-/// and structure are preserved.
+/// `behavior`. [`FillBehavior::Strict`] returns the input unchanged.
 pub fn fill_blueprint(blueprint: &str, behavior: FillBehavior) -> String {
     match behavior {
         FillBehavior::Strict => blueprint.to_string(),
@@ -109,14 +89,11 @@ fn substitute_line(line: &str, behavior: FillBehavior) -> String {
         let value = scalar_value_for(annotation, behavior);
         return format!("{}: {}  # {}", prefix, value, annotation);
     }
-    // Markdown block scalar: `<indent><must-fill>` on its own line. The
-    // outer block-scalar header is unchanged; only the body line is
-    // substituted.
+    // Markdown block scalar: `<indent><must-fill>` on its own line.
     if line.trim_start() == MUST_FILL_SENTINEL {
         let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
         return match behavior {
             FillBehavior::Preview => format!("{}{}", indent, PREVIEW_MARKDOWN),
-            // TypeEmpty: leave the body blank (just the indent).
             _ => indent,
         };
     }
@@ -138,8 +115,6 @@ fn scalar_value_for(annotation: &str, behavior: FillBehavior) -> String {
         .strip_prefix("enum<")
         .and_then(|s| s.strip_suffix('>'))
     {
-        // Enums substitute the first variant unquoted in both modes —
-        // type-empty has no separate notion for enums.
         let first = inner.split('|').next().unwrap_or("").trim();
         return first.to_string();
     }
@@ -154,11 +129,9 @@ fn scalar_value_for(annotation: &str, behavior: FillBehavior) -> String {
             if head.starts_with("datetime<") || head == "datetime" {
                 return PREVIEW_DATETIME.to_string();
             }
-            // string (markdown takes the block-scalar branch above).
             PREVIEW_STRING.to_string()
         }
-        // TypeEmpty: empty string covers strings / dates / datetimes /
-        // objects — validation accepts `""` for each by design.
+        // `""` is schema-valid for string/date/datetime/object alike.
         _ => "\"\"".to_string(),
     }
 }
@@ -1195,8 +1168,6 @@ main:
 
     #[test]
     fn fill_blueprint_preview_preserves_endorsed_cells() {
-        // Endorsed cells (defaults present) have no sentinel — Preview must
-        // leave them alone.
         let bp = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -1214,7 +1185,6 @@ main:
 
     #[test]
     fn fill_blueprint_preview_substitutes_typed_table_leaves() {
-        // Outer typed-table key has no sentinel; inner leaves do.
         let bp = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -1255,14 +1225,11 @@ main:
         assert!(out.contains("refs: []  # array<string>\n"));
         assert!(out.contains("issued: \"\"  # date<YYYY-MM-DD>\n"));
         assert!(out.contains("severity: low  # enum<low | medium | high>\n"));
-        // Markdown block scalar: body line collapses to bare indent.
         assert!(out.contains("bio: |-  # markdown\n  \n"));
     }
 
     #[test]
     fn fill_blueprint_preview_round_trips_to_a_valid_document() {
-        // The substituted blueprint must parse as a Document — the
-        // round-trip guarantee on `blueprint()` extends to its filled form.
         let bp = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:

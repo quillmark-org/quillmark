@@ -80,9 +80,7 @@ pub fn execute(args: RenderArgs) -> Result<()> {
             }
             (output, Some(markdown_path.clone()))
         } else {
-            // Fall back to the quill's generated blueprint, with Must Fill
-            // sentinels substituted by preview-friendly placeholders so the
-            // document renders out of the box.
+            // Generated blueprint, sentinels filled so it renders out of the box.
             let blueprint = quill.source().config().blueprint();
             let markdown = fill_blueprint(&blueprint, FillBehavior::Preview);
 
