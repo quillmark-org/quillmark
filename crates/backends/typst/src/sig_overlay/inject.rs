@@ -87,8 +87,16 @@ pub(crate) fn inject(
     }
     {
         let mut form: Form<'_> = chunk.indirect(acroform_id).start::<Form>();
+        // Only `SIGNATURES_EXIST`: advertises that the document has signature
+        // fields so viewers list them in the signature panel. We deliberately
+        // do NOT set `APPEND_ONLY` — these fields are empty placeholders with
+        // no `/V` value, so nothing can be invalidated by a full save. Setting
+        // `APPEND_ONLY` makes Acrobat treat the file as signed and refuse all
+        // content edits ("This document cannot be edited because it has been
+        // signed"). Per PDF §12.7.4.5, `APPEND_ONLY` is only appropriate once a
+        // real signature value is present.
         form.fields(widget_ids.iter().copied())
-            .sig_flags(SigFlags::SIGNATURES_EXIST | SigFlags::APPEND_ONLY);
+            .sig_flags(SigFlags::SIGNATURES_EXIST);
         form.pair(Name(b"NeedAppearances"), true);
         form.finish();
     }

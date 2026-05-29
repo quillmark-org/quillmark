@@ -134,7 +134,10 @@ Page 2.
         .as_reference()
         .expect("AcroForm indirect");
     let af = doc.get_object(af_ref).unwrap().as_dict().unwrap();
-    assert_eq!(af.get(b"SigFlags").unwrap().as_i64().unwrap(), 3);
+    // SigFlags must be 1 (SignaturesExist only), NOT 3. Setting bit 2
+    // (AppendOnly) would make Acrobat treat the document as signed and lock it
+    // against all content edits, even though the fields are empty placeholders.
+    assert_eq!(af.get(b"SigFlags").unwrap().as_i64().unwrap(), 1);
     assert!(af.get(b"NeedAppearances").unwrap().as_bool().unwrap());
 
     let fields = af.get(b"Fields").unwrap().as_array().unwrap();
