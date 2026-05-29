@@ -21,8 +21,9 @@
 // Re-export core types for convenience. Note: `QuillSource` is not re-exported
 // at the crate root — Quillmark consumers work with the renderable `Quill`.
 pub use quillmark_core::{
-    Artifact, Backend, Card, Diagnostic, Document, Location, OutputFormat, ParseError, ParseOutput,
-    RenderError, RenderOptions, RenderResult, RenderSession, Severity,
+    fill_blueprint, Artifact, Backend, Card, Diagnostic, Document, FillBehavior, Location,
+    OutputFormat, ParseError, ParseOutput, RenderError, RenderOptions, RenderResult, RenderSession,
+    Severity,
 };
 
 // Declare modules

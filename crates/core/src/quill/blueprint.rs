@@ -40,6 +40,102 @@ use crate::document::emit::{saphyr_emit_flow, saphyr_emit_scalar};
 use crate::value::QuillValue;
 use serde_json::Value as JsonValue;
 
+/// Controls how `<must-fill>` sentinels in a generated blueprint are
+/// substituted before parsing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FillBehavior {
+    /// Leave sentinels in place — downstream validation reports
+    /// `validation::must_fill_sentinel`.
+    #[default]
+    Strict,
+    /// Substitute with preview-friendly placeholders: `Lorem ipsum` for
+    /// strings/markdown, `0`, `false`, `[]`, `{}`, a fixed ISO
+    /// date/datetime, first enum variant.
+    Preview,
+    /// Substitute with the leanest type-valid values: `""`, `0`, `false`,
+    /// `[]`, first enum variant, empty markdown body. Used by the quiver
+    /// render-test to exercise plates on minimal input.
+    TypeEmpty,
+}
+
+/// Substitute `<must-fill>` sentinels in a generated blueprint according to
+/// `behavior`. [`FillBehavior::Strict`] returns the input unchanged.
+pub fn fill_blueprint(blueprint: &str, behavior: FillBehavior) -> String {
+    match behavior {
+        FillBehavior::Strict => blueprint.to_string(),
+        FillBehavior::Preview | FillBehavior::TypeEmpty => fill_substitute(blueprint, behavior),
+    }
+}
+
+const PREVIEW_STRING: &str = "Lorem ipsum";
+const PREVIEW_MARKDOWN: &str = "Lorem ipsum dolor sit amet, consectetur adipiscing elit.";
+const PREVIEW_DATE: &str = "\"2024-01-15\"";
+const PREVIEW_DATETIME: &str = "\"2024-01-15T12:00:00Z\"";
+
+fn fill_substitute(blueprint: &str, behavior: FillBehavior) -> String {
+    let mut out = String::with_capacity(blueprint.len());
+    for line in blueprint.lines() {
+        out.push_str(&substitute_line(line, behavior));
+        out.push('\n');
+    }
+    out
+}
+
+fn substitute_line(line: &str, behavior: FillBehavior) -> String {
+    const NEEDLE: &str = ": <must-fill>  # ";
+    if let Some(idx) = line.find(NEEDLE) {
+        let prefix = &line[..idx];
+        let annotation = &line[idx + NEEDLE.len()..];
+        let value = scalar_value_for(annotation, behavior);
+        return format!("{}: {}  # {}", prefix, value, annotation);
+    }
+    // Markdown block scalar: `<indent><must-fill>` on its own line.
+    if line.trim_start() == MUST_FILL_SENTINEL {
+        let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+        return match behavior {
+            FillBehavior::Preview => format!("{}{}", indent, PREVIEW_MARKDOWN),
+            _ => indent,
+        };
+    }
+    line.to_string()
+}
+
+fn scalar_value_for(annotation: &str, behavior: FillBehavior) -> String {
+    let head = annotation.split(';').next().unwrap_or(annotation).trim();
+    if head.starts_with("array<") || head == "array" {
+        return "[]".to_string();
+    }
+    if head == "integer" || head == "number" {
+        return "0".to_string();
+    }
+    if head == "boolean" {
+        return "false".to_string();
+    }
+    if let Some(inner) = head
+        .strip_prefix("enum<")
+        .and_then(|s| s.strip_suffix('>'))
+    {
+        let first = inner.split('|').next().unwrap_or("").trim();
+        return first.to_string();
+    }
+    match behavior {
+        FillBehavior::Preview => {
+            if head == "object" {
+                return "{}".to_string();
+            }
+            if head.starts_with("date<") || head == "date" {
+                return PREVIEW_DATE.to_string();
+            }
+            if head.starts_with("datetime<") || head == "datetime" {
+                return PREVIEW_DATETIME.to_string();
+            }
+            PREVIEW_STRING.to_string()
+        }
+        // `""` is schema-valid for string/date/datetime/object alike.
+        _ => "\"\"".to_string(),
+    }
+}
+
 impl QuillConfig {
     /// Generate an annotated Markdown blueprint for this quill. See module
     /// docs for the annotation grammar; the function is total over any valid
@@ -1011,6 +1107,147 @@ card_kinds:
             doc1, doc2,
             "Document must be equal after blueprint → parse → emit → parse"
         );
+    }
+
+    #[test]
+    fn fill_blueprint_strict_is_identity() {
+        let bp = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    title: { type: string }
+    count: { type: integer }
+"#)
+        .blueprint();
+        let out = super::fill_blueprint(&bp, super::FillBehavior::Strict);
+        assert_eq!(out, bp);
+        assert!(out.contains("<must-fill>"));
+    }
+
+    #[test]
+    fn fill_blueprint_preview_substitutes_every_inline_sentinel() {
+        let bp = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    title:     { type: string }
+    count:     { type: integer }
+    ratio:     { type: number }
+    flag:      { type: boolean }
+    refs:      { type: array }
+    issued:    { type: date }
+    published: { type: datetime }
+    severity:  { type: string, enum: [low, medium, high] }
+"#)
+        .blueprint();
+        let out = super::fill_blueprint(&bp, super::FillBehavior::Preview);
+        assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
+        assert!(out.contains("title: Lorem ipsum  # string\n"));
+        assert!(out.contains("count: 0  # integer\n"));
+        assert!(out.contains("ratio: 0  # number\n"));
+        assert!(out.contains("flag: false  # boolean\n"));
+        assert!(out.contains("refs: []  # array<string>\n"));
+        assert!(out.contains("issued: \"2024-01-15\"  # date<YYYY-MM-DD>\n"));
+        assert!(out.contains("published: \"2024-01-15T12:00:00Z\"  # datetime<ISO 8601>\n"));
+        assert!(out.contains("severity: low  # enum<low | medium | high>\n"));
+    }
+
+    #[test]
+    fn fill_blueprint_preview_substitutes_markdown_block_scalar() {
+        let bp = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    bio: { type: markdown }
+"#)
+        .blueprint();
+        let out = super::fill_blueprint(&bp, super::FillBehavior::Preview);
+        assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
+        assert!(out.contains("bio: |-  # markdown\n  Lorem ipsum dolor sit amet"));
+    }
+
+    #[test]
+    fn fill_blueprint_preview_preserves_endorsed_cells() {
+        let bp = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    size:   { type: number, default: 11 }
+    flag:   { type: boolean, default: true }
+    status: { type: string, default: draft }
+"#)
+        .blueprint();
+        let out = super::fill_blueprint(&bp, super::FillBehavior::Preview);
+        assert!(out.contains("size: 11  # number; delete-ok\n"));
+        assert!(out.contains("flag: true  # boolean; delete-ok\n"));
+        assert!(out.contains("status: draft  # string; delete-ok\n"));
+    }
+
+    #[test]
+    fn fill_blueprint_preview_substitutes_typed_table_leaves() {
+        let bp = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    refs:
+      type: array
+      properties:
+        org:  { type: string }
+        year: { type: integer }
+"#)
+        .blueprint();
+        let out = super::fill_blueprint(&bp, super::FillBehavior::Preview);
+        assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
+        assert!(out.contains("    org: Lorem ipsum  # string\n"));
+        assert!(out.contains("    year: 0  # integer\n"));
+    }
+
+    #[test]
+    fn fill_blueprint_type_empty_substitutes_with_minimal_values() {
+        let bp = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    title:    { type: string }
+    count:    { type: integer }
+    flag:     { type: boolean }
+    refs:     { type: array }
+    issued:   { type: date }
+    severity: { type: string, enum: [low, medium, high] }
+    bio:      { type: markdown }
+"#)
+        .blueprint();
+        let out = super::fill_blueprint(&bp, super::FillBehavior::TypeEmpty);
+        assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
+        assert!(out.contains("title: \"\"  # string\n"));
+        assert!(out.contains("count: 0  # integer\n"));
+        assert!(out.contains("flag: false  # boolean\n"));
+        assert!(out.contains("refs: []  # array<string>\n"));
+        assert!(out.contains("issued: \"\"  # date<YYYY-MM-DD>\n"));
+        assert!(out.contains("severity: low  # enum<low | medium | high>\n"));
+        assert!(out.contains("bio: |-  # markdown\n  \n"));
+    }
+
+    #[test]
+    fn fill_blueprint_preview_round_trips_to_a_valid_document() {
+        let bp = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    title:     { type: string }
+    count:     { type: integer }
+    severity:  { type: string, enum: [low, medium, high] }
+    bio:       { type: markdown }
+    issued:    { type: date }
+"#)
+        .blueprint();
+        let filled = super::fill_blueprint(&bp, super::FillBehavior::Preview);
+        let doc = Document::from_markdown(&filled)
+            .unwrap_or_else(|e| panic!("filled blueprint must parse: {e:?}\n---\n{filled}"));
+        let main = doc.main().payload();
+        assert_eq!(main.get("title").unwrap().as_str().unwrap(), "Lorem ipsum");
+        assert_eq!(main.get("count").unwrap().as_i64().unwrap(), 0);
+        assert_eq!(main.get("severity").unwrap().as_str().unwrap(), "low");
     }
 
     /// Regression: string defaults that look numeric/boolean/null get
