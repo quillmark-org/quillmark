@@ -195,12 +195,13 @@ fn missing_root_block_is_rejected() {
     );
 }
 
-// A card-yaml block opened but never closed is a fatal error.
+// An unclosed root fence is delegated to CommonMark (a code block to EOF), so
+// no root block is recognised and the document fails with MissingQuill.
 #[test]
-fn unclosed_card_yaml_block_is_rejected() {
+fn unclosed_card_yaml_block_falls_through_to_commonmark() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\ntitle: T\n";
     let err = Document::from_markdown(md).unwrap_err().to_string();
-    assert!(err.contains("never closed with `~~~`"), "got: {}", err);
+    assert!(err.contains("Missing required root"), "got: {}", err);
 }
 
 // A card-yaml block with no blank line above is treated as an ordinary code

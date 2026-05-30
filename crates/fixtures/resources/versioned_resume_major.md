@@ -1,4 +1,4 @@
-~~~card-yaml
+~~~
 $quill: classic_resume@2
 $kind: main
 name: John Smith

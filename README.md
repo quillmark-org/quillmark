@@ -38,7 +38,7 @@ use quillmark::{Document, OutputFormat, Quillmark, RenderOptions};
 let engine = Quillmark::new();
 let quill = engine.quill_from_path("path/to/quill")?;
 
-let markdown = r#"~~~card-yaml
+let markdown = r#"~~~
 $quill: my_quill
 $kind: main
 title: Example

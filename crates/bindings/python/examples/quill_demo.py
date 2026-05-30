@@ -27,7 +27,7 @@ def main():
     engine = Quillmark()
     quill = engine.quill_from_path(str(taro_dir))
 
-    markdown = """~~~card-yaml
+    markdown = """~~~
 $quill: taro
 $kind: main
 author: Alice

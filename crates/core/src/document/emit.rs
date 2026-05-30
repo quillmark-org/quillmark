@@ -17,7 +17,7 @@
 //! double-quoted scalars with `\n` escapes, so the emitter never produces
 //! `|` or `>` block forms in v1.
 //!
-//! This module owns the surrounding structure — `~~~card-yaml` fences,
+//! This module owns the surrounding structure — `~~~` card-yaml fences,
 //! `$`-prefixed system-metadata lines, field ordering, indentation, comment
 //! interleaving — and calls saphyr only for the scalar leaves.
 
@@ -49,7 +49,7 @@ impl Document {
     /// # Emission rules (§5.2)
     ///
     /// - Line endings: `\n` only.  CRLF normalization happens on import.
-    /// - Every block is emitted as a `~~~card-yaml` fence: a `~~~card-yaml`
+    /// - Every block is emitted as a `~~~` card-yaml fence: a bare `~~~`
     ///   opener, the `$`-prefixed system-metadata lines (`$quill: <ref>` for
     ///   the root block, `$kind: <kind>` for composable cards) leading the
     ///   YAML payload, the user-defined data fields, then a closing `~~~`.
@@ -154,7 +154,7 @@ fn emit_ext_block(
 }
 
 fn emit_block(out: &mut String, card: &Card) {
-    out.push_str("~~~card-yaml\n");
+    out.push_str("~~~\n");
     emit_payload_items(out, card.payload().items());
     out.push_str("~~~\n");
 }
