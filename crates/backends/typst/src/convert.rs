@@ -1856,6 +1856,43 @@ mod tests {
         let out = mark_to_typst(md).unwrap();
         assert!(out.contains("[], [], [],"), "multiple empty cells: {out}");
     }
+
+    #[test]
+    fn test_table_ragged_short_row_is_padded() {
+        // A body row with fewer cells than the header is padded with empty cells
+        // by the parser, so the emitted row keeps the column count consistent and
+        // Typst's auto-flow stays aligned.
+        let md = "| A | B | C |\n|---|---|---|\n| 1 | 2 |";
+        let out = mark_to_typst(md).unwrap();
+        assert!(out.contains("columns: 3,"), "column count: {out}");
+        assert!(
+            out.contains("[1], [2], [], \n"),
+            "short row padded to 3 cells: {out}"
+        );
+    }
+
+    #[test]
+    fn test_table_ragged_long_row_is_truncated() {
+        // A body row with more cells than the header is truncated by the parser to
+        // the header column count (GFM semantics), so no stray cell leaks into the
+        // next row.
+        let md = "| A | B |\n|---|---|\n| 1 | 2 | 3 |";
+        let out = mark_to_typst(md).unwrap();
+        assert!(out.contains("columns: 2,"), "column count: {out}");
+        assert!(out.contains("[1], [2], \n"), "long row truncated: {out}");
+        assert!(!out.contains("[3]"), "extra cell dropped: {out}");
+    }
+
+    #[test]
+    fn test_table_single_column_with_alignment() {
+        // A single aligned column emits `align: (left)`. In Typst `(left)` is a
+        // scalar alignment (not a 1-tuple), which `table` accepts and applies to
+        // the lone column — verified to compile. This guards that exact shape.
+        let md = "| H |\n|:--|\n| x |";
+        let out = mark_to_typst(md).unwrap();
+        assert!(out.contains("columns: 1,"), "single column: {out}");
+        assert!(out.contains("align: (left),"), "single-column align: {out}");
+    }
 }
 
 // Additional robustness tests
