@@ -3,7 +3,7 @@ use crate::errors::{CliError, Result};
 use crate::output::{derive_output_path, OutputWriter};
 use clap::Parser;
 use quillmark::Document;
-use quillmark_core::{fill_blueprint, FillBehavior, OutputFormat, RenderOptions};
+use quillmark_core::{FillBehavior, OutputFormat, RenderOptions};
 use std::fs;
 use std::path::PathBuf;
 
@@ -80,9 +80,11 @@ pub fn execute(args: RenderArgs) -> Result<()> {
             }
             (output, Some(markdown_path.clone()))
         } else {
-            // Generated blueprint, sentinels filled so it renders out of the box.
-            let blueprint = quill.source().config().blueprint();
-            let markdown = fill_blueprint(&blueprint, FillBehavior::Preview);
+            // Generated blueprint, Must Fill cells filled so it renders out of the box.
+            let markdown = quill
+                .source()
+                .config()
+                .blueprint_filled(FillBehavior::Preview);
 
             if args.verbose {
                 println!("Using generated blueprint from quill (fill: preview)");
