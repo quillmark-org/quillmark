@@ -2219,11 +2219,11 @@ fn check_schema_snapshot(
     json_of: impl Fn(&QuillConfig) -> serde_json::Value,
     golden: &str,
 ) {
-    let quill = load_from_path(quillmark_fixtures::resource_path("quills/usaf_memo/0.1.0"))
+    let quill = load_from_path(quillmark_fixtures::resource_path("quills/usaf_memo/0.2.0"))
         .expect("load usaf_memo fixture");
     let yaml = yaml_of(&quill.config);
     let golden_path =
-        quillmark_fixtures::resource_path(&format!("quills/usaf_memo/0.1.0/__golden__/{golden}"));
+        quillmark_fixtures::resource_path(&format!("quills/usaf_memo/0.2.0/__golden__/{golden}"));
 
     if std::env::var("UPDATE_GOLDEN").is_ok() {
         fs::write(&golden_path, &yaml).expect("write golden");
@@ -2243,7 +2243,7 @@ fn check_schema_snapshot(
 }
 
 #[test]
-fn schema_snapshot_usaf_memo_0_1_0() {
+fn schema_snapshot_usaf_memo_0_2_0() {
     check_schema_snapshot(|c| c.schema_yaml().unwrap(), |c| c.schema(), "schema.yaml");
 }
 

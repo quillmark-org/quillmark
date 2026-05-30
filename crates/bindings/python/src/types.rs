@@ -141,18 +141,20 @@ impl PyQuill {
             .collect()
     }
 
-    #[pyo3(signature = (doc, format=None, ppi=None, pages=None))]
+    #[pyo3(signature = (doc, format=None, ppi=None, pages=None, producer=None))]
     fn render(
         &self,
         doc: PyRef<'_, PyDocument>,
         format: Option<PyOutputFormat>,
         ppi: Option<f32>,
         pages: Option<Vec<usize>>,
+        producer: Option<String>,
     ) -> PyResult<PyRenderResult> {
         let opts = quillmark_core::RenderOptions {
             output_format: format.map(OutputFormat::from),
             ppi,
             pages,
+            producer,
         };
         let start = Instant::now();
         let mut result = self
@@ -532,17 +534,19 @@ impl PyRenderSession {
             .collect()
     }
 
-    #[pyo3(signature = (format=None, ppi=None, pages=None))]
+    #[pyo3(signature = (format=None, ppi=None, pages=None, producer=None))]
     fn render(
         &self,
         format: Option<PyOutputFormat>,
         ppi: Option<f32>,
         pages: Option<Vec<usize>>,
+        producer: Option<String>,
     ) -> PyResult<PyRenderResult> {
         let opts = quillmark::RenderOptions {
             output_format: format.map(OutputFormat::from),
             ppi,
             pages,
+            producer,
         };
         let start = Instant::now();
         let result = self.inner.render(&opts).map_err(convert_render_error)?;

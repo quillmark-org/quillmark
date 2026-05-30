@@ -14,10 +14,12 @@ use typst::Document;
 
 use quillmark_core::{Diagnostic, RenderError, Severity};
 
-use super::{err, SigPlacement};
+use crate::pdf_scan::err;
+
+use super::SigPlacement;
 
 const SIG_LABEL: &str = "__qm_sig__";
-const CODE_INTERNAL: &str = "typst::sig_overlay_internal";
+const CODE_INTERNAL: &str = "typst::overlay_internal";
 
 pub(crate) fn extract(doc: &PagedDocument) -> Result<Vec<SigPlacement>, RenderError> {
     let intro = doc.introspector();

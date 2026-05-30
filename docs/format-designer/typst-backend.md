@@ -171,6 +171,11 @@ Inside `#box`, `#table`, `#figure`, `#footnote`, `#move`, `#pad` — `signature-
 
 The label `<__qm_sig__>` and metadata `kind: "__qm_sig__"` are reserved for this hand-off — don't use them for unrelated metadata in your plate.
 
+> `signature-field` emits a document-global `metadata` element (standard Typst
+> introspection). If your plate or its packages read config via
+> `query(metadata)`, filter to your own elements rather than assuming a single
+> or last metadata element.
+
 ## Output Formats
 
 PDF and SVG render as a single artifact. PNG renders one artifact per page.

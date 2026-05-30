@@ -314,6 +314,10 @@ pub struct RenderOptions {
     /// `format: "pdf"` yields a `FormatNotSupported` error.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pages: Option<Vec<usize>>,
+    /// Override for the PDF `/Info` `/Producer` metadata string. Omit to use
+    /// the default (`Quillmark <version>`). Applies to PDF output only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub producer: Option<String>,
 }
 
 impl Default for RenderOptions {
@@ -322,6 +326,7 @@ impl Default for RenderOptions {
             format: Some(OutputFormat::Pdf),
             ppi: None,
             pages: None,
+            producer: None,
         }
     }
 }
@@ -332,6 +337,7 @@ impl From<RenderOptions> for quillmark_core::RenderOptions {
             output_format: opts.format.map(|f| f.into()),
             ppi: opts.ppi,
             pages: opts.pages,
+            producer: opts.producer,
         }
     }
 }
@@ -592,6 +598,7 @@ mod tests {
             format: Some(OutputFormat::Pdf),
             ppi: None,
             pages: None,
+            producer: None,
         };
         let json = serde_json::to_string(&options).unwrap();
         assert!(json.contains("\"format\":\"pdf\""));

@@ -115,7 +115,7 @@ Omitting the Markdown file renders the quill's generated blueprint:
 
 ```bash
 quillmark render \
-  crates/fixtures/resources/quills/usaf_memo/0.1.0 \
+  crates/fixtures/resources/quills/usaf_memo/0.2.0 \
   -o usaf_memo_output.pdf
 ```
 

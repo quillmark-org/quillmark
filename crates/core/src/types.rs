@@ -38,4 +38,8 @@ pub struct RenderOptions {
     /// Backends that do not support page selection (notably PDF) return
     /// a `FormatNotSupported` error when this is `Some`.
     pub pages: Option<Vec<usize>>,
+    /// Override for the PDF `/Info` `/Producer` metadata string. `None` uses
+    /// the backend default (`Quillmark <version>` for the Typst backend).
+    /// Applies to PDF output only; ignored by SVG/PNG/TXT.
+    pub producer: Option<String>,
 }

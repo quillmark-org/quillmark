@@ -1,4 +1,4 @@
-#import "@local/quillmark-helper:0.1.0": data
+#import "@local/quillmark-helper:0.1.0": data, signature-field
 #import "@local/tonguetoquill-usaf-memo:1.1.0": backmatter, frontmatter, indorsement, mainmatter
 
 // Frontmatter configuration
@@ -40,6 +40,9 @@
 #mainmatter[
   #data.at("$body")
 ]
+
+// Empty signature field (unsigned AcroForm widget) above the signature block.
+#signature-field("signature")
 
 // Backmatter
 #backmatter(

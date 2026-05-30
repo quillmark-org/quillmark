@@ -536,7 +536,7 @@ name = "minimal-package"
             .join("resources")
             .join("quills")
             .join("usaf_memo")
-            .join("0.1.0");
+            .join("0.2.0");
 
         if !quill_path.exists() {
             // Skip test if fixture not found

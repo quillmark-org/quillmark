@@ -57,6 +57,7 @@ impl Quill {
                 .or_else(|| self.backend.supported_formats().first().copied()),
             ppi: opts.ppi,
             pages: opts.pages.clone(),
+            producer: opts.producer.clone(),
         };
         session.render(&resolved)
     }

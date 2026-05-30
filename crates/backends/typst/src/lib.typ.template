@@ -6,6 +6,10 @@
 /// `name` must be unique and match `[A-Za-z0-9_]+`. `width` / `height` must
 /// be absolute lengths (pt/mm/cm/in).
 /// `<__qm_sig__>` and `kind: "__qm_sig__"` are reserved for this hand-off.
+/// Note: this emits a `metadata` element, so plates/packages that read their
+/// own config via an unfiltered `query(metadata)` (e.g. `.last()`) must query
+/// by a dedicated label or filter on a key they own, or they will read this
+/// field's metadata by accident.
 #let signature-field(name, width: 200pt, height: 50pt) = {
   assert(type(name) == str,
     message: "signature-field: name must be a string, got " + repr(type(name)))

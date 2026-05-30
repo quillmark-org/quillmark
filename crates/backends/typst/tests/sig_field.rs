@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use quillmark_core::{FileTreeNode, QuillSource, RenderError};
 use quillmark_typst::compile::compile_to_pdf;
 
-/// Load a fixture quill from disk. Reuses `usaf_memo@0.1.0` as the host
+/// Load a fixture quill from disk. Reuses `usaf_memo@0.2.0` as the host
 /// — `signature-field` doesn't depend on any quill-specific config so we
 /// just need a valid quill skeleton, and `usaf_memo` is the fixture the
 /// spikes validated.
@@ -44,7 +44,7 @@ fn host_source() -> QuillSource {
         .join("resources")
         .join("quills")
         .join("usaf_memo")
-        .join("0.1.0");
+        .join("0.2.0");
     let tree = walk(&quill_path).expect("walk fixture");
     QuillSource::from_tree(tree).expect("load source")
 }
@@ -282,19 +282,23 @@ Just a doc.
         "expected no /AcroForm in catalog for sig-field-free plate"
     );
 
-    // Sanity: only one startxref (i.e. no incremental update appended) and
-    // no `/Prev` key in the trailer.
+    // The signature overlay is skipped (no fields), but the always-on
+    // `/Producer` metadata pass appends exactly one incremental update — so
+    // expect two startxref markers and a single `/Prev` chain entry.
     let startxref_count = pdf
         .windows(b"startxref\n".len())
         .filter(|w| *w == b"startxref\n")
         .count();
     assert_eq!(
-        startxref_count, 1,
-        "expected exactly 1 startxref marker (no incremental update); got {}",
+        startxref_count, 2,
+        "expected 2 startxref markers (one Producer-metadata incremental update); got {}",
         startxref_count
     );
-    assert!(
-        !pdf.windows(b"/Prev".len()).any(|w| w == b"/Prev"),
-        "fresh typst-pdf output should not declare /Prev in the trailer"
+    assert_eq!(
+        pdf.windows(b"/Prev".len())
+            .filter(|w| *w == b"/Prev")
+            .count(),
+        1,
+        "expected exactly one /Prev (the Producer-metadata incremental update)"
     );
 }
