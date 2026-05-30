@@ -22,8 +22,7 @@ use typst::layout::PagedDocument;
 use typst_pdf::PdfOptions;
 
 use crate::error_mapping::map_typst_errors;
-use crate::meta_overlay;
-use crate::sig_overlay;
+use crate::overlay;
 use crate::world::QuillWorld;
 use quillmark_core::{
     Artifact, Diagnostic, OutputFormat, QuillSource, RenderError, RenderResult, Severity,
@@ -76,7 +75,7 @@ pub fn compile_to_pdf(
     json_data: &str,
 ) -> Result<Vec<u8>, RenderError> {
     let document = compile_to_document(source, plated_content, json_data)?;
-    let placements = sig_overlay::extract(&document)?;
+    let placements = overlay::extract(&document)?;
 
     let pdf = typst_pdf::pdf(&document, &PdfOptions::default()).map_err(|e| {
         RenderError::CompilationFailed {
@@ -88,8 +87,7 @@ pub fn compile_to_pdf(
         }
     })?;
 
-    let pdf = meta_overlay::inject(pdf, &meta_overlay::default_producer())?;
-    sig_overlay::inject(pdf, &document, &placements)
+    overlay::inject(pdf, &document, &placements, &overlay::default_producer())
 }
 
 /// Compiles a Typst document to SVG format with JSON data injection.
@@ -159,13 +157,13 @@ pub fn compile_to_png(
 /// for SVG/PNG callers or documents with no `signature-field` calls.
 ///
 /// `producer` overrides the PDF `/Info` `/Producer` string (PDF output only);
-/// `None` uses [`meta_overlay::default_producer`] (`Quillmark <version>`).
+/// `None` uses [`overlay::default_producer`] (`Quillmark <version>`).
 pub(crate) fn render_document_pages(
     document: &PagedDocument,
     pages: Option<&[usize]>,
     format: OutputFormat,
     ppi: Option<f32>,
-    sig_placements: &[sig_overlay::SigPlacement],
+    sig_placements: &[overlay::SigPlacement],
     producer: Option<&str>,
 ) -> Result<RenderResult, RenderError> {
     // PDF does not support selective page rendering
@@ -243,9 +241,13 @@ pub(crate) fn render_document_pages(
                     .with_code("typst::pdf_generation".to_string())],
                 }
             })?;
-            let default_producer = meta_overlay::default_producer();
-            let pdf = meta_overlay::inject(pdf, producer.unwrap_or(&default_producer))?;
-            let pdf = sig_overlay::inject(pdf, document, sig_placements)?;
+            let default_producer = overlay::default_producer();
+            let pdf = overlay::inject(
+                pdf,
+                document,
+                sig_placements,
+                producer.unwrap_or(&default_producer),
+            )?;
             Ok(RenderResult::new(
                 vec![Artifact {
                     bytes: pdf,

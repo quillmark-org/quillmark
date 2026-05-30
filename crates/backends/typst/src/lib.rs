@@ -34,9 +34,8 @@ pub mod convert;
 mod error_mapping;
 
 pub mod helper;
-mod meta_overlay;
+mod overlay;
 mod pdf_scan;
-mod sig_overlay;
 mod world;
 
 /// Utilities exposed for fuzzing tests.
@@ -72,7 +71,7 @@ pub struct TypstSession {
     document: typst::layout::PagedDocument,
     page_count: usize,
     /// Extracted once at `open`. Consumed by PDF inject; unused for SVG/PNG.
-    sig_placements: Vec<sig_overlay::SigPlacement>,
+    sig_placements: Vec<overlay::SigPlacement>,
 }
 
 impl TypstSession {
@@ -186,7 +185,7 @@ impl Backend for TypstBackend {
             serde_json::to_string(&transformed_json).unwrap_or_else(|_| "{}".to_string());
         let document = compile::compile_to_document(source, plate_content, &json_str)?;
         let page_count = document.pages.len();
-        let sig_placements = sig_overlay::extract(&document)?;
+        let sig_placements = overlay::extract(&document)?;
         let session = TypstSession {
             document,
             page_count,

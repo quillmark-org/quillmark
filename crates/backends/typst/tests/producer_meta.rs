@@ -1,9 +1,9 @@
-//! Acceptance tests for the `/Info` `/Producer` metadata pass (`meta_overlay`).
+//! Acceptance tests for the `/Info` `/Producer` metadata stamp (`overlay`).
 //!
 //! Compiles plates to PDF, reparses with lopdf, and asserts the `/Producer`
 //! string — the default `Quillmark <version>`, a caller override (including
 //! escaping), preservation of Typst's `/Creator`, and correct composition
-//! with the signature-field overlay.
+//! with the signature-field overlay in the same incremental update.
 
 use std::collections::HashMap;
 use std::fs;
@@ -109,8 +109,8 @@ fn producer_override_via_render_options() {
 
 #[test]
 fn producer_composes_with_signature_field() {
-    // Both incremental-update passes must apply: a signature widget AND the
-    // /Producer stamp. meta runs first, sig second.
+    // One incremental update must carry both: a signature widget AND the
+    // /Producer stamp.
     let plate = r#"
 #import "@local/quillmark-helper:0.1.0": signature-field
 #set page(width: 600pt, height: 400pt, margin: 50pt)
