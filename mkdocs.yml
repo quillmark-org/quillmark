@@ -49,6 +49,7 @@ nav:
   - Reference:
       - Markdown Specification: reference/markdown-spec.md
   - Migration:
+      - 0.85 → 0.86 (bare ~~~ card-yaml fence): migrations/0.85-to-0.86.md
       - 0.83 → 0.84 (Must Fill / Endorsed, Python parity): migrations/0.83-to-0.84.md
       - 0.82 → 0.83 ($-prefixed plate JSON): migrations/0.82-to-0.83.md
       - 0.81 → 0.82 (card-yaml): migrations/0.81-to-0.82.md

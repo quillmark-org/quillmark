@@ -1,4 +1,4 @@
-~~~card-yaml
+~~~
 $quill: business_letter@latest
 $kind: main
 sender:

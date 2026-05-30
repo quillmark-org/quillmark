@@ -29,7 +29,7 @@ pub(crate) struct EnrichedYamlError {
 /// Inspect a serde_saphyr error string against the YAML content it came from
 /// and return an [`EnrichedYamlError`].
 ///
-/// The content slice is the YAML payload of a single `~~~card-yaml` block
+/// The content slice is the YAML payload of a single `~~~` card-yaml block
 /// (the same string passed to the parser). The function never panics on
 /// non-UTF8 byte offsets — all inspection is over `&str` / `chars()`.
 pub(crate) fn enrich_yaml_error(raw: &str, content: &str) -> EnrichedYamlError {
@@ -115,11 +115,11 @@ fn derive_hint(message: &str, content: &str) -> Option<String> {
     }
 
     // Gap 4 (the `---` separator case): a stray YAML document separator
-    // inside a `~~~card-yaml` block.
+    // inside a card-yaml block.
     if m.contains("multiple yaml documents") {
         if content.lines().any(|l| l.trim_end() == "---") {
             return Some(
-                "`---` is not a valid separator inside a `~~~card-yaml` block (YAML \
+                "`---` is not a valid separator inside a card-yaml block (YAML \
                  reads it as a new-document marker). Close the metadata block with a \
                  line containing exactly `~~~` (three tildes) before starting the \
                  prose body."
@@ -127,7 +127,7 @@ fn derive_hint(message: &str, content: &str) -> Option<String> {
             );
         }
         return Some(
-            "Only one YAML document is allowed per `~~~card-yaml` block. Remove the \
+            "Only one YAML document is allowed per card-yaml block. Remove the \
              stray `---` separator and close the block with `~~~` before any prose."
                 .to_string(),
         );
@@ -136,7 +136,7 @@ fn derive_hint(message: &str, content: &str) -> Option<String> {
     // Gap 4 (duplicate keys): a field declared twice in the same block.
     if m.contains("duplicate mapping key") || m.contains("duplicate key") {
         return Some(
-            "Each field may appear at most once inside a `~~~card-yaml` block. \
+            "Each field may appear at most once inside a card-yaml block. \
              Remove the duplicate line, or move it to a separate composable card."
                 .to_string(),
         );

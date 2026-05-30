@@ -6,7 +6,7 @@
 //!
 //! This crate provides the foundational types and traits for Quillmark:
 //!
-//! - **Parsing**: card-yaml block extraction (`~~~card-yaml` metadata blocks)
+//! - **Parsing**: card-yaml block extraction (`~~~` metadata blocks)
 //! - **Format model**: [`QuillSource`] type for managing format bundles with in-memory file system
 //! - **Backend trait**: Extensible interface for implementing output format backends
 //! - **Error handling**: Structured diagnostics with source location tracking
@@ -18,7 +18,7 @@
 //! use quillmark_core::Document;
 //!
 //! // Parse markdown with a card-yaml metadata block
-//! let markdown = "~~~card-yaml\n$quill: my_quill\n$kind: main\ntitle: Example\n~~~\n\n# Content";
+//! let markdown = "~~~\n$quill: my_quill\n$kind: main\ntitle: Example\n~~~\n\n# Content";
 //! let doc = Document::from_markdown(markdown).unwrap();
 //! let title = doc.main()
 //!     .payload()

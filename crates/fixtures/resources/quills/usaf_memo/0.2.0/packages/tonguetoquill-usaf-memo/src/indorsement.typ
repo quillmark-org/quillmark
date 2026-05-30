@@ -18,6 +18,7 @@
   to: none,
   signature_block: none,
   signature_blank_lines: 4,
+  signing_field: none,
   attachments: none,
   cc: none,
   date: none,
@@ -41,18 +42,35 @@
   }
 
 
-  let actual_date = if date == none { datetime.today() } else { date }
+  let actual_date = date
   let ind_from = first-or-value(from)
   let ind_for = to
+
+  // An empty body (e.g. a KIND with only an action selected and no markdown
+  // body) collapses to zero rendered layout via render-body's filter. To
+  // make the "empty body takes no layout space" guarantee end-to-end, also
+  // suppress the spacing the surrounding code reserves *for* the body:
+  // the header→body gap (when no action is present) and the action→body
+  // trailing gap. Without this, an empty body still leaves an extra
+  // blank-line stride above the signature, pushing it off the AFH 33-337
+  // "fifth line below the last line of text" anchor.
+  // The plate calls indorsement with `[]` when the markdown body is empty
+  // or whitespace-only; comparing against `[]` reliably detects that.
+  let body_empty = content == []
+
+  let effective_action = if action == none or type(action) != str or action.trim() == "" {
+    none
+  } else {
+    action
+  }
 
   if format != "informal" {
     // Step the counter BEFORE the context block to avoid read-then-update loop
     counters.indorsement.step()
 
     context {
-      // `.first()`: the frontmatter config metadata precedes any plate-level
-      // metadata (e.g. quillmark signature-field) emitted later in the body.
-      let config = query(metadata).first().value
+      let config = query(<usaf-memo-config>).first().value
+      let memo-style = config.at("memo_style", default: "usaf")
       let original_subject = config.subject
       let original_date = config.original_date
       let original_from = config.original_from
@@ -63,12 +81,12 @@
 
       if format == "separate_page" {
         pagebreak()
-        [#indorsement_label to #original_from, #display-date(original_date), #original_subject]
+        [#indorsement_label to #original_from, #display-date(original_date, memo-style: memo-style), #original_subject]
 
         blank-line()
         grid(
           columns: (auto, 1fr),
-          ind_from, align(right)[#display-date(actual_date)],
+          ind_from, align(right)[#if actual_date != none { display-date(actual_date, memo-style: memo-style) }],
         )
 
         blank-line()
@@ -80,7 +98,7 @@
         blank-line()
         grid(
           columns: (auto, 1fr),
-          [#indorsement_label, #ind_from], align(right)[#display-date(actual_date)],
+          [#indorsement_label, #ind_from], align(right)[#if actual_date != none { display-date(actual_date, memo-style: memo-style) }],
         )
 
         blank-line()
@@ -90,31 +108,26 @@
         )
       }
     }
-    blank-line()
+    // Header→content gap. Skipped when there is neither an action line nor
+    // body to follow — render-signature-block supplies its own 4-line gap.
+    if effective_action != none or not body_empty {
+      blank-line()
+    }
   }
 
   // Show action line only when an action decision is set (not `none`)
-  if action != none {
-    render-action-line(action)
+  if effective_action != none {
+    render-action-line(effective_action, trailing-blank-line: not body_empty)
   }
 
-  render-body(content)
-
-  render-signature-block(signature_block, signature-blank-lines: signature_blank_lines)
-
-  if not falsey(attachments) {
-    calculate-backmatter-spacing(true)
-    let attachment-count = attachments.len()
-    let section-label = if attachment-count == 1 { "Attachment:" } else { str(attachment-count) + " Attachments:" }
-    let continuation-label = (
-      (if attachment-count == 1 { "Attachment" } else { str(attachment-count) + " Attachments" })
-        + " (listed on next page):"
-    )
-    render-backmatter-section(attachments, section-label, numbering-style: "1.", continuation-label: continuation-label)
+  if not body_empty {
+    context {
+      let memo-style = query(<usaf-memo-config>).first().value.at("memo_style", default: "usaf")
+      render-body(content, memo-style: memo-style)
+    }
   }
 
-  if not falsey(cc) {
-    calculate-backmatter-spacing(falsey(attachments))
-    render-backmatter-section(cc, "cc:")
-  }
+  render-signature-block(signature_block, signature-blank-lines: signature_blank_lines, signing-field: signing_field)
+
+  render-backmatter-sections(attachments: attachments, cc: cc)
 }

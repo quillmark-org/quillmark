@@ -18,7 +18,7 @@ from quillmark import Quillmark, Document, OutputFormat
 engine = Quillmark()
 quill = engine.quill_from_path("path/to/quill")
 
-markdown = """~~~card-yaml
+markdown = """~~~
 $quill: my_quill
 $kind: main
 title: Hello World

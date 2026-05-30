@@ -3,12 +3,18 @@ quill:
   version: 0.2.0
   backend: typst
   plate_file: plate.typ
-  description: Typesetted USAF Official Memorandum
+  description: U.S. Air Force and Space Force Official Memorandum
 
 main:
+  body:
+    example: |
+      The first paragraph. Top-level paragraphs are auto-numbered; do not add manual numbering.
+
+      - Nested bullets are automatically lettered.
   fields:
     memo_for:
       type: array
+      default: []
       example:
         - ORG1/SYMBOL
         - ORG2/SYMBOL
@@ -18,6 +24,7 @@ main:
 
     memo_from:
       type: array
+      default: []
       example:
         - ORG/SYMBOL
         - Organization Name
@@ -25,10 +32,11 @@ main:
         - City ST 12345-6789
       ui:
         group: Addressing
-      description: If recipients are on the same installation, use only the office symbol. For recipients on other installations, include the full mailing address to enable return correspondence.
+      description: "If recipients are on the same installation, use only the office symbol. For recipients on other installations, include the full mailing address to enable return correspondence. Omit entirely to produce a Memorandum for Record (no MEMO FROM line)."
 
     subject:
       type: string
+      default: ""
       example: Subject of the Memorandum
       ui:
         group: Addressing
@@ -36,6 +44,7 @@ main:
 
     signature_block:
       type: array
+      default: []
       example:
         - "FIRST M. LAST, Rank, USSF"
         - Duty Title
@@ -58,19 +67,40 @@ main:
         group: Letterhead
       description: The full organization name of your unit.
 
+    letterhead_seal:
+      type: string
+      enum:
+        - dow
+        - dod
+      default: dow
+      ui:
+        group: Letterhead
+        compact: true
+      description: Department of War (DoW) or Department of Defense (DoD) seal shown in the letterhead.
+
+    letterhead_seal_subtitle:
+      type: string
+      default: ""
+      ui:
+        group: Letterhead
+        compact: true
+      description: Optional line below the DoW seal (bold caps). Leave blank to omit.
+
     tag_line:
       type: string
       default: ""
       ui:
         group: Letterhead
+        compact: true
       description: Organizational motto at the bottom of the page.
 
-    date:
-      type: string
-      default: ""
+    freedom250:
+      type: boolean
+      default: false
       ui:
-        group: Additional
-      description: YYYY-MM-DD. Leave blank to use today's date.
+        group: Letterhead
+        compact: true
+      description: Show the America 250 / Freedom 250 commemorative emblem in the letterhead, mirrored opposite the seal.
 
     references:
       type: array
@@ -109,26 +139,62 @@ main:
         group: Additional
       description: List attachments in the order they are mentioned in the memo. Briefly describe each; do not use 'as stated' or abbreviations.
 
-    classification:
+    memo_style:
       type: string
-      default: ""
-      example: CONFIDENTIAL
+      enum:
+        - usaf
+        - daf
+      default: usaf
       ui:
         group: Additional
-      description: Follow AFI 31-401 and applicable DoD guidance for classification markings. Leave blank for unclassified.
+        compact: true
+      description: "USAF memorandum (default) or DAF headquarters memorandum. DAF changes date formatting and body paragraph layout per AFH 33-337."
 
     font_size:
       type: number
-      default: 11
+      default: 12
+      example: 12
       ui:
         group: Additional
-      description: Font size for the memo text (pt).
+        compact: true
+      description: Font size for the memo text (pt). Decimal values (e.g. 11.5) are supported.
+
+    date:
+      type: date
+      default: ""
+      ui:
+        group: Additional
+        compact: true
+      description: YYYY-MM-DD. Leave blank to use today's date.
+
+    classification:
+      type: string
+      enum:
+        - ""
+        - UNCLASSIFIED
+        - CUI
+        - CONFIDENTIAL
+        - SECRET
+        - TOP SECRET
+      default: ""
+      ui:
+        group: Additional
+        compact: true
+      description: "Select the classification marking displayed in the header/footer banner. Banner colors follow DoD/CAPCO marking guidance (UNCLASSIFIED green, CUI/CONFIDENTIAL black, SECRET red, TOP SECRET orange). Follow AFI 31-401 and applicable DoD guidance. Leave blank to omit the banner."
+
+    dissemination:
+      type: string
+      default: ""
+      ui:
+        group: Additional
+        compact: true
+      description: "Optional marking appended after double slash (e.g. NF with classification CUI renders as CUI//NF). Leave blank to show only the classification with no //."
 
 card_kinds:
   indorsement:
     description: Chain of routing endorsements. Each endorsement block adds an official response or forwarding action to the original memo.
     ui:
-      title: "{from} → {for}"
+      title: Routing indorsement
     fields:
       from:
         type: string
@@ -144,46 +210,51 @@ card_kinds:
         description: Office symbol or organization receiving the endorsed memo.
       signature_block:
         type: array
+        default:
+          - "FIRST M. LAST, Rank, USAF"
+          - Duty Title
         example:
           - "FIRST M. LAST, Rank, USAF"
           - Duty Title
         ui:
           group: Addressing
         description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title."
-        default:
-          - "FIRST M. LAST, Rank, USAF"
-          - Duty Title
       format:
         type: string
         enum:
           - standard
           - informal
           - separate_page
+        default: standard
         ui:
           group: Additional
         description: "Format style: 'standard' (formal on same page), 'informal' (less formal routing), or 'separate_page' (starts on new page)."
-        default: standard
       action:
         type: string
         enum:
+          - ""
           - undecided
           - approve
           - disapprove
+        default: ""
         ui:
           group: Addressing
-        description: "Action taken by the endorser. Use 'undecided' to display the Approve/Disapprove line with neither option circled, 'approve' or 'disapprove' to circle the selected option."
+        description: "Action taken by the endorser. Leave blank to hide the Approve/Disapprove line entirely, 'undecided' to display the line with neither option circled, 'approve' or 'disapprove' to circle the selected option."
       attachments:
         type: array
+        default: []
         ui:
           group: Additional
         description: List of attachments specific to this endorsement.
       cc:
         type: array
+        default: []
         ui:
           group: Additional
         description: List of office symbols to receive copies of this endorsement.
       date:
-        type: string
+        type: date
+        default: ""
         ui:
           group: Additional
-        description: Date of the endorsement. Leave blank to omit.
+        description: "YYYY-MM-DD. Date the endorser signs/forwards the memo (per AFH 33-337 Ch. 14, this is distinct from the originating memo's date). Leave blank to use today's date."

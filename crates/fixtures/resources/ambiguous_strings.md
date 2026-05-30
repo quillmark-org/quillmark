@@ -1,4 +1,4 @@
-~~~card-yaml
+~~~
 $quill: test_quill
 $kind: main
 on_word: "on"

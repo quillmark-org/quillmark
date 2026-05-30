@@ -22,18 +22,20 @@
 //
 // Basic usage:
 //
-// #import "@local/tonguetoquill-usaf-memo:0.2.0": frontmatter, mainmatter, backmatter, indorsement
+// #import "@preview/tonguetoquill-usaf-memo:3.0.0": frontmatter, mainmatter, backmatter, indorsement
 //
 // #show: frontmatter.with(
 //   subject: "Your Subject Here",
 //   memo_for: ("OFFICE/SYMBOL",),
 //   memo_from: ("YOUR/SYMBOL",),
+//   memo_style: "usaf", // "usaf" (default) or "daf"
 // )
 //
 // #show: mainmatter
 //
 // Your memo body content here.
-// (Paragraphs are automatically numbered per AFH 33-337)
+// (USAF style auto-numbers per AFH 33-337; DAF style uses unnumbered
+// top-level paragraphs with fixed 0.5in first-line indentation)
 //
 // #backmatter(
 //   signature_block: ("NAME, Rank, USAF", "Title"),

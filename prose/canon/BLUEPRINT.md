@@ -16,7 +16,7 @@ free.
 ## Output shape
 
 ````
-~~~card-yaml
+~~~
 $quill: <name>@<version>
 $kind: main
 # <description>
@@ -28,7 +28,7 @@ field: value  # <type>[; delete-ok]
 
 Write main body here.
 
-~~~card-yaml
+~~~
 $kind: <card_kind>
 # composable (0..N)
 # <card description>
@@ -38,9 +38,11 @@ $kind: <card_kind>
 Write <card_kind> body here.
 ````
 
-Every block is a `~~~card-yaml` block (see [markdown-spec.md](../references/markdown-spec.md) §3):
-the root block carries the `$quill` system-metadata line; each composable
-card carries a `$kind: <card_kind>` metadata line.
+Every block is a bare `~~~` block (the canonical card-yaml fence; the legacy
+`~~~card-yaml` opener is still accepted as an alias — see
+[markdown-spec.md](../references/markdown-spec.md) §3): the root block carries
+the `$quill` system-metadata line; each composable card carries a
+`$kind: <card_kind>` metadata line.
 
 When `body.example` is set, its text replaces the body marker entirely.
 When `body.enabled` is false the marker is omitted entirely.
@@ -119,7 +121,7 @@ Examples:
 | `date: <must-fill>  # date<YYYY-MM-DD>` | Must Fill date in `YYYY-MM-DD` format |
 | `severity: <must-fill>  # enum<low \| medium \| high>` | Must Fill enum |
 | `$quill: cmu_letter@0.1.0` | quill binding metadata, emitted verbatim, do not modify |
-| `$kind: skill` followed by `# composable (0..N)` | repeat the entire `~~~card-yaml` … `~~~` block per instance |
+| `$kind: skill` followed by `# composable (0..N)` | repeat the entire `~~~` … `~~~` block per instance |
 
 ## Placeholder value precedence
 
@@ -293,14 +295,14 @@ within the same `ui.group` still cluster together via `ui.order`.
 (e.g., a `skills` card whose data is purely structured).
 
 A `body.example` whose text contains a line that would parse as a
-`~~~card-yaml` opener is rejected at `Quill.yaml` parse time
-(`quill::body_example_contains_fence`) to prevent corrupting the
-blueprint's document structure.
+card-yaml opener — a bare `~~~` (or the legacy `~~~card-yaml` alias) — is
+rejected at `Quill.yaml` parse time (`quill::body_example_contains_fence`)
+to prevent corrupting the blueprint's document structure.
 
 ## Worked example
 
 ```
-~~~card-yaml
+~~~
 $quill: cmu_letter@0.1.0
 $kind: main
 # Typeset letters that comply with Carnegie Mellon University letterhead standards.

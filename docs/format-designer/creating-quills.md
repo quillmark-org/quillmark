@@ -64,7 +64,7 @@ For data access patterns, helper package details, optional fields, and `$cards` 
 Create a `document.md` that matches the fields you defined:
 
 ```markdown
-~~~card-yaml
+~~~
 $quill: my_quill
 $kind: main
 sender: Jane Doe

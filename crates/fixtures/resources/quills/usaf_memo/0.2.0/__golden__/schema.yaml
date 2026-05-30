@@ -10,7 +10,7 @@ main:
       - Attachment description, YYYY MMM DD
       ui:
         group: Additional
-        order: 11
+        order: 13
     cc:
       type: array
       description: List office symbols of recipients to receive copies.
@@ -19,24 +19,44 @@ main:
       - Rank and Name, ORG/SYMBOL
       ui:
         group: Additional
-        order: 9
+        order: 11
     classification:
       type: string
       description: >-
-        Follow AFI 31-401 and applicable DoD guidance for classification markings.
-        Leave blank for unclassified.
+        Select the classification marking displayed in the header/footer banner. Banner
+        colors follow DoD/CAPCO marking guidance (UNCLASSIFIED green, CUI/CONFIDENTIAL
+        black, SECRET red, TOP SECRET orange). Follow AFI 31-401 and applicable DoD
+        guidance. Leave blank to omit the banner.
       default: ""
-      example: CONFIDENTIAL
       ui:
         group: Additional
-        order: 12
+        order: 17
+        compact: true
+      enum:
+      - ""
+      - UNCLASSIFIED
+      - CUI
+      - CONFIDENTIAL
+      - SECRET
+      - TOP SECRET
     date:
-      type: string
+      type: date
       description: YYYY-MM-DD. Leave blank to use today's date.
       default: ""
       ui:
         group: Additional
-        order: 7
+        order: 16
+        compact: true
+    dissemination:
+      type: string
+      description: >-
+        Optional marking appended after double slash (e.g. NF with classification CUI
+        renders as CUI//NF). Leave blank to show only the classification with no //.
+      default: ""
+      ui:
+        group: Additional
+        order: 18
+        compact: true
     distribution:
       type: array
       description: >-
@@ -48,14 +68,26 @@ main:
       - ORG2/SYMBOL
       ui:
         group: Additional
-        order: 10
+        order: 12
     font_size:
       type: number
-      description: Font size for the memo text (pt).
-      default: 11
+      description: Font size for the memo text (pt). Decimal values (e.g. 11.5) are supported.
+      default: 12
+      example: 12
       ui:
         group: Additional
-        order: 13
+        order: 15
+        compact: true
+    freedom250:
+      type: boolean
+      description: >-
+        Show the America 250 / Freedom 250 commemorative emblem in the letterhead,
+        mirrored opposite the seal.
+      default: false
+      ui:
+        group: Letterhead
+        order: 9
+        compact: true
     letterhead_caption:
       type: array
       description: The full organization name of your unit.
@@ -64,6 +96,27 @@ main:
       ui:
         group: Letterhead
         order: 5
+    letterhead_seal:
+      type: string
+      description: >-
+        Department of War (DoW) or Department of Defense (DoD) seal shown in the
+        letterhead.
+      default: dow
+      ui:
+        group: Letterhead
+        order: 6
+        compact: true
+      enum:
+      - dow
+      - dod
+    letterhead_seal_subtitle:
+      type: string
+      description: Optional line below the DoW seal (bold caps). Leave blank to omit.
+      default: ""
+      ui:
+        group: Letterhead
+        order: 7
+        compact: true
     letterhead_title:
       type: string
       description: Standard title. Only change for Joint Commands or DoW Agencies.
@@ -77,6 +130,7 @@ main:
         Organization/office symbol in UPPERCASE. To address a specific person, add
         their rank and name in parentheses (e.g., 'ORG/SYMBOL (LT COL JANE DOE)'). For
         numerous recipients, use 'DISTRIBUTION'.
+      default: []
       example:
       - ORG1/SYMBOL
       - ORG2/SYMBOL
@@ -88,7 +142,9 @@ main:
       description: >-
         If recipients are on the same installation, use only the office symbol. For
         recipients on other installations, include the full mailing address to enable return
-        correspondence.
+        correspondence. Omit entirely to produce a Memorandum for Record (no MEMO FROM
+        line).
+      default: []
       example:
       - ORG/SYMBOL
       - Organization Name
@@ -97,6 +153,19 @@ main:
       ui:
         group: Addressing
         order: 1
+    memo_style:
+      type: string
+      description: >-
+        USAF memorandum (default) or DAF headquarters memorandum. DAF changes date
+        formatting and body paragraph layout per AFH 33-337.
+      default: usaf
+      ui:
+        group: Additional
+        order: 14
+        compact: true
+      enum:
+      - usaf
+      - daf
     references:
       type: array
       description: Cite by organization, type, date, and title.
@@ -105,10 +174,11 @@ main:
       - AFM 33-326, 31 July 2019, Preparing Official Communications
       ui:
         group: Additional
-        order: 8
+        order: 10
     signature_block:
       type: array
       description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title. Spell out 'Colonel' and general officer ranks."
+      default: []
       example:
       - FIRST M. LAST, Rank, USSF
       - Duty Title
@@ -121,6 +191,7 @@ main:
         Be brief and clear. Capitalize the first letter of each word except articles,
         prepositions, and conjunctions. Include suspense dates in parentheses if
         applicable.
+      default: ""
       example: Subject of the Memorandum
       ui:
         group: Addressing
@@ -131,7 +202,13 @@ main:
       default: ""
       ui:
         group: Letterhead
-        order: 6
+        order: 8
+        compact: true
+  body:
+    example: |
+      The first paragraph. Top-level paragraphs are auto-numbered; do not add manual numbering.
+      
+      - Nested bullets are automatically lettered.
 card_kinds:
   indorsement:
     description: >-
@@ -141,31 +218,39 @@ card_kinds:
       action:
         type: string
         description: >-
-          Action taken by the endorser. Use 'undecided' to display the Approve/Disapprove
-          line with neither option circled, 'approve' or 'disapprove' to circle the
-          selected option.
+          Action taken by the endorser. Leave blank to hide the Approve/Disapprove line
+          entirely, 'undecided' to display the line with neither option circled, 'approve'
+          or 'disapprove' to circle the selected option.
+        default: ""
         ui:
           group: Addressing
           order: 4
         enum:
+        - ""
         - undecided
         - approve
         - disapprove
       attachments:
         type: array
         description: List of attachments specific to this endorsement.
+        default: []
         ui:
           group: Additional
           order: 5
       cc:
         type: array
         description: List of office symbols to receive copies of this endorsement.
+        default: []
         ui:
           group: Additional
           order: 6
       date:
-        type: string
-        description: Date of the endorsement. Leave blank to omit.
+        type: date
+        description: >-
+          YYYY-MM-DD. Date the endorser signs/forwards the memo (per AFH 33-337 Ch. 14,
+          this is distinct from the originating memo's date). Leave blank to use today's
+          date.
+        default: ""
         ui:
           group: Additional
           order: 7
@@ -207,4 +292,4 @@ card_kinds:
           group: Addressing
           order: 2
     ui:
-      title: "{from} → {for}"
+      title: Routing indorsement

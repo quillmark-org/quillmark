@@ -1,4 +1,4 @@
-~~~card-yaml
+~~~
 $quill: test_quill
 $kind: main
 title: Quillmark Card-YAML Demo
@@ -21,7 +21,7 @@ This document demonstrates the card-yaml parsing capabilities of Quillmark.
 
 ## How It Works
 
-Quillmark parses a **`~~~card-yaml` block** at the beginning of the document. The payload fields are extracted into a dictionary, while the markdown body is converted to the target format.
+Quillmark parses a **`~~~` block** at the beginning of the document. The payload fields are extracted into a dictionary, while the markdown body is converted to the target format.
 
 ### Key Features
 

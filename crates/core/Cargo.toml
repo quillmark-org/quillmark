@@ -24,3 +24,6 @@ indexmap = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 quillmark-fixtures = { workspace = true }
+# Cross-checks the hand-rolled fence scanner against a real CommonMark parser
+# (tests only — core has no markdown-engine dependency in production).
+pulldown-cmark = { workspace = true }

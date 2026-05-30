@@ -1,17 +1,17 @@
 # Cards
 
 Quillmark supports composable, repeatable metadata blocks called *cards*. A
-card is a `~~~card-yaml` block that declares a typed structured record, paired
+card is a `~~~` block that declares a typed structured record, paired
 with the Markdown prose that follows it.
 
 ## Card Block Syntax
 
-A card is a `~~~card-yaml` block whose YAML payload declares `$kind: <kind>`
+A card is a `~~~` block whose YAML payload declares `$kind: <kind>`
 alongside its data fields. The Markdown after the closing `~~~` fence is the
 card's body.
 
 ```
-~~~card-yaml
+~~~
 $quill: my_quill@1.0
 $kind: main
 title: Main Document
@@ -21,7 +21,7 @@ title: Main Document
 
 Some content here.
 
-~~~card-yaml
+~~~
 $kind: products
 name: Widget
 price: 19.99
@@ -29,7 +29,7 @@ price: 19.99
 
 Widget description.
 
-~~~card-yaml
+~~~
 $kind: products
 name: Gadget
 price: 29.99
@@ -42,22 +42,25 @@ All card blocks are collected into the plate JSON's `$cards` array.
 
 ## Structural Rules
 
-- A card block opens with exactly `~~~card-yaml` and closes with exactly `~~~`
-  (three tildes).
+- A card block opens with a bare `~~~` and closes with exactly `~~~` (three
+  tildes). The legacy `~~~card-yaml` opener is still accepted on input but is
+  non-canonical and re-emits as a bare `~~~`.
 - A composable card block must declare a `$kind: <kind>` entry naming the
   card kind. The kind must match `[a-z_][a-z0-9_]*` and must not be `main`
   (reserved for the document root). Invalid examples: `BadCard`, `my-card`,
   `2nd_card`, `main`.
 - Field names must match `[a-z_][a-z0-9_]*`. Uppercase and `$`-prefixed
   keys are reserved for system metadata and cannot be used as user fields.
-- A blank line is required immediately above every `~~~card-yaml` opener
-  (unless the block is the very first line of the document). A `~~~card-yaml`
+- A blank line is required immediately above every `~~~` opener
+  (unless the block is the very first line of the document). A `~~~`
   line without a blank line above it is treated as an ordinary code block.
+  To write a literal fenced code block in prose, use a backtick fence (or a
+  `~~~` fence with a language info string); a `~~~~` block is still a card.
 - YAML comments round-trip through the canonical form. Own-line comments
   and inline trailing comments are preserved on both `$` metadata lines
   and data-field lines.
 
-The document is positional: the **first** `~~~card-yaml` block is the root
+The document is positional: the **first** `~~~` block is the root
 block, and it must declare a `$quill: <name>@<version>` metadata line. Every
 subsequent block is a card.
 
@@ -79,7 +82,7 @@ the map (`$ext.presentation`, `$ext.agent`, …) to avoid collisions when
 more than one tool carries state on the same card.
 
 ```
-~~~card-yaml
+~~~
 $kind: indorsement
 $ext:
   presentation:
@@ -91,6 +94,6 @@ from: ORG/SYMBOL
 ## Emission
 
 Round-tripping a document through `toMarkdown` always emits the canonical
-`~~~card-yaml` / `$`-prefixed metadata lines first / remaining data fields /
+bare `~~~` / `$`-prefixed metadata lines first / remaining data fields /
 `~~~` form. Fence markers, key ordering, and YAML quoting are normalised.
 `!fill` tags and data-field comments survive the round-trip.
