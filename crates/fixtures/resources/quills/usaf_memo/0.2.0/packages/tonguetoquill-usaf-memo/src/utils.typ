@@ -14,30 +14,37 @@
 
 #import "config.typ": CLASSIFICATION_COLORS, counters, paragraph-config, spacing
 
+// Shared measured line-stride cache used by body line-count heuristics.
+// Value is a `length` set once in `frontmatter`.
+#let LINE_STRIDE = state("LINE_STRIDE")
+
 /// Creates vertical spacing equivalent to multiple blank lines.
 ///
-/// Calculates proper vertical space based on line height and leading
-/// to maintain consistent spacing throughout the document.
+/// Adds `count` wrapped-line strides on top of the natural inter-paragraph
+/// gap, so a blank line occupies exactly the same vertical space as a line
+/// produced by natural paragraph wrapping. The stride is measured from
+/// `LINE_STRIDE` (cached in `frontmatter`) and falls back to an inline
+/// measurement when the cache is unset.
 ///
 /// - count (int): Number of blank lines to create
-/// - weak (bool): Whether spacing can be compressed at page breaks
 /// -> content
-#let blank-lines(count, weak: true) = {
-  if count == 0 {
-    v(0em, weak: weak)
-  } else {
-    let lead = spacing.line
-    let height = spacing.line-height
-    v(lead + (height + lead) * count, weak: weak)
+#let blank-lines(count) = {
+  if count <= 0 { return }
+  context {
+    let stride = LINE_STRIDE.get()
+    if stride == none {
+      let one-line = measure(par(spacing: 0pt)[x]).height
+      stride = measure(par(spacing: 0pt)[x#linebreak()x]).height - one-line
+    }
+    v(stride * count)
   }
 }
 
 /// Creates vertical spacing equivalent to one blank line.
 /// Convenience function for single line spacing.
 ///
-/// - weak (bool): Whether spacing can be compressed at page breaks
 /// -> content
-#let blank-line(weak: true) = blank-lines(1, weak: weak)
+#let blank-line() = blank-lines(1)
 
 // =============================================================================
 // GENERAL UTILITY FUNCTIONS
@@ -80,87 +87,51 @@
   ]
 }
 
-/// Checks if a string is in ISO date format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS).
+/// Formats a date for the memo heading.
 ///
-/// Performs a simple pattern check for ISO 8601 date strings by verifying:
-/// - String is at least 10 characters long
-/// - Characters at positions 4 and 7 are dashes
-///
-/// - date-str (str): String to check for ISO date pattern
-/// -> bool
-#let is-iso-date-string(date-str) = {
-  if date-str.len() == 10 {
-    let char4 = date-str.at(4)
-    let char7 = date-str.at(7)
-    return char4 == "-" and char7 == "-"
-  } else if date-str.len() > 10 {
-    let char4 = date-str.at(4)
-    let char7 = date-str.at(7)
-    let char10 = date-str.at(10)
-    return char4 == "-" and char7 == "-" and char10 == "T"
-  }
-  return false
-}
-
-/// Extracts the date portion (YYYY-MM-DD) from an ISO date string.
-///
-/// Returns the first 10 characters which contain the date portion of an
-/// ISO 8601 date string, removing any time component if present.
-///
-/// - date-str (str): ISO date string to extract from
-/// -> str
-#let extract-iso-date(date-str) = {
-  date-str.slice(0, 10)
-}
-
-/// Formats a date in standard military format or ISO format depending on input type.
-///
-/// AFH 33-337 "Date": "Use the 'Day Month Year' or 'DD Mmm YY' format for documents
-/// addressed to a military organization. For civilian addressees, use the 'Month Day, Year' format."
-/// Examples: "15 October 2014" or "15 Oct 14" for military, "October 15, 2014" for civilian
-///
-/// Intelligently handles different date input formats:
-/// - ISO string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS): Parsed via TOML and displayed in military format
-/// - Non-ISO string: Displayed as-is
-/// - datetime object: Displayed in military format ("1 January 2024")
+/// - String: shown as-is (use for fixed text like placeholders).
+/// - datetime: USAF style `DD Month YYYY`; DAF style `Month DD, YYYY`.
 ///
 /// - date (str|datetime): Date to format for display
-/// -> str
-// NOTE: Consider simplification if Typst adds native ISO date parsing (see CASCADES.md §A)
-#let display-date(date) = {
+/// - memo-style (str): `"usaf"` or `"daf"`
+/// -> content
+#let display-date(date, memo-style: "usaf") = {
+  assert(
+    memo-style in ("usaf", "daf"),
+    message: "memo-style for display-date must be \"usaf\" or \"daf\"",
+  )
   if type(date) == str {
-    if is-iso-date-string(date) {
-      // Parse ISO date string using TOML to get datetime object
-      let iso-date = extract-iso-date(date)
-      let toml-str = "date = " + iso-date
-      let parsed = toml(bytes(toml-str))
-      parsed.date.display("[day padding:none] [month repr:long] [year]")
-    } else {
-      date
-    }
+    date
   } else {
-    date.display("[day padding:none] [month repr:long] [year]")
+    let pattern = if memo-style == "daf" {
+      "[month repr:long] [day padding:none], [year]"
+    } else {
+      "[day padding:none] [month repr:long] [year]"
+    }
+    date.display(pattern)
   }
 }
 
-/// Gets the color associated with a classification level.
+/// Gets the banner color for a classification marking.
 ///
-/// - level (str): Classification level string
+/// Matches when `level` (trimmed) starts with a known prefix: TOP SECRET, SECRET,
+/// CONFIDENTIAL, CUI, or UNCLASSIFIED. Otherwise returns black.
+///
+/// - level (str): Marking string shown in header/footer
 /// -> color
 #let get-classification-level-color(level) = {
-  if level == none {
-    return rgb(0, 0, 0) // Default to black if no classification
+  if level == none or type(level) != str {
+    return rgb(0, 0, 0)
   }
-  // Order matters - check most specific first
-  let level-order = ("TOP SECRET", "SECRET", "CONFIDENTIAL", "UNCLASSIFIED")
-
+  let s = level.trim()
+  // Longest-prefix-first so e.g. "TOP SECRET" wins over "SECRET".
+  let level-order = ("TOP SECRET", "SECRET", "CONFIDENTIAL", "CUI", "UNCLASSIFIED")
   for base-level in level-order {
-    if base-level in level {
+    if s.starts-with(base-level) {
       return CLASSIFICATION_COLORS.at(base-level)
     }
   }
-
-  rgb(0, 0, 0) // Default
+  rgb(0, 0, 0)
 }
 
 // =============================================================================
@@ -326,7 +297,6 @@
 ///
 /// - number (int): The indorsement number (1, 2, 3, etc.)
 /// -> str
-// NOTE: Could be table-driven vs algorithmic (see CASCADES.md §B) — current approach is correct
 #let get-ordinal-suffix(number) = {
   let last-digit = calc.rem(number, 10)
   let last-two-digits = calc.rem(number, 100)

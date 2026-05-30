@@ -14,9 +14,19 @@
 // Letterhead placement is not explicitly specified in AFH 33-337, but follows
 // standard USAF memo formatting conventions
 
-#let render-letterhead(title, caption, letterhead-seal, font) = {
+#let render-letterhead(
+  title,
+  caption,
+  font,
+  letterhead-seal: none,
+  letterhead-seal-subtitle: none,
+  letterhead-emblem: none, // optional image placed opposite the seal (right side)
+) = {
   font = ensure-array(font)
+  title = ensure-string(title)
   caption = ensure-string(caption)
+  title = upper(title)
+  caption = upper(caption)
 
   place(
     dy: 0.625in - spacing.margin,
@@ -28,8 +38,9 @@
         #place(
           center + top,
           align(center)[
-            #set text(12pt, font: font, fill: LETTERHEAD_COLOR)
+            #set text(12pt, font: font, fill: LETTERHEAD_COLOR, weight: "bold")
             #title\
+            #v(1pt)
             #text(10.5pt)[#caption]
           ],
         )
@@ -38,12 +49,40 @@
   )
 
   if letterhead-seal != none {
+    let seal-body = if falsey(letterhead-seal-subtitle) {
+      block[
+        #fit-box(width: 2in, height: 1in)[#letterhead-seal]
+      ]
+    } else {
+      // Isolate seal column from document `font_size`: stack `em` spacing and subtitle
+      // must not scale with body text (see frontmatter `set text(size: font_size)`).
+      // Subtitle is wrapped in `box` so it stays on one line and may extend past
+      // the seal's 2in column rather than wrapping.
+      block[
+        #set text(9pt, font: font, fill: LETTERHEAD_COLOR, weight: "bold")
+        // Spacing applies between positional stack children only, not one `[…]` body.
+        #stack(
+          spacing: 0.5em,
+          fit-box(width: 2in, height: 1in)[#letterhead-seal],
+          box(upper(ensure-string(letterhead-seal-subtitle))),
+        )
+      ]
+    }
     place(
       left + top,
       dx: -0.5in,
       dy: -.5in,
+      seal-body,
+    )
+  }
+
+  if letterhead-emblem != none {
+    place(
+      right + top,
+      dx: 0.5in,
+      dy: -.5in,
       block[
-        #fit-box(width: 2in, height: 1in)[#letterhead-seal]
+        #fit-box(width: 2in, height: 1in, alignment: right + horizon)[#letterhead-emblem]
       ],
     )
   }
@@ -59,8 +98,8 @@
 // - SUBJECT: Second line below FROM
 
 // AFH 33-337 "Date": "Place the date 1 inch from the right edge, 1.75 inches from the top"
-#let render-date-section(date) = {
-  align(right)[#display-date(date)]
+#let render-date-section(date, memo-style: "usaf") = {
+  align(right)[#display-date(date, memo-style: memo-style)]
 }
 
 // AFH 33-337 "MEMORANDUM FOR": "Place 'MEMORANDUM FOR' on the second line below the date"
@@ -72,9 +111,9 @@
     "  ",
     align(left)[
       #if type(recipients) == array {
-        create-auto-grid(recipients, column-gutter: spacing.tab, cols: cols)
+        create-auto-grid(recipients.map(upper), column-gutter: spacing.tab, cols: cols)
       } else {
-        recipients
+        upper(recipients)
       }
     ],
   )
@@ -107,7 +146,7 @@
     blank-line()
     grid(
       columns: (auto, auto, 1fr),
-      "References:", "  ", enum(..references, numbering: "(a)"),
+      "References:", "  ", enum(..references, numbering: "(a) ", body-indent: 0pt),
     )
   }
 }
@@ -116,63 +155,114 @@
 // SIGNATURE BLOCK
 // =============================================================================
 // AFH 33-337 "Signature Block": "Start the signature block on the fifth line below
-// the last line of text and 4.5 inches from the left edge of the page"
+// the last line of text and 4.5 inches from the left edge of the page or three
+// spaces to the right of page center"
 // AFH 33-337 "Do not place the signature element on a continuation page by itself"
+// AFH 33-337 long-name example: "Signature block adjusted to the left" when a
+// long name would otherwise exceed the right margin.
 
-#let render-signature-block(signature-lines, signature-blank-lines: 4) = {
+#let render-signature-block(signature-lines, signature-blank-lines: 4, signing-field: none) = {
   signature-lines = ensure-array(signature-lines)
-  // AFH 33-337: "The signature block is never on a page by itself"
-  // Note: Perfect enforcement isn't feasible without over-engineering
-  // We use weak: false spacing and breakable: false to discourage orphaning
-  // AFH 33-337: "fifth line below" = 4 blank lines between text and signature block
-  blank-lines(signature-blank-lines, weak: false)
-  block(breakable: false)[
-    #align(left)[
-      // AFH 33-337: "4.5 inches from the left edge of the page"
-      // We use (4.5in - margin) because Typst's pad() is relative to the text area, not page edge
-      #pad(left: 4.5in - spacing.margin)[
-        #text(hyphenate: false)[
-          #for line in signature-lines {
-            par(hanging-indent: 4 * 0.5em, line)
-          }
+  // AFH 33-337: "fifth line below" = 4 blank lines between text and signature block.
+  // breakable: false discourages orphaning the signature block onto a page by itself.
+  blank-lines(signature-blank-lines)
+  // AFH 33-337 allows two equivalent anchors: 4.5in from the left edge, or three
+  // spaces right of page center. On 8.5in stock these coincide (page center =
+  // 4.25in; three TNR-12pt spaces ≈ 0.25in), so we use 4.5in as the canonical
+  // anchor. pad() is relative to the text area, hence (4.5in - margin).
+  let default-pad = 4.5in - spacing.margin
+  context {
+    // Measure each line at its rendered settings to detect long-name overflow.
+    let body-width = page.width - 2 * spacing.margin
+    let widest = 0pt
+    for line in signature-lines {
+      let w = measure(text(hyphenate: false, line)).width
+      if w > widest { widest = w }
+    }
+    // If the widest line would overflow the right margin at the standard
+    // anchor, shift the block left just enough to fit. Clamp at 0 so the
+    // block never crosses the left margin.
+    let available = body-width - default-pad
+    let left-pad = if widest > available {
+      let shifted = body-width - widest
+      if shifted < 0pt { 0pt } else { shifted }
+    } else {
+      default-pad
+    }
+    block(breakable: false)[
+      #if signing-field != none {
+        let stride = {
+          let s = LINE_STRIDE.get()
+          if s == none {
+            let one-line = measure(par(spacing: 0pt)[x]).height
+            measure(par(spacing: 0pt)[x#linebreak()x]).height - one-line
+          } else { s }
+        }
+        place(
+          dx: left-pad,
+          dy: -(stride * signature-blank-lines),
+          box(width: body-width - left-pad, height: stride * signature-blank-lines, signing-field),
+        )
+      }
+      #align(left)[
+        #pad(left: left-pad)[
+          #text(hyphenate: false)[
+            #for line in signature-lines {
+              // AFH 33-337: "indent the next line to begin under the third character
+              // of the line above" — 2-character indent ≈ 1em in Times New Roman 12pt
+              par(hanging-indent: .5em, line)
+            }
+          ]
         ]
       ]
     ]
-  ]
+  }
 }
 
 // =============================================================================
 // ACTION LINE RENDERING
 // =============================================================================
 // Renders the Approve / Disapprove action line for indorsement memos.
-// action: "none" = no action line displayed (hidden), "undecided" = both options
-// rendered plain (no circle), "approve" = Approve circled,
-// "disapprove" = Disapprove circled. The action line is rendered when
-// action is "undecided", "approve", or "disapprove".
+// action: "undecided" = both options rendered plain (no circle),
+// "approve" = Approve circled, "disapprove" = Disapprove circled.
+// Empty/none suppression is handled by the caller before this is invoked.
 
-#let render-action-line(action) = {
+#let render-action-line(action, trailing-blank-line: true) = {
   assert(
-    action in ("none", "undecided", "approve", "disapprove"),
-    message: "action must be \"none\", \"undecided\", \"approve\", or \"disapprove\"",
+    action in ("undecided", "approve", "disapprove"),
+    message: "action must be \"undecided\", \"approve\", or \"disapprove\"",
   )
-  blank-line()
+  // No leading blank-line: the caller (indorsement.typ) already emits the
+  // header→content gap once. The action line's `block(sticky: true)`
+  // additionally inherits `block.above: spacing.line` so the visual gap
+  // above matches the gap above a body's first paragraph.
   // Circle the selected option using a box with rounded corners
   // Use baseline parameter to maintain vertical text alignment
-  let approve-text = if action == "approve" { 
-    box(stroke: 0.5pt + black, radius: 2pt, inset: 2pt, baseline: 2pt)[Approve] 
+  let approve-text = if action == "approve" {
+    box(stroke: 0.5pt + black, radius: 2pt, inset: 2pt, baseline: 2pt)[Approve]
   } else if action == "disapprove" {
     strike[Approve]
-  } else { 
-    [Approve] 
+  } else {
+    [Approve]
   }
-  let disapprove-text = if action == "disapprove" { 
-    box(stroke: 0.5pt + black, radius: 2pt, inset: 2pt, baseline: 2pt)[Disapprove] 
+  let disapprove-text = if action == "disapprove" {
+    box(stroke: 0.5pt + black, radius: 2pt, inset: 2pt, baseline: 2pt)[Disapprove]
   } else if action == "approve" {
     strike[Disapprove]
-  } else { 
-    [Disapprove] 
+  } else {
+    [Disapprove]
   }
-  [#approve-text / #disapprove-text]
+  // Keep the action line with the following content (body or signature block)
+  // using the same sticky-block pattern that body.typ applies to the last
+  // paragraph, per AFH 33-337 §11 orphan-prevention rules.
+  block(sticky: true)[#approve-text / #disapprove-text]
+  // Trailing blank-line places the body's first paragraph one line below
+  // the action, mirroring the gap above it. Suppressed when the body is
+  // empty so the signature block's own 4-line gap lands on AFH 33-337's
+  // "fifth line below the last line of text" anchor.
+  if trailing-blank-line {
+    blank-line()
+  }
 }
 
 // =============================================================================
@@ -191,6 +281,9 @@
 /// - it (content): The table element to style and render
 /// -> content
 #let render-memo-table(it) = {
+  // AFH 33-337 does not specify table formatting, so we follow the general
+  // aesthetic principles of the standard: bold headers for clarity.
+  show table.cell.where(y: 0): set text(weight: "bold")
   set table(
     stroke: 0.5pt + black,
     inset: (x: 0.5em, y: 0.4em),
@@ -228,10 +321,12 @@
   context {
     let available-space = page.height - here().position().y - 1in
     if measure(formatted-content).height > available-space {
+      // Attachments pass continuation-label ("… (listed on next page):" per AFH 33-337).
+      // cc: and DISTRIBUTION: use a neutral default — "listed" applies to attachment lists only.
       let continuation-text = if continuation-label != none {
         text()[#continuation-label]
       } else {
-        text()[#section-label + " (listed on next page):"]
+        text()[#(section-label + " (continued on next page)")]
       }
       continuation-text
       pagebreak()
@@ -271,7 +366,9 @@
       (if attachment-count == 1 { "Attachment" } else { str(attachment-count) + " Attachments" })
         + " (listed on next page):"
     )
-    render-backmatter-section(attachments, section-label, numbering-style: "1.", continuation-label: continuation-label)
+    // AFH 33-337: a single attachment is not numbered; numbering applies to two or more.
+    let numbering-style = if attachment-count == 1 { none } else { "1." }
+    render-backmatter-section(attachments, section-label, numbering-style: numbering-style, continuation-label: continuation-label)
   }
 
   if cc != none and cc.len() > 0 {
