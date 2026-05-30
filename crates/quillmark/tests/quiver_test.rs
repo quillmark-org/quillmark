@@ -11,7 +11,7 @@
 #![cfg(feature = "typst")]
 
 use quillmark::{
-    fill_blueprint, Document, FillBehavior, OutputFormat, Quillmark, RenderError, RenderOptions,
+    Document, FillBehavior, OutputFormat, Quillmark, RenderError, RenderOptions,
 };
 use quillmark_fixtures::{quills_path, resource_path};
 use std::fs;
@@ -37,8 +37,10 @@ fn every_quill_in_quiver_renders() {
             .quill_from_path(quills_path(&name))
             .unwrap_or_else(|e| panic!("quill '{name}' failed to load: {e:?}"));
 
-        let blueprint = quill.source().config().blueprint();
-        let markdown = fill_blueprint(&blueprint, FillBehavior::TypeEmpty);
+        let markdown = quill
+            .source()
+            .config()
+            .blueprint_filled(FillBehavior::TypeEmpty);
         let parsed = Document::from_markdown(&markdown).unwrap_or_else(|e| {
             panic!("quill '{name}' blueprint failed to parse: {e:?}\n---\n{markdown}")
         });

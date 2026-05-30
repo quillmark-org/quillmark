@@ -12,7 +12,7 @@ mod tree;
 mod types;
 pub(crate) mod validation;
 
-pub use blueprint::{fill_blueprint, FillBehavior};
+pub use blueprint::FillBehavior;
 pub use config::{CoercionError, QuillConfig};
 pub use ignore::QuillIgnore;
 pub use schema::build_transform_schema;
