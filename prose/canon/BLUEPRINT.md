@@ -379,7 +379,7 @@ document without an authored input:
 | `FillBehavior` | Must Fill value | Used by |
 |---|---|---|
 | `Strict` | `<must-fill>` sentinel (identical to `blueprint()`) | authoring surface |
-| `Preview` | readable placeholders (`Lorem ipsum`, `0`, fixed ISO date, one representative list entry, …) | CLI `render` with no input file |
+| `Preview` | the field's `example:` when configured, else the `TypeEmpty` value | CLI `render` with no input file |
 | `TypeEmpty` | leanest type-valid values (`""`, `0`, `false`, `[]`, first enum) | quiver authoring-contract test |
 
 ## Bindings surface
