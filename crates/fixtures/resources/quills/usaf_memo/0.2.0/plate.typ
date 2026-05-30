@@ -41,13 +41,15 @@
   #data.at("$body")
 ]
 
-// Empty signature field (unsigned AcroForm widget) above the signature block.
-#signature-field("signature")
-
 // Backmatter
 #backmatter(
   // Signature block
   signature_block: data.signature_block,
+
+  // Empty signature field (unsigned AcroForm widget) overlaid in the blank
+  // space directly above the typed-name signature block. `place`d by the
+  // backmatter so it claims no flow space and stays aligned at 4.5in.
+  signature_widget: signature-field("signature", width: 2.5in, height: 0.5in),
 
   // Optional cc
   ..if "cc" in data { (cc: data.cc) },

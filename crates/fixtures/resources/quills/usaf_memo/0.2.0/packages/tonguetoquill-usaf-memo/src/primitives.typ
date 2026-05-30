@@ -119,7 +119,7 @@
 // the last line of text and 4.5 inches from the left edge of the page"
 // AFH 33-337 "Do not place the signature element on a continuation page by itself"
 
-#let render-signature-block(signature-lines, signature-blank-lines: 4) = {
+#let render-signature-block(signature-lines, signature-blank-lines: 4, signature-widget: none) = {
   signature-lines = ensure-array(signature-lines)
   // AFH 33-337: "The signature block is never on a page by itself"
   // Note: Perfect enforcement isn't feasible without over-engineering
@@ -131,6 +131,12 @@
       // AFH 33-337: "4.5 inches from the left edge of the page"
       // We use (4.5in - margin) because Typst's pad() is relative to the text area, not page edge
       #pad(left: 4.5in - spacing.margin)[
+        // Overlay the (unsigned) signature widget in the blank space directly
+        // above the typed name, aligned with the block's 4.5in left edge.
+        // `place` consumes no flow, so the typed name keeps its AFH position.
+        #if signature-widget != none {
+          place(top + left, dy: -0.5in, signature-widget)
+        }
         #text(hyphenate: false)[
           #for line in signature-lines {
             par(hanging-indent: 4 * 0.5em, line)
