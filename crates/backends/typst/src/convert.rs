@@ -151,24 +151,6 @@ fn sanitize_lang_tag(lang: &str) -> String {
         .collect()
 }
 
-/// Returns the length of the longest consecutive run of backtick characters in the string.
-/// Used to determine how many backticks are needed for safe Typst raw text delimiters.
-fn longest_backtick_run(s: &str) -> usize {
-    let mut max_run = 0;
-    let mut current_run = 0;
-    for ch in s.chars() {
-        if ch == '`' {
-            current_run += 1;
-            if current_run > max_run {
-                max_run = current_run;
-            }
-        } else {
-            current_run = 0;
-        }
-    }
-    max_run
-}
-
 /// Converts an iterator of markdown events to Typst markup
 fn push_typst<'a, I>(output: &mut String, source: &str, iter: I) -> Result<(), ConversionError>
 where
@@ -517,21 +499,12 @@ where
                 }
             }
             Event::Code(text) => {
-                // Inline code: use enough backticks to avoid delimiter collision
-                let max_run = longest_backtick_run(&text);
-                let delim_len = max_run + 1;
-                let delim: String = std::iter::repeat('`').take(delim_len).collect();
-                output.push_str(&delim);
-                // When using multi-backtick delimiters, Typst requires spaces
-                // to separate the delimiters from the content
-                if delim_len > 1 {
-                    output.push(' ');
-                }
-                output.push_str(&text);
-                if delim_len > 1 {
-                    output.push(' ');
-                }
-                output.push_str(&delim);
+                // Inline code → inline `raw` element (`block` defaults to false). As with
+                // code blocks, the content rides in a string literal, so backtick runs are
+                // inert and no delimiter sizing is needed; escape_string covers `"`/`\`.
+                output.push_str("#raw(\"");
+                output.push_str(&escape_string(&text));
+                output.push_str("\")");
                 end_newline = false;
             }
             Event::HardBreak => {
@@ -974,10 +947,10 @@ mod tests {
 
     #[test]
     fn test_inline_code() {
-        assert_eq!(mark_to_typst("`code`").unwrap(), "`code`\n\n");
+        assert_eq!(mark_to_typst("`code`").unwrap(), "#raw(\"code\")\n\n");
         assert_eq!(
             mark_to_typst("Text with `inline code` here").unwrap(),
-            "Text with `inline code` here\n\n"
+            "Text with #raw(\"inline code\") here\n\n"
         );
     }
 
@@ -1066,7 +1039,7 @@ mod tests {
         // Lists end with extra newline per CONVERT.md examples
         assert_eq!(
             typst,
-            "A paragraph with #strong[bold] and a #link(\"https://example.com\")[link].\n\nAnother paragraph with `inline code`.\n\n- A list item\n- Another item\n\n"
+            "A paragraph with #strong[bold] and a #link(\"https://example.com\")[link].\n\nAnother paragraph with #raw(\"inline code\").\n\n- A list item\n- Another item\n\n"
         );
     }
 
@@ -1167,7 +1140,7 @@ mod tests {
         // Lists end with extra newline
         assert_eq!(
             typst,
-            "- #strong[Bold] item\n- #emph[Italic] item\n- `Code` item\n\n"
+            "- #strong[Bold] item\n- #emph[Italic] item\n- #raw(\"Code\") item\n\n"
         );
     }
 
@@ -1498,7 +1471,7 @@ mod tests {
     fn test_heading_with_inline_code() {
         let markdown = "## Code example: `fn main()`";
         let typst = mark_to_typst(markdown).unwrap();
-        assert_eq!(typst, "== Code example: `fn main()`\n\n");
+        assert_eq!(typst, "== Code example: #raw(\"fn main()\")\n\n");
     }
 
     // Tests for __ as CommonMark strong (no longer underline)
@@ -1619,7 +1592,7 @@ mod tests {
     fn test_table_with_inline_code_in_cells() {
         let md = "| Func | Desc |\n|------|------|\n| `foo()` | does stuff |";
         let out = mark_to_typst(md).unwrap();
-        assert!(out.contains("[`foo()`]"));
+        assert!(out.contains("[#raw(\"foo()\")]"));
     }
 
     #[test]
@@ -1904,11 +1877,11 @@ mod tests {
 
     #[test]
     fn test_table_code_with_special_chars() {
-        // Characters inside inline code should NOT be escaped
+        // Markup special chars inside inline code must survive verbatim in the string.
         let md = "| A |\n|---|\n| `a#b$c@d` |";
         let out = mark_to_typst(md).unwrap();
         assert!(
-            out.contains("`a#b$c@d`"),
+            out.contains("#raw(\"a#b$c@d\")"),
             "code content should be literal: {out}"
         );
     }
@@ -2221,24 +2194,23 @@ mod robustness_tests {
 
     #[test]
     fn test_inline_code_with_backticks() {
-        // Using double backticks to include single backtick
+        // Content containing backticks rides verbatim in the string literal.
         let result = mark_to_typst("`` `code` ``").unwrap();
-        assert!(result.contains("`"));
+        assert_eq!(result, "#raw(\"`code`\")\n\n");
     }
 
     #[test]
     fn test_inline_code_with_special_chars() {
-        // Special chars in code should NOT be escaped
+        // Markup special chars in code must survive verbatim (not Typst-escaped).
         let result = mark_to_typst("`*#$<>`").unwrap();
-        assert_eq!(result, "`*#$<>`\n\n");
+        assert_eq!(result, "#raw(\"*#$<>\")\n\n");
     }
 
     #[test]
     fn test_empty_inline_code() {
-        // pulldown-cmark doesn't parse `` as empty inline code
-        // It needs content or different backtick counts
+        // A space-only code span: content is a single space.
         let result = mark_to_typst("` `").unwrap();
-        assert!(result.contains("`")); // space-only code span
+        assert_eq!(result, "#raw(\" \")\n\n");
     }
 
     // Formatting edge cases
@@ -2425,7 +2397,7 @@ More text with `inline code`."#;
         assert!(result.contains("#emph[italic]"));
         assert!(result.contains("- List item"));
         assert!(result.contains("#link"));
-        assert!(result.contains("`inline code`"));
+        assert!(result.contains("#raw(\"inline code\")"));
     }
 
     #[test]
@@ -2543,31 +2515,17 @@ More text with `inline code`."#;
     // Security tests: inline code backtick injection
     #[test]
     fn test_inline_code_backtick_injection() {
-        // Content with a backtick must use multi-backtick delimiters
-        // to prevent breaking out of Typst raw text
+        // Backticks in the content cannot break out of the string literal, so they
+        // appear verbatim with no delimiter gymnastics.
         let result = mark_to_typst("`` `inject` ``").unwrap();
-        // The content is "`inject`" — must not produce `...`inject`...`
-        // which would break the raw text delimiters
-        assert!(
-            !result.contains("``inject``"),
-            "Backticks should not form nested delimiters"
-        );
-        // Multi-backtick delimiters should be used
-        assert!(
-            result.contains("`` "),
-            "Should use double-backtick delimiters"
-        );
+        assert_eq!(result, "#raw(\"`inject`\")\n\n");
     }
 
     #[test]
     fn test_inline_code_consecutive_backticks() {
-        // Content with consecutive backticks
+        // Content is "``" — carried literally inside the string.
         let result = mark_to_typst("``` `` ```").unwrap();
-        // Content is "``" — needs at least 3 backtick delimiters
-        assert!(
-            result.contains("```"),
-            "Should use triple-backtick delimiters for double-backtick content"
-        );
+        assert_eq!(result, "#raw(\"``\")\n\n");
     }
 
     // Security tests: code block language string sanitization
@@ -2629,17 +2587,6 @@ More text with `inline code`."#;
         assert_eq!(sanitize_lang_tag("rust[evil]"), "rust");
         assert_eq!(sanitize_lang_tag("rust$math$"), "rust");
         assert_eq!(sanitize_lang_tag(""), "");
-    }
-
-    // Security test: longest_backtick_run helper
-    #[test]
-    fn test_longest_backtick_run() {
-        assert_eq!(longest_backtick_run("no backticks"), 0);
-        assert_eq!(longest_backtick_run("one ` here"), 1);
-        assert_eq!(longest_backtick_run("two `` here"), 2);
-        assert_eq!(longest_backtick_run("mixed ` and `` here"), 2);
-        assert_eq!(longest_backtick_run("```"), 3);
-        assert_eq!(longest_backtick_run(""), 0);
     }
 
     #[test]
