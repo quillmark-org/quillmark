@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use quillmark_core::{FileTreeNode, QuillSource, RenderError};
 use quillmark_typst::compile::compile_to_pdf;
 
-/// Load a fixture quill from disk. Reuses `usaf_memo@0.1.0` as the host
+/// Load a fixture quill from disk. Reuses `usaf_memo@0.2.0` as the host
 /// — `signature-field` doesn't depend on any quill-specific config so we
 /// just need a valid quill skeleton, and `usaf_memo` is the fixture the
 /// spikes validated.
@@ -44,7 +44,7 @@ fn host_source() -> QuillSource {
         .join("resources")
         .join("quills")
         .join("usaf_memo")
-        .join("0.1.0");
+        .join("0.2.0");
     let tree = walk(&quill_path).expect("walk fixture");
     QuillSource::from_tree(tree).expect("load source")
 }

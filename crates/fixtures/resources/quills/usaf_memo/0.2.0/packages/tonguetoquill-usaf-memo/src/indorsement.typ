@@ -50,7 +50,9 @@
     counters.indorsement.step()
 
     context {
-      let config = query(metadata).last().value
+      // `.first()`: the frontmatter config metadata precedes any plate-level
+      // metadata (e.g. quillmark signature-field) emitted later in the body.
+      let config = query(metadata).first().value
       let original_subject = config.subject
       let original_date = config.original_date
       let original_from = config.original_from

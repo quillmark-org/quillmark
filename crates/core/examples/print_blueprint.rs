@@ -3,7 +3,7 @@
 //! Usage:
 //!   cargo run -p quillmark-core --example print_blueprint
 //!   cargo run -p quillmark-core --example print_blueprint -- classic_resume
-//!   cargo run -p quillmark-core --example print_blueprint -- usaf_memo 0.1.0
+//!   cargo run -p quillmark-core --example print_blueprint -- usaf_memo 0.2.0
 
 use quillmark_core::quill::QuillConfig;
 use quillmark_fixtures::quills_path;

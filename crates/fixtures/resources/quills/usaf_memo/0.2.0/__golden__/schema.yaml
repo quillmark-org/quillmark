@@ -138,24 +138,37 @@ card_kinds:
       Chain of routing endorsements. Each endorsement block adds an official response
       or forwarding action to the original memo.
     fields:
+      action:
+        type: string
+        description: >-
+          Action taken by the endorser. Use 'undecided' to display the Approve/Disapprove
+          line with neither option circled, 'approve' or 'disapprove' to circle the
+          selected option.
+        ui:
+          group: Addressing
+          order: 4
+        enum:
+        - undecided
+        - approve
+        - disapprove
       attachments:
         type: array
         description: List of attachments specific to this endorsement.
         ui:
           group: Additional
-          order: 4
+          order: 5
       cc:
         type: array
         description: List of office symbols to receive copies of this endorsement.
         ui:
           group: Additional
-          order: 5
+          order: 6
       date:
         type: string
         description: Date of the endorsement. Leave blank to omit.
         ui:
           group: Additional
-          order: 6
+          order: 7
       for:
         type: string
         description: Office symbol or organization receiving the endorsed memo.
@@ -193,3 +206,5 @@ card_kinds:
         ui:
           group: Addressing
           order: 2
+    ui:
+      title: "{from} → {for}"

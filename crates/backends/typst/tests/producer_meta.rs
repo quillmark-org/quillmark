@@ -43,7 +43,7 @@ fn host_source() -> QuillSource {
         .join("resources")
         .join("quills")
         .join("usaf_memo")
-        .join("0.1.0");
+        .join("0.2.0");
     QuillSource::from_tree(walk(&quill_path).expect("walk fixture")).expect("load source")
 }
 

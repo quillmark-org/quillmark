@@ -26,7 +26,10 @@
 /// - content (content): The body content to render
 /// -> content
 #let mainmatter(it) = context {
-  let config = query(metadata).last().value
+  // frontmatter emits the config metadata first; use `.first()` so plate-level
+  // metadata appearing later in the body (e.g. quillmark signature-field) does
+  // not shadow it.
+  let config = query(metadata).first().value
   let auto-numbering = config.at("auto_numbering", default: true)
   render-body(it, auto-numbering: auto-numbering)
 }
