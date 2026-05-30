@@ -17,12 +17,12 @@ use pdf_writer::{Chunk, Finish, Name, Rect, Ref, TextStr};
 use quillmark_core::RenderError;
 use typst::layout::PagedDocument;
 
-use super::err;
-use super::scanner::{
-    append_incremental_update, assert_traditional_xref, extract_outer_dict, find_dict_value,
+use crate::pdf_scan::{
+    append_incremental_update, assert_traditional_xref, err, extract_outer_dict, find_dict_value,
     find_object_bytes, find_startxref, find_trailer_dict, parse_indirect_ref, resolve_page_ids,
     UpdatedObject,
 };
+
 use super::SigPlacement;
 
 const CODE_PARSE: &str = "typst::overlay_pdf_parse";

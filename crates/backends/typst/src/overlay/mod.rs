@@ -11,12 +11,6 @@ use typst::layout::PagedDocument;
 mod extract;
 mod inject;
 
-// The byte-level PDF scanner and `err` helper live in the crate-level
-// `pdf_scan` module. Re-export them under the original names so the submodules'
-// `super::scanner::…` and `super::err` paths keep resolving.
-pub(super) use crate::pdf_scan as scanner;
-pub(super) use crate::pdf_scan::err;
-
 pub(crate) use inject::default_producer;
 
 /// One signature field's name + page + rect in Typst (top-left origin) points.
