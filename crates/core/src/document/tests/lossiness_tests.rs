@@ -448,7 +448,7 @@ fn root_payload_comment_round_trips() {
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
     assert!(
-        emitted.starts_with("~~~card-yaml\n$quill: q\n$kind: main\n# main entry\n"),
+        emitted.starts_with("~~~\n$quill: q\n$kind: main\n# main entry\n"),
         "own-line comment below the `$quill` header must round-trip\nGot:\n{}",
         emitted
     );
@@ -468,7 +468,7 @@ fn card_payload_comment_round_trips() {
     let doc = Document::from_markdown(src).unwrap();
     let emitted = doc.to_markdown();
     assert!(
-        emitted.contains("~~~card-yaml\n$kind: foo\n# the foo card\n"),
+        emitted.contains("~~~\n$kind: foo\n# the foo card\n"),
         "own-line comment below the `$kind` header must round-trip\nGot:\n{}",
         emitted
     );

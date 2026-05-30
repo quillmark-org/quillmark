@@ -34,7 +34,7 @@ import { Document, Quillmark } from "@quillmark-test/wasm";
 const engine = new Quillmark();
 const quill = engine.quill(tree);
 
-const markdown = `~~~card-yaml
+const markdown = `~~~
 $quill: my_quill
 $kind: main
 title: My Document
@@ -316,8 +316,9 @@ try {
 
 ## Notes
 
-- Parsed markdown requires a root `~~~card-yaml` block with a
-  `$quill` system-metadata line. Empty input surfaces a dedicated
+- Parsed markdown requires a root `~~~` block (a bare three-tilde fence;
+  the legacy `~~~card-yaml` opener is still accepted but non-canonical)
+  with a `$quill` system-metadata line. Empty input surfaces a dedicated
   "Empty markdown input cannot be parsed" message.
 - QUILL mismatch during `quill.render(parsed)` is a warning (`quill::ref_mismatch`), not an error.
 - Output schema APIs are no longer engine-level in WASM.

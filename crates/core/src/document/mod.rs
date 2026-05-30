@@ -38,18 +38,18 @@ pub use edit::EditError;
 pub use meta::{is_valid_kind_name, validate_composable_kind, CardKindError};
 pub use payload::{Payload, PayloadItem};
 
-/// Authoring-format rules for the card-yaml markdown surface.
+/// Authoring-format rules for the `~~~` card-yaml markdown surface.
 ///
 /// Surfaced verbatim to LLM/MCP consumers (and to CLI / Python bindings via
 /// the same text) so error parity holds — every consumer reads the same
 /// rules. This is the single source of truth; bindings should call into it
 /// rather than re-stating the rules in their own glue.
 pub const FORMAT_RULES: &str = "Document format rules:
-\u{2022} Block opener is `~~~card-yaml`; closer is EXACTLY `~~~` (three tildes, no info string). Do NOT repeat `~~~card-yaml` as the closer.
-\u{2022} A blank line must precede every `~~~card-yaml` opener (unless it is line 1).
+\u{2022} Block opener and closer are EXACTLY `~~~` (three tildes, no info string). The legacy `~~~card-yaml` opener is still accepted but is no longer canonical.
+\u{2022} A blank line must precede every `~~~` block opener (unless it is line 1), and the opener must be at column zero (no leading spaces). An indented `~~~` is an ordinary code block, not a card.
 \u{2022} The first block is the root and MUST contain `$quill: <name>@<version>` and `$kind: main`. Additional blocks declare composable cards via `$kind: <card_kind>`.
 \u{2022} Reserved `$`-keys: `$quill`, `$kind`, `$id`, `$ext`. User fields use lowercase snake_case.
-\u{2022} Prose body is the text after a block's closing `~~~`, up to the next opener or EOF.
+\u{2022} Prose body is the text after a block's closing `~~~`, up to the next opener or EOF. To include a literal fenced code block in prose, use a backtick fence (```); any column-zero `~~~` block is parsed as card metadata.
 \u{2022} `; delete-ok` fields carry a default \u{2014} keep the line, override the value, or delete the entire line to use the default. Do not write `field:`, `field: null`, or `field: ~` \u{2014} all three parse as explicit YAML null and fail validation.
 \u{2022} Numbers and booleans MUST be unquoted (`year: 2025`, `pinned: true`); quoting turns them into strings and fails validation.
 \u{2022} Plain-scalar values cannot start with `*` or `&` (YAML alias/anchor markers) and cannot contain `: ` (colon-space). For markdown emphasis, embedded colons, or other special prefixes, quote the value: `field: '**bold**'` or `field: \"Name: subtitle\"`. Multi-line values use `|-`, not multi-line quoted scalars.";

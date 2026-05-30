@@ -6,5 +6,6 @@ mod emit_idempotence_tests;
 mod emit_stability_tests;
 mod emit_tests;
 mod ext_tests;
+mod fence_conformance_tests;
 mod lossiness_tests;
 mod number_edge_tests;

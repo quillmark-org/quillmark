@@ -38,7 +38,7 @@ use super::{Card, Document};
 /// LLM authors hit one recurring shape here: a bare YAML mapping with
 /// `$quill: ...` (or `quill: ...`) at the top, no fences at all. Naming the
 /// concrete edit helps the model converge faster than the generic "open a
-/// `~~~card-yaml` block" advice.
+/// `~~~` block" advice.
 fn missing_block_message(markdown: &str) -> String {
     let trimmed = markdown.trim_start();
 
@@ -46,15 +46,15 @@ fn missing_block_message(markdown: &str) -> String {
     // forgot the fence entirely.
     if trimmed.starts_with("$quill:") || trimmed.starts_with("quill:") {
         return "Missing required root card-yaml block. Your document starts with \
-                YAML metadata but is missing the `~~~card-yaml` fence. Wrap the \
-                metadata: add a line `~~~card-yaml` above the `$quill:` line and a \
+                YAML metadata but is missing the `~~~` fence. Wrap the \
+                metadata: add a line `~~~` above the `$quill:` line and a \
                 line containing exactly `~~~` (three tildes, no info string) below \
                 the last metadata field, before the prose body."
             .to_string();
     }
 
     "Missing required root card-yaml block. The document must open with a \
-     `~~~card-yaml` block declaring `$quill: <name>` (and `$kind: main`) as \
+     `~~~` block declaring `$quill: <name>` (and `$kind: main`) as \
      the first two lines, closed by a line containing exactly `~~~`."
         .to_string()
 }
@@ -76,10 +76,10 @@ fn strip_blank_separator(body: &str) -> &str {
     }
 }
 
-/// An intermediate representation of one `~~~card-yaml … ~~~` block.
+/// An intermediate representation of one `~~~ … ~~~` card-yaml block.
 #[derive(Debug)]
 pub(super) struct MetadataBlock {
-    pub(super) start: usize, // Position of the opening `~~~card-yaml`
+    pub(super) start: usize, // Position of the opening `~~~`
     pub(super) end: usize,   // Position after the closing `~~~`
     pub(super) yaml_value: Option<serde_json::Value>, // Parsed YAML payload as JSON
     /// Typed `$` system-metadata payload items in source order.
@@ -92,11 +92,11 @@ pub(super) struct MetadataBlock {
     pub(super) pre_warnings: Vec<Diagnostic>,
 }
 
-/// Process one recognised `~~~card-yaml` block and build a [`MetadataBlock`].
+/// Process one recognised `~~~` card-yaml block and build a [`MetadataBlock`].
 ///
 /// `block_start` / `block_end` bound the whole block (used to slice card
 /// bodies). `content_start` / `content_end` bound the block content between
-/// the `~~~card-yaml` opener and its `~~~` closer. `block_index` is used only
+/// the `~~~` opener and its `~~~` closer. `block_index` is used only
 /// for YAML-error location context.
 pub(super) fn build_block(
     markdown: &str,

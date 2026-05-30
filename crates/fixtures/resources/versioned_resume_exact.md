@@ -1,4 +1,4 @@
-~~~card-yaml
+~~~
 $quill: classic_resume@2.1
 $kind: main
 name: Jane Doe

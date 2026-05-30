@@ -27,7 +27,7 @@ Use semantic versioning (`MAJOR.MINOR.PATCH`) to communicate compatibility:
 Authors can target versions through the root block's `$quill` system metadata:
 
 ```markdown
-~~~card-yaml
+~~~
 $quill: my_quill@1.2
 $kind: main
 title: Quarterly Report

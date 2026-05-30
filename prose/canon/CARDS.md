@@ -74,14 +74,15 @@ card_kinds:
 
 ## Markdown Syntax
 
-A composable card is a `~~~card-yaml` block, optionally led by a
+A composable card is a `~~~` block (the legacy `~~~card-yaml` opener is
+still accepted but non-canonical), optionally led by a
 `$kind: <kind>` system-metadata line. The kind surfaces on the plate
 JSON as the card's `$kind` discriminator; the block's payload is the
 card's YAML data, and the markdown after the closing `~~~` fence is the
 card's body.
 
 ````markdown
-~~~card-yaml
+~~~
 $kind: indorsement
 from: ORG1/SYMBOL
 for: ORG2/SYMBOL
