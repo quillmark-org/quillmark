@@ -171,15 +171,10 @@ Inside `#box`, `#table`, `#figure`, `#footnote`, `#move`, `#pad` — `signature-
 
 The label `<__qm_sig__>` and metadata `kind: "__qm_sig__"` are reserved for this hand-off — don't use them for unrelated metadata in your plate.
 
-> **Plates that `query(metadata)`**: `signature-field` emits a labelled
-> `metadata` element into the document. A plate or package that collects its own
-> config with an *unfiltered* `query(metadata)` — e.g. `query(metadata).last()`
-> assuming a single element — will pick up the signature field's metadata by
-> accident and read the wrong dictionary. Query your own metadata by a dedicated
-> label (`query(<my-config>).first()`) or filter on a key you control
-> (`query(metadata).filter(m => "subject" in m.value)`) rather than relying on
-> position or element count. (The bundled `usaf_memo` quill hit exactly this and
-> now uses `.first()` so its frontmatter config isn't shadowed.)
+> `signature-field` emits a document-global `metadata` element (standard Typst
+> introspection). If your plate or its packages read config via
+> `query(metadata)`, filter to your own elements rather than assuming a single
+> or last metadata element.
 
 ## Output Formats
 
