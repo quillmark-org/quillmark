@@ -342,14 +342,15 @@ with a typed value.
 packages, which `blueprint()` does not control. That is a separate
 **quill authoring contract**:
 
-> A quill's `plate.typ` MUST render the quill's own blueprint — with all
-> `<must-fill>` cells replaced by type-empty values of the declared
-> type — to a successful (non-error) output.
+> A quill's `plate.typ` MUST render the quill's own blueprint — generated
+> with Must Fill cells filled by type-empty values of the declared type
+> (`blueprint_filled(FillBehavior::TypeEmpty)`) — to a successful
+> (non-error) output.
 
-The blueprint, after sentinel substitution, is by construction the
-*type-minimal valid input* — the worst-case-but-valid document. A plate
-that renders it has shown it degrades gracefully on every type-valid
-input shape. The contract requires:
+The type-empty blueprint is by construction the *type-minimal valid
+input* — the worst-case-but-valid document. A plate that renders it has
+shown it degrades gracefully on every type-valid input shape. The
+contract requires:
 
 - Templates treat type-empty values (`""`, `0`, `false`, `[]`, empty
   markdown body) as valid *present* input — read via `data.field`,
@@ -361,16 +362,29 @@ input shape. The contract requires:
   meaningful output." An empty-string title is a blank title — that is
   acceptable.
 
-The contract is enforced by a fixture test that fills sentinels with
-type-empty values, then renders every bundled quill's blueprint and
-asserts success
+The contract is enforced by a fixture test that generates each bundled
+quill's blueprint with type-empty fill, renders it, and asserts success
 (`crates/quillmark/tests/quiver_test.rs::every_quill_in_quiver_renders`).
+
+## Filled blueprints
+
+`blueprint()` emits the canonical authoring surface with `<must-fill>`
+sentinels. `QuillConfig::blueprint_filled(behavior)` is an escape hatch
+that fills Must Fill cells at generation time — from the typed schema, so
+no value re-parses the annotation grammar — producing a compile-able
+document without an authored input:
+
+| `FillBehavior` | Must Fill value | Used by |
+|---|---|---|
+| `Strict` | `<must-fill>` sentinel (identical to `blueprint()`) | authoring surface |
+| `Preview` | readable placeholders (`Lorem ipsum`, `0`, fixed ISO date, …) | CLI `render` with no input file |
+| `TypeEmpty` | leanest type-valid values (`""`, `0`, `false`, `[]`, first enum) | quiver authoring-contract test |
 
 ## Bindings surface
 
 | Binding | Accessor |
 |---|---|
-| Rust | `QuillConfig::blueprint() -> String` |
+| Rust | `QuillConfig::blueprint() -> String` (+ `blueprint_filled(behavior)`) |
 | Wasm | `Quill.blueprint` getter |
 | Python | `Quill.blueprint` property |
 | CLI | `quillmark blueprint <QUILL_PATH> [-o <FILE>]` |

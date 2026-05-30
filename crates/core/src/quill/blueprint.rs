@@ -40,31 +40,24 @@ use crate::document::emit::{saphyr_emit_flow, saphyr_emit_scalar};
 use crate::value::QuillValue;
 use serde_json::Value as JsonValue;
 
-/// Controls how `<must-fill>` sentinels in a generated blueprint are
-/// substituted before parsing.
+/// Controls how Must Fill cells (fields with no `default:`) are rendered in a
+/// generated blueprint. The value is chosen at generation time from the typed
+/// schema, so the placeholder never re-parses the annotation grammar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FillBehavior {
-    /// Leave sentinels in place — downstream validation reports
-    /// `validation::must_fill_sentinel`.
+    /// Render the `<must-fill>` sentinel in the value cell — downstream
+    /// validation reports `validation::must_fill_sentinel`. This is the
+    /// canonical authoring blueprint produced by [`QuillConfig::blueprint`].
     #[default]
     Strict,
-    /// Substitute with preview-friendly placeholders: `Lorem ipsum` for
+    /// Render preview-friendly placeholders: `Lorem ipsum` for
     /// strings/markdown, `0`, `false`, `[]`, `{}`, a fixed ISO
     /// date/datetime, first enum variant.
     Preview,
-    /// Substitute with the leanest type-valid values: `""`, `0`, `false`,
-    /// `[]`, first enum variant, empty markdown body. Used by the quiver
-    /// render-test to exercise plates on minimal input.
+    /// Render the leanest type-valid values: `""`, `0`, `false`, `[]`, first
+    /// enum variant, empty markdown body. Used by the quiver render-test to
+    /// exercise plates on minimal input.
     TypeEmpty,
-}
-
-/// Substitute `<must-fill>` sentinels in a generated blueprint according to
-/// `behavior`. [`FillBehavior::Strict`] returns the input unchanged.
-pub fn fill_blueprint(blueprint: &str, behavior: FillBehavior) -> String {
-    match behavior {
-        FillBehavior::Strict => blueprint.to_string(),
-        FillBehavior::Preview | FillBehavior::TypeEmpty => fill_substitute(blueprint, behavior),
-    }
 }
 
 const PREVIEW_STRING: &str = "Lorem ipsum";
@@ -72,80 +65,69 @@ const PREVIEW_MARKDOWN: &str = "Lorem ipsum dolor sit amet, consectetur adipisci
 const PREVIEW_DATE: &str = "\"2024-01-15\"";
 const PREVIEW_DATETIME: &str = "\"2024-01-15T12:00:00Z\"";
 
-fn fill_substitute(blueprint: &str, behavior: FillBehavior) -> String {
-    let mut out = String::with_capacity(blueprint.len());
-    for line in blueprint.lines() {
-        out.push_str(&substitute_line(line, behavior));
-        out.push('\n');
+/// The value cell rendered for a Must Fill scalar field under `behavior`.
+/// `Strict` keeps the `<must-fill>` sentinel; `Preview`/`TypeEmpty` substitute
+/// a type-valid placeholder so the blueprint parses (and, for `TypeEmpty`,
+/// satisfies the quill authoring contract). Markdown fields are handled
+/// separately in [`write_markdown_block`] and never reach this function.
+fn must_fill_value(field: &FieldSchema, behavior: FillBehavior) -> String {
+    if behavior == FillBehavior::Strict {
+        return MUST_FILL_SENTINEL.to_string();
     }
-    out
-}
-
-fn substitute_line(line: &str, behavior: FillBehavior) -> String {
-    const NEEDLE: &str = ": <must-fill>  # ";
-    if let Some(idx) = line.find(NEEDLE) {
-        let prefix = &line[..idx];
-        let annotation = &line[idx + NEEDLE.len()..];
-        let value = scalar_value_for(annotation, behavior);
-        return format!("{}: {}  # {}", prefix, value, annotation);
+    if field.enum_values.is_some() {
+        return first_enum(field);
     }
-    // Markdown block scalar: `<indent><must-fill>` on its own line.
-    if line.trim_start() == MUST_FILL_SENTINEL {
-        let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
-        return match behavior {
-            FillBehavior::Preview => format!("{}{}", indent, PREVIEW_MARKDOWN),
-            _ => indent,
-        };
-    }
-    line.to_string()
-}
-
-fn scalar_value_for(annotation: &str, behavior: FillBehavior) -> String {
-    let head = annotation.split(';').next().unwrap_or(annotation).trim();
-    if head.starts_with("array<") || head == "array" {
-        return "[]".to_string();
-    }
-    if head == "integer" || head == "number" {
-        return "0".to_string();
-    }
-    if head == "boolean" {
-        return "false".to_string();
-    }
-    if let Some(inner) = head
-        .strip_prefix("enum<")
-        .and_then(|s| s.strip_suffix('>'))
-    {
-        let first = inner.split('|').next().unwrap_or("").trim();
-        return first.to_string();
-    }
-    match behavior {
-        FillBehavior::Preview => {
-            if head == "object" {
-                return "{}".to_string();
-            }
-            if head.starts_with("date<") || head == "date" {
-                return PREVIEW_DATE.to_string();
-            }
-            if head.starts_with("datetime<") || head == "datetime" {
-                return PREVIEW_DATETIME.to_string();
-            }
+    match field.r#type {
+        FieldType::Array => "[]".to_string(),
+        FieldType::Integer | FieldType::Number => "0".to_string(),
+        FieldType::Boolean => "false".to_string(),
+        FieldType::Object if behavior == FillBehavior::Preview => "{}".to_string(),
+        FieldType::Date if behavior == FillBehavior::Preview => PREVIEW_DATE.to_string(),
+        FieldType::DateTime if behavior == FillBehavior::Preview => PREVIEW_DATETIME.to_string(),
+        FieldType::String | FieldType::Markdown if behavior == FillBehavior::Preview => {
             PREVIEW_STRING.to_string()
         }
-        // `""` is schema-valid for string/date/datetime/object alike.
+        // TypeEmpty for string/object/date/datetime: `""` is schema-valid for
+        // all of them.
         _ => "\"\"".to_string(),
     }
 }
 
+/// First variant of an `enum` field, rendered identically under `Preview` and
+/// `TypeEmpty`. An empty enum list yields the empty string.
+fn first_enum(field: &FieldSchema) -> String {
+    field
+        .enum_values
+        .as_ref()
+        .and_then(|v| v.first())
+        .cloned()
+        .unwrap_or_default()
+}
+
 impl QuillConfig {
-    /// Generate an annotated Markdown blueprint for this quill. See module
-    /// docs for the annotation grammar; the function is total over any valid
-    /// `QuillConfig`.
+    /// Generate the canonical annotated Markdown blueprint for this quill —
+    /// the authoring surface handed to LLMs and humans, with Must Fill cells
+    /// carrying the `<must-fill>` sentinel ([`FillBehavior::Strict`]). See
+    /// module docs for the annotation grammar; the function is total over any
+    /// valid `QuillConfig`.
     ///
     /// The result is guaranteed schema-valid and parseable (every key
     /// present, every value type-correct). It is *not* guaranteed to render
     /// — that is the quill authoring contract on `plate.typ`; see
     /// `prose/canon/BLUEPRINT.md` §Guarantees.
     pub fn blueprint(&self) -> String {
+        self.render_blueprint(FillBehavior::Strict)
+    }
+
+    /// Generate a blueprint with Must Fill cells filled per `behavior` — an
+    /// escape hatch producing a parseable (`Preview`) or render-exercising
+    /// (`TypeEmpty`) document without an authored input. `FillBehavior::Strict`
+    /// is equivalent to [`blueprint`](Self::blueprint).
+    pub fn blueprint_filled(&self, behavior: FillBehavior) -> String {
+        self.render_blueprint(behavior)
+    }
+
+    fn render_blueprint(&self, behavior: FillBehavior) -> String {
         let mut out = String::new();
         let main_desc = self
             .main
@@ -158,6 +140,7 @@ impl QuillConfig {
             &self.main,
             &format!("{}@{}", self.name, self.version),
             main_desc,
+            behavior,
         );
         if self.main.body_enabled() {
             let example = self.main.body.as_ref().and_then(|b| b.example.as_deref());
@@ -166,7 +149,7 @@ impl QuillConfig {
         }
         for card in &self.card_kinds {
             out.push('\n');
-            write_card_fence(&mut out, card);
+            write_card_fence(&mut out, card, behavior);
             if card.body_enabled() {
                 let example = card.body.as_ref().and_then(|b| b.example.as_deref());
                 let fallback = format!("Write {} body here.", card.name);
@@ -197,6 +180,7 @@ fn write_main_fence(
     card: &CardSchema,
     quill_ref: &str,
     description: Option<&str>,
+    behavior: FillBehavior,
 ) {
     out.push_str("~~~card-yaml\n");
     out.push_str("$quill: ");
@@ -209,14 +193,14 @@ fn write_main_fence(
     if let Some(desc) = description {
         write_comment(out, desc);
     }
-    write_card_fields(out, card);
+    write_card_fields(out, card, behavior);
     out.push_str("~~~\n");
 }
 
 /// Emit a composable card as a `~~~card-yaml` block declaring `$kind: <kind>`.
 /// The `composable (0..N)` role annotation and the optional description are
 /// emitted as own-line comments directly under the `$kind` header.
-fn write_card_fence(out: &mut String, card: &CardSchema) {
+fn write_card_fence(out: &mut String, card: &CardSchema, behavior: FillBehavior) {
     out.push_str("~~~card-yaml\n");
     out.push_str("$kind: ");
     out.push_str(&saphyr_emit_scalar(&JsonValue::String(card.name.clone())));
@@ -225,15 +209,15 @@ fn write_card_fence(out: &mut String, card: &CardSchema) {
     if let Some(desc) = &card.description {
         write_comment(out, desc);
     }
-    write_card_fields(out, card);
+    write_card_fields(out, card, behavior);
     out.push_str("~~~\n");
 }
 
 /// Emit a card's fields, clustered by `ui.group` and ordered by `ui.order`.
-fn write_card_fields(out: &mut String, card: &CardSchema) {
+fn write_card_fields(out: &mut String, card: &CardSchema, behavior: FillBehavior) {
     for (_, fields) in group_fields(card.fields.values()) {
         for field in fields {
-            write_field(out, field, 0);
+            write_field(out, field, 0, behavior);
         }
     }
 }
@@ -262,13 +246,13 @@ fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
     groups
 }
 
-fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
+fn write_field(out: &mut String, field: &FieldSchema, indent: usize, behavior: FillBehavior) {
     let pad = "  ".repeat(indent);
 
     // Typed table: array with a properties map directly on the field.
     if matches!(field.r#type, FieldType::Array) {
         if let Some(props) = &field.properties {
-            write_typed_table_field(out, field, props, indent);
+            write_typed_table_field(out, field, props, indent, behavior);
             return;
         }
     }
@@ -276,7 +260,7 @@ fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
     // Typed dictionary: standalone object with defined properties.
     if matches!(field.r#type, FieldType::Object) {
         if let Some(props) = &field.properties {
-            write_typed_object_field(out, field, props, indent);
+            write_typed_object_field(out, field, props, indent, behavior);
             return;
         }
     }
@@ -288,12 +272,12 @@ fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
     // a consistent shape regardless of whether a default is configured.
     if matches!(field.r#type, FieldType::Markdown) {
         let inline = inline_annotation(field, false, field.default.is_some());
-        write_markdown_block(out, field, &pad, &inline);
+        write_markdown_block(out, field, &pad, &inline, behavior);
         return;
     }
 
     let inline = format!("  # {}", inline_annotation(field, false, field.default.is_some()));
-    let value = field_value(field);
+    let value = field_value(field, behavior);
     write_value(out, &field.name, &value, &inline, &pad);
 }
 
@@ -315,13 +299,20 @@ fn write_eg_comment(out: &mut String, field: &FieldSchema, pad: &str) {
     }
 }
 
-fn write_markdown_block(out: &mut String, field: &FieldSchema, pad: &str, inline: &str) {
+fn write_markdown_block(
+    out: &mut String,
+    field: &FieldSchema,
+    pad: &str,
+    inline: &str,
+    behavior: FillBehavior,
+) {
     out.push_str(&format!("{}{}: |-  # {}\n", pad, field.name, inline));
     let body_pad = format!("{}  ", pad);
     // Endorsed cell with content → render the default. Endorsed cell with
     // empty/absent string default → one indented blank line (the
-    // "skippable" markdown cell). Must Fill cell → the sentinel on one
-    // line inside the block scalar.
+    // "skippable" markdown cell). Must Fill cell → the sentinel (Strict),
+    // a preview paragraph (Preview), or an empty body line (TypeEmpty) on
+    // one line inside the block scalar.
     let content = field.default.as_ref().and_then(|v| match v.as_json() {
         serde_json::Value::String(s) => Some(s),
         _ => None,
@@ -336,7 +327,12 @@ fn write_markdown_block(out: &mut String, field: &FieldSchema, pad: &str, inline
             out.push_str(&format!("{}\n", body_pad));
         }
         None => {
-            out.push_str(&format!("{}{}\n", body_pad, MUST_FILL_SENTINEL));
+            let body = match behavior {
+                FillBehavior::Strict => MUST_FILL_SENTINEL,
+                FillBehavior::Preview => PREVIEW_MARKDOWN,
+                FillBehavior::TypeEmpty => "",
+            };
+            out.push_str(&format!("{}{}\n", body_pad, body));
         }
     }
 }
@@ -369,6 +365,7 @@ fn write_typed_table_field(
     field: &FieldSchema,
     item_props: &BTreeMap<String, Box<FieldSchema>>,
     indent: usize,
+    behavior: FillBehavior,
 ) {
     let pad = "  ".repeat(indent);
 
@@ -395,7 +392,7 @@ fn write_typed_table_field(
             let dash_pad = "  ".repeat(indent + 1);
             out.push_str(&format!("{}-\n", dash_pad));
             for prop in sort_props(item_props) {
-                write_field(out, prop, indent + 2);
+                write_field(out, prop, indent + 2, behavior);
             }
         }
     }
@@ -418,6 +415,7 @@ fn write_typed_object_field(
     field: &FieldSchema,
     props: &BTreeMap<String, Box<FieldSchema>>,
     indent: usize,
+    behavior: FillBehavior,
 ) {
     let pad = "  ".repeat(indent);
 
@@ -445,7 +443,7 @@ fn write_typed_object_field(
         None => {
             out.push_str(&format!("{}{}:  # {}\n", pad, field.name, inline));
             for prop in sort_props(props) {
-                write_field(out, prop, indent + 1);
+                write_field(out, prop, indent + 1, behavior);
             }
         }
     }
@@ -497,14 +495,14 @@ enum FieldValue {
     Block(Vec<serde_json::Value>),
 }
 
-fn field_value(field: &FieldSchema) -> FieldValue {
+fn field_value(field: &FieldSchema, behavior: FillBehavior) -> FieldValue {
     if let Some(v) = field.default.as_ref() {
         return json_to_value(v.as_json());
     }
-    // No default → Must Fill cell. The sentinel sits in the value cell
-    // regardless of declared type (markdown is special-cased earlier and
-    // never reaches this code path).
-    FieldValue::Inline(MUST_FILL_SENTINEL.to_string())
+    // No default → Must Fill cell. Under `Strict` the sentinel sits in the
+    // value cell; under `Preview`/`TypeEmpty` a type-valid placeholder does
+    // (markdown is special-cased earlier and never reaches this code path).
+    FieldValue::Inline(must_fill_value(field, behavior))
 }
 
 fn json_to_value(val: &serde_json::Value) -> FieldValue {
@@ -1110,23 +1108,23 @@ card_kinds:
     }
 
     #[test]
-    fn fill_blueprint_strict_is_identity() {
-        let bp = cfg(r#"
+    fn blueprint_filled_strict_matches_blueprint() {
+        let config = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     title: { type: string }
     count: { type: integer }
-"#)
-        .blueprint();
-        let out = super::fill_blueprint(&bp, super::FillBehavior::Strict);
+"#);
+        let bp = config.blueprint();
+        let out = config.blueprint_filled(super::FillBehavior::Strict);
         assert_eq!(out, bp);
         assert!(out.contains("<must-fill>"));
     }
 
     #[test]
-    fn fill_blueprint_preview_substitutes_every_inline_sentinel() {
-        let bp = cfg(r#"
+    fn blueprint_filled_preview_substitutes_every_inline_sentinel() {
+        let out = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
@@ -1139,8 +1137,7 @@ main:
     published: { type: datetime }
     severity:  { type: string, enum: [low, medium, high] }
 "#)
-        .blueprint();
-        let out = super::fill_blueprint(&bp, super::FillBehavior::Preview);
+        .blueprint_filled(super::FillBehavior::Preview);
         assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
         assert!(out.contains("title: Lorem ipsum  # string\n"));
         assert!(out.contains("count: 0  # integer\n"));
@@ -1153,22 +1150,21 @@ main:
     }
 
     #[test]
-    fn fill_blueprint_preview_substitutes_markdown_block_scalar() {
-        let bp = cfg(r#"
+    fn blueprint_filled_preview_substitutes_markdown_block_scalar() {
+        let out = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     bio: { type: markdown }
 "#)
-        .blueprint();
-        let out = super::fill_blueprint(&bp, super::FillBehavior::Preview);
+        .blueprint_filled(super::FillBehavior::Preview);
         assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
         assert!(out.contains("bio: |-  # markdown\n  Lorem ipsum dolor sit amet"));
     }
 
     #[test]
-    fn fill_blueprint_preview_preserves_endorsed_cells() {
-        let bp = cfg(r#"
+    fn blueprint_filled_preview_preserves_endorsed_cells() {
+        let out = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
@@ -1176,16 +1172,15 @@ main:
     flag:   { type: boolean, default: true }
     status: { type: string, default: draft }
 "#)
-        .blueprint();
-        let out = super::fill_blueprint(&bp, super::FillBehavior::Preview);
+        .blueprint_filled(super::FillBehavior::Preview);
         assert!(out.contains("size: 11  # number; delete-ok\n"));
         assert!(out.contains("flag: true  # boolean; delete-ok\n"));
         assert!(out.contains("status: draft  # string; delete-ok\n"));
     }
 
     #[test]
-    fn fill_blueprint_preview_substitutes_typed_table_leaves() {
-        let bp = cfg(r#"
+    fn blueprint_filled_preview_substitutes_typed_table_leaves() {
+        let out = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
@@ -1195,16 +1190,15 @@ main:
         org:  { type: string }
         year: { type: integer }
 "#)
-        .blueprint();
-        let out = super::fill_blueprint(&bp, super::FillBehavior::Preview);
+        .blueprint_filled(super::FillBehavior::Preview);
         assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
         assert!(out.contains("    org: Lorem ipsum  # string\n"));
         assert!(out.contains("    year: 0  # integer\n"));
     }
 
     #[test]
-    fn fill_blueprint_type_empty_substitutes_with_minimal_values() {
-        let bp = cfg(r#"
+    fn blueprint_filled_type_empty_substitutes_with_minimal_values() {
+        let out = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
@@ -1216,8 +1210,7 @@ main:
     severity: { type: string, enum: [low, medium, high] }
     bio:      { type: markdown }
 "#)
-        .blueprint();
-        let out = super::fill_blueprint(&bp, super::FillBehavior::TypeEmpty);
+        .blueprint_filled(super::FillBehavior::TypeEmpty);
         assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
         assert!(out.contains("title: \"\"  # string\n"));
         assert!(out.contains("count: 0  # integer\n"));
@@ -1229,8 +1222,8 @@ main:
     }
 
     #[test]
-    fn fill_blueprint_preview_round_trips_to_a_valid_document() {
-        let bp = cfg(r#"
+    fn blueprint_filled_preview_round_trips_to_a_valid_document() {
+        let filled = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
@@ -1240,8 +1233,7 @@ main:
     bio:       { type: markdown }
     issued:    { type: date }
 "#)
-        .blueprint();
-        let filled = super::fill_blueprint(&bp, super::FillBehavior::Preview);
+        .blueprint_filled(super::FillBehavior::Preview);
         let doc = Document::from_markdown(&filled)
             .unwrap_or_else(|e| panic!("filled blueprint must parse: {e:?}\n---\n{filled}"));
         let main = doc.main().payload();
