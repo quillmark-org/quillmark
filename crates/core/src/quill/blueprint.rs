@@ -79,16 +79,20 @@ fn must_fill_value(field: &FieldSchema, behavior: FillBehavior) -> String {
     }
     match field.r#type {
         FieldType::Array => "[]".to_string(),
+        // A bare object reaching this point would be schema-invalid (objects
+        // require a `properties` map and recurse through write_typed_object_field),
+        // so this arm is unreachable in practice. `{}` is the type-correct
+        // fallback regardless — `""` (a string) would fail object validation.
+        FieldType::Object => "{}".to_string(),
         FieldType::Integer | FieldType::Number => "0".to_string(),
         FieldType::Boolean => "false".to_string(),
-        FieldType::Object if behavior == FillBehavior::Preview => "{}".to_string(),
         FieldType::Date if behavior == FillBehavior::Preview => PREVIEW_DATE.to_string(),
         FieldType::DateTime if behavior == FillBehavior::Preview => PREVIEW_DATETIME.to_string(),
         FieldType::String | FieldType::Markdown if behavior == FillBehavior::Preview => {
             PREVIEW_STRING.to_string()
         }
-        // TypeEmpty for string/object/date/datetime: `""` is schema-valid for
-        // all of them.
+        // TypeEmpty string/date/datetime: `""` is schema-valid for all three
+        // (the validator accepts the empty string for date/datetime).
         _ => "\"\"".to_string(),
     }
 }
@@ -1219,6 +1223,41 @@ main:
         assert!(out.contains("issued: \"\"  # date<YYYY-MM-DD>\n"));
         assert!(out.contains("severity: low  # enum<low | medium | high>\n"));
         assert!(out.contains("bio: |-  # markdown\n  \n"));
+    }
+
+    #[test]
+    fn blueprint_filled_type_empty_validates_clean() {
+        // The type-empty blueprint must be schema-*valid*, not merely
+        // parseable. Exercises every scalar Must Fill type plus the nested
+        // leaves of a typed dictionary and a typed table.
+        let config = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    title:    { type: string }
+    count:    { type: integer }
+    flag:     { type: boolean }
+    refs:     { type: array }
+    issued:   { type: date }
+    severity: { type: string, enum: [low, medium, high] }
+    bio:      { type: markdown }
+    addr:
+      type: object
+      properties:
+        street: { type: string }
+        zip:    { type: integer }
+    rows:
+      type: array
+      properties:
+        org:  { type: string }
+        year: { type: integer }
+"#);
+        let filled = config.blueprint_filled(super::FillBehavior::TypeEmpty);
+        let doc = Document::from_markdown(&filled)
+            .unwrap_or_else(|e| panic!("filled blueprint must parse: {e:?}\n---\n{filled}"));
+        config.validate_document(&doc).unwrap_or_else(|errs| {
+            panic!("type-empty blueprint must validate: {errs:?}\n---\n{filled}")
+        });
     }
 
     #[test]
