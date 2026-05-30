@@ -1323,7 +1323,7 @@ main:
 
     #[test]
     fn blueprint_filled_preview_round_trips_to_a_valid_document() {
-        let filled = cfg(r#"
+        let config = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
@@ -1332,14 +1332,21 @@ main:
     severity:  { type: string, enum: [low, medium, high] }
     bio:       { type: markdown }
     issued:    { type: date }
-"#)
-        .blueprint_filled(super::FillBehavior::Preview);
+    refs:      { type: array }
+"#);
+        let filled = config.blueprint_filled(super::FillBehavior::Preview);
         let doc = Document::from_markdown(&filled)
             .unwrap_or_else(|e| panic!("filled blueprint must parse: {e:?}\n---\n{filled}"));
+        config.validate_document(&doc).unwrap_or_else(|errs| {
+            panic!("preview blueprint must validate: {errs:?}\n---\n{filled}")
+        });
         let main = doc.main().payload();
         assert_eq!(main.get("title").unwrap().as_str().unwrap(), "Lorem ipsum");
         assert_eq!(main.get("count").unwrap().as_i64().unwrap(), 0);
         assert_eq!(main.get("severity").unwrap().as_str().unwrap(), "low");
+        let refs = main.get("refs").unwrap().as_array().unwrap();
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].as_str().unwrap(), "Lorem ipsum");
     }
 
     /// Regression: string defaults that look numeric/boolean/null get
