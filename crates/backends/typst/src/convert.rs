@@ -94,7 +94,9 @@ pub fn escape_string(s: &str) -> String {
 #[derive(Debug, Clone)]
 enum ListType {
     Bullet,
-    Ordered,
+    /// Ordered list. `start` is the first item's number (CommonMark preserves it);
+    /// `first` tracks whether the next item is the list's first.
+    Ordered { start: u64, first: bool },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -149,24 +151,6 @@ fn sanitize_lang_tag(lang: &str) -> String {
         .collect()
 }
 
-/// Returns the length of the longest consecutive run of backtick characters in the string.
-/// Used to determine how many backticks are needed for safe Typst raw text delimiters.
-fn longest_backtick_run(s: &str) -> usize {
-    let mut max_run = 0;
-    let mut current_run = 0;
-    for ch in s.chars() {
-        if ch == '`' {
-            current_run += 1;
-            if current_run > max_run {
-                max_run = current_run;
-            }
-        } else {
-            current_run = 0;
-        }
-    }
-    max_run
-}
-
 /// Converts an iterator of markdown events to Typst markup
 fn push_typst<'a, I>(output: &mut String, source: &str, iter: I) -> Result<(), ConversionError>
 where
@@ -178,6 +162,8 @@ where
     let mut in_list_item = false; // Track if we're inside a list item
     let mut list_item_first_block = false; // Track if we're on the first block of a list item
     let mut in_code_block = false; // Track if we're inside a code block
+    let mut code_block_buffer = String::new(); // Raw content of the current code block
+    let mut code_block_lang = String::new(); // Sanitized language tag of the current code block
     let mut table_alignments: Vec<pulldown_cmark::Alignment> = Vec::new(); // Column alignments for current table
     let mut depth = 0; // Track nesting depth for DoS prevention
     let mut in_image = false; // Suppress text events inside ![alt](src)
@@ -216,6 +202,14 @@ where
                     }
                     Tag::CodeBlock(kind) => {
                         in_code_block = true;
+                        // Buffer the content so the closing/opening fences can use enough
+                        // backticks to avoid colliding with backtick runs inside the block
+                        // (the fence is emitted in TagEnd::CodeBlock once content is known).
+                        code_block_buffer.clear();
+                        code_block_lang.clear();
+                        if let pulldown_cmark::CodeBlockKind::Fenced(lang) = kind {
+                            code_block_lang = sanitize_lang_tag(&lang);
+                        }
                         if in_list_item {
                             // Code block inside list item: continuation indent
                             let cont_indent = "  ".repeat(list_stack.len());
@@ -232,14 +226,6 @@ where
                         } else if !end_newline {
                             output.push('\n');
                         }
-                        output.push_str("```");
-                        if let pulldown_cmark::CodeBlockKind::Fenced(lang) = kind {
-                            let sanitized = sanitize_lang_tag(&lang);
-                            if !sanitized.is_empty() {
-                                output.push_str(&sanitized);
-                            }
-                        }
-                        output.push('\n');
                         end_newline = true;
                     }
                     Tag::HtmlBlock => {
@@ -251,10 +237,9 @@ where
                             end_newline = true;
                         }
 
-                        let list_type = if start_number.is_some() {
-                            ListType::Ordered
-                        } else {
-                            ListType::Bullet
+                        let list_type = match start_number {
+                            Some(start) => ListType::Ordered { start, first: true },
+                            None => ListType::Bullet,
                         };
 
                         list_stack.push(list_type);
@@ -262,15 +247,22 @@ where
                     Tag::Item => {
                         in_list_item = true;
                         list_item_first_block = true;
-                        if let Some(list_type) = list_stack.last() {
-                            let indent = "  ".repeat(list_stack.len().saturating_sub(1));
-
+                        let indent = "  ".repeat(list_stack.len().saturating_sub(1));
+                        if let Some(list_type) = list_stack.last_mut() {
                             match list_type {
                                 ListType::Bullet => {
                                     output.push_str(&format!("{}- ", indent));
                                 }
-                                ListType::Ordered => {
-                                    output.push_str(&format!("{}+ ", indent));
+                                ListType::Ordered { start, first } => {
+                                    // Typst `+` always restarts at 1, so emit the explicit
+                                    // start number on the first item when it isn't 1; Typst
+                                    // then continues the `+` items from that number.
+                                    if *first && *start != 1 {
+                                        output.push_str(&format!("{}{}. ", indent, start));
+                                    } else {
+                                        output.push_str(&format!("{}+ ", indent));
+                                    }
+                                    *first = false;
                                 }
                             }
                             end_newline = false;
@@ -393,17 +385,30 @@ where
                     }
                     TagEnd::CodeBlock => {
                         in_code_block = false;
-                        if !end_newline {
-                            output.push('\n');
+                        // A Typst ``` fenced block is just sugar for the `raw` element, so
+                        // emit `#raw(...)` directly with the content in a string literal.
+                        // This sidesteps backtick-delimiter collisions entirely: the only
+                        // characters that can break a string are `"` and `\`, both handled
+                        // by escape_string. The trailing newline pulldown appends is the
+                        // last line's terminator, not content, so it is dropped.
+                        let content = code_block_buffer
+                            .strip_suffix('\n')
+                            .unwrap_or(&code_block_buffer);
+                        output.push_str("#raw(block: true");
+                        if !code_block_lang.is_empty() {
+                            output.push_str(", lang: \"");
+                            output.push_str(&escape_string(&code_block_lang));
+                            output.push('"');
                         }
-                        if in_list_item {
-                            let cont_indent = "  ".repeat(list_stack.len());
-                            output.push_str(&cont_indent);
-                        }
-                        output.push_str("```\n");
+                        output.push_str(", \"");
+                        output.push_str(&escape_string(content));
+                        output.push_str("\")");
+                        output.push('\n');
                         if !in_list_item {
                             output.push('\n');
                         }
+                        code_block_buffer.clear();
+                        code_block_lang.clear();
                         end_newline = true;
                         list_item_first_block = false;
                     }
@@ -484,9 +489,9 @@ where
                 if in_image {
                     // Suppress alt text inside ![alt](src) — spec §6.3
                 } else if in_code_block {
-                    // Code block content - no escaping needed
-                    output.push_str(&text);
-                    end_newline = text.ends_with('\n');
+                    // Code block content - no escaping needed. Buffered so the fence
+                    // width can be computed from the full content (see TagEnd::CodeBlock).
+                    code_block_buffer.push_str(&text);
                 } else {
                     let escaped = escape_markup(&text);
                     output.push_str(&escaped);
@@ -494,21 +499,12 @@ where
                 }
             }
             Event::Code(text) => {
-                // Inline code: use enough backticks to avoid delimiter collision
-                let max_run = longest_backtick_run(&text);
-                let delim_len = max_run + 1;
-                let delim: String = std::iter::repeat('`').take(delim_len).collect();
-                output.push_str(&delim);
-                // When using multi-backtick delimiters, Typst requires spaces
-                // to separate the delimiters from the content
-                if delim_len > 1 {
-                    output.push(' ');
-                }
-                output.push_str(&text);
-                if delim_len > 1 {
-                    output.push(' ');
-                }
-                output.push_str(&delim);
+                // Inline code → inline `raw` element (`block` defaults to false). As with
+                // code blocks, the content rides in a string literal, so backtick runs are
+                // inert and no delimiter sizing is needed; escape_string covers `"`/`\`.
+                output.push_str("#raw(\"");
+                output.push_str(&escape_string(&text));
+                output.push_str("\")");
                 end_newline = false;
             }
             Event::HardBreak => {
@@ -951,10 +947,10 @@ mod tests {
 
     #[test]
     fn test_inline_code() {
-        assert_eq!(mark_to_typst("`code`").unwrap(), "`code`\n\n");
+        assert_eq!(mark_to_typst("`code`").unwrap(), "#raw(\"code\")\n\n");
         assert_eq!(
             mark_to_typst("Text with `inline code` here").unwrap(),
-            "Text with `inline code` here\n\n"
+            "Text with #raw(\"inline code\") here\n\n"
         );
     }
 
@@ -974,6 +970,31 @@ mod tests {
         // Typst auto-numbers, so we always use 1.
         // Lists end with extra newline per CONVERT.md examples
         assert_eq!(typst, "+ First\n+ Second\n+ Third\n\n");
+    }
+
+    #[test]
+    fn test_ordered_list_custom_start() {
+        // A list starting at 3 emits the explicit number on the first item; Typst
+        // continues the `+` items from there (renders 3, 4, 5).
+        let markdown = "3. Three\n4. Four\n5. Five";
+        let typst = mark_to_typst(markdown).unwrap();
+        assert_eq!(typst, "3. Three\n+ Four\n+ Five\n\n");
+    }
+
+    #[test]
+    fn test_ordered_list_start_zero() {
+        let markdown = "0. Zero\n1. One";
+        let typst = mark_to_typst(markdown).unwrap();
+        assert_eq!(typst, "0. Zero\n+ One\n\n");
+    }
+
+    #[test]
+    fn test_two_ordered_lists_independent_starts() {
+        // Each ordered list tracks its own start; the first (start 1) stays `+`,
+        // the second (start 5) emits the explicit number on its first item.
+        let markdown = "1. a\n2. b\n\ntext\n\n5. c\n6. d";
+        let typst = mark_to_typst(markdown).unwrap();
+        assert_eq!(typst, "+ a\n+ b\n\ntext\n\n5. c\n+ d\n\n");
     }
 
     #[test]
@@ -1018,7 +1039,7 @@ mod tests {
         // Lists end with extra newline per CONVERT.md examples
         assert_eq!(
             typst,
-            "A paragraph with #strong[bold] and a #link(\"https://example.com\")[link].\n\nAnother paragraph with `inline code`.\n\n- A list item\n- Another item\n\n"
+            "A paragraph with #strong[bold] and a #link(\"https://example.com\")[link].\n\nAnother paragraph with #raw(\"inline code\").\n\n- A list item\n- Another item\n\n"
         );
     }
 
@@ -1119,7 +1140,7 @@ mod tests {
         // Lists end with extra newline
         assert_eq!(
             typst,
-            "- #strong[Bold] item\n- #emph[Italic] item\n- `Code` item\n\n"
+            "- #strong[Bold] item\n- #emph[Italic] item\n- #raw(\"Code\") item\n\n"
         );
     }
 
@@ -1167,30 +1188,54 @@ mod tests {
     fn test_code_block_standalone() {
         let markdown = "```rust\nfn main() {}\n```";
         let typst = mark_to_typst(markdown).unwrap();
-        assert_eq!(typst, "```rust\nfn main() {}\n```\n\n");
+        assert_eq!(typst, "#raw(block: true, lang: \"rust\", \"fn main() {}\")\n\n");
     }
 
     #[test]
     fn test_code_block_no_lang() {
         let markdown = "```\nhello\n```";
         let typst = mark_to_typst(markdown).unwrap();
-        assert_eq!(typst, "```\nhello\n```\n\n");
+        assert_eq!(typst, "#raw(block: true, \"hello\")\n\n");
+    }
+
+    #[test]
+    fn test_code_block_with_triple_backtick_content() {
+        // Backtick runs in the content are harmless inside a string literal: they
+        // appear verbatim and cannot close the `raw` span. (`\n` escapes newlines.)
+        let markdown = "````\n```\nnested\n```\n````";
+        let typst = mark_to_typst(markdown).unwrap();
+        assert_eq!(typst, "#raw(block: true, \"```\\nnested\\n```\")\n\n");
+    }
+
+    #[test]
+    fn test_code_block_with_quad_backtick_content() {
+        let markdown = "`````\n````\nx\n````\n`````";
+        let typst = mark_to_typst(markdown).unwrap();
+        assert_eq!(typst, "#raw(block: true, \"````\\nx\\n````\")\n\n");
+    }
+
+    #[test]
+    fn test_code_block_with_inline_triple_backtick_lang() {
+        let markdown = "```text\na ``` b\n```";
+        let typst = mark_to_typst(markdown).unwrap();
+        assert_eq!(typst, "#raw(block: true, lang: \"text\", \"a ``` b\")\n\n");
     }
 
     #[test]
     fn test_code_block_no_escaping() {
-        // Special chars in code blocks should NOT be escaped
+        // Markup special chars in code blocks must survive verbatim. Inside a Typst
+        // string literal only `"` and `\` are special, so `*`, `#`, `$` pass through.
         let markdown = "```\n*bold* #heading $math$\n```";
         let typst = mark_to_typst(markdown).unwrap();
-        assert_eq!(typst, "```\n*bold* #heading $math$\n```\n\n");
+        assert_eq!(typst, "#raw(block: true, \"*bold* #heading $math$\")\n\n");
     }
 
     #[test]
     fn test_code_block_in_list_item() {
         let markdown = "- Item text\n\n  ```\n  code here\n  ```";
         let typst = mark_to_typst(markdown).unwrap();
-        // pulldown_cmark strips indentation from code block content
-        assert_eq!(typst, "- Item text\n\n  ```\ncode here\n  ```\n\n");
+        // The `#raw(...)` call sits at the list-item continuation indent.
+        assert_eq!(typst, "- Item text\n\n  #raw(block: true, \"code here\")\n\n");
     }
 
     #[test]
@@ -1199,7 +1244,7 @@ mod tests {
         let typst = mark_to_typst(markdown).unwrap();
         assert_eq!(
             typst,
-            "- First para.\n\n  ```\ncode\n  ```\n\n  After code.\n\n"
+            "- First para.\n\n  #raw(block: true, \"code\")\n\n  After code.\n\n"
         );
     }
 
@@ -1426,7 +1471,7 @@ mod tests {
     fn test_heading_with_inline_code() {
         let markdown = "## Code example: `fn main()`";
         let typst = mark_to_typst(markdown).unwrap();
-        assert_eq!(typst, "== Code example: `fn main()`\n\n");
+        assert_eq!(typst, "== Code example: #raw(\"fn main()\")\n\n");
     }
 
     // Tests for __ as CommonMark strong (no longer underline)
@@ -1547,7 +1592,7 @@ mod tests {
     fn test_table_with_inline_code_in_cells() {
         let md = "| Func | Desc |\n|------|------|\n| `foo()` | does stuff |";
         let out = mark_to_typst(md).unwrap();
-        assert!(out.contains("[`foo()`]"));
+        assert!(out.contains("[#raw(\"foo()\")]"));
     }
 
     #[test]
@@ -1832,11 +1877,11 @@ mod tests {
 
     #[test]
     fn test_table_code_with_special_chars() {
-        // Characters inside inline code should NOT be escaped
+        // Markup special chars inside inline code must survive verbatim in the string.
         let md = "| A |\n|---|\n| `a#b$c@d` |";
         let out = mark_to_typst(md).unwrap();
         assert!(
-            out.contains("`a#b$c@d`"),
+            out.contains("#raw(\"a#b$c@d\")"),
             "code content should be literal: {out}"
         );
     }
@@ -1855,6 +1900,43 @@ mod tests {
         let md = "| A | B | C |\n|---|---|---|\n| | | |";
         let out = mark_to_typst(md).unwrap();
         assert!(out.contains("[], [], [],"), "multiple empty cells: {out}");
+    }
+
+    #[test]
+    fn test_table_ragged_short_row_is_padded() {
+        // A body row with fewer cells than the header is padded with empty cells
+        // by the parser, so the emitted row keeps the column count consistent and
+        // Typst's auto-flow stays aligned.
+        let md = "| A | B | C |\n|---|---|---|\n| 1 | 2 |";
+        let out = mark_to_typst(md).unwrap();
+        assert!(out.contains("columns: 3,"), "column count: {out}");
+        assert!(
+            out.contains("[1], [2], [], \n"),
+            "short row padded to 3 cells: {out}"
+        );
+    }
+
+    #[test]
+    fn test_table_ragged_long_row_is_truncated() {
+        // A body row with more cells than the header is truncated by the parser to
+        // the header column count (GFM semantics), so no stray cell leaks into the
+        // next row.
+        let md = "| A | B |\n|---|---|\n| 1 | 2 | 3 |";
+        let out = mark_to_typst(md).unwrap();
+        assert!(out.contains("columns: 2,"), "column count: {out}");
+        assert!(out.contains("[1], [2], \n"), "long row truncated: {out}");
+        assert!(!out.contains("[3]"), "extra cell dropped: {out}");
+    }
+
+    #[test]
+    fn test_table_single_column_with_alignment() {
+        // A single aligned column emits `align: (left)`. In Typst `(left)` is a
+        // scalar alignment (not a 1-tuple), which `table` accepts and applies to
+        // the lone column — verified to compile. This guards that exact shape.
+        let md = "| H |\n|:--|\n| x |";
+        let out = mark_to_typst(md).unwrap();
+        assert!(out.contains("columns: 1,"), "single column: {out}");
+        assert!(out.contains("align: (left),"), "single-column align: {out}");
     }
 }
 
@@ -2094,38 +2176,41 @@ mod robustness_tests {
     fn test_fenced_code_block() {
         let markdown = "```rust\nfn main() {}\n```";
         let result = mark_to_typst(markdown).unwrap();
-        assert_eq!(result, "```rust\nfn main() {}\n```\n\n");
+        assert_eq!(result, "#raw(block: true, lang: \"rust\", \"fn main() {}\")\n\n");
     }
 
     #[test]
     fn test_indented_code_block() {
         let markdown = "    fn main() {}\n    println!()";
         let result = mark_to_typst(markdown).unwrap();
-        assert_eq!(result, "```\nfn main() {}\nprintln!()\n```\n\n");
+        // Multi-line content is a single string literal; `\n` carries the newline.
+        assert_eq!(
+            result,
+            "#raw(block: true, \"fn main() {}\\nprintln!()\")\n\n"
+        );
     }
 
     // Inline code edge cases
 
     #[test]
     fn test_inline_code_with_backticks() {
-        // Using double backticks to include single backtick
+        // Content containing backticks rides verbatim in the string literal.
         let result = mark_to_typst("`` `code` ``").unwrap();
-        assert!(result.contains("`"));
+        assert_eq!(result, "#raw(\"`code`\")\n\n");
     }
 
     #[test]
     fn test_inline_code_with_special_chars() {
-        // Special chars in code should NOT be escaped
+        // Markup special chars in code must survive verbatim (not Typst-escaped).
         let result = mark_to_typst("`*#$<>`").unwrap();
-        assert_eq!(result, "`*#$<>`\n\n");
+        assert_eq!(result, "#raw(\"*#$<>\")\n\n");
     }
 
     #[test]
     fn test_empty_inline_code() {
-        // pulldown-cmark doesn't parse `` as empty inline code
-        // It needs content or different backtick counts
+        // A space-only code span: content is a single space.
         let result = mark_to_typst("` `").unwrap();
-        assert!(result.contains("`")); // space-only code span
+        assert_eq!(result, "#raw(\" \")\n\n");
     }
 
     // Formatting edge cases
@@ -2312,7 +2397,7 @@ More text with `inline code`."#;
         assert!(result.contains("#emph[italic]"));
         assert!(result.contains("- List item"));
         assert!(result.contains("#link"));
-        assert!(result.contains("`inline code`"));
+        assert!(result.contains("#raw(\"inline code\")"));
     }
 
     #[test]
@@ -2430,31 +2515,17 @@ More text with `inline code`."#;
     // Security tests: inline code backtick injection
     #[test]
     fn test_inline_code_backtick_injection() {
-        // Content with a backtick must use multi-backtick delimiters
-        // to prevent breaking out of Typst raw text
+        // Backticks in the content cannot break out of the string literal, so they
+        // appear verbatim with no delimiter gymnastics.
         let result = mark_to_typst("`` `inject` ``").unwrap();
-        // The content is "`inject`" — must not produce `...`inject`...`
-        // which would break the raw text delimiters
-        assert!(
-            !result.contains("``inject``"),
-            "Backticks should not form nested delimiters"
-        );
-        // Multi-backtick delimiters should be used
-        assert!(
-            result.contains("`` "),
-            "Should use double-backtick delimiters"
-        );
+        assert_eq!(result, "#raw(\"`inject`\")\n\n");
     }
 
     #[test]
     fn test_inline_code_consecutive_backticks() {
-        // Content with consecutive backticks
+        // Content is "``" — carried literally inside the string.
         let result = mark_to_typst("``` `` ```").unwrap();
-        // Content is "``" — needs at least 3 backtick delimiters
-        assert!(
-            result.contains("```"),
-            "Should use triple-backtick delimiters for double-backtick content"
-        );
+        assert_eq!(result, "#raw(\"``\")\n\n");
     }
 
     // Security tests: code block language string sanitization
@@ -2462,23 +2533,22 @@ More text with `inline code`."#;
     fn test_code_block_lang_sanitized_simple() {
         // Normal language tags should pass through
         let result = mark_to_typst("```rust\ncode\n```").unwrap();
-        assert_eq!(result, "```rust\ncode\n```\n\n");
+        assert_eq!(result, "#raw(block: true, lang: \"rust\", \"code\")\n\n");
     }
 
     #[test]
     fn test_code_block_lang_sanitized_special_chars() {
-        // Language tag with special characters should be sanitized
-        // pulldown-cmark extracts info string as-is; we strip dangerous chars
+        // The language tag is reduced to its identifier prefix ("rust"); the trailing
+        // junk is dropped rather than carried into the `lang:` argument.
         let result = mark_to_typst("```rust#evil\ncode\n```").unwrap();
-        // '#' should be stripped, only "rust" remains
         assert!(
-            result.starts_with("```rust\n"),
-            "Lang tag should be sanitized to 'rust': got {}",
+            result.contains("lang: \"rust\""),
+            "Lang tag should be reduced to 'rust': got {}",
             result
         );
         assert!(
             !result.contains("#evil"),
-            "Special chars should be stripped from lang tag"
+            "Junk should be stripped from lang tag"
         );
     }
 
@@ -2487,14 +2557,16 @@ More text with `inline code`."#;
         // c++, objective-c, c_sharp etc. should be preserved
         let result = mark_to_typst("```c++\ncode\n```").unwrap();
         assert!(
-            result.starts_with("```c++\n"),
-            "c++ lang tag should be preserved"
+            result.contains("lang: \"c++\""),
+            "c++ lang tag should be preserved: got {}",
+            result
         );
 
         let result = mark_to_typst("```objective-c\ncode\n```").unwrap();
         assert!(
-            result.starts_with("```objective-c\n"),
-            "objective-c lang tag should be preserved"
+            result.contains("lang: \"objective-c\""),
+            "objective-c lang tag should be preserved: got {}",
+            result
         );
     }
 
@@ -2515,17 +2587,6 @@ More text with `inline code`."#;
         assert_eq!(sanitize_lang_tag("rust[evil]"), "rust");
         assert_eq!(sanitize_lang_tag("rust$math$"), "rust");
         assert_eq!(sanitize_lang_tag(""), "");
-    }
-
-    // Security test: longest_backtick_run helper
-    #[test]
-    fn test_longest_backtick_run() {
-        assert_eq!(longest_backtick_run("no backticks"), 0);
-        assert_eq!(longest_backtick_run("one ` here"), 1);
-        assert_eq!(longest_backtick_run("two `` here"), 2);
-        assert_eq!(longest_backtick_run("mixed ` and `` here"), 2);
-        assert_eq!(longest_backtick_run("```"), 3);
-        assert_eq!(longest_backtick_run(""), 0);
     }
 
     #[test]

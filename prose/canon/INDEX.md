@@ -19,7 +19,7 @@
 
 ## Backends
 
-- **[CONVERT.md](CONVERT.md)** - Markdown-to-Typst conversion specification
+- **[CONVERT.md](CONVERT.md)** - How the Typst backend renders markdown body content to Typst markup
 - Typst backend internals: see `crates/backends/typst/` rustdoc
 
 ## Bindings
