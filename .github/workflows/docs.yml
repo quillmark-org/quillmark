@@ -1,18 +1,17 @@
 name: Docs
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'docs/**'
-      - 'mkdocs.yml'
-      - '.github/workflows/docs.yml'
+  # Publish docs when a GitHub Release is published (see release.yml, which
+  # tags vX.Y.Z and cuts the release after a release/v* PR merges).
+  release:
+    types: [published]
+  # Validate docs on PRs that touch them, without deploying.
   pull_request:
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
       - '.github/workflows/docs.yml'
+  # Allow manual (re)deploys from the Actions tab.
   workflow_dispatch:
 
 # Allow the GITHUB_TOKEN to deploy to GitHub Pages.
@@ -53,8 +52,11 @@ jobs:
           path: site
 
   deploy:
-    # Only deploy from main; PRs run the build job above as a check.
-    if: github.event_name != 'pull_request'
+    # Deploy only for published, non-prerelease releases (RCs are skipped) and
+    # manual dispatches. PRs just run the build job above as a check.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'release' && github.event.release.prerelease == false)
     needs: build
     runs-on: ubuntu-latest
     environment:
