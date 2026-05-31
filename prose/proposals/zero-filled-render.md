@@ -11,19 +11,32 @@
 
 ## TL;DR
 
-Render fill and completeness verdict are **orthogonal**. Both interfaces —
-UI form and MCP/LLM — use **zero-filled render**: each absent field is
-filled with its type-empty (zero) value, in the plate-JSON projection only,
-never in the persisted document. A document that is merely *incomplete*
-(Must Fill fields absent) renders fine; a *malformed* one — a value that
-won't coerce, or a surviving `<must-fill>` sentinel — always errors. Strict
-completeness ("every Must Fill present") is a separate **queryable
-verdict**, not a creation gate, answered identically for documents of
-either origin.
+Render fill and completeness verdict are **orthogonal**. The render path uses
+**zero-filled render**: each absent field is filled with its type-empty
+(zero) value, in the plate-JSON projection only, never in the persisted
+document. A document that is merely *incomplete* (Must Fill fields absent)
+renders fine; a *malformed* one — a value that won't coerce, or a surviving
+`<must-fill>` sentinel — always errors. Strict completeness ("every Must Fill
+present") is a separate concept, not a creation gate — and **in this sprint
+it is not a shipped API**: the web app applies the same lenient render
+everywhere, and the form's existing per-field state is the de-facto doneness
+signal.
 
 Pre-1.0; not yet implemented. When built, the conceptual model graduates
 into [SCHEMAS.md](../canon/SCHEMAS.md) with a pointer from
 [BLUEPRINT.md](../canon/BLUEPRINT.md).
+
+## Scope (this sprint)
+
+- **In:** zero-filled render (type-empty fill in the projection only) as the
+  single, uniform render behavior for both preview and export; the
+  malformed-sentinel and coercion-failure **hard errors**; the shared
+  zero-value producer (with [blueprint-example-split.md](blueprint-example-split.md)).
+- **Deferred:** a **warnings surface** for absent Must Fill fields (absence is
+  zero-filled *silently* for now). A **standalone strict-completeness query
+  API** — there is no finalize/publish gate in the web app, so nothing
+  consumes it; the form's `FormFieldSource::Missing` already answers "is it
+  done?" per field. Both remain in canon as concepts and future seams.
 
 ## Background
 
@@ -55,13 +68,14 @@ Two questions that are easy to conflate, kept separate:
 | Question | Mechanism | Fails when |
 |---|---|---|
 | *Show me something now* | **zero-filled render** | the document is **malformed** — a value that won't coerce, or a surviving `<must-fill>` sentinel. Never merely because it is incomplete. |
-| *Is this document complete?* | **strict completeness check** (a query) | any Must Fill field is **absent** |
+| *Is this document complete?* | **read the field provenance** (the form's `Document` / `Default` / `Missing` state) | any Must Fill field is **absent** |
 
-A document can be renderable (zero-filled) and incomplete (the completeness
-query says "not done") at the same time. "Always compiles" is a render
-guarantee; "complete" is a separate verdict. Naming the render by its
-*fill* — not by a validation posture — keeps the two axes from collapsing
-into one.
+A document can be renderable (zero-filled) and incomplete (a Must Fill field
+is `Missing`) at the same time. "Always compiles" is a render guarantee;
+"complete" is a separate verdict — surfaced this sprint by the form's
+per-field state, not wired to render or to any creation gate. Naming the
+render by its *fill* — not by a validation posture — keeps the two axes from
+collapsing into one.
 
 ## Malformed vs. incomplete
 
@@ -71,8 +85,10 @@ how much of it is filled:
 
 - **Incomplete** — a Must Fill field is **absent**. A coherent state: the
   author (human or LLM) simply did not provide the field. Zero-filled
-  render fills it with the type-empty value; the omission surfaces as a
-  **warning**, never a render error.
+  render fills it with the type-empty value; the omission is **not a render
+  error**. (Surfacing the omission back to the author — a warning — is a
+  deferred follow-up; today the form already shows it per-field via
+  `FormFieldSource::Missing`.)
 - **Malformed** — the document carries something that is **not a value**: a
   value that cannot coerce to its declared type, or a surviving
   `<must-fill>` **sentinel**. These always error, on every path.
@@ -95,10 +111,11 @@ the transcription accident happens — without any interface-specific
 special-casing.
 
 **Strict completeness** — *every* Must Fill field present — remains a
-well-defined verdict, answered identically regardless of origin. It is a
-**query** ("is this done?"), not a creation gate: wire it to the actions
-that need a finished document (publish, submit, finalize), not to render or
-to `create_document`.
+well-defined concept, answered identically regardless of origin. It is a
+**verdict** ("is this done?"), not a creation gate. This sprint reads it off
+the form's per-field provenance rather than a dedicated API; wiring a
+standalone query and any publish/submit/finalize gate is deferred (no such
+gate exists in the web app today).
 
 ## Zero-filled render — type-empty fill in the projection only
 
@@ -119,15 +136,17 @@ else.
   the document. A type-empty value is *indistinguishable from
   authored-empty*; persisting it collapses "field absent (untouched)" and
   "field present and empty" into one and destroys `must_fill_absent`
-  forever (it keys on absence). The fill is part of the render, never part
-  of the document.
+  forever (it keys on absence) — and, critically, leaves a future quill
+  schema migration unable to tell *author-never-touched* from
+  *author-set-blank*, so it would migrate fakes as if they were intent. The
+  fill is part of the render, never part of the document.
 
 ## The two interfaces
 
 Both produce documents in one shared model and run the **same** render +
 validation behavior (zero-fill absence; error on malformation). They differ
-only in how completeness is surfaced to the author — and in the practical
-fact that only the LLM path can emit a sentinel.
+only in how doneness is surfaced to the author — and in the practical fact
+that only the LLM path can emit a sentinel.
 
 ### UI form
 
@@ -137,29 +156,36 @@ fact that only the LLM path can emit a sentinel.
 - Emits **sparse** documents: an empty text box / unselected dropdown is
   *omitted* (treated as absent), so form-completeness and schema-presence
   coincide. The form's existing `FormFieldSource::Missing` / `Default`
-  state is the human-facing completeness signal.
+  state is the human-facing doneness signal — and, this sprint, the doneness
+  verdict itself.
 - **Persists the sparse authored truth**, never the fill.
-- The strict completeness query is the *"is it done?"* gate, wired to
-  submit / publish — not to preview or draft export.
+- No "is it done?" gate is wired to render or export — the web app renders
+  **uniformly throughout**. A finalize gate can read the form provenance if
+  and when one is needed.
 
-### MCP / LLM
+### MCP / LLM (future consumer)
 
-- `create_document(markdown)` also uses zero-filled render. Absent Must
-  Fill fields are zero-filled, not rejected — the LLM is **not** forced to
-  fill every field, so it never has to invent data it does not have.
+- `create_document(markdown)` would use the same zero-filled render. Absent
+  Must Fill fields are zero-filled, not rejected — the LLM is **not** forced
+  to fill every field, so it never has to invent data it does not have.
 - The one accident guard, beyond type-validity: a surviving `<must-fill>`
   **sentinel errors**. `create_document` rejects it with diagnostics and
   the LLM retries (per the MCP workflow). This targets the common LLM
   failure — echoing the blueprint placeholder — precisely, without a blunt
   completeness gate.
-- Absent Must Fill fields come back as **warnings** in the response, so the
-  LLM still learns what it left blank (guidance, not rejection).
+- *(Deferred)* returning absent Must Fill fields as **warnings** in the
+  response. Until the warnings surface ships, absence is zero-filled
+  silently; the LLM still learns shape from the `example` document and hints.
 - Contract for LLM authors: **fill each field or omit it — never leave
   `<must-fill>`.** The blueprint's sentinels mean "replace or delete," not
   content.
-- Semantic quality is steered by the blueprint's `# e.g.` example hints
-  (the `default`/`example` framing in [SCHEMAS.md](../canon/SCHEMAS.md)),
-  not by validation.
+- Semantic quality is steered by the `example` document and the blueprint's
+  `# e.g.` example hints (the `default`/`example` framing in
+  [SCHEMAS.md](../canon/SCHEMAS.md)), not by validation.
+
+This sprint lands the render behavior and the sentinel error on the shared
+render path — independent of whether `create_document` itself ships now. The
+MCP path is the future consumer that motivates the sentinel rule.
 
 ### Mixing the two
 
@@ -172,58 +198,67 @@ independent of origin. No two-class document semantics.
 - **Persist-time zero-fill** (the form populates type-empty into the
   *stored* document, so it is always complete-and-valid). Rejected: it
   makes `must_fill_absent` vacuous (every key always present), bakes the
-  enum first-variant value into storage as a silent fake choice, and
-  creates two-class document semantics in a mixed-author ecosystem — which
-  this project *is*, by design, because blueprints exist precisely so LLMs
-  author these documents too. Zero-fill must stay render-only.
+  enum first-variant value into storage as a silent fake choice, blinds
+  future schema migrations to author intent, and creates two-class document
+  semantics in a mixed-author ecosystem — which this project *is*, by
+  design, because blueprints exist precisely so LLMs author these documents
+  too. Zero-fill must stay render-only.
 - **Strict-gating the LLM on absence** (reject `create_document` when any
   Must Fill field is absent). Rejected in favor of erroring only on the
   malformed sentinel: absence is a coherent, zero-fillable state, and
   forcing the LLM to fill every field pushes it to invent data it does not
   have. The genuine accident worth rejecting is the placeholder
   transcription, which the sentinel rule targets exactly; completeness
-  stays a query for the finalize step.
+  stays a verdict for any future finalize step.
 - **Example-fallback render** (fill absent fields from `example:` instead
-  of the type-empty zero value). Rejected: an example is realistic but
-  *not the value most authors want* (the canonized framing), so it
-  camouflages incompleteness and risks leaking placeholder/PII content
+  of the type-empty zero value). Rejected for the render path: an example is
+  realistic but *not the value most authors want* (the canonized framing),
+  so it camouflages incompleteness and risks leaking placeholder/PII content
   through a complete-looking export. The zero value is honestly blank
-  everywhere except enum. `example` keeps its existing home — the `example`
-  reference document for LLM/no-input *generation* (see
-  [blueprint/example split](blueprint-example-split.md)), where a realistic
-  shape genuinely helps — and does not follow onto the render path.
+  everywhere except enum. `example:` stays on the *generation* side — the
+  `example` reference document (see
+  [blueprint/example split](blueprint-example-split.md)), which deliberately
+  prioritizes `example` › `default` › zero because **illustration** is its
+  job — and does not follow onto the render path, whose job is **fidelity**.
 
 ## Implementation sketch
 
 1. **Zero-value producer.** Factor the type-empty logic out of the
    blueprint string emitter (`must_fill_value` / `first_enum` in
    `crates/core/src/quill/`) into a per-field `QuillValue` producer shared
-   by blueprint emission and the render path — one source of truth for
-   "the zero value for this field." (Shared with the
+   by blueprint/example emission and the render path — one source of truth
+   for "the zero value for this field." (Shared with the
    [blueprint/example split](blueprint-example-split.md), which uses the
    same producer for the `example` document's fallback.)
-2. **Zero-filled render (the single render behavior).** On the render path
-   (`crates/quillmark/src/orchestration/`), after coercion: interpolate
-   each absent field's zero value (mirroring `apply_defaults`, "authored
-   value wins") and demote `must_fill_absent` to a **warning**. Keep
-   `must_fill_sentinel` and coercion failures as **hard errors**. The fill
-   goes into the `to_plate_json` projection only. Both the form path and
-   MCP `create_document` use this same behavior; absence warnings flow back
-   in the result.
-3. **Strict completeness query.** Expose the "every Must Fill present?"
-   check (the existing strict `validate_document`, or a thin wrapper over
-   it) as a separate API for finalize / publish gates — distinct from
-   render.
-4. **Surface.** Render returns artifact + warnings on every binding (Rust /
-   Wasm / Python / CLI); document that zero-filled output is preview/export,
-   not a completeness assertion, and that a surviving `<must-fill>` is the
-   one authoring accident render refuses to paper over.
+2. **One provenance-tagged field-resolution pass (the single render
+   behavior).** On the render path (`crates/quillmark/src/orchestration/`),
+   fold zero-fill into the existing default application: one pass resolving
+   each field as **`authored` › `default` › zero** and **tagging which tier
+   it came from**. The tags are exactly the form's trichotomy — `authored` =
+   `Document`, `default` = `Default`, zero = `Missing` — so render fill and
+   form provenance compute from one walk, not two. The resolved values go
+   into the `to_plate_json` projection only (authored value wins, never
+   persisted); the tier tags feed the form today and the deferred
+   completeness/warnings surface later. `must_fill_absent` stops being a hard
+   error (the zero tier handles it); `must_fill_sentinel` and coercion
+   failures stay **hard errors**, centralized and always-on on the render
+   path.
+3. **(Deferred) Warnings + completeness query.** Surfacing absent Must Fill
+   fields as render warnings, and exposing a standalone "every Must Fill
+   present?" query for any future finalize/publish gate, are **out of scope
+   this sprint** — the tier tags from step 2 already carry the information
+   when a consumer appears.
+4. **Surface.** Render returns the artifact on every binding (Rust / Wasm /
+   Python / CLI); document that zero-filled output is preview/export, not a
+   completeness assertion, and that a surviving `<must-fill>` is the one
+   authoring accident render refuses to paper over.
 
 ## Graduation
 
 Once implemented and tested, fold the conceptual model into
 [SCHEMAS.md](../canon/SCHEMAS.md) as a "Zero-filled render" section
-(render fill ⊥ completeness verdict; malformed vs. incomplete; the two
-interfaces), add a one-line pointer from
-[BLUEPRINT.md](../canon/BLUEPRINT.md)'s filled-blueprints section, and
-delete this proposal.
+(render fill ⊥ completeness verdict; malformed vs. incomplete; the
+provenance-tagged resolution; the two interfaces), add a one-line pointer
+from [BLUEPRINT.md](../canon/BLUEPRINT.md)'s filled-blueprints section, and
+delete this proposal. The deferred warnings surface and completeness-query
+API graduate with the follow-up sprint that builds them.
