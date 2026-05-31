@@ -134,7 +134,10 @@ main:
 }
 
 #[test]
-fn test_validation_fails_without_defaults() {
+fn test_absent_must_fill_is_zero_filled() {
+    // Zero-filled render: an absent Must-Fill field (`title`) is tolerated and
+    // filled with its type-empty zero value (`""`) in the plate projection —
+    // never persisted. See prose/proposals/zero-filled-render.md.
     let temp_dir = TempDir::new().unwrap();
     let quill_path = create_test_quill(
         &temp_dir,
@@ -164,21 +167,23 @@ main:
         "~~~card-yaml\n$quill: test_quill\n$kind: main\nstatus: published\n~~~\n\n# Content\n";
     let parsed = Document::from_markdown(markdown).expect("parse failed");
 
-    let result = quill.dry_run(&parsed);
+    // Render no longer gates on absence.
     assert!(
-        result.is_err(),
-        "Should fail validation — `title` is Must-Fill and absent"
+        quill.dry_run(&parsed).is_ok(),
+        "dry_run should tolerate an absent Must-Fill field (zero-filled)"
     );
 
-    let err = result.unwrap_err();
-    let mentions_title = err
-        .diagnostics()
-        .iter()
-        .any(|d| d.message.contains("title") || d.path.as_deref() == Some("title"));
-    assert!(
-        mentions_title,
-        "Validation diagnostics should mention missing 'title' field; got {:?}",
-        err.diagnostics()
+    // The plate projection carries the zero value for the absent field.
+    let data = quill.compile_data(&parsed).expect("compile_data should succeed");
+    assert_eq!(
+        data.get("title").and_then(|v| v.as_str()),
+        Some(""),
+        "absent Must-Fill `title` should be zero-filled to \"\" in the projection: {data}"
+    );
+    assert_eq!(
+        data.get("status").and_then(|v| v.as_str()),
+        Some("published"),
+        "authored value should win over default"
     );
 }
 

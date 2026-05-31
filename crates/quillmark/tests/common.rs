@@ -1,16 +1,14 @@
 //! Shared test helpers for integration tests.
 
-use quillmark_core::FillBehavior;
 use quillmark_fixtures::{example_output_dir, quills_path, write_example_output};
 use std::error::Error;
 
-/// Load a quill, render its generated blueprint to PDF, and write the result
-/// to the demo output directory.
+/// Load a quill, render its generated `example` document to PDF, and write the
+/// result to the demo output directory.
 ///
-/// Fills the blueprint with [`FillBehavior::Preview`] so Must Fill cells (no
-/// `default:`) carry preview-friendly placeholders and the document renders
-/// out of the box; the plain `blueprint()` keeps the `<must-fill>` sentinel,
-/// which fails validation.
+/// Uses the `example` reference document (example › default › zero) so cells
+/// carry illustrative values and the document renders out of the box; the
+/// plain `blueprint()` keeps the `<must-fill>` sentinel, which is malformed.
 pub fn demo(
     quill_dir: &str,
     render_output: &str,
@@ -26,10 +24,7 @@ pub fn demo(
         .quill_from_path(quill_path.clone())
         .expect("Failed to load quill");
 
-    let markdown = quill
-        .source()
-        .config()
-        .blueprint_filled(FillBehavior::Preview);
+    let markdown = quill.source().config().example();
     let parsed = quillmark::Document::from_markdown(&markdown)?;
 
     let rendered = quill.render(

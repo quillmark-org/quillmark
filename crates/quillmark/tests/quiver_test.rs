@@ -1,18 +1,18 @@
 //! Enforces the quill authoring contract from `prose/canon/BLUEPRINT.md`:
-//! every quill in the fixtures quiver loads, and its `plate.typ` renders the
-//! quill's own blueprint (with every `<must-fill>` cell replaced by a
-//! type-empty value) to a successful (non-error) output.
+//! every quill in the fixtures quiver loads, and its `plate.typ` renders an
+//! **empty document** (just `$quill` / `$kind: main`, no fields) to a
+//! successful (non-error) output.
 //!
-//! The blueprint, after sentinel substitution, is the type-minimal valid
-//! input — every field present, every value type-correct, enums at their
-//! first value. A plate that renders it has shown it degrades gracefully
-//! on every type-valid input shape.
+//! Under zero-filled render (see `prose/proposals/zero-filled-render.md`),
+//! every absent field is filled with its type-empty (zero) value in the plate
+//! projection. An empty document is therefore the type-minimal valid input —
+//! the worst-case-but-renderable shape — so a plate that renders it has shown
+//! it degrades gracefully on every type-valid input. No blueprint string is
+//! generated or re-parsed.
 
 #![cfg(feature = "typst")]
 
-use quillmark::{
-    Document, FillBehavior, OutputFormat, Quillmark, RenderError, RenderOptions,
-};
+use quillmark::{Document, OutputFormat, Quillmark, RenderError, RenderOptions};
 use quillmark_fixtures::{quills_path, resource_path};
 use std::fs;
 
@@ -37,12 +37,15 @@ fn every_quill_in_quiver_renders() {
             .quill_from_path(quills_path(&name))
             .unwrap_or_else(|e| panic!("quill '{name}' failed to load: {e:?}"));
 
-        let markdown = quill
-            .source()
-            .config()
-            .blueprint_filled(FillBehavior::TypeEmpty);
+        // An empty document — zero-filled render fills every absent field with
+        // its type-empty value in the plate projection.
+        let config = quill.source().config();
+        let markdown = format!(
+            "~~~\n$quill: {}@{}\n$kind: main\n~~~\n",
+            config.name, config.version
+        );
         let parsed = Document::from_markdown(&markdown).unwrap_or_else(|e| {
-            panic!("quill '{name}' blueprint failed to parse: {e:?}\n---\n{markdown}")
+            panic!("quill '{name}' empty document failed to parse: {e:?}\n---\n{markdown}")
         });
 
         let result = quill.render(

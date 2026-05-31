@@ -2,12 +2,12 @@
 //! [`QuillSource`] with a resolved backend.
 
 use indexmap::IndexMap;
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use quillmark_core::{
-    normalize::normalize_document, Backend, Card, Diagnostic, Document, OutputFormat, Payload,
-    QuillSource, QuillValue, RenderError, RenderOptions, RenderResult, RenderSession, Severity,
+    normalize::normalize_document, quill::CardSchema, zero_value, Backend, Card, Diagnostic,
+    Document, OutputFormat, Payload, QuillSource, QuillValue, RenderError, RenderOptions,
+    RenderResult, RenderSession, Severity,
 };
 
 use crate::form::{self, Form, FormCard};
@@ -78,25 +78,29 @@ impl Quill {
     }
 
     /// Compile a document to JSON wire format for the backend.
-    /// Applies coercion, validation, normalization, and schema defaults.
+    ///
+    /// Applies coercion, validation, normalization, and **zero-filled render**:
+    /// every absent schema field is resolved to its authored value, else its
+    /// schema default, else its type-empty zero value — in this plate-JSON
+    /// projection only, never in the persisted document. A merely *incomplete*
+    /// document renders fine; only a *malformed* one (a surviving `<must-fill>`
+    /// sentinel or a value that won't coerce/validate) errors. See
+    /// `prose/proposals/zero-filled-render.md`.
     pub fn compile_data(&self, doc: &Document) -> Result<serde_json::Value, RenderError> {
         let coerced = self.coerce_and_validate(doc)?;
         let normalized = normalize_document(coerced)?;
-        let main_with_defaults = apply_defaults(
-            &normalized.main().payload().to_index_map(),
-            self.source.config().main.defaults(),
-        );
-        let cards_with_defaults: Vec<Card> = normalized
+        let config = self.source.config();
+
+        let main_resolved =
+            resolve_fields(&normalized.main().payload().to_index_map(), &config.main);
+        let cards_resolved: Vec<Card> = normalized
             .cards()
             .iter()
             .map(|card| {
-                let defaults = self
-                    .source
-                    .config()
-                    .card_kind(card.kind().unwrap_or(""))
-                    .map(|c| c.defaults())
-                    .unwrap_or_default();
-                let fields = apply_defaults(&card.payload().to_index_map(), defaults);
+                let fields = match config.card_kind(card.kind().unwrap_or("")) {
+                    Some(schema) => resolve_fields(&card.payload().to_index_map(), schema),
+                    None => card.payload().to_index_map(),
+                };
                 Card::from_parts(
                     rebuild_payload_with_meta(card, fields),
                     card.body().to_string(),
@@ -105,10 +109,10 @@ impl Quill {
             .collect();
 
         let final_main = Card::from_parts(
-            rebuild_payload_with_meta(normalized.main(), main_with_defaults),
+            rebuild_payload_with_meta(normalized.main(), main_resolved),
             normalized.main().body().to_string(),
         );
-        let final_doc = Document::from_main_and_cards(final_main, cards_with_defaults, Vec::new());
+        let final_doc = Document::from_main_and_cards(final_main, cards_resolved, Vec::new());
 
         Ok(final_doc.to_plate_json())
     }
@@ -195,14 +199,27 @@ impl Quill {
         match self.source.config().validate_document(doc) {
             Ok(_) => Ok(()),
             Err(errors) => {
-                // Each ValidationError gets its own Diagnostic so consumers
-                // can use `path` for UI navigation via `RenderError::diagnostics()`.
-                debug_assert!(
-                    !errors.is_empty(),
-                    "ValidationFailed must carry at least one diagnostic"
-                );
-                let diags: Vec<Diagnostic> = errors.iter().map(|e| e.to_diagnostic()).collect();
-                Err(RenderError::ValidationFailed { diags })
+                // Zero-filled render: a merely *incomplete* document (Must Fill
+                // fields absent) renders fine — each absent field is zero-filled
+                // in `resolve_fields`. Only *malformed* input is fatal: a
+                // surviving `<must-fill>` sentinel, or a value that won't
+                // coerce/validate. So `validation::must_fill_absent` is demoted
+                // (absence warnings are a deferred follow-up; today the form's
+                // `FormFieldSource::Missing` carries the doneness signal).
+                //
+                // Each surviving ValidationError gets its own Diagnostic so
+                // consumers can use `path` for UI navigation via
+                // `RenderError::diagnostics()`.
+                let diags: Vec<Diagnostic> = errors
+                    .iter()
+                    .filter(|e| e.code() != "validation::must_fill_absent")
+                    .map(|e| e.to_diagnostic())
+                    .collect();
+                if diags.is_empty() {
+                    Ok(())
+                } else {
+                    Err(RenderError::ValidationFailed { diags })
+                }
             }
         }
     }
@@ -218,14 +235,23 @@ fn coercion_error(e: impl std::fmt::Display) -> RenderError {
     }
 }
 
-/// Merge schema `defaults` into `fields`; existing fields win.
-fn apply_defaults(
+/// Resolve every schema field absent from `fields`, by precedence: an
+/// authored value wins; else the schema `default:`; else the type-empty
+/// [`zero_value`]. This is the zero-filled render projection — the fill lives
+/// only here and is never persisted (see
+/// `prose/proposals/zero-filled-render.md`). Non-schema fields already present
+/// are preserved untouched.
+fn resolve_fields(
     fields: &IndexMap<String, QuillValue>,
-    defaults: HashMap<String, QuillValue>,
+    schema: &CardSchema,
 ) -> IndexMap<String, QuillValue> {
     let mut result = fields.clone();
-    for (k, v) in defaults {
-        result.entry(k).or_insert(v);
+    for (name, field) in &schema.fields {
+        if result.contains_key(name) {
+            continue;
+        }
+        let value = field.default.clone().unwrap_or_else(|| zero_value(field));
+        result.insert(name.clone(), value);
     }
     result
 }

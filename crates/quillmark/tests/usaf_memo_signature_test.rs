@@ -10,7 +10,7 @@
 
 #![cfg(feature = "typst")]
 
-use quillmark::{Document, FillBehavior, OutputFormat, Quillmark, RenderError, RenderOptions};
+use quillmark::{Document, OutputFormat, Quillmark, RenderError, RenderOptions};
 use quillmark_fixtures::quills_path;
 
 const PT_PER_IN: f32 = 72.0;
@@ -59,13 +59,11 @@ fn usaf_memo_signature_widget_aligns_with_signature_block() {
         .quill_from_path(quills_path("usaf_memo"))
         .expect("usaf_memo should load");
 
-    // Preview fill exercises the main memo *and* a representative indorsement
-    // card, so both the `Signature` and `Ind_0_Signature` widgets are emitted.
-    let markdown = quill
-        .source()
-        .config()
-        .blueprint_filled(FillBehavior::Preview);
-    let parsed = Document::from_markdown(&markdown).expect("blueprint should parse");
+    // The `example` document exercises the main memo *and* a representative
+    // indorsement card, so both the `Signature` and `Ind_0_Signature` widgets
+    // are emitted.
+    let markdown = quill.source().config().example();
+    let parsed = Document::from_markdown(&markdown).expect("example document should parse");
 
     let result = quill.render(
         &parsed,

@@ -59,7 +59,7 @@ pub mod session;
 pub use session::RenderSession;
 
 pub mod quill;
-pub use quill::{FileTreeNode, FillBehavior, QuillIgnore, QuillSource};
+pub use quill::{zero_value, FileTreeNode, QuillIgnore, QuillSource};
 
 pub mod value;
 pub use value::QuillValue;

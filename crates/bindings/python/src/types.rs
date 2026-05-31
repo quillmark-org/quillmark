@@ -132,6 +132,14 @@ impl PyQuill {
         self.inner.source().config().blueprint()
     }
 
+    /// The `example` reference document — the illustrative "show me a
+    /// filled-out one": each field's `example:`, else `default:`, else the
+    /// type-empty zero value, with no `<must-fill>` sentinels.
+    #[getter]
+    fn example(&self) -> String {
+        self.inner.source().config().example()
+    }
+
     #[getter]
     fn supported_formats(&self) -> Vec<PyOutputFormat> {
         self.inner

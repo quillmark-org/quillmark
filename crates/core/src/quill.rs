@@ -2,6 +2,7 @@
 
 mod blueprint;
 mod config;
+mod fill;
 mod formats;
 mod ignore;
 mod load;
@@ -12,8 +13,8 @@ mod tree;
 mod types;
 pub(crate) mod validation;
 
-pub use blueprint::FillBehavior;
 pub use config::{CoercionError, QuillConfig};
+pub use fill::zero_value;
 pub use ignore::QuillIgnore;
 pub use schema::build_transform_schema;
 pub use tree::FileTreeNode;

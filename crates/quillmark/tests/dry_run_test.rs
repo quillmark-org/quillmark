@@ -46,7 +46,11 @@ fn test_dry_run_success() {
 }
 
 #[test]
-fn test_dry_run_missing_must_fill_field() {
+fn test_dry_run_missing_must_fill_field_is_tolerated() {
+    // Zero-filled render: a merely *incomplete* document (Must Fill `title`
+    // absent) is no longer a hard error — `title` is zero-filled in the plate
+    // projection. Only a *malformed* document (a surviving `<must-fill>`
+    // sentinel) still fails. See prose/proposals/zero-filled-render.md.
     let temp_dir = TempDir::new().unwrap();
     let quill_path = make_test_quill_path(&temp_dir, true);
 
@@ -61,16 +65,37 @@ fn test_dry_run_missing_must_fill_field() {
 
     let result = quill.dry_run(&parsed);
     assert!(
-        result.is_err(),
-        "dry_run should fail for missing Must-Fill field"
+        result.is_ok(),
+        "dry_run should tolerate an absent Must-Fill field (zero-filled): {:?}",
+        result
     );
+}
 
-    let err = result.unwrap_err();
-    let err_str = format!("{:?}", err);
+#[test]
+fn test_dry_run_surviving_sentinel_still_fails() {
+    // A surviving `<must-fill>` sentinel is *malformed* — it always errors,
+    // even though mere absence does not.
+    let temp_dir = TempDir::new().unwrap();
+    let quill_path = make_test_quill_path(&temp_dir, true);
+
+    let engine = Quillmark::new();
+    let quill = engine
+        .quill_from_path(&quill_path)
+        .expect("quill_from_path failed");
+
+    let markdown =
+        "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: <must-fill>\nauthor: Test\n~~~\n\n# Content\n";
+    let parsed = Document::from_markdown(markdown).expect("parse failed");
+
+    let result = quill.dry_run(&parsed);
     assert!(
-        err_str.contains("ValidationFailed") || err_str.contains("title"),
-        "Error should indicate validation failure: {}",
-        err_str
+        result.is_err(),
+        "dry_run should reject a surviving <must-fill> sentinel"
+    );
+    let err_str = format!("{:?}", result.unwrap_err());
+    assert!(
+        err_str.contains("must_fill_sentinel") || err_str.contains("sentinel"),
+        "error should be the sentinel diagnostic: {err_str}"
     );
 }
 
