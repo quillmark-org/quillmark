@@ -145,6 +145,12 @@ except QuillmarkError as exc:
 indices) prefix the message with `[EditError::<Variant>]` — the same format
 WASM uses — so callers can pattern-match on the message when they need to.
 
+## Changelog
+
+See the [changelog](https://github.com/quillmark-org/quillmark/blob/main/CHANGELOG.md)
+and the [GitHub Releases](https://github.com/quillmark-org/quillmark/releases) page for
+release notes and version history.
+
 ## Development
 
 ```bash

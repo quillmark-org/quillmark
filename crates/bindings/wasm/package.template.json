@@ -16,7 +16,8 @@
     "bundler/wasm_bg.js",
     "bundler/wasm_bg.wasm.d.ts",
     "bundler/wasm.js",
-    "bundler/wasm.d.ts"
+    "bundler/wasm.d.ts",
+    "CHANGELOG.md"
   ],
   "main": "./bundler/wasm.js",
   "module": "./bundler/wasm.js",

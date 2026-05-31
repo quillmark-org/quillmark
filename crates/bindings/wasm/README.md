@@ -323,6 +323,12 @@ try {
 - QUILL mismatch during `quill.render(parsed)` is a warning (`quill::ref_mismatch`), not an error.
 - Output schema APIs are no longer engine-level in WASM.
 
+## Changelog
+
+See the [changelog](https://github.com/quillmark-org/quillmark/blob/main/CHANGELOG.md)
+and the [GitHub Releases](https://github.com/quillmark-org/quillmark/releases) page for
+release notes and version history.
+
 ## License
 
 Apache-2.0

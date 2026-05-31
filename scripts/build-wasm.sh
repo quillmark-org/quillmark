@@ -70,9 +70,15 @@ VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | sel
 echo "Creating package.json..."
 sed "s/VERSION_PLACEHOLDER/$VERSION/" crates/bindings/wasm/package.template.json > pkg/package.json
 
-# Step 5: Copy README and LICENSE files
+# Step 5: Copy README, CHANGELOG, and LICENSE files
 if [ -f "crates/bindings/wasm/README.md" ]; then
     cp crates/bindings/wasm/README.md pkg/
+fi
+
+# Ship the workspace changelog so npmjs renders a Changelog tab for the
+# published package (it is listed in package.template.json's "files").
+if [ -f "CHANGELOG.md" ]; then
+    cp CHANGELOG.md pkg/
 fi
 
 if [ -f "LICENSE-MIT" ]; then

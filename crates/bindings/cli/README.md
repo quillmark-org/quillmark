@@ -178,6 +178,12 @@ For architectural details and design decisions, see:
 - [CLI Design Document](../../prose/canon/CLI.md)
 - [Implementation Plan](../../prose/plans/cli-basic-render.md)
 
+## Changelog
+
+See the [changelog](https://github.com/quillmark-org/quillmark/blob/main/CHANGELOG.md)
+and the [GitHub Releases](https://github.com/quillmark-org/quillmark/releases) page for
+release notes and version history.
+
 ## License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](../../LICENSE) for details.

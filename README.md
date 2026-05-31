@@ -23,6 +23,7 @@ Maintained by [quillmark-org](https://github.com/quillmark-org).
 
 - **[User Guide](https://quillmark.readthedocs.io)** - Tutorials, concepts, and bindings
 - **[Rust API Reference](https://docs.rs/quillmark)** - Rust crate docs
+- **[Changelog](CHANGELOG.md)** - Release notes and version history ([GitHub Releases](https://github.com/quillmark-org/quillmark/releases))
 
 ## Installation
 
