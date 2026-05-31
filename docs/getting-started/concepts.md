@@ -78,7 +78,7 @@ Markdown + YAML → Parse/Normalize → Compile (Backend) → Artifacts
 
 ## Next Steps
 
-- [Create your first Quill](../format-designer/creating-quills.md)
-- [Learn Quill versioning](../format-designer/versioning.md)
+- [Create your first Quill](../quills/creating-quills.md)
+- [Learn Quill versioning](../quills/versioning.md)
 - [Learn about Markdown syntax](../authoring/markdown-syntax.md)
-- [Explore the Typst backend](../format-designer/typst-backend.md)
+- [Explore the Typst backend](../quills/typst-backend.md)
