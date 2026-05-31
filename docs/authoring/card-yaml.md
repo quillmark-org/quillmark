@@ -141,7 +141,7 @@ author:
 
 Object-valued fields must be schematized in `Quill.yaml` with `type: object`
 and a `properties:` map. Nesting beyond one level is not supported. See
-[Quill.yaml Reference: Field Types](../format-designer/quill-yaml-reference.md#field-types).
+[Quill.yaml Reference: Field Types](../quills/quill-yaml-reference.md#field-types).
 
 Field names must match `[a-z_][a-z0-9_]*`.
 
@@ -216,5 +216,5 @@ lines) survive the round-trip.
 
 The payload is coerced and validated against the schema declared in the
 Quill's `Quill.yaml` (`main.fields`). See the
-[Quill.yaml Reference](../format-designer/quill-yaml-reference.md) for field
+[Quill.yaml Reference](../quills/quill-yaml-reference.md) for field
 types and constraints.

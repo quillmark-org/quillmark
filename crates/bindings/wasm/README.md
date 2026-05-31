@@ -249,10 +249,11 @@ canvas.style.height = `${result.layoutHeight}px`;
 A field's *cell* is inferred from whether its schema declares a `default:`:
 
 - **Must Fill** (no `default:`) — `quill.blueprint` renders `<must-fill>`
-  in the value cell, and `quill.render(doc)` throws with
-  `validation::must_fill_absent` when the field is absent at
-  validate time, or `validation::must_fill_sentinel` when the
-  `<must-fill>` sentinel survives into the document.
+  in the value cell. An absent Must Fill field is a non-fatal signal
+  (`validation::must_fill_absent`) — the render path zero-fills it
+  silently. A surviving `<must-fill>` sentinel is fatal
+  (`validation::must_fill_sentinel`). Partial documents are
+  first-class; `quill.render(doc)` only throws for malformed input.
 - **Endorsed** (with `default:`) — `quill.blueprint` renders the
   default value followed by a `; delete-ok` annotation, and the default
   is used when the document omits the field.

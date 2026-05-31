@@ -41,7 +41,7 @@ is removed. The `default:` key alone determines a field's cell:
 | Schema | Author intent | Omission semantic |
 |---|---|---|
 | `default: <value>` | Endorsed — the rendered value is shippable; LLM may keep or override | pass `<value>` |
-| (no `default:`) | Must Fill — LLM must provide content before shipping | `validation::must_fill_absent` error |
+| (no `default:`) | Must Fill — LLM is signalled to provide content; absent fields zero-fill at render (non-fatal) | `validation::must_fill_absent` (non-fatal hint) |
 
 There is no third cell. "Skippable" use cases (the field may be left
 empty in the document) are expressed as Endorsed with a type-empty

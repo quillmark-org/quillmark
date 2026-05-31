@@ -117,10 +117,12 @@ doc.push_card({"kind": "note", "fields": {"x": 1}, "body": "..."})
 
 A field's *cell* is inferred from whether the schema declares a `default:`:
 
-- **Must Fill** (no `default:`) — the blueprint renders `<must-fill>`
-  and validation reports `validation::must_fill_absent` if the
-  field is absent at validate time, or `validation::must_fill_sentinel`
-  if the `<must-fill>` sentinel survives into the rendered document.
+- **Must Fill** (no `default:`) — the blueprint renders `<must-fill>`.
+  An absent Must Fill field is a non-fatal signal
+  (`validation::must_fill_absent`) — the render path zero-fills it
+  silently. A surviving `<must-fill>` sentinel is fatal
+  (`validation::must_fill_sentinel`). Partial documents are
+  first-class; `quill.render()` only raises for malformed input.
 - **Endorsed** (with `default:`) — the blueprint renders the default
   value with a `; delete-ok` annotation, and the default is used when
   the document omits the field.

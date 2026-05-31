@@ -426,9 +426,11 @@ Endorsed per field:
   Most authors want it, so the field can be omitted and the default is
   interpolated for them. The field becomes Endorsed and the blueprint
   carries `; delete-ok`.
-- **Omit `default:`** when there is no value most authors want — the
-  author, LLM, or user must supply one before shipping. The field becomes
-  Must Fill and the blueprint carries the `<must-fill>` sentinel.
+- **Omit `default:`** when there is no value most authors want — the quill
+  author has endorsed nothing, so the field becomes Must Fill and the
+  blueprint carries the `<must-fill>` sentinel as a signal to LLMs and
+  authors. Filling it produces a more meaningful document; leaving it absent
+  zero-fills at render.
 - **Use `example:`** when a value matches the semantic and type shape of
   what the author wants but is *not* the value they'd want most of the
   time. It documents shape, not the choice — orthogonal to the cell

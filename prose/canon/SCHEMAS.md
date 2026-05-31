@@ -65,6 +65,13 @@ when applicable. See `ERROR.md` § "Validation message contract".
 
 ## Zero-filled render
 
+**Partial documents are first-class citizens.** A document need not be
+complete to render — render success is not a completeness signal.
+Shippability is the author's judgment; the engine's only hard requirement
+is that the document be *well-formed* (values coerce, no surviving
+`<must-fill>` sentinel). Completeness is surfaced as a hint — the form
+view's per-field `source: "missing"` — never enforced as a gate.
+
 Rendering and the *completeness verdict* are orthogonal. The render path
 (`compile_data` / `resolve_fields` in `quillmark::orchestration`) uses
 **zero-filled render**: every absent schema field is resolved by precedence
@@ -131,10 +138,11 @@ encode opposite author intents:
 
 ### Must-Fill vs. Endorsed fields
 
-A field is **Must Fill** when no `default:` is declared — there is no value
-most authors want, so the LLM or user must supply one before shipping. A
-missing Must Fill field at validate time fires
-`validation::must_fill_absent`.
+A field is **Must Fill** when no `default:` is declared — the quill author
+has not endorsed any value, so the `<must-fill>` sentinel signals to LLMs
+and authors that the field warrants attention. A missing Must Fill field at
+render time zero-fills silently; the non-fatal `validation::must_fill_absent`
+is the completeness hint, never a render gate.
 
 A field is **Endorsed** when `default:` is declared; the rendered default
 is shippable as-is (the author can keep or override it).

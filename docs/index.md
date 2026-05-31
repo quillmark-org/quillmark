@@ -16,7 +16,7 @@ A format-first Markdown rendering system that converts Markdown with card-yaml m
   → [Markdown Syntax](authoring/markdown-syntax.md)
 
 - **Building quills?** You create Quill formats that control rendering.  
-  → [Creating Quills](format-designer/creating-quills.md)
+  → [Creating Quills](quills/creating-quills.md)
 
 - **Integrating into an app?** You use Quillmark via Python or JavaScript.  
   → [Quickstart](getting-started/quickstart.md)
