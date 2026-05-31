@@ -25,7 +25,7 @@ classifiers = [
 keywords = ["markdown", "pdf", "typst", "rendering", "templates"]
 
 [project.urls]
-Homepage = "https://quillmark.readthedocs.io/"
+Homepage = "https://quillmark-org.github.io/quillmark/"
 Repository = "https://github.com/quillmark-org/quillmark"
 Changelog = "https://github.com/quillmark-org/quillmark/blob/main/CHANGELOG.md"
 
