@@ -1034,17 +1034,20 @@ title: "Hello"
 // Post-mcp-feedback the schema axis is implicit: a field with a `default:` is
 // Endorsed (the rendered default is shippable as-is and the blueprint emits
 // the value + `; delete-ok` annotation); a field without a `default:` is Must
-// Fill (the blueprint emits the `<must-fill>` sentinel and validation flags
-// either the absence or the unreplaced sentinel).
+// Fill (the blueprint emits the `<must-fill>` sentinel).
 //
 // These tests pin the JS-facing contract:
 //   - `QuillFieldSchema` no longer carries a `required` axis.
 //   - `quill.blueprint` carries `<must-fill>` and `; delete-ok` annotations.
-//   - `quill.render(doc)` raises `validation::must_fill_absent` when a
-//     Must Fill field is absent at validate time.
+//   - `quill.render(doc)` *tolerates* an absent Must Fill field: zero-filled
+//     render fills it with its type-empty value in the plate projection
+//     (never persisted), so absence is not a render error.
 //   - `quill.render(doc)` raises `validation::must_fill_sentinel` when the
-//     `<must-fill>` sentinel is left in.
-//   - `quill.form(doc)` flags both situations under `diagnostics`.
+//     `<must-fill>` sentinel is left in (malformed, always fatal).
+//   - `quill.form(doc)` still flags both situations under `diagnostics`
+//     (the form view reports completeness independent of the render gate).
+//
+// See prose/proposals/zero-filled-render.md.
 
 describe('Must Fill / Endorsed schema model', () => {
   // The plate `unwrap`s `data.title` (Must Fill) and substitutes the optional
@@ -1128,10 +1131,14 @@ main:
     expect(blueprint).not.toContain('; optional')
   })
 
-  it('render throws `validation::must_fill_absent` when a Must Fill field is absent', () => {
+  it('render tolerates an absent Must Fill field (zero-filled, not an error)', () => {
     const quill = buildQuill()
 
-    // Document omits `title`. Schema declares no default → Must Fill.
+    // Document omits `title`. Schema declares no default → Must Fill. Under
+    // zero-filled render this is merely *incomplete*, not malformed: render
+    // fills `title` with its type-empty value in the plate projection and
+    // succeeds. Absence is no longer a hard error (the form's `source:
+    // "missing"` carries the doneness signal instead).
     const md = `~~~card-yaml
 $quill: schema_test
 $kind: main
@@ -1142,24 +1149,10 @@ subtitle: "Just a subtitle"
 `
     const doc = Document.fromMarkdown(md)
 
-    try {
-      quill.render(doc, { format: 'svg' })
-      throw new Error('render should have thrown ValidationFailed')
-    } catch (err) {
-      expect(Array.isArray(err.diagnostics)).toBe(true)
-      const codes = err.diagnostics.map((d) => d.code)
-      expect(codes).toContain('validation::must_fill_absent')
-      // The diagnostic must anchor to the offending field path.
-      const required = err.diagnostics.find(
-        (d) => d.code === 'validation::must_fill_absent',
-      )
-      expect(required.path).toBe('title')
-      expect(required.severity).toBe('error')
-      // The legacy codes must be gone.
-      expect(codes).not.toContain('validation::missing_required')
-      expect(codes).not.toContain('validation::required_field_absent')
-      expect(codes).not.toContain('validation::unfilled_placeholder')
-    }
+    const result = quill.render(doc, { format: 'svg' })
+    expect(result).toBeDefined()
+    expect(Array.isArray(result.artifacts)).toBe(true)
+    expect(result.artifacts.length).toBeGreaterThan(0)
   })
 
   it('render throws `validation::must_fill_sentinel` when the `<must-fill>` sentinel is left in', () => {
