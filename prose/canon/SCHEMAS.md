@@ -94,10 +94,12 @@ projection that feeds the backend **only, never in the persisted document**.
   `must_fill_absent` (which keys on absence) vacuous and blind a future
   schema migration to author intent.
 
-The per-field zero value is honestly blank for every type except `enum`,
-whose zero is the first declared variant; it is the one shared producer
-behind both this render floor and the `example` document's fallback (see
-[BLUEPRINT.md](BLUEPRINT.md)).
+The per-field zero value is honestly blank for every scalar type except
+`enum`, whose zero is the first declared variant. An `object` with
+`properties` is shape-valid only when every property is present, so its zero
+is the object whose each property carries that property's zero (recursively),
+not a bare `{}`. It is the one shared producer behind both this render floor
+and the `example` document's fallback (see [BLUEPRINT.md](BLUEPRINT.md)).
 
 ## Schema emission
 

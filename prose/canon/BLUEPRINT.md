@@ -391,10 +391,12 @@ fill strategy is an internal detail, not a public parameter.
   field with *both* a default and an example shows its example here but
   its default on the render path: the example optimizes for illustration,
   render for fidelity.
-- The per-field **zero value** (`""`, `0`, `false`, `[]`, `{}`, first
-  enum variant; `quillmark_core::quill::zero_value`) is one shared
-  producer — the example fallback above *and* the render floor for
-  zero-filled render (see [SCHEMAS.md](SCHEMAS.md) § "Zero-filled render").
+- The per-field **zero value** (`""`, `0`, `false`, `[]`, first enum
+  variant; an `object` with `properties` recurses to a shape-valid object
+  whose every property is zero-filled, while a property-less object degrades
+  to `{}`; `quillmark_core::quill::zero_value`) is one shared producer — the
+  example fallback above *and* the render floor for zero-filled render (see
+  [SCHEMAS.md](SCHEMAS.md) § "Zero-filled render").
 
 ## Bindings surface
 

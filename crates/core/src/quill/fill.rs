@@ -20,8 +20,14 @@ use crate::value::QuillValue;
 ///
 /// Honestly blank for almost every type — `""` (string, markdown, date,
 /// datetime: the validator accepts the empty string for date/datetime), `0`,
-/// `false`, `[]`, `{}`. The lone seam is `enum`: there is no empty enum
+/// `false`, `[]`. The lone seam is `enum`: there is no empty enum
 /// member, so the zero value is the first declared variant (`first_enum`).
+///
+/// An `object` with `properties` is *shape-valid only when every property is
+/// present*, so its zero value is the object whose each property carries that
+/// property's zero value (recursively). A bare `{}` would fail validation —
+/// the validator reports every absent property as a `MustFillUnset`. Only a
+/// property-less object (schema-invalid in practice) degrades to `{}`.
 pub fn zero_value(field: &FieldSchema) -> QuillValue {
     if let Some(values) = &field.enum_values {
         let first = values.first().cloned().unwrap_or_default();
@@ -29,13 +35,83 @@ pub fn zero_value(field: &FieldSchema) -> QuillValue {
     }
     let json = match field.r#type {
         FieldType::Array => json!([]),
-        // A bare object reaching this point would be schema-invalid (objects
-        // require a `properties` map). `{}` is the type-correct zero regardless.
-        FieldType::Object => json!({}),
+        FieldType::Object => match &field.properties {
+            // Recurse so each property is zero-filled to its own type-empty
+            // leaf — the result is a shape-valid object, not a bare `{}`.
+            Some(properties) => serde_json::Value::Object(
+                properties
+                    .iter()
+                    .map(|(name, schema)| (name.clone(), zero_value(schema).into_json()))
+                    .collect(),
+            ),
+            // A property-less object is schema-invalid; `{}` is its only
+            // type-correct zero.
+            None => json!({}),
+        },
         FieldType::Integer | FieldType::Number => json!(0),
         FieldType::Boolean => json!(false),
         // String / Markdown / Date / DateTime: `""` is schema-valid for all four.
         _ => json!(""),
     };
     QuillValue::from_json(json)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn field(yaml: &str) -> FieldSchema {
+        let value = QuillValue::from_yaml_str(yaml).unwrap();
+        FieldSchema::from_quill_value("field".to_string(), &value).unwrap()
+    }
+
+    #[test]
+    fn object_with_properties_zero_fills_each_scalar_leaf() {
+        let schema = field(
+            r#"
+type: object
+properties:
+  street: { type: string }
+  zip: { type: integer }
+  active: { type: boolean }
+"#,
+        );
+
+        assert_eq!(
+            zero_value(&schema).into_json(),
+            json!({ "street": "", "zip": 0, "active": false })
+        );
+    }
+
+    #[test]
+    fn nested_object_recurses_to_type_empty_leaves() {
+        let schema = field(
+            r#"
+type: object
+properties:
+  name: { type: string }
+  address:
+    type: object
+    properties:
+      city: { type: string }
+      tags: { type: array, items: { type: string } }
+"#,
+        );
+
+        assert_eq!(
+            zero_value(&schema).into_json(),
+            json!({
+                "name": "",
+                "address": { "city": "", "tags": [] }
+            })
+        );
+    }
+
+    #[test]
+    fn property_less_object_degrades_to_empty_object() {
+        // A property-less object is schema-invalid in practice; `{}` is the
+        // only type-correct zero it can carry.
+        let schema = field("type: object\n");
+        assert_eq!(zero_value(&schema).into_json(), json!({}));
+    }
 }
