@@ -56,18 +56,12 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
                     "type".to_string(),
                     serde_json::Value::String("array".to_string()),
                 );
-                if let Some(props) = &field.properties {
-                    let mut prop_schemas = serde_json::Map::new();
-                    for (name, prop) in props {
-                        prop_schemas.insert(name.clone(), field_to_schema(prop));
-                    }
-                    schema.insert(
-                        "items".to_string(),
-                        serde_json::json!({
-                            "type": "object",
-                            "properties": prop_schemas
-                        }),
-                    );
+                // The element schema is emitted recursively, so a scalar
+                // element yields `items: {type: string}` (and markdown carries
+                // its `contentMediaType`), while an object element yields
+                // `items: {type: object, properties: …}`.
+                if let Some(items) = &field.items {
+                    schema.insert("items".to_string(), field_to_schema(items));
                 }
             }
             FieldType::Object => {
@@ -163,9 +157,11 @@ main:
   fields:
     refs:
       type: array
-      properties:
-        org: { type: string }
-        year: { type: integer }
+      items:
+        type: object
+        properties:
+          org: { type: string }
+          year: { type: integer }
 "#;
         let schema = build_from_yaml(yaml);
         let json = schema.as_json();
@@ -174,6 +170,49 @@ main:
         assert_eq!(refs["items"]["type"], "object");
         assert_eq!(refs["items"]["properties"]["org"]["type"], "string");
         assert_eq!(refs["items"]["properties"]["year"]["type"], "integer");
+    }
+
+    #[test]
+    fn scalar_array_emits_items_with_element_type() {
+        let yaml = r#"
+quill:
+  name: x
+  version: 1.0.0
+  backend: typst
+  description: x
+main:
+  fields:
+    counts:
+      type: array
+      items: { type: integer }
+"#;
+        let schema = build_from_yaml(yaml);
+        let json = schema.as_json();
+        let counts = &json["properties"]["counts"];
+        assert_eq!(counts["type"], "array");
+        assert_eq!(counts["items"]["type"], "integer");
+    }
+
+    #[test]
+    fn markdown_array_emits_items_with_content_media_type() {
+        let yaml = r#"
+quill:
+  name: x
+  version: 1.0.0
+  backend: typst
+  description: x
+main:
+  fields:
+    sections:
+      type: array
+      items: { type: markdown }
+"#;
+        let schema = build_from_yaml(yaml);
+        let json = schema.as_json();
+        let sections = &json["properties"]["sections"];
+        assert_eq!(sections["type"], "array");
+        assert_eq!(sections["items"]["type"], "string");
+        assert_eq!(sections["items"]["contentMediaType"], "text/markdown");
     }
 
     #[test]

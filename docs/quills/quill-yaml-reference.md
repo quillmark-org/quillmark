@@ -83,7 +83,8 @@ main:
 | `example`     | any               | no       | A value matching the **type and shape** of what the author wants, but **not** the value desired most of the time. Documents shape only — surfaced in the [blueprint](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/BLUEPRINT.md)'s `# e.g.` line for documentation and LLM authoring, never rendered as the value. |
 | `enum`        | array of strings  | no       | Restrict to specific values |
 | `ui`          | object            | no       | UI rendering hints (see [UI Properties](#ui-properties)) |
-| `properties`  | object            | no       | Nested field schemas (for `array` typed-table rows or `object` typed dictionaries) |
+| `items`       | object            | for `array` | Element schema for an `array` field (a nested field schema). Required on every array. |
+| `properties`  | object            | no       | Nested field schemas for an `object` typed dictionary (or an array's `object`-typed `items`) |
 
 ### Field Types
 
@@ -93,13 +94,13 @@ main:
 | `number`   | Numeric scalar (integers and decimals) |
 | `integer`  | Integer-only numeric scalar |
 | `boolean`  | `true` or `false` |
-| `array`    | Ordered list; add `properties:` for typed rows |
+| `array`    | Ordered list; requires an `items:` element schema |
 | `date`     | YYYY-MM-DD |
 | `datetime`  | ISO 8601 |
 | `markdown` | Rich text; backends convert to target format |
 | `object`   | Structured map; requires a `properties:` map |
 
-Use `type: array` with `properties:` when you need a **list** of structured rows. Use `type: object` with `properties:` for a single structured mapping. Nesting beyond one level is not supported.
+Every `array` declares its element type under `items:` — a nested field schema. Use a scalar element (`items: { type: string }`, `integer`, `markdown`, …) for a primitive list like `string[]`, and an `object` element (`items: { type: object, properties: … }`) for a **list** of structured rows (a typed table). Use `type: object` with `properties:` for a single structured mapping. Nesting beyond one level is not supported (an array element may not itself be an array).
 
 ### Enum Constraints
 
@@ -118,20 +119,41 @@ main:
       description: "Format style for the endorsement."
 ```
 
-### Typed Arrays and Typed Dictionaries
+### Primitive Arrays, Typed Tables, and Typed Dictionaries
 
-Add `properties:` to a `type: array` field to define a typed table — each element is a structured object. Coercion recurses into each element and converts property values to their declared types:
+Every array declares its element type under `items:`. For a **primitive list**, give `items` a scalar type — coercion and validation then apply element-wise (e.g. each element of an `integer[]` is coerced to an integer, and a bad element fails at its indexed path like `counts[1]`):
+
+```yaml
+main:
+  fields:
+    tags:
+      type: array
+      items:
+        type: string
+    counts:
+      type: array
+      items:
+        type: integer
+    sections:
+      type: array
+      items:
+        type: markdown   # each element is converted to backend markup
+```
+
+For a **typed table** — a list of structured rows — give `items` an `object` type with its own `properties:`. Coercion recurses into each element and converts property values to their declared types:
 
 ```yaml
 main:
   fields:
     cells:
       type: array
-      properties:
-        category:
-          type: string
-        score:
-          type: number
+      items:
+        type: object
+        properties:
+          category:
+            type: string
+          score:
+            type: number
 ```
 
 Use `type: object` with `properties:` for a single structured mapping:
@@ -163,6 +185,8 @@ main:
   fields:
     memo_for:
       type: array
+      items:
+        type: string
       ui:
         title: To       # "Memo For" would confuse users unfamiliar with memo conventions
 ```
@@ -180,11 +204,15 @@ main:
   fields:
     memo_for:
       type: array
+      items:
+        type: string
       ui:
         group: Addressing
 
     memo_from:
       type: array
+      items:
+        type: string
       ui:
         group: Addressing
 
@@ -480,6 +508,8 @@ main:
 
     team_members:
       type: array
+      items:
+        type: string
       default: []
       ui:
         group: Team

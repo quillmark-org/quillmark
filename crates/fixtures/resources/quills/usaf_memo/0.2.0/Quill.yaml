@@ -14,6 +14,8 @@ main:
   fields:
     memo_for:
       type: array
+      items:
+        type: string
       default: []
       example:
         - ORG1/SYMBOL
@@ -24,6 +26,8 @@ main:
 
     memo_from:
       type: array
+      items:
+        type: string
       default: []
       example:
         - ORG/SYMBOL
@@ -44,6 +48,8 @@ main:
 
     signature_block:
       type: array
+      items:
+        type: string
       default: []
       example:
         - "FIRST M. LAST, Rank, USSF"
@@ -61,6 +67,8 @@ main:
 
     letterhead_caption:
       type: array
+      items:
+        type: string
       default:
         - HEADQUARTERS [UNIT NAME]
       ui:
@@ -104,6 +112,8 @@ main:
 
     references:
       type: array
+      items:
+        type: string
       default: []
       example:
         - "AFM 33-326, 31 July 2019, Preparing Official Communications"
@@ -113,6 +123,8 @@ main:
 
     cc:
       type: array
+      items:
+        type: string
       default: []
       example:
         - Rank and Name, ORG/SYMBOL
@@ -122,6 +134,8 @@ main:
 
     distribution:
       type: array
+      items:
+        type: string
       default: []
       example:
         - ORG1/SYMBOL
@@ -132,6 +146,8 @@ main:
 
     attachments:
       type: array
+      items:
+        type: string
       default: []
       example:
         - Attachment description, YYYY MMM DD
@@ -210,6 +226,8 @@ card_kinds:
         description: Office symbol or organization receiving the endorsed memo.
       signature_block:
         type: array
+        items:
+          type: string
         default:
           - "FIRST M. LAST, Rank, USAF"
           - Duty Title
@@ -242,12 +260,16 @@ card_kinds:
         description: "Action taken by the endorser. Leave blank to hide the Approve/Disapprove line entirely, 'undecided' to display the line with neither option circled, 'approve' or 'disapprove' to circle the selected option."
       attachments:
         type: array
+        items:
+          type: string
         default: []
         ui:
           group: Additional
         description: List of attachments specific to this endorsement.
       cc:
         type: array
+        items:
+          type: string
         default: []
         ui:
           group: Additional

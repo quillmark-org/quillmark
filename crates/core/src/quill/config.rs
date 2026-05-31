@@ -188,16 +188,19 @@ impl QuillConfig {
                     vec![json_value.clone()]
                 };
 
-                if let Some(props) = &field_schema.properties {
+                // Every array carries an element schema (`items`). Coerce each
+                // element against it: scalar items (`string[]`, `integer[]`,
+                // `markdown[]`) coerce element-wise; object items recurse into
+                // the element's `properties` via the Object branch.
+                if let Some(items) = &field_schema.items {
                     let mut out = Vec::with_capacity(arr.len());
                     for (idx, elem) in arr.iter().enumerate() {
-                        if let Some(obj) = elem.as_object() {
-                            let coerced_obj =
-                                Self::coerce_object_props(obj, props, &format!("{path}[{idx}]"))?;
-                            out.push(serde_json::Value::Object(coerced_obj));
-                        } else {
-                            out.push(elem.clone());
-                        }
+                        let coerced = Self::coerce_value_strict(
+                            &QuillValue::from_json(elem.clone()),
+                            items,
+                            &format!("{path}[{idx}]"),
+                        )?;
+                        out.push(coerced.into_json());
                     }
                     Ok(QuillValue::from_json(serde_json::Value::Array(out)))
                 } else {
@@ -440,11 +443,11 @@ impl QuillConfig {
         }
 
         if schema.r#type == FieldType::Array {
-            if let Some(props) = &schema.properties {
-                for prop_schema in props.values() {
-                    if Self::has_disallowed_nested_object(prop_schema, false) {
-                        return true;
-                    }
+            // The element schema may itself be an object (a typed table), which
+            // is allowed here; that object's own properties may not be objects.
+            if let Some(items) = &schema.items {
+                if Self::has_disallowed_nested_object(items, true) {
+                    return true;
                 }
             }
         }
@@ -520,6 +523,10 @@ impl QuillConfig {
                 let nested = format!("{}.{}", owner_label, name);
                 Self::validate_field_blueprint_constraints(prop, &nested, errors);
             }
+        }
+        if let Some(items) = &schema.items {
+            let nested = format!("{}[]", owner_label);
+            Self::validate_field_blueprint_constraints(items, &nested, errors);
         }
     }
 
@@ -746,6 +753,23 @@ impl QuillConfig {
             let quill_value = QuillValue::from_json(field_value.clone());
             match FieldSchema::from_quill_value(field_name.clone(), &quill_value) {
                 Ok(mut schema) => {
+                    // `items` is only meaningful on arrays; reject it elsewhere
+                    // so a misplaced element schema surfaces at load time.
+                    if schema.r#type != FieldType::Array && schema.items.is_some() {
+                        errors.push(
+                            Diagnostic::new(
+                                Severity::Error,
+                                format!(
+                                    "Field '{}' declares 'items' but is not type: array. \
+                                    'items' (the element schema) is only valid on array fields.",
+                                    field_name
+                                ),
+                            )
+                            .with_code("quill::items_not_supported".to_string()),
+                        );
+                        continue;
+                    }
+
                     // Typed dictionaries (type: object with properties) are supported.
                     // Freeform objects (no properties) and objects nested inside
                     // typed-dictionary properties are not.
@@ -757,7 +781,7 @@ impl QuillConfig {
                                     format!(
                                         "Field '{}' has type: object but no properties defined. \
                                         Declare a properties map, or use type: array with \
-                                        a properties map for a list of objects.",
+                                        items: {{ type: object, properties: … }} for a list of objects.",
                                         field_name
                                     ),
                                 )
@@ -782,13 +806,80 @@ impl QuillConfig {
                             continue;
                         }
                         // Typed dictionary — fall through to normal processing.
+                    } else if schema.r#type == FieldType::Array {
+                        // Arrays declare their element type via `items` (not a
+                        // bare `properties` map). Every array must be typed.
+                        if schema.properties.is_some() {
+                            errors.push(
+                                Diagnostic::new(
+                                    Severity::Error,
+                                    format!(
+                                        "Field '{}' is type: array with a bare 'properties' map. \
+                                        Declare the element type under 'items' instead — for a list \
+                                        of objects use items: {{ type: object, properties: … }}.",
+                                        field_name
+                                    ),
+                                )
+                                .with_code("quill::array_properties_not_supported".to_string()),
+                            );
+                            continue;
+                        }
+                        let Some(items) = &schema.items else {
+                            errors.push(
+                                Diagnostic::new(
+                                    Severity::Error,
+                                    format!(
+                                        "Field '{}' has type: array but no 'items' element schema. \
+                                        Declare the element type, e.g. items: {{ type: string }} \
+                                        for a list of strings or items: {{ type: object, \
+                                        properties: … }} for a list of objects.",
+                                        field_name
+                                    ),
+                                )
+                                .with_code("quill::array_missing_items".to_string()),
+                            );
+                            continue;
+                        };
+                        // Nested arrays are not supported: an element may be a
+                        // scalar or an object, but not another array.
+                        if items.r#type == FieldType::Array {
+                            errors.push(
+                                Diagnostic::new(
+                                    Severity::Error,
+                                    format!(
+                                        "Field '{}' declares an array of arrays, which is not \
+                                        supported. Array elements must be scalars or objects.",
+                                        field_name
+                                    ),
+                                )
+                                .with_code("quill::nested_array_not_supported".to_string()),
+                            );
+                            continue;
+                        }
+                        // An object element's own properties may not be objects.
+                        if Self::has_disallowed_nested_object(&schema, false) {
+                            errors.push(
+                                Diagnostic::new(
+                                    Severity::Error,
+                                    format!(
+                                        "Field '{}' contains a nested type: object, which is not \
+                                        supported. An array element object's properties may not \
+                                        themselves be objects.",
+                                        field_name
+                                    ),
+                                )
+                                .with_code("quill::nested_object_not_supported".to_string()),
+                            );
+                            continue;
+                        }
                     } else if Self::has_disallowed_nested_object(&schema, false) {
                         errors.push(
                             Diagnostic::new(
                                 Severity::Error,
                                 format!(
                                     "Field '{}' uses nested type: object, which is not supported. \
-                                    Use type: array with a properties map for a list of objects.",
+                                    Use type: array with items: {{ type: object, properties: … }} \
+                                    for a list of objects.",
                                     field_name
                                 ),
                             )

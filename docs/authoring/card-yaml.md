@@ -140,7 +140,10 @@ author:
 ```
 
 Object-valued fields must be schematized in `Quill.yaml` with `type: object`
-and a `properties:` map. Nesting beyond one level is not supported. See
+and a `properties:` map; array-valued fields with `type: array` and an
+`items:` element schema (e.g. `items: { type: string }`, or `items: { type:
+object, properties: … }` for a list of objects). Nesting beyond one level is
+not supported. See
 [Quill.yaml Reference: Field Types](../quills/quill-yaml-reference.md#field-types).
 
 Field names must match `[a-z_][a-z0-9_]*`.

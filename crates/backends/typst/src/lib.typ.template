@@ -66,12 +66,15 @@
     card_date_fields: (:),
   ))
 
-  // Auto-eval top-level content fields
+  // Auto-eval top-level content fields. A markdown field is a string; a
+  // `markdown[]` field is an array whose string elements are each eval'd.
   for key in meta.content_fields {
     if key in d {
       let val = d.at(key)
       if type(val) == str and val != "" {
         d.insert(key, eval(val, mode: "markup"))
+      } else if type(val) == array {
+        d.insert(key, val.map(v => if type(v) == str and v != "" { eval(v, mode: "markup") } else { v }))
       }
     }
   }
@@ -97,6 +100,8 @@
           let val = card.at(key)
           if type(val) == str and val != "" {
             card.insert(key, eval(val, mode: "markup"))
+          } else if type(val) == array {
+            card.insert(key, val.map(v => if type(v) == str and v != "" { eval(v, mode: "markup") } else { v }))
           }
         }
       }

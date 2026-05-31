@@ -494,42 +494,20 @@ pub(crate) fn validate_field(
         }
         FieldType::Array => match value.as_array() {
             Some(items) => {
-                if let Some(properties) = &field.properties {
+                // Validate each element against the array's `items` schema.
+                // Scalar elements (`string[]`, `integer[]`, `markdown[]`, …)
+                // are type-checked element-wise; object elements recurse into
+                // their properties via the Object branch (a row collapsed to
+                // the `<must-fill>` sentinel surfaces a single Sentinel error
+                // at the row path through the sentinel detector above).
+                if let Some(item_schema) = &field.items {
                     for (idx, item) in items.iter().enumerate() {
                         let row_path = format!("{}[{}]", path, idx);
-                        // Hand-edited edge case: a row collapsed to the literal
-                        // sentinel string (the user replaced the synthetic row
-                        // with `<must-fill>` instead of expanding it). Report
-                        // it once against the row path rather than emitting an
-                        // Absent error per Must Fill property.
-                        if item.as_str() == Some(MUST_FILL_SENTINEL) {
-                            errors.push(ValidationError::MustFillUnset {
-                                path: row_path,
-                                expected: "object".to_string(),
-                                source: MustFillSource::Sentinel,
-                            });
-                            continue;
-                        }
-                        let obj = item.as_object();
-                        for (prop_name, prop_schema) in properties {
-                            let prop_path = format!("{}.{}", row_path, prop_name);
-                            match obj.and_then(|o| o.get(prop_name)) {
-                                Some(v) => errors.extend(validate_field(
-                                    prop_schema,
-                                    &QuillValue::from_json(v.clone()),
-                                    &prop_path,
-                                )),
-                                None if prop_schema.default.is_none() => {
-                                    errors.push(ValidationError::MustFillUnset {
-                                        path: prop_path,
-                                        expected: expected_type_name(&prop_schema.r#type)
-                                            .to_string(),
-                                        source: MustFillSource::Absent,
-                                    })
-                                }
-                                None => {}
-                            }
-                        }
+                        errors.extend(validate_field(
+                            item_schema,
+                            &QuillValue::from_json(item.clone()),
+                            &row_path,
+                        ));
                     }
                 }
                 true
@@ -887,7 +865,7 @@ main:
     #[test]
     fn validates_array_of_objects() {
         let config = config_with(
-            "    recipients:\n      type: array\n      default: []\n      properties:\n        name:\n          type: string\n        org:\n          type: string\n          default: \"\"",
+            "    recipients:\n      type: array\n      default: []\n      items:\n        type: object\n        properties:\n          name:\n            type: string\n          org:\n            type: string\n            default: \"\"",
             "",
         );
         let doc = doc_from_fm(&[("recipients", json!([{ "name": "Sam", "org": "HQ" }]))]);
@@ -895,11 +873,38 @@ main:
     }
 
     #[test]
+    fn validates_scalar_array_elements() {
+        let config = config_with(
+            "    counts:\n      type: array\n      default: []\n      items:\n        type: integer",
+            "",
+        );
+        let ok = doc_from_fm(&[("counts", json!([1, 2, 3]))]);
+        assert!(validate_typed_document(&config, &ok).is_ok());
+    }
+
+    #[test]
+    fn rejects_scalar_array_element_type_mismatch() {
+        // A `string` element in an `integer[]` is reported at the element's
+        // indexed path — primitive arrays validate element-wise.
+        let config = config_with(
+            "    counts:\n      type: array\n      default: []\n      items:\n        type: integer",
+            "",
+        );
+        let doc = doc_from_fm(&[("counts", json!([1, "two"]))]);
+        let errors = validate_typed_document(&config, &doc).unwrap_err();
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            ValidationError::TypeMismatch { path, expected, .. }
+            if path == "counts[1]" && expected == "integer"
+        )));
+    }
+
+    #[test]
     fn reports_must_fill_property_absent_in_array_object() {
         // Property `name` is Must Fill (no default); `org` is Endorsed.
         // Missing `name` in a row → `MustFillUnset { source: Absent, .. }`.
         let config = config_with(
-            "    recipients:\n      type: array\n      default: []\n      properties:\n        name:\n          type: string\n        org:\n          type: string\n          default: \"\"",
+            "    recipients:\n      type: array\n      default: []\n      items:\n        type: object\n        properties:\n          name:\n            type: string\n          org:\n            type: string\n            default: \"\"",
             "",
         );
         let doc = doc_from_fm(&[("recipients", json!([{ "org": "HQ" }]))]);
@@ -916,7 +921,7 @@ main:
         // One Sentinel error at the row path beats N noisy Absent errors per
         // Must Fill property.
         let config = config_with(
-            "    recipients:\n      type: array\n      properties:\n        name:\n          type: string\n        org:\n          type: string",
+            "    recipients:\n      type: array\n      items:\n        type: object\n        properties:\n          name:\n            type: string\n          org:\n            type: string",
             "",
         );
         let doc = doc_from_fm(&[("recipients", json!([MUST_FILL_SENTINEL]))]);
@@ -1047,7 +1052,7 @@ main:
     fn body_disabled_card_enforces_trim_boundary() {
         let config = config_with(
             "    title:\n      type: string\n      default: \"\"",
-            "card_kinds:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        default: []",
+            "card_kinds:\n  skills:\n    body:\n      enabled: false\n    fields:\n      items:\n        type: array\n        items:\n          type: string\n        default: []",
         );
         // Prose triggers the error; whitespace-only does not.
         let mut prose_card = typed_card("skills", &[("items", json!(["Rust"]))]);

@@ -214,6 +214,23 @@ fn is_markdown_field(field_schema: &serde_json::Value) -> bool {
         .unwrap_or(false)
 }
 
+/// Check if a field schema indicates an array of markdown elements.
+///
+/// True when the field is `{type: array, items: {contentMediaType:
+/// text/markdown}}` — i.e. a `markdown[]` field. Each element is markdown
+/// text that must be converted to backend markup individually.
+fn is_markdown_array_field(field_schema: &serde_json::Value) -> bool {
+    field_schema
+        .get("type")
+        .and_then(|v| v.as_str())
+        .map(|s| s == "array")
+        .unwrap_or(false)
+        && field_schema
+            .get("items")
+            .map(is_markdown_field)
+            .unwrap_or(false)
+}
+
 /// Check if a field schema indicates a date field.
 ///
 /// A field is considered a date if it has:
@@ -271,6 +288,27 @@ fn transform_markdown_fields(
                         content_field_names.push(field_name);
                     }
                 }
+            } else if is_markdown_array_field(field_schema) {
+                // `markdown[]`: convert each string element to backend markup.
+                // The helper package maps `eval(.., mode: "markup")` over the
+                // resulting array (see lib.typ.template).
+                if let Some(arr) = field_value.as_array() {
+                    let converted: Vec<serde_json::Value> = arr
+                        .iter()
+                        .map(|elem| match elem.as_str() {
+                            Some(s) => match mark_to_typst(s) {
+                                Ok(markup) => serde_json::json!(markup),
+                                Err(_) => elem.clone(),
+                            },
+                            None => elem.clone(),
+                        })
+                        .collect();
+                    result.insert(
+                        field_name.clone(),
+                        QuillValue::from_json(serde_json::Value::Array(converted)),
+                    );
+                    content_field_names.push(field_name);
+                }
             }
         }
     }
@@ -304,7 +342,9 @@ fn transform_markdown_fields(
                     .map(|props| {
                         props
                             .iter()
-                            .filter(|(_, fs)| is_markdown_field(fs))
+                            .filter(|(_, fs)| {
+                                is_markdown_field(fs) || is_markdown_array_field(fs)
+                            })
                             .map(|(name, _)| name.as_str())
                             .collect()
                     })
@@ -444,6 +484,56 @@ mod tests {
             "contentMediaType": "text/plain"
         });
         assert!(!is_markdown_field(&other_media_type));
+    }
+
+    #[test]
+    fn test_is_markdown_array_field() {
+        let md_array = json!({
+            "type": "array",
+            "items": { "type": "string", "contentMediaType": "text/markdown" }
+        });
+        assert!(is_markdown_array_field(&md_array));
+
+        let string_array = json!({
+            "type": "array",
+            "items": { "type": "string" }
+        });
+        assert!(!is_markdown_array_field(&string_array));
+
+        // A plain markdown scalar is not a markdown array.
+        let md_scalar = json!({ "type": "string", "contentMediaType": "text/markdown" });
+        assert!(!is_markdown_array_field(&md_scalar));
+    }
+
+    #[test]
+    fn test_transform_markdown_array_field() {
+        let schema = QuillValue::from_json(json!({
+            "type": "object",
+            "properties": {
+                "sections": {
+                    "type": "array",
+                    "items": { "type": "string", "contentMediaType": "text/markdown" }
+                }
+            }
+        }));
+
+        let mut fields = HashMap::new();
+        fields.insert(
+            "sections".to_string(),
+            QuillValue::from_json(json!(["This is **bold** text.", "Plain line."])),
+        );
+
+        let result = transform_markdown_fields(&fields, &schema);
+
+        // Each element is converted to Typst markup.
+        let sections = result.get("sections").unwrap().as_array().unwrap();
+        assert!(sections[0].as_str().unwrap().contains("#strong[bold]"));
+        assert!(sections[1].as_str().unwrap().contains("Plain line."));
+
+        // The field is registered for auto-eval in __meta__.
+        let meta = result.get("__meta__").unwrap().as_json();
+        let content_fields = meta["content_fields"].as_array().unwrap();
+        assert!(content_fields.iter().any(|v| v == "sections"));
     }
 
     #[test]

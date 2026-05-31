@@ -1429,22 +1429,25 @@ main:
     my_list:
       type: array
       description: List of objects
-      properties:
-        sub_a:
-          type: string
-          description: Subfield A
-        sub_b:
-          type: number
-          description: Subfield B
+      items:
+        type: object
+        properties:
+          sub_a:
+            type: string
+            description: Subfield A
+          sub_b:
+            type: number
+            description: Subfield B
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
 
     let list_field = config.main.fields.get("my_list").unwrap();
     assert_eq!(list_field.r#type, FieldType::Array);
-    assert!(list_field.properties.is_some());
+    let items = list_field.items.as_ref().expect("array declares items");
+    assert_eq!(items.r#type, FieldType::Object);
 
-    let props = list_field.properties.as_ref().unwrap();
+    let props = items.properties.as_ref().unwrap();
     assert!(props.contains_key("sub_a"));
     assert!(props.contains_key("sub_b"));
     assert_eq!(props["sub_a"].r#type, FieldType::String);
@@ -1521,14 +1524,16 @@ main:
   fields:
     rows:
       type: array
-      properties:
-        score:
-          type: number
-        nested:
-          type: object
-          properties:
-            inner:
-              type: string
+      items:
+        type: object
+        properties:
+          score:
+            type: number
+          nested:
+            type: object
+            properties:
+              inner:
+                type: string
 "#;
 
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
@@ -1555,13 +1560,15 @@ main:
   fields:
     scores:
       type: array
-      properties:
-        name:
-          type: string
-        value:
-          type: number
-        active:
-          type: boolean
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          value:
+            type: number
+          active:
+            type: boolean
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1711,11 +1718,13 @@ main:
   fields:
     items:
       type: array
-      properties:
-        score:
-          type: number
-        active:
-          type: boolean
+      items:
+        type: object
+        properties:
+          score:
+            type: number
+          active:
+            type: boolean
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -1736,6 +1745,143 @@ main:
     assert_eq!(first["active"], serde_json::json!(true));
     assert_eq!(second["score"], serde_json::json!(87.5));
     assert_eq!(second["active"], serde_json::json!(false));
+}
+
+#[test]
+fn test_coerce_scalar_array_elements() {
+    // A primitive `integer[]` coerces each element (string → integer), the
+    // same first-class treatment scalar fields already get.
+    let yaml_content = r#"
+quill:
+  name: scalar_array_coerce
+  version: "1.0"
+  backend: typst
+  description: Coerce primitive arrays element-wise
+
+main:
+  fields:
+    counts:
+      type: array
+      items:
+        type: integer
+"#;
+    let config = QuillConfig::from_yaml(yaml_content).unwrap();
+    let mut payload = indexmap::IndexMap::new();
+    payload.insert(
+        "counts".to_string(),
+        QuillValue::from_json(serde_json::json!(["1", "2", "3"])),
+    );
+    let coerced = config.coerce_payload(&payload).unwrap();
+    assert_eq!(
+        coerced.get("counts").unwrap().as_json(),
+        &serde_json::json!([1, 2, 3])
+    );
+}
+
+#[test]
+fn test_coerce_scalar_array_reports_bad_element_path() {
+    // An uncoercible element fails with the element's indexed path, just like
+    // a typed-table leaf does.
+    let yaml_content = r#"
+quill:
+  name: scalar_array_bad
+  version: "1.0"
+  backend: typst
+  description: Bad primitive array element
+
+main:
+  fields:
+    counts:
+      type: array
+      items:
+        type: integer
+"#;
+    let config = QuillConfig::from_yaml(yaml_content).unwrap();
+    let mut payload = indexmap::IndexMap::new();
+    payload.insert(
+        "counts".to_string(),
+        QuillValue::from_json(serde_json::json!([1, "nope"])),
+    );
+    let err = config.coerce_payload(&payload).unwrap_err();
+    assert!(matches!(
+        err,
+        super::CoercionError::Uncoercible { ref path, ref target, .. }
+        if path == "counts[1]" && target == "integer"
+    ));
+}
+
+#[test]
+fn test_array_missing_items_rejected() {
+    // Every array must declare its element type via `items`.
+    let yaml_content = r#"
+quill:
+  name: array_no_items
+  version: "1.0"
+  backend: typst
+  description: Array without items
+
+main:
+  fields:
+    tags:
+      type: array
+"#;
+    let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
+    assert!(err
+        .iter()
+        .any(|d| d.code.as_deref() == Some("quill::array_missing_items")
+            && d.message.contains("tags")));
+}
+
+#[test]
+fn test_array_bare_properties_rejected() {
+    // A bare `properties` map on an array (the pre-`items` typed-table form)
+    // is no longer accepted — element typing goes under `items`.
+    let yaml_content = r#"
+quill:
+  name: array_bare_props
+  version: "1.0"
+  backend: typst
+  description: Array with bare properties
+
+main:
+  fields:
+    rows:
+      type: array
+      properties:
+        org:
+          type: string
+"#;
+    let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
+    assert!(err
+        .iter()
+        .any(|d| d.code.as_deref() == Some("quill::array_properties_not_supported")
+            && d.message.contains("rows")));
+}
+
+#[test]
+fn test_nested_array_rejected() {
+    // Array elements may be scalars or objects, but not arrays.
+    let yaml_content = r#"
+quill:
+  name: nested_array
+  version: "1.0"
+  backend: typst
+  description: Array of arrays
+
+main:
+  fields:
+    grid:
+      type: array
+      items:
+        type: array
+        items:
+          type: integer
+"#;
+    let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
+    assert!(err
+        .iter()
+        .any(|d| d.code.as_deref() == Some("quill::nested_array_not_supported")
+            && d.message.contains("grid")));
 }
 
 #[test]
@@ -2260,7 +2406,7 @@ card_kinds:
       enabled: false
       example: This example is unused
     fields:
-      items: { type: array }
+      items: { type: array, items: { type: string } }
 "#;
     let (_config, warnings) = QuillConfig::from_yaml_with_warnings(yaml).unwrap();
     assert!(
@@ -2564,7 +2710,7 @@ fn example_boolean_type_rejects_string_example() {
 fn example_array_type_rejects_string_example() {
     // type: array with example: foo — a sequence is required.
     let yaml = example_default_yaml(
-        "    tags:\n      type: array\n      example: foo\n",
+        "    tags:\n      type: array\n      items:\n        type: string\n      example: foo\n",
     );
     let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
     assert!(

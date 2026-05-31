@@ -43,9 +43,9 @@ fn arb_leaf_field_type() -> impl Strategy<Value = FieldType> {
     ]
 }
 
-/// `FieldSchema` of bounded depth. Both `Array` and `Object` carry a
-/// `properties` map applied to object-shaped children (the same way
-/// `coerce_value_strict` consumes it).
+/// `FieldSchema` of bounded depth. `Object` carries a `properties` map; an
+/// `Array` carries an `items` element schema (here, an object sharing that
+/// same property map) — the same way `coerce_value_strict` consumes them.
 fn arb_field_schema(max_depth: u32) -> impl Strategy<Value = FieldSchema> {
     let leaf = arb_leaf_field_type().prop_map(|ty| FieldSchema::new(String::new(), ty, None));
     leaf.prop_recursive(max_depth, 24, 3, |inner| {
@@ -66,8 +66,10 @@ fn arb_field_schema(max_depth: u32) -> impl Strategy<Value = FieldSchema> {
             }),
             // Array whose object-shaped elements share a 1-3 property schema
             props_map.prop_map(|props| {
+                let mut item = FieldSchema::new(String::new(), FieldType::Object, None);
+                item.properties = Some(props);
                 let mut schema = FieldSchema::new(String::new(), FieldType::Array, None);
-                schema.properties = Some(props);
+                schema.items = Some(Box::new(item));
                 schema
             }),
         ]
@@ -236,8 +238,10 @@ fn regression_t2_array_of_object_path() {
         "x".to_string(),
         Box::new(FieldSchema::new("x".to_string(), FieldType::Integer, None)),
     );
+    let mut item = FieldSchema::new("f[]".to_string(), FieldType::Object, None);
+    item.properties = Some(inner);
     let mut arr = FieldSchema::new(ROOT_FIELD.to_string(), FieldType::Array, None);
-    arr.properties = Some(inner);
+    arr.items = Some(Box::new(item));
     let config = config_with_one_field(arr);
 
     // [ { "x": "not-an-int" } ] — should fail at f[0].x

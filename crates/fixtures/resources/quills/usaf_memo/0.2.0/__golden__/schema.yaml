@@ -11,6 +11,8 @@ main:
       ui:
         group: Additional
         order: 13
+      items:
+        type: string
     cc:
       type: array
       description: List office symbols of recipients to receive copies.
@@ -20,6 +22,8 @@ main:
       ui:
         group: Additional
         order: 11
+      items:
+        type: string
     classification:
       type: string
       description: >-
@@ -69,6 +73,8 @@ main:
       ui:
         group: Additional
         order: 12
+      items:
+        type: string
     font_size:
       type: number
       description: Font size for the memo text (pt). Decimal values (e.g. 11.5) are supported.
@@ -96,6 +102,8 @@ main:
       ui:
         group: Letterhead
         order: 5
+      items:
+        type: string
     letterhead_seal:
       type: string
       description: >-
@@ -137,6 +145,8 @@ main:
       ui:
         group: Addressing
         order: 0
+      items:
+        type: string
     memo_from:
       type: array
       description: >-
@@ -153,6 +163,8 @@ main:
       ui:
         group: Addressing
         order: 1
+      items:
+        type: string
     memo_style:
       type: string
       description: >-
@@ -175,6 +187,8 @@ main:
       ui:
         group: Additional
         order: 10
+      items:
+        type: string
     signature_block:
       type: array
       description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title. Spell out 'Colonel' and general officer ranks."
@@ -185,6 +199,8 @@ main:
       ui:
         group: Addressing
         order: 3
+      items:
+        type: string
     subject:
       type: string
       description: >-
@@ -237,6 +253,8 @@ card_kinds:
         ui:
           group: Additional
           order: 5
+        items:
+          type: string
       cc:
         type: array
         description: List of office symbols to receive copies of this endorsement.
@@ -244,6 +262,8 @@ card_kinds:
         ui:
           group: Additional
           order: 6
+        items:
+          type: string
       date:
         type: date
         description: >-
@@ -291,5 +311,7 @@ card_kinds:
         ui:
           group: Addressing
           order: 2
+        items:
+          type: string
     ui:
       title: Routing indorsement

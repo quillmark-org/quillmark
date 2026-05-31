@@ -228,11 +228,17 @@ fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
 fn write_field(out: &mut String, field: &FieldSchema, indent: usize, source: FillSource) {
     let pad = "  ".repeat(indent);
 
-    // Typed table: array with a properties map directly on the field.
+    // Typed table: an array whose element is an object with properties.
+    // Scalar-element arrays (`string[]`, `integer[]`, `markdown[]`, …) fall
+    // through to the uniform scalar rendering below.
     if matches!(field.r#type, FieldType::Array) {
-        if let Some(props) = &field.properties {
-            write_typed_table_field(out, field, props, indent, source);
-            return;
+        if let Some(items) = &field.items {
+            if matches!(items.r#type, FieldType::Object) {
+                if let Some(props) = &items.properties {
+                    write_typed_table_field(out, field, props, indent, source);
+                    return;
+                }
+            }
         }
     }
 
@@ -250,12 +256,12 @@ fn write_field(out: &mut String, field: &FieldSchema, indent: usize, source: Fil
     // Markdown fields render as a YAML block scalar so multi-line content has
     // a consistent shape regardless of whether a default is configured.
     if matches!(field.r#type, FieldType::Markdown) {
-        let inline = inline_annotation(field, false, field.default.is_some());
+        let inline = inline_annotation(field, field.default.is_some());
         write_markdown_block(out, field, &pad, &inline, source);
         return;
     }
 
-    let inline = format!("  # {}", inline_annotation(field, false, field.default.is_some()));
+    let inline = format!("  # {}", inline_annotation(field, field.default.is_some()));
     let value = field_value(field, source);
     write_value(out, &field.name, &value, &inline, &pad);
 }
@@ -352,7 +358,7 @@ fn write_typed_table_field(
 
     // Endorsement keys off `default:` alone; the rendered rows come from the
     // default or — under `Preview` — the `example:`.
-    let inline = inline_annotation(field, true, field.default.is_some());
+    let inline = inline_annotation(field, field.default.is_some());
     let rows = fill_source(field, source).and_then(|v| match v.as_json() {
         serde_json::Value::Array(items) => Some(items.clone()),
         _ => None,
@@ -409,7 +415,7 @@ fn write_typed_object_field(
 
     // Endorsement keys off `default:` alone; the rendered mapping comes from
     // the default or — under `Preview` — the `example:`.
-    let inline = inline_annotation(field, false, field.default.is_some());
+    let inline = inline_annotation(field, field.default.is_some());
     let mapping = fill_source(field, source).and_then(|v| match v.as_json() {
         serde_json::Value::Object(map) => Some(map.clone()),
         _ => None,
@@ -446,8 +452,8 @@ fn write_typed_object_field(
 /// always render as `array<object>`; plain arrays render as `array<string>`.
 /// `endorsed` is uniformly `field.default.is_some()` — any `default:`
 /// (including type-empty `""`, `[]`, `{}`) means the cell is shippable.
-fn inline_annotation(field: &FieldSchema, force_array_object: bool, endorsed: bool) -> String {
-    let type_expr = type_expression(field, force_array_object);
+fn inline_annotation(field: &FieldSchema, endorsed: bool) -> String {
+    let type_expr = type_expression(field);
     if endorsed {
         format!("{}; delete-ok", type_expr)
     } else {
@@ -455,7 +461,7 @@ fn inline_annotation(field: &FieldSchema, force_array_object: bool, endorsed: bo
     }
 }
 
-fn type_expression(field: &FieldSchema, force_array_object: bool) -> String {
+fn type_expression(field: &FieldSchema) -> String {
     if let Some(values) = &field.enum_values {
         return format!("enum<{}>", values.join(" | "));
     }
@@ -468,12 +474,15 @@ fn type_expression(field: &FieldSchema, force_array_object: bool) -> String {
         FieldType::Markdown => "markdown".into(),
         FieldType::Date => "date<YYYY-MM-DD>".into(),
         FieldType::DateTime => "datetime<ISO 8601>".into(),
+        // The element type comes from `items`; a scalar element gives
+        // `array<string>`/`array<integer>`/`array<markdown>`, an object
+        // element gives `array<object>`.
         FieldType::Array => {
-            let item = if force_array_object {
-                "object"
-            } else {
-                "string"
-            };
+            let item = field
+                .items
+                .as_ref()
+                .map(|it| type_expression(it))
+                .unwrap_or_else(|| "string".into());
             format!("array<{}>", item)
         }
     }
@@ -622,6 +631,7 @@ main:
   fields:
     recipient:
       type: array
+      items: { type: string }
       example:
         - Mr. John Doe
         - 123 Main St
@@ -670,6 +680,7 @@ main:
   fields:
     memo_from:
       type: array
+      items: { type: string }
       example:
         - ORG/SYMBOL
         - City ST 12345
@@ -707,7 +718,7 @@ main:
     flag: { type: boolean, default: false }
     issued: { type: date }
     published: { type: datetime }
-    refs: { type: array, default: [] }
+    refs: { type: array, default: [], items: { type: string } }
 "#)
         .blueprint();
         assert!(t.contains("title: <must-fill>  # string\n"));
@@ -716,6 +727,24 @@ main:
         assert!(t.contains("issued: <must-fill>  # date<YYYY-MM-DD>\n"));
         assert!(t.contains("published: <must-fill>  # datetime<ISO 8601>\n"));
         assert!(t.contains("refs: []  # array<string>; delete-ok\n"));
+    }
+
+    #[test]
+    fn scalar_array_annotation_reflects_element_type() {
+        // The element type drives the format slot: `array<integer>`,
+        // `array<markdown>`, … rather than a hardcoded `array<string>`.
+        let t = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    counts:   { type: array, items: { type: integer } }
+    sections: { type: array, items: { type: markdown } }
+    tags:     { type: array, items: { type: string } }
+"#)
+        .blueprint();
+        assert!(t.contains("counts: <must-fill>  # array<integer>\n"), "{t}");
+        assert!(t.contains("sections: <must-fill>  # array<markdown>\n"), "{t}");
+        assert!(t.contains("tags: <must-fill>  # array<string>\n"), "{t}");
     }
 
     #[test]
@@ -802,7 +831,7 @@ card_kinds:
   skills:
     body: { enabled: false }
     fields:
-      items: { type: array }
+      items: { type: array, items: { type: string } }
 "#)
         .blueprint();
         let after = &t[t.find("$kind: skills").unwrap()..];
@@ -866,7 +895,7 @@ card_kinds:
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
-    memo_for: { type: array, ui: { group: Addressing } }
+    memo_for: { type: array, items: { type: string }, ui: { group: Addressing } }
     subject: { type: string, ui: { group: Addressing } }
     letterhead_title: { type: string, default: HQ, ui: { group: Letterhead } }
     notes: { type: string }
@@ -894,9 +923,11 @@ main:
     references:
       type: array
       description: Cited works.
-      properties:
-        org: { type: string, description: Citing organization. }
-        year: { type: integer, default: 0, description: Publication year. }
+      items:
+        type: object
+        properties:
+          org: { type: string, description: Citing organization. }
+          year: { type: integer, default: 0, description: Publication year. }
 "#)
         .blueprint();
         assert!(t.contains("# Cited works.\nreferences:  # array<object>\n  -\n"));
@@ -916,9 +947,11 @@ main:
       type: array
       example:
         - { org: ACME, year: 2020 }
-      properties:
-        org: { type: string }
-        year: { type: integer, default: 0 }
+      items:
+        type: object
+        properties:
+          org: { type: string }
+          year: { type: integer, default: 0 }
 "#)
         .blueprint();
         assert!(t.contains("# e.g. [{org: ACME, year: 2020}]\n"));
@@ -937,8 +970,10 @@ main:
       type: array
       default:
         - { org: ACME }
-      properties:
-        org: { type: string }
+      items:
+        type: object
+        properties:
+          org: { type: string }
 "#)
         .blueprint();
         assert!(t.contains("refs:  # array<object>; delete-ok\n  - org: ACME\n"));
@@ -958,8 +993,10 @@ main:
     refs:
       type: array
       default: []
-      properties:
-        org: { type: string }
+      items:
+        type: object
+        properties:
+          org: { type: string }
 "#)
         .blueprint();
         assert!(
@@ -1080,6 +1117,7 @@ main:
       default: normal
     attachments:
       type: array
+      items: { type: string }
       default: []
       example:
         - report.pdf
@@ -1139,7 +1177,7 @@ main:
     count:     { type: integer }
     ratio:     { type: number }
     flag:      { type: boolean }
-    refs:      { type: array }
+    refs:      { type: array, items: { type: string } }
     issued:    { type: date }
     published: { type: datetime }
     severity:  { type: string, enum: [low, medium, high] }
@@ -1151,9 +1189,11 @@ main:
         zip:    { type: integer }
     rows:
       type: array
-      properties:
-        org:  { type: string }
-        year: { type: integer }
+      items:
+        type: object
+        properties:
+          org:  { type: string }
+          year: { type: integer }
 "#)
         .example();
         assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
@@ -1185,7 +1225,7 @@ main:
     title:    { type: string }
     count:    { type: integer }
     flag:     { type: boolean }
-    refs:     { type: array }
+    refs:     { type: array, items: { type: string } }
     issued:   { type: date }
     severity: { type: string, enum: [low, medium, high] }
     bio:      { type: markdown }
@@ -1196,9 +1236,11 @@ main:
         zip:    { type: integer }
     rows:
       type: array
-      properties:
-        org:  { type: string }
-        year: { type: integer }
+      items:
+        type: object
+        properties:
+          org:  { type: string }
+          year: { type: integer }
 "#);
         let filled = config.example();
         let doc = Document::from_markdown(&filled)
@@ -1219,7 +1261,7 @@ main:
     title:    { type: string, example: Quarterly Report }
     count:    { type: integer, example: 7 }
     issued:   { type: date, example: "2030-06-01" }
-    refs:     { type: array, example: [alpha, beta] }
+    refs:     { type: array, items: { type: string }, example: [alpha, beta] }
 "#)
         .example();
         assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
@@ -1281,9 +1323,11 @@ main:
   fields:
     refs:
       type: array
-      properties:
-        org:  { type: string }
-        year: { type: integer }
+      items:
+        type: object
+        properties:
+          org:  { type: string }
+          year: { type: integer }
 "#)
         .example();
         assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
@@ -1304,9 +1348,11 @@ main:
       type: array
       example:
         - { org: ACME, year: 2020 }
-      properties:
-        org:  { type: string }
-        year: { type: integer }
+      items:
+        type: object
+        properties:
+          org:  { type: string }
+          year: { type: integer }
 "#)
         .example();
         assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
@@ -1328,7 +1374,7 @@ quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     addr: { type: object, properties: {} }
-    rows: { type: array,  properties: {} }
+    rows: { type: array,  items: { type: object, properties: {} } }
 "#);
         for doc_md in [config.blueprint(), config.example()] {
             assert!(
@@ -1360,7 +1406,7 @@ main:
     severity:  { type: string, enum: [low, medium, high] }
     bio:       { type: markdown }
     issued:    { type: date }
-    refs:      { type: array, example: [first, second] }
+    refs:      { type: array, items: { type: string }, example: [first, second] }
 "#);
         let filled = config.example();
         let doc = Document::from_markdown(&filled)

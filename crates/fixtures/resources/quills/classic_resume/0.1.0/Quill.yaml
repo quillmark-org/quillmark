@@ -15,6 +15,8 @@ main:
 
     contacts:
       type: array
+      items:
+        type: string
       example:
         - john.doe@example.com
         - 123-456-7890
@@ -56,11 +58,13 @@ card_kinds:
             skills: Python, Rust, C++
           - category: DevOps
             skills: Docker, Kubernetes
-        properties:
-          category:
-            type: string
-          skills:
-            type: string
+        items:
+          type: object
+          properties:
+            category:
+              type: string
+            skills:
+              type: string
 
   projects_section:
     description: A project entry with a name and optional URL.
@@ -85,6 +89,8 @@ card_kinds:
         default: Certifications
       cells:
         type: array
+        items:
+          type: string
         example:
           - AWS Certified Solutions Architect
           - CKA

@@ -187,9 +187,16 @@ pub struct FieldSchema {
     /// Restricts valid values on string fields.
     #[serde(rename = "enum", skip_serializing_if = "Option::is_none")]
     pub enum_values: Option<Vec<String>>,
-    /// Nested field schemas for dict/object types.
+    /// Nested field schemas for `object` types (the typed dictionary's
+    /// properties).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub properties: Option<BTreeMap<String, Box<FieldSchema>>>,
+    /// Element schema for `array` types. Required on every `array` field:
+    /// the element type makes the array first-class (`string[]`, `integer[]`,
+    /// `markdown[]`, …). For a typed table the element is an `object` carrying
+    /// its own `properties`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub items: Option<Box<FieldSchema>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -204,6 +211,8 @@ struct FieldSchemaDef {
     pub enum_values: Option<Vec<String>>,
     // Nested schema support
     pub properties: Option<serde_json::Map<String, serde_json::Value>>,
+    // Element schema for arrays.
+    pub items: Option<serde_json::Value>,
 }
 
 impl FieldSchema {
@@ -217,6 +226,7 @@ impl FieldSchema {
             ui: None,
             enum_values: None,
             properties: None,
+            items: None,
         }
     }
 
@@ -224,7 +234,7 @@ impl FieldSchema {
         let def: FieldSchemaDef = serde_json::from_value(value.clone().into_json())
             .map_err(|e| format!("Failed to parse field schema: {}", e))?;
         Ok(Self {
-            name: key,
+            name: key.clone(),
             r#type: def.r#type,
             description: def.description,
             default: def.default,
@@ -243,6 +253,14 @@ impl FieldSchema {
                     );
                 }
                 Some(p)
+            } else {
+                None
+            },
+            items: if let Some(items) = def.items {
+                Some(Box::new(FieldSchema::from_quill_value(
+                    format!("{key}[]"),
+                    &QuillValue::from_json(items),
+                )?))
             } else {
                 None
             },

@@ -9,6 +9,8 @@ main:
   fields:
     recipient:
       type: array
+      items:
+        type: string
       example:
         - Mr. John Doe
         - 123 Main St
@@ -19,6 +21,8 @@ main:
 
     signature_block:
       type: array
+      items:
+        type: string
       example:
         - First M. Last
         - Title
@@ -36,6 +40,8 @@ main:
 
     address:
       type: array
+      items:
+        type: string
       example:
         - 5000 Forbes Avenue
         - Pittsburgh, PA 15213-3890
