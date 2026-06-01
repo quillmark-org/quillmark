@@ -2,16 +2,101 @@
 
 ## v0.87.0 - 2026-06-01
 
-- Consolidate schema literal validation into shared primitive (#680)
-- Remove FieldType::Date; unify datetime under YAML 1.1 timestamp grammar (#679)
-- Reject object fields with empty properties maps (#678)
-- Make object zero values shape-valid by recursively filling properties (#677)
-- Fix doc/comment nits from array-items review (#675)
-- docs: add overview index page to migration section (#674)
-- Collapse array/markdown handling into recursive passes (#673)
-- Make primitively typed arrays first-class via items (#672)
-- Migrate documentation hosting from Read the Docs to GitHub Pages (#671)
-- canon + docs: partial documents are first-class citizens (#670)
+Arrays become first-class typed fields via a required `items` element
+schema, datetime is unified under a single `type: datetime` accepting the
+full YAML-1.1-style timestamp range (`FieldType::Date` is gone), and object
+zero values are now shape-valid. This release tightens schema-load
+validation in several places — empty `properties` maps and deeper array
+nesting are now rejected — and consolidates the example/default conformance
+checks behind one shared primitive. Documentation now ships from GitHub
+Pages instead of Read the Docs.
+
+### Breaking changes
+
+- **Array fields now require an `items` element schema** (#672). Arrays
+  previously carried a single untyped `Array` type; scalar arrays were
+  never coerced or validated element-wise and were always annotated
+  `array<string>`. Every array field must now declare `items`, and schema
+  load rejects arrays without it. The bare-`properties`-on-an-array form
+  (the old "typed table") is **removed** in favor of
+  `items: { type: object, properties: … }`. Migration for a typed table:
+
+  ```yaml
+  # before
+  rows:
+    type: array
+    properties: { name: { type: string }, qty: { type: integer } }
+  # after
+  rows:
+    type: array
+    items:
+      type: object
+      properties: { name: { type: string }, qty: { type: integer } }
+  ```
+
+  A scalar array adds `items` directly, e.g.
+  `counts: { type: array, items: { type: integer } }`. Elements now coerce
+  and validate against `items` (failing at the indexed path, e.g.
+  `counts[1]`), and blueprint annotations reflect the element type
+  (`array<integer>`, `array<markdown>`, …). Bundled quills and the
+  `usaf_memo` golden schema are migrated.
+- **`FieldType::Date` removed; use `type: datetime`** (#679). `type: date`
+  no longer exists. `type: datetime` now accepts the full range from a bare
+  `YYYY-MM-DD` date through RFC 3339 with offset (seconds optional, `T` or
+  space separator). Datetime values gain calendar validation (e.g. Feb 30
+  is now rejected), and JSON Schema output emits `format: date-time` for
+  all datetime fields. The WASM `FieldType` union drops `"date"`. The
+  blueprint hint is now `datetime<YYYY-MM-DD[Thh:mm:ss]>`.
+- **Empty `properties: {}` on an object field is rejected** (#678). An
+  empty properties map carries no information (the only conforming value is
+  `{}`) and is almost always a mistake. It is now treated like a missing
+  `properties` key and surfaces `quill::object_empty_properties`.
+- **Deeper array nesting is rejected** (#673). The documented "one level of
+  nesting" contract is now enforced in a single recursive pass, closing a
+  gap where `array<object<array>>` and `object<array>` were silently
+  accepted. A typed table row and a typed dictionary may carry scalar
+  columns/properties only; deeper shapes fail with
+  `quill::nested_array_not_supported`.
+
+### Behavioral changes
+
+- **Object zero values are now shape-valid** (#677). `zero_value` returned
+  a bare `{}` for every object field, which failed validation on any object
+  with `properties` (each absent property reported as `MustFillUnset`), so
+  the zero-filled render path broke for object fields. An object with
+  `properties` now recurses, zero-filling each property to its own
+  type-empty leaf. `{}` remains the zero only for the property-less edge
+  case.
+- **`example:` values are now validated** (#680). The conformance check for
+  `example`/`default` literals recurses into array items and object
+  properties and validates datetime format — capabilities the old
+  load-time path lacked, so previously-unvalidated `example:` values are
+  now caught.
+
+### Documentation & infrastructure
+
+- **Docs hosting moved from Read the Docs to GitHub Pages** (#671). A new
+  `docs.yml` workflow builds MkDocs (strict build as a PR check) and
+  deploys to Pages on a published release; RCs are skipped. `.readthedocs.yaml`
+  is removed and homepage/User Guide links point at the Pages URL.
+- **Canon + docs: partial documents are first-class citizens** (#670). The
+  docs and binding READMEs no longer claim Must Fill fields must be supplied
+  before shipping. The only hard render gate is well-formedness (values
+  coerce, no surviving `<must-fill>` sentinel); completeness is a hint
+  surfaced by the form view. The `format-designer/` docs tree is renamed to
+  `quills/`.
+- A Migration section overview page was added and wired into the nav (#674).
+
+### Internal
+
+- Example/default validation is consolidated behind a single
+  `validate_schema_literal` conformance core shared by `quillmark-core`
+  config loading and the CLI `validate` command, with author-friendly
+  diagnostics preserved (#680).
+- Array and markdown handling collapse into recursive passes over the
+  schema in both schema-shape validation and the Typst markdown transform
+  (#673).
+- Doc/comment fixes from the array-items review (#675).
 
 
 ## v0.86.0 - 2026-05-31
