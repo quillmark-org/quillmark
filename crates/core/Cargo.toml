@@ -18,6 +18,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 glob = { workspace = true }
 unicode-normalization = { workspace = true }
+time = { workspace = true }
 indexmap = { workspace = true }
 
 [dev-dependencies]

@@ -1,145 +1,54 @@
-/// Returns `true` when `s` matches the YAML 1.1 timestamp grammar.
+use std::sync::LazyLock;
+
+use time::format_description::well_known::Rfc3339;
+use time::format_description::{self, FormatItem};
+use time::{Date, OffsetDateTime, PrimitiveDateTime};
+
+static DATE_FMT: LazyLock<Vec<FormatItem<'static>>> = LazyLock::new(|| {
+    format_description::parse("[year]-[month]-[day]").expect("valid format")
+});
+
+// Local (no-offset) forms tried in order — most-specific first so that a
+// string like "…T12:00:00.5" does not partially match the plain HMS variant.
+static LOCAL_FMTS: LazyLock<[Vec<FormatItem<'static>>; 6]> = LazyLock::new(|| {
+    [
+        format_description::parse(
+            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond]",
+        )
+        .expect("valid format"),
+        format_description::parse("[year]-[month]-[day]T[hour]:[minute]:[second]")
+            .expect("valid format"),
+        format_description::parse("[year]-[month]-[day]T[hour]:[minute]").expect("valid format"),
+        format_description::parse(
+            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond]",
+        )
+        .expect("valid format"),
+        format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]")
+            .expect("valid format"),
+        format_description::parse("[year]-[month]-[day] [hour]:[minute]").expect("valid format"),
+    ]
+});
+
+/// Returns `true` when `s` is a valid datetime string.
 ///
-/// Accepted forms (YAML 1.1 §10.3.1), with seconds optional:
-/// - Bare date:        `YYYY-M?M-D?D`
-/// - Local datetime:   `YYYY-M?M-D?D[Tt ]h?h:MM[:SS[.s+]]`
-/// - UTC:              `…Z`
-/// - With offset:      `…[+-]h?h[:MM]`
-/// - Space/tab may replace `T` as separator and may precede the timezone.
+/// Accepted forms:
+/// - Bare date:        `YYYY-MM-DD`
+/// - Local datetime:   `YYYY-MM-DD[T ]hh:mm[:ss[.s+]]`
+/// - UTC / offset:     RFC 3339 — `YYYY-MM-DDThh:mm:ss[.s+](Z|±HH:MM)`
+///
+/// Parsing is delegated to the `time` crate, which enforces zero-padded
+/// components and calendar validity (Feb 30 is rejected). Timezone offsets
+/// require the T separator and seconds (RFC 3339 form).
 pub(crate) fn is_valid_datetime(s: &str) -> bool {
-    let b = s.as_bytes();
-    let n = b.len();
-    let mut i = 0;
-
-    // YYYY
-    if n < 4 || !b[..4].iter().all(|c| c.is_ascii_digit()) {
-        return false;
+    if OffsetDateTime::parse(s, &Rfc3339).is_ok() {
+        return true;
     }
-    i += 4;
-
-    if i >= n || b[i] != b'-' {
-        return false;
-    }
-    i += 1;
-
-    // M or MM
-    let start = i;
-    while i < n && b[i].is_ascii_digit() {
-        i += 1;
-    }
-    if !(1..=2).contains(&(i - start)) {
-        return false;
-    }
-
-    if i >= n || b[i] != b'-' {
-        return false;
-    }
-    i += 1;
-
-    // D or DD
-    let start = i;
-    while i < n && b[i].is_ascii_digit() {
-        i += 1;
-    }
-    if !(1..=2).contains(&(i - start)) {
-        return false;
-    }
-
-    if i == n {
-        return true; // bare date
-    }
-
-    // Time separator: T/t or one or more spaces/tabs
-    if b[i] == b'T' || b[i] == b't' {
-        i += 1;
-    } else if b[i] == b' ' || b[i] == b'\t' {
-        while i < n && (b[i] == b' ' || b[i] == b'\t') {
-            i += 1;
-        }
-    } else {
-        return false;
-    }
-
-    // H or HH
-    let start = i;
-    while i < n && b[i].is_ascii_digit() {
-        i += 1;
-    }
-    if !(1..=2).contains(&(i - start)) {
-        return false;
-    }
-
-    // :MM (exactly 2 digits)
-    if i >= n || b[i] != b':' {
-        return false;
-    }
-    i += 1;
-    if i + 2 > n || !b[i..i + 2].iter().all(|c| c.is_ascii_digit()) {
-        return false;
-    }
-    i += 2;
-
-    if i == n {
-        return true; // HH:MM without seconds
-    }
-
-    // Optional :SS[.s+]
-    if b[i] == b':' {
-        i += 1;
-        if i + 2 > n || !b[i..i + 2].iter().all(|c| c.is_ascii_digit()) {
-            return false;
-        }
-        i += 2;
-        if i < n && b[i] == b'.' {
-            i += 1;
-            if i >= n || !b[i].is_ascii_digit() {
-                return false;
-            }
-            while i < n && b[i].is_ascii_digit() {
-                i += 1;
-            }
-        }
-    }
-
-    if i == n {
-        return true; // local datetime
-    }
-
-    // Optional timezone: optional whitespace then Z or ±H?H[:MM]
-    while i < n && (b[i] == b' ' || b[i] == b'\t') {
-        i += 1;
-    }
-    if i >= n {
-        return false; // trailing whitespace only
-    }
-
-    if b[i] == b'Z' || b[i] == b'z' {
-        return i + 1 == n;
-    }
-
-    if b[i] == b'+' || b[i] == b'-' {
-        i += 1;
-        let start = i;
-        while i < n && b[i].is_ascii_digit() {
-            i += 1;
-        }
-        if !(1..=2).contains(&(i - start)) {
-            return false;
-        }
-        if i == n {
+    for fmt in LOCAL_FMTS.iter() {
+        if PrimitiveDateTime::parse(s, fmt).is_ok() {
             return true;
         }
-        if b[i] == b':' {
-            i += 1;
-        }
-        if i + 2 > n || !b[i..i + 2].iter().all(|c| c.is_ascii_digit()) {
-            return false;
-        }
-        i += 2;
-        return i == n;
     }
-
-    false
+    Date::parse(s, &*DATE_FMT).is_ok()
 }
 
 #[cfg(test)]
@@ -149,21 +58,26 @@ mod tests {
     #[test]
     fn valid_datetimes() {
         for s in [
+            // bare date
             "2026-06-01",
-            "2026-6-1",
+            // local datetime — T separator
             "2026-06-01T12:00:00",
             "2026-06-01T12:00",
-            "2026-06-01T12:00:00Z",
-            "2026-06-01T12:00:00z",
-            "2026-06-01T12:00:00+05:30",
-            "2026-06-01T12:00:00-05:00",
-            "2026-06-01T12:00:00+5",
             "2026-06-01T12:00:00.5",
             "2026-06-01T12:00:00.123",
+            // local datetime — space separator
             "2026-06-01 12:00:00",
-            "2026-06-01 12:00:00 Z",
-            "2026-06-01 12:00:00 +05:30",
-            "2026-06-01\t12:00:00",
+            "2026-06-01 12:00",
+            "2026-06-01 12:00:00.5",
+            // RFC 3339 — UTC
+            "2026-06-01T12:00:00Z",
+            // RFC 3339 — offsets
+            "2026-06-01T12:00:00+05:30",
+            "2026-06-01T12:00:00-05:00",
+            "2026-06-01T12:00:00+00:00",
+            // RFC 3339 — fractional seconds
+            "2026-06-01T12:00:00.5Z",
+            "2026-06-01T12:00:00.123+05:30",
         ] {
             assert!(is_valid_datetime(s), "expected valid: {s}");
         }
@@ -180,10 +94,13 @@ mod tests {
             "2026-06-01T",
             "2026-06-01T12",
             "2026-06-01T12:",
-            "2026-06-01T12:0",
-            "2026-06-01T12:00:00 ",
+            "2026-06-01T12:0",   // single-digit minute
+            "2026-06-01T12:00:00 ", // trailing space
             "2026-06-01T12:00:00+",
             "2026-06-01T12:00:00X",
+            "2026-13-01",        // month out of range
+            "2026-02-30",        // calendar-invalid date (Feb 30)
+            "2026-6-1",          // single-digit month/day (not zero-padded)
         ] {
             assert!(!is_valid_datetime(s), "expected invalid: {s}");
         }
