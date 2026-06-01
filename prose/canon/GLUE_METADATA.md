@@ -40,7 +40,7 @@ identifiers do not include the `$` character.
 
 Helper contents (generated in `backends/typst/helper.rs` from `lib.typ.template`):
 - `data`: parsed JSON dictionary of all fields; a `__meta__` key injected by the backend carries the list of markdown and date fields to process, then is consumed by the helper before `data` is exposed to plates — plates never see `__meta__`
-- Markdown fields (`contentMediaType: text/markdown`) are auto-evaluated into Typst content; date fields (`format: date`) are converted to Typst `datetime`
+- Markdown fields (`contentMediaType: text/markdown`) are auto-evaluated into Typst content; date fields (`format: date-time`) are converted to Typst `datetime`
 
 ## Guarantees
 
