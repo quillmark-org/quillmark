@@ -1,8 +1,7 @@
 use crate::errors::{CliError, Result};
 use clap::Parser;
 use quillmark::Quillmark;
-use quillmark_core::quill::{CardSchema, FieldSchema, FieldType, QuillConfig};
-use quillmark_core::QuillValue;
+use quillmark_core::quill::{validate_schema_literal, CardSchema, FieldSchema, QuillConfig};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -161,9 +160,6 @@ pub fn execute(args: ValidateArgs) -> Result<()> {
                     quill.source().config().main.defaults().len()
                 );
             }
-
-            // Step 6: Validate extracted defaults match schema types
-            validate_defaults_against_schema(&quill, &config, &mut result);
         }
         Err(e) => {
             result.add_error(format!("Failed to load Quill: {}", e));
@@ -206,42 +202,26 @@ fn validate_field_schemas(
     context: &str,
 ) {
     for (field_name, field_schema) in fields {
-        // Validate default value type matches declared type
+        let path = format!("{context} '{field_name}'");
+
+        // Validate example and default via the shared conformance primitive.
+        if let Some(ref example) = field_schema.example {
+            for err in validate_schema_literal(field_schema, example, &path) {
+                result.add_error(format!("{path} example: {err}"));
+            }
+        }
         if let Some(ref default) = field_schema.default {
-            if let Some(type_mismatch) = check_type_mismatch(&field_schema.r#type, default) {
-                result.add_error(format!(
-                    "{} '{}': default value {} but field type is '{}'",
-                    context,
-                    field_name,
-                    type_mismatch,
-                    field_schema.r#type.as_str()
-                ));
+            for err in validate_schema_literal(field_schema, default, &path) {
+                result.add_error(format!("{path} default: {err}"));
             }
         }
 
-        // Validate enum values are strings if specified
+        // Warn about empty enum constraint and missing description.
         if let Some(ref enum_values) = field_schema.enum_values {
             if enum_values.is_empty() {
-                result.add_warning(format!(
-                    "{} '{}': enum constraint is empty",
-                    context, field_name
-                ));
-            }
-
-            // If there's a default, check it's in the enum
-            if let Some(ref default) = field_schema.default {
-                if let Some(default_str) = default.as_str() {
-                    if !enum_values.contains(&default_str.to_string()) {
-                        result.add_error(format!(
-                            "{} '{}': default value '{}' is not in enum values {:?}",
-                            context, field_name, default_str, enum_values
-                        ));
-                    }
-                }
+                result.add_warning(format!("{context} '{field_name}': enum constraint is empty"));
             }
         }
-
-        // Warn about missing description
         if field_schema
             .description
             .as_deref()
@@ -250,8 +230,7 @@ fn validate_field_schemas(
             .is_empty()
         {
             result.add_warning(format!(
-                "{} '{}': missing or empty description",
-                context, field_name
+                "{context} '{field_name}': missing or empty description"
             ));
         }
     }
@@ -277,116 +256,6 @@ fn validate_card_schema(card_name: &str, card_schema: &CardSchema, result: &mut 
     validate_field_schemas(&card_schema.fields, result, &context);
 }
 
-fn check_type_mismatch(field_type: &FieldType, value: &QuillValue) -> Option<String> {
-    let json_value = value.as_json();
-
-    match field_type {
-        FieldType::String => {
-            if !json_value.is_string() {
-                Some(format!(
-                    "is {} (not a string)",
-                    describe_json_type(json_value)
-                ))
-            } else {
-                None
-            }
-        }
-        FieldType::Number => {
-            if !json_value.is_number() {
-                Some(format!(
-                    "is {} (not a number)",
-                    describe_json_type(json_value)
-                ))
-            } else {
-                None
-            }
-        }
-        FieldType::Integer => {
-            if json_value.is_i64() || json_value.is_u64() {
-                None
-            } else {
-                Some(format!(
-                    "is {} (not an integer)",
-                    describe_json_type(json_value)
-                ))
-            }
-        }
-        FieldType::Boolean => {
-            if !json_value.is_boolean() {
-                Some(format!(
-                    "is {} (not a boolean)",
-                    describe_json_type(json_value)
-                ))
-            } else {
-                None
-            }
-        }
-        FieldType::Array => {
-            if !json_value.is_array() {
-                Some(format!(
-                    "is {} (not an array)",
-                    describe_json_type(json_value)
-                ))
-            } else {
-                None
-            }
-        }
-        FieldType::Object => {
-            if !json_value.is_object() {
-                Some(format!(
-                    "is {} (not an object)",
-                    describe_json_type(json_value)
-                ))
-            } else {
-                None
-            }
-        }
-        FieldType::DateTime | FieldType::Markdown => {
-            // Date/DateTime/Markdown are stored as strings
-            if !json_value.is_string() {
-                Some(format!(
-                    "is {} (not a string)",
-                    describe_json_type(json_value)
-                ))
-            } else {
-                None
-            }
-        }
-    }
-}
-
-fn describe_json_type(value: &serde_json::Value) -> &'static str {
-    match value {
-        serde_json::Value::Null => "null",
-        serde_json::Value::Bool(_) => "a boolean",
-        serde_json::Value::Number(_) => "a number",
-        serde_json::Value::String(_) => "a string",
-        serde_json::Value::Array(_) => "an array",
-        serde_json::Value::Object(_) => "an object",
-    }
-}
-
-fn validate_defaults_against_schema(
-    quill: &quillmark::Quill,
-    config: &QuillConfig,
-    result: &mut ValidationResult,
-) {
-    let defaults = quill.source().config().main.defaults();
-
-    for (field_name, default_value) in &defaults {
-        // Look up field type in config
-        if let Some(field_schema) = config.main.fields.get(field_name) {
-            if let Some(type_mismatch) = check_type_mismatch(&field_schema.r#type, default_value) {
-                result.add_error(format!(
-                    "extracted default for '{}' {}, expected '{}'",
-                    field_name,
-                    type_mismatch,
-                    field_schema.r#type.as_str()
-                ));
-            }
-        }
-    }
-}
 
 fn print_validation_result(result: &ValidationResult, verbose: bool) {
     let error_count = result.error_count();

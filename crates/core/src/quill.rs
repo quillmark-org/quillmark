@@ -14,6 +14,7 @@ mod types;
 pub(crate) mod validation;
 
 pub use config::{CoercionError, QuillConfig};
+pub use validation::{validate_schema_literal, ValidationError};
 pub use fill::zero_value;
 pub use ignore::QuillIgnore;
 pub use schema::build_transform_schema;

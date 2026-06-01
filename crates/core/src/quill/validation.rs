@@ -418,8 +418,6 @@ pub(crate) fn validate_field(
     value: &QuillValue,
     path: &str,
 ) -> Vec<ValidationError> {
-    let mut errors = Vec::new();
-
     // Sentinel detection runs before per-type coercion / validation.
     // Scalar fields carry the sentinel in the value cell; markdown carries
     // it as the trimmed content of the block scalar. On match, emit the
@@ -431,14 +429,15 @@ pub(crate) fn validate_field(
             text
         };
         if candidate == MUST_FILL_SENTINEL {
-            errors.push(ValidationError::MustFillUnset {
+            return vec![ValidationError::MustFillUnset {
                 path: path.to_string(),
                 expected: expected_type_name(&field.r#type).to_string(),
                 source: MustFillSource::Sentinel,
-            });
-            return errors;
+            }];
         }
     }
+
+    let mut errors = Vec::new();
 
     let type_valid = match field.r#type {
         FieldType::String | FieldType::Markdown => value.as_str().is_some(),
@@ -543,6 +542,125 @@ pub(crate) fn validate_field(
 
     if type_valid {
         if let (Some(allowed), Some(actual)) = (&field.enum_values, value.as_str()) {
+            if !allowed.contains(&actual.to_string()) {
+                errors.push(ValidationError::EnumViolation {
+                    path: path.to_string(),
+                    value: actual.to_string(),
+                    allowed: allowed.clone(),
+                });
+            }
+        }
+    }
+
+    errors
+}
+
+/// Validate a schema literal value — an `example:` or `default:` declared in
+/// Quill.yaml — against a field schema.
+///
+/// This is the shared conformance primitive for both load-time schema validation
+/// (checking that the schema author's own examples/defaults are well-typed) and
+/// any other caller that needs to validate a raw value against a schema without
+/// the document-authoring concepts of sentinels or required-field absence.
+///
+/// Unlike [`validate_field`], this function:
+/// - Does **not** detect the `<must-fill>` sentinel string (only meaningful for
+///   authored documents, not schema literals).
+/// - Does **not** emit `MustFillUnset` for absent object properties (partial
+///   examples/defaults are intentional and valid).
+/// - Recurses into array items and object properties for complete type checking.
+pub fn validate_schema_literal(
+    schema: &FieldSchema,
+    value: &QuillValue,
+    path: &str,
+) -> Vec<ValidationError> {
+    let mut errors = Vec::new();
+
+    let type_valid = match schema.r#type {
+        FieldType::String | FieldType::Markdown => value.as_str().is_some(),
+        FieldType::Integer => {
+            let json = value.as_json();
+            json.is_i64() || json.is_u64()
+        }
+        FieldType::Number => value.as_json().is_number(),
+        FieldType::Boolean => value.as_bool().is_some(),
+        FieldType::DateTime => {
+            if value.as_json().is_null() {
+                true
+            } else {
+                match value.as_str() {
+                    Some("") => true,
+                    Some(text) => {
+                        if is_valid_datetime(text) {
+                            true
+                        } else {
+                            errors.push(ValidationError::FormatViolation {
+                                path: path.to_string(),
+                                format: "datetime".to_string(),
+                            });
+                            false
+                        }
+                    }
+                    None => false,
+                }
+            }
+        }
+        FieldType::Array => match value.as_array() {
+            Some(items) => {
+                if let Some(item_schema) = &schema.items {
+                    for (idx, item) in items.iter().enumerate() {
+                        let row_path = format!("{}[{}]", path, idx);
+                        errors.extend(validate_schema_literal(
+                            item_schema,
+                            &QuillValue::from_json(item.clone()),
+                            &row_path,
+                        ));
+                    }
+                }
+                true
+            }
+            None => false,
+        },
+        FieldType::Object => match value.as_object() {
+            Some(object) => {
+                if let Some(properties) = &schema.properties {
+                    let mut property_names: Vec<&String> = properties.keys().collect();
+                    property_names.sort();
+                    for property_name in property_names {
+                        let property_schema = &properties[property_name];
+                        let property_path = child_path(path, property_name);
+                        if let Some(property_value) = object.get(property_name) {
+                            errors.extend(validate_schema_literal(
+                                property_schema,
+                                &QuillValue::from_json(property_value.clone()),
+                                &property_path,
+                            ));
+                        }
+                        // Absent properties are not an error for schema literals —
+                        // examples and defaults are allowed to be partial.
+                    }
+                }
+                true
+            }
+            None => false,
+        },
+    };
+
+    let format_error_already_reported =
+        matches!(schema.r#type, FieldType::DateTime) && value.as_str().is_some();
+
+    if !type_valid && !format_error_already_reported {
+        errors.push(ValidationError::TypeMismatch {
+            path: path.to_string(),
+            expected: expected_type_name(&schema.r#type).to_string(),
+            actual: yaml_scalar_type(value.as_json()).to_string(),
+            source_token: verbatim_yaml_scalar(value.as_json()),
+            default: None,
+        });
+    }
+
+    if type_valid {
+        if let (Some(allowed), Some(actual)) = (&schema.enum_values, value.as_str()) {
             if !allowed.contains(&actual.to_string()) {
                 errors.push(ValidationError::EnumViolation {
                     path: path.to_string(),

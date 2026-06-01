@@ -620,7 +620,12 @@ impl QuillConfig {
     ) {
         Self::validate_description_singleline(schema.description.as_deref(), owner_label, errors);
         Self::validate_enum_literals(schema, owner_label, errors);
-        Self::validate_example_default_types(schema, owner_label, errors);
+        if let Some(v) = &schema.example {
+            Self::validate_schema_slot("example", v, schema, owner_label, errors);
+        }
+        if let Some(v) = &schema.default {
+            Self::validate_schema_slot("default", v, schema, owner_label, errors);
+        }
         if let Some(props) = &schema.properties {
             for (name, prop) in props {
                 let nested = format!("{}.{}", owner_label, name);
@@ -633,176 +638,96 @@ impl QuillConfig {
         }
     }
 
-    /// Classify a YAML/JSON value into the "shape" label used in error messages.
+    /// Validate a single `example:` or `default:` literal against the declared
+    /// schema, pushing `quill::*`-namespaced [`Diagnostic`]s for any violations.
     ///
-    /// Distinguishes integers from floats so that the loaded value `20.04`
-    /// (which arrives as a JSON float) is reported as `float`, not `number`.
-    fn value_shape(value: &serde_json::Value) -> &'static str {
-        match value {
-            serde_json::Value::Null => "null",
-            serde_json::Value::Bool(_) => "boolean",
-            serde_json::Value::Number(n) => {
-                if n.is_i64() || n.is_u64() {
-                    "integer"
-                } else {
-                    "float"
-                }
-            }
-            serde_json::Value::String(_) => "string",
-            serde_json::Value::Array(_) => "array",
-            serde_json::Value::Object(_) => "object",
-        }
-    }
-
-    /// Returns true when `value` is type-compatible with the declared
-    /// [`FieldType`]. Mirrors JSON Schema semantics modulo a couple of project
-    /// conventions: dates/datetimes/markdown are author-time strings (we do
-    /// not have native YAML date/datetime types).
-    fn example_compatible(field_type: &FieldType, value: &serde_json::Value) -> bool {
-        // `null` is treated as "absent" — callers should not reach here with
-        // null, but if they do, accept it as compatible with any type.
-        if value.is_null() {
-            return true;
-        }
-        match field_type {
-            FieldType::String | FieldType::Markdown | FieldType::DateTime => value.is_string(),
-            FieldType::Integer => value.is_i64() || value.is_u64(),
-            FieldType::Number => value.is_number(),
-            FieldType::Boolean => value.is_boolean(),
-            FieldType::Array => value.is_array(),
-            FieldType::Object => value.is_object(),
-        }
-    }
-
-    /// Render a short, quoted preview of the value for use inside an error
-    /// message. Long strings/sequences/maps are truncated.
-    fn value_preview(value: &serde_json::Value) -> String {
-        let raw = match value {
-            serde_json::Value::String(s) => format!("\"{}\"", s),
-            other => other.to_string(),
-        };
-        const MAX: usize = 60;
-        if raw.chars().count() > MAX {
-            let truncated: String = raw.chars().take(MAX).collect();
-            format!("{}…", truncated)
-        } else {
-            raw
-        }
-    }
-
-    /// Reject `example:` / `default:` values whose YAML shape does not match
-    /// the declared `type:`. Catches the common "unquoted version string"
-    /// mistake (`example: 20.04` for `type: string`) at schema-load time,
-    /// before it reaches the LLM as a confusing copy-the-example failure.
-    ///
-    /// Also enforces that an `example:` on an enum-constrained field is one of
-    /// the declared enum values — a strictly tighter check than the type alone.
-    fn validate_example_default_types(
+    /// Delegates type/enum/format/recursion checking to
+    /// [`super::validation::validate_schema_literal`] — the shared conformance
+    /// primitive — then converts each [`ValidationError`] into a Quill.yaml
+    /// load-time diagnostic with the appropriate `quill::{slot}_*` error code
+    /// and author-friendly hint.
+    fn validate_schema_slot(
+        slot: &str,
+        value: &QuillValue,
         schema: &FieldSchema,
         owner_label: &str,
         errors: &mut Vec<Diagnostic>,
     ) {
-        let check = |slot: &str, value_opt: Option<&QuillValue>, errors: &mut Vec<Diagnostic>| {
-            let Some(qv) = value_opt else {
-                return;
-            };
-            let raw = qv.as_json();
-            if raw.is_null() {
-                return;
-            }
-            if !Self::example_compatible(&schema.r#type, raw) {
-                let actual = Self::value_shape(raw);
-                let declared = schema.r#type.as_str();
-                let preview = Self::value_preview(raw);
-                let hint = if actual == "float" || actual == "integer" {
-                    format!(
-                        "Quote the {slot} as \"{val}\" if the value is intentionally a string, \
-                         or change the field type to '{actual}'.",
-                        slot = slot,
-                        val = raw.to_string().trim_matches('"'),
-                        actual = if actual == "integer" { "integer" } else { "number" },
-                    )
-                } else if actual == "string" {
-                    format!(
-                        "Remove the quotes around the {slot} value to keep it a {declared}.",
-                        slot = slot,
-                        declared = declared,
-                    )
-                } else {
-                    format!(
-                        "Make the {slot} value a {declared}, or change the field type to match.",
-                        slot = slot,
-                        declared = declared,
-                    )
-                };
-                errors.push(
+        use super::validation::{validate_schema_literal, ValidationError};
+
+        for violation in validate_schema_literal(schema, value, owner_label) {
+            let diag = match &violation {
+                ValidationError::TypeMismatch {
+                    path,
+                    expected,
+                    actual,
+                    source_token,
+                    ..
+                } => {
+                    // validation.rs uses "number" for all non-integer JSON numbers;
+                    // display as "float" so messages match the YAML author's mental model.
+                    let display_actual = if actual == "number" { "float" } else { actual.as_str() };
+                    let preview = {
+                        const MAX: usize = 60;
+                        if source_token.chars().count() > MAX {
+                            let truncated: String = source_token.chars().take(MAX).collect();
+                            format!("{}…", truncated)
+                        } else {
+                            source_token.clone()
+                        }
+                    };
+                    let hint = if actual == "number" || actual == "integer" {
+                        let schema_type = if actual == "integer" { "integer" } else { "number" };
+                        format!(
+                            "Quote the {slot} as \"{raw}\" if the value is intentionally a \
+                             string, or change the field type to '{schema_type}'.",
+                            raw = source_token.trim_matches('"'),
+                        )
+                    } else if actual == "string" {
+                        format!(
+                            "Remove the quotes around the {slot} value to keep it a {expected}."
+                        )
+                    } else {
+                        format!(
+                            "Make the {slot} value a {expected}, or change the field type to match."
+                        )
+                    };
                     Diagnostic::new(
                         Severity::Error,
                         format!(
-                            "{owner} declares type '{declared}' but {slot} is {actual} ({preview}).",
-                            owner = owner_label,
-                            declared = declared,
-                            slot = slot,
-                            actual = actual,
-                            preview = preview,
+                            "{path} declares type '{expected}' but {slot} is {display_actual} ({preview})."
                         ),
                     )
                     .with_code(format!("quill::{slot}_type_mismatch"))
-                    .with_hint(hint),
-                );
-            }
-        };
-
-        check("example", schema.example.as_ref(), errors);
-        check("default", schema.default.as_ref(), errors);
-
-        // Enum membership check: when `enum:` is declared, the example/default
-        // must be one of the declared values (a tighter check than type alone).
-        if let Some(enum_vals) = &schema.enum_values {
-            let mut check_enum = |slot: &str, value_opt: Option<&QuillValue>| {
-                let Some(qv) = value_opt else {
-                    return;
-                };
-                let raw = qv.as_json();
-                if raw.is_null() {
-                    return;
+                    .with_hint(hint)
                 }
-                // Only meaningful when the value parsed as a string (which is
-                // the only shape an enum value can take). If it parsed as some
-                // other shape, the type-compat check above already flagged it.
-                let Some(s) = raw.as_str() else {
-                    return;
-                };
-                if !enum_vals.iter().any(|v| v == s) {
-                    errors.push(
-                        Diagnostic::new(
-                            Severity::Error,
-                            format!(
-                                "{owner} {slot} \"{value}\" is not one of the declared enum values [{values}].",
-                                owner = owner_label,
-                                slot = slot,
-                                value = s,
-                                values = enum_vals
-                                    .iter()
-                                    .map(|v| format!("\"{}\"", v))
-                                    .collect::<Vec<_>>()
-                                    .join(", "),
-                            ),
-                        )
-                        .with_code(format!("quill::{slot}_not_in_enum"))
-                        .with_hint(format!(
-                            "Set the {slot} to one of: {}.",
-                            enum_vals
-                                .iter()
-                                .map(|v| format!("\"{}\"", v))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        )),
-                    );
+                ValidationError::EnumViolation { path, value: val, allowed } => {
+                    let values_str = allowed
+                        .iter()
+                        .map(|v| format!("\"{}\"", v))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    Diagnostic::new(
+                        Severity::Error,
+                        format!(
+                            "{path} {slot} \"{val}\" is not one of the declared enum values [{values_str}]."
+                        ),
+                    )
+                    .with_code(format!("quill::{slot}_not_in_enum"))
+                    .with_hint(format!("Set the {slot} to one of: {values_str}."))
                 }
+                ValidationError::FormatViolation { path, format } => {
+                    Diagnostic::new(
+                        Severity::Error,
+                        format!("{path} {slot} has an invalid {format} format."),
+                    )
+                    .with_code(format!("quill::{slot}_format_violation"))
+                    .with_hint(format!("Provide a valid {format} value for the {slot}."))
+                }
+                // MustFillUnset, UnknownCard, BodyDisabled do not apply to schema literals.
+                _ => continue,
             };
-            check_enum("example", schema.example.as_ref());
-            check_enum("default", schema.default.as_ref());
+            errors.push(diag);
         }
     }
 
