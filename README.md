@@ -77,6 +77,7 @@ cargo run --example taro
 - **crates/bindings/cli** - Command-line interface
 - **crates/fixtures** - Test fixtures and sample Quill templates
 - **crates/fuzz** - Property-based fuzzing tests
+- **prose/canon** - Design documentation
 
 ## Contributing
 
