@@ -172,9 +172,8 @@ lowercase letters, digits, or underscores). The optional version selector is \
 (latest in that major series), or `@latest`; omitting the selector means latest.";
 
 /// The canonical `$quill` reference grammar as author-facing text. Single
-/// source of truth (see [`QUILL_REF_HINT`]) so every binding shows identical
-/// wording rather than re-stating the rule. The value never changes between
-/// calls.
+/// source of truth so every binding shows identical wording rather than
+/// re-stating the rule. The value never changes between calls.
 pub fn quill_ref_hint() -> &'static str {
     QUILL_REF_HINT
 }
