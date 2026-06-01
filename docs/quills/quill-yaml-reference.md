@@ -329,7 +329,7 @@ Invalid card-kind names include:
 | Property  | Type   | Description |
 |-----------|--------|-------------|
 | `enabled`     | bool   | Whether the body editor is enabled (default: true). When false, consumers must not accept or store body content for this card kind. |
-| `description` | string | Description shown in the body editor placeholder when the body is empty. |
+| `example`     | string | Example text shown in the body editor placeholder when the body is empty. |
 
 #### `title`
 
@@ -389,15 +389,15 @@ card_kinds:
         type: string
 ```
 
-#### `body.description`
+#### `body.example`
 
-Optional description displayed in the body editor placeholder area when the body is empty. Has no effect when `body.enabled` is false.
+Optional example text displayed in the body editor placeholder area when the body is empty. Has no effect when `body.enabled` is false.
 
 ```yaml
 card_kinds:
   experience:
     body:
-      description: Describe your role, responsibilities, and key achievements.
+      example: Describe your role, responsibilities, and key achievements.
     fields:
       company:
         type: string
