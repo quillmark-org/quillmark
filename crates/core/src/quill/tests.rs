@@ -1512,6 +1512,56 @@ main:
 }
 
 #[test]
+fn test_empty_properties_object_rejected() {
+    for (label, yaml_content) in [
+        (
+            "top-level object",
+            r#"
+quill:
+  name: obj_test
+  version: "1.0"
+  backend: typst
+  description: Test empty properties rejection
+
+main:
+  fields:
+    metadata:
+      type: object
+      properties: {}
+"#,
+        ),
+        (
+            "array items object",
+            r#"
+quill:
+  name: obj_test
+  version: "1.0"
+  backend: typst
+  description: Test empty properties rejection in array items
+
+main:
+  fields:
+    rows:
+      type: array
+      items:
+        type: object
+        properties: {}
+"#,
+        ),
+    ] {
+        let err = QuillConfig::from_yaml_with_warnings(yaml_content)
+            .expect_err(&format!("{label}: expected error for empty properties"));
+        assert_eq!(err.len(), 1, "{label}");
+        assert_eq!(err[0].severity, Severity::Error, "{label}");
+        assert_eq!(
+            err[0].code.as_deref(),
+            Some("quill::object_empty_properties"),
+            "{label}"
+        );
+    }
+}
+
+#[test]
 fn test_nested_object_in_typed_table_rejected_with_error() {
     let yaml_content = r#"
 quill:

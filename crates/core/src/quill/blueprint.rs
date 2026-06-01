@@ -1363,33 +1363,30 @@ main:
     }
 
     #[test]
-    fn empty_typed_object_and_table_render_type_valid_and_validate() {
-        // `properties: {}` is a legal (if degenerate) schema — the rejection
-        // targets *absent* properties (freeform), not empty ones. With no
-        // leaves to fill, the value cell must be the empty container (`{}` /
-        // `[]`), not a bare null that fails the field's own validation. Holds
-        // for both reference documents.
-        let config = cfg(r#"
+    fn empty_typed_object_and_table_rejected() {
+        // `properties: {}` is rejected — an object with no properties is
+        // useless and almost certainly a mistake.
+        for yaml in [
+            r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     addr: { type: object, properties: {} }
-    rows: { type: array,  items: { type: object, properties: {} } }
-"#);
-        for doc_md in [config.blueprint(), config.example()] {
+"#,
+            r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    rows: { type: array, items: { type: object, properties: {} } }
+"#,
+        ] {
+            let errs = QuillConfig::from_yaml_with_warnings(yaml)
+                .expect_err("expected error for empty properties");
             assert!(
-                doc_md.contains("addr: {}  # object\n"),
-                "object cell:\n{doc_md}"
+                errs.iter()
+                    .any(|e| e.code.as_deref() == Some("quill::object_empty_properties")),
+                "expected quill::object_empty_properties, got: {errs:?}"
             );
-            assert!(
-                doc_md.contains("rows: []  # array<object>\n"),
-                "table cell:\n{doc_md}"
-            );
-            let doc = Document::from_markdown(&doc_md)
-                .unwrap_or_else(|e| panic!("must parse: {e:?}\n---\n{doc_md}"));
-            config
-                .validate_document(&doc)
-                .unwrap_or_else(|errs| panic!("must validate: {errs:?}\n---\n{doc_md}"));
         }
     }
 

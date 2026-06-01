@@ -504,6 +504,15 @@ impl QuillConfig {
                         ),
                     );
                 };
+                if props.is_empty() {
+                    return err(
+                        "quill::object_empty_properties",
+                        format!(
+                            "Field '{owner}' has type: object with an empty properties map. \
+                             Declare at least one property, or remove the field entirely."
+                        ),
+                    );
+                }
                 // Object properties are leaves — scalars only.
                 props.iter().find_map(|(name, prop)| {
                     Self::validate_field_schema_shape(
