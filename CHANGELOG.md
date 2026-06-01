@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.87.0 - 2026-06-01
+
+- Consolidate schema literal validation into shared primitive (#680)
+- Remove FieldType::Date; unify datetime under YAML 1.1 timestamp grammar (#679)
+- Reject object fields with empty properties maps (#678)
+- Make object zero values shape-valid by recursively filling properties (#677)
+- Fix doc/comment nits from array-items review (#675)
+- docs: add overview index page to migration section (#674)
+- Collapse array/markdown handling into recursive passes (#673)
+- Make primitively typed arrays first-class via items (#672)
+- Migrate documentation hosting from Read the Docs to GitHub Pages (#671)
+- canon + docs: partial documents are first-class citizens (#670)
+
+
 ## v0.86.0 - 2026-05-31
 
 Documents now render even when incomplete, the canonical card-yaml fence
