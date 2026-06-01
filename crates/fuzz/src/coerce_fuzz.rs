@@ -37,7 +37,6 @@ fn arb_leaf_field_type() -> impl Strategy<Value = FieldType> {
         Just(FieldType::Number),
         Just(FieldType::Integer),
         Just(FieldType::Boolean),
-        Just(FieldType::Date),
         Just(FieldType::DateTime),
         Just(FieldType::Markdown),
     ]

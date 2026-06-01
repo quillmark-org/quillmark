@@ -112,9 +112,8 @@ pub enum FieldType {
     Boolean,
     Array,
     Object,
-    /// Formatted as string with date format
-    Date,
-    /// Formatted as string with date-time format
+    /// Formatted as string; validates against the YAML 1.1 timestamp grammar
+    /// (bare `YYYY-MM-DD` through full RFC 3339 with offset).
     DateTime,
     /// String with markdown content, `contentMediaType: text/markdown`
     Markdown,
@@ -130,7 +129,6 @@ impl FieldType {
             "boolean" => Some(FieldType::Boolean),
             "array" => Some(FieldType::Array),
             "object" => Some(FieldType::Object),
-            "date" => Some(FieldType::Date),
             "datetime" => Some(FieldType::DateTime),
             "markdown" => Some(FieldType::Markdown),
             _ => None,
@@ -145,7 +143,6 @@ impl FieldType {
             FieldType::Boolean => "boolean",
             FieldType::Array => "array",
             FieldType::Object => "object",
-            FieldType::Date => "date",
             FieldType::DateTime => "datetime",
             FieldType::Markdown => "markdown",
         }

@@ -1,10 +1,8 @@
 use indexmap::IndexMap;
-use time::format_description::well_known::Rfc3339;
-use time::{Date, OffsetDateTime};
 
 use crate::document::Document;
 use crate::error::{Diagnostic, Severity};
-use crate::quill::formats::DATE_FORMAT;
+use crate::quill::formats::is_valid_datetime;
 use crate::quill::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
 
@@ -450,27 +448,6 @@ pub(crate) fn validate_field(
         }
         FieldType::Number => value.as_json().is_number(),
         FieldType::Boolean => value.as_bool().is_some(),
-        FieldType::Date => {
-            if value.as_json().is_null() {
-                true
-            } else {
-                match value.as_str() {
-                    Some("") => true,
-                    Some(text) => {
-                        if is_valid_date(text) {
-                            true
-                        } else {
-                            errors.push(ValidationError::FormatViolation {
-                                path: path.to_string(),
-                                format: "date".to_string(),
-                            });
-                            false
-                        }
-                    }
-                    None => false,
-                }
-            }
-        }
         FieldType::DateTime => {
             if value.as_json().is_null() {
                 true
@@ -483,7 +460,7 @@ pub(crate) fn validate_field(
                         } else {
                             errors.push(ValidationError::FormatViolation {
                                 path: path.to_string(),
-                                format: "date-time".to_string(),
+                                format: "datetime".to_string(),
                             });
                             false
                         }
@@ -546,10 +523,10 @@ pub(crate) fn validate_field(
         },
     };
 
-    // A Date/DateTime with a string value already emitted a FormatViolation;
+    // A DateTime with a string value already emitted a FormatViolation;
     // skip the redundant TypeMismatch in that case.
     let format_error_already_reported =
-        matches!(field.r#type, FieldType::Date | FieldType::DateTime) && value.as_str().is_some();
+        matches!(field.r#type, FieldType::DateTime) && value.as_str().is_some();
 
     if !type_valid && !format_error_already_reported {
         errors.push(ValidationError::TypeMismatch {
@@ -579,17 +556,9 @@ pub(crate) fn validate_field(
     errors
 }
 
-fn is_valid_date(value: &str) -> bool {
-    Date::parse(value, &DATE_FORMAT).is_ok()
-}
-
-fn is_valid_datetime(value: &str) -> bool {
-    OffsetDateTime::parse(value, &Rfc3339).is_ok()
-}
-
 fn expected_type_name(field_type: &FieldType) -> &'static str {
     match field_type {
-        FieldType::String | FieldType::Markdown | FieldType::Date | FieldType::DateTime => "string",
+        FieldType::String | FieldType::Markdown | FieldType::DateTime => "string",
         FieldType::Integer => "integer",
         FieldType::Number => "number",
         FieldType::Boolean => "boolean",
@@ -814,19 +783,19 @@ main:
     }
 
     #[test]
-    fn validates_date_format() {
-        let config = config_with("    signed_on:\n      type: date\n      default: \"\"", "");
+    fn validates_datetime_bare_date() {
+        let config = config_with("    signed_on:\n      type: datetime\n      default: \"\"", "");
         let doc = doc_from_fm(&[("signed_on", json!("2026-04-13"))]);
         assert!(validate_typed_document(&config, &doc).is_ok());
     }
 
     #[test]
-    fn rejects_invalid_date_format() {
-        let config = config_with("    signed_on:\n      type: date\n      default: \"\"", "");
+    fn rejects_invalid_datetime_format() {
+        let config = config_with("    signed_on:\n      type: datetime\n      default: \"\"", "");
         let doc = doc_from_fm(&[("signed_on", json!("13-04-2026"))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::FormatViolation { path, format } if path == "signed_on" && format == "date")
+            matches!(e, ValidationError::FormatViolation { path, format } if path == "signed_on" && format == "datetime")
         }));
     }
 
@@ -841,18 +810,13 @@ main:
     }
 
     #[test]
-    fn rejects_invalid_datetime_format() {
+    fn validates_datetime_space_separator() {
         let config = config_with(
             "    created_at:\n      type: datetime\n      default: \"\"",
             "",
         );
         let doc = doc_from_fm(&[("created_at", json!("2026-04-13 19:24:55"))]);
-        let errors = validate_typed_document(&config, &doc).unwrap_err();
-        assert!(has_error(&errors, |e| matches!(
-            e,
-            ValidationError::FormatViolation { path, format }
-            if path == "created_at" && format == "date-time"
-        )));
+        assert!(validate_typed_document(&config, &doc).is_ok());
     }
 
     #[test]

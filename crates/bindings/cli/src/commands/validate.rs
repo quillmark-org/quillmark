@@ -341,7 +341,7 @@ fn check_type_mismatch(field_type: &FieldType, value: &QuillValue) -> Option<Str
                 None
             }
         }
-        FieldType::Date | FieldType::DateTime | FieldType::Markdown => {
+        FieldType::DateTime | FieldType::Markdown => {
             // Date/DateTime/Markdown are stored as strings
             if !json_value.is_string() {
                 Some(format!(

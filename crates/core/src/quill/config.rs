@@ -5,13 +5,10 @@ use std::error::Error as StdError;
 use indexmap::IndexMap;
 
 use serde::{Deserialize, Serialize};
-use time::format_description::well_known::Rfc3339;
-use time::{Date, OffsetDateTime};
 
 use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
-use super::formats::DATE_FORMAT;
 use super::{BodyCardSchema, CardSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
 
 /// Top-level configuration for a Quillmark project
@@ -343,7 +340,7 @@ impl QuillConfig {
                 }
                 Ok(value.clone())
             }
-            FieldType::Date | FieldType::DateTime => {
+            FieldType::DateTime => {
                 if json_value.is_null() {
                     return Ok(QuillValue::from_json(serde_json::Value::Null));
                 }
@@ -381,20 +378,14 @@ impl QuillConfig {
                     });
                 };
 
-                let valid = if field_schema.r#type == FieldType::Date {
-                    Date::parse(&text, &DATE_FORMAT).is_ok()
-                } else {
-                    OffsetDateTime::parse(&text, &Rfc3339).is_ok()
-                };
-
-                if valid {
+                if super::formats::is_valid_datetime(&text) {
                     Ok(QuillValue::from_json(serde_json::Value::String(text)))
                 } else {
                     Err(CoercionError::Uncoercible {
                         path: path.to_string(),
                         value: text,
                         target: field_schema.r#type.as_str().to_string(),
-                        reason: "invalid date/datetime format".to_string(),
+                        reason: "invalid datetime format".to_string(),
                     })
                 }
             }
@@ -674,10 +665,7 @@ impl QuillConfig {
             return true;
         }
         match field_type {
-            FieldType::String
-            | FieldType::Markdown
-            | FieldType::Date
-            | FieldType::DateTime => value.is_string(),
+            FieldType::String | FieldType::Markdown | FieldType::DateTime => value.is_string(),
             FieldType::Integer => value.is_i64() || value.is_u64(),
             FieldType::Number => value.is_number(),
             FieldType::Boolean => value.is_boolean(),

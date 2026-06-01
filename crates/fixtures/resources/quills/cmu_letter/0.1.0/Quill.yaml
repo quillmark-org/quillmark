@@ -58,7 +58,7 @@ main:
       description: The department or university website URL.
 
     date:
-      type: date
+      type: datetime
       ui:
         group: Advanced
       description: The date to appear on the letter.

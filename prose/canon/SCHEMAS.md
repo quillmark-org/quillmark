@@ -24,8 +24,7 @@ Supported field types:
 | `boolean` | `true` / `false` |
 | `array` | Ordered list; requires an `items:` element schema (e.g. `items: { type: string }` for `string[]`, `items: { type: object, properties: … }` for a typed table) |
 | `object` | Structured map; requires `properties:` |
-| `date` | `YYYY-MM-DD` |
-| `datetime` | ISO 8601 |
+| `datetime` | YAML 1.1 timestamp: bare `YYYY-MM-DD` through full RFC 3339 with offset; seconds optional |
 | `markdown` | Rich text; backends handle conversion |
 
 ## Type coercion

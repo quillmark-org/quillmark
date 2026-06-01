@@ -176,7 +176,7 @@ main:
       description: Font size for the memo text (pt). Decimal values (e.g. 11.5) are supported.
 
     date:
-      type: date
+      type: datetime
       default: ""
       ui:
         group: Additional
@@ -275,7 +275,7 @@ card_kinds:
           group: Additional
         description: List of office symbols to receive copies of this endorsement.
       date:
-        type: date
+        type: datetime
         default: ""
         ui:
           group: Additional

@@ -14,7 +14,7 @@
 //!   configured, regardless of cell or type).
 //! - **Inline `# …` annotation** on the value line is structural:
 //!   `# <type>[<format>][; delete-ok]`. Type is mandatory on every field.
-//!   Format slot uses angle brackets (`array<string>`, `date<YYYY-MM-DD>`,
+//!   Format slot uses angle brackets (`array<string>`, `datetime<YYYY-MM-DD[Thh:mm:ss]>`,
 //!   `enum<a | b | c>`). The optional `; delete-ok` tag marks **Endorsed**
 //!   cells whose rendered default is shippable as-is; its absence marks
 //!   **Must Fill** cells, which carry the `<must-fill>` sentinel in the
@@ -472,8 +472,7 @@ fn type_expression(field: &FieldSchema) -> String {
         FieldType::Boolean => "boolean".into(),
         FieldType::Object => "object".into(),
         FieldType::Markdown => "markdown".into(),
-        FieldType::Date => "date<YYYY-MM-DD>".into(),
-        FieldType::DateTime => "datetime<ISO 8601>".into(),
+        FieldType::DateTime => "datetime<YYYY-MM-DD[Thh:mm:ss]>".into(),
         // The element type comes from `items`; a scalar element gives
         // `array<string>`/`array<integer>`/`array<markdown>`, an object
         // element gives `array<object>`.
@@ -716,7 +715,7 @@ main:
     title: { type: string }
     size: { type: number, default: 11 }
     flag: { type: boolean, default: false }
-    issued: { type: date }
+    issued: { type: datetime }
     published: { type: datetime }
     refs: { type: array, default: [], items: { type: string } }
 "#)
@@ -724,8 +723,8 @@ main:
         assert!(t.contains("title: <must-fill>  # string\n"));
         assert!(t.contains("size: 11  # number; delete-ok\n"));
         assert!(t.contains("flag: false  # boolean; delete-ok\n"));
-        assert!(t.contains("issued: <must-fill>  # date<YYYY-MM-DD>\n"));
-        assert!(t.contains("published: <must-fill>  # datetime<ISO 8601>\n"));
+        assert!(t.contains("issued: <must-fill>  # datetime<YYYY-MM-DD[Thh:mm:ss]>\n"));
+        assert!(t.contains("published: <must-fill>  # datetime<YYYY-MM-DD[Thh:mm:ss]>\n"));
         assert!(t.contains("refs: []  # array<string>; delete-ok\n"));
     }
 
@@ -1110,7 +1109,7 @@ main:
     subject:
       type: string
     date:
-      type: date
+      type: datetime
     priority:
       type: string
       enum: [normal, urgent]
@@ -1178,7 +1177,7 @@ main:
     ratio:     { type: number }
     flag:      { type: boolean }
     refs:      { type: array, items: { type: string } }
-    issued:    { type: date }
+    issued:    { type: datetime }
     published: { type: datetime }
     severity:  { type: string, enum: [low, medium, high] }
     bio:       { type: markdown }
@@ -1203,8 +1202,8 @@ main:
         assert!(out.contains("ratio: 0  # number\n"));
         assert!(out.contains("flag: false  # boolean\n"));
         assert!(out.contains("refs: []  # array<string>\n"));
-        assert!(out.contains("issued: \"\"  # date<YYYY-MM-DD>\n"));
-        assert!(out.contains("published: \"\"  # datetime<ISO 8601>\n"));
+        assert!(out.contains("issued: \"\"  # datetime<YYYY-MM-DD[Thh:mm:ss]>\n"));
+        assert!(out.contains("published: \"\"  # datetime<YYYY-MM-DD[Thh:mm:ss]>\n"));
         assert!(out.contains("severity: low  # enum<low | medium | high>\n"));
         assert!(out.contains("bio: |-  # markdown\n  \n"));
         // Typed object / table leaves fall through to type-empty too.
@@ -1226,7 +1225,7 @@ main:
     count:    { type: integer }
     flag:     { type: boolean }
     refs:     { type: array, items: { type: string } }
-    issued:   { type: date }
+    issued:   { type: datetime }
     severity: { type: string, enum: [low, medium, high] }
     bio:      { type: markdown }
     addr:
@@ -1260,14 +1259,14 @@ main:
   fields:
     title:    { type: string, example: Quarterly Report }
     count:    { type: integer, example: 7 }
-    issued:   { type: date, example: "2030-06-01" }
+    issued:   { type: datetime, example: "2030-06-01" }
     refs:     { type: array, items: { type: string }, example: [alpha, beta] }
 "#)
         .example();
         assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
         assert!(out.contains("title: Quarterly Report  # string\n"), "{out}");
         assert!(out.contains("count: 7  # integer\n"), "{out}");
-        assert!(out.contains("issued: 2030-06-01  # date<YYYY-MM-DD>\n"), "{out}");
+        assert!(out.contains("issued: 2030-06-01  # datetime<YYYY-MM-DD[Thh:mm:ss]>\n"), "{out}");
         assert!(out.contains("refs:  # array<string>\n  - alpha\n  - beta\n"), "{out}");
     }
 
@@ -1402,7 +1401,7 @@ main:
     count:     { type: integer }
     severity:  { type: string, enum: [low, medium, high] }
     bio:       { type: markdown }
-    issued:    { type: date }
+    issued:    { type: datetime }
     refs:      { type: array, items: { type: string }, example: [first, second] }
 "#);
         let filled = config.example();

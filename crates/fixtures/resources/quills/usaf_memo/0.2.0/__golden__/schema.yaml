@@ -44,7 +44,7 @@ main:
       - SECRET
       - TOP SECRET
     date:
-      type: date
+      type: datetime
       description: YYYY-MM-DD. Leave blank to use today's date.
       default: ""
       ui:
@@ -265,7 +265,7 @@ card_kinds:
         items:
           type: string
       date:
-        type: date
+        type: datetime
         description: >-
           YYYY-MM-DD. Date the endorser signs/forwards the memo (per AFH 33-337 Ch. 14,
           this is distinct from the originating memo's date). Leave blank to use today's

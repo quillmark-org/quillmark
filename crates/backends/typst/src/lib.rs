@@ -231,25 +231,13 @@ fn is_markdown_array_field(field_schema: &serde_json::Value) -> bool {
             .unwrap_or(false)
 }
 
-/// Check if a field schema indicates a date field.
-///
-/// A field is considered a date if it has:
-/// - `type = "string"`
-/// - `format = "date"`
+/// Check if a field schema indicates a datetime field (`format = "date-time"`).
 fn is_date_field(field_schema: &serde_json::Value) -> bool {
-    let is_string = field_schema
-        .get("type")
-        .and_then(|v| v.as_str())
-        .map(|s| s == "string")
-        .unwrap_or(false);
-
-    let is_date_format = field_schema
+    field_schema
         .get("format")
         .and_then(|v| v.as_str())
-        .map(|s| s == "date")
-        .unwrap_or(false);
-
-    is_string && is_date_format
+        .map(|s| s == "date-time")
+        .unwrap_or(false)
 }
 
 /// Names of the markdown / `markdown[]` fields in a schema `properties` map —
@@ -530,23 +518,14 @@ mod tests {
 
     #[test]
     fn test_is_date_field() {
-        let date_schema = json!({
-            "type": "string",
-            "format": "date"
-        });
-        assert!(is_date_field(&date_schema));
-
-        let date_time_schema = json!({
+        let datetime_schema = json!({
             "type": "string",
             "format": "date-time"
         });
-        assert!(!is_date_field(&date_time_schema));
+        assert!(is_date_field(&datetime_schema));
 
-        let non_string_date_schema = json!({
-            "type": "number",
-            "format": "date"
-        });
-        assert!(!is_date_field(&non_string_date_schema));
+        let no_format_schema = json!({ "type": "string" });
+        assert!(!is_date_field(&no_format_schema));
     }
 
     #[test]
@@ -630,8 +609,8 @@ mod tests {
             "type": "object",
             "properties": {
                 "title": { "type": "string" },
-                "date": { "type": "string", "format": "date" },
-                "timestamp": { "type": "string", "format": "date-time" }
+                "issued": { "type": "string", "format": "date-time" },
+                "created_at": { "type": "string", "format": "date-time" }
             }
         }));
 
@@ -644,7 +623,10 @@ mod tests {
         let result = transform_markdown_fields(&fields, &schema);
         let meta = result.get("__meta__").expect("missing __meta__").as_json();
 
-        assert_eq!(meta["date_fields"], json!(["date"]));
+        let date_fields = meta["date_fields"].as_array().unwrap();
+        assert_eq!(date_fields.len(), 2);
+        assert!(date_fields.iter().any(|v| v == "issued"));
+        assert!(date_fields.iter().any(|v| v == "created_at"));
     }
 
     #[test]
@@ -656,8 +638,7 @@ mod tests {
                 "indorsement_card": {
                     "type": "object",
                     "properties": {
-                        "date": { "type": "string", "format": "date" },
-                        "created_at": { "type": "string", "format": "date-time" },
+                        "signed_on": { "type": "string", "format": "date-time" },
                         "$body": { "type": "string", "contentMediaType": "text/markdown" }
                     }
                 }
@@ -668,6 +649,6 @@ mod tests {
         let result = transform_markdown_fields(&fields, &schema);
         let meta = result.get("__meta__").expect("missing __meta__").as_json();
 
-        assert_eq!(meta["card_date_fields"]["indorsement"], json!(["date"]));
+        assert_eq!(meta["card_date_fields"]["indorsement"], json!(["signed_on"]));
     }
 }

@@ -77,16 +77,6 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
                     schema.insert("properties".to_string(), serde_json::Value::Object(props));
                 }
             }
-            FieldType::Date => {
-                schema.insert(
-                    "type".to_string(),
-                    serde_json::Value::String("string".to_string()),
-                );
-                schema.insert(
-                    "format".to_string(),
-                    serde_json::Value::String("date".to_string()),
-                );
-            }
             FieldType::DateTime => {
                 schema.insert(
                     "type".to_string(),

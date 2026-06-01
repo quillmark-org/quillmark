@@ -78,15 +78,14 @@ Form: **`# <type>[<format>][; delete-ok]`**
 
 - **Type slot** (mandatory, first): one of
   `string`, `integer`, `number`, `boolean`, `array`, `object`,
-  `markdown`, `date`, `datetime`, `enum`.
+  `markdown`, `datetime`, `enum`.
   Every field is labeled — there is no "self-evident" exemption.
   (`object` requires a `properties` map; freeform untyped objects are not
   supported. `object` also appears in the format slot of typed-table fields
   as `array<object>`.)
 - **Format slot** (optional, in `<…>` angle brackets): refines the type
   when the refinement carries information beyond the type name itself.
-  - `date<YYYY-MM-DD>`
-  - `datetime<ISO 8601>`
+  - `datetime<YYYY-MM-DD[Thh:mm:ss]>`
   - `array<string>`, `array<integer>`, `array<object>`, …
   - `enum<a | b | c>`
   - omitted for `string`, `integer`, `number`, `boolean`, `object`,
@@ -118,7 +117,7 @@ Examples:
 | `notes: ""  # string; delete-ok` | Endorsed empty string (the "skippable" cell, now Endorsed) |
 | `bio: |-` followed by indented `<must-fill>`, then `# markdown` | Must Fill markdown — see "Markdown fields render as block scalars" |
 | `recipient: <must-fill>  # array<string>` | Must Fill array of strings |
-| `date: <must-fill>  # date<YYYY-MM-DD>` | Must Fill date in `YYYY-MM-DD` format |
+| `date: <must-fill>  # datetime<YYYY-MM-DD[Thh:mm:ss]>` | Must Fill datetime |
 | `severity: <must-fill>  # enum<low \| medium \| high>` | Must Fill enum |
 | `$quill: cmu_letter@0.1.0` | quill binding metadata, emitted verbatim, do not modify |
 | `$kind: skill` followed by `# composable (0..N)` | repeat the entire `~~~` … `~~~` block per instance |
@@ -147,7 +146,7 @@ The sentinel lives where the LLM types the value:
 
 | Type | Sentinel position | Example |
 |---|---|---|
-| `string`, `integer`, `number`, `boolean`, `date`, `datetime`, `enum` | Value cell | `name: <must-fill>  # string` |
+| `string`, `integer`, `number`, `boolean`, `datetime`, `enum` | Value cell | `name: <must-fill>  # string` |
 | `array<scalar>` | Value cell | `recipient: <must-fill>  # array<string>` |
 | `markdown` | Inside the block scalar | `bio: |-` then `<must-fill>` |
 | `object` (typed dict) | Per-property recursion | leaves carry sentinels |
@@ -323,7 +322,7 @@ address: <must-fill>  # array<string>
 # e.g. www.ece.cmu.edu
 url: ""  # string; delete-ok
 # The date to appear on the letter.
-date: <must-fill>  # date<YYYY-MM-DD>
+date: <must-fill>  # datetime<YYYY-MM-DD[Thh:mm:ss]>
 ~~~
 
 Write main body here.

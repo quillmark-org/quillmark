@@ -575,7 +575,7 @@ default: "Default value"
 fn test_field_schema_single_example() {
     let yaml_str = r#"
 description: "Field schema with single example"
-type: "date"
+type: "datetime"
 example: "2024-01-15"
 "#;
     let quill_value = QuillValue::from_yaml_str(yaml_str).unwrap();
@@ -1662,7 +1662,7 @@ main:
     active:
       type: boolean
     signed_on:
-      type: date
+      type: datetime
     created_at:
       type: datetime
 "#;
@@ -2038,7 +2038,7 @@ quill:
 main:
   fields:
     signed_on:
-      type: date
+      type: datetime
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
@@ -2052,7 +2052,7 @@ main:
     assert!(matches!(
         error,
         super::CoercionError::Uncoercible { ref path, ref target, .. }
-        if path == "signed_on" && target == "date"
+        if path == "signed_on" && target == "datetime"
     ));
 }
 
