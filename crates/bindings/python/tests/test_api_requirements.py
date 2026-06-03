@@ -295,6 +295,67 @@ def test_update_card_body_out_of_range():
         doc.update_card_body(0, "x")
 
 
+def test_set_ext_adds_map():
+    """set_ext stores an opaque map readable via card['ext']."""
+    doc = Document.from_markdown(SIMPLE_MD)
+    doc.set_ext({"presentation": {"title": "Greeting"}})
+    assert doc.main["ext"] == {"presentation": {"title": "Greeting"}}
+
+
+def test_set_ext_rejects_non_dict():
+    """set_ext raises for non-dict values."""
+    doc = Document.from_markdown(SIMPLE_MD)
+    with pytest.raises(ValueError, match="must be a dict"):
+        doc.set_ext("nope")
+
+
+def test_ext_round_trips_through_markdown():
+    """$ext survives emit → re-parse."""
+    doc = Document.from_markdown(SIMPLE_MD)
+    doc.set_ext({"agent": {"pinned": True}})
+    reparsed = Document.from_markdown(doc.to_markdown())
+    assert reparsed.main["ext"]["agent"]["pinned"] is True
+
+
+def test_set_ext_namespace_preserves_siblings():
+    """set_ext_namespace merges without clobbering other namespaces."""
+    doc = Document.from_markdown(SIMPLE_MD)
+    doc.set_ext_namespace("presentation", {"title": "A"})
+    doc.set_ext_namespace("agent", {"pinned": True})
+    doc.set_ext_namespace("presentation", {"title": "B"})
+    assert doc.main["ext"] == {
+        "presentation": {"title": "B"},
+        "agent": {"pinned": True},
+    }
+
+
+def test_remove_ext_returns_previous_and_clears():
+    """remove_ext returns the previous map, then None."""
+    doc = Document.from_markdown(SIMPLE_MD)
+    doc.set_ext({"agent": {"n": 1}})
+    assert doc.remove_ext() == {"agent": {"n": 1}}
+    assert doc.main["ext"] is None
+    assert doc.remove_ext() is None
+
+
+def test_card_ext_mutators():
+    """update_card_ext / remove_card_ext target the card at index."""
+    doc = Document.from_markdown(MD_WITH_CARDS)
+    doc.update_card_ext(0, {"agent": {"note": "y"}})
+    assert doc.cards[0]["ext"] == {"agent": {"note": "y"}}
+    assert doc.remove_card_ext(0) == {"agent": {"note": "y"}}
+    assert doc.cards[0]["ext"] is None
+
+
+def test_card_ext_mutators_out_of_range():
+    """Card ext mutators raise IndexOutOfRange for a bad index."""
+    doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+        doc.update_card_ext(0, {})
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+        doc.remove_card_ext(0)
+
+
 def test_mutators_do_not_touch_warnings():
     """Mutators must not modify the warnings list."""
     doc = Document.from_markdown(SIMPLE_MD)

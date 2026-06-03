@@ -651,6 +651,61 @@ impl Document {
         })
     }
 
+    /// Replace the opaque `$ext` map on the main card. `value` must be a plain
+    /// object; throws otherwise. `$ext` carries out-of-band consumer state and
+    /// never reaches the rendered output. Pass `{}` to record an explicit
+    /// empty `$ext`.
+    #[wasm_bindgen(js_name = setExt)]
+    pub fn set_ext(&mut self, value: JsValue) -> Result<(), JsValue> {
+        let map = js_value_to_object(&value, "setExt")?;
+        self.inner.main_mut().set_ext(map);
+        Ok(())
+    }
+
+    /// Remove the `$ext` map from the main card, returning the previous map or
+    /// `undefined`.
+    #[wasm_bindgen(js_name = removeExt, unchecked_return_type = "Record<string, unknown> | undefined")]
+    pub fn remove_ext(&mut self) -> JsValue {
+        ext_map_to_js(self.inner.main_mut().remove_ext())
+    }
+
+    /// Merge `value` into the main card's `$ext` map under `namespace`, creating
+    /// the map when absent and replacing any existing value at that key. Sibling
+    /// namespaces are preserved, so independent consumers (`$ext.presentation`,
+    /// `$ext.agent`, …) don't clobber each other.
+    #[wasm_bindgen(js_name = setExtNamespace)]
+    pub fn set_ext_namespace(&mut self, namespace: &str, value: JsValue) -> Result<(), JsValue> {
+        let json: serde_json::Value = serde_wasm_bindgen::from_value(value).map_err(|e| {
+            WasmError::from(format!("setExtNamespace: invalid value: {}", e)).to_js_value()
+        })?;
+        self.inner.main_mut().set_ext_namespace(namespace, json);
+        Ok(())
+    }
+
+    /// Replace the `$ext` map on the card at `index`. Throws if out of range or
+    /// `value` is not a plain object.
+    #[wasm_bindgen(js_name = updateCardExt)]
+    pub fn update_card_ext(&mut self, index: usize, value: JsValue) -> Result<(), JsValue> {
+        let map = js_value_to_object(&value, "updateCardExt")?;
+        let len = self.inner.cards().len();
+        let card = self.inner.card_mut(index).ok_or_else(|| {
+            edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
+        })?;
+        card.set_ext(map);
+        Ok(())
+    }
+
+    /// Remove the `$ext` map from the card at `index`, returning the previous
+    /// map or `undefined`. Throws if out of range.
+    #[wasm_bindgen(js_name = removeCardExt, unchecked_return_type = "Record<string, unknown> | undefined")]
+    pub fn remove_card_ext(&mut self, index: usize) -> Result<JsValue, JsValue> {
+        let len = self.inner.cards().len();
+        let card = self.inner.card_mut(index).ok_or_else(|| {
+            edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
+        })?;
+        Ok(ext_map_to_js(card.remove_ext()))
+    }
+
     /// Replace the QUILL reference string. Throws if `ref_str` is invalid.
     #[wasm_bindgen(js_name = setQuillRef)]
     pub fn set_quill_ref(&mut self, ref_str: &str) -> Result<(), JsValue> {
@@ -796,6 +851,33 @@ fn edit_error_to_js(err: &quillmark_core::EditError) -> JsValue {
         quillmark_core::EditError::IndexOutOfRange { .. } => "IndexOutOfRange",
     };
     WasmError::from(format!("[EditError::{}] {}", variant, err)).to_js_value()
+}
+
+/// Deserialize a JS value into a JSON object map, rejecting non-objects. Used
+/// by the `$ext` mutators, whose value must be a plain object.
+fn js_value_to_object(
+    value: &JsValue,
+    ctx: &str,
+) -> Result<serde_json::Map<String, serde_json::Value>, JsValue> {
+    let json: serde_json::Value = serde_wasm_bindgen::from_value(value.clone())
+        .map_err(|e| WasmError::from(format!("{}: invalid value: {}", ctx, e)).to_js_value())?;
+    match json {
+        serde_json::Value::Object(map) => Ok(map),
+        _ => Err(WasmError::from(format!("{}: $ext must be a plain object", ctx)).to_js_value()),
+    }
+}
+
+/// Serialize an optional `$ext` map to a JS object, or `undefined` when `None`.
+fn ext_map_to_js(map: Option<serde_json::Map<String, serde_json::Value>>) -> JsValue {
+    match map {
+        Some(map) => {
+            let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+            serde_json::Value::Object(map)
+                .serialize(&serializer)
+                .unwrap_or(JsValue::UNDEFINED)
+        }
+        None => JsValue::UNDEFINED,
+    }
 }
 
 fn js_value_to_card(value: &JsValue) -> Result<quillmark_core::Card, JsValue> {

@@ -756,6 +756,59 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
   })
 })
 
+describe('Document editor surface — $ext mutators', () => {
+  it('setExt adds an opaque map readable via card.ext', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setExt({ presentation: { title: 'Greeting' } })
+    expect(doc.main.ext.presentation.title).toBe('Greeting')
+  })
+
+  it('setExt rejects non-object values', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    expect(() => doc.setExt('nope')).toThrow(/must be a plain object/)
+    expect(() => doc.setExt(42)).toThrow(/must be a plain object/)
+  })
+
+  it('$ext round-trips through toMarkdown', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setExt({ agent: { pinned: true } })
+    const reparsed = Document.fromMarkdown(doc.toMarkdown())
+    expect(reparsed.main.ext.agent.pinned).toBe(true)
+  })
+
+  it('setExtNamespace preserves sibling namespaces', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setExtNamespace('presentation', { title: 'A' })
+    doc.setExtNamespace('agent', { pinned: true })
+    doc.setExtNamespace('presentation', { title: 'B' })
+    expect(doc.main.ext.presentation.title).toBe('B')
+    expect(doc.main.ext.agent.pinned).toBe(true)
+  })
+
+  it('removeExt returns the previous map and clears it', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setExt({ agent: { n: 1 } })
+    expect(doc.removeExt().agent.n).toBe(1)
+    expect(doc.main.ext == null).toBe(true)
+    expect(doc.removeExt()).toBeUndefined()
+  })
+
+  it('card-level ext mutators target the card at index', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.pushCard({ kind: 'note', body: 'x' })
+    doc.updateCardExt(0, { agent: { note: 'y' } })
+    expect(doc.cards[0].ext.agent.note).toBe('y')
+    expect(doc.removeCardExt(0).agent.note).toBe('y')
+    expect(doc.cards[0].ext == null).toBe(true)
+  })
+
+  it('card-level ext mutators throw IndexOutOfRange', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    expect(() => doc.updateCardExt(5, {})).toThrow(/IndexOutOfRange/)
+    expect(() => doc.removeCardExt(5)).toThrow(/IndexOutOfRange/)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // open + session.render
 // ---------------------------------------------------------------------------

@@ -539,3 +539,97 @@ fn test_invariants_after_mutation_sequence() {
     );
     assert!(doc.main().payload().get("version").is_none());
 }
+
+// ── $ext mutators ──────────────────────────────────────────────────────────────
+
+#[test]
+fn test_set_ext_adds_map_and_strips_from_plate() {
+    let mut doc = make_doc();
+    let mut ext = serde_json::Map::new();
+    ext.insert(
+        "presentation".to_string(),
+        serde_json::json!({ "title": "Greeting" }),
+    );
+    doc.main_mut().set_ext(ext);
+
+    // Surfaced through the typed accessor.
+    assert_eq!(
+        doc.main().ext().unwrap()["presentation"]["title"].as_str(),
+        Some("Greeting")
+    );
+
+    // Never reaches the plate JSON backends consume.
+    let json = doc.to_plate_json();
+    assert!(json.get("$ext").is_none());
+    assert!(!json.as_object().unwrap().contains_key("$ext"));
+}
+
+#[test]
+fn test_set_ext_round_trips_through_markdown() {
+    let mut doc = make_doc();
+    let mut ext = serde_json::Map::new();
+    ext.insert("agent".to_string(), serde_json::json!({ "pinned": true }));
+    doc.main_mut().set_ext(ext);
+
+    let md = doc.to_markdown();
+    let reparsed = Document::from_markdown(&md).unwrap();
+    assert_eq!(
+        reparsed.main().ext().unwrap()["agent"]["pinned"].as_bool(),
+        Some(true)
+    );
+}
+
+#[test]
+fn test_remove_ext_returns_previous_and_clears() {
+    let mut doc = make_doc();
+    let mut ext = serde_json::Map::new();
+    ext.insert("agent".to_string(), serde_json::json!(1));
+    doc.main_mut().set_ext(ext);
+
+    let removed = doc.main_mut().remove_ext().unwrap();
+    assert_eq!(removed["agent"].as_i64(), Some(1));
+    assert!(doc.main().ext().is_none());
+    // Removing again is a no-op.
+    assert!(doc.main_mut().remove_ext().is_none());
+}
+
+#[test]
+fn test_set_ext_namespace_preserves_siblings() {
+    let mut doc = make_doc();
+    doc.main_mut()
+        .set_ext_namespace("presentation", serde_json::json!({ "title": "A" }));
+    doc.main_mut()
+        .set_ext_namespace("agent", serde_json::json!({ "pinned": true }));
+
+    let ext = doc.main().ext().unwrap();
+    assert_eq!(ext["presentation"]["title"].as_str(), Some("A"));
+    assert_eq!(ext["agent"]["pinned"].as_bool(), Some(true));
+
+    // Replacing one namespace leaves the other intact.
+    doc.main_mut()
+        .set_ext_namespace("presentation", serde_json::json!({ "title": "B" }));
+    let ext = doc.main().ext().unwrap();
+    assert_eq!(ext["presentation"]["title"].as_str(), Some("B"));
+    assert_eq!(ext["agent"]["pinned"].as_bool(), Some(true));
+}
+
+#[test]
+fn test_set_empty_ext_is_preserved() {
+    let mut doc = make_doc();
+    doc.main_mut().set_ext(serde_json::Map::new());
+    assert!(doc.main().ext().is_some());
+    let md = doc.to_markdown();
+    assert!(md.contains("$ext: {}"), "got: {md}");
+}
+
+#[test]
+fn test_ext_mutators_work_on_composable_cards() {
+    let mut doc = make_doc_with_cards();
+    doc.card_mut(0)
+        .unwrap()
+        .set_ext_namespace("agent", serde_json::json!({ "note": "x" }));
+    assert_eq!(
+        doc.cards()[0].ext().unwrap()["agent"]["note"].as_str(),
+        Some("x")
+    );
+}

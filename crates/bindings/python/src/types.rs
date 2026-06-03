@@ -416,6 +416,57 @@ impl PyDocument {
         }
     }
 
+    /// Replace the opaque `$ext` map on the main card. `value` must be a dict;
+    /// raises `ValueError` otherwise. `$ext` carries out-of-band consumer state
+    /// and never reaches the rendered output. Pass `{}` for an explicit empty
+    /// `$ext`.
+    fn set_ext(&mut self, value: Bound<'_, PyAny>) -> PyResult<()> {
+        let map = py_to_object(&value, "set_ext")?;
+        self.inner.main_mut().set_ext(map);
+        Ok(())
+    }
+
+    /// Remove the `$ext` map from the main card, returning the previous map or
+    /// `None`.
+    fn remove_ext<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        ext_map_to_py(py, self.inner.main_mut().remove_ext())
+    }
+
+    /// Merge `value` into the main card's `$ext` map under `namespace`, creating
+    /// the map when absent and replacing any existing value at that key. Sibling
+    /// namespaces are preserved so independent consumers don't clobber each other.
+    fn set_ext_namespace(&mut self, namespace: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
+        let json = py_to_json(&value)?;
+        self.inner.main_mut().set_ext_namespace(namespace, json);
+        Ok(())
+    }
+
+    /// Replace the `$ext` map on the card at `index`. Raises on out-of-range
+    /// index or non-dict value.
+    fn update_card_ext(&mut self, index: usize, value: Bound<'_, PyAny>) -> PyResult<()> {
+        let map = py_to_object(&value, "update_card_ext")?;
+        let len = self.inner.cards().len();
+        let card = self.inner.card_mut(index).ok_or_else(|| {
+            convert_edit_error(quillmark_core::EditError::IndexOutOfRange { index, len })
+        })?;
+        card.set_ext(map);
+        Ok(())
+    }
+
+    /// Remove the `$ext` map from the card at `index`, returning the previous
+    /// map or `None`. Raises if `index` is out of range.
+    fn remove_card_ext<'py>(
+        &mut self,
+        py: Python<'py>,
+        index: usize,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let len = self.inner.cards().len();
+        let card = self.inner.card_mut(index).ok_or_else(|| {
+            convert_edit_error(quillmark_core::EditError::IndexOutOfRange { index, len })
+        })?;
+        ext_map_to_py(py, card.remove_ext())
+    }
+
     fn set_quill_ref(&mut self, ref_str: &str) -> PyResult<()> {
         let qr: quillmark_core::QuillReference = ref_str.parse().map_err(|e| {
             PyValueError::new_err(format!("invalid QuillReference '{}': {}", ref_str, e))
@@ -846,6 +897,32 @@ fn py_to_json(value: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
     }
     let s = value.str()?.to_string();
     Ok(serde_json::Value::String(s))
+}
+
+/// Convert a Python value into a JSON object map, rejecting non-objects. Used
+/// by the `$ext` mutators, whose value must be a dict.
+fn py_to_object(
+    value: &Bound<'_, PyAny>,
+    ctx: &str,
+) -> PyResult<serde_json::Map<String, serde_json::Value>> {
+    match py_to_json(value)? {
+        serde_json::Value::Object(map) => Ok(map),
+        _ => Err(PyValueError::new_err(format!(
+            "{}: $ext must be a dict",
+            ctx
+        ))),
+    }
+}
+
+/// Convert an optional `$ext` map to a Python dict, or `None`.
+fn ext_map_to_py<'py>(
+    py: Python<'py>,
+    map: Option<serde_json::Map<String, serde_json::Value>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    match map {
+        Some(map) => json_to_py(py, &serde_json::Value::Object(map)),
+        None => py.None().into_bound_py_any(py),
+    }
 }
 
 fn py_dict_to_card(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::Card> {

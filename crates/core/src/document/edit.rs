@@ -7,8 +7,14 @@
 //! are immutable parse-time observations.
 //!
 //! Payload/body mutators live on [`Card`] (`set_field`, `set_fill`,
-//! `remove_field`, `replace_body`); [`Document`] keeps document-level ops
-//! (quill-ref, push/insert/remove/move card).
+//! `remove_field`, `set_ext`, `remove_ext`, `set_ext_namespace`,
+//! `replace_body`); [`Document`] keeps document-level ops (quill-ref,
+//! push/insert/remove/move card).
+//!
+//! The `$ext` mutators are unguarded: `$ext` is an opaque mapping that
+//! never reaches the plate JSON backends consume, so there is no field-name
+//! or kind invariant to enforce — only that the value is a mapping, which
+//! the types already guarantee.
 
 use unicode_normalization::UnicodeNormalization;
 
@@ -171,6 +177,37 @@ impl Card {
             return Err(EditError::InvalidFieldName(name.to_string()));
         }
         Ok(self.payload_mut().remove(name))
+    }
+
+    /// Replace the card's opaque `$ext` map wholesale, inserting it at the
+    /// canonical position (after `$quill`/`$kind`/`$id`, before user fields)
+    /// when none existed. Passing an empty map records an explicit `$ext: {}`.
+    ///
+    /// `$ext` carries out-of-band consumer state (editor renames, agent
+    /// annotations, …) and is stripped from [`Document::to_plate_json`], so a
+    /// write here can never affect a render. Any nested comments attached to a
+    /// replaced `$ext` are dropped.
+    pub fn set_ext(&mut self, value: serde_json::Map<String, serde_json::Value>) {
+        self.payload_mut().set_ext(value);
+    }
+
+    /// Remove the card's `$ext` map entirely, returning the previous map if
+    /// present. To clear a single namespace while keeping the rest, read
+    /// [`Card::ext`], drop the key, and [`Card::set_ext`] the result.
+    pub fn remove_ext(&mut self) -> Option<serde_json::Map<String, serde_json::Value>> {
+        self.payload_mut().take_ext()
+    }
+
+    /// Merge `value` into the card's `$ext` map under `namespace`, creating
+    /// the map when absent and replacing any existing value at that key.
+    ///
+    /// This is the recommended way to write `$ext`: it preserves sibling
+    /// namespaces, so independent consumers keying on their own slot
+    /// (`$ext.presentation`, `$ext.agent`, …) don't clobber each other.
+    pub fn set_ext_namespace(&mut self, namespace: impl Into<String>, value: serde_json::Value) {
+        let mut map = self.payload_mut().take_ext().unwrap_or_default();
+        map.insert(namespace.into(), value);
+        self.payload_mut().set_ext(map);
     }
 
     pub fn replace_body(&mut self, body: impl Into<String>) {
