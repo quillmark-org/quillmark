@@ -212,6 +212,14 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
             } else {
                 cleaned_lines.push(line.to_string());
             }
+
+            // A sequence item whose value is itself a block scalar (`- |-`):
+            // content lines are indented past the dash, so the dash line's
+            // indent is the boundary. Without this, headings / bullets / `key:`
+            // lines inside a `markdown[]` item would be mis-parsed as structure.
+            if is_block_scalar_header(after_dash_trimmed) {
+                block_scalar_indent = Some(indent);
+            }
             continue;
         }
 
@@ -792,6 +800,32 @@ mod tests {
             })
             .collect();
         assert_eq!(fields, vec!["bio", "name"]);
+    }
+
+    #[test]
+    fn sequence_item_block_scalar_content_is_not_parsed_as_structure() {
+        // A `markdown[]` array authored as `- |-` block-scalar items. Content
+        // lines (heading, bullet, `key:`) must survive verbatim, and the next
+        // item at the dash indent must still parse as a sequence item.
+        let input = "items:\n  - |-\n    ## Heading\n    - inner bullet\n    role: x\n  - second\n";
+        let out = prescan_fence_content(input);
+
+        assert!(
+            out.cleaned_yaml.contains("## Heading"),
+            "block-scalar heading inside a sequence item must survive: {:?}",
+            out.cleaned_yaml
+        );
+        assert!(out.cleaned_yaml.contains("- inner bullet"));
+        assert!(out.cleaned_yaml.contains("role: x"));
+        // The heading must not have been captured as a comment.
+        assert!(
+            !out.nested_comments
+                .iter()
+                .any(|c| c.text.contains("Heading")),
+            "block-scalar `#` line must not become a nested comment"
+        );
+        // `second` is preserved (the block ended at the next dash).
+        assert!(out.cleaned_yaml.contains("- second"));
     }
 
     #[test]

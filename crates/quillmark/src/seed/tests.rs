@@ -97,7 +97,9 @@ fn seeded_document_round_trips_through_markdown() {
         reparsed.main().payload().get("title").and_then(|v| v.as_str()),
         Some("FIRSTNAME LASTNAME"),
     );
-    assert_eq!(reparsed.main().body().trim(), "Main body text.");
+    // The markdown layer normalizes a body to a single trailing newline;
+    // assert the exact normalized form rather than hiding it behind a trim.
+    assert_eq!(reparsed.main().body(), "Main body text.\n");
 
     // The composable card survives with its kind and seeded value.
     assert_eq!(reparsed.cards().len(), 1);

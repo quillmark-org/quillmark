@@ -111,6 +111,25 @@ fn block_scalar_with_markdown_headings_round_trips() {
     assert_eq!(emitted, doc2.to_markdown(), "round-trip must be idempotent");
 }
 
+/// An array authored as `- |` block-scalar items (a `markdown[]` field)
+/// preserves `#` heading / `- ` bullet content per element. Regression for the
+/// sequence-item path of the block-scalar prescan fix.
+#[test]
+fn block_scalar_sequence_items_round_trip() {
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\nsections:\n  - |-\n    ## First\n    body one\n  - |-\n    ## Second\n    body two\n~~~\n";
+
+    let doc = Document::from_markdown(src).unwrap();
+    let arr = doc
+        .main()
+        .payload()
+        .get("sections")
+        .and_then(|v| v.as_array())
+        .expect("sections array");
+    assert_eq!(arr.len(), 2);
+    assert_eq!(arr[0].as_str(), Some("## First\nbody one"));
+    assert_eq!(arr[1].as_str(), Some("## Second\nbody two"));
+}
+
 // ── Category: Custom tags ─────────────────────────────────────────────────────
 
 /// `!fill` tags round-trip; other custom tags are rejected with a warning
