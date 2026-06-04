@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.87.3 - 2026-06-04
+
+- Complete and consolidate the $ext mutator surface (#689)
+
+
 ## Unreleased
 
 - Complete the `$ext` mutator matrix with namespace-scoped removal and
