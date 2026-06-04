@@ -36,14 +36,7 @@ use crate::Quill;
 /// `$quill` / `$kind` system metadata is attached by the caller.
 fn seed_parts(schema: &CardSchema) -> (Payload, String) {
     let mut names: Vec<&str> = schema.fields.keys().map(String::as_str).collect();
-    names.sort_by_key(|name| {
-        schema
-            .fields
-            .get(*name)
-            .and_then(|fs| fs.ui.as_ref())
-            .and_then(|ui| ui.order)
-            .unwrap_or(i32::MAX)
-    });
+    names.sort_by_key(|name| schema.fields[*name].ui_order());
 
     let mut fields: IndexMap<String, QuillValue> = IndexMap::new();
     for name in names {

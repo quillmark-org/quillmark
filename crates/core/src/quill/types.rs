@@ -213,6 +213,13 @@ struct FieldSchemaDef {
 }
 
 impl FieldSchema {
+    /// Sort key for blueprint/form/seed field ordering: `ui.order` when set,
+    /// else `i32::MAX` (declaration order is assigned to `ui.order` at parse
+    /// time, so the fallback is defensive). The one shared ordering producer.
+    pub fn ui_order(&self) -> i32 {
+        self.ui.as_ref().and_then(|u| u.order).unwrap_or(i32::MAX)
+    }
+
     pub fn new(name: String, r#type: FieldType, description: Option<String>) -> Self {
         Self {
             name,

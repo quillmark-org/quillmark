@@ -135,14 +135,7 @@ fn project_card(schema: &CardSchema, fields: &IndexMap<String, QuillValue>) -> F
     let mut values: IndexMap<String, FormFieldValue> = IndexMap::new();
 
     let mut field_names: Vec<&str> = schema.fields.keys().map(String::as_str).collect();
-    field_names.sort_by_key(|name| {
-        schema
-            .fields
-            .get(*name)
-            .and_then(|fs| fs.ui.as_ref())
-            .and_then(|ui| ui.order)
-            .unwrap_or(i32::MAX)
-    });
+    field_names.sort_by_key(|name| schema.fields[*name].ui_order());
 
     for field_name in field_names {
         let field_schema = &schema.fields[field_name];
