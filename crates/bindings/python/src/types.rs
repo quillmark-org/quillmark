@@ -426,8 +426,10 @@ impl PyDocument {
         Ok(())
     }
 
-    /// Remove the `$ext` map from the main card, returning the previous map or
-    /// `None`.
+    /// Remove the `$ext` map from the main card *entirely*, returning the
+    /// previous map or `None`. This is a blunt escape hatch that discards every
+    /// namespace at once — prefer `remove_ext_namespace` to clear only your own
+    /// slot while leaving sibling consumers' state intact.
     fn remove_ext<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         ext_map_to_py(py, self.inner.main_mut().remove_ext())
     }
@@ -441,30 +443,65 @@ impl PyDocument {
         Ok(())
     }
 
-    /// Replace the `$ext` map on the card at `index`. Raises on out-of-range
-    /// index or non-dict value.
-    fn update_card_ext(&mut self, index: usize, value: Bound<'_, PyAny>) -> PyResult<()> {
-        let map = py_to_object(&value, "update_card_ext")?;
-        let len = self.inner.cards().len();
-        let card = self.inner.card_mut(index).ok_or_else(|| {
-            convert_edit_error(quillmark_core::EditError::IndexOutOfRange { index, len })
-        })?;
-        card.set_ext(map);
+    /// Remove `namespace` from the main card's `$ext` map, returning the value
+    /// stored there or `None`. This is the recommended way to clear `$ext`
+    /// state: sibling namespaces survive, and when the last namespace is removed
+    /// the `$ext` entry is dropped entirely (not left as `$ext: {}`).
+    fn remove_ext_namespace<'py>(
+        &mut self,
+        py: Python<'py>,
+        namespace: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        ext_value_to_py(py, self.inner.main_mut().remove_ext_namespace(namespace))
+    }
+
+    /// Replace the `$ext` map on the composable card at `index`. Raises on
+    /// out-of-range index or non-dict value. Named to mirror `set_ext` on the
+    /// main card; `set_card_ext_namespace` is the sibling-safe alternative.
+    fn set_card_ext(&mut self, index: usize, value: Bound<'_, PyAny>) -> PyResult<()> {
+        let map = py_to_object(&value, "set_card_ext")?;
+        self.card_mut_or_raise(index)?.set_ext(map);
         Ok(())
     }
 
-    /// Remove the `$ext` map from the card at `index`, returning the previous
-    /// map or `None`. Raises if `index` is out of range.
+    /// Remove the `$ext` map from the composable card at `index` *entirely*,
+    /// returning the previous map or `None`. Raises if `index` is out of range.
+    /// Prefer `remove_card_ext_namespace` to clear only one consumer's slot.
     fn remove_card_ext<'py>(
         &mut self,
         py: Python<'py>,
         index: usize,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let len = self.inner.cards().len();
-        let card = self.inner.card_mut(index).ok_or_else(|| {
-            convert_edit_error(quillmark_core::EditError::IndexOutOfRange { index, len })
-        })?;
-        ext_map_to_py(py, card.remove_ext())
+        let prev = self.card_mut_or_raise(index)?.remove_ext();
+        ext_map_to_py(py, prev)
+    }
+
+    /// Merge `value` into the composable card's `$ext` map under `namespace`,
+    /// preserving sibling namespaces. The card-indexed twin of
+    /// `set_ext_namespace`. Raises if `index` is out of range.
+    fn set_card_ext_namespace(
+        &mut self,
+        index: usize,
+        namespace: &str,
+        value: Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let json = py_to_json(&value)?;
+        self.card_mut_or_raise(index)?
+            .set_ext_namespace(namespace, json);
+        Ok(())
+    }
+
+    /// Remove `namespace` from the composable card's `$ext` map, returning the
+    /// value stored there or `None`; clears `$ext` entirely once empty. The
+    /// card-indexed twin of `remove_ext_namespace`. Raises if out of range.
+    fn remove_card_ext_namespace<'py>(
+        &mut self,
+        py: Python<'py>,
+        index: usize,
+        namespace: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let removed = self.card_mut_or_raise(index)?.remove_ext_namespace(namespace);
+        ext_value_to_py(py, removed)
     }
 
     fn set_quill_ref(&mut self, ref_str: &str) -> PyResult<()> {
@@ -522,11 +559,9 @@ impl PyDocument {
         value: Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let qv = py_to_quillvalue(&value)?;
-        let len = self.inner.cards().len();
-        let card = self.inner.card_mut(index).ok_or_else(|| {
-            convert_edit_error(quillmark_core::EditError::IndexOutOfRange { index, len })
-        })?;
-        card.set_field(name, qv).map_err(convert_edit_error)
+        self.card_mut_or_raise(index)?
+            .set_field(name, qv)
+            .map_err(convert_edit_error)
     }
 
     fn remove_card_field<'py>(
@@ -535,23 +570,31 @@ impl PyDocument {
         index: usize,
         name: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let len = self.inner.cards().len();
-        let card = self.inner.card_mut(index).ok_or_else(|| {
-            convert_edit_error(quillmark_core::EditError::IndexOutOfRange { index, len })
-        })?;
-        match card.remove_field(name).map_err(convert_edit_error)? {
+        match self
+            .card_mut_or_raise(index)?
+            .remove_field(name)
+            .map_err(convert_edit_error)?
+        {
             Some(v) => quillvalue_to_py(py, &v),
             None => py.None().into_bound_py_any(py),
         }
     }
 
     fn update_card_body(&mut self, index: usize, body: &str) -> PyResult<()> {
-        let len = self.inner.cards().len();
-        let card = self.inner.card_mut(index).ok_or_else(|| {
-            convert_edit_error(quillmark_core::EditError::IndexOutOfRange { index, len })
-        })?;
-        card.replace_body(body);
+        self.card_mut_or_raise(index)?.replace_body(body);
         Ok(())
+    }
+}
+
+impl PyDocument {
+    /// Resolve a mutable composable card by index, raising the same
+    /// `IndexOutOfRange` error the other card mutators raise. Shared by the
+    /// card-indexed `$ext` mutators so they don't each re-spell the bounds check.
+    fn card_mut_or_raise(&mut self, index: usize) -> PyResult<&mut quillmark_core::Card> {
+        let len = self.inner.cards().len();
+        self.inner.card_mut(index).ok_or_else(|| {
+            convert_edit_error(quillmark_core::EditError::IndexOutOfRange { index, len })
+        })
     }
 }
 
@@ -914,15 +957,24 @@ fn py_to_object(
     }
 }
 
+/// Convert an optional JSON value to a Python object, or `None`. Backs both the
+/// namespaced reads (any value) and the whole-map reads (via `ext_map_to_py`).
+fn ext_value_to_py<'py>(
+    py: Python<'py>,
+    value: Option<serde_json::Value>,
+) -> PyResult<Bound<'py, PyAny>> {
+    match value {
+        Some(v) => json_to_py(py, &v),
+        None => py.None().into_bound_py_any(py),
+    }
+}
+
 /// Convert an optional `$ext` map to a Python dict, or `None`.
 fn ext_map_to_py<'py>(
     py: Python<'py>,
     map: Option<serde_json::Map<String, serde_json::Value>>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    match map {
-        Some(map) => json_to_py(py, &serde_json::Value::Object(map)),
-        None => py.None().into_bound_py_any(py),
-    }
+    ext_value_to_py(py, map.map(serde_json::Value::Object))
 }
 
 fn py_dict_to_card(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::Card> {

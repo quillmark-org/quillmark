@@ -614,6 +614,52 @@ fn test_set_ext_namespace_preserves_siblings() {
 }
 
 #[test]
+fn test_remove_ext_namespace_preserves_siblings() {
+    let mut doc = make_doc();
+    doc.main_mut()
+        .set_ext_namespace("presentation", serde_json::json!({ "title": "A" }));
+    doc.main_mut()
+        .set_ext_namespace("tutorial", serde_json::json!(["step-1", "step-2"]));
+
+    // Dropping one namespace returns its value and leaves the rest intact.
+    let removed = doc.main_mut().remove_ext_namespace("tutorial").unwrap();
+    assert_eq!(removed, serde_json::json!(["step-1", "step-2"]));
+    let ext = doc.main().ext().unwrap();
+    assert_eq!(ext["presentation"]["title"].as_str(), Some("A"));
+    assert!(!ext.contains_key("tutorial"));
+}
+
+#[test]
+fn test_remove_ext_namespace_drops_ext_when_empty() {
+    let mut doc = make_doc();
+    doc.main_mut()
+        .set_ext_namespace("tutorial", serde_json::json!(["step-1"]));
+
+    // Removing the last namespace clears `$ext` entirely — set/remove of a
+    // single namespace is a clean inverse for a card that had no `$ext`.
+    let removed = doc.main_mut().remove_ext_namespace("tutorial").unwrap();
+    assert_eq!(removed, serde_json::json!(["step-1"]));
+    assert!(doc.main().ext().is_none());
+}
+
+#[test]
+fn test_remove_ext_namespace_is_noop_when_absent() {
+    let mut doc = make_doc();
+    // No `$ext` at all.
+    assert!(doc.main_mut().remove_ext_namespace("tutorial").is_none());
+
+    // `$ext` present but without the requested key.
+    doc.main_mut()
+        .set_ext_namespace("presentation", serde_json::json!({ "title": "A" }));
+    assert!(doc.main_mut().remove_ext_namespace("tutorial").is_none());
+    // The unrelated namespace is untouched.
+    assert_eq!(
+        doc.main().ext().unwrap()["presentation"]["title"].as_str(),
+        Some("A")
+    );
+}
+
+#[test]
 fn test_set_empty_ext_is_preserved() {
     let mut doc = make_doc();
     doc.main_mut().set_ext(serde_json::Map::new());
@@ -632,4 +678,9 @@ fn test_ext_mutators_work_on_composable_cards() {
         doc.cards()[0].ext().unwrap()["agent"]["note"].as_str(),
         Some("x")
     );
+
+    // Namespace removal targets the same card and clears `$ext` once empty.
+    let removed = doc.card_mut(0).unwrap().remove_ext_namespace("agent");
+    assert_eq!(removed, Some(serde_json::json!({ "note": "x" })));
+    assert!(doc.cards()[0].ext().is_none());
 }

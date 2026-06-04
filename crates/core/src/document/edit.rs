@@ -8,8 +8,8 @@
 //!
 //! Payload/body mutators live on [`Card`] (`set_field`, `set_fill`,
 //! `remove_field`, `set_ext`, `remove_ext`, `set_ext_namespace`,
-//! `replace_body`); [`Document`] keeps document-level ops (quill-ref,
-//! push/insert/remove/move card).
+//! `remove_ext_namespace`, `replace_body`); [`Document`] keeps
+//! document-level ops (quill-ref, push/insert/remove/move card).
 //!
 //! The `$ext` mutators are unguarded: `$ext` is an opaque mapping that
 //! never reaches the plate JSON backends consume, so there is no field-name
@@ -191,9 +191,11 @@ impl Card {
         self.payload_mut().set_ext(value);
     }
 
-    /// Remove the card's `$ext` map entirely, returning the previous map if
-    /// present. To clear a single namespace while keeping the rest, read
-    /// [`Card::ext`], drop the key, and [`Card::set_ext`] the result.
+    /// Remove the card's `$ext` map *entirely*, returning the previous map if
+    /// present. This is a blunt escape hatch — it discards every namespace
+    /// (`$ext.presentation`, `$ext.agent`, …) at once. To clear consumer
+    /// state, prefer [`Card::remove_ext_namespace`], which drops only your
+    /// own slot and leaves sibling consumers' state intact.
     pub fn remove_ext(&mut self) -> Option<serde_json::Map<String, serde_json::Value>> {
         self.payload_mut().take_ext()
     }
@@ -208,6 +210,25 @@ impl Card {
         let mut map = self.payload_mut().take_ext().unwrap_or_default();
         map.insert(namespace.into(), value);
         self.payload_mut().set_ext(map);
+    }
+
+    /// Remove `namespace` from the card's `$ext` map, returning the value
+    /// that was stored there (or `None` when the map or the key was absent).
+    ///
+    /// This is the recommended way to clear `$ext` state: it is the
+    /// namespace-scoped inverse of [`Card::set_ext_namespace`] and preserves
+    /// sibling namespaces, where [`Card::remove_ext`] would wipe them all.
+    /// When removing the last namespace empties the map, the `$ext` entry is
+    /// dropped entirely (not left as `$ext: {}`), so
+    /// `set_ext_namespace(ns, v)` followed by `remove_ext_namespace(ns)`
+    /// restores a card that had no `$ext` to its original state.
+    pub fn remove_ext_namespace(&mut self, namespace: &str) -> Option<serde_json::Value> {
+        let mut map = self.payload_mut().take_ext()?;
+        let removed = map.remove(namespace);
+        if !map.is_empty() {
+            self.payload_mut().set_ext(map);
+        }
+        removed
     }
 
     pub fn replace_body(&mut self, body: impl Into<String>) {

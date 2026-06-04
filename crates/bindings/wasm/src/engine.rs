@@ -662,8 +662,10 @@ impl Document {
         Ok(())
     }
 
-    /// Remove the `$ext` map from the main card, returning the previous map or
-    /// `undefined`.
+    /// Remove the `$ext` map from the main card *entirely*, returning the
+    /// previous map or `undefined`. This is a blunt escape hatch that discards
+    /// every namespace at once — prefer `removeExtNamespace` to clear only your
+    /// own slot while leaving sibling consumers' state intact.
     #[wasm_bindgen(js_name = removeExt, unchecked_return_type = "Record<string, unknown> | undefined")]
     pub fn remove_ext(&mut self) -> JsValue {
         ext_map_to_js(self.inner.main_mut().remove_ext())
@@ -675,35 +677,67 @@ impl Document {
     /// `$ext.agent`, …) don't clobber each other.
     #[wasm_bindgen(js_name = setExtNamespace)]
     pub fn set_ext_namespace(&mut self, namespace: &str, value: JsValue) -> Result<(), JsValue> {
-        let json: serde_json::Value = serde_wasm_bindgen::from_value(value).map_err(|e| {
-            WasmError::from(format!("setExtNamespace: invalid value: {}", e)).to_js_value()
-        })?;
+        let json = js_value_to_json(value, "setExtNamespace")?;
         self.inner.main_mut().set_ext_namespace(namespace, json);
         Ok(())
     }
 
-    /// Replace the `$ext` map on the card at `index`. Throws if out of range or
-    /// `value` is not a plain object.
-    #[wasm_bindgen(js_name = updateCardExt)]
-    pub fn update_card_ext(&mut self, index: usize, value: JsValue) -> Result<(), JsValue> {
-        let map = js_value_to_object(&value, "updateCardExt")?;
-        let len = self.inner.cards().len();
-        let card = self.inner.card_mut(index).ok_or_else(|| {
-            edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
-        })?;
-        card.set_ext(map);
+    /// Remove `namespace` from the main card's `$ext` map, returning the value
+    /// stored there or `undefined`. This is the recommended way to clear `$ext`
+    /// state: sibling namespaces survive, and when the last namespace is removed
+    /// the `$ext` entry is dropped entirely (not left as `$ext: {}`).
+    #[wasm_bindgen(js_name = removeExtNamespace)]
+    pub fn remove_ext_namespace(&mut self, namespace: &str) -> JsValue {
+        json_value_to_js(self.inner.main_mut().remove_ext_namespace(namespace))
+    }
+
+    /// Replace the `$ext` map on the composable card at `index`. Throws if out
+    /// of range or `value` is not a plain object. Named to mirror `setExt` on
+    /// the main card; `setCardExtNamespace` is the sibling-safe alternative.
+    #[wasm_bindgen(js_name = setCardExt)]
+    pub fn set_card_ext(&mut self, index: usize, value: JsValue) -> Result<(), JsValue> {
+        let map = js_value_to_object(&value, "setCardExt")?;
+        self.card_mut_or_throw(index)?.set_ext(map);
         Ok(())
     }
 
-    /// Remove the `$ext` map from the card at `index`, returning the previous
-    /// map or `undefined`. Throws if out of range.
+    /// Remove the `$ext` map from the composable card at `index` *entirely*,
+    /// returning the previous map or `undefined`. Throws if out of range.
+    /// Prefer `removeCardExtNamespace` to clear only one consumer's slot.
     #[wasm_bindgen(js_name = removeCardExt, unchecked_return_type = "Record<string, unknown> | undefined")]
     pub fn remove_card_ext(&mut self, index: usize) -> Result<JsValue, JsValue> {
-        let len = self.inner.cards().len();
-        let card = self.inner.card_mut(index).ok_or_else(|| {
-            edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
-        })?;
-        Ok(ext_map_to_js(card.remove_ext()))
+        Ok(ext_map_to_js(self.card_mut_or_throw(index)?.remove_ext()))
+    }
+
+    /// Merge `value` into the composable card's `$ext` map under `namespace`,
+    /// preserving sibling namespaces. The card-indexed twin of `setExtNamespace`.
+    /// Throws if out of range or `value` cannot be serialized.
+    #[wasm_bindgen(js_name = setCardExtNamespace)]
+    pub fn set_card_ext_namespace(
+        &mut self,
+        index: usize,
+        namespace: &str,
+        value: JsValue,
+    ) -> Result<(), JsValue> {
+        let json = js_value_to_json(value, "setCardExtNamespace")?;
+        self.card_mut_or_throw(index)?
+            .set_ext_namespace(namespace, json);
+        Ok(())
+    }
+
+    /// Remove `namespace` from the composable card's `$ext` map, returning the
+    /// value stored there or `undefined`; clears `$ext` entirely once empty.
+    /// The card-indexed twin of `removeExtNamespace`. Throws if out of range.
+    #[wasm_bindgen(js_name = removeCardExtNamespace)]
+    pub fn remove_card_ext_namespace(
+        &mut self,
+        index: usize,
+        namespace: &str,
+    ) -> Result<JsValue, JsValue> {
+        Ok(json_value_to_js(
+            self.card_mut_or_throw(index)?
+                .remove_ext_namespace(namespace),
+        ))
     }
 
     /// Replace the QUILL reference string. Throws if `ref_str` is invalid.
@@ -796,26 +830,21 @@ impl Document {
         name: &str,
         value: JsValue,
     ) -> Result<(), JsValue> {
-        let len = self.inner.cards().len();
-        let card = self.inner.card_mut(index).ok_or_else(|| {
-            edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
-        })?;
-        let json: serde_json::Value = serde_wasm_bindgen::from_value(value).map_err(|e| {
-            WasmError::from(format!("updateCardField: invalid value: {}", e)).to_js_value()
-        })?;
+        let json = js_value_to_json(value, "updateCardField")?;
         let qv = quillmark_core::QuillValue::from_json(json);
-        card.set_field(name, qv).map_err(|e| edit_error_to_js(&e))
+        self.card_mut_or_throw(index)?
+            .set_field(name, qv)
+            .map_err(|e| edit_error_to_js(&e))
     }
 
     /// Remove a field on the card at `index`. Returns the removed value or
     /// `undefined`. Throws if `index` is out of range or `name` is invalid.
     #[wasm_bindgen(js_name = removeCardField)]
     pub fn remove_card_field(&mut self, index: usize, name: &str) -> Result<JsValue, JsValue> {
-        let len = self.inner.cards().len();
-        let card = self.inner.card_mut(index).ok_or_else(|| {
-            edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
-        })?;
-        let removed = card.remove_field(name).map_err(|e| edit_error_to_js(&e))?;
+        let removed = self
+            .card_mut_or_throw(index)?
+            .remove_field(name)
+            .map_err(|e| edit_error_to_js(&e))?;
         Ok(match removed {
             Some(v) => {
                 let serializer =
@@ -831,12 +860,21 @@ impl Document {
     /// Replace the body of the card at `index`. Throws if out of range.
     #[wasm_bindgen(js_name = updateCardBody)]
     pub fn update_card_body(&mut self, index: usize, body: &str) -> Result<(), JsValue> {
-        let len = self.inner.cards().len();
-        let card = self.inner.card_mut(index).ok_or_else(|| {
-            edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
-        })?;
-        card.replace_body(body);
+        self.card_mut_or_throw(index)?.replace_body(body);
         Ok(())
+    }
+}
+
+impl Document {
+    /// Resolve a mutable composable card by index, mapping out-of-range to the
+    /// same `IndexOutOfRange` JS error the other card mutators throw. Shared by
+    /// the card-indexed `$ext` mutators so they don't each re-spell the bounds
+    /// check.
+    fn card_mut_or_throw(&mut self, index: usize) -> Result<&mut quillmark_core::Card, JsValue> {
+        let len = self.inner.cards().len();
+        self.inner.card_mut(index).ok_or_else(|| {
+            edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
+        })
     }
 }
 
@@ -853,31 +891,42 @@ fn edit_error_to_js(err: &quillmark_core::EditError) -> JsValue {
     WasmError::from(format!("[EditError::{}] {}", variant, err)).to_js_value()
 }
 
-/// Deserialize a JS value into a JSON object map, rejecting non-objects. Used
-/// by the `$ext` mutators, whose value must be a plain object.
+/// Deserialize a JS value into an arbitrary JSON value. The namespaced `$ext`
+/// mutators take any shape (the consumer's slot may hold an array, scalar, or
+/// map); `js_value_to_object` adds the object constraint on top.
+fn js_value_to_json(value: JsValue, ctx: &str) -> Result<serde_json::Value, JsValue> {
+    serde_wasm_bindgen::from_value(value)
+        .map_err(|e| WasmError::from(format!("{}: invalid value: {}", ctx, e)).to_js_value())
+}
+
+/// Deserialize a JS value into a JSON object map, rejecting non-objects. Used by
+/// the whole-map `$ext` mutators, whose value must be a plain object.
 fn js_value_to_object(
     value: &JsValue,
     ctx: &str,
 ) -> Result<serde_json::Map<String, serde_json::Value>, JsValue> {
-    let json: serde_json::Value = serde_wasm_bindgen::from_value(value.clone())
-        .map_err(|e| WasmError::from(format!("{}: invalid value: {}", ctx, e)).to_js_value())?;
-    match json {
+    match js_value_to_json(value.clone(), ctx)? {
         serde_json::Value::Object(map) => Ok(map),
         _ => Err(WasmError::from(format!("{}: $ext must be a plain object", ctx)).to_js_value()),
     }
 }
 
-/// Serialize an optional `$ext` map to a JS object, or `undefined` when `None`.
-fn ext_map_to_js(map: Option<serde_json::Map<String, serde_json::Value>>) -> JsValue {
-    match map {
-        Some(map) => {
+/// Serialize an optional JSON value to JS, or `undefined` when `None`. Backs
+/// both the namespaced reads (any value) and the whole-map reads (via
+/// `ext_map_to_js`).
+fn json_value_to_js(value: Option<serde_json::Value>) -> JsValue {
+    match value {
+        Some(v) => {
             let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-            serde_json::Value::Object(map)
-                .serialize(&serializer)
-                .unwrap_or(JsValue::UNDEFINED)
+            v.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
         }
         None => JsValue::UNDEFINED,
     }
+}
+
+/// Serialize an optional `$ext` map to a JS object, or `undefined` when `None`.
+fn ext_map_to_js(map: Option<serde_json::Map<String, serde_json::Value>>) -> JsValue {
+    json_value_to_js(map.map(serde_json::Value::Object))
 }
 
 fn js_value_to_card(value: &JsValue) -> Result<quillmark_core::Card, JsValue> {

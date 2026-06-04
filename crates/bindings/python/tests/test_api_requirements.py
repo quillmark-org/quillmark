@@ -329,6 +329,21 @@ def test_set_ext_namespace_preserves_siblings():
     }
 
 
+def test_remove_ext_namespace_clears_one_slot_and_drops_when_empty():
+    """remove_ext_namespace clears one slot; the last one drops $ext."""
+    doc = Document.from_markdown(SIMPLE_MD)
+    doc.set_ext_namespace("presentation", {"title": "A"})
+    doc.set_ext_namespace("tutorial", ["step-1", "step-2"])
+    # Returns the removed value; siblings survive.
+    assert doc.remove_ext_namespace("tutorial") == ["step-1", "step-2"]
+    assert doc.main["ext"] == {"presentation": {"title": "A"}}
+    # Removing the last namespace clears $ext entirely.
+    doc.remove_ext_namespace("presentation")
+    assert doc.main["ext"] is None
+    # Absent namespace is a no-op returning None.
+    assert doc.remove_ext_namespace("nope") is None
+
+
 def test_remove_ext_returns_previous_and_clears():
     """remove_ext returns the previous map, then None."""
     doc = Document.from_markdown(SIMPLE_MD)
@@ -339,11 +354,22 @@ def test_remove_ext_returns_previous_and_clears():
 
 
 def test_card_ext_mutators():
-    """update_card_ext / remove_card_ext target the card at index."""
+    """set_card_ext / remove_card_ext target the card at index."""
     doc = Document.from_markdown(MD_WITH_CARDS)
-    doc.update_card_ext(0, {"agent": {"note": "y"}})
+    doc.set_card_ext(0, {"agent": {"note": "y"}})
     assert doc.cards[0]["ext"] == {"agent": {"note": "y"}}
     assert doc.remove_card_ext(0) == {"agent": {"note": "y"}}
+    assert doc.cards[0]["ext"] is None
+
+
+def test_card_ext_namespace_mutators():
+    """set/remove_card_ext_namespace preserve siblings and clear when empty."""
+    doc = Document.from_markdown(MD_WITH_CARDS)
+    doc.set_card_ext_namespace(0, "presentation", {"title": "A"})
+    doc.set_card_ext_namespace(0, "tutorial", ["step-1"])
+    assert doc.remove_card_ext_namespace(0, "tutorial") == ["step-1"]
+    assert doc.cards[0]["ext"] == {"presentation": {"title": "A"}}
+    doc.remove_card_ext_namespace(0, "presentation")
     assert doc.cards[0]["ext"] is None
 
 
@@ -351,9 +377,13 @@ def test_card_ext_mutators_out_of_range():
     """Card ext mutators raise IndexOutOfRange for a bad index."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
     with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
-        doc.update_card_ext(0, {})
+        doc.set_card_ext(0, {})
     with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
         doc.remove_card_ext(0)
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+        doc.set_card_ext_namespace(0, "a", {})
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+        doc.remove_card_ext_namespace(0, "a")
 
 
 def test_mutators_do_not_touch_warnings():

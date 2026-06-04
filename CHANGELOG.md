@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Complete the `$ext` mutator matrix with namespace-scoped removal and
+  card-indexed namespace ops: `remove_ext_namespace` (Rust `Card`,
+  `removeExtNamespace` WASM, `remove_ext_namespace` Python) plus
+  `setCardExtNamespace` / `removeCardExtNamespace`. Deleting a sub-namespace
+  is now the preferred way to clear `$ext` state — it preserves sibling
+  consumers' slots and drops `$ext` entirely once empty, where `removeExt`
+  remains a blunt clear-everything escape hatch.
+- **Breaking (bindings):** the whole-map card mutator `updateCardExt` /
+  `update_card_ext` is renamed `setCardExt` / `set_card_ext` for naming
+  consistency with `setExt` on the main card.
+
 ## v0.87.2 - 2026-06-03
 
 - Expose $ext write path through the editor surface and bindings (#687)

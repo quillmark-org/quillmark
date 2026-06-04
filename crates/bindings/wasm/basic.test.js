@@ -785,6 +785,21 @@ describe('Document editor surface — $ext mutators', () => {
     expect(doc.main.ext.agent.pinned).toBe(true)
   })
 
+  it('removeExtNamespace clears one slot and drops $ext once empty', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setExtNamespace('presentation', { title: 'A' })
+    doc.setExtNamespace('tutorial', ['step-1', 'step-2'])
+    // Returns the removed value; siblings survive.
+    expect(doc.removeExtNamespace('tutorial')).toEqual(['step-1', 'step-2'])
+    expect(doc.main.ext.presentation.title).toBe('A')
+    expect(doc.main.ext.tutorial).toBeUndefined()
+    // Removing the last namespace clears $ext entirely.
+    doc.removeExtNamespace('presentation')
+    expect(doc.main.ext == null).toBe(true)
+    // Absent namespace is a no-op returning undefined.
+    expect(doc.removeExtNamespace('nope')).toBeUndefined()
+  })
+
   it('removeExt returns the previous map and clears it', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.setExt({ agent: { n: 1 } })
@@ -796,16 +811,29 @@ describe('Document editor surface — $ext mutators', () => {
   it('card-level ext mutators target the card at index', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.pushCard({ kind: 'note', body: 'x' })
-    doc.updateCardExt(0, { agent: { note: 'y' } })
+    doc.setCardExt(0, { agent: { note: 'y' } })
     expect(doc.cards[0].ext.agent.note).toBe('y')
     expect(doc.removeCardExt(0).agent.note).toBe('y')
     expect(doc.cards[0].ext == null).toBe(true)
   })
 
+  it('card-level namespace mutators preserve siblings and clear when empty', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.pushCard({ kind: 'note', body: 'x' })
+    doc.setCardExtNamespace(0, 'presentation', { title: 'A' })
+    doc.setCardExtNamespace(0, 'tutorial', ['step-1'])
+    expect(doc.removeCardExtNamespace(0, 'tutorial')).toEqual(['step-1'])
+    expect(doc.cards[0].ext.presentation.title).toBe('A')
+    doc.removeCardExtNamespace(0, 'presentation')
+    expect(doc.cards[0].ext == null).toBe(true)
+  })
+
   it('card-level ext mutators throw IndexOutOfRange', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.updateCardExt(5, {})).toThrow(/IndexOutOfRange/)
+    expect(() => doc.setCardExt(5, {})).toThrow(/IndexOutOfRange/)
     expect(() => doc.removeCardExt(5)).toThrow(/IndexOutOfRange/)
+    expect(() => doc.setCardExtNamespace(5, 'a', {})).toThrow(/IndexOutOfRange/)
+    expect(() => doc.removeCardExtNamespace(5, 'a')).toThrow(/IndexOutOfRange/)
   })
 })
 
