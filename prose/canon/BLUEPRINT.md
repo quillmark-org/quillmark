@@ -394,6 +394,13 @@ fill strategy is an internal detail, not a public parameter.
   [SCHEMAS.md](SCHEMAS.md) § "Zero-filled render") is one shared producer —
   the `example` fallback above *and* the render floor for zero-filled render.
 
+Both outputs here are *strings*. A third projection, **seeding**, is the
+committed, structured twin of the `example` document: it materializes a real
+`Document` for editor consumers, committing each field's `example:` and leaving
+the rest absent (`example: → absent`, *not* `example: › default: › zero`) so the
+compilation layer fills `default: → zero` underneath. See
+[SCHEMAS.md](SCHEMAS.md) § "Document seeding".
+
 ## Bindings surface
 
 | Binding | Accessor |

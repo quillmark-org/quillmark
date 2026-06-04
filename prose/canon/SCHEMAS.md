@@ -99,6 +99,42 @@ The per-field zero value is honestly blank for every scalar type except
 is the object whose each property carries that property's zero (recursively). It is the one shared producer behind both this render floor
 and the `example` document's fallback (see [BLUEPRINT.md](BLUEPRINT.md)).
 
+## Document seeding
+
+**Seeding** builds a starter `Document` from the schema for editor consumers
+("new document"): each field that declares an `example:` is committed verbatim,
+and **every other field is left absent**. The seeding cascade is therefore
+`example: → absent` — absent fields are never written; they are interpolated at
+the compilation layer by [zero-filled render](#zero-filled-render) (`default:`,
+else type-empty zero), exactly as for any authored document.
+
+Committing *only* `example` is the whole design. `resolve_fields` already
+produces `default` and `zero` at compile time but **never `example`** (example
+is excluded from the render path — see [BLUEPRINT.md](BLUEPRINT.md)), so
+`example` is the one value the render layer cannot supply on its own. The seed
+commits exactly that and leaves everything the render layer already knows
+absent. This keeps a split-screen editor/preview consistent — the document
+carries real content, the preview renders it, and absent fields resolve
+identically in both panes — while writing nothing the
+[Non-persist invariant](#zero-filled-render) forbids.
+
+- **Composable cards** are seeded one instance per declared kind; `body.example`
+  fills the body when bodies are enabled.
+- **The main card** carries `$quill` and `$kind: main`, so a seed round-trips
+  through Markdown like an authored document.
+- **Provenance is deferred.** A seeded `example` is committed as ordinary
+  content, so the form view reports it as `source: "document"`, not `"missing"`
+  — a Must-Fill field seeded with an `example` reads as done. Distinguishing an
+  untouched seed from authored input is a future addition; correctness and
+  renderability do not depend on it.
+
+Seeding is the committed, structured counterpart of the `example` *string*
+document ([BLUEPRINT.md](BLUEPRINT.md) § "Two reference documents"), but with a
+different cascade: the string fills every field (`example: › default: › zero`)
+for illustration, whereas the seed commits only `example` and defers the rest to
+the render floor for fidelity. Implemented by `Quill::seed_document` (with
+`seed_main` / `seed_card`) in `quillmark`.
+
 ## Schema emission
 
 `QuillConfig::schema()` returns the structural schema as `serde_json::Value`. It includes:
