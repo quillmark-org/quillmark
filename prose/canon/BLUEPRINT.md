@@ -390,12 +390,9 @@ fill strategy is an internal detail, not a public parameter.
   field with *both* a default and an example shows its example here but
   its default on the render path: the example optimizes for illustration,
   render for fidelity.
-- The per-field **zero value** (`""`, `0`, `false`, `[]`, first enum
-  variant; an `object` with `properties` recurses to a shape-valid object
-  whose every property is zero-filled, while a property-less object degrades
-  to `{}`; `quillmark_core::quill::zero_value`) is one shared producer — the
-  example fallback above *and* the render floor for zero-filled render (see
-  [SCHEMAS.md](SCHEMAS.md) § "Zero-filled render").
+- The per-field **zero value** (`zero_value`, defined in
+  [SCHEMAS.md](SCHEMAS.md) § "Zero-filled render") is one shared producer —
+  the `example` fallback above *and* the render floor for zero-filled render.
 
 ## Bindings surface
 
@@ -419,26 +416,12 @@ fixture.
 
 ## Authoring guidance
 
-When designing a `Quill.yaml` schema, choose between Must Fill and
-Endorsed per field:
-
-- **Declare `default:`** when the value is what the *majority* of authors
-  want — including a type-empty value like `""`, `[]`, `false`, or `0`.
-  Most authors want it, so the field can be omitted and the default is
-  interpolated for them. The field becomes Endorsed and the blueprint
-  carries `; delete-ok`.
-- **Omit `default:`** when there is no value most authors want — the quill
-  author has endorsed nothing, so the field becomes Must Fill and the
-  blueprint carries the `<must-fill>` sentinel as a signal to LLMs and
-  authors. Filling it produces a more meaningful document; leaving it absent
-  zero-fills at render.
-- **Use `example:`** when a value matches the semantic and type shape of
-  what the author wants but is *not* the value they'd want most of the
-  time. It documents shape, not the choice — orthogonal to the cell
-  decision, it appears in the leading `# e.g.` line for any cell and never
-  renders as the value.
-
-This is documentation, not enforcement.
+Choosing **Must Fill vs. Endorsed** per field (declare a `default:` or not)
+and **when to reach for `example:`** is schema-authoring guidance owned by
+[SCHEMAS.md](SCHEMAS.md) § "`default` and `example`" and § "Must-Fill vs.
+Endorsed fields". The blueprint is where that choice becomes visible: an
+Endorsed field renders its default tagged `; delete-ok`; a Must Fill field
+renders the `<must-fill>` sentinel.
 
 ### Writing the literal string `<must-fill>` as content
 

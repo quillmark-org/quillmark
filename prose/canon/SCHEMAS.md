@@ -75,8 +75,8 @@ Rendering and the *completeness verdict* are orthogonal. The render path
 (`compile_data` / `resolve_fields` in `quillmark::orchestration`) uses
 **zero-filled render**: every absent schema field is resolved by precedence
 — an authored value, else the `default:`, else the type-empty zero value
-(`zero_value`; see [BLUEPRINT.md](BLUEPRINT.md)) — in the plate-JSON
-projection that feeds the backend **only, never in the persisted document**.
+(`zero_value`, defined below) — in the plate-JSON projection that feeds the
+backend **only, never in the persisted document**.
 
 - **Incomplete is renderable.** A document that merely omits a Must Fill
   field renders fine: the field is zero-filled in the projection, so
@@ -125,7 +125,7 @@ encode opposite author intents:
 
 - **`default`** is the value the *majority* of authors want. Because most
   authors want it, the field can be omitted entirely: at render time the
-  default is interpolated for any field the document leaves out (an
+  default fills any field the document leaves out (an
   authored value always wins — `resolve_fields` in
   `quillmark::orchestration`). A field with a `default:` is **Endorsed** — the
   rendered value is shippable as-is — and the blueprint tags it
