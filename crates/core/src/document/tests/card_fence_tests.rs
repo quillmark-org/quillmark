@@ -3,7 +3,7 @@
 //! Coverage:
 //! - Composable cards declared with `$kind:` parse to `Card`s; `$kind` is optional.
 //! - Every card round-trips to the canonical bare `~~~` form.
-//! - The legacy `~~~card-yaml` opener is still accepted on input.
+//! - The `~~~card-yaml` opener is accepted on input as a non-canonical alias.
 //! - Ordinary fenced code blocks and the blank-line rule for `~~~` openers.
 //!
 //! Parse-error and metadata-validation cases live in `assemble_tests.rs`.
@@ -109,7 +109,7 @@ fn card_fence_without_kind_is_allowed() {
 #[test]
 fn bare_tilde_fence_opens_a_card_yaml_block() {
     // The canonical opener is a bare `~~~` (no info string). It parses the
-    // same as the legacy `~~~card-yaml` alias.
+    // same as the `~~~card-yaml` alias.
     let src =
         "~~~\n$quill: q\n$kind: main\ntitle: Hi\n~~~\n\nBody.\n\n~~~\n$kind: note\nname: N\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();

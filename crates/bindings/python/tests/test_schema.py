@@ -117,16 +117,16 @@ def test_blueprint_endorsed_delete_ok(tmp_path):
 
 
 def test_blueprint_no_legacy_required_optional_tags(tmp_path):
-    """Old `; required` / `; optional` role tags are gone from the grammar."""
+    """The blueprint grammar has no `; required` / `; optional` role tags."""
     quill = make_quill(tmp_path)
     bp = quill.blueprint
 
-    # The legacy role tags are dead — never emitted.
+    # Role tags are never emitted.
     assert "; required" not in bp, (
-        f"legacy `; required` tag must not appear in blueprint:\n{bp}"
+        f"`; required` tag must not appear in blueprint:\n{bp}"
     )
     assert "; optional" not in bp, (
-        f"legacy `; optional` tag must not appear in blueprint:\n{bp}"
+        f"`; optional` tag must not appear in blueprint:\n{bp}"
     )
 
 
@@ -194,15 +194,13 @@ def test_render_reports_must_fill_sentinel(tmp_path):
 
 
 def test_absent_unendorsed_does_not_emit_legacy_codes(tmp_path):
-    """The legacy ``validation::missing_required`` code must be gone.
+    """An absent Unendorsed field surfaces ``validation::field_absent``.
 
-    The same condition (absent Unendorsed field) must surface the new
-    ``validation::field_absent`` code instead. The intermediate codes
-    ``validation::required_field_absent`` and ``validation::unfilled_placeholder``
-    were also retired in favor of ``validation::field_absent`` and
-    ``validation::must_fill_sentinel``. Absence is a non-fatal signal (zero-filled
-    render — ``prose/canon/SCHEMAS.md``) carried by ``quill.validate``, so the
-    codes are checked there rather than on a render error.
+    Absence is a non-fatal signal (zero-filled render —
+    ``prose/canon/SCHEMAS.md``) carried by ``quill.validate``, so the code is
+    checked there rather than on a render error. The assertions also pin that
+    ``validation::missing_required``, ``validation::required_field_absent``, and
+    ``validation::unfilled_placeholder`` never appear.
     """
     quill = make_quill(tmp_path)
     md = (
@@ -217,22 +215,19 @@ def test_absent_unendorsed_does_not_emit_legacy_codes(tmp_path):
     result = quill.render(doc, OutputFormat.PDF)
     assert len(result.artifacts) > 0
 
-    # the validate surface carries the canonical code, never the legacy ones
+    # the validate surface carries only the canonical code
     codes = [d.get("code") for d in quill.validate(doc)]
     assert "validation::field_absent" in codes, (
         f"expected canonical field_absent; got: {codes}"
     )
     assert "validation::missing_required" not in codes, (
-        "legacy code `validation::missing_required` must no longer appear; "
-        f"got: {codes}"
+        f"`validation::missing_required` must not appear; got: {codes}"
     )
     assert "validation::required_field_absent" not in codes, (
-        "retired code `validation::required_field_absent` must no longer "
-        f"appear; got: {codes}"
+        f"`validation::required_field_absent` must not appear; got: {codes}"
     )
     assert "validation::unfilled_placeholder" not in codes, (
-        "retired code `validation::unfilled_placeholder` must no longer "
-        f"appear; got: {codes}"
+        f"`validation::unfilled_placeholder` must not appear; got: {codes}"
     )
 
 

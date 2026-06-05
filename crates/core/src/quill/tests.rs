@@ -1143,7 +1143,7 @@ ui:
 
 #[test]
 fn test_parse_card_field_type() {
-    // Test that FieldSchema no longer supports type = "card" (cards are in CardSchema now)
+    // FieldSchema does not support type = "card"; cards belong to CardSchema.
     let yaml = r#"
 type: "string"
 description: "A simple string field"
@@ -1330,7 +1330,7 @@ card_kinds:
 
 #[test]
 fn test_quill_config_ordering_with_cards() {
-    // Test that fields have proper UI ordering (cards no longer have card-level ordering)
+    // Test that fields have proper UI ordering (ordering is field-level, not card-level)
     let yaml_content = r#"
 quill:
   name: ordering_test
@@ -1884,8 +1884,8 @@ main:
 
 #[test]
 fn test_array_bare_properties_rejected() {
-    // A bare `properties` map on an array (the pre-`items` typed-table form)
-    // is no longer accepted — element typing goes under `items`.
+    // A bare `properties` map on an array is rejected — element typing goes
+    // under `items`.
     let yaml_content = r#"
 quill:
   name: array_bare_props
@@ -2592,7 +2592,7 @@ main:
 
 #[test]
 fn body_example_bare_triple_dash_is_not_a_fence() {
-    // A bare `---` thematic break is no longer a metadata fence — allowed.
+    // A bare `---` thematic break is not a metadata fence — allowed.
     let yaml = r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -2918,7 +2918,7 @@ fn markdown_type_mismatch_reports_markdown_not_string() {
 
 #[test]
 fn type_date_is_rejected() {
-    // `type: date` was removed in 0.87.0; schemas declaring it must fail to
+    // `type: date` is not a valid field type; schemas declaring it must fail to
     // load with a parse error, not silently accept or coerce the field.
     let yaml = r#"
 quill:

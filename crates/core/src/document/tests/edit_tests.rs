@@ -86,8 +86,8 @@ fn test_edit_error_display() {
 
 #[test]
 fn test_document_set_field_rejects_legacy_uppercase_names() {
-    // Names that used to be reserved sentinels — now rejected by the
-    // field-name regex like any other uppercase or `$`-prefixed input.
+    // Uppercase and `$`-prefixed names are rejected by the field-name regex
+    // like any other invalid input.
     for name in ["BODY", "CARDS", "QUILL", "CARD", "$body", "$cards"] {
         let mut doc = make_doc();
         let result = doc.main_mut().set_field(name, qv("value"));
@@ -141,8 +141,8 @@ fn test_document_remove_field_absent() {
 
 #[test]
 fn test_document_remove_field_legacy_uppercase_rejected() {
-    // Symmetric with set_field: the legacy uppercase sentinels are now
-    // rejected like any other invalid field name.
+    // Symmetric with set_field: uppercase names are rejected like any other
+    // invalid field name.
     let mut doc = make_doc();
     for name in ["BODY", "CARDS", "QUILL", "CARD"] {
         match doc.main_mut().remove_field(name) {

@@ -6,8 +6,8 @@ const enc = new TextEncoder()
 
 // Minimal font shipped with quillmark fixtures, loaded once. The Typst world
 // rejects compilation when no fonts are present, so every test quill needs at
-// least one — quills are responsible for shipping their own fonts now that
-// quillmark-typst no longer embeds a default fallback.
+// least one — quills are responsible for shipping their own fonts, since
+// quillmark-typst embeds no default fallback.
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const TEST_FONT_PATH = join(
   __dirname,

@@ -146,10 +146,9 @@ fn test_unknown_dollar_metadata_rejected() {
 
 /// Test that card kind validation prevents invalid names via the edit API.
 ///
-/// `$kind` is now opaque system metadata at parse time, so `from_markdown`
-/// no longer validates kind names. The `[a-z_][a-z0-9_]*` rule is still
-/// enforced by the structural edit API (`Card::new`), which is what this
-/// test now exercises.
+/// `$kind` is opaque system metadata at parse time, so `from_markdown` does
+/// not validate kind names. The `[a-z_][a-z0-9_]*` rule is enforced by the
+/// structural edit API (`Card::new`), which is what this test exercises.
 #[test]
 fn test_card_name_validation() {
     let invalid_names = vec!["Invalid-Name", "123start", "UPPERCASE", "spaces here"];

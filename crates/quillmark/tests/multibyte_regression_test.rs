@@ -54,10 +54,9 @@ fn em_and_en_dashes_in_block_scalar_bullets_parse_without_panic() {
 
 #[test]
 fn multibyte_after_dash_marker_does_not_panic() {
-    // The previously-patched site (`prescan.rs:156`) sliced `trimmed[2..]`
-    // when it saw `- <content>`. If `<content>` started with a multibyte
-    // codepoint, the slice would land mid-character. Pin every known
-    // variant.
+    // Slicing a `- <content>` marker must respect char boundaries: a naive
+    // `trimmed[2..]` lands mid-character when `<content>` starts with a
+    // multibyte codepoint. Pin every known variant.
     let variants = [
         "~~~card-yaml\n$quill: q@0.1\n$kind: main\narr:\n  - \u{2013} en-dash leads\n~~~\n",
         "~~~card-yaml\n$quill: q@0.1\n$kind: main\narr:\n  - \u{2014} em-dash leads\n~~~\n",

@@ -535,11 +535,10 @@ Item 1 body";
 
 #[test]
 fn test_uppercase_payload_keys_pass_parser() {
-    // Uppercase YAML keys (e.g. legacy `BODY`/`CARDS`) used to be rejected
-    // because they collided with the flat plate-JSON wire format. The wire
-    // format now namespaces metadata under `$`-prefixed keys, so user
-    // payload keys can be arbitrary — they're filtered downstream by the
-    // editor surface's `[a-z_][a-z0-9_]*` rule, not the parser.
+    // Uppercase YAML keys (e.g. `BODY`/`CARDS`) pass the parser: the wire
+    // format namespaces metadata under `$`-prefixed keys, so user payload
+    // keys can be arbitrary — they're filtered downstream by the editor
+    // surface's `[a-z_][a-z0-9_]*` rule, not the parser.
     let markdown = "~~~card-yaml
 $quill: test_quill
 $kind: main

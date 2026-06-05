@@ -47,7 +47,7 @@ pub use wire::{CardWire, PayloadItemWire, WireError};
 /// rules. This is the single source of truth; bindings should call into it
 /// rather than re-stating the rules in their own glue.
 pub const FORMAT_RULES: &str = "Document format rules:
-\u{2022} Block opener and closer are EXACTLY `~~~` (three tildes, no info string). The legacy `~~~card-yaml` opener is still accepted but is no longer canonical.
+\u{2022} Block opener and closer are EXACTLY `~~~` (three tildes, no info string). The `~~~card-yaml` opener is also accepted as a non-canonical alias.
 \u{2022} A blank line must precede every `~~~` block opener (unless it is line 1), and the opener must be at column zero (no leading spaces). An indented `~~~` is an ordinary code block, not a card.
 \u{2022} The first block is the root and MUST contain `$quill: <name>@<version>` and `$kind: main`. Additional blocks declare composable cards via `$kind: <card_kind>`.
 \u{2022} Reserved `$`-keys: `$quill`, `$kind`, `$id`, `$ext`. User fields use lowercase snake_case.

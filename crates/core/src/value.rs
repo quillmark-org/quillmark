@@ -14,8 +14,6 @@ use std::ops::Deref;
 pub struct QuillValue(serde_json::Value);
 
 impl QuillValue {
-    // from_yaml removed as we use serde_json::Value directly
-
     /// Create a QuillValue from a YAML string
     pub fn from_yaml_str(yaml_str: &str) -> Result<Self, serde_saphyr::Error> {
         let json_val: serde_json::Value = serde_saphyr::from_str(yaml_str)?;

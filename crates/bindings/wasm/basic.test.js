@@ -1127,13 +1127,13 @@ count: "nope"
 // Schema / blueprint / validation — Unendorsed vs Endorsed
 // ---------------------------------------------------------------------------
 //
-// Post-mcp-feedback the schema axis is implicit: a field with a `default:` is
-// Endorsed (the rendered default is shippable as-is and the blueprint emits
-// the value + `; delete-ok` annotation); a field without a `default:` is Must
-// Fill (the blueprint emits the `<must-fill>` sentinel).
+// The schema axis is implicit: a field with a `default:` is Endorsed (the
+// rendered default is shippable as-is and the blueprint emits the value +
+// `; delete-ok` annotation); a field without a `default:` is Must Fill (the
+// blueprint emits the `<must-fill>` sentinel).
 //
 // These tests pin the JS-facing contract:
-//   - `QuillFieldSchema` no longer carries a `required` axis.
+//   - `QuillFieldSchema` carries no `required` axis.
 //   - `quill.blueprint` carries `<must-fill>` and `; delete-ok` annotations.
 //   - `quill.render(doc)` *tolerates* an absent Unendorsed field: zero-filled
 //     render fills it with its type-empty value in the plate projection
@@ -1190,14 +1190,14 @@ main:
     )
   }
 
-  it('schema fields carry no legacy `required` axis', () => {
+  it('schema fields carry no `required` axis', () => {
     const quill = buildQuill()
     const fields = quill.schema.main.fields
 
     expect(fields.title).toBeDefined()
     expect(fields.subtitle).toBeDefined()
 
-    // The `required` axis was removed; cell is implied by `default:` presence.
+    // Cell status is implied by `default:` presence, not a `required` axis.
     expect('required' in fields.title).toBe(false)
     expect('required' in fields.subtitle).toBe(false)
 
@@ -1222,7 +1222,7 @@ main:
     // ambiguity), so the value cell is bare.
     expect(blueprint).toContain('subtitle: Untitled subtitle  # string; delete-ok')
 
-    // The legacy `; required` / `; optional` role tag must not appear anywhere.
+    // The `; required` / `; optional` role tag must not appear anywhere.
     expect(blueprint).not.toContain('; required')
     expect(blueprint).not.toContain('; optional')
   })
@@ -1233,8 +1233,8 @@ main:
     // Document omits `title`. Schema declares no default → Unendorsed. Under
     // zero-filled render this is merely *incomplete*, not malformed: render
     // fills `title` with its type-empty value in the plate projection and
-    // succeeds. Absence is no longer a hard error; `quill.validate` reports it
-    // as the non-fatal `validation::field_absent` doneness signal instead.
+    // succeeds. Absence is not a hard error; `quill.validate` reports it
+    // as the non-fatal `validation::field_absent` doneness signal.
     const md = `~~~card-yaml
 $quill: schema_test
 $kind: main

@@ -1474,7 +1474,7 @@ mod tests {
         assert_eq!(typst, "== Code example: #raw(\"fn main()\")\n\n");
     }
 
-    // Tests for __ as CommonMark strong (no longer underline)
+    // Tests for __ as CommonMark strong
 
     #[test]
     fn test_double_underscore_is_strong() {
@@ -2324,7 +2324,7 @@ mod robustness_tests {
         assert_eq!(result, "a#linebreak()b#linebreak()c\n\n");
     }
 
-    // Word boundary handling (no longer needed with function syntax)
+    // Word boundary handling (not needed with function syntax)
 
     #[test]
     fn test_italic_before_number() {
@@ -2520,9 +2520,9 @@ More text with `inline code`."#;
     #[test]
     fn test_mismatched_asterisks_graceful_degradation() {
         // `*lethality**` has mismatched asterisks — pulldown_cmark parses `*lethality*`
-        // as emphasis and leaves the trailing `*` as literal text. Previously, the
-        // MarkdownFixer incorrectly consumed the trailing `*` as a closing event,
-        // producing an extra `]` bracket that caused a hard Typst compilation error.
+        // as emphasis and leaves the trailing `*` as literal text. The MarkdownFixer
+        // must not consume the trailing `*` as a closing event, which would produce
+        // an extra `]` bracket and a hard Typst compilation error.
         let result = mark_to_typst("Less formatting. More *lethality**.").unwrap();
         assert!(
             !result.contains("]]"),

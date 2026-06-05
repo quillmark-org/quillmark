@@ -5,8 +5,8 @@
 //! code block is treated as literal content, not a card-yaml block. A
 //! column-zero `~~~` fence (three or more tildes, no info string) opens a
 //! card-yaml block; the canonical opener is three tildes (`to_markdown`
-//! always emits `~~~`) and the legacy `~~~card-yaml` info string is also
-//! accepted but is no longer canonical. To write a literal fenced *code* block
+//! always emits `~~~`), with the `~~~card-yaml` info string accepted as a
+//! non-canonical alias. To write a literal fenced *code* block
 //! in prose, use a backtick fence (or a `~~~` fence with a language info
 //! string).
 
@@ -15,9 +15,9 @@ use crate::{Diagnostic, Severity};
 
 use super::assemble::MetadataBlock;
 
-/// The legacy info string that also opens a card-yaml block. Accepted on input
-/// for backward compatibility but never emitted — canonical openers are bare
-/// `~~~` (see [`card_yaml_opener_run`]).
+/// The `card-yaml` info string that also opens a card-yaml block. Accepted on
+/// input as a non-canonical alias but never emitted — canonical openers are
+/// bare `~~~` (see [`card_yaml_opener_run`]).
 const CARD_YAML_INFO: &str = "card-yaml";
 
 /// Line-oriented view of the source, used for fence detection.
@@ -122,7 +122,7 @@ pub(super) fn code_fence_info(line: &str, run_len: usize) -> &str {
 ///
 /// A card-yaml opener is a tilde fence (three **or more** tildes) at **column
 /// zero** (spec §3.2) whose info string is empty (the canonical form) or
-/// exactly `card-yaml` (the accepted, non-canonical legacy alias). The
+/// exactly `card-yaml` (the accepted, non-canonical alias). The
 /// canonical opener is three tildes — `to_markdown` always emits `~~~` — but a
 /// longer run is accepted and normalised on emit; its closer must be at least
 /// as long (the run length is threaded into the closer scan to honour
@@ -225,7 +225,7 @@ pub(super) type FenceScan = (Vec<MetadataBlock>, Vec<Diagnostic>);
 
 /// Find all `~~~` card-yaml metadata blocks in the document.
 ///
-/// A card-yaml block opens with `~~~` (or the legacy `~~~card-yaml` alias),
+/// A card-yaml block opens with `~~~` (or the `~~~card-yaml` alias),
 /// requires a blank line above it (so body round-tripping stays stable), and
 /// closes with `~~~`. Openers inside ordinary fenced code blocks are ignored.
 pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseError> {

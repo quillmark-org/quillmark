@@ -9,9 +9,9 @@
 //! `serde-saphyr` — the same library used for parsing. This makes the emit
 //! and parse sides of the wire symmetric by construction: anything saphyr
 //! decides to quote on emit, saphyr will read back as a string on parse.
-//! The hand-written quoting heuristics that used to live here couldn't
-//! keep pace with YAML 1.1 edge cases (`on`/`yes`/`off`, leading-zero
-//! integers, `1.0`-style numerics) — saphyr already handles them all.
+//! Delegation also covers the YAML 1.1 edge cases that ad-hoc quoting
+//! heuristics miss (`on`/`yes`/`off`, leading-zero integers, `1.0`-style
+//! numerics) — saphyr handles them all.
 //!
 //! `prefer_block_scalars: false` keeps multi-line strings inline as
 //! double-quoted scalars with `\n` escapes, so the emitter never produces

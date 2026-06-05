@@ -38,8 +38,8 @@ $kind: <card_kind>
 Write <card_kind> body here.
 ````
 
-Every block is a bare `~~~` block (the canonical card-yaml fence; the legacy
-`~~~card-yaml` opener is still accepted as an alias — see
+Every block is a bare `~~~` block (the canonical card-yaml fence; `~~~card-yaml`
+is also accepted as an alias — see
 [markdown-spec.md](../references/markdown-spec.md) §3): the root block carries
 the `$quill` system-metadata line; each composable card carries a
 `$kind: <card_kind>` metadata line.
@@ -280,9 +280,8 @@ rejected at `Quill.yaml` parse time (`quill::object_missing_properties`).
 `ui.order` controls field ordering within the document. Most other `ui:`
 keys (`ui.group`, `ui.compact`, `ui.multiline`, `ui.title`) are
 presentation-only and do not affect blueprint output. In particular,
-`ui.group` no longer emits `# ==== GROUPNAME ====` banner lines — the
-banners were visually confusable with field-description comments. Fields
-within the same `ui.group` still cluster together via `ui.order`.
+`ui.group` emits no banner lines; fields within the same `ui.group`
+cluster together via `ui.order`.
 
 ## Body markers
 
@@ -294,7 +293,7 @@ within the same `ui.group` still cluster together via `ui.order`.
 (e.g., a `skills` card whose data is purely structured).
 
 A `body.example` whose text contains a line that would parse as a
-card-yaml opener — a bare `~~~` (or the legacy `~~~card-yaml` alias) — is
+card-yaml opener — a bare `~~~` (or the `~~~card-yaml` alias) — is
 rejected at `Quill.yaml` parse time (`quill::body_example_contains_fence`)
 to prevent corrupting the blueprint's document structure.
 

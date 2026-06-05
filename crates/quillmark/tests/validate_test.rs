@@ -1,5 +1,5 @@
 //! Tests for [`quillmark::Quill::validate`] — the editor-facing validation
-//! surface that replaced the schema-aware form view's `diagnostics` channel.
+//! surface.
 
 use std::collections::HashMap;
 

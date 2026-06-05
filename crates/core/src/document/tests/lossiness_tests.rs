@@ -80,9 +80,9 @@ fn top_level_inline_comments_round_trip() {
 // ── Category: Block scalars ───────────────────────────────────────────────────
 
 /// A block-scalar value (markdown) whose content contains `#` heading lines
-/// round-trips intact. Regression: the prescan comment-stripper used to treat
-/// any `#`-leading line as a YAML comment, silently deleting markdown headings
-/// (and mis-reading `- ` / `key:` lines) inside literal blocks.
+/// round-trips intact. Regression guard: the prescan comment-stripper must not
+/// treat `#`-leading lines inside literal blocks as YAML comments, which would
+/// silently delete markdown headings (and mis-read `- ` / `key:` lines).
 #[test]
 fn block_scalar_with_markdown_headings_round_trips() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nbio: |-\n  ## About me\n\n  - first point\n  Plain line.\ntitle: Resume\n~~~\n";

@@ -157,11 +157,10 @@ reports the actual backing dimensions in the result.
 
 ## Decisions and rationale
 
-- **Method on `RenderSession`, not a sub-handle.** Earlier drafts had a
-  `Preview` sub-handle returned by `session.preview()`. Justified only if
-  paint shipped with `click()` and `locate_cursor()` (they share state).
-  With paint alone, the sub-handle is ceremony — keep the verb on
-  `RenderSession`.
+- **Method on `RenderSession`, not a sub-handle.** A `Preview` sub-handle
+  returned by `session.preview()` would be justified only if paint shipped
+  with `click()` and `locate_cursor()` (they share state). With paint alone,
+  the sub-handle is ceremony — keep the verb on `RenderSession`.
 - **Not an `OutputFormat`.** Canvas is a side-effecting paint into a JS
   object, not a serializable byte stream. Forcing it into the enum
   either leaks `wasm_bindgen` into `core` or makes `Artifact` dishonest.
@@ -183,8 +182,8 @@ reports the actual backing dimensions in the result.
   `densityScale` ⇒ blurry retina, the benefit is a usable
   `paint(ctx, page)` for the simple case.
 - **Painter owns `canvas.width` / `canvas.height`; consumer owns
-  `canvas.style.*`.** Earlier API pushed backing-store math onto every
-  consumer ("size your canvas like X before calling paint"). That made
+  `canvas.style.*`.** The alternative — pushing backing-store math onto every
+  consumer ("size your canvas like X before calling paint") — makes
   `devicePixelRatio` and the rounding rule callable-side state, which
   means every consumer has to get them right. Folding the math into the
   painter eliminates a class of "blurry on retina" bugs and lets the

@@ -124,7 +124,7 @@ def test_set_field_updates():
 
 
 def test_set_field_legacy_uppercase_rejected_matrix():
-    """set_field raises InvalidFieldName for the legacy uppercase sentinels."""
+    """set_field raises InvalidFieldName for uppercase field names."""
     for name in ("BODY", "CARDS", "QUILL", "CARD"):
         doc = Document.from_markdown(SIMPLE_MD)
         with pytest.raises(QuillmarkError, match="InvalidFieldName"):
@@ -132,7 +132,7 @@ def test_set_field_legacy_uppercase_rejected_matrix():
 
 
 def test_card_set_field_legacy_uppercase_rejected_matrix():
-    """Card update_card_field raises InvalidFieldName for legacy uppercase names."""
+    """Card update_card_field raises InvalidFieldName for uppercase field names."""
     for name in ("BODY", "CARDS", "QUILL", "CARD"):
         doc = Document.from_markdown(MD_WITH_CARDS)
         with pytest.raises(QuillmarkError, match="InvalidFieldName"):
@@ -169,7 +169,7 @@ def test_remove_field_absent():
 
 
 def test_remove_field_legacy_uppercase_rejected():
-    """remove_field raises InvalidFieldName for legacy uppercase names."""
+    """remove_field raises InvalidFieldName for uppercase field names."""
     doc = Document.from_markdown(SIMPLE_MD)
     with pytest.raises(QuillmarkError, match="InvalidFieldName"):
         doc.remove_field("BODY")
@@ -306,7 +306,7 @@ def test_update_card_field():
 
 
 def test_update_card_field_legacy_uppercase_rejected():
-    """update_card_field raises InvalidFieldName for legacy uppercase names."""
+    """update_card_field raises InvalidFieldName for uppercase field names."""
     doc = Document.from_markdown(MD_WITH_CARDS)
     with pytest.raises(QuillmarkError, match="InvalidFieldName"):
         doc.update_card_field(0, "BODY", "value")

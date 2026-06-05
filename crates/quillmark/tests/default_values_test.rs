@@ -167,7 +167,7 @@ main:
         "~~~card-yaml\n$quill: test_quill\n$kind: main\nstatus: published\n~~~\n\n# Content\n";
     let parsed = Document::from_markdown(markdown).expect("parse failed");
 
-    // Render no longer gates on absence.
+    // Render does not gate on absence.
     assert!(
         quill.dry_run(&parsed).is_ok(),
         "dry_run should tolerate an absent Unendorsed field (zero-filled)"
