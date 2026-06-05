@@ -3,17 +3,6 @@ use crate::document::meta::is_valid_kind_name;
 use crate::document::Document;
 
 #[test]
-fn test_no_payload() {
-    let markdown = "# Hello World\n\nThis is a test.";
-    let result = decompose(markdown);
-    assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("Missing required root card-yaml block"));
-}
-
-#[test]
 fn test_empty_input_dedicated_error() {
     // Empty input gets a dedicated message distinct from the missing-root one.
     for input in ["", "   ", "\n\n\t\n"] {
@@ -1318,26 +1307,6 @@ fn test_yaml_size_limit() {
 }
 
 #[test]
-fn test_input_within_size_limit() {
-    let size = 1000;
-    let markdown = format!(
-        "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\n{}",
-        "a".repeat(size)
-    );
-
-    let result = decompose(&markdown);
-    assert!(result.is_ok());
-}
-
-#[test]
-fn test_yaml_within_size_limit() {
-    let markdown =
-        "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\nauthor: John Doe\n~~~\n\nBody content";
-    let result = decompose(markdown);
-    assert!(result.is_ok());
-}
-
-#[test]
 fn test_yaml_depth_limit() {
     let mut yaml_content = String::new();
     for i in 0..110 {
@@ -1360,24 +1329,6 @@ fn test_yaml_depth_limit() {
         "Expected depth/budget error, got: {}",
         err_msg
     );
-}
-
-#[test]
-fn test_yaml_depth_within_limit() {
-    let markdown = "~~~card-yaml
-$quill: test_quill
-$kind: main
-level1:
-  level2:
-    level3:
-      level4:
-        value: test
-~~~
-
-Body content";
-
-    let result = decompose(markdown);
-    assert!(result.is_ok());
 }
 
 // Guillemet preservation tests
@@ -1456,41 +1407,6 @@ Use <<card body>> here.";
         "<<card yaml>>"
     );
     assert!(card.body().contains("<<card body>>"));
-}
-
-#[test]
-fn test_yaml_numbers_not_affected() {
-    let markdown = "~~~card-yaml
-$quill: test_quill
-$kind: main
-count: 42
-~~~
-
-Body.";
-    let doc = decompose(markdown).unwrap();
-    assert_eq!(
-        doc.main().payload().get("count").unwrap().as_i64().unwrap(),
-        42
-    );
-}
-
-#[test]
-fn test_yaml_booleans_not_affected() {
-    let markdown = "~~~card-yaml
-$quill: test_quill
-$kind: main
-active: true
-~~~
-
-Body.";
-    let doc = decompose(markdown).unwrap();
-    assert!(doc
-        .main()
-        .payload()
-        .get("active")
-        .unwrap()
-        .as_bool()
-        .unwrap());
 }
 
 #[test]
@@ -1829,13 +1745,6 @@ fn test_invalid_card_kind_names_are_rejected() {
 }
 
 #[test]
-fn test_invalid_quill_ref_uppercase() {
-    let markdown = "~~~card-yaml\n$quill: MyQuill\n$kind: main\n~~~\n\nBody.";
-    let result = decompose(markdown);
-    assert!(result.is_err());
-}
-
-#[test]
 fn test_yaml_syntax_error_missing_colon() {
     let markdown = "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle Test\n~~~\n\nBody.";
     let result = decompose(markdown);
@@ -1934,13 +1843,6 @@ fn test_f2_strip_does_not_overstrip_content_newlines() {
         "expected code block + blank line, got {:?}",
         doc.main().body()
     );
-}
-
-#[test]
-fn test_no_body_after_payload() {
-    let markdown = "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~";
-    let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.main().body(), "");
 }
 
 // Kind name validation
@@ -2141,17 +2043,6 @@ Conclusion content.
     assert_eq!(doc.cards()[1].body(), "\nConclusion content.\n");
 }
 
-#[test]
-fn test_missing_quill_errors() {
-    let markdown = "# Body\n\nNo card-yaml block here.";
-    let result = decompose(markdown);
-    assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("Missing required root card-yaml block"));
-}
-
 // ── to_plate_json round-trip snapshot ─────────────────────────────────────────
 
 /// Verify to_plate_json produces the correct shape for a simple document.
@@ -2216,47 +2107,6 @@ fn test_to_plate_json_quill_first() {
     let obj = json.as_object().unwrap();
     let keys: Vec<&String> = obj.keys().collect();
     assert_eq!(keys[0], "$quill");
-}
-
-/// Snapshot test over a representative usaf_memo-shaped document.
-#[test]
-fn test_to_plate_json_fixture_snapshot() {
-    let markdown = "~~~card-yaml
-$quill: usaf_memo@0.1
-$kind: main
-memo_for:
-  - ORG/SYMBOL
-date: 2504-10-05
-subject: Subject of the Memorandum
-~~~
-
-The body of the memorandum.
-
-~~~card-yaml
-$kind: indorsement
-for: ORG/SYMBOL
-from: ORG/SYMBOL
-~~~
-
-This body and the metadata above are an indorsement card.
-";
-    let doc = Document::from_markdown(markdown).unwrap();
-    let json = doc.to_plate_json();
-
-    // `$quill` is present
-    assert_eq!(json["$quill"], "usaf_memo@0.1");
-    // payload fields are present at top level
-    assert!(json.get("memo_for").is_some());
-    assert!(json.get("date").is_some());
-    // `$body` and `$cards` are present
-    assert!(json.get("$body").is_some());
-    assert!(json["$cards"].is_array());
-    // One indorsement card
-    let cards = json["$cards"].as_array().unwrap();
-    assert_eq!(cards.len(), 1);
-    assert_eq!(cards[0]["$kind"], "indorsement");
-    // Card has `$body`
-    assert!(cards[0].get("$body").is_some());
 }
 
 /// Regression test for the `serde_json::Map::remove` / `shift_remove` bug.

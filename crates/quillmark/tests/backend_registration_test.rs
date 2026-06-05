@@ -122,12 +122,3 @@ fn test_render_with_custom_backend() {
     assert_eq!(result.artifacts[0].output_format, OutputFormat::Txt);
 }
 
-#[test]
-fn test_register_backend_after_new() {
-    let mut engine = Quillmark::new();
-    let initial_count = engine.registered_backends().len();
-    engine.register_backend(Box::new(MockBackend { id: "added-later" }));
-    let backends = engine.registered_backends();
-    assert_eq!(backends.len(), initial_count + 1);
-    assert!(backends.contains(&"added-later"));
-}

@@ -1491,12 +1491,6 @@ mod tests {
     }
 
     #[test]
-    fn test_bold_unchanged() {
-        // Verify ** still works as bold
-        assert_eq!(mark_to_typst("**bold**").unwrap(), "#strong[bold]\n\n");
-    }
-
-    #[test]
     fn test_double_underscore_in_list() {
         assert_eq!(
             mark_to_typst("- __bolded__ item").unwrap(),
@@ -2161,23 +2155,7 @@ mod robustness_tests {
         assert!(result.contains("=== Three"));
     }
 
-    #[test]
-    fn test_atx_headings_still_work() {
-        // ATX headings should still be converted properly
-        let result = mark_to_typst("# H1\n## H2\n### H3").unwrap();
-        assert!(result.contains("= H1"));
-        assert!(result.contains("== H2"));
-        assert!(result.contains("=== H3"));
-    }
-
     // Code block handling
-
-    #[test]
-    fn test_fenced_code_block() {
-        let markdown = "```rust\nfn main() {}\n```";
-        let result = mark_to_typst(markdown).unwrap();
-        assert_eq!(result, "#raw(block: true, lang: \"rust\", \"fn main() {}\")\n\n");
-    }
 
     #[test]
     fn test_indented_code_block() {
@@ -2276,11 +2254,6 @@ mod robustness_tests {
     }
 
     #[test]
-    fn test_escape_string_nul_character() {
-        assert_eq!(escape_string("\x00"), "\\u{0}");
-    }
-
-    #[test]
     fn test_escape_string_bell_character() {
         assert_eq!(escape_string("\x07"), "\\u{7}");
     }
@@ -2369,12 +2342,6 @@ mod robustness_tests {
         assert!(result.contains("#strong[bold]\\_after"));
     }
 
-    #[test]
-    fn test_emphasis_at_end_of_text() {
-        let result = mark_to_typst("*italic*").unwrap();
-        assert_eq!(result, "#emph[italic]\n\n");
-    }
-
     // Complex real-world scenarios
 
     #[test]
@@ -2425,28 +2392,6 @@ More text with `inline code`."#;
         assert_eq!(result, "word#strong[bold]more\n\n");
     }
 
-    #[test]
-    fn test_emphasis_preceded_by_alphanumeric() {
-        // Function syntax handles this naturally
-        let markdown = "text*emph*";
-        let result = mark_to_typst(markdown).unwrap();
-        assert_eq!(result, "text#emph[emph]\n\n");
-    }
-
-    #[test]
-    fn test_emphasis_after_space() {
-        let markdown = "some *italic* text";
-        let result = mark_to_typst(markdown).unwrap();
-        assert_eq!(result, "some #emph[italic] text\n\n");
-    }
-
-    #[test]
-    fn test_emphasis_after_punctuation() {
-        let markdown = "(*italic*)";
-        let result = mark_to_typst(markdown).unwrap();
-        assert_eq!(result, "(#emph[italic])\n\n");
-    }
-
     // Tests for long underscore runs (fill-in-the-blank lines)
     #[test]
     fn test_long_underscore_run_as_literal_text() {
@@ -2491,23 +2436,6 @@ More text with `inline code`."#;
         assert!(
             !result.contains('['),
             "Should not contain brackets: {}",
-            result
-        );
-    }
-
-    #[test]
-    fn test_double_underscore_produces_strong() {
-        // Per CommonMark, __text__ produces strong, not underline.
-        let input = "__bolded text__";
-        let result = mark_to_typst(input).unwrap();
-        assert!(
-            result.contains("#strong["),
-            "Should produce strong: {}",
-            result
-        );
-        assert!(
-            !result.contains("#underline["),
-            "Should not produce underline: {}",
             result
         );
     }

@@ -142,35 +142,30 @@ fn write_card_fence(out: &mut String, card: &CardSchema) {
 
 /// Emit a card's fields, clustered by `ui.group` and ordered by `ui.order`.
 fn write_card_fields(out: &mut String, card: &CardSchema) {
-    for (_, fields) in group_fields(card.fields.values()) {
-        for field in fields {
-            write_field(out, field, 0);
-        }
+    for field in group_fields(card.fields.values()) {
+        write_field(out, field, 0);
     }
 }
 
-/// Cluster fields by `ui.group` (preserving first-appearance order; ungrouped
-/// fields lead) and sort within each group by `ui.order`. The grouping is
-/// purely positional now — no banner is emitted.
+/// Order fields by `ui.group` (ungrouped lead, then groups in first-appearance
+/// order) with `ui.order` sorting within each cluster. The grouping is purely
+/// positional now — no banner is emitted — so the clusters are flattened into a
+/// single field stream.
 fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
     fields: I,
-) -> Vec<(Option<String>, Vec<&'a FieldSchema>)> {
+) -> Vec<&'a FieldSchema> {
     let mut sorted: Vec<&FieldSchema> = fields.into_iter().collect();
     sorted.sort_by_key(|f| f.ui_order());
-    let mut groups: Vec<(Option<String>, Vec<&FieldSchema>)> = Vec::new();
+    let mut groups: Vec<(Option<&str>, Vec<&FieldSchema>)> = Vec::new();
     for field in sorted {
-        let group = field
-            .ui
-            .as_ref()
-            .and_then(|u| u.group.as_ref())
-            .map(|s| s.to_string());
-        match groups.iter_mut().find(|(g, _)| g == &group) {
+        let group = field.ui.as_ref().and_then(|u| u.group.as_deref());
+        match groups.iter_mut().find(|(g, _)| *g == group) {
             Some(slot) => slot.1.push(field),
             None => groups.push((group, vec![field])),
         }
     }
     groups.sort_by_key(|(g, _)| g.is_some());
-    groups
+    groups.into_iter().flat_map(|(_, fields)| fields).collect()
 }
 
 fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {

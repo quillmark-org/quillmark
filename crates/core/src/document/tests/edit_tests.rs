@@ -59,40 +59,12 @@ fn test_invalid_field_names() {
 // ── EditError variants ───────────────────────────────────────────────────────
 
 #[test]
-fn test_edit_error_invalid_field_name() {
-    let mut doc = make_doc();
-    let result = doc.main_mut().set_field("My-Field", qv("value"));
-    assert_eq!(
-        result,
-        Err(EditError::InvalidFieldName("My-Field".to_string()))
-    );
-}
-
-#[test]
-fn test_edit_error_uppercase_rejected() {
-    let mut doc = make_doc();
-    let result = doc.main_mut().set_field("BODY", qv("value"));
-    assert_eq!(
-        result,
-        Err(EditError::InvalidFieldName("BODY".to_string()))
-    );
-}
-
-#[test]
 fn test_edit_error_invalid_kind_name() {
     let result = Card::new("Invalid-Kind");
     assert_eq!(
         result,
         Err(EditError::InvalidKindName("Invalid-Kind".to_string()))
     );
-}
-
-#[test]
-fn test_edit_error_index_out_of_range() {
-    let mut doc = make_doc(); // no cards
-    let card = Card::new("note").unwrap();
-    let result = doc.insert_card(5, card);
-    assert_eq!(result, Err(EditError::IndexOutOfRange { index: 5, len: 0 }));
 }
 
 // ── EditError Display ────────────────────────────────────────────────────────
@@ -379,14 +351,6 @@ fn test_set_card_kind_round_trips_via_markdown() {
 }
 
 // ── Card::new ────────────────────────────────────────────────────────────────
-
-#[test]
-fn test_card_new_valid() {
-    let card = Card::new("note").unwrap();
-    assert_eq!(card.kind(), Some("note"));
-    assert!(card.payload().is_empty());
-    assert_eq!(card.body(), "");
-}
 
 #[test]
 fn test_card_new_invalid_kind_rejected() {

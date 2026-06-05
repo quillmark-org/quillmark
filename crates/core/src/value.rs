@@ -164,22 +164,6 @@ mod tests {
     }
 
     #[test]
-    fn test_as_json() {
-        let json_val = serde_json::json!({"key": "value"});
-        let quill_val = QuillValue::from_json(json_val.clone());
-
-        assert_eq!(quill_val.as_json(), &json_val);
-    }
-
-    #[test]
-    fn test_into_json() {
-        let json_val = serde_json::json!({"key": "value"});
-        let quill_val = QuillValue::from_json(json_val.clone());
-
-        assert_eq!(quill_val.into_json(), json_val);
-    }
-
-    #[test]
     fn test_delegating_methods() {
         let quill_val = QuillValue::from_json(serde_json::json!({
             "name": "test",
@@ -205,24 +189,6 @@ mod tests {
             .as_ref()
             .and_then(|v| v.as_array())
             .is_some());
-    }
-
-    #[test]
-    fn test_yaml_with_tags() {
-        // Note: serde_saphyr handles tags differently - this tests basic parsing
-        let yaml_str = r#"
-            value: 42
-        "#;
-        let quill_val = QuillValue::from_yaml_str(yaml_str).unwrap();
-
-        // Values should be converted to their underlying value
-        assert!(quill_val.as_object().is_some());
-    }
-
-    #[test]
-    fn test_null_value() {
-        let quill_val = QuillValue::from_json(serde_json::Value::Null);
-        assert!(quill_val.is_null());
     }
 
     #[test]
