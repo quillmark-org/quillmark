@@ -1,0 +1,263 @@
+//! Canonical **live** wire form of a [`Card`] for language-binding APIs.
+//!
+//! [`CardWire`] is the single, core-owned translation between a [`Card`] and
+//! the flat `{ kind, payloadItems, … }` shape that the WASM and Python bindings
+//! exchange with JS/Python. Bindings serialize/deserialize this type instead of
+//! hand-rolling their own per-card conversion, so the field/comment/`$`-entry
+//! mapping lives in exactly one place.
+//!
+//! ## Why this is separate from the storage DTO
+//!
+//! The versioned storage DTO (`document::dto`, e.g. `CardV0_82_0`) is **frozen**
+//! per schema version so persisted documents keep loading forever. `CardWire`
+//! is the **current** API shape and is free to evolve with the bindings. They
+//! are structurally similar today, but coupling the live API to a frozen
+//! storage schema would chain one to the other's change cadence — so they are
+//! deliberately distinct, both built on the live [`Card`]/[`Payload`] model.
+//!
+//! ## Shape
+//!
+//! The `$` system entries are hoisted to named fields (`kind`, `quill`, `id`,
+//! `ext`); `payload_items` carries only user fields and comments, in order.
+//! Field/`$ext` *nested* comments are not represented here — they survive the
+//! Markdown and storage round-trips, not this editable projection.
+
+use std::str::FromStr;
+
+use serde::{Deserialize, Serialize};
+use serde_json::{Map as JsonMap, Value as JsonValue};
+
+use super::payload::{Payload, PayloadItem};
+use super::Card;
+use crate::value::QuillValue;
+use crate::version::QuillReference;
+
+/// One entry in a [`CardWire`]'s `payload_items`: a user field or a comment.
+/// The `$` system entries are hoisted onto [`CardWire`] itself, never here.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum PayloadItemWire {
+    /// A user-defined field.
+    Field {
+        key: String,
+        value: JsonValue,
+        /// `true` when written as `key: !fill <value>` in source / marked fill.
+        #[serde(default)]
+        fill: bool,
+    },
+    /// A YAML comment line (text excludes the leading `#`).
+    Comment {
+        text: String,
+        /// `true` for a trailing inline comment (`field: value # text`).
+        #[serde(default)]
+        inline: bool,
+    },
+}
+
+/// Canonical live wire form of a [`Card`]. See the module docs.
+///
+/// Serializes to JS-facing camelCase (`payloadItems`); the snake_case
+/// `payload_items` is also accepted on input for the Python binding.
+/// `deny_unknown_fields` makes a stale flat `{ kind, fields }` shape fail
+/// loudly rather than deserialize into an empty card.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CardWire {
+    /// The block's `$kind` (e.g. `"endorsement"`); empty string when the block
+    /// declares no `$kind`. Kept non-optional to match the binding read shape.
+    #[serde(default)]
+    pub kind: String,
+    /// The block's `$quill` reference string (`name@version`), present on the
+    /// main card only. Omitted when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quill: Option<String>,
+    /// The block's `$id`, if any. Omitted when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// The block's opaque `$ext` map, if declared. Omitted when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ext: Option<JsonMap<String, JsonValue>>,
+    /// User fields and comments, in source order.
+    #[serde(default, alias = "payload_items")]
+    pub payload_items: Vec<PayloadItemWire>,
+    /// Markdown body after the card's closing fence. Empty when absent.
+    #[serde(default)]
+    pub body: String,
+}
+
+/// Failure converting a [`CardWire`] back into a [`Card`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WireError {
+    /// The `quill` string is not a valid `name@version` reference.
+    InvalidQuillReference { value: String, reason: String },
+}
+
+impl std::fmt::Display for WireError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WireError::InvalidQuillReference { value, reason } => {
+                write!(f, "invalid `quill` reference {value:?}: {reason}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for WireError {}
+
+impl From<&Card> for CardWire {
+    fn from(card: &Card) -> Self {
+        let mut wire = CardWire {
+            kind: String::new(),
+            quill: None,
+            id: None,
+            ext: None,
+            payload_items: Vec::new(),
+            body: card.body().to_string(),
+        };
+        for item in card.payload().items() {
+            match item {
+                PayloadItem::Quill { reference } => wire.quill = Some(reference.to_string()),
+                PayloadItem::Kind { value } => wire.kind = value.clone(),
+                PayloadItem::Id { value } => wire.id = Some(value.clone()),
+                PayloadItem::Ext { value, .. } => wire.ext = Some(value.clone()),
+                PayloadItem::Field {
+                    key, value, fill, ..
+                } => wire.payload_items.push(PayloadItemWire::Field {
+                    key: key.clone(),
+                    value: value.as_json().clone(),
+                    fill: *fill,
+                }),
+                PayloadItem::Comment { text, inline } => {
+                    wire.payload_items.push(PayloadItemWire::Comment {
+                        text: text.clone(),
+                        inline: *inline,
+                    })
+                }
+            }
+        }
+        wire
+    }
+}
+
+impl TryFrom<CardWire> for Card {
+    type Error = WireError;
+
+    fn try_from(wire: CardWire) -> Result<Self, Self::Error> {
+        let items = wire
+            .payload_items
+            .into_iter()
+            .map(|item| match item {
+                PayloadItemWire::Field { key, value, fill } => PayloadItem::Field {
+                    key,
+                    value: QuillValue::from_json(value),
+                    fill,
+                    nested_comments: Vec::new(),
+                },
+                PayloadItemWire::Comment { text, inline } => PayloadItem::Comment { text, inline },
+            })
+            .collect::<Vec<_>>();
+
+        // Build the user fields/comments, then apply each `$` entry through its
+        // setter so the canonical `$quill < $kind < $id < $ext` ordering holds
+        // regardless of input order.
+        let mut payload = Payload::from_items(items);
+        if let Some(value) = wire.quill {
+            let reference = QuillReference::from_str(&value)
+                .map_err(|reason| WireError::InvalidQuillReference { value, reason })?;
+            payload.set_quill(reference);
+        }
+        if !wire.kind.is_empty() {
+            payload.set_kind(wire.kind);
+        }
+        if let Some(id) = wire.id {
+            payload.set_id(id);
+        }
+        if let Some(ext) = wire.ext {
+            payload.set_ext(ext);
+        }
+        Ok(Card::from_parts(payload, wire.body))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// A field-and-comment card with `$kind` round-trips Card → wire → Card.
+    #[test]
+    fn card_wire_round_trips_fields_and_comment() {
+        let mut payload = Payload::from_items(vec![
+            PayloadItem::comment("a note"),
+            PayloadItem::field("title", QuillValue::from_json(json!("Hi"))),
+            PayloadItem::Field {
+                key: "count".to_string(),
+                value: QuillValue::from_json(json!(3)),
+                fill: true,
+                nested_comments: Vec::new(),
+            },
+        ]);
+        payload.set_kind("note");
+        let card = Card::from_parts(payload, "body text".to_string());
+
+        let wire = CardWire::from(&card);
+        assert_eq!(wire.kind, "note");
+        assert_eq!(wire.payload_items.len(), 3);
+
+        let back = Card::try_from(wire).expect("wire → card");
+        assert_eq!(back, card, "Card → wire → Card must be identity");
+    }
+
+    /// `$quill` (main card) survives the round-trip and parses back.
+    #[test]
+    fn card_wire_round_trips_quill() {
+        let mut payload = Payload::from_index_map(Default::default());
+        payload.set_quill("memo@1.2.3".parse().unwrap());
+        payload.set_kind("main");
+        let card = Card::from_parts(payload, String::new());
+
+        let wire = CardWire::from(&card);
+        assert_eq!(wire.quill.as_deref(), Some("memo@1.2.3"));
+
+        let back = Card::try_from(wire).expect("wire → card");
+        assert_eq!(back, card);
+    }
+
+    /// The wire JSON uses camelCase `payloadItems` and the `type`-tagged items.
+    #[test]
+    fn card_wire_json_shape() {
+        let card = Card::try_from(CardWire {
+            kind: "note".to_string(),
+            quill: None,
+            id: None,
+            ext: None,
+            payload_items: vec![PayloadItemWire::Field {
+                key: "x".to_string(),
+                value: json!(1),
+                fill: false,
+            }],
+            body: String::new(),
+        })
+        .unwrap();
+        let json = serde_json::to_value(CardWire::from(&card)).unwrap();
+        assert_eq!(json["kind"], json!("note"));
+        assert_eq!(json["payloadItems"][0]["type"], json!("field"));
+        assert_eq!(json["payloadItems"][0]["key"], json!("x"));
+        assert!(json.get("quill").is_none(), "absent quill is omitted");
+    }
+
+    /// A malformed `quill` string is a typed error, not a panic.
+    #[test]
+    fn card_wire_rejects_bad_quill() {
+        let err = Card::try_from(CardWire {
+            kind: String::new(),
+            quill: Some("@nope".to_string()),
+            id: None,
+            ext: None,
+            payload_items: Vec::new(),
+            body: String::new(),
+        })
+        .unwrap_err();
+        assert!(matches!(err, WireError::InvalidQuillReference { .. }));
+    }
+}

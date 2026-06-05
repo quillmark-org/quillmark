@@ -32,11 +32,13 @@ pub mod meta;
 pub mod payload;
 pub mod prescan;
 pub(crate) mod yaml_hints;
+pub mod wire;
 
 pub use dto::{peek_schema_version, StorageError, StoredDocument, SCHEMA_V0_81_0, SCHEMA_V0_82_0};
 pub use edit::EditError;
 pub use meta::{is_valid_kind_name, validate_composable_kind, CardKindError};
 pub use payload::{Payload, PayloadItem};
+pub use wire::{CardWire, PayloadItemWire, WireError};
 
 /// Authoring-format rules for the `~~~` card-yaml markdown surface.
 ///

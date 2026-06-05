@@ -44,7 +44,10 @@
 //! - [Examples](https://github.com/quillmark-org/quillmark/tree/main/crates/core/examples) - Working examples
 
 pub mod document;
-pub use document::{Card, Document, EditError, ParseOutput, Payload, PayloadItem};
+pub use document::{
+    Card, CardWire, Document, EditError, ParseOutput, Payload, PayloadItem, PayloadItemWire,
+    WireError,
+};
 
 pub mod backend;
 pub use backend::Backend;

@@ -61,6 +61,8 @@ result  = quill.render(parsed, OutputFormat.PDF)          # ppi=, pages= optiona
 session = quill.open(parsed)
 diags   = quill.validate(parsed)                         # list of validation::* diagnostic dicts ([] = valid)
 seed    = quill.seed_document()                          # starter Document seeded from `example:` values
+main    = quill.seed_main()                              # just the $kind: main card (dict, like doc.main)
+card    = quill.seed_card("note")                        # one starter composable card (dict), None if kind undeclared
 ```
 
 ### `RenderSession`
@@ -107,7 +109,7 @@ doc.card_count
 doc.main; doc.cards; doc.body; doc.warnings
 
 doc.set_field("title", "New")
-doc.push_card({"kind": "note", "fields": {"x": 1}, "body": "..."})
+doc.push_card(Document.make_card("note", {"x": 1}, "..."))  # or pass a Card from cards/remove_card/seed_card
 # insert_card, remove_card, move_card, set_card_kind,
 # update_card_field, remove_card_field, update_card_body, ...
 ```

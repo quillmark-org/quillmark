@@ -159,7 +159,7 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
 
     // Mutate
     doc.setField('title', 'New Title')
-    doc.pushCard({ kind: 'note', fields: { author: 'Alice' }, body: 'Hello' })
+    doc.pushCard(Document.makeCard('note', { author: 'Alice' }, 'Hello'))
     doc.replaceBody('Updated body')
 
     // Emit
@@ -235,7 +235,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
   it('round-trips a mutated document with cards', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.setField('title', 'New Title')
-    doc.pushCard({ kind: 'note', fields: { author: 'Alice' }, body: 'Hello' })
+    doc.pushCard(Document.makeCard('note', { author: 'Alice' }, 'Hello'))
 
     const restored = Document.fromJson(doc.toJson())
 
@@ -540,7 +540,7 @@ Card two.
 
   it('pushCard appends a card', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.pushCard({ kind: 'note', fields: {}, body: 'My card.' })
+    doc.pushCard(Document.makeCard('note', {}, 'My card.'))
     expect(doc.cards.length).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
     expect(doc.cards[0].body).toBe('My card.')
@@ -549,6 +549,36 @@ Card two.
   it('pushCard throws on invalid kind', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     expect(() => doc.pushCard({ kind: 'BadKind' })).toThrow(/InvalidKindName/)
+  })
+
+  it('removeCard → pushCard round-trips a card with fields (read shape == write shape)', () => {
+    // The whole point of the one-Card-shape change: a card returned by
+    // removeCard feeds straight back into pushCard with its fields intact.
+    const doc = Document.fromMarkdown(MD_WITH_CARDS) // `note` (foo: bar) + `summary`
+    const initialCount = doc.cards.length
+    const removed = doc.removeCard(0) // the `note` card
+    expect(doc.cards.length).toBe(initialCount - 1)
+    expect(field(removed, 'foo')).toBe('bar')
+
+    doc.pushCard(removed) // re-push the returned card; fields must not drop
+    expect(doc.cards.length).toBe(initialCount)
+    const repushed = doc.cards[doc.cards.length - 1]
+    expect(repushed.kind).toBe('note')
+    expect(field(repushed, 'foo')).toBe('bar')
+  })
+
+  it('makeCard accepts any kind; pushCard is the kind gate', () => {
+    // makeCard is pure data-shaping (permissive); the cards-list invariant is
+    // enforced at insertion, not construction.
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    const bad = Document.makeCard('BadKind', { x: 1 })
+    expect(bad.kind).toBe('BadKind') // construction succeeds
+    expect(() => doc.pushCard(bad)).toThrow(/InvalidKindName/) // insertion rejects
+  })
+
+  it('a stale { kind, fields } object is a loud error, not a silent empty card', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    expect(() => doc.pushCard({ kind: 'note', fields: { x: 1 } })).toThrow()
   })
 
   it('insertCard inserts at specified index', () => {
@@ -1203,8 +1233,8 @@ main:
     // Document omits `title`. Schema declares no default → Unendorsed. Under
     // zero-filled render this is merely *incomplete*, not malformed: render
     // fills `title` with its type-empty value in the plate projection and
-    // succeeds. Absence is no longer a hard error (the form's `source:
-    // "missing"` carries the doneness signal instead).
+    // succeeds. Absence is no longer a hard error; `quill.validate` reports it
+    // as the non-fatal `validation::field_absent` doneness signal instead.
     const md = `~~~card-yaml
 $quill: schema_test
 $kind: main

@@ -67,18 +67,37 @@ impl Document {
         self.cards_mut().get_mut(index)
     }
 
-    pub fn push_card(&mut self, card: Card) {
+    /// Append a composable card. Its `$kind` must be a valid, non-reserved
+    /// composable kind ([`EditError::InvalidKindName`] /
+    /// [`EditError::ReservedKind`] otherwise) — the invariant for any card in
+    /// the cards list, enforced here so every entry path shares it.
+    pub fn push_card(&mut self, card: Card) -> Result<(), EditError> {
+        Self::check_composable_kind(&card)?;
         self.cards_vec_mut().push(card);
+        Ok(())
     }
 
-    /// Insert a composable card at `index` (`index > len` → [`EditError::IndexOutOfRange`]).
+    /// Insert a composable card at `index` (`index > len` →
+    /// [`EditError::IndexOutOfRange`]; invalid `$kind` →
+    /// [`EditError::InvalidKindName`] / [`EditError::ReservedKind`]).
     pub fn insert_card(&mut self, index: usize, card: Card) -> Result<(), EditError> {
         let len = self.cards().len();
         if index > len {
             return Err(EditError::IndexOutOfRange { index, len });
         }
+        Self::check_composable_kind(&card)?;
         self.cards_vec_mut().insert(index, card);
         Ok(())
+    }
+
+    /// Validate that `card`'s `$kind` is a valid, non-reserved composable kind.
+    /// A card with no `$kind` is rejected as an invalid (empty) name.
+    fn check_composable_kind(card: &Card) -> Result<(), EditError> {
+        let kind = card.kind().unwrap_or("");
+        validate_composable_kind(kind).map_err(|e| match e {
+            CardKindError::InvalidName => EditError::InvalidKindName(kind.to_string()),
+            CardKindError::Reserved => EditError::ReservedKind,
+        })
     }
 
     pub fn remove_card(&mut self, index: usize) -> Option<Card> {

@@ -205,6 +205,44 @@ def test_push_card_invalid_kind():
         doc.push_card({"kind": "BadKind"})
 
 
+def test_remove_card_then_push_card_round_trips_fields():
+    """A card returned by remove_card feeds straight back into push_card with
+    its fields intact — the one-Card-shape contract. Exercises the explicit
+    quill/id/ext=None keys the dict carries against `deny_unknown_fields`."""
+    doc = Document.from_markdown(SIMPLE_MD)
+    doc.push_card(Document.make_card("note", {"author": "Alice"}, "Body"))
+
+    removed = doc.remove_card(0)
+    # The returned dict carries explicit None for the absent $ entries.
+    assert removed["quill"] is None and removed["id"] is None
+    assert field(removed, "author") == "Alice"
+
+    doc.push_card(removed)  # must not raise (deny_unknown_fields accepts the shape)
+    assert len(doc.cards) == 1
+    assert doc.cards[0]["kind"] == "note"
+    assert field(doc.cards[0], "author") == "Alice"  # field survived the round-trip
+    assert doc.cards[0]["body"] == "Body"
+
+
+def test_make_card_accepts_any_kind_push_card_is_the_gate():
+    """make_card is permissive data-shaping; the kind invariant is enforced at
+    push_card, not construction."""
+    card = Document.make_card("BadKind", {"x": 1})
+    assert card["kind"] == "BadKind"  # construction succeeds
+    doc = Document.from_markdown(SIMPLE_MD)
+    with pytest.raises(QuillmarkError, match="InvalidKindName"):
+        doc.push_card(card)
+
+
+def test_stale_flat_input_is_a_loud_error():
+    """A stale {kind, fields} dict fails loudly rather than yielding an empty
+    card: `deny_unknown_fields` on the wire type rejects the unknown `fields`
+    key at deserialize time (a ValueError), before any edit."""
+    doc = Document.from_markdown(SIMPLE_MD)
+    with pytest.raises(ValueError, match="fields"):
+        doc.push_card({"kind": "note", "fields": {"x": 1}})
+
+
 def test_insert_card_at_front():
     """insert_card at index 0 prepends the card."""
     doc = Document.from_markdown(MD_WITH_CARDS)
@@ -401,7 +439,7 @@ def test_invariants_after_mutation_sequence():
     doc = Document.from_markdown(SIMPLE_MD)
 
     # Add and manipulate cards
-    doc.push_card({"kind": "note", "fields": {"text": "hi"}})
+    doc.push_card(Document.make_card("note", {"text": "hi"}))
     doc.push_card({"kind": "summary"})
     doc.push_card({"kind": "appendix"})
     doc.insert_card(1, {"kind": "intro"})  # note, intro, summary, appendix
@@ -438,7 +476,7 @@ def test_to_markdown_general_round_trip():
 
     # Mutate
     doc.set_field("title", "New Title")
-    doc.push_card({"kind": "note", "fields": {"author": "Alice"}, "body": "Hello"})
+    doc.push_card(Document.make_card("note", {"author": "Alice"}, "Hello"))
     doc.replace_body("Updated body")
 
     # Emit

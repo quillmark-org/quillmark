@@ -1,7 +1,7 @@
 //! Quillmark WASM Engine - Simplified API
 
 use crate::error::WasmError;
-use crate::types::{Card, Diagnostic, RenderOptions, RenderResult};
+use crate::types::{Diagnostic, RenderOptions, RenderResult};
 use js_sys::{Array, Uint8Array};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -92,17 +92,35 @@ export interface QuillMetadata {
 
 /// TypeScript declaration for `pushCard`/`insertCard` input shape.
 /// Referenced by name via `unchecked_param_type` on those methods.
+/// TypeScript for the canonical `Card` wire shape (mirrors
+/// `quillmark_core::CardWire`). The single shape both *returned* by
+/// `Document.main` / `cards` / `removeCard` / `quill.seedCard` and *accepted*
+/// by `pushCard` / `insertCard` / `Document.makeCard`.
 #[wasm_bindgen(typescript_custom_section)]
-const CARD_INPUT_TS: &'static str = r#"
+const CARD_TS: &'static str = r#"
+/** A field or comment entry in a `Card.payloadItems` list. */
+export type PayloadItem =
+    | { type: "field"; key: string; value: unknown; fill?: boolean }
+    | { type: "comment"; text: string; inline?: boolean };
+
 /**
- * Input shape for `Document.pushCard` and `Document.insertCard`.
+ * A single card block. The one shape exchanged in both directions: returned by
+ * `Document.main` / `Document.cards` / `Document.removeCard` / `Quill.seedCard`,
+ * and accepted by `Document.pushCard` / `Document.insertCard`. Build a fresh
+ * one with `Document.makeCard`.
  *
- * Only `kind` is required. `fields` defaults to `{}`, `body` to `""`.
+ * `$` system entries are hoisted to named fields: `kind` (the `$kind`, empty
+ * string when none), optional `quill` (the `$quill` `name@version`, main card
+ * only), optional `id` (`$id`), and optional `ext` (`$ext`). `payloadItems`
+ * carries user fields and comments in order.
  */
-export interface CardInput {
+export interface Card {
     kind: string;
-    fields?: Record<string, unknown>;
-    body?: string;
+    quill?: string;
+    id?: string;
+    ext?: Record<string, unknown>;
+    payloadItems: PayloadItem[];
+    body: string;
 }
 "#;
 
@@ -363,6 +381,28 @@ impl Quill {
             parse_warnings: Vec::new(),
         }
     }
+
+    /// Seed a starter main `Card` (carries `$quill`) from the schema — the
+    /// `$kind: main` card of [`seedDocument`](Self::seed_document) in
+    /// isolation, committing each field's `example:` value. Returns the same
+    /// `Card` shape as the `Document.main` getter.
+    #[wasm_bindgen(js_name = seedMain, unchecked_return_type = "Card")]
+    pub fn seed_main(&self) -> JsValue {
+        card_to_js(&self.inner.seed_main())
+    }
+
+    /// Seed a starter composable `Card` of the given kind (carries `$kind`),
+    /// committing its fields' `example:` values and leaving every other field
+    /// absent. Returns `undefined` if `cardKind` is not declared in this
+    /// quill's schema, else a `Card` that feeds straight into
+    /// `Document.pushCard` / `insertCard`.
+    #[wasm_bindgen(js_name = seedCard, unchecked_return_type = "Card | undefined")]
+    pub fn seed_card(&self, card_kind: &str) -> JsValue {
+        match self.inner.seed_card(card_kind) {
+            Some(core_card) => card_to_js(&core_card),
+            None => JsValue::UNDEFINED,
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -508,14 +548,13 @@ impl Document {
     /// call — cache locally if read in a hot loop.
     #[wasm_bindgen(getter, js_name = main, unchecked_return_type = "Card")]
     pub fn main(&self) -> JsValue {
-        let card = Card::from(self.inner.main());
-        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-        card.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
+        card_to_js(self.inner.main())
     }
 
     #[wasm_bindgen(getter, js_name = cards, unchecked_return_type = "Card[]")]
     pub fn cards(&self) -> JsValue {
-        let cards: Vec<Card> = self.inner.cards().iter().map(Card::from).collect();
+        let cards: Vec<quillmark_core::CardWire> =
+            self.inner.cards().iter().map(Into::into).collect();
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         cards.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
     }
@@ -710,26 +749,71 @@ impl Document {
         self.inner.main_mut().replace_body(body);
     }
 
-    /// Append a card to the end of the card list.
-    /// Throws if `card.kind` is not a valid kind name.
+    /// Build a fresh `Card` from a kind and a flat field map — the ergonomic
+    /// constructor for `pushCard` / `insertCard`. `fields` is an optional
+    /// `Record<string, unknown>` (each entry becomes a card field, in
+    /// insertion order); `body` defaults to `""`. Kind validity is checked by
+    /// `pushCard` / `insertCard`, not here.
+    #[wasm_bindgen(js_name = makeCard, unchecked_return_type = "Card")]
+    pub fn make_card(
+        kind: String,
+        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: JsValue,
+        body: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        let field_map: serde_json::Map<String, serde_json::Value> =
+            if fields.is_undefined() || fields.is_null() {
+                serde_json::Map::new()
+            } else {
+                serde_wasm_bindgen::from_value(fields).map_err(|e| {
+                    WasmError::from(format!("makeCard: `fields` must be an object: {e}"))
+                        .to_js_value()
+                })?
+            };
+        let payload_items = field_map
+            .into_iter()
+            .map(|(key, value)| quillmark_core::PayloadItemWire::Field {
+                key,
+                value,
+                fill: false,
+            })
+            .collect();
+        let wire = quillmark_core::CardWire {
+            kind,
+            quill: None,
+            id: None,
+            ext: None,
+            payload_items,
+            body: body.unwrap_or_default(),
+        };
+        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        wire.serialize(&serializer)
+            .map_err(|e| WasmError::from(format!("makeCard: serialization failed: {e}")).to_js_value())
+    }
+
+    /// Append a card to the end of the card list. Accepts a `Card` (the shape
+    /// returned by `cards` / `removeCard` / `quill.seedCard`); build a fresh
+    /// one with [`Document.makeCard`](Document::make_card). Throws if
+    /// `card.kind` is not a valid kind name.
     #[wasm_bindgen(js_name = pushCard)]
     pub fn push_card(
         &mut self,
-        #[wasm_bindgen(unchecked_param_type = "CardInput")] card: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "Card")] card: JsValue,
     ) -> Result<(), JsValue> {
-        let core_card = js_value_to_card(&card)?;
-        self.inner.push_card(core_card);
-        Ok(())
+        let core_card = js_to_card(&card)?;
+        self.inner
+            .push_card(core_card)
+            .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Insert a card at `index` (must be in `0..=cards.length`).
+    /// Insert a card at `index` (must be in `0..=cards.length`). Accepts a
+    /// `Card` (see [`pushCard`](Self::push_card)).
     #[wasm_bindgen(js_name = insertCard)]
     pub fn insert_card(
         &mut self,
         index: usize,
-        #[wasm_bindgen(unchecked_param_type = "CardInput")] card: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "Card")] card: JsValue,
     ) -> Result<(), JsValue> {
-        let core_card = js_value_to_card(&card)?;
+        let core_card = js_to_card(&card)?;
         self.inner
             .insert_card(index, core_card)
             .map_err(|e| edit_error_to_js(&e))
@@ -738,12 +822,7 @@ impl Document {
     #[wasm_bindgen(js_name = removeCard, unchecked_return_type = "Card | undefined")]
     pub fn remove_card(&mut self, index: usize) -> JsValue {
         match self.inner.remove_card(index) {
-            Some(core_card) => {
-                let card = Card::from(&core_card);
-                let serializer =
-                    serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-                card.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
-            }
+            Some(core_card) => card_to_js(&core_card),
             None => JsValue::UNDEFINED,
         }
     }
@@ -874,28 +953,45 @@ fn ext_map_to_js(map: Option<serde_json::Map<String, serde_json::Value>>) -> JsV
     json_value_to_js(map.map(serde_json::Value::Object))
 }
 
-fn js_value_to_card(value: &JsValue) -> Result<quillmark_core::Card, JsValue> {
-    #[derive(Deserialize)]
-    struct CardInput {
-        kind: String,
-        #[serde(default)]
-        fields: serde_json::Map<String, serde_json::Value>,
-        #[serde(default)]
-        body: String,
+/// Serialize a core [`Card`](quillmark_core::Card) to its `Card` JS shape via
+/// the canonical [`CardWire`](quillmark_core::CardWire). The single place WASM
+/// turns a core card into JS — used by `Document.main`, `cards`, `removeCard`,
+/// and the seed getters.
+fn card_to_js(card: &quillmark_core::Card) -> JsValue {
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    quillmark_core::CardWire::from(card)
+        .serialize(&serializer)
+        .unwrap_or(JsValue::UNDEFINED)
+}
+
+/// Deserialize a `Card`-shaped JS value into a core
+/// [`Card`](quillmark_core::Card) via [`CardWire`](quillmark_core::CardWire).
+/// The single place WASM turns JS into a core card — used by `pushCard` /
+/// `insertCard`.
+fn js_to_card(value: &JsValue) -> Result<quillmark_core::Card, JsValue> {
+    // `serde_wasm_bindgen` does not honor the core type's
+    // `#[serde(deny_unknown_fields)]` (it looks up known fields rather than
+    // visiting every key), so enforce it here to match the Python binding and
+    // fail loudly on the retired flat `{ kind, fields }` shape instead of
+    // yielding a silently-empty card.
+    if let Some(obj) = value.dyn_ref::<js_sys::Object>() {
+        const ALLOWED: &[&str] = &["kind", "quill", "id", "ext", "payloadItems", "body"];
+        for key in js_sys::Object::keys(obj).iter() {
+            if let Some(k) = key.as_string() {
+                if !ALLOWED.contains(&k.as_str()) {
+                    return Err(WasmError::from(format!(
+                        "card has unknown field `{k}`; expected a Card \
+                         {{ kind, payloadItems, body, … }} — build one with \
+                         Document.makeCard(kind, fields, body)"
+                    ))
+                    .to_js_value());
+                }
+            }
+        }
     }
-
-    let input: CardInput = serde_wasm_bindgen::from_value(value.clone()).map_err(|e| {
-        WasmError::from(format!("card must be {{ kind, fields?, body? }}: {}", e)).to_js_value()
-    })?;
-
-    let mut card = quillmark_core::Card::new(input.kind).map_err(|e| edit_error_to_js(&e))?;
-
-    for (k, v) in input.fields {
-        let qv = quillmark_core::QuillValue::from_json(v);
-        card.set_field(&k, qv).map_err(|e| edit_error_to_js(&e))?;
-    }
-    card.replace_body(input.body);
-    Ok(card)
+    let wire: quillmark_core::CardWire = serde_wasm_bindgen::from_value(value.clone())
+        .map_err(|e| WasmError::from(format!("card must be a Card object: {e}")).to_js_value())?;
+    quillmark_core::Card::try_from(wire).map_err(|e| WasmError::from(e.to_string()).to_js_value())
 }
 
 fn file_tree_from_js_tree(tree: &JsValue) -> Result<quillmark_core::FileTreeNode, JsValue> {

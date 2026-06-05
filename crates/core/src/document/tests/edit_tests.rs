@@ -214,7 +214,7 @@ fn test_document_replace_body() {
 fn test_document_push_card() {
     let mut doc = make_doc();
     let card = Card::new("note").unwrap();
-    doc.push_card(card);
+    doc.push_card(card).unwrap();
     assert_eq!(doc.cards().len(), 1);
     assert_eq!(doc.cards()[0].kind(), Some("note"));
 }
@@ -485,8 +485,8 @@ fn test_invariants_after_mutation_sequence() {
     let c1 = Card::new("note").unwrap();
     let c2 = Card::new("summary").unwrap();
     let c3 = Card::new("appendix").unwrap();
-    doc.push_card(c1);
-    doc.push_card(c2);
+    doc.push_card(c1).unwrap();
+    doc.push_card(c2).unwrap();
     doc.insert_card(1, c3).unwrap(); // now: note, appendix, summary
 
     // 3. Mutate a card field

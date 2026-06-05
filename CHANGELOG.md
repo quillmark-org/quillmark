@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Breaking (bindings + Rust API):** a single canonical **`Card` wire shape** now
+  flows in *both* directions. Core owns it as `quillmark_core::CardWire` (with
+  `From<&Card>` / `TryFrom<CardWire>`); the WASM/Python bindings serialize and
+  deserialize it instead of hand-rolling their own per-card translation. The
+  flat `CardInput { kind, fields?, body? }` input type is **removed**:
+  `Document.pushCard` / `insertCard` (`push_card` / `insert_card`) now accept the
+  same `Card` shape they return (`{ kind, payloadItems, … }`), so a card from
+  `cards` / `removeCard` / `quill.seedCard` feeds straight back in. Build a fresh
+  card from a flat field map with the new **`Document.makeCard`** /
+  `Document.make_card` helper. A stale `{ kind, fields }` object is now a loud
+  error (`deny_unknown_fields`), not a silently-empty card. The seeded per-card
+  getters `quill.seedMain` / `quill.seedCard` (`seed_main` / `seed_card`) are
+  exposed on both bindings, mirroring the Rust `Quill::seed_main` / `seed_card`.
+- **Breaking (Rust API):** `Document::push_card` now returns
+  `Result<(), EditError>` and, with `insert_card`, validates that the card's
+  `$kind` is a valid, non-reserved composable kind — the cards-list invariant is
+  enforced at the edit op rather than incidentally at `Card::new`.
+
 - **Breaking (bindings + Rust API):** the schema-aware **form view is removed**.
   `Quill::form` / `Quill::blank_main` / `Quill::blank_card` (and the
   `quill.form` / `blankMain` / `blankCard` bindings) are gone, along with the

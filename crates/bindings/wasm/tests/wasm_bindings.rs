@@ -321,6 +321,50 @@ fn test_quill_seed_document() {
     );
 }
 
+/// `seedMain` / `seedCard` are the per-card seeds (the `Document.main` /
+/// `cards` shape): each commits its fields' `example`, and `seedCard` is
+/// `undefined` for an unknown kind.
+#[wasm_bindgen_test]
+fn test_quill_seed_main_and_card() {
+    use js_sys::Reflect;
+    use wasm_bindgen::JsValue;
+
+    let get = |obj: &JsValue, key: &str| Reflect::get(obj, &JsValue::from_str(key)).unwrap();
+    let json = |v: &JsValue| js_sys::JSON::stringify(v).unwrap().as_string().unwrap();
+
+    let quill = Quillmark::new()
+        .quill(common::tree(&[
+            (
+                "Quill.yaml",
+                b"quill:\n  name: seed_quill\n  backend: typst\n  version: \"1.0\"\n  plate_file: plate.typ\n  description: Seed quill\nmain:\n  fields:\n    byline:\n      type: string\n      example: FIRST LAST\ncard_kinds:\n  note:\n    fields:\n      text:\n        type: string\n        example: NOTE EXAMPLE\n",
+            ),
+            ("plate.typ", b"= Title"),
+        ]))
+        .expect("quill load");
+
+    // seed_main: the `$kind: main` card, committing the byline example.
+    let main = quill.seed_main();
+    assert_eq!(get(&main, "kind").as_string().as_deref(), Some("main"));
+    assert!(
+        json(&main).contains("FIRST LAST"),
+        "byline example must be committed: {}",
+        json(&main)
+    );
+
+    // seed_card: a known kind seeds its example; an unknown kind is undefined.
+    let note = quill.seed_card("note");
+    assert_eq!(get(&note, "kind").as_string().as_deref(), Some("note"));
+    assert!(
+        json(&note).contains("NOTE EXAMPLE"),
+        "note example must be committed: {}",
+        json(&note)
+    );
+    assert!(
+        quill.seed_card("missing").is_undefined(),
+        "unknown kind must be undefined"
+    );
+}
+
 /// `doc.clone()` returns an independent handle: mutations on the clone
 /// must not affect the original, and parse-time warnings must survive.
 #[wasm_bindgen_test]

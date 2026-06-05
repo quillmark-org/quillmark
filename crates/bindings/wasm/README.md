@@ -191,6 +191,21 @@ const doc = quill.seedDocument();
 const markdown = doc.toMarkdown();
 ```
 
+For per-card seeding, `quill.seedMain()` returns just the `$kind: main` card
+and `quill.seedCard(kind)` returns a starter composable card (or `undefined`
+if the kind is not declared). Both return the same `Card` shape as
+`doc.main` / `doc.cards`, which `doc.pushCard` / `doc.insertCard` accept
+directly:
+
+```ts
+doc.pushCard(quill.seedCard("note"));                 // seed → push
+doc.pushCard(Document.makeCard("note", { x: 1 }));    // build from a flat map
+```
+
+There is one `Card` shape in both directions — `pushCard` / `insertCard` take
+exactly what `cards` / `removeCard` / `seedCard` return. Build a fresh card
+from a flat field map with `Document.makeCard(kind, fields?, body?)`.
+
 ### `quill.render(parsed, opts?)` vs. `quill.open(parsed)`
 
 Use **`Quill.render`** for one-shot exports (PDF/SVG/PNG) — compiles, emits

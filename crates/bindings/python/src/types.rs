@@ -216,6 +216,28 @@ impl PyQuill {
             parse_warnings: Vec::new(),
         }
     }
+
+    /// Seed a starter main card (carries `$quill`) from the schema — the
+    /// `$kind: main` card of `seed_document()` in isolation, as a dict (same
+    /// shape as `Document.main`). Mirrors WASM `seedMain`.
+    fn seed_main<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        card_to_pydict(py, &self.inner.seed_main())
+    }
+
+    /// Seed a starter composable card of the given kind (carries `$kind`),
+    /// committing its fields' `example` values and leaving every other field
+    /// absent; `None` if `card_kind` is not declared. Returns the same dict
+    /// shape as `Document.cards` / `remove_card`. Mirrors WASM `seedCard`.
+    fn seed_card<'py>(
+        &self,
+        py: Python<'py>,
+        card_kind: &str,
+    ) -> PyResult<Option<Bound<'py, PyDict>>> {
+        match self.inner.seed_card(card_kind) {
+            Some(card) => Ok(Some(card_to_pydict(py, &card)?)),
+            None => Ok(None),
+        }
+    }
 }
 
 #[pyclass(name = "Document")]
@@ -494,10 +516,46 @@ impl PyDocument {
         self.inner.main_mut().replace_body(body);
     }
 
+    /// Build a fresh `Card` dict from a kind and a flat field mapping — the
+    /// ergonomic constructor for `push_card` / `insert_card`. `fields` maps
+    /// field name → value (each becomes a card field, in insertion order);
+    /// `body` defaults to `""`. Kind validity is checked by `push_card` /
+    /// `insert_card`, not here. Mirrors WASM `Document.makeCard`.
+    #[staticmethod]
+    #[pyo3(signature = (kind, fields=None, body=None))]
+    fn make_card<'py>(
+        py: Python<'py>,
+        kind: String,
+        fields: Option<Bound<'_, PyDict>>,
+        body: Option<String>,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let mut payload_items = Vec::new();
+        if let Some(fields) = fields {
+            for (k, v) in fields.iter() {
+                let key: String = k.extract()?;
+                payload_items.push(quillmark_core::PayloadItemWire::Field {
+                    key,
+                    value: py_to_json(&v)?,
+                    fill: false,
+                });
+            }
+        }
+        let wire = quillmark_core::CardWire {
+            kind,
+            quill: None,
+            id: None,
+            ext: None,
+            payload_items,
+            body: body.unwrap_or_default(),
+        };
+        let card =
+            quillmark_core::Card::try_from(wire).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        card_to_pydict(py, &card)
+    }
+
     fn push_card(&mut self, card: Bound<'_, PyAny>) -> PyResult<()> {
         let core_card = py_dict_to_card(&card)?;
-        self.inner.push_card(core_card);
-        Ok(())
+        self.inner.push_card(core_card).map_err(convert_edit_error)
     }
 
     fn insert_card(&mut self, index: usize, card: Bound<'_, PyAny>) -> PyResult<()> {
@@ -794,48 +852,49 @@ fn quillvalue_to_py<'py>(
     json_to_py(py, value.as_json())
 }
 
+/// Project a core [`Card`](quillmark_core::Card) to its Python dict shape via
+/// the canonical [`CardWire`](quillmark_core::CardWire) (core owns the
+/// field/comment/`$`-entry mapping). The dict keeps Python's snake_case
+/// `payload_items`; item entries (`type`/`key`/`value`/`fill`/`text`/`inline`)
+/// match the WASM `Card` shape verbatim.
 fn card_to_pydict<'py>(
     py: Python<'py>,
     card: &quillmark_core::Card,
 ) -> PyResult<Bound<'py, PyDict>> {
+    let wire = quillmark_core::CardWire::from(card);
     let d = PyDict::new(py);
-    d.set_item("kind", card.kind().unwrap_or(""))?;
+    d.set_item("kind", &wire.kind)?;
+    d.set_item("quill", wire.quill.as_deref())?;
+    d.set_item("id", wire.id.as_deref())?;
 
-    let items = pyo3::types::PyList::empty(py);
-    for item in card.payload().items() {
+    let items = PyList::empty(py);
+    for item in &wire.payload_items {
         let entry = PyDict::new(py);
         match item {
-            quillmark_core::PayloadItem::Field {
-                key, value, fill, ..
-            } => {
+            quillmark_core::PayloadItemWire::Field { key, value, fill } => {
                 entry.set_item("type", "field")?;
                 entry.set_item("key", key)?;
-                entry.set_item("value", quillvalue_to_py(py, value)?)?;
+                entry.set_item("value", json_to_py(py, value)?)?;
                 entry.set_item("fill", *fill)?;
             }
-            quillmark_core::PayloadItem::Comment { text, inline } => {
+            quillmark_core::PayloadItemWire::Comment { text, inline } => {
                 entry.set_item("type", "comment")?;
                 entry.set_item("text", text)?;
                 entry.set_item("inline", *inline)?;
             }
-            quillmark_core::PayloadItem::Quill { .. }
-            | quillmark_core::PayloadItem::Kind { .. }
-            | quillmark_core::PayloadItem::Id { .. }
-            | quillmark_core::PayloadItem::Ext { .. } => continue,
         }
         items.append(entry)?;
     }
     d.set_item("payload_items", items)?;
 
-    match card.ext() {
+    match &wire.ext {
         Some(ext_map) => {
-            let ext_value = serde_json::Value::Object(ext_map.clone());
-            d.set_item("ext", json_to_py(py, &ext_value)?)?;
+            d.set_item("ext", json_to_py(py, &serde_json::Value::Object(ext_map.clone()))?)?;
         }
         None => d.set_item("ext", py.None())?,
     }
 
-    d.set_item("body", card.body())?;
+    d.set_item("body", &wire.body)?;
     Ok(d)
 }
 
@@ -955,34 +1014,17 @@ fn ext_map_to_py<'py>(
     ext_value_to_py(py, map.map(serde_json::Value::Object))
 }
 
+/// Build a core [`Card`](quillmark_core::Card) from a Python `Card` dict via
+/// the canonical [`CardWire`](quillmark_core::CardWire) (core owns the
+/// construction). Accepts the snake_case `payload_items` key; a stale flat
+/// `{ kind, fields }` dict fails loudly (`deny_unknown_fields`) rather than
+/// yielding an empty card.
 fn py_dict_to_card(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::Card> {
-    let dict = value
-        .downcast::<PyDict>()
-        .map_err(|_| PyValueError::new_err("card must be a dict with a 'kind' key"))?;
-
-    let kind: String = dict
-        .get_item("kind")?
-        .ok_or_else(|| PyValueError::new_err("card dict must have a 'kind' key"))?
-        .extract()?;
-
-    let mut card = quillmark_core::Card::new(kind).map_err(convert_edit_error)?;
-
-    if let Some(fields_val) = dict.get_item("fields")? {
-        let fields_dict = fields_val
-            .downcast::<PyDict>()
-            .map_err(|_| PyValueError::new_err("card 'fields' must be a dict"))?;
-        for (k, v) in fields_dict.iter() {
-            let field_name: String = k.extract()?;
-            let qv = py_to_quillvalue(&v)?;
-            card.set_field(&field_name, qv)
-                .map_err(convert_edit_error)?;
-        }
-    }
-
-    if let Some(body_val) = dict.get_item("body")? {
-        let body: String = body_val.extract()?;
-        card.replace_body(body);
-    }
-
-    Ok(card)
+    let json = py_to_json(value)?;
+    let wire: quillmark_core::CardWire = serde_json::from_value(json).map_err(|e| {
+        PyValueError::new_err(format!(
+            "card must be a Card dict {{ kind, payload_items?, body? }}: {e}"
+        ))
+    })?;
+    quillmark_core::Card::try_from(wire).map_err(|e| PyValueError::new_err(e.to_string()))
 }
