@@ -138,9 +138,10 @@ def _diag_codes(exc):
     return [d.code for d in exc.diagnostics]
 
 
-def test_render_reports_must_fill_absent(tmp_path):
-    """A Must Fill field absent from the document fails validation with
-    ``validation::must_fill_absent``.
+def test_render_demotes_must_fill_absent(tmp_path):
+    """An absent Must Fill field is non-fatal for render: it zero-fills and
+    renders successfully. The ``validation::must_fill_absent`` completeness
+    signal lives on ``quill.validate``, which render demotes.
     """
     quill = make_quill(tmp_path)
     md = (
@@ -153,12 +154,14 @@ def test_render_reports_must_fill_absent(tmp_path):
     )
     doc = Document.from_markdown(md)
 
-    with pytest.raises(QuillmarkError) as exc_info:
-        quill.render(doc, OutputFormat.PDF)
+    # render zero-fills the absent Must Fill fields rather than failing
+    result = quill.render(doc, OutputFormat.PDF)
+    assert len(result.artifacts) > 0
 
-    codes = _diag_codes(exc_info.value)
+    # the completeness signal is surfaced by validate, not render
+    codes = [d.get("code") for d in quill.validate(doc)]
     assert "validation::must_fill_absent" in codes, (
-        f"expected validation::must_fill_absent; got: {codes}"
+        f"expected validate to surface must_fill_absent; got: {codes}"
     )
 
 
@@ -186,14 +189,16 @@ def test_render_reports_must_fill_sentinel(tmp_path):
     )
 
 
-def test_render_does_not_emit_legacy_missing_required(tmp_path):
+def test_no_legacy_validation_codes(tmp_path):
     """The legacy ``validation::missing_required`` code must be gone.
 
-    Triggering the same condition (absent Must Fill field) must surface
-    the new ``validation::must_fill_absent`` code instead. The
-    intermediate codes ``validation::required_field_absent`` and
+    Triggering the condition (absent Must Fill field) must surface the new
+    ``validation::must_fill_absent`` code instead. The intermediate codes
+    ``validation::required_field_absent`` and
     ``validation::unfilled_placeholder`` were also retired in favor of
     ``validation::must_fill_absent`` and ``validation::must_fill_sentinel``.
+    Render demotes the absent-field signal (it zero-fills and succeeds), so
+    the diagnostic surface that carries these codes is ``quill.validate``.
     """
     quill = make_quill(tmp_path)
     md = (
@@ -204,10 +209,15 @@ def test_render_does_not_emit_legacy_missing_required(tmp_path):
     )
     doc = Document.from_markdown(md)
 
-    with pytest.raises(QuillmarkError) as exc_info:
-        quill.render(doc, OutputFormat.PDF)
+    # render demotes must_fill_absent → zero-fills and succeeds
+    result = quill.render(doc, OutputFormat.PDF)
+    assert len(result.artifacts) > 0
 
-    codes = _diag_codes(exc_info.value)
+    # the validate surface carries the canonical code, never the legacy ones
+    codes = [d.get("code") for d in quill.validate(doc)]
+    assert "validation::must_fill_absent" in codes, (
+        f"expected canonical must_fill_absent; got: {codes}"
+    )
     assert "validation::missing_required" not in codes, (
         "legacy code `validation::missing_required` must no longer appear; "
         f"got: {codes}"
