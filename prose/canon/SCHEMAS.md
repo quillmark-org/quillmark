@@ -111,12 +111,21 @@ else type-empty zero), exactly as for any authored document.
 Committing *only* `example` is the whole design. `resolve_fields` already
 produces `default` and `zero` at compile time but **never `example`** (example
 is excluded from the render path — see [BLUEPRINT.md](BLUEPRINT.md)), so
-`example` is the one value the render layer cannot supply on its own. The seed
-commits exactly that and leaves everything the render layer already knows
-absent. This keeps a split-screen editor/preview consistent — the document
+`example` is the one source the render floor cannot reproduce. Persisting a
+`default` would be redundant — the floor interpolates it anyway — and would
+*freeze* it against a later schema change; persisting a `zero` is outright
+forbidden ([Non-persist invariant](#zero-filled-render)). So the seed writes
+exactly the one source that wouldn't otherwise appear and leaves the rest to
+the floor. This keeps a split-screen editor/preview consistent — the document
 carries real content, the preview renders it, and absent fields resolve
-identically in both panes — while writing nothing the
-[Non-persist invariant](#zero-filled-render) forbids.
+identically in both panes.
+
+The seed is **illustration-first**, exactly like the `example` string (below):
+a field carrying *both* an `example` and a `default` commits — and therefore
+renders — its **`example`**, not its default. So a seeded document is *not* the
+fidelity render: BLUEPRINT.md's "a both-having field renders its default on the
+render path" describes authored and blank documents, where no `example` is ever
+present. In a seed, the `example` is present, so it wins.
 
 - **Composable cards** are seeded one instance per declared kind; `body.example`
   fills the body when bodies are enabled.
