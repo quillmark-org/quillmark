@@ -760,8 +760,9 @@ impl Document {
     #[wasm_bindgen(js_name = makeCard, unchecked_return_type = "Card")]
     pub fn make_card(
         kind: String,
-        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: Option<JsValue>,
-        body: Option<String>,
+        #[wasm_bindgen(unchecked_optional_param_type = "Record<string, unknown>")]
+        fields: Option<JsValue>,
+        #[wasm_bindgen(unchecked_optional_param_type = "string")] body: Option<String>,
     ) -> Result<JsValue, JsValue> {
         let field_map: serde_json::Map<String, serde_json::Value> = match fields {
             Some(fields) if !fields.is_undefined() && !fields.is_null() => {

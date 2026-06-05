@@ -576,6 +576,16 @@ Card two.
     expect(() => doc.pushCard(bad)).toThrow(/InvalidKindName/) // insertion rejects
   })
 
+  it('makeCard treats fields and body as optional', () => {
+    // Both `fields` and `body` are omittable; a bare kind yields an empty card.
+    // The `.d.ts` marks them `fields?` / `body?` to match (see makeCard's
+    // unchecked_optional_param_type bindings).
+    const bare = Document.makeCard('note')
+    expect(bare.kind).toBe('note')
+    expect(bare.payloadItems).toEqual([])
+    expect(bare.body).toBe('')
+  })
+
   it('a stale { kind, fields } object is a loud error, not a silent empty card', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     expect(() => doc.pushCard({ kind: 'note', fields: { x: 1 } })).toThrow()

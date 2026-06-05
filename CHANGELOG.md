@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Fix (WASM bindings):** `Document.makeCard`'s generated TypeScript now marks
+  `fields` (and `body`) as optional (`fields?: Record<string, unknown>`,
+  `body?: string`), matching the doc comment and runtime behavior. They were
+  typed as required because `unchecked_param_type` drops the `?` marker; the
+  bindings now use `unchecked_optional_param_type`. Callers can build a bare
+  card with `Document.makeCard('kind')`.
+
 ## v0.88.0 - 2026-06-05
 
 - **Breaking (bindings + Rust API):** a single canonical **`Card` wire shape** now
