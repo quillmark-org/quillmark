@@ -17,7 +17,7 @@
 //!   Format slot uses angle brackets (`array<string>`, `datetime<YYYY-MM-DD[Thh:mm:ss]>`,
 //!   `enum<a | b | c>`). The optional `; delete-ok` tag marks **Endorsed**
 //!   cells whose rendered default is shippable as-is; its absence marks
-//!   **Must Fill** cells, which carry the `<must-fill>` sentinel in the
+//!   **Unendorsed** cells, which carry the `<must-fill>` sentinel in the
 //!   value cell instead.
 //! - **Metadata annotation.** The `$quill` / `$kind` system-metadata lines
 //!   have no inline-annotation slot, so their role annotation
@@ -35,78 +35,28 @@
 use std::collections::BTreeMap;
 
 use super::validation::MUST_FILL_SENTINEL;
-use super::{zero_value, CardSchema, FieldSchema, FieldType, QuillConfig};
+use super::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::document::emit::{saphyr_emit_flow, saphyr_emit_scalar};
 use crate::value::QuillValue;
 use serde_json::Value as JsonValue;
 
-/// Internal strategy controlling how each field's value cell is rendered in a
-/// generated reference document. The value is chosen at generation time from
-/// the typed schema, so the document never re-parses the annotation grammar.
-///
-/// Two variants for the two named reference documents — no configurable
-/// precedence policy (see `prose/canon/BLUEPRINT.md`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FillSource {
-    /// Render the `<must-fill>` sentinel in every Must Fill cell (a field with
-    /// no `default:`) — downstream validation reports
-    /// `validation::must_fill_sentinel`. The canonical authoring blueprint
-    /// produced by [`QuillConfig::blueprint`].
-    Sentinel,
-    /// Fill each cell with its illustrative value: `example:` › `default:` ›
-    /// the type-empty zero value. The `example` reference document produced by
-    /// [`QuillConfig::example`].
-    Example,
-}
-
-/// The value source for a field's rendered cell, by precedence:
-///
-/// - [`FillSource::Sentinel`] (blueprint): the endorsed `default:` only; a
-///   Must Fill cell falls through to the `<must-fill>` sentinel.
-/// - [`FillSource::Example`] (example document): the illustrative `example:`
-///   wins, then the `default:`; a cell with neither falls through to the
-///   type-empty zero value.
-///
-/// `None` means the cell falls back to sentinel / zero rendering in the
-/// caller. Endorsement (the `; delete-ok` tag) keys off `field.default` alone,
-/// never this source.
-fn fill_source(field: &FieldSchema, source: FillSource) -> Option<&QuillValue> {
-    match source {
-        FillSource::Sentinel => field.default.as_ref(),
-        FillSource::Example => field.example.as_ref().or(field.default.as_ref()),
-    }
-}
-
 impl QuillConfig {
     /// Generate the canonical annotated Markdown blueprint for this quill —
-    /// the authoring surface handed to LLMs and humans, with Must Fill cells
-    /// carrying the `<must-fill>` sentinel. Its illustrative counterpart is
-    /// [`example`](Self::example). See module docs for the annotation grammar;
-    /// the function is total over any valid `QuillConfig`.
+    /// the authoring surface handed to LLMs and humans, with Unendorsed cells
+    /// carrying the `<must-fill>` sentinel. See module docs for the annotation
+    /// grammar; the function is total over any valid `QuillConfig`.
+    ///
+    /// The "filled-out" twin of the blueprint is **seeding** (`seed_document`
+    /// in the `quillmark` crate) — a committed [`Document`] rather than an
+    /// annotated string. See `prose/canon/BLUEPRINT.md`.
     ///
     /// The result is guaranteed schema-valid and parseable (every key
     /// present, every value type-correct). It is *not* guaranteed to render
     /// — that is the quill authoring contract on `plate.typ`; see
     /// `prose/canon/BLUEPRINT.md` §Guarantees.
-    pub fn blueprint(&self) -> String {
-        self.render_blueprint(FillSource::Sentinel)
-    }
-
-    /// Generate the `example` reference document for this quill — the
-    /// illustrative consolidation "show me a filled-out one." Each field
-    /// renders its `example:`, else its `default:`, else the type-empty zero
-    /// value, with no `<must-fill>` sentinels. The document is example-*first*
-    /// but not guaranteed fully populated: a field with neither an `example:`
-    /// nor a `default:` renders at its zero value.
     ///
-    /// See `prose/canon/BLUEPRINT.md`. Like
-    /// [`blueprint`](Self::blueprint), the result is schema-valid and
-    /// parseable; rendering is the quill authoring contract on `plate.typ`.
-    pub fn example(&self) -> String {
-        self.render_blueprint(FillSource::Example)
-    }
-
-    fn render_blueprint(&self, source: FillSource) -> String {
+    /// [`Document`]: crate::Document
+    pub fn blueprint(&self) -> String {
         let mut out = String::new();
         let main_desc = self
             .main
@@ -119,7 +69,6 @@ impl QuillConfig {
             &self.main,
             &format!("{}@{}", self.name, self.version),
             main_desc,
-            source,
         );
         if self.main.body_enabled() {
             let example = self.main.body.as_ref().and_then(|b| b.example.as_deref());
@@ -128,7 +77,7 @@ impl QuillConfig {
         }
         for card in &self.card_kinds {
             out.push('\n');
-            write_card_fence(&mut out, card, source);
+            write_card_fence(&mut out, card);
             if card.body_enabled() {
                 let example = card.body.as_ref().and_then(|b| b.example.as_deref());
                 let fallback = format!("Write {} body here.", card.name);
@@ -159,7 +108,6 @@ fn write_main_fence(
     card: &CardSchema,
     quill_ref: &str,
     description: Option<&str>,
-    source: FillSource,
 ) {
     out.push_str("~~~\n");
     out.push_str("$quill: ");
@@ -172,14 +120,14 @@ fn write_main_fence(
     if let Some(desc) = description {
         write_comment(out, desc);
     }
-    write_card_fields(out, card, source);
+    write_card_fields(out, card);
     out.push_str("~~~\n");
 }
 
 /// Emit a composable card as a `~~~` block declaring `$kind: <kind>`.
 /// The `composable (0..N)` role annotation and the optional description are
 /// emitted as own-line comments directly under the `$kind` header.
-fn write_card_fence(out: &mut String, card: &CardSchema, source: FillSource) {
+fn write_card_fence(out: &mut String, card: &CardSchema) {
     out.push_str("~~~\n");
     out.push_str("$kind: ");
     out.push_str(&saphyr_emit_scalar(&JsonValue::String(card.name.clone())));
@@ -188,15 +136,15 @@ fn write_card_fence(out: &mut String, card: &CardSchema, source: FillSource) {
     if let Some(desc) = &card.description {
         write_comment(out, desc);
     }
-    write_card_fields(out, card, source);
+    write_card_fields(out, card);
     out.push_str("~~~\n");
 }
 
 /// Emit a card's fields, clustered by `ui.group` and ordered by `ui.order`.
-fn write_card_fields(out: &mut String, card: &CardSchema, source: FillSource) {
+fn write_card_fields(out: &mut String, card: &CardSchema) {
     for (_, fields) in group_fields(card.fields.values()) {
         for field in fields {
-            write_field(out, field, 0, source);
+            write_field(out, field, 0);
         }
     }
 }
@@ -225,7 +173,7 @@ fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
     groups
 }
 
-fn write_field(out: &mut String, field: &FieldSchema, indent: usize, source: FillSource) {
+fn write_field(out: &mut String, field: &FieldSchema, indent: usize) {
     let pad = "  ".repeat(indent);
 
     // Typed table: an array whose element is an object with properties.
@@ -235,7 +183,7 @@ fn write_field(out: &mut String, field: &FieldSchema, indent: usize, source: Fil
         if let Some(items) = &field.items {
             if matches!(items.r#type, FieldType::Object) {
                 if let Some(props) = &items.properties {
-                    write_typed_table_field(out, field, props, indent, source);
+                    write_typed_table_field(out, field, props, indent);
                     return;
                 }
             }
@@ -245,7 +193,7 @@ fn write_field(out: &mut String, field: &FieldSchema, indent: usize, source: Fil
     // Typed dictionary: standalone object with defined properties.
     if matches!(field.r#type, FieldType::Object) {
         if let Some(props) = &field.properties {
-            write_typed_object_field(out, field, props, indent, source);
+            write_typed_object_field(out, field, props, indent);
             return;
         }
     }
@@ -257,12 +205,12 @@ fn write_field(out: &mut String, field: &FieldSchema, indent: usize, source: Fil
     // a consistent shape regardless of whether a default is configured.
     if matches!(field.r#type, FieldType::Markdown) {
         let inline = inline_annotation(field, field.default.is_some());
-        write_markdown_block(out, field, &pad, &inline, source);
+        write_markdown_block(out, field, &pad, &inline);
         return;
     }
 
     let inline = format!("  # {}", inline_annotation(field, field.default.is_some()));
-    let value = field_value(field, source);
+    let value = field_value(field);
     write_value(out, &field.name, &value, &inline, &pad);
 }
 
@@ -284,21 +232,13 @@ fn write_eg_comment(out: &mut String, field: &FieldSchema, pad: &str) {
     }
 }
 
-fn write_markdown_block(
-    out: &mut String,
-    field: &FieldSchema,
-    pad: &str,
-    inline: &str,
-    source: FillSource,
-) {
+fn write_markdown_block(out: &mut String, field: &FieldSchema, pad: &str, inline: &str) {
     out.push_str(&format!("{}{}: |-  # {}\n", pad, field.name, inline));
     let body_pad = format!("{}  ", pad);
-    // Endorsed cell with content → render the default. Under `Preview`, a
-    // Must Fill cell with an `example:` renders the example verbatim. Endorsed
-    // cell with empty/absent string default (or empty example) → one indented
-    // blank line (the "skippable" markdown cell). Otherwise a Must Fill cell
-    // gets the sentinel (Strict) or an empty body line (Preview/TypeEmpty).
-    let content = fill_source(field, source).and_then(|v| match v.as_json() {
+    // Endorsed cell with content → render the default. Endorsed cell with
+    // empty/absent string default → one indented blank line (the "skippable"
+    // markdown cell). An Unendorsed cell (no `default:`) gets the sentinel.
+    let content = field.default.as_ref().and_then(|v| match v.as_json() {
         serde_json::Value::String(s) => Some(s),
         _ => None,
     });
@@ -312,11 +252,7 @@ fn write_markdown_block(
             out.push_str(&format!("{}\n", body_pad));
         }
         None => {
-            let body = match source {
-                FillSource::Sentinel => MUST_FILL_SENTINEL,
-                FillSource::Example => "",
-            };
-            out.push_str(&format!("{}{}\n", body_pad, body));
+            out.push_str(&format!("{}{}\n", body_pad, MUST_FILL_SENTINEL));
         }
     }
 }
@@ -329,33 +265,30 @@ fn sort_props(props: &BTreeMap<String, Box<FieldSchema>>) -> Vec<&FieldSchema> {
 
 /// Emit a typed-table field: description + `# e.g.` line (whenever an
 /// example is configured), then the field key with its `array<object>`
-/// inline annotation, then the rendered rows. Rows come from [`fill_source`]
-/// (the `example:` › `default:` for the example document, the `default:` for
-/// the blueprint), or a synthetic template row otherwise.
+/// inline annotation, then the rendered rows. Rows come from the `default:`,
+/// or a synthetic template row otherwise.
 ///
 /// Cell rule (uniform with scalars): a field with a `default:` is Endorsed
 /// — the outer key carries `; delete-ok`. A field without a `default:` is
-/// Must Fill — the outer key drops `; delete-ok`. When [`fill_source`] yields
-/// no value, the blueprint emits one synthetic row with leaf-level sentinels
-/// and the example document recurses to type-empty leaves. See
-/// `prose/BOOKMARKS.md` "Typed container empty default loses inline shape
-/// documentation" for the rendering-vs-symmetry trade-off.
+/// Unendorsed — the outer key drops `; delete-ok` and the blueprint emits one
+/// synthetic row with leaf-level sentinels. See `prose/BOOKMARKS.md` "Typed
+/// container empty default loses inline shape documentation" for the
+/// rendering-vs-symmetry trade-off.
 fn write_typed_table_field(
     out: &mut String,
     field: &FieldSchema,
     item_props: &BTreeMap<String, Box<FieldSchema>>,
     indent: usize,
-    source: FillSource,
 ) {
     let pad = "  ".repeat(indent);
 
     write_description(out, field, &pad);
     write_eg_comment(out, field, &pad);
 
-    // Endorsement keys off `default:` alone; the rendered rows come from the
-    // default or — under `Preview` — the `example:`.
+    // Endorsement keys off `default:` alone, which also supplies the rendered
+    // rows.
     let inline = inline_annotation(field, field.default.is_some());
-    let rows = fill_source(field, source).and_then(|v| match v.as_json() {
+    let rows = field.default.as_ref().and_then(|v| match v.as_json() {
         serde_json::Value::Array(items) => Some(items.clone()),
         _ => None,
     });
@@ -378,7 +311,7 @@ fn write_typed_table_field(
             let dash_pad = "  ".repeat(indent + 1);
             out.push_str(&format!("{}-\n", dash_pad));
             for prop in sort_props(item_props) {
-                write_field(out, prop, indent + 2, source);
+                write_field(out, prop, indent + 2);
             }
         }
     }
@@ -386,33 +319,30 @@ fn write_typed_table_field(
 
 /// Emit a typed-dictionary field: description + `# e.g.` line (whenever an
 /// example is configured), then the field key with its `object` inline
-/// annotation, then the rendered mapping. The mapping comes from
-/// [`fill_source`] (the `example:` › `default:` for the example document, the
-/// `default:` for the blueprint), or per-property annotations otherwise.
+/// annotation, then the rendered mapping. The mapping comes from the
+/// `default:`, or per-property annotations otherwise.
 ///
 /// Cell rule (uniform with scalars): a field with a `default:` is Endorsed
 /// — the outer key carries `; delete-ok` and the rendered value is the
 /// resolved mapping (a block mapping for non-empty, inline `{}` for `{}`).
-/// A field without a `default:` is Must Fill — when [`fill_source`] yields no
-/// value, the blueprint recurses to per-property leaf-level sentinels and the
-/// example document to type-empty leaves. See `prose/BOOKMARKS.md` "Typed
+/// A field without a `default:` is Unendorsed — the blueprint recurses to
+/// per-property leaf-level sentinels. See `prose/BOOKMARKS.md` "Typed
 /// container empty default loses inline shape documentation" for the trade-off.
 fn write_typed_object_field(
     out: &mut String,
     field: &FieldSchema,
     props: &BTreeMap<String, Box<FieldSchema>>,
     indent: usize,
-    source: FillSource,
 ) {
     let pad = "  ".repeat(indent);
 
     write_description(out, field, &pad);
     write_eg_comment(out, field, &pad);
 
-    // Endorsement keys off `default:` alone; the rendered mapping comes from
-    // the default or — under `Preview` — the `example:`.
+    // Endorsement keys off `default:` alone, which also supplies the rendered
+    // mapping.
     let inline = inline_annotation(field, field.default.is_some());
-    let mapping = fill_source(field, source).and_then(|v| match v.as_json() {
+    let mapping = field.default.as_ref().and_then(|v| match v.as_json() {
         serde_json::Value::Object(map) => Some(map.clone()),
         _ => None,
     });
@@ -436,7 +366,7 @@ fn write_typed_object_field(
         None => {
             out.push_str(&format!("{}{}:  # {}\n", pad, field.name, inline));
             for prop in sort_props(props) {
-                write_field(out, prop, indent + 1, source);
+                write_field(out, prop, indent + 1);
             }
         }
     }
@@ -484,25 +414,21 @@ fn type_expression(field: &FieldSchema) -> String {
 }
 
 /// The value to render for a field. Endorsed cells render their default;
-/// Must Fill cells render the `<must-fill>` sentinel in the value cell.
+/// Unendorsed cells render the `<must-fill>` sentinel in the value cell.
 enum FieldValue {
     Inline(String),
     Block(Vec<serde_json::Value>),
 }
 
-fn field_value(field: &FieldSchema, source: FillSource) -> FieldValue {
-    // Endorsed/illustrative value: the `default:` (blueprint), or `example:` ›
-    // `default:` (example document), when present.
-    if let Some(v) = fill_source(field, source) {
+fn field_value(field: &FieldSchema) -> FieldValue {
+    // Endorsed value: the `default:`, when present.
+    if let Some(v) = &field.default {
         return json_to_value(v.as_json());
     }
-    // Otherwise the cell falls through: the `<must-fill>` sentinel (blueprint)
-    // or the type-empty zero value (example document). Markdown is
-    // special-cased in `write_markdown_block` and never reaches this path.
-    match source {
-        FillSource::Sentinel => FieldValue::Inline(MUST_FILL_SENTINEL.to_string()),
-        FillSource::Example => json_to_value(zero_value(field).as_json()),
-    }
+    // Otherwise the cell is Unendorsed and falls through to the `<must-fill>`
+    // sentinel. Markdown is special-cased in `write_markdown_block` and never
+    // reaches this path.
+    FieldValue::Inline(MUST_FILL_SENTINEL.to_string())
 }
 
 fn json_to_value(val: &serde_json::Value) -> FieldValue {
@@ -581,7 +507,7 @@ mod tests {
 
     #[test]
     fn must_fill_string_renders_sentinel_with_no_delete_ok() {
-        // No `default:` → Must Fill. Sentinel sits in the value cell; the
+        // No `default:` → Unendorsed. Sentinel sits in the value cell; the
         // inline annotation drops `; delete-ok`.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
@@ -654,7 +580,7 @@ main:
     #[test]
     fn enum_must_fill_renders_sentinel_in_value_cell() {
         // An enum field with no `default:` renders `<must-fill>` rather than
-        // the first enum value — the cell is Must Fill regardless.
+        // the first enum value — the cell is Unendorsed regardless.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
@@ -667,7 +593,7 @@ main:
 
     #[test]
     fn must_fill_array_with_example_renders_eg_only_not_value() {
-        // Plain (non-typed-table) Must Fill arrays render the sentinel; the
+        // Plain (non-typed-table) Unendorsed arrays render the sentinel; the
         // example surfaces in the leading `# e.g.` line.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
@@ -702,7 +628,7 @@ main:
 
     #[test]
     fn every_field_carries_inline_type_and_cell_signal() {
-        // Endorsed cells carry `; delete-ok`; Must Fill cells carry the
+        // Endorsed cells carry `; delete-ok`; Unendorsed cells carry the
         // sentinel in the value cell and drop the tag.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
@@ -909,7 +835,7 @@ main:
 
     #[test]
     fn typed_table_must_fill_emits_synthetic_row_with_leaf_sentinels() {
-        // Must Fill container → outer key has no `; delete-ok` (state is a
+        // Unendorsed container → outer key has no `; delete-ok` (state is a
         // leaf concern). Property leaves carry their own cell signals.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
@@ -1025,7 +951,7 @@ main:
 
     #[test]
     fn typed_dict_must_fill_emits_per_property_annotations() {
-        // Must Fill container → outer key has no `; delete-ok`; per-property
+        // Unendorsed container → outer key has no `; delete-ok`; per-property
         // recursion with leaf cell signals.
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
@@ -1137,224 +1063,25 @@ card_kinds:
     }
 
     #[test]
-    fn example_prioritizes_example_over_default() {
-        // A field with BOTH a `default:` and an `example:`: the example
-        // document renders the illustrative example (example › default), while
-        // the blueprint renders the default. The `; delete-ok` tag keys off
-        // the default's presence in both.
-        let config = cfg(r#"
+    fn blueprint_renders_default_and_surfaces_example_as_hint() {
+        // A field with BOTH a `default:` and an `example:`: the blueprint
+        // value cell renders the default (Endorsed, `; delete-ok`), while the
+        // example surfaces only as a leading `# e.g.` hint, never the value.
+        let blueprint = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
   fields:
     status: { type: string, default: draft, example: final }
-"#);
-        let example = config.example();
-        assert!(
-            example.contains("status: final  # string; delete-ok\n"),
-            "example should render the example value (example › default): {example}"
-        );
-        let blueprint = config.blueprint();
+"#)
+        .blueprint();
         assert!(
             blueprint.contains("status: draft  # string; delete-ok\n"),
             "blueprint should render the default value: {blueprint}"
         );
-    }
-
-    #[test]
-    fn example_without_examples_falls_back_to_type_empty() {
-        // No `example:` and no `default:` on any field → the example document
-        // renders the leanest type-valid (zero) value.
-        let out = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    title:     { type: string }
-    count:     { type: integer }
-    ratio:     { type: number }
-    flag:      { type: boolean }
-    refs:      { type: array, items: { type: string } }
-    issued:    { type: datetime }
-    published: { type: datetime }
-    severity:  { type: string, enum: [low, medium, high] }
-    bio:       { type: markdown }
-    addr:
-      type: object
-      properties:
-        street: { type: string }
-        zip:    { type: integer }
-    rows:
-      type: array
-      items:
-        type: object
-        properties:
-          org:  { type: string }
-          year: { type: integer }
-"#)
-        .example();
-        assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
-        assert!(!out.contains("Lorem ipsum"), "no stub strings expected: {out}");
-        assert!(out.contains("title: \"\"  # string\n"));
-        assert!(out.contains("count: 0  # integer\n"));
-        assert!(out.contains("ratio: 0  # number\n"));
-        assert!(out.contains("flag: false  # boolean\n"));
-        assert!(out.contains("refs: []  # array<string>\n"));
-        assert!(out.contains("issued: \"\"  # datetime<YYYY-MM-DD[Thh:mm:ss]>\n"));
-        assert!(out.contains("published: \"\"  # datetime<YYYY-MM-DD[Thh:mm:ss]>\n"));
-        assert!(out.contains("severity: low  # enum<low | medium | high>\n"));
-        assert!(out.contains("bio: |-  # markdown\n  \n"));
-        // Typed object / table leaves fall through to type-empty too.
-        // (Object properties indent one level; typed-table rows two.)
-        assert!(out.contains("  street: \"\"  # string\n"), "{out}");
-        assert!(out.contains("    org: \"\"  # string\n"), "{out}");
-    }
-
-    #[test]
-    fn example_without_examples_validates_clean() {
-        // The example document (zero-filled, no examples) must be schema-valid,
-        // not merely parseable. Exercises every scalar Must Fill type plus the
-        // nested leaves of a typed dictionary and a typed table.
-        let config = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    title:    { type: string }
-    count:    { type: integer }
-    flag:     { type: boolean }
-    refs:     { type: array, items: { type: string } }
-    issued:   { type: datetime }
-    severity: { type: string, enum: [low, medium, high] }
-    bio:      { type: markdown }
-    addr:
-      type: object
-      properties:
-        street: { type: string }
-        zip:    { type: integer }
-    rows:
-      type: array
-      items:
-        type: object
-        properties:
-          org:  { type: string }
-          year: { type: integer }
-"#);
-        let filled = config.example();
-        let doc = Document::from_markdown(&filled)
-            .unwrap_or_else(|e| panic!("example document must parse: {e:?}\n---\n{filled}"));
-        config.validate_document(&doc).unwrap_or_else(|errs| {
-            panic!("example document must validate: {errs:?}\n---\n{filled}")
-        });
-    }
-
-    #[test]
-    fn example_fills_must_fill_cells_from_examples() {
-        // Each Must Fill field carries an `example:`; the example document
-        // renders it as the value cell (without `; delete-ok`, not endorsed).
-        let out = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    title:    { type: string, example: Quarterly Report }
-    count:    { type: integer, example: 7 }
-    issued:   { type: datetime, example: "2030-06-01" }
-    refs:     { type: array, items: { type: string }, example: [alpha, beta] }
-"#)
-        .example();
-        assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
-        assert!(out.contains("title: Quarterly Report  # string\n"), "{out}");
-        assert!(out.contains("count: 7  # integer\n"), "{out}");
-        assert!(out.contains("issued: 2030-06-01  # datetime<YYYY-MM-DD[Thh:mm:ss]>\n"), "{out}");
-        assert!(out.contains("refs:  # array<string>\n  - alpha\n  - beta\n"), "{out}");
-    }
-
-    #[test]
-    fn example_markdown_block_scalar() {
-        // No example → empty body (zero fallback). With an example → the
-        // example text, rendered verbatim inside the block scalar.
-        let bare = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    bio: { type: markdown }
-"#)
-        .example();
-        assert!(!bare.contains("<must-fill>"), "no sentinels expected: {bare}");
-        assert!(bare.contains("bio: |-  # markdown\n  \n"), "{bare}");
-
-        let with_eg = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    bio: { type: markdown, example: "Hello there." }
-"#)
-        .example();
-        assert!(with_eg.contains("bio: |-  # markdown\n  Hello there.\n"), "{with_eg}");
-    }
-
-    #[test]
-    fn example_renders_endorsed_default_when_no_example() {
-        // Fields with a `default:` and no `example:` → the example document
-        // renders the default (example › default, example absent).
-        let out = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    size:   { type: number, default: 11 }
-    flag:   { type: boolean, default: true }
-    status: { type: string, default: draft }
-"#)
-        .example();
-        assert!(out.contains("size: 11  # number; delete-ok\n"));
-        assert!(out.contains("flag: true  # boolean; delete-ok\n"));
-        assert!(out.contains("status: draft  # string; delete-ok\n"));
-    }
-
-    #[test]
-    fn example_substitutes_typed_table_leaves() {
-        // No field-level example and no leaf examples → a synthetic row with
-        // type-empty leaves.
-        let out = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    refs:
-      type: array
-      items:
-        type: object
-        properties:
-          org:  { type: string }
-          year: { type: integer }
-"#)
-        .example();
-        assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
-        assert!(out.contains("refs:  # array<object>\n  -\n"), "{out}");
-        assert!(out.contains("    org: \"\"  # string\n"), "{out}");
-        assert!(out.contains("    year: 0  # integer\n"), "{out}");
-    }
-
-    #[test]
-    fn example_renders_typed_table_field_example_rows() {
-        // A field-level `example:` on a Must Fill typed table renders as rows
-        // in the example document (no `; delete-ok`, since there is no default).
-        let out = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    refs:
-      type: array
-      example:
-        - { org: ACME, year: 2020 }
-      items:
-        type: object
-        properties:
-          org:  { type: string }
-          year: { type: integer }
-"#)
-        .example();
-        assert!(!out.contains("<must-fill>"), "no sentinels expected: {out}");
-        assert!(out.contains("refs:  # array<object>\n"), "{out}");
-        assert!(out.contains("  - org: ACME\n"), "{out}");
-        assert!(out.contains("    year: 2020\n"), "{out}");
-        assert!(!out.contains("; delete-ok"), "not endorsed: {out}");
+        assert!(
+            blueprint.contains("# e.g. final\n"),
+            "blueprint should surface the example as a hint: {blueprint}"
+        );
     }
 
     #[test]
@@ -1383,37 +1110,6 @@ main:
                 "expected quill::object_empty_properties, got: {errs:?}"
             );
         }
-    }
-
-    #[test]
-    fn example_round_trips_to_a_valid_document() {
-        // Fields with examples render them; the example-less ones fall back to
-        // type-empty. The result must parse and validate.
-        let config = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    title:     { type: string, example: My Title }
-    count:     { type: integer }
-    severity:  { type: string, enum: [low, medium, high] }
-    bio:       { type: markdown }
-    issued:    { type: datetime }
-    refs:      { type: array, items: { type: string }, example: [first, second] }
-"#);
-        let filled = config.example();
-        let doc = Document::from_markdown(&filled)
-            .unwrap_or_else(|e| panic!("example document must parse: {e:?}\n---\n{filled}"));
-        config.validate_document(&doc).unwrap_or_else(|errs| {
-            panic!("example document must validate: {errs:?}\n---\n{filled}")
-        });
-        let main = doc.main().payload();
-        assert_eq!(main.get("title").unwrap().as_str().unwrap(), "My Title");
-        assert_eq!(main.get("count").unwrap().as_i64().unwrap(), 0);
-        assert_eq!(main.get("severity").unwrap().as_str().unwrap(), "low");
-        let refs = main.get("refs").unwrap().as_array().unwrap();
-        assert_eq!(refs.len(), 2);
-        assert_eq!(refs[0].as_str().unwrap(), "first");
-        assert_eq!(refs[1].as_str().unwrap(), "second");
     }
 
     /// Regression: string defaults that look numeric/boolean/null get

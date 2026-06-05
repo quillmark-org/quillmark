@@ -1109,7 +1109,7 @@ title: "Hello"
 })
 
 // ---------------------------------------------------------------------------
-// Schema / blueprint / validation — Must Fill vs Endorsed
+// Schema / blueprint / validation — Unendorsed vs Endorsed
 // ---------------------------------------------------------------------------
 //
 // Post-mcp-feedback the schema axis is implicit: a field with a `default:` is
@@ -1120,7 +1120,7 @@ title: "Hello"
 // These tests pin the JS-facing contract:
 //   - `QuillFieldSchema` no longer carries a `required` axis.
 //   - `quill.blueprint` carries `<must-fill>` and `; delete-ok` annotations.
-//   - `quill.render(doc)` *tolerates* an absent Must Fill field: zero-filled
+//   - `quill.render(doc)` *tolerates* an absent Unendorsed field: zero-filled
 //     render fills it with its type-empty value in the plate projection
 //     (never persisted), so absence is not a render error.
 //   - `quill.render(doc)` raises `validation::must_fill_sentinel` when the
@@ -1130,9 +1130,9 @@ title: "Hello"
 //
 // See prose/canon/SCHEMAS.md.
 
-describe('Must Fill / Endorsed schema model', () => {
-  // The plate `unwrap`s `data.title` (Must Fill) and substitutes the optional
-  // `data.subtitle` if present. Authoring a quill with both Must Fill and
+describe('Unendorsed / Endorsed schema model', () => {
+  // The plate `unwrap`s `data.title` (Unendorsed) and substitutes the optional
+  // `data.subtitle` if present. Authoring a quill with both Unendorsed and
   // Endorsed fields lets us exercise both validation codes without having to
   // ship two separate test quills.
   const SCHEMA_QUILL_YAML = `quill:
@@ -1140,13 +1140,13 @@ describe('Must Fill / Endorsed schema model', () => {
   version: "1.0"
   backend: typst
   plate_file: plate.typ
-  description: Must Fill / Endorsed coverage
+  description: Unendorsed / Endorsed coverage
 
 main:
   fields:
     title:
       type: string
-      description: Document title (Must Fill — no default)
+      description: Document title (Unendorsed — no default)
     subtitle:
       type: string
       default: "Untitled subtitle"
@@ -1186,19 +1186,19 @@ main:
     expect('required' in fields.title).toBe(false)
     expect('required' in fields.subtitle).toBe(false)
 
-    // Must Fill fields have no `default`; Endorsed fields do.
+    // Unendorsed fields have no `default`; Endorsed fields do.
     expect(fields.title.default).toBeUndefined()
     expect(fields.subtitle.default).toBe('Untitled subtitle')
   })
 
-  it('blueprint carries `<must-fill>` for Must Fill fields and `; delete-ok` for Endorsed', () => {
+  it('blueprint carries `<must-fill>` for Unendorsed fields and `; delete-ok` for Endorsed', () => {
     const quill = buildQuill()
     const blueprint = quill.blueprint
 
     expect(typeof blueprint).toBe('string')
     expect(blueprint.length).toBeGreaterThan(0)
 
-    // Must Fill: value cell is the literal sentinel; no `; delete-ok` tag.
+    // Unendorsed: value cell is the literal sentinel; no `; delete-ok` tag.
     expect(blueprint).toContain('title: <must-fill>  # string')
     expect(blueprint).not.toMatch(/title: <must-fill>.*delete-ok/)
 
@@ -1212,10 +1212,10 @@ main:
     expect(blueprint).not.toContain('; optional')
   })
 
-  it('render tolerates an absent Must Fill field (zero-filled, not an error)', () => {
+  it('render tolerates an absent Unendorsed field (zero-filled, not an error)', () => {
     const quill = buildQuill()
 
-    // Document omits `title`. Schema declares no default → Must Fill. Under
+    // Document omits `title`. Schema declares no default → Unendorsed. Under
     // zero-filled render this is merely *incomplete*, not malformed: render
     // fills `title` with its type-empty value in the plate projection and
     // succeeds. Absence is no longer a hard error (the form's `source:
@@ -1268,7 +1268,7 @@ title: <must-fill>
     }
   })
 
-  it('render succeeds when every Must Fill field is supplied with a real value', () => {
+  it('render succeeds when every Unendorsed field is supplied with a real value', () => {
     const quill = buildQuill()
 
     const md = `~~~card-yaml

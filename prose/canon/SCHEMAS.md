@@ -35,7 +35,7 @@ Supported field types:
 - Coerces top-level fields and per-card fields to their declared types
 - Fails fast (`Err`) on the first value that cannot be coerced
 - Coercion rules per type: array wrapping plus element-wise coercion against the `items` schema (a bad element fails at its indexed path, e.g. `counts[1]`), boolean from string/int/float, number/integer from string, string/markdown pass-through, date/datetime format validation, object property recursion
-- The Must-Fill sentinel string `<must-fill>` passes through coercion
+- The blueprint's `<must-fill>` sentinel string passes through coercion
   unchanged so the validation layer can surface a placeholder diagnostic
   rather than a type-coercion error
 
@@ -53,9 +53,9 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
   equal to the literal string `<must-fill>` (for markdown, the trimmed
   block-scalar content) fires `validation::must_fill_sentinel` and
   skips the type check for that field.
-- **Required-field semantics**: a missing field with a `default:` accepts
+- **Absence semantics**: a missing field with a `default:` accepts
   the default (no error). A missing field without a `default:` fires
-  `validation::must_fill_absent` — a non-fatal signal at render, where the
+  `validation::field_absent` — a non-fatal signal at render, where the
   field is zero-filled (see [Zero-filled render](#zero-filled-render)).
 
 Field-level type and presence errors render under a uniform shape —
@@ -72,7 +72,7 @@ Every field value comes from one of a small set of **sources**, ordered by
 |---|---|---|---|
 | top | authored value | yes — it *is* the document content | yes |
 | | `default:` | **never** by the engine — lives in the schema, interpolated only into the ephemeral render projection | yes — the fidelity value |
-| | `example:` | only by [seeding](#document-seeding) | only on illustration surfaces |
+| | `example:` | only by [seeding](#document-seeding) | yes — once committed by seeding |
 | floor | type-empty `zero` (`zero_value`) | never ([Non-persist invariant](#zero-filled-render)) | last resort |
 | (signal) | `<must-fill>` sentinel | never (error if it survives) | never |
 
@@ -80,10 +80,10 @@ A `default` is never written back into a document: it lives in `Quill.yaml`,
 the render path interpolates it into the plate-JSON projection only, and seeding
 deliberately omits it (persisting it would be redundant and would freeze it
 against a schema change). The lone way a default's *value* becomes document
-content is indirect: `blueprint()` / `example()` emit it as literal text in
-their reference *strings* (the blueprint tags it `; delete-ok`), and if a
-consumer authors from one and saves it, that value is now ordinary **authored**
-content — the consumer committed it, not the engine.
+content is indirect: `blueprint()` emits it as literal text in its reference
+*string* (tagged `; delete-ok`), and if a consumer authors from it and saves
+it, that value is now ordinary **authored** content — the consumer committed
+it, not the engine.
 
 No surface owns a precedence *policy*; each **projection cuts the same ladder**
 at a different rung, and the per-rung producers are shared (`zero_value` for the
@@ -92,7 +92,6 @@ floor, `FieldSchema::ui_order` for ordering):
 | Projection | Per-field precedence | Floor | Output |
 |---|---|---|---|
 | render (fidelity) | authored › `default:` › zero | zero | plate JSON — [Zero-filled render](#zero-filled-render) |
-| `example` document | `example:` › `default:` › zero | zero | annotated string — [BLUEPRINT.md](BLUEPRINT.md) |
 | `blueprint` document | `default:` › `<must-fill>` | sentinel | annotated string — [BLUEPRINT.md](BLUEPRINT.md) |
 | seeding | `example:` › absent | (deferred to render floor) | committed `Document` — [Document seeding](#document-seeding) |
 | form view | authored / `default:` / missing (uncollapsed; carries `example:`) | — | read-only view |
@@ -118,9 +117,9 @@ Rendering and the *completeness verdict* are orthogonal. The render path
 (`zero_value`, defined below) — in the plate-JSON projection that feeds the
 backend **only, never in the persisted document**.
 
-- **Incomplete is renderable.** A document that merely omits a Must Fill
+- **Incomplete is renderable.** A document that merely omits an Unendorsed
   field renders fine: the field is zero-filled in the projection, so
-  `validation::must_fill_absent` is demoted from a render error to a
+  `validation::field_absent` is demoted from a render error to a
   non-fatal signal. The `validate_document` layer still emits the code;
   consumers (e.g. the form view's per-field state) read it for doneness.
 - **Malformed is fatal.** A value that cannot coerce to its declared type,
@@ -130,14 +129,15 @@ backend **only, never in the persisted document**.
 - **Non-persist invariant.** The zero-fill lives only in the ephemeral
   projection and must never be written back. A type-empty value is
   indistinguishable from authored-empty, so persisting it would make
-  `must_fill_absent` (which keys on absence) vacuous and blind a future
+  `field_absent` (which keys on absence) vacuous and blind a future
   schema migration to author intent.
 
 The per-field zero value is honestly blank for every scalar type except
 `enum`, whose zero is the first declared variant. An `object` with
 `properties` is shape-valid only when every property is present, so its zero
-is the object whose each property carries that property's zero (recursively). It is the one shared producer behind both this render floor
-and the `example` document's fallback (see [BLUEPRINT.md](BLUEPRINT.md)).
+is the object whose each property carries that property's zero (recursively).
+It is the shared producer behind the render floor — for authored, blank, and
+seeded documents alike (see [BLUEPRINT.md](BLUEPRINT.md)).
 
 ## Document seeding
 
@@ -160,12 +160,11 @@ the floor. This keeps a split-screen editor/preview consistent — the document
 carries real content, the preview renders it, and absent fields resolve
 identically in both panes.
 
-The seed is **illustration-first**, exactly like the `example` string (below):
-a field carrying *both* an `example` and a `default` commits — and therefore
-renders — its **`example`**, not its default. So a seeded document is *not* the
-fidelity render: BLUEPRINT.md's "a both-having field renders its default on the
-render path" describes authored and blank documents, where no `example` is ever
-present. In a seed, the `example` is present, so it wins.
+The seed is **illustration-first**: a field carrying *both* an `example` and a
+`default` commits — and therefore renders — its **`example`**, not its default.
+So a seeded document is *not* the plain fidelity render. The fidelity render
+path's "`default:` wins" rule applies to authored and blank documents, where no
+`example` is ever present; in a seed the `example` is present, so it wins.
 
 - **Composable cards** are seeded one instance per declared kind; `body.example`
   fills the body when bodies are enabled.
@@ -173,16 +172,17 @@ present. In a seed, the `example` is present, so it wins.
   through Markdown like an authored document.
 - **Provenance is deferred.** A seeded `example` is committed as ordinary
   content, so the form view reports it as `source: "document"`, not `"missing"`
-  — a Must-Fill field seeded with an `example` reads as done. Distinguishing an
+  — an Unendorsed field seeded with an `example` reads as done. Distinguishing an
   untouched seed from authored input is a future addition; correctness and
   renderability do not depend on it.
 
-Seeding is the committed, structured counterpart of the `example` *string*
-document ([BLUEPRINT.md](BLUEPRINT.md) § "Two reference documents"), but with a
-different cascade: the string fills every field (`example: › default: › zero`)
-for illustration, whereas the seed commits only `example` and defers the rest to
-the render floor for fidelity. Implemented by `Quill::seed_document` (with
-`seed_main` / `seed_card`) in `quillmark`.
+Seeding is the **filled-out twin of the blueprint**
+([BLUEPRINT.md](BLUEPRINT.md) § "The blueprint and its filled-out twin"): the
+blueprint shows the form to fill (sentinels, `# e.g.` hints), while the seed
+hands back a committed `Document` already carrying the `example:` values, the
+rest deferred to the render floor for fidelity. It is the only "filled-out"
+projection — there is no annotated `example` string. Implemented by
+`Quill::seed_document` (with `seed_main` / `seed_card`) in `quillmark`.
 
 ## Schema emission
 
@@ -221,13 +221,15 @@ encode opposite author intents:
   the choice — so it never becomes the rendered value; it only surfaces in
   the blueprint's `# e.g.` line.
 
-### Must-Fill vs. Endorsed fields
+### Unendorsed vs. Endorsed fields
 
-A field is **Must Fill** when no `default:` is declared — the quill author
-has not endorsed any value, so the `<must-fill>` sentinel signals to LLMs
-and authors that the field warrants attention. A missing Must Fill field at
-render time zero-fills silently; the non-fatal `validation::must_fill_absent`
-is the completeness hint, never a render gate.
+A field is **Unendorsed** when no `default:` is declared — the quill author
+has endorsed no value, so the blueprint stamps the `<must-fill>` sentinel to
+ask an LLM or author to supply one. That is a *communication device on the
+blueprint surface*, not a requirement: a missing Unendorsed field zero-fills
+silently at render, and the non-fatal `validation::field_absent` is only a
+completeness hint, never a render gate. "Must-fill" therefore lives solely on
+the blueprint/sentinel surface; the schema axis is endorsement, not obligation.
 
 A field is **Endorsed** when `default:` is declared; the rendered default
 is shippable as-is (the author can keep or override it).

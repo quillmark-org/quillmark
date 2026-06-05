@@ -93,7 +93,7 @@ Form: **`# <type>[<format>][; delete-ok]`**
 - **Skip-ok tag** (optional, after `;`): the single tag `delete-ok`. Present
   on Endorsed fields (fields with a `default:` in the schema), signalling
   "the rendered value is shippable as-is — keep or override". Absent on
-  Must Fill fields (fields without a `default:`), which carry the
+  Unendorsed fields (fields without a `default:`), which carry the
   `<must-fill>` sentinel in the value cell instead.
 
 The `$`-prefixed system-metadata keys (`$quill`, `$kind`, …) have no
@@ -110,15 +110,15 @@ Examples:
 
 | Line | Reading |
 |---|---|
-| `name: <must-fill>  # string` | Must Fill string — replace `<must-fill>` before shipping |
+| `name: <must-fill>  # string` | Unendorsed string — replace `<must-fill>` before shipping |
 | `title: "Curriculum Vitae"  # string; delete-ok` | Endorsed string — keep or override |
 | `count: 0  # integer; delete-ok` | Endorsed integer (type-empty default, explicitly shippable) |
 | `active: false  # boolean; delete-ok` | Endorsed boolean (type-empty default, explicitly shippable) |
 | `notes: ""  # string; delete-ok` | Endorsed empty string (the "skippable" cell, now Endorsed) |
-| `bio: |-` followed by indented `<must-fill>`, then `# markdown` | Must Fill markdown — see "Markdown fields render as block scalars" |
-| `recipient: <must-fill>  # array<string>` | Must Fill array of strings |
-| `date: <must-fill>  # datetime<YYYY-MM-DD[Thh:mm:ss]>` | Must Fill datetime |
-| `severity: <must-fill>  # enum<low \| medium \| high>` | Must Fill enum |
+| `bio: |-` followed by indented `<must-fill>`, then `# markdown` | Unendorsed markdown — see "Markdown fields render as block scalars" |
+| `recipient: <must-fill>  # array<string>` | Unendorsed array of strings |
+| `date: <must-fill>  # datetime<YYYY-MM-DD[Thh:mm:ss]>` | Unendorsed datetime |
+| `severity: <must-fill>  # enum<low \| medium \| high>` | Unendorsed enum |
 | `$quill: cmu_letter@0.1.0` | quill binding metadata, emitted verbatim, do not modify |
 | `$kind: skill` followed by `# composable (0..N)` | repeat the entire `~~~` … `~~~` block per instance |
 
@@ -129,7 +129,7 @@ The rendered value follows a single cascade keyed on the cell:
 | Field state | Value rendered | Cell |
 |---|---|---|
 | Has `default` | default | Endorsed (carries `; delete-ok`) |
-| No `default` | `<must-fill>` sentinel | Must Fill (no `; delete-ok`) |
+| No `default` | `<must-fill>` sentinel | Unendorsed (no `; delete-ok`) |
 
 Examples never become the rendered value, regardless of cell or type —
 this holds uniformly for scalars, arrays, typed tables, and typed
@@ -160,7 +160,7 @@ cleanly accommodates multi-line markdown content. By rendering it from
 the start, the LLM consumer writes into the indented block without
 needing to switch shapes mid-fill.
 
-For a Must Fill markdown field, the block's content is exactly one line
+For an Unendorsed markdown field, the block's content is exactly one line
 containing the sentinel:
 
 ```
@@ -211,7 +211,7 @@ fallback; authors needing these characters must reshape their values.
 
 A field of `type: array` with a `properties` map follows the uniform
 cell cascade — `default:` (any default, including `[]`) is Endorsed and
-shippable as-is; no `default:` is Must Fill:
+shippable as-is; no `default:` is Unendorsed:
 
 - A non-empty `default:` renders as actual rows (no per-property
   annotations on each row). The outer key carries `# array<object>; delete-ok`.
@@ -220,7 +220,7 @@ shippable as-is; no `default:` is Must Fill:
   default; use `example:` to document row shape. See
   `prose/BOOKMARKS.md` "Typed container empty default loses inline
   shape documentation."
-- No `default:` is Must Fill: one synthetic row is emitted with each
+- No `default:` is Unendorsed: one synthetic row is emitted with each
   property carrying its own description, inline annotation, and cell
   signal (sentinel or `; delete-ok`). The outer key carries
   `# array<object>` (no `; delete-ok`).
@@ -233,7 +233,7 @@ sequence, e.g. `# e.g. [{org: ACME, year: 2020}]`.
 
 A field of `type: object` with a `properties` map follows the uniform
 cell cascade — `default:` (any default, including `{}`) is Endorsed and
-shippable as-is; no `default:` is Must Fill:
+shippable as-is; no `default:` is Unendorsed:
 
 - A non-empty `default:` renders as a concrete block mapping (property
   values only, no annotations). The outer key carries
@@ -241,7 +241,7 @@ shippable as-is; no `default:` is Must Fill:
 - `default: {}` renders inline as `{}` with `# object; delete-ok` —
   shippable empty. Inline property shape is not surfaced under an empty
   default; use `example:` to document property shape.
-- No `default:` is Must Fill: each property is emitted with its own
+- No `default:` is Unendorsed: each property is emitted with its own
   description, inline annotation, and cell signal. The outer key
   carries `# object` (no `; delete-ok`).
 
@@ -333,7 +333,7 @@ Write main body here.
 `blueprint()` guarantees the emitted document is **parseable**: every
 field key is present, every value is YAML-valid, the document round-trips
 through `Document::from_markdown` and back. Endorsed cells coerce and
-validate successfully; Must Fill cells carry the `<must-fill>` sentinel
+validate successfully; Unendorsed cells carry the `<must-fill>` sentinel
 in the value cell (or inside a markdown block scalar), which validation
 reports as `validation::must_fill_sentinel` until the LLM replaces it
 with a typed value.
@@ -357,7 +357,7 @@ requires:
 - Templates treat type-empty values (`""`, `0`, `false`, `[]`, empty
   markdown body) as valid *present* input — read via `data.field`,
   `card.at("field", default: …)`, or guarded with `if "field" in data`.
-- No template asserts that a Must Fill field is *non-empty*. The schema
+- No template asserts that an Unendorsed field is *non-empty*. The schema
   guarantees *presence*, not non-emptiness; the `<must-fill>` sentinel
   is an authoring signal, not a render-time precondition.
 - "Renders successfully" means "compiles without error," not "produces
@@ -368,50 +368,44 @@ The contract is enforced by a fixture test that renders each bundled
 quill's empty document (zero-filled) and asserts success
 (`crates/quillmark/tests/quiver_test.rs::every_quill_in_quiver_renders`).
 
-## Two reference documents
+## The blueprint and its filled-out twin
 
-A quill projects into two intent-named reference documents, each ordering
-its value sources for its own purpose (there is no cross-output "default
-always wins" rule). Both are annotated, parseable, and schema-valid; the
-fill strategy is an internal detail, not a public parameter.
+The blueprint is the **one** annotated reference document — the authoring
+surface. Its "show me a filled-out one" counterpart is **seeding**, which
+materializes a real `Document` (committed, structured content for editor and
+render consumers) rather than a second annotated string. There is no
+annotated `example` *document*: nothing consumes a filled-out document for its
+annotations, so the filled-out projection is committed `Document` content, not
+prose.
 
-| Output | Intent | Value precedence | Sentinels? |
-|---|---|---|---|
-| `blueprint` | *"give me the form to fill"* | `default:`, else `<must-fill>` | yes |
-| `example` | *"show me a filled-out one"* | `example:` › `default:` › type-empty zero | no |
+| Projection | Intent | Value precedence | Output | Sentinels? |
+|---|---|---|---|---|
+| `blueprint` | *"give me the form to fill"* | `default:`, else `<must-fill>` | annotated string | yes |
+| seeding | *"give me a filled-out one"* | `example:` › absent | committed `Document` | no |
 
 - The **blueprint** is the canonical authoring surface: an Endorsed field
-  (has a `default:`) renders its default; a Must Fill field carries the
-  `<must-fill>` sentinel.
-- The **example** document is the illustrative consolidation — each
-  field's `example:`, else its `default:`, else its zero value — with no
-  sentinels. It is example-*first* but not guaranteed fully populated
-  (a field with neither an `example:` nor a `default:` renders blank). A
-  field with *both* a default and an example shows its example here but
-  its default on the render path: the example optimizes for illustration,
-  render for fidelity. (This "default on the render path" rule holds for
-  authored and blank documents, where no `example` is present. A **seeded**
-  document — see [SCHEMAS.md](SCHEMAS.md) § "Document seeding" — commits the
-  `example`, so a both-having field renders its example there too.)
-- The per-field **zero value** (`zero_value`, defined in
-  [SCHEMAS.md](SCHEMAS.md) § "Zero-filled render") is one shared producer —
-  the `example` fallback above *and* the render floor for zero-filled render.
-
-Both outputs here are *strings*. A third projection, **seeding**, is the
-committed, structured twin of the `example` document: it materializes a real
-`Document` for editor consumers, committing each field's `example:` and leaving
-the rest absent (`example: → absent`, *not* `example: › default: › zero`) so the
-compilation layer fills `default: → zero` underneath. See
-[SCHEMAS.md](SCHEMAS.md) § "Document seeding".
+  (has a `default:`) renders its default; an Unendorsed field carries the
+  `<must-fill>` sentinel. An `example:` surfaces only as a `# e.g.` hint,
+  never as the rendered value.
+- **Seeding** commits each field's `example:` and leaves every other field
+  absent (`example: → absent`, *not* `example: › default: › zero`), so the
+  compilation layer fills `default: → zero` underneath at render time. It is
+  the committed, structured twin handed to editor consumers. See
+  [SCHEMAS.md](SCHEMAS.md) § "Document seeding".
+- A seeded document therefore *renders* each field's `example:` where present,
+  else its `default:`, else its zero value — the same consolidation an eager
+  fill would produce, but resolved at the render floor for fidelity. The
+  per-field **zero value** (`zero_value`, defined in
+  [SCHEMAS.md](SCHEMAS.md) § "Zero-filled render") is that shared render floor.
 
 ## Bindings surface
 
 | Binding | Accessor |
 |---|---|
-| Rust | `QuillConfig::blueprint() -> String`, `QuillConfig::example() -> String` |
-| Wasm | `Quill.blueprint` / `Quill.example` getters |
-| Python | `Quill.blueprint` / `Quill.example` properties |
-| CLI | `quillmark blueprint <QUILL_PATH> [-o <FILE>]`; `render` with no input file renders the `example` document |
+| Rust | `QuillConfig::blueprint() -> String`; the filled-out twin is `Quill::seed_document() -> Document` |
+| Wasm | `Quill.blueprint` getter; `Quill.seedDocument()` |
+| Python | `Quill.blueprint` property; `Quill.seed_document()` |
+| CLI | `quillmark blueprint <QUILL_PATH> [-o <FILE>]`; `render` with no input file renders the **seeded** document |
 
 The Rust example `cargo run -p quillmark-core --example print_blueprint
 -- <quill_name> [<version>]` prints the blueprint for any bundled
@@ -426,11 +420,11 @@ fixture.
 
 ## Authoring guidance
 
-Choosing **Must Fill vs. Endorsed** per field (declare a `default:` or not)
+Choosing **Unendorsed vs. Endorsed** per field (declare a `default:` or not)
 and **when to reach for `example:`** is schema-authoring guidance owned by
-[SCHEMAS.md](SCHEMAS.md) § "`default` and `example`" and § "Must-Fill vs.
+[SCHEMAS.md](SCHEMAS.md) § "`default` and `example`" and § "Unendorsed vs.
 Endorsed fields". The blueprint is where that choice becomes visible: an
-Endorsed field renders its default tagged `; delete-ok`; a Must Fill field
+Endorsed field renders its default tagged `; delete-ok`; an Unendorsed field
 renders the `<must-fill>` sentinel.
 
 ### Writing the literal string `<must-fill>` as content

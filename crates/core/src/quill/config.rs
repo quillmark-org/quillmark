@@ -727,7 +727,7 @@ impl QuillConfig {
                     .with_code(format!("quill::{slot}_format_violation"))
                     .with_hint(format!("Provide a valid {format} value for the {slot}."))
                 }
-                // MustFillUnset, UnknownCard, BodyDisabled do not apply to schema literals.
+                // FieldAbsent, UnknownCard, BodyDisabled do not apply to schema literals.
                 _ => continue,
             };
             errors.push(diag);

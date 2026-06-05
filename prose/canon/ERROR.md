@@ -53,14 +53,14 @@ See `crates/backends/typst/src/error_mapping.rs`.
 ## Validation message contract
 
 Field-level validation diagnostics — `validation::type_mismatch`,
-`validation::must_fill_absent`, and
+`validation::field_absent`, and
 `validation::must_fill_sentinel` — emit a single canonical shape:
 
 - **Field path** — the document-model anchor of the offending field
   (`recipient`, `cards[2].author`).
 - **Source token** — the YAML scalar that triggered the error, rendered
   verbatim in its YAML-canonical form (`42`, `null`, `true`, `""`). The
-  Must-Fill sentinel renders as `<must-fill>`. Strings appear quoted;
+  blueprint's `<must-fill>` sentinel renders verbatim. Strings appear quoted;
   primitives appear bare. (Absent fields have no source token.)
 - **Schema declaration** — the field's declared type and, when present,
   its default. Defaults render with the same verbatim formatting.

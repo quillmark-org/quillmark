@@ -158,11 +158,12 @@ impl FieldType {
 ///
 /// A field's *cell* is determined by `default`: a field with a `default:`
 /// is **Endorsed** (the rendered value is shippable as-is), while a field
-/// without a `default:` is **Must Fill** (the blueprint carries a
-/// `<must-fill>` sentinel and validation reports
-/// `validation::must_fill_absent` if the field is missing at validate
-/// time — a non-fatal signal, since the render path zero-fills an absent
-/// field). There is no separate `required:` axis.
+/// without a `default:` is **Unendorsed** (the author endorsed no value, so
+/// the blueprint carries a `<must-fill>` sentinel to ask for one). Absence is
+/// not a requirement: validation reports `validation::field_absent` if an
+/// Unendorsed field is missing at validate time — a non-fatal completeness
+/// signal, since the render path zero-fills an absent field. There is no
+/// separate `required:` axis.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FieldSchema {
     /// The map key carries this on the wire; skipped during serialization to avoid duplication.

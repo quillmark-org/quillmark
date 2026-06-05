@@ -7,47 +7,48 @@ use crate::quill::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
 
 /// Literal sentinel string the blueprint emitter writes into the value
-/// cell of every Must Fill field. Validation detects unreplaced sentinels
+/// cell of every Unendorsed field. Validation detects unreplaced sentinels
 /// and reports `validation::must_fill_sentinel` under the uniform
 /// validation message contract (see `ERROR.md`).
 pub const MUST_FILL_SENTINEL: &str = "<must-fill>";
 
-/// Distinguishes the two ways a Must Fill field can be left unset.
-///
-/// Both routes mean "the field's Must Fill cell did not receive a value"
-/// and share the uniform diagnostic shape; they differ only in the
-/// failure mode and the recommended exit clause.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MustFillSource {
-    /// Schema field had no `default:` and the document omitted the line.
-    Absent,
-    /// The literal `<must-fill>` blueprint sentinel survived into the
-    /// document and reached validation.
-    Sentinel,
-}
-
 /// Validation error with a structured field path.
 ///
-/// Field-level type and presence errors (`MustFillUnset`, `TypeMismatch`)
-/// carry the field path, the schema-declared type, and any verbatim YAML
-/// source token / default — enough for the `Display` impl to render the
-/// uniform diagnostic message described in `ERROR.md` ("Validation
-/// message contract"). `MustFillUnset` collapses the two Must Fill
-/// failure modes (omitted line vs. unreplaced `<must-fill>` sentinel)
-/// into one variant tagged by [`MustFillSource`]; both branches share
-/// the `expected` slot for the declared-type line of the message.
+/// Field-level type and presence errors carry the field path, the
+/// schema-declared type, and any verbatim YAML source token / default —
+/// enough for the `Display` impl to render the uniform diagnostic message
+/// described in `ERROR.md` ("Validation message contract").
+///
+/// Absence and the surviving blueprint sentinel are *separate* concerns with
+/// opposite fatality, so they get separate variants:
+/// [`FieldAbsent`](Self::FieldAbsent) is a non-fatal completeness signal (the
+/// render floor zero-fills the field), whereas
+/// [`MustFillSentinel`](Self::MustFillSentinel) is the blueprint↔author
+/// contract — a surviving `<must-fill>` sentinel is a fatal authoring error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValidationError {
-    /// A Must Fill cell did not receive a value. The `source` tag
-    /// distinguishes whether the document omitted the line entirely
-    /// (`Absent`) or left the blueprint `<must-fill>` sentinel in place
-    /// (`Sentinel`).
-    MustFillUnset {
+    /// A schema field with no `default:` was absent from the document.
+    ///
+    /// This is a non-fatal *completeness* signal, **not** a fill requirement:
+    /// the render floor zero-fills the field (see `prose/canon/SCHEMAS.md`,
+    /// "Zero-filled render"), so render never gates on it. Consumers read the
+    /// code for doneness — e.g. the form view's per-field `Missing` state.
+    FieldAbsent {
         path: String,
         /// Schema-declared type (`string`, `integer`, …).
         expected: String,
-        /// How the Must Fill cell failed to receive a value.
-        source: MustFillSource,
+    },
+
+    /// The blueprint's `<must-fill>` sentinel survived into the document and
+    /// reached validation.
+    ///
+    /// The sentinel is the system's own "replace me" token, stamped into every
+    /// Unendorsed cell by the blueprint to signal LLMs and authors. A surviving
+    /// one is provably an authoring accident, so it is fatal on every path.
+    MustFillSentinel {
+        path: String,
+        /// Schema-declared type (`string`, `integer`, …).
+        expected: String,
     },
 
     TypeMismatch {
@@ -92,23 +93,21 @@ impl std::error::Error for ValidationError {}
 impl std::fmt::Display for ValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ValidationError::MustFillUnset { path, expected, source } => match source {
-                MustFillSource::Absent => write!(
-                    f,
-                    "Field `{path}` is missing, schema declares `{expected}` with no default. \
-                     {hint}",
-                    hint = must_fill_hint(*source, expected),
-                ),
-                // The blueprint sentinel survived into the document. Single exit:
-                // there's no quote-or-omit alternative — the sentinel always means
-                // "replace me".
-                MustFillSource::Sentinel => write!(
-                    f,
-                    "Field `{path}` still carries the `{MUST_FILL_SENTINEL}` blueprint sentinel, \
-                     schema declares `{expected}`. {hint}",
-                    hint = must_fill_hint(*source, expected),
-                ),
-            },
+            ValidationError::FieldAbsent { path, expected } => write!(
+                f,
+                "Field `{path}` is missing, schema declares `{expected}` with no default. \
+                 {hint}",
+                hint = field_absent_hint(expected),
+            ),
+            // The blueprint sentinel survived into the document. Single exit:
+            // there's no quote-or-omit alternative — the sentinel always means
+            // "replace me".
+            ValidationError::MustFillSentinel { path, expected } => write!(
+                f,
+                "Field `{path}` still carries the `{MUST_FILL_SENTINEL}` blueprint sentinel, \
+                 schema declares `{expected}`. {hint}",
+                hint = must_fill_sentinel_hint(expected),
+            ),
             ValidationError::TypeMismatch {
                 path,
                 expected,
@@ -157,15 +156,15 @@ fn quotable_actual(actual: &str) -> bool {
     matches!(actual, "integer" | "number" | "boolean")
 }
 
-/// Actionable exit clause for a Must Fill failure. Used by both `Display`
-/// and `hint()` so the recommended action lives in exactly one place.
-fn must_fill_hint(source: MustFillSource, expected: &str) -> String {
-    match source {
-        MustFillSource::Absent => format!("Provide a value of type `{expected}`."),
-        MustFillSource::Sentinel => format!(
-            "Replace `{MUST_FILL_SENTINEL}` with a value of type `{expected}`."
-        ),
-    }
+/// Actionable exit clause for an absent field. Used by both `Display` and
+/// `hint()` so the recommended action lives in exactly one place.
+fn field_absent_hint(expected: &str) -> String {
+    format!("Provide a value of type `{expected}`.")
+}
+
+/// Actionable exit clause for a surviving `<must-fill>` sentinel.
+fn must_fill_sentinel_hint(expected: &str) -> String {
+    format!("Replace `{MUST_FILL_SENTINEL}` with a value of type `{expected}`.")
 }
 
 /// Actionable exit clause for a TypeMismatch. Mirrors the (expected, actual,
@@ -218,7 +217,8 @@ impl ValidationError {
     /// See [`crate::error`] module docs for the path grammar and conventions.
     pub fn path(&self) -> &str {
         match self {
-            ValidationError::MustFillUnset { path, .. }
+            ValidationError::FieldAbsent { path, .. }
+            | ValidationError::MustFillSentinel { path, .. }
             | ValidationError::TypeMismatch { path, .. }
             | ValidationError::EnumViolation { path, .. }
             | ValidationError::FormatViolation { path, .. }
@@ -231,14 +231,8 @@ impl ValidationError {
     /// instead of the message text.
     pub fn code(&self) -> &'static str {
         match self {
-            ValidationError::MustFillUnset {
-                source: MustFillSource::Absent,
-                ..
-            } => "validation::must_fill_absent",
-            ValidationError::MustFillUnset {
-                source: MustFillSource::Sentinel,
-                ..
-            } => "validation::must_fill_sentinel",
+            ValidationError::FieldAbsent { .. } => "validation::field_absent",
+            ValidationError::MustFillSentinel { .. } => "validation::must_fill_sentinel",
             ValidationError::TypeMismatch { .. } => "validation::type_mismatch",
             ValidationError::EnumViolation { .. } => "validation::enum_violation",
             ValidationError::FormatViolation { .. } => "validation::format_violation",
@@ -254,8 +248,9 @@ impl ValidationError {
     /// `Display` impl bakes into the message.
     pub fn hint(&self) -> Option<String> {
         match self {
-            ValidationError::MustFillUnset { expected, source, .. } => {
-                Some(must_fill_hint(*source, expected))
+            ValidationError::FieldAbsent { expected, .. } => Some(field_absent_hint(expected)),
+            ValidationError::MustFillSentinel { expected, .. } => {
+                Some(must_fill_sentinel_hint(expected))
             }
             ValidationError::TypeMismatch {
                 path,
@@ -397,11 +392,11 @@ fn validate_fields_for_card_indexmap(
         match fields.get(field_name) {
             Some(value) => errors.extend(validate_field(schema, value, &path)),
             None if schema.default.is_none() => {
-                // Must Fill (no `default:`) field absent from the document.
-                errors.push(ValidationError::MustFillUnset {
+                // Unendorsed (no `default:`) field absent from the document — a
+                // non-fatal completeness signal; the render floor zero-fills it.
+                errors.push(ValidationError::FieldAbsent {
                     path,
                     expected: expected_type_name(&schema.r#type).to_string(),
-                    source: MustFillSource::Absent,
                 })
             }
             None => {}
@@ -438,8 +433,8 @@ fn validate_value(
 ) -> Vec<ValidationError> {
     // Sentinel detection is a document-only concern and runs before per-type
     // validation. Scalar fields carry the sentinel in the value cell; markdown
-    // carries it as the trimmed content of the block scalar. On match, emit the
-    // sentinel-branch of `MustFillUnset` and skip per-type checks.
+    // carries it as the trimmed content of the block scalar. On match, emit
+    // `MustFillSentinel` and skip per-type checks.
     if ctx == ValueContext::Document {
         if let Some(text) = value.as_str() {
             let candidate = if matches!(field.r#type, FieldType::Markdown) {
@@ -448,10 +443,9 @@ fn validate_value(
                 text
             };
             if candidate == MUST_FILL_SENTINEL {
-                return vec![ValidationError::MustFillUnset {
+                return vec![ValidationError::MustFillSentinel {
                     path: path.to_string(),
                     expected: expected_type_name(&field.r#type).to_string(),
-                    source: MustFillSource::Sentinel,
                 }];
             }
         }
@@ -527,17 +521,17 @@ fn validate_value(
                                 &property_path,
                                 ctx,
                             )),
-                            // A missing non-defaulted property is Must Fill in a
-                            // document; in a schema literal, partial objects are
-                            // intentional and absence is not an error.
+                            // A missing non-defaulted (Unendorsed) property is a
+                            // completeness signal in a document; in a schema
+                            // literal, partial objects are intentional and
+                            // absence is not an error.
                             None if ctx == ValueContext::Document
                                 && property_schema.default.is_none() =>
                             {
-                                errors.push(ValidationError::MustFillUnset {
+                                errors.push(ValidationError::FieldAbsent {
                                     path: property_path,
                                     expected: expected_type_name(&property_schema.r#type)
                                         .to_string(),
-                                    source: MustFillSource::Absent,
                                 })
                             }
                             None => {}
@@ -604,7 +598,7 @@ pub(crate) fn validate_field(
 ///
 /// Shares the type/enum/format/recursion core with [`validate_field`] (see
 /// [`validate_value`]) but omits the document-authoring concerns: it does not
-/// detect the `<must-fill>` sentinel, does not emit `MustFillUnset` for absent
+/// detect the `<must-fill>` sentinel, does not emit `FieldAbsent` for absent
 /// object properties (partial examples/defaults are intentional and valid), and
 /// never attaches a `default:` token to a type mismatch.
 pub(crate) fn validate_schema_literal(
@@ -735,13 +729,13 @@ main:
 
     #[test]
     fn reports_absent_must_fill_field() {
-        // A field with no `default:` is Must Fill. Missing from the document
-        // → `MustFillUnset { source: Absent, .. }`.
+        // A field with no `default:` is Unendorsed. Missing from the document
+        // → `FieldAbsent`.
         let config = config_with("    memo_for:\n      type: string", "");
         let doc = doc_from_fm(&[]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::MustFillUnset { path, expected, source: MustFillSource::Absent } if path == "memo_for" && expected == "string")
+            matches!(e, ValidationError::FieldAbsent { path, expected } if path == "memo_for" && expected == "string")
         }));
     }
 
@@ -762,7 +756,7 @@ main:
         let doc = doc_from_fm(&[("memo_for", json!(MUST_FILL_SENTINEL))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::MustFillUnset { path, expected, source: MustFillSource::Sentinel } if path == "memo_for" && expected == "string")
+            matches!(e, ValidationError::MustFillSentinel { path, expected } if path == "memo_for" && expected == "string")
         }));
     }
 
@@ -774,7 +768,7 @@ main:
         let doc = doc_from_fm(&[("body", json!(format!("  {}\n", MUST_FILL_SENTINEL)))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::MustFillUnset { path, source: MustFillSource::Sentinel, .. } if path == "body")
+            matches!(e, ValidationError::MustFillSentinel { path, .. } if path == "body")
         }));
     }
 
@@ -789,13 +783,10 @@ main:
         let msg = errors
             .iter()
             .find_map(|e| match e {
-                ValidationError::MustFillUnset {
-                    source: MustFillSource::Sentinel,
-                    ..
-                } => Some(e.to_string()),
+                ValidationError::MustFillSentinel { .. } => Some(e.to_string()),
                 _ => None,
             })
-            .expect("expected MustFillUnset/Sentinel");
+            .expect("expected MustFillSentinel");
         assert!(
             msg.contains("Field `memo_for`")
                 && msg.contains(MUST_FILL_SENTINEL)
@@ -924,8 +915,8 @@ main:
 
     #[test]
     fn reports_must_fill_property_absent_in_array_object() {
-        // Property `name` is Must Fill (no default); `org` is Endorsed.
-        // Missing `name` in a row → `MustFillUnset { source: Absent, .. }`.
+        // Property `name` is Unendorsed (no default); `org` is Endorsed.
+        // Missing `name` in a row → `FieldAbsent`.
         let config = config_with(
             "    recipients:\n      type: array\n      default: []\n      items:\n        type: object\n        properties:\n          name:\n            type: string\n          org:\n            type: string\n            default: \"\"",
             "",
@@ -933,7 +924,7 @@ main:
         let doc = doc_from_fm(&[("recipients", json!([{ "org": "HQ" }]))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::MustFillUnset { path, source: MustFillSource::Absent, .. } if path == "recipients[0].name")
+            matches!(e, ValidationError::FieldAbsent { path, .. } if path == "recipients[0].name")
         }));
     }
 
@@ -942,7 +933,7 @@ main:
         // Hand-edit edge case: the user collapses a synthetic row down to the
         // literal sentinel string instead of expanding it into a mapping.
         // One Sentinel error at the row path beats N noisy Absent errors per
-        // Must Fill property.
+        // Unendorsed property.
         let config = config_with(
             "    recipients:\n      type: array\n      items:\n        type: object\n        properties:\n          name:\n            type: string\n          org:\n            type: string",
             "",
@@ -952,7 +943,7 @@ main:
         assert!(
             has_error(&errors, |e| matches!(
                 e,
-                ValidationError::MustFillUnset { path, source: MustFillSource::Sentinel, .. }
+                ValidationError::MustFillSentinel { path, .. }
                 if path == "recipients[0]"
             )),
             "expected sentinel error at row path; got {errors:?}"
@@ -962,7 +953,7 @@ main:
         assert!(
             !has_error(&errors, |e| matches!(
                 e,
-                ValidationError::MustFillUnset { path, source: MustFillSource::Absent, .. }
+                ValidationError::FieldAbsent { path, .. }
                 if path.starts_with("recipients[0].")
             )),
             "row-level sentinel should suppress per-property Absent errors; got {errors:?}"
@@ -985,11 +976,7 @@ main:
         let missing_paths: Vec<&str> = errors
             .iter()
             .filter_map(|e| match e {
-                ValidationError::MustFillUnset {
-                    path,
-                    source: MustFillSource::Absent,
-                    ..
-                } => Some(path.as_str()),
+                ValidationError::FieldAbsent { path, .. } => Some(path.as_str()),
                 _ => None,
             })
             .collect();
@@ -1067,7 +1054,7 @@ main:
         let doc = doc_with_typed_cards(&[], vec![typed_card("indorsement", &[])]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
-            matches!(e, ValidationError::MustFillUnset { path, source: MustFillSource::Absent, .. } if path == "cards.indorsement[0].signature_block")
+            matches!(e, ValidationError::FieldAbsent { path, .. } if path == "cards.indorsement[0].signature_block")
         }));
     }
 
@@ -1096,13 +1083,12 @@ main:
 
     #[test]
     fn to_diagnostic_carries_path_and_code() {
-        let err = ValidationError::MustFillUnset {
+        let err = ValidationError::FieldAbsent {
             path: "cards.indorsement[0].signature_block".to_string(),
             expected: "string".to_string(),
-            source: MustFillSource::Absent,
         };
         let diag = err.to_diagnostic();
-        assert_eq!(diag.code.as_deref(), Some("validation::must_fill_absent"));
+        assert_eq!(diag.code.as_deref(), Some("validation::field_absent"));
         assert_eq!(
             diag.path.as_deref(),
             Some("cards.indorsement[0].signature_block")
@@ -1111,17 +1097,16 @@ main:
     }
 
     #[test]
-    fn must_fill_absent_diagnostic_carries_actionable_hint() {
-        let err = ValidationError::MustFillUnset {
+    fn field_absent_diagnostic_carries_actionable_hint() {
+        let err = ValidationError::FieldAbsent {
             path: "title".to_string(),
             expected: "string".to_string(),
-            source: MustFillSource::Absent,
         };
         let diag = err.to_diagnostic();
         let hint = diag
             .hint
             .as_deref()
-            .expect("must_fill_absent diagnostic should carry a hint");
+            .expect("field_absent diagnostic should carry a hint");
         assert!(hint.contains("string"), "hint missing expected type: {hint}");
         assert!(
             !hint.contains(MUST_FILL_SENTINEL),
@@ -1131,10 +1116,9 @@ main:
 
     #[test]
     fn must_fill_sentinel_diagnostic_carries_actionable_hint() {
-        let err = ValidationError::MustFillUnset {
+        let err = ValidationError::MustFillSentinel {
             path: "title".to_string(),
             expected: "string".to_string(),
-            source: MustFillSource::Sentinel,
         };
         let diag = err.to_diagnostic();
         assert_eq!(
@@ -1244,20 +1228,17 @@ main:
     }
 
     #[test]
-    fn must_fill_absent_message_names_expected_type() {
+    fn field_absent_message_names_expected_type() {
         let config = config_with("    memo_for:\n      type: string", "");
         let doc = doc_from_fm(&[]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         let msg = errors
             .iter()
             .find_map(|e| match e {
-                ValidationError::MustFillUnset {
-                    source: MustFillSource::Absent,
-                    ..
-                } => Some(e.to_string()),
+                ValidationError::FieldAbsent { .. } => Some(e.to_string()),
                 _ => None,
             })
-            .expect("expected MustFillUnset/Absent");
+            .expect("expected FieldAbsent");
         assert!(
             msg.contains("Field `memo_for` is missing")
                 && msg.contains("schema declares `string` with no default")

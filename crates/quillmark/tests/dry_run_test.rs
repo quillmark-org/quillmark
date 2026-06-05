@@ -8,7 +8,7 @@ fn make_test_quill_path(temp_dir: &TempDir, with_required_field: bool) -> std::p
     let quill_path = temp_dir.path().join("test_quill");
     fs::create_dir_all(&quill_path).unwrap();
 
-    // `title` has no default → Must Fill. `author` has a default →
+    // `title` has no default → Unendorsed. `author` has a default →
     // Endorsed (absence is OK).
     let fields_section = if with_required_field {
         "main:\n  fields:\n    title:\n      type: \"string\"\n    author:\n      type: \"string\"\n      default: \"\"\n"
@@ -47,7 +47,7 @@ fn test_dry_run_success() {
 
 #[test]
 fn test_dry_run_missing_must_fill_field_is_tolerated() {
-    // Zero-filled render: a merely *incomplete* document (Must Fill `title`
+    // Zero-filled render: a merely *incomplete* document (Unendorsed `title`
     // absent) is no longer a hard error — `title` is zero-filled in the plate
     // projection. Only a *malformed* document (a surviving `<must-fill>`
     // sentinel) still fails. See prose/canon/SCHEMAS.md.
@@ -66,7 +66,7 @@ fn test_dry_run_missing_must_fill_field_is_tolerated() {
     let result = quill.dry_run(&parsed);
     assert!(
         result.is_ok(),
-        "dry_run should tolerate an absent Must-Fill field (zero-filled): {:?}",
+        "dry_run should tolerate an absent Unendorsed field (zero-filled): {:?}",
         result
     );
 }

@@ -54,8 +54,8 @@ pub fn execute(args: RenderArgs) -> Result<()> {
         println!("Quill loaded: {}", quill.source().name());
     }
 
-    // Determine if we have a markdown file or need to use the generated blueprint
-    let (parse_output, markdown_path_for_output) =
+    // Determine if we have a markdown file or need to seed a starter document.
+    let (parsed, parse_warnings, markdown_path_for_output) =
         if let Some(ref markdown_path) = args.markdown_file {
             // Validate markdown file exists
             if !markdown_path.exists() {
@@ -78,27 +78,17 @@ pub fn execute(args: RenderArgs) -> Result<()> {
             if args.verbose {
                 println!("Markdown parsed successfully");
             }
-            (output, Some(markdown_path.clone()))
+            (output.document, output.warnings, Some(markdown_path.clone()))
         } else {
-            // No input file: render the `example` reference document — the
-            // illustrative consolidation (example › default › zero), filled so
-            // it renders out of the box.
-            let markdown = quill.source().config().example();
-
+            // No input file: render the seeded document — the committed
+            // "filled-out one" (each field's `example:`, with `default:`/zero
+            // interpolated at the render floor), so the quill renders out of
+            // the box.
             if args.verbose {
-                println!("Using generated example document from quill");
+                println!("Using seeded document from quill");
             }
-
-            // Parse markdown
-            let output = Document::from_markdown_with_warnings(&markdown)?;
-
-            if args.verbose {
-                println!("Example document parsed successfully");
-            }
-
-            (output, None)
+            (quill.seed_document(), Vec::new(), None)
         };
-    let (parsed, parse_warnings) = (parse_output.document, parse_output.warnings);
 
     if args.verbose {
         println!("Render-ready quill for backend: {}", quill.backend_id());

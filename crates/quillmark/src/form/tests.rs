@@ -136,17 +136,17 @@ main:
 
     // `title` and `notes` are absent from the document and have no
     // default → both produce validation diagnostics
-    // (`validation::must_fill_absent`).
+    // (`validation::field_absent`).
     // `status` is absent but has a default — it falls back to the default.
     let md = "~~~card-yaml\n$quill: form_defaults_test\n$kind: main\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();
 
     let form = quill.form(&doc);
 
-    // `title` is Must Fill and absent → validation diagnostic
+    // `title` is Unendorsed and absent → validation diagnostic
     assert!(
         form.diagnostics.iter().any(|d| d.message.contains("title")),
-        "expected validation diagnostic for absent Must-Fill 'title'; got: {:?}",
+        "expected validation diagnostic for absent Unendorsed 'title'; got: {:?}",
         form.diagnostics
     );
 

@@ -135,7 +135,7 @@ main:
 
 #[test]
 fn test_absent_must_fill_is_zero_filled() {
-    // Zero-filled render: an absent Must-Fill field (`title`) is tolerated and
+    // Zero-filled render: an absent Unendorsed field (`title`) is tolerated and
     // filled with its type-empty zero value (`""`) in the plate projection —
     // never persisted. See prose/canon/SCHEMAS.md.
     let temp_dir = TempDir::new().unwrap();
@@ -146,7 +146,7 @@ fn test_absent_must_fill_is_zero_filled() {
   version: "1.0"
   backend: "typst"
   plate_file: "plate.typ"
-  description: "Test quill with a Must-Fill field"
+  description: "Test quill with an Unendorsed field"
 
 main:
   fields:
@@ -170,7 +170,7 @@ main:
     // Render no longer gates on absence.
     assert!(
         quill.dry_run(&parsed).is_ok(),
-        "dry_run should tolerate an absent Must-Fill field (zero-filled)"
+        "dry_run should tolerate an absent Unendorsed field (zero-filled)"
     );
 
     // The plate projection carries the zero value for the absent field.
@@ -178,7 +178,7 @@ main:
     assert_eq!(
         data.get("title").and_then(|v| v.as_str()),
         Some(""),
-        "absent Must-Fill `title` should be zero-filled to \"\" in the projection: {data}"
+        "absent Unendorsed `title` should be zero-filled to \"\" in the projection: {data}"
     );
     assert_eq!(
         data.get("status").and_then(|v| v.as_str()),

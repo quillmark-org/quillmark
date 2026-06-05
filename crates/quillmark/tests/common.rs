@@ -24,8 +24,7 @@ pub fn demo(
         .quill_from_path(quill_path.clone())
         .expect("Failed to load quill");
 
-    let markdown = quill.source().config().example();
-    let parsed = quillmark::Document::from_markdown(&markdown)?;
+    let parsed = quill.seed_document();
 
     let rendered = quill.render(
         &parsed,

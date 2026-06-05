@@ -1196,7 +1196,7 @@ card_kinds:
 
     let name_field = card.fields.get("name").unwrap();
     assert_eq!(name_field.r#type, FieldType::String);
-    // Must Fill: no default declared.
+    // Unendorsed: no default declared.
     assert!(name_field.default.is_none());
 
     let org_field = card.fields.get("org").unwrap();
