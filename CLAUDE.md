@@ -6,6 +6,8 @@ Design docs: [`prose/canon/INDEX.md`](prose/canon/INDEX.md)
 
 Released migration guides in [`docs/migrations/`](docs/migrations/) are era-accurate and immutable; only the working (unreleased) one is mutable.
 
+In a cloud environment, commit early and often to leverage CI/CD builds and tests.
+
 ## Tests
 
 ```bash
