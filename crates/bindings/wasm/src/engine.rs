@@ -300,15 +300,6 @@ impl Quill {
         self.inner.source().config().blueprint()
     }
 
-    /// The `example` reference document — the illustrative "show me a
-    /// filled-out one." Each field renders its `example:`, else its
-    /// `default:`, else the type-empty zero value, with no `<must-fill>`
-    /// sentinels. See `prose/canon/BLUEPRINT.md`.
-    #[wasm_bindgen(getter, js_name = example)]
-    pub fn example(&self) -> String {
-        self.inner.source().config().example()
-    }
-
     /// Document schema with `ui` hints stripped — for LLM/MCP consumers.
     #[wasm_bindgen(getter, js_name = schema, unchecked_return_type = "QuillSchema")]
     pub fn schema(&self) -> JsValue {

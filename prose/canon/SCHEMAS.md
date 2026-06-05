@@ -72,7 +72,7 @@ Every field value comes from one of a small set of **sources**, ordered by
 |---|---|---|---|
 | top | authored value | yes — it *is* the document content | yes |
 | | `default:` | **never** by the engine — lives in the schema, interpolated only into the ephemeral render projection | yes — the fidelity value |
-| | `example:` | only by [seeding](#document-seeding) | only on illustration surfaces |
+| | `example:` | only by [seeding](#document-seeding) | yes — once committed by seeding |
 | floor | type-empty `zero` (`zero_value`) | never ([Non-persist invariant](#zero-filled-render)) | last resort |
 | (signal) | `<must-fill>` sentinel | never (error if it survives) | never |
 
@@ -80,10 +80,10 @@ A `default` is never written back into a document: it lives in `Quill.yaml`,
 the render path interpolates it into the plate-JSON projection only, and seeding
 deliberately omits it (persisting it would be redundant and would freeze it
 against a schema change). The lone way a default's *value* becomes document
-content is indirect: `blueprint()` / `example()` emit it as literal text in
-their reference *strings* (the blueprint tags it `; delete-ok`), and if a
-consumer authors from one and saves it, that value is now ordinary **authored**
-content — the consumer committed it, not the engine.
+content is indirect: `blueprint()` emits it as literal text in its reference
+*string* (tagged `; delete-ok`), and if a consumer authors from it and saves
+it, that value is now ordinary **authored** content — the consumer committed
+it, not the engine.
 
 No surface owns a precedence *policy*; each **projection cuts the same ladder**
 at a different rung, and the per-rung producers are shared (`zero_value` for the
@@ -92,7 +92,6 @@ floor, `FieldSchema::ui_order` for ordering):
 | Projection | Per-field precedence | Floor | Output |
 |---|---|---|---|
 | render (fidelity) | authored › `default:` › zero | zero | plate JSON — [Zero-filled render](#zero-filled-render) |
-| `example` document | `example:` › `default:` › zero | zero | annotated string — [BLUEPRINT.md](BLUEPRINT.md) |
 | `blueprint` document | `default:` › `<must-fill>` | sentinel | annotated string — [BLUEPRINT.md](BLUEPRINT.md) |
 | seeding | `example:` › absent | (deferred to render floor) | committed `Document` — [Document seeding](#document-seeding) |
 | form view | authored / `default:` / missing (uncollapsed; carries `example:`) | — | read-only view |
@@ -136,8 +135,9 @@ backend **only, never in the persisted document**.
 The per-field zero value is honestly blank for every scalar type except
 `enum`, whose zero is the first declared variant. An `object` with
 `properties` is shape-valid only when every property is present, so its zero
-is the object whose each property carries that property's zero (recursively). It is the one shared producer behind both this render floor
-and the `example` document's fallback (see [BLUEPRINT.md](BLUEPRINT.md)).
+is the object whose each property carries that property's zero (recursively).
+It is the shared producer behind the render floor — for authored, blank, and
+seeded documents alike (see [BLUEPRINT.md](BLUEPRINT.md)).
 
 ## Document seeding
 
@@ -160,12 +160,11 @@ the floor. This keeps a split-screen editor/preview consistent — the document
 carries real content, the preview renders it, and absent fields resolve
 identically in both panes.
 
-The seed is **illustration-first**, exactly like the `example` string (below):
-a field carrying *both* an `example` and a `default` commits — and therefore
-renders — its **`example`**, not its default. So a seeded document is *not* the
-fidelity render: BLUEPRINT.md's "a both-having field renders its default on the
-render path" describes authored and blank documents, where no `example` is ever
-present. In a seed, the `example` is present, so it wins.
+The seed is **illustration-first**: a field carrying *both* an `example` and a
+`default` commits — and therefore renders — its **`example`**, not its default.
+So a seeded document is *not* the plain fidelity render. The fidelity render
+path's "`default:` wins" rule applies to authored and blank documents, where no
+`example` is ever present; in a seed the `example` is present, so it wins.
 
 - **Composable cards** are seeded one instance per declared kind; `body.example`
   fills the body when bodies are enabled.
@@ -177,12 +176,13 @@ present. In a seed, the `example` is present, so it wins.
   untouched seed from authored input is a future addition; correctness and
   renderability do not depend on it.
 
-Seeding is the committed, structured counterpart of the `example` *string*
-document ([BLUEPRINT.md](BLUEPRINT.md) § "Two reference documents"), but with a
-different cascade: the string fills every field (`example: › default: › zero`)
-for illustration, whereas the seed commits only `example` and defers the rest to
-the render floor for fidelity. Implemented by `Quill::seed_document` (with
-`seed_main` / `seed_card`) in `quillmark`.
+Seeding is the **filled-out twin of the blueprint**
+([BLUEPRINT.md](BLUEPRINT.md) § "The blueprint and its filled-out twin"): the
+blueprint shows the form to fill (sentinels, `# e.g.` hints), while the seed
+hands back a committed `Document` already carrying the `example:` values, the
+rest deferred to the render floor for fidelity. It is the only "filled-out"
+projection — there is no annotated `example` string. Implemented by
+`Quill::seed_document` (with `seed_main` / `seed_card`) in `quillmark`.
 
 ## Schema emission
 

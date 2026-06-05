@@ -6,12 +6,13 @@
 //! render time — schema `default`, else type-empty zero — by the zero-filled
 //! render in [`Quill::compile_data`]; they are never written into the document.
 //!
-//! This is the committed, structured counterpart of
-//! [`QuillConfig::example`](quillmark_core::quill::QuillConfig::example)'s
-//! illustrative Markdown *string*: the same `example`-first intent, materialized
-//! as real [`Document`] content with no `<must-fill>` sentinels and no
-//! default/zero values persisted. Because only `example` values are committed,
-//! the seed never collides with the render layer (no editor/preview drift) and
+//! This is the **filled-out twin of the blueprint**
+//! ([`QuillConfig::blueprint`](quillmark_core::quill::QuillConfig::blueprint)):
+//! the blueprint is the annotated authoring surface (sentinels, `# e.g.`
+//! hints), while the seed is its `example`-first intent materialized as real
+//! [`Document`] content with no `<must-fill>` sentinels and no default/zero
+//! values persisted. Because only `example` values are committed, the seed
+//! never collides with the render layer (no editor/preview drift) and
 //! preserves the absence-based completeness signal for fields that have no
 //! `example` to seed.
 //!
@@ -21,8 +22,7 @@
 //! authored content until that distinction is added.
 //!
 //! Composable cards (`card_kinds`, multiplicity `0..N`) are seeded as **one**
-//! instance per declared kind, mirroring
-//! [`QuillConfig::example`](quillmark_core::quill::QuillConfig::example).
+//! instance per declared kind.
 
 use indexmap::IndexMap;
 
@@ -47,7 +47,7 @@ fn seed_parts(schema: &CardSchema) -> (Payload, String) {
     }
 
     // Body region carries `body.example` when declared and bodies are enabled,
-    // mirroring the blueprint/example document; otherwise it is empty.
+    // mirroring the blueprint; otherwise it is empty.
     let body = if schema.body_enabled() {
         schema
             .body

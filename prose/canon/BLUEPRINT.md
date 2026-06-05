@@ -368,50 +368,44 @@ The contract is enforced by a fixture test that renders each bundled
 quill's empty document (zero-filled) and asserts success
 (`crates/quillmark/tests/quiver_test.rs::every_quill_in_quiver_renders`).
 
-## Two reference documents
+## The blueprint and its filled-out twin
 
-A quill projects into two intent-named reference documents, each ordering
-its value sources for its own purpose (there is no cross-output "default
-always wins" rule). Both are annotated, parseable, and schema-valid; the
-fill strategy is an internal detail, not a public parameter.
+The blueprint is the **one** annotated reference document — the authoring
+surface. Its "show me a filled-out one" counterpart is **seeding**, which
+materializes a real `Document` (committed, structured content for editor and
+render consumers) rather than a second annotated string. There is no
+annotated `example` *document*: nothing consumes a filled-out document for its
+annotations, so the filled-out projection is committed `Document` content, not
+prose.
 
-| Output | Intent | Value precedence | Sentinels? |
-|---|---|---|---|
-| `blueprint` | *"give me the form to fill"* | `default:`, else `<must-fill>` | yes |
-| `example` | *"show me a filled-out one"* | `example:` › `default:` › type-empty zero | no |
+| Projection | Intent | Value precedence | Output | Sentinels? |
+|---|---|---|---|---|
+| `blueprint` | *"give me the form to fill"* | `default:`, else `<must-fill>` | annotated string | yes |
+| seeding | *"give me a filled-out one"* | `example:` › absent | committed `Document` | no |
 
 - The **blueprint** is the canonical authoring surface: an Endorsed field
   (has a `default:`) renders its default; a Must Fill field carries the
-  `<must-fill>` sentinel.
-- The **example** document is the illustrative consolidation — each
-  field's `example:`, else its `default:`, else its zero value — with no
-  sentinels. It is example-*first* but not guaranteed fully populated
-  (a field with neither an `example:` nor a `default:` renders blank). A
-  field with *both* a default and an example shows its example here but
-  its default on the render path: the example optimizes for illustration,
-  render for fidelity. (This "default on the render path" rule holds for
-  authored and blank documents, where no `example` is present. A **seeded**
-  document — see [SCHEMAS.md](SCHEMAS.md) § "Document seeding" — commits the
-  `example`, so a both-having field renders its example there too.)
-- The per-field **zero value** (`zero_value`, defined in
-  [SCHEMAS.md](SCHEMAS.md) § "Zero-filled render") is one shared producer —
-  the `example` fallback above *and* the render floor for zero-filled render.
-
-Both outputs here are *strings*. A third projection, **seeding**, is the
-committed, structured twin of the `example` document: it materializes a real
-`Document` for editor consumers, committing each field's `example:` and leaving
-the rest absent (`example: → absent`, *not* `example: › default: › zero`) so the
-compilation layer fills `default: → zero` underneath. See
-[SCHEMAS.md](SCHEMAS.md) § "Document seeding".
+  `<must-fill>` sentinel. An `example:` surfaces only as a `# e.g.` hint,
+  never as the rendered value.
+- **Seeding** commits each field's `example:` and leaves every other field
+  absent (`example: → absent`, *not* `example: › default: › zero`), so the
+  compilation layer fills `default: → zero` underneath at render time. It is
+  the committed, structured twin handed to editor consumers. See
+  [SCHEMAS.md](SCHEMAS.md) § "Document seeding".
+- A seeded document therefore *renders* each field's `example:` where present,
+  else its `default:`, else its zero value — the same consolidation an eager
+  fill would produce, but resolved at the render floor for fidelity. The
+  per-field **zero value** (`zero_value`, defined in
+  [SCHEMAS.md](SCHEMAS.md) § "Zero-filled render") is that shared render floor.
 
 ## Bindings surface
 
 | Binding | Accessor |
 |---|---|
-| Rust | `QuillConfig::blueprint() -> String`, `QuillConfig::example() -> String` |
-| Wasm | `Quill.blueprint` / `Quill.example` getters |
-| Python | `Quill.blueprint` / `Quill.example` properties |
-| CLI | `quillmark blueprint <QUILL_PATH> [-o <FILE>]`; `render` with no input file renders the `example` document |
+| Rust | `QuillConfig::blueprint() -> String`; the filled-out twin is `Quill::seed_document() -> Document` |
+| Wasm | `Quill.blueprint` getter; `Quill.seedDocument()` |
+| Python | `Quill.blueprint` property; `Quill.seed_document()` |
+| CLI | `quillmark blueprint <QUILL_PATH> [-o <FILE>]`; `render` with no input file renders the **seeded** document |
 
 The Rust example `cargo run -p quillmark-core --example print_blueprint
 -- <quill_name> [<version>]` prints the blueprint for any bundled

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Breaking (bindings + Rust API):** the `example` reference document is
+  removed. `QuillConfig::example()` and the `Quill.example` (WASM) /
+  `Quill.example` (Python) getters are gone. Its "show me a filled-out one"
+  role is served by seeding — `Quill::seed_document()` / `Quill.seedDocument()`
+  / `Quill.seed_document()` — which returns a committed `Document` rather than
+  an annotated string. The CLI `render` with no input file now renders the
+  seeded document. Nothing consumed the example document's annotations (the
+  authoring surface is `blueprint()`), so the projection collapses into the
+  seed: internally the `FillSource` fork in blueprint emission is gone and the
+  blueprint always renders `default:` else the `<must-fill>` sentinel.
+
 ## v0.87.3 - 2026-06-04
 
 - Complete and consolidate the $ext mutator surface (#689)
