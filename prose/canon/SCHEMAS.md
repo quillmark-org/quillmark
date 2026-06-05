@@ -62,6 +62,37 @@ Field-level type and presence errors render under a uniform shape —
 field path, verbatim source token, schema declaration, and both exits
 when applicable. See `ERROR.md` § "Validation message contract".
 
+## Value sources and projections
+
+Every field value comes from one of a small set of **sources**, ordered by
+*commitment* — how strongly the value claims to be the real answer. This is the
+**commitment ladder**:
+
+| Rung | Source | Persisted? | Renders? |
+|---|---|---|---|
+| top | authored value | yes | yes |
+| | `default:` | yes (interpolated when omitted) | yes — the fidelity value |
+| | `example:` | only by [seeding](#document-seeding) | only on illustration surfaces |
+| floor | type-empty `zero` (`zero_value`) | never | last resort |
+| (signal) | `<must-fill>` sentinel | never (error if it survives) | never |
+
+No surface owns a precedence *policy*; each **projection cuts the same ladder**
+at a different rung, and the per-rung producers are shared (`zero_value` for the
+floor, `FieldSchema::ui_order` for ordering):
+
+| Projection | Per-field precedence | Floor | Output |
+|---|---|---|---|
+| render (fidelity) | authored › `default:` › zero | zero | plate JSON — [Zero-filled render](#zero-filled-render) |
+| `example` document | `example:` › `default:` › zero | zero | annotated string — [BLUEPRINT.md](BLUEPRINT.md) |
+| `blueprint` document | `default:` › `<must-fill>` | sentinel | annotated string — [BLUEPRINT.md](BLUEPRINT.md) |
+| seeding | `example:` › absent | (deferred to render floor) | committed `Document` — [Document seeding](#document-seeding) |
+| form view | authored / `default:` / missing (uncollapsed; carries `example:`) | — | read-only view |
+
+Two seams are deliberate, not uniform: the floor is `zero` on every projection
+except `blueprint`, which substitutes the `<must-fill>` *sentinel*; and `zero`
+is honestly blank for every type except `enum`, whose zero is the first declared
+variant (there is no empty enum member). Both are detailed below.
+
 ## Zero-filled render
 
 **Partial documents are first-class citizens.** A document need not be

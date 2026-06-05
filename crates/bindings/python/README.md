@@ -62,6 +62,7 @@ session = quill.open(parsed)
 form    = quill.form(parsed)
 blank   = quill.blank_main()
 card    = quill.blank_card("note")
+seed    = quill.seed_document()                          # starter Document seeded from `example:` values
 ```
 
 ### `RenderSession`

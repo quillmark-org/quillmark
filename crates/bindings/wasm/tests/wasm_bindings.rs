@@ -296,6 +296,31 @@ fn test_quill_metadata_and_schemas() {
     assert!(get(&card_fields, "CARD").is_undefined());
 }
 
+/// `seedDocument` returns a Document committing each field's `example` and
+/// leaving default-only fields absent (interpolated at render, not persisted).
+#[wasm_bindgen_test]
+fn test_quill_seed_document() {
+    let quill = Quillmark::new()
+        .quill(common::tree(&[
+            (
+                "Quill.yaml",
+                b"quill:\n  name: seed_quill\n  backend: typst\n  version: \"1.0\"\n  plate_file: plate.typ\n  description: Seed quill\nmain:\n  fields:\n    byline:\n      type: string\n      example: FIRST LAST\n    title:\n      type: string\n      default: Untitled\n",
+            ),
+            ("plate.typ", b"= Title"),
+        ]))
+        .expect("quill load");
+
+    let md = quill.seed_document().to_markdown();
+    assert!(
+        md.contains("FIRST LAST"),
+        "byline example must be committed: {md}"
+    );
+    assert!(
+        !md.contains("Untitled"),
+        "title default must not be persisted: {md}"
+    );
+}
+
 /// `doc.clone()` returns an independent handle: mutations on the clone
 /// must not affect the original, and parse-time warnings must survive.
 #[wasm_bindgen_test]

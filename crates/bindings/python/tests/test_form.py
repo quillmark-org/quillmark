@@ -38,6 +38,9 @@ main:
       default: Untitled
     count:
       type: integer
+    byline:
+      type: string
+      example: FIRST LAST
 
 card_kinds:
   note:
@@ -135,6 +138,32 @@ def test_form_json_serializable(tmp_path):
 
     parsed = json.loads(dumped)
     assert parsed["main"]["values"]["title"]["source"] == "document"
+
+
+def test_form_exposes_example(tmp_path):
+    """The `example` rung is surfaced in the form view for editor guidance,
+    independent of `source`."""
+    quill = make_quill(tmp_path)
+    doc = Document.from_markdown(MD_EMPTY)
+
+    values = quill.form(doc)["main"]["values"]
+
+    assert values["byline"]["example"] == "FIRST LAST"
+    assert values["byline"]["source"] == "missing"
+    # A field with no example carries null.
+    assert values["title"]["example"] is None
+
+
+def test_seed_document_commits_examples(tmp_path):
+    """seed_document returns a Document committing example values and leaving
+    default-only fields absent (interpolated at render, not persisted)."""
+    quill = make_quill(tmp_path)
+
+    doc = quill.seed_document()
+    md = doc.to_markdown()
+
+    assert "FIRST LAST" in md, "byline example must be committed"
+    assert "Untitled" not in md, "title default must not be persisted"
 
 
 def test_form_unknown_card_diagnostic(tmp_path):
