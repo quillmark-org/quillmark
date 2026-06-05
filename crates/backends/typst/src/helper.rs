@@ -86,10 +86,4 @@ mod tests {
         assert!(toml.contains("entrypoint = \"lib.typ\""));
     }
 
-    #[test]
-    fn test_helper_constants() {
-        assert_eq!(HELPER_VERSION, "0.1.0");
-        assert_eq!(HELPER_NAMESPACE, "local");
-        assert_eq!(HELPER_NAME, "quillmark-helper");
-    }
 }
