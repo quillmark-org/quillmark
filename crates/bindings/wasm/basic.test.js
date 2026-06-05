@@ -1203,8 +1203,8 @@ main:
     // Document omits `title`. Schema declares no default → Unendorsed. Under
     // zero-filled render this is merely *incomplete*, not malformed: render
     // fills `title` with its type-empty value in the plate projection and
-    // succeeds. Absence is no longer a hard error (the form's `source:
-    // "missing"` carries the doneness signal instead).
+    // succeeds. Absence is no longer a hard error; `quill.validate` reports it
+    // as the non-fatal `validation::field_absent` doneness signal instead.
     const md = `~~~card-yaml
 $quill: schema_test
 $kind: main

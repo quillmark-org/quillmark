@@ -49,6 +49,7 @@ card_kinds:
         default: TBD
       tag:
         type: string
+        example: NOTE TAG
 """
 
 
@@ -149,3 +150,20 @@ def test_seed_document_commits_examples(tmp_path):
 
     assert "FIRST LAST" in md, "byline example must be committed"
     assert "TBD" not in md, "note body default must not be persisted"
+
+
+def test_seed_main_and_card(tmp_path):
+    """seed_main / seed_card return per-card seeds (the Document.main / cards
+    dict shape), each committing its fields' example; seed_card is None for an
+    unknown kind."""
+    quill = make_quill(tmp_path)
+
+    main = quill.seed_main()
+    assert main["kind"] == "main"
+    assert "FIRST LAST" in json.dumps(main), "byline example must be committed"
+
+    note = quill.seed_card("note")
+    assert note["kind"] == "note"
+    assert "NOTE TAG" in json.dumps(note), "tag example must be committed"
+
+    assert quill.seed_card("missing") is None, "unknown kind must be None"

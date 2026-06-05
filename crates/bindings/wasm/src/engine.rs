@@ -363,6 +363,36 @@ impl Quill {
             parse_warnings: Vec::new(),
         }
     }
+
+    /// Seed a starter main `Card` (carries `$quill`) from the schema — the
+    /// `$kind: main` card of [`seedDocument`](Self::seed_document) in
+    /// isolation, committing each field's `example:` value. Returns the same
+    /// `Card` shape as the `Document.main` getter.
+    #[wasm_bindgen(js_name = seedMain, unchecked_return_type = "Card")]
+    pub fn seed_main(&self) -> JsValue {
+        let card = Card::from(&self.inner.seed_main());
+        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        card.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
+    }
+
+    /// Seed a starter composable `Card` of the given kind (carries `$kind`),
+    /// committing its fields' `example:` values and leaving every other field
+    /// absent. Returns `undefined` if `cardKind` is not declared in this
+    /// quill's schema, else the same `Card` shape as `Document.cards` /
+    /// `removeCard` (read `kind` + `payloadItems` to assemble a `CardInput`
+    /// for `Document.pushCard` / `insertCard`).
+    #[wasm_bindgen(js_name = seedCard, unchecked_return_type = "Card | undefined")]
+    pub fn seed_card(&self, card_kind: &str) -> JsValue {
+        match self.inner.seed_card(card_kind) {
+            Some(core_card) => {
+                let card = Card::from(&core_card);
+                let serializer =
+                    serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+                card.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
+            }
+            None => JsValue::UNDEFINED,
+        }
+    }
 }
 
 #[wasm_bindgen]

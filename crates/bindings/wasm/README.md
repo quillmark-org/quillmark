@@ -191,6 +191,12 @@ const doc = quill.seedDocument();
 const markdown = doc.toMarkdown();
 ```
 
+For per-card seeding, `quill.seedMain()` returns just the `$kind: main` card
+and `quill.seedCard(kind)` returns a starter composable card (or `undefined`
+if the kind is not declared). Both return the same `Card` shape as
+`doc.main` / `doc.cards` — read `kind` + `payloadItems` to assemble a
+`CardInput` for `doc.pushCard` / `doc.insertCard`.
+
 ### `quill.render(parsed, opts?)` vs. `quill.open(parsed)`
 
 Use **`Quill.render`** for one-shot exports (PDF/SVG/PNG) — compiles, emits

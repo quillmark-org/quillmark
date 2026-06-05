@@ -216,6 +216,28 @@ impl PyQuill {
             parse_warnings: Vec::new(),
         }
     }
+
+    /// Seed a starter main card (carries `$quill`) from the schema — the
+    /// `$kind: main` card of `seed_document()` in isolation, as a dict (same
+    /// shape as `Document.main`). Mirrors WASM `seedMain`.
+    fn seed_main<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        card_to_pydict(py, &self.inner.seed_main())
+    }
+
+    /// Seed a starter composable card of the given kind (carries `$kind`),
+    /// committing its fields' `example` values and leaving every other field
+    /// absent; `None` if `card_kind` is not declared. Returns the same dict
+    /// shape as `Document.cards` / `remove_card`. Mirrors WASM `seedCard`.
+    fn seed_card<'py>(
+        &self,
+        py: Python<'py>,
+        card_kind: &str,
+    ) -> PyResult<Option<Bound<'py, PyDict>>> {
+        match self.inner.seed_card(card_kind) {
+            Some(card) => Ok(Some(card_to_pydict(py, &card)?)),
+            None => Ok(None),
+        }
+    }
 }
 
 #[pyclass(name = "Document")]
