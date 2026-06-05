@@ -68,13 +68,22 @@ Every field value comes from one of a small set of **sources**, ordered by
 *commitment* — how strongly the value claims to be the real answer. This is the
 **commitment ladder**:
 
-| Rung | Source | Persisted? | Renders? |
+| Rung | Source | Persisted into a `Document`? | Renders? |
 |---|---|---|---|
-| top | authored value | yes | yes |
-| | `default:` | yes (interpolated when omitted) | yes — the fidelity value |
+| top | authored value | yes — it *is* the document content | yes |
+| | `default:` | **never** by the engine — lives in the schema, interpolated only into the ephemeral render projection | yes — the fidelity value |
 | | `example:` | only by [seeding](#document-seeding) | only on illustration surfaces |
-| floor | type-empty `zero` (`zero_value`) | never | last resort |
+| floor | type-empty `zero` (`zero_value`) | never ([Non-persist invariant](#zero-filled-render)) | last resort |
 | (signal) | `<must-fill>` sentinel | never (error if it survives) | never |
+
+A `default` is never written back into a document: it lives in `Quill.yaml`,
+the render path interpolates it into the plate-JSON projection only, and seeding
+deliberately omits it (persisting it would be redundant and would freeze it
+against a schema change). The lone way a default's *value* becomes document
+content is indirect: `blueprint()` / `example()` emit it as literal text in
+their reference *strings* (the blueprint tags it `; delete-ok`), and if a
+consumer authors from one and saves it, that value is now ordinary **authored**
+content — the consumer committed it, not the engine.
 
 No surface owns a precedence *policy*; each **projection cuts the same ladder**
 at a different rung, and the per-rung producers are shared (`zero_value` for the
