@@ -4,6 +4,8 @@ Format-first Markdown rendering: Markdown + YAML card metadata → PDF/SVG/PNG v
 
 Design docs: [`prose/canon/INDEX.md`](prose/canon/INDEX.md)
 
+Released migration guides in [`docs/migrations/`](docs/migrations/) are era-accurate and immutable; only the working (unreleased) one is mutable.
+
 ## Tests
 
 ```bash
