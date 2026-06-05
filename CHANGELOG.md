@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.88.0-rc.1 - 2026-06-05
+
+- blueprint: flatten group_fields, drop unused group label (#697)
+- Update CLAUDE.md
+- Expose seedMain/seedCard to WASM + Python bindings (#696)
+- docs: note that released migration guides are era-accurate and immutable (#695)
+- Remove form-view projection; add Quill::validate (#694)
+- Remove example() reference document, fold into seeding (#693)
+- Document seeding (example → absent) + block-scalar prescan fix + commitment-ladder docs (#691)
+- docs(canon): dedup field-resolution semantics into SCHEMAS (#692)
+
+
 ## Unreleased
 
 - **Breaking (bindings + Rust API):** a single canonical **`Card` wire shape** now
