@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
-/// TypeScript declarations for the quill metadata and form view surfaces.
+/// TypeScript declarations for the quill metadata and schema surfaces.
 /// Emitted via `typescript_custom_section` as the single source of truth.
 #[wasm_bindgen(typescript_custom_section)]
-const METADATA_FORM_TS: &'static str = r#"
+const METADATA_TS: &'static str = r#"
 /** UI layout hints for a single field. */
 export interface QuillFieldUi {
     group?: string;
@@ -87,47 +87,6 @@ export interface QuillMetadata {
     description: string;
     supportedFormats: OutputFormat[];
     [key: string]: unknown;
-}
-
-/** Source of a field's effective value in a form view. */
-export type FormFieldSource = "document" | "default" | "missing";
-
-/**
- * A single field's view within a `FormCard`.
- *
- * - `value` — the document-supplied value (`null` when absent).
- * - `default` — the schema default (`null` when no default is declared).
- * - `example` — the schema example (`null` when none); input guidance only,
- *   never an effective value and never reflected in `source`.
- * - `source` — where the effective value comes from.
- */
-export interface FormFieldValue {
-    value: unknown;
-    default: unknown;
-    example: unknown;
-    source: FormFieldSource;
-}
-
-/**
- * A card viewed through its schema, as returned by `Quill.form`,
- * `Quill.blankMain`, and `Quill.blankCard`.
- */
-export interface FormCard {
-    schema: QuillCardSchema;
-    values: Record<string, FormFieldValue>;
-}
-
-/**
- * Schema-aware form view of a document, returned by `Quill.form`.
- *
- * - `main` — the main card viewed through the quill's main schema.
- * - `cards` — composable card blocks, in document order (unknown kinds excluded).
- * - `diagnostics` — diagnostics from unknown card kinds and validation.
- */
-export interface Form {
-    main: FormCard;
-    cards: FormCard[];
-    diagnostics: Diagnostic[];
 }
 "#;
 
@@ -371,46 +330,24 @@ impl Quill {
         val.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
     }
 
-    /// The schema-aware form view of `doc`. Read-only snapshot at call time;
-    /// subsequent edits to `doc` require calling `form` again.
-    #[wasm_bindgen(js_name = form, unchecked_return_type = "Form")]
-    pub fn form(&self, doc: &Document) -> Result<JsValue, JsValue> {
-        let form = self.inner.form(&doc.inner);
+    /// Validate `doc` against this quill's schema, returning every diagnostic
+    /// (an empty array when the document is valid).
+    ///
+    /// Forwards the canonical `validation::*` diagnostics — same `code`,
+    /// `path`, and `hint` the engine emits — including the non-fatal
+    /// `validation::field_absent` completeness signal that `render` demotes.
+    /// Field values, defaults, and order are not part of this surface: read
+    /// them from the `Document` payload and `Quill.schema` (fields carry
+    /// `ui.order`).
+    #[wasm_bindgen(js_name = validate, unchecked_return_type = "Diagnostic[]")]
+    pub fn validate(&self, doc: &Document) -> Result<JsValue, JsValue> {
+        let diags = self.inner.validate(&doc.inner);
         let serializer = serde_wasm_bindgen::Serializer::new()
             .serialize_maps_as_objects(true)
             .serialize_missing_as_null(true);
-        form.serialize(&serializer)
-            .map_err(|e| WasmError::from(format!("form: serialization failed: {e}")).to_js_value())
-    }
-
-    /// Blank `FormCard` for the main card with no document values.
-    /// Every field's `source` is `"default"` or `"missing"`.
-    #[wasm_bindgen(js_name = blankMain, unchecked_return_type = "FormCard")]
-    pub fn blank_main(&self) -> Result<JsValue, JsValue> {
-        let card = self.inner.blank_main();
-        let serializer = serde_wasm_bindgen::Serializer::new()
-            .serialize_maps_as_objects(true)
-            .serialize_missing_as_null(true);
-        card.serialize(&serializer).map_err(|e| {
-            WasmError::from(format!("blankMain: serialization failed: {e}")).to_js_value()
+        diags.serialize(&serializer).map_err(|e| {
+            WasmError::from(format!("validate: serialization failed: {e}")).to_js_value()
         })
-    }
-
-    /// Blank `FormCard` for the given card kind. Returns `null` if `cardKind`
-    /// is not declared in this quill's schema.
-    #[wasm_bindgen(js_name = blankCard, unchecked_return_type = "FormCard | null")]
-    pub fn blank_card(&self, card_kind: &str) -> Result<JsValue, JsValue> {
-        match self.inner.blank_card(card_kind) {
-            Some(card) => {
-                let serializer = serde_wasm_bindgen::Serializer::new()
-                    .serialize_maps_as_objects(true)
-                    .serialize_missing_as_null(true);
-                card.serialize(&serializer).map_err(|e| {
-                    WasmError::from(format!("blankCard: serialization failed: {e}")).to_js_value()
-                })
-            }
-            None => Ok(JsValue::NULL),
-        }
     }
 
     /// Seed a starter `Document` from the schema — the main card plus one

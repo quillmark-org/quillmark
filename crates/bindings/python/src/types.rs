@@ -2,7 +2,7 @@ use pyo3::conversion::IntoPyObjectExt;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::pycell::PyRef;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyList};
 use pyo3::Bound;
 
 use quillmark::{
@@ -179,56 +179,30 @@ impl PyQuill {
         })
     }
 
-    /// Schema-aware form view of `doc`.
+    /// Validate `doc` against this quill's schema, returning a list of
+    /// diagnostic dicts (empty when the document is valid). Mirrors WASM
+    /// `validate`.
     ///
-    /// Returns a dict with keys `main`, `cards`, and `diagnostics`. Mirrors WASM `form`.
-    fn form<'py>(
+    /// Forwards the canonical `validation::*` diagnostics — same `code`,
+    /// `path`, and `hint` the engine emits — including the non-fatal
+    /// `validation::field_absent` completeness signal that `render`
+    /// demotes. Field values, defaults, and order are not part of this
+    /// surface: read them from the `Document` payload and `Quill.schema`
+    /// (fields carry `ui.order`).
+    fn validate<'py>(
         &self,
         py: Python<'py>,
         doc: PyRef<'_, PyDocument>,
-    ) -> PyResult<Bound<'py, PyDict>> {
-        let form = self.inner.form(&doc.inner);
-        let json_value = serde_json::to_value(&form).map_err(|e| {
-            PyValueError::new_err(format!("form: serialization failed: {e}"))
+    ) -> PyResult<Bound<'py, PyList>> {
+        let diags = self.inner.validate(&doc.inner);
+        let json_value = serde_json::to_value(&diags).map_err(|e| {
+            PyValueError::new_err(format!("validate: serialization failed: {e}"))
         })?;
         let py_obj = json_to_py(py, &json_value)?;
-        let dict = py_obj.downcast::<PyDict>().map_err(|_| {
-            PyValueError::new_err("form: expected object at top level")
-        })?;
-        Ok(dict.clone())
-    }
-
-    /// Blank form for the main card. Mirrors WASM `blankMain`.
-    fn blank_main<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
-        let card = self.inner.blank_main();
-        let json_value = serde_json::to_value(&card).map_err(|e| {
-            PyValueError::new_err(format!("blank_main: serialization failed: {e}"))
-        })?;
-        let py_obj = json_to_py(py, &json_value)?;
-        let dict = py_obj.downcast::<PyDict>().map_err(|_| {
-            PyValueError::new_err("blank_main: expected object at top level")
-        })?;
-        Ok(dict.clone())
-    }
-
-    /// Blank form for `card_kind`, or `None` if the kind is not declared.
-    /// Mirrors WASM `blankCard`.
-    fn blank_card<'py>(
-        &self,
-        py: Python<'py>,
-        card_kind: &str,
-    ) -> PyResult<Option<Bound<'py, PyDict>>> {
-        let Some(card) = self.inner.blank_card(card_kind) else {
-            return Ok(None);
-        };
-        let json_value = serde_json::to_value(&card).map_err(|e| {
-            PyValueError::new_err(format!("blank_card: serialization failed: {e}"))
-        })?;
-        let py_obj = json_to_py(py, &json_value)?;
-        let dict = py_obj.downcast::<PyDict>().map_err(|_| {
-            PyValueError::new_err("blank_card: expected object at top level")
-        })?;
-        Ok(Some(dict.clone()))
+        let list = py_obj
+            .downcast::<PyList>()
+            .map_err(|_| PyValueError::new_err("validate: expected a list at top level"))?;
+        Ok(list.clone())
     }
 
     /// Seed a starter `Document` from the schema — the main card plus one

@@ -10,7 +10,6 @@ use quillmark_core::{
     RenderResult, RenderSession, Severity,
 };
 
-use crate::form::{self, Form, FormCard};
 use crate::seed;
 
 /// Renderable quill: an [`Arc<QuillSource>`] paired with a resolved [`Backend`].
@@ -175,25 +174,31 @@ impl Quill {
         }
     }
 
-    /// Schema-aware form view of `doc`. Read-only snapshot — re-call after edits.
-    /// Unknown card kinds surface as `form::unknown_card_kind` diagnostics;
-    /// validation errors forward through with their canonical
-    /// `validation::*` codes, paths, and hints (same as
-    /// [`Quill::render`]'s `RenderError::diagnostics`).
-    pub fn form(&self, doc: &Document) -> Form {
-        form::build_form(self, doc)
-    }
-
-    /// Blank form for the main card — fields are [`form::FormFieldSource::Default`]
-    /// or [`form::FormFieldSource::Missing`]. Use as a starting state for a fresh document.
-    pub fn blank_main(&self) -> FormCard {
-        FormCard::blank(&self.source.config().main)
-    }
-
-    /// Blank form for a card of the given kind; `None` if the kind is not in
-    /// the schema. Use to render a new-card form before committing to the document.
-    pub fn blank_card(&self, card_kind: &str) -> Option<FormCard> {
-        form::blank_card_for_kind(self, card_kind)
+    /// Validate `doc` against this quill's schema, returning every diagnostic
+    /// (an empty `Vec` when the document is valid).
+    ///
+    /// This is the editor-facing validation surface. It forwards the canonical
+    /// `validation::*` diagnostics verbatim — same code, `path`, and `hint` the
+    /// engine emits — so consumers can route on the code and navigate by path
+    /// without parsing message text. It covers type mismatches, unknown card
+    /// kinds (`validation::unknown_card`), body-on-disabled-body, and the
+    /// surviving-`<must-fill>`-sentinel error.
+    ///
+    /// Unlike [`Quill::render`], it *includes* the non-fatal
+    /// `validation::field_absent` signal that render demotes (an absent
+    /// Unendorsed field zero-fills rather than failing). Treat
+    /// `field_absent` as a per-field completeness hint and the remaining
+    /// `error`-severity diagnostics as blockers.
+    ///
+    /// Field values, defaults, and presentation order are not part of this
+    /// surface: a consumer reads them directly from the [`Document`] payload
+    /// and the quill schema (`quill.source().config().schema()`), where fields
+    /// carry their `ui.order` as the presentation-ordering signal.
+    pub fn validate(&self, doc: &Document) -> Vec<Diagnostic> {
+        match self.source.config().validate_document(doc) {
+            Ok(()) => Vec::new(),
+            Err(errors) => errors.iter().map(|e| e.to_diagnostic()).collect(),
+        }
     }
 
     /// Seed a starter [`Document`]: the main card plus one instance of each
@@ -227,8 +232,8 @@ impl Quill {
                 // in `resolve_fields`. Only *malformed* input is fatal: a
                 // surviving `<must-fill>` sentinel, or a value that won't
                 // coerce/validate. So `validation::field_absent` is demoted
-                // (absence warnings are a deferred follow-up; today the form's
-                // `FormFieldSource::Missing` carries the doneness signal).
+                // here (the editor-facing `Quill::validate` keeps it as the
+                // per-field doneness signal).
                 //
                 // Each surviving ValidationError gets its own Diagnostic so
                 // consumers can use `path` for UI navigation via

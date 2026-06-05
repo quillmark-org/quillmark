@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Breaking (bindings + Rust API):** the schema-aware **form view is removed**.
+  `Quill::form` / `Quill::blank_main` / `Quill::blank_card` (and the
+  `quill.form` / `blankMain` / `blankCard` bindings) are gone, along with the
+  `Form` / `FormCard` / `FormFieldValue` / `FormFieldSource` types. Validation
+  diagnostics now flow through `Quill::validate(&Document) -> Vec<Diagnostic>`
+  (`quill.validate(doc)` in WASM/Python), which forwards the canonical
+  `validation::*` diagnostics and keeps the non-fatal `validation::field_absent`
+  completeness signal that `render` demotes. Field values/defaults/order are a
+  `Document` × `quill.schema` join the consumer performs directly. See
+  `docs/migrations/0.87-to-0.88.md`.
 - **Breaking (diagnostics):** the validation code `validation::must_fill_absent`
   is renamed `validation::field_absent`. "Must-fill" is now scoped to the
   blueprint communication surface (the `<must-fill>` sentinel and the fatal

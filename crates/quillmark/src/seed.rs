@@ -33,8 +33,8 @@ use crate::Quill;
 
 /// Build the seeded `(payload, body)` for one card schema: each field that
 /// declares an `example` is committed, ordered by `ui.order` (matching the
-/// form view and blueprint); fields without an `example` are omitted. The
-/// `$quill` / `$kind` system metadata is attached by the caller.
+/// blueprint); fields without an `example` are omitted. The `$quill` /
+/// `$kind` system metadata is attached by the caller.
 fn seed_parts(schema: &CardSchema) -> (Payload, String) {
     let mut names: Vec<&str> = schema.fields.keys().map(String::as_str).collect();
     names.sort_by_key(|name| schema.fields[*name].ui_order());

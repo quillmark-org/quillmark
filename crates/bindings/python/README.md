@@ -59,9 +59,7 @@ quill.quill_ref             # "name@version"
 
 result  = quill.render(parsed, OutputFormat.PDF)          # ppi=, pages= optional
 session = quill.open(parsed)
-form    = quill.form(parsed)
-blank   = quill.blank_main()
-card    = quill.blank_card("note")
+diags   = quill.validate(parsed)                         # list of validation::* diagnostic dicts ([] = valid)
 seed    = quill.seed_document()                          # starter Document seeded from `example:` values
 ```
 

@@ -144,8 +144,8 @@ def test_absent_unendorsed_is_nonfatal_signal(tmp_path):
 
     Per the zero-filled-render contract (``prose/canon/SCHEMAS.md``), render
     succeeds — each absent field is zero-filled in the ephemeral plate
-    projection — and ``validation::field_absent`` surfaces through the form
-    view's diagnostics, where the field's ``source`` is ``missing``.
+    projection — and ``validation::field_absent`` surfaces through
+    ``quill.validate``, which render demotes.
     """
     quill = make_quill(tmp_path)
     md = (
@@ -162,16 +162,11 @@ def test_absent_unendorsed_is_nonfatal_signal(tmp_path):
     result = quill.render(doc, OutputFormat.PDF)
     assert len(result.artifacts) > 0
 
-    # The completeness verdict is orthogonal to rendering; the form view carries
-    # the `field_absent` code and marks the absent fields `missing`.
-    form = quill.form(doc)
-    codes = [d.get("code") for d in form["diagnostics"]]
+    # The completeness signal is surfaced by validate, not render.
+    codes = [d.get("code") for d in quill.validate(doc)]
     assert "validation::field_absent" in codes, (
-        f"expected field_absent in form diagnostics; got: {codes}"
+        f"expected validate to surface field_absent; got: {codes}"
     )
-    values = form["main"]["values"]
-    assert values["title"]["source"] == "missing"
-    assert values["count"]["source"] == "missing"
 
 
 def test_render_reports_must_fill_sentinel(tmp_path):
@@ -205,8 +200,8 @@ def test_absent_unendorsed_does_not_emit_legacy_codes(tmp_path):
     ``validation::field_absent`` code instead. The intermediate codes
     ``validation::required_field_absent`` and ``validation::unfilled_placeholder``
     were also retired in favor of ``validation::field_absent`` and
-    ``validation::must_fill_sentinel``. Absence is a non-fatal signal carried by
-    the form view (zero-filled render — ``prose/canon/SCHEMAS.md``), so the
+    ``validation::must_fill_sentinel``. Absence is a non-fatal signal (zero-filled
+    render — ``prose/canon/SCHEMAS.md``) carried by ``quill.validate``, so the
     codes are checked there rather than on a render error.
     """
     quill = make_quill(tmp_path)
@@ -218,12 +213,14 @@ def test_absent_unendorsed_does_not_emit_legacy_codes(tmp_path):
     )
     doc = Document.from_markdown(md)
 
-    # Absence does not gate render; the diagnostic codes live on the form view.
-    quill.render(doc, OutputFormat.PDF)
-    codes = [d.get("code") for d in quill.form(doc)["diagnostics"]]
+    # render demotes field_absent → zero-fills and succeeds
+    result = quill.render(doc, OutputFormat.PDF)
+    assert len(result.artifacts) > 0
 
+    # the validate surface carries the canonical code, never the legacy ones
+    codes = [d.get("code") for d in quill.validate(doc)]
     assert "validation::field_absent" in codes, (
-        f"expected field_absent to be the surfaced code; got: {codes}"
+        f"expected canonical field_absent; got: {codes}"
     )
     assert "validation::missing_required" not in codes, (
         "legacy code `validation::missing_required` must no longer appear; "

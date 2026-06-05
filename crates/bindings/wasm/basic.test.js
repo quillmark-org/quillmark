@@ -983,24 +983,23 @@ describe('Document.clone', () => {
 })
 
 // ---------------------------------------------------------------------------
-// quill.form / blank_main / blank_card — schema-aware form view
+// quill.validate — editor-facing schema validation
 // NOTE: These tests cannot run in the devcontainer (no wasm-pack / browser
 //       runtime available).  They are written to run in CI where the WASM
 //       bundle is built by wasm-pack and loaded into a vitest/jsdom context.
 // ---------------------------------------------------------------------------
 
-describe('quill.form', () => {
+describe('quill.validate', () => {
   const QUILL_YAML = `quill:
-  name: form_smoke_test
+  name: validate_smoke_test
   version: "1.0"
   backend: typst
-  description: Smoke test for form
+  description: Smoke test for validate
 
 main:
   fields:
     title:
       type: string
-      default: "Untitled"
     count:
       type: integer
 
@@ -1009,102 +1008,88 @@ card_kinds:
     fields:
       body:
         type: string
-        default: "TBD"
-      tag:
-        type: string
 `
 
-  const MD_WITH_TITLE = `~~~card-yaml
-$quill: form_smoke_test
+  const buildQuill = () => {
+    const engine = new Quillmark()
+    return engine.quill(makeQuill({ name: 'validate_smoke_test', quillYaml: QUILL_YAML }))
+  }
+
+  it('returns an empty array for a complete, well-formed document', () => {
+    const quill = buildQuill()
+    const md = `~~~card-yaml
+$quill: validate_smoke_test
 $kind: main
 title: "Hello"
+count: 1
 ~~~
 `
-
-  it('form returns a plain object with main, cards, diagnostics', () => {
-    const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'form_smoke_test', quillYaml: QUILL_YAML }))
-    const doc = Document.fromMarkdown(MD_WITH_TITLE)
-
-    const form = quill.form(doc)
-
-    expect(typeof form).toBe('object')
-    expect(form).not.toBeNull()
-    expect('main' in form).toBe(true)
-    expect('cards' in form).toBe(true)
-    expect('diagnostics' in form).toBe(true)
-    expect(Array.isArray(form.cards)).toBe(true)
-    expect(Array.isArray(form.diagnostics)).toBe(true)
+    const diags = quill.validate(Document.fromMarkdown(md))
+    expect(Array.isArray(diags)).toBe(true)
+    expect(diags.length).toBe(0)
   })
 
-  it('form main.values has correct sources', () => {
-    const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'form_smoke_test', quillYaml: QUILL_YAML }))
-    const doc = Document.fromMarkdown(MD_WITH_TITLE)
-
-    const form = quill.form(doc)
-    const values = form.main.values
-
-    // title is present in doc → source: document
-    expect(values.title).toBeDefined()
-    expect(values.title.source).toBe('document')
-    expect(values.title.value).toBe('Hello')
-
-    // count is absent but schema has no default → source: missing
-    expect(values.count).toBeDefined()
-    expect(values.count.source).toBe('missing')
-    expect(values.count.value).toBeNull()
+  it('forwards a type_mismatch with canonical code, path, and hint', () => {
+    const quill = buildQuill()
+    const md = `~~~card-yaml
+$quill: validate_smoke_test
+$kind: main
+title: "Hello"
+count: "not-a-number"
+~~~
+`
+    const diags = quill.validate(Document.fromMarkdown(md))
+    const mismatch = diags.find((d) => d.code === 'validation::type_mismatch')
+    expect(mismatch).toBeDefined()
+    expect(mismatch.path).toBe('count')
+    expect(typeof mismatch.hint).toBe('string')
   })
 
-  it('form result is JSON.stringify-able and round-trips', () => {
-    const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'form_smoke_test', quillYaml: QUILL_YAML }))
-    const doc = Document.fromMarkdown(MD_WITH_TITLE)
+  it('reports an unknown card kind under validation::unknown_card', () => {
+    const quill = buildQuill()
+    const md = `~~~card-yaml
+$quill: validate_smoke_test
+$kind: main
+title: "T"
+count: 1
+~~~
 
-    const form = quill.form(doc)
-    const json = JSON.stringify(form)
+~~~card-yaml
+$kind: ghost
+body: "B"
+~~~
+`
+    const diags = quill.validate(Document.fromMarkdown(md))
+    expect(diags.some((d) => d.code === 'validation::unknown_card')).toBe(true)
+  })
+
+  it('includes field_absent for absent Unendorsed fields (completeness signal)', () => {
+    const quill = buildQuill()
+    const md = `~~~card-yaml
+$quill: validate_smoke_test
+$kind: main
+~~~
+`
+    const diags = quill.validate(Document.fromMarkdown(md))
+    const absent = diags
+      .filter((d) => d.code === 'validation::field_absent')
+      .map((d) => d.path)
+    expect(absent).toContain('title')
+    expect(absent).toContain('count')
+  })
+
+  it('result is JSON.stringify-able', () => {
+    const quill = buildQuill()
+    const md = `~~~card-yaml
+$quill: validate_smoke_test
+$kind: main
+count: "nope"
+~~~
+`
+    const diags = quill.validate(Document.fromMarkdown(md))
+    const json = JSON.stringify(diags)
     expect(typeof json).toBe('string')
-    expect(json.length).toBeGreaterThan(0)
-
-    const parsed = JSON.parse(json)
-    expect(parsed.main.values.title.source).toBe('document')
-  })
-
-  it('blankMain returns a card with no document values', () => {
-    const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'form_smoke_test', quillYaml: QUILL_YAML }))
-
-    const blank = quill.blankMain()
-
-    expect(typeof blank).toBe('object')
-    expect(blank).not.toBeNull()
-    // title has a default
-    expect(blank.values.title.source).toBe('default')
-    expect(blank.values.title.value).toBeNull()
-    expect(blank.values.title.default).toBe('Untitled')
-    // count has no default
-    expect(blank.values.count.source).toBe('missing')
-    expect(blank.values.count.value).toBeNull()
-    expect(blank.values.count.default).toBeNull()
-  })
-
-  it('blankCard returns a card for a known type', () => {
-    const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'form_smoke_test', quillYaml: QUILL_YAML }))
-
-    const blank = quill.blankCard('note')
-
-    expect(blank).not.toBeNull()
-    expect(blank.values.body.source).toBe('default')
-    expect(blank.values.body.default).toBe('TBD')
-    expect(blank.values.tag.source).toBe('missing')
-  })
-
-  it('blankCard returns null for an unknown type', () => {
-    const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'form_smoke_test', quillYaml: QUILL_YAML }))
-
-    expect(quill.blankCard('does_not_exist')).toBeNull()
+    expect(JSON.parse(json).length).toBe(diags.length)
   })
 })
 
@@ -1125,8 +1110,8 @@ title: "Hello"
 //     (never persisted), so absence is not a render error.
 //   - `quill.render(doc)` raises `validation::must_fill_sentinel` when the
 //     `<must-fill>` sentinel is left in (malformed, always fatal).
-//   - `quill.form(doc)` still flags both situations under `diagnostics`
-//     (the form view reports completeness independent of the render gate).
+//   - `quill.validate(doc)` flags both situations as diagnostics independent
+//     of the render gate (it reports completeness; render demotes absence).
 //
 // See prose/canon/SCHEMAS.md.
 
@@ -1284,45 +1269,37 @@ title: "A Real Title"
     expect(result.artifacts.length).toBeGreaterThan(0)
   })
 
-  it('form surfaces validation diagnostics for both absent and sentinel cases', () => {
+  it('validate surfaces diagnostics for both absent and sentinel cases', () => {
     const quill = buildQuill()
 
-    // Case 1: `title` absent — form should flag it.
+    // Case 1: `title` absent. Schema declares no default → Unendorsed. `render`
+    // demotes this to a non-fatal zero-fill, but `validate` surfaces it as the
+    // `field_absent` completeness signal.
     const mdAbsent = `~~~card-yaml
 $quill: schema_test
 $kind: main
 subtitle: "Just a subtitle"
 ~~~
 `
-    const formAbsent = quill.form(Document.fromMarkdown(mdAbsent))
-    // `title` is missing in the document, and the schema declares no default,
-    // so the form view marks the value as `missing`.
-    expect(formAbsent.main.values.title.source).toBe('missing')
-    expect(formAbsent.main.values.title.default).toBeNull()
-    // The validation error surfaces under `diagnostics` with its canonical
-    // `validation::*` code, path, and hint — the form view forwards the
-    // structured diagnostic verbatim.
-    expect(formAbsent.diagnostics.length).toBeGreaterThan(0)
+    const diagsAbsent = quill.validate(Document.fromMarkdown(mdAbsent))
     expect(
-      formAbsent.diagnostics.some(
-        (d) => d.severity === 'error' && d.path === 'title',
+      diagsAbsent.some(
+        (d) => d.code === 'validation::field_absent' && d.path === 'title',
       ),
     ).toBe(true)
 
-    // Case 2: sentinel left in — form should also flag it.
+    // Case 2: sentinel left in — a hard error on every surface.
     const mdSentinel = `~~~card-yaml
 $quill: schema_test
 $kind: main
 title: <must-fill>
 ~~~
 `
-    const formSentinel = quill.form(Document.fromMarkdown(mdSentinel))
-    // The sentinel is a literal string value, so the source is `document`.
-    expect(formSentinel.main.values.title.source).toBe('document')
-    expect(formSentinel.main.values.title.value).toBe('<must-fill>')
+    const diagsSentinel = quill.validate(Document.fromMarkdown(mdSentinel))
     expect(
-      formSentinel.diagnostics.some(
+      diagsSentinel.some(
         (d) =>
+          d.code === 'validation::must_fill_sentinel' &&
           d.severity === 'error' &&
           d.path === 'title' &&
           typeof d.hint === 'string' &&

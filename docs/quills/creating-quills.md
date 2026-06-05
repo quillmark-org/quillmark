@@ -44,7 +44,7 @@ When choosing field values, keep `default` and `example` distinct by author inte
 - **`default`** is the value the *majority of authors want*. Declaring it lets authors omit the field entirely — the default is filled in for them — so reach for a `default` whenever one value is the right answer most of the time (including a type-empty value like `""`, `[]`, `false`, or `0` when "blank" is an acceptable ship).
 - **`example`** matches the *type and shape* of what the author wants but is *not* the value they'd want most of the time. It documents the expected shape only — surfacing in the blueprint's `# e.g.` line — and never renders as the value. Use it when there is no single right answer but you still want to show authors what a well-formed value looks like.
 
-Fields with no `default:` are **Must Fill** — the blueprint carries the `<must-fill>` sentinel as a signal to authors and LLMs. Leaving such a field absent is not a render error: the render path zero-fills it silently. Shippability is the author's judgment, not the engine's.
+Fields with no `default:` are **Unendorsed** — the blueprint carries the `<must-fill>` sentinel as a signal to authors and LLMs. Leaving such a field absent is not a render error: the render path zero-fills it silently. Shippability is the author's judgment, not the engine's.
 
 ## 3. Write `plate.typ`
 
