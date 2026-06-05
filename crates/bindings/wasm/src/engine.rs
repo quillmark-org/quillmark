@@ -97,11 +97,14 @@ export type FormFieldSource = "document" | "default" | "missing";
  *
  * - `value` — the document-supplied value (`null` when absent).
  * - `default` — the schema default (`null` when no default is declared).
+ * - `example` — the schema example (`null` when none); input guidance only,
+ *   never an effective value and never reflected in `source`.
  * - `source` — where the effective value comes from.
  */
 export interface FormFieldValue {
     value: unknown;
     default: unknown;
+    example: unknown;
     source: FormFieldSource;
 }
 
@@ -416,6 +419,20 @@ impl Quill {
                 })
             }
             None => Ok(JsValue::NULL),
+        }
+    }
+
+    /// Seed a starter `Document` from the schema — the main card plus one
+    /// instance of each composable card kind, each committing its fields'
+    /// `example:` values and leaving every other field absent (interpolated at
+    /// render: `default:`, else type-empty zero). Illustration-first: a field
+    /// with both an `example` and a `default` renders its example. See
+    /// `prose/canon/SCHEMAS.md` § "Document seeding".
+    #[wasm_bindgen(js_name = seedDocument)]
+    pub fn seed_document(&self) -> Document {
+        Document {
+            inner: self.inner.seed_document(),
+            parse_warnings: Vec::new(),
         }
     }
 }

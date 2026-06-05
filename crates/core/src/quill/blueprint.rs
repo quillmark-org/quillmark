@@ -208,7 +208,7 @@ fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
     fields: I,
 ) -> Vec<(Option<String>, Vec<&'a FieldSchema>)> {
     let mut sorted: Vec<&FieldSchema> = fields.into_iter().collect();
-    sorted.sort_by_key(|f| ui_order(f));
+    sorted.sort_by_key(|f| f.ui_order());
     let mut groups: Vec<(Option<String>, Vec<&FieldSchema>)> = Vec::new();
     for field in sorted {
         let group = field
@@ -321,13 +321,9 @@ fn write_markdown_block(
     }
 }
 
-fn ui_order(f: &FieldSchema) -> i32 {
-    f.ui.as_ref().and_then(|u| u.order).unwrap_or(i32::MAX)
-}
-
 fn sort_props(props: &BTreeMap<String, Box<FieldSchema>>) -> Vec<&FieldSchema> {
     let mut v: Vec<&FieldSchema> = props.values().map(|b| b.as_ref()).collect();
-    v.sort_by_key(|f| ui_order(f));
+    v.sort_by_key(|f| f.ui_order());
     v
 }
 

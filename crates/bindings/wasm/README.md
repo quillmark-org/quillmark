@@ -172,6 +172,19 @@ const form = quill.form(Document.fromMarkdown(markdown));
 const errors = form.diagnostics.filter(d => d.severity === "error");
 ```
 
+### `quill.seedDocument()`
+
+Returns a starter `Document` seeded from the schema: each field's `example:`
+is committed and every other field is left absent (the render layer fills
+`default:` → type-empty zero). Illustration-first — a field with both an
+`example` and a `default` renders its example. Use as the initial state for a
+"new document" editor.
+
+```ts
+const doc = quill.seedDocument();
+const markdown = doc.toMarkdown();
+```
+
 ### `quill.render(parsed, opts?)` vs. `quill.open(parsed)`
 
 Use **`Quill.render`** for one-shot exports (PDF/SVG/PNG) — compiles, emits

@@ -389,10 +389,20 @@ fill strategy is an internal detail, not a public parameter.
   (a field with neither an `example:` nor a `default:` renders blank). A
   field with *both* a default and an example shows its example here but
   its default on the render path: the example optimizes for illustration,
-  render for fidelity.
+  render for fidelity. (This "default on the render path" rule holds for
+  authored and blank documents, where no `example` is present. A **seeded**
+  document — see [SCHEMAS.md](SCHEMAS.md) § "Document seeding" — commits the
+  `example`, so a both-having field renders its example there too.)
 - The per-field **zero value** (`zero_value`, defined in
   [SCHEMAS.md](SCHEMAS.md) § "Zero-filled render") is one shared producer —
   the `example` fallback above *and* the render floor for zero-filled render.
+
+Both outputs here are *strings*. A third projection, **seeding**, is the
+committed, structured twin of the `example` document: it materializes a real
+`Document` for editor consumers, committing each field's `example:` and leaving
+the rest absent (`example: → absent`, *not* `example: › default: › zero`) so the
+compilation layer fills `default: → zero` underneath. See
+[SCHEMAS.md](SCHEMAS.md) § "Document seeding".
 
 ## Bindings surface
 

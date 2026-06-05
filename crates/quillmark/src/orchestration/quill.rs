@@ -11,6 +11,7 @@ use quillmark_core::{
 };
 
 use crate::form::{self, Form, FormCard};
+use crate::seed;
 
 /// Renderable quill: an [`Arc<QuillSource>`] paired with a resolved [`Backend`].
 /// Constructed by the engine; immutable once created.
@@ -193,6 +194,28 @@ impl Quill {
     /// the schema. Use to render a new-card form before committing to the document.
     pub fn blank_card(&self, card_kind: &str) -> Option<FormCard> {
         form::blank_card_for_kind(self, card_kind)
+    }
+
+    /// Seed a starter [`Document`]: the main card plus one instance of each
+    /// declared composable card kind, each committing its fields' `example`
+    /// values and leaving all other fields absent (interpolated at render:
+    /// `default` → type-empty zero). The committed, structured counterpart of
+    /// [`QuillConfig::example`](quillmark_core::quill::QuillConfig::example)'s
+    /// illustrative string. See [`crate::seed`].
+    pub fn seed_document(&self) -> Document {
+        seed::seed_document(self)
+    }
+
+    /// Seed a starter main [`Card`] (carries `$quill`). Use as the main card
+    /// of a fresh document. See [`Quill::seed_document`].
+    pub fn seed_main(&self) -> Card {
+        seed::seed_main(self)
+    }
+
+    /// Seed a starter composable [`Card`] of the given kind (carries `$kind`);
+    /// `None` if the kind is not declared. Use to add a new card to a document.
+    pub fn seed_card(&self, card_kind: &str) -> Option<Card> {
+        seed::seed_card_for_kind(self, card_kind)
     }
 
     fn validate_document(&self, doc: &Document) -> Result<(), RenderError> {

@@ -238,6 +238,18 @@ impl PyQuill {
         })?;
         Ok(Some(dict.clone()))
     }
+
+    /// Seed a starter `Document` from the schema — the main card plus one
+    /// instance of each composable card kind, each committing its fields'
+    /// `example` values and leaving every other field absent (interpolated at
+    /// render). Illustration-first: a field with both an `example` and a
+    /// `default` renders its example. Mirrors WASM `seedDocument`.
+    fn seed_document(&self) -> PyDocument {
+        PyDocument {
+            inner: self.inner.seed_document(),
+            parse_warnings: Vec::new(),
+        }
+    }
 }
 
 #[pyclass(name = "Document")]

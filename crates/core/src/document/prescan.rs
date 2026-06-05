@@ -97,6 +97,11 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
         child_count: 0,
     }];
 
+    // Indent of the `key:` line that opened the current YAML block scalar
+    // (`|`/`>`), if any. While set, deeper-indented lines are literal scalar
+    // content and bypass structural prescanning.
+    let mut block_scalar_indent: Option<usize> = None;
+
     for raw_line in &lines {
         let line = *raw_line;
         let indent = leading_space_count(line);
@@ -105,6 +110,19 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
         if trimmed.is_empty() {
             cleaned_lines.push(line.to_string());
             continue;
+        }
+
+        // Inside a block scalar: lines indented deeper than the opening key
+        // are literal text — a markdown heading (`## …`), a `- ` bullet, or a
+        // `key: value` line in the content must pass through verbatim, never
+        // parsed as a comment, sequence item, or nested key. A line at or
+        // below the key's indent ends the scalar and is reprocessed normally.
+        if let Some(key_indent) = block_scalar_indent {
+            if indent > key_indent {
+                cleaned_lines.push(line.to_string());
+                continue;
+            }
+            block_scalar_indent = None;
         }
 
         while let Some(frame) = stack.last() {
@@ -194,6 +212,14 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
             } else {
                 cleaned_lines.push(line.to_string());
             }
+
+            // A sequence item whose value is itself a block scalar (`- |-`):
+            // content lines are indented past the dash, so the dash line's
+            // indent is the boundary. Without this, headings / bullets / `key:`
+            // lines inside a `markdown[]` item would be mis-parsed as structure.
+            if is_block_scalar_header(after_dash_trimmed) {
+                block_scalar_indent = Some(indent);
+            }
             continue;
         }
 
@@ -254,6 +280,10 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
                     });
                 }
 
+                if is_block_scalar_header(&value_without_tag) {
+                    block_scalar_indent = Some(indent);
+                }
+
                 continue;
             }
         }
@@ -296,6 +326,10 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
                     child_count: 0,
                 });
             }
+
+            if is_block_scalar_header(&value_part) {
+                block_scalar_indent = Some(indent);
+            }
             continue;
         }
 
@@ -337,6 +371,15 @@ fn strip_comment_marker(raw: &str) -> &str {
 
 fn leading_space_count(line: &str) -> usize {
     line.bytes().take_while(|b| *b == b' ').count()
+}
+
+/// `true` when a field value is a YAML block-scalar header (`|` or `>`, with
+/// optional chomping/indent indicators). Unquoted plain scalars cannot begin
+/// with these characters, so a leading `|`/`>` unambiguously opens a literal/
+/// folded block whose following content lines are text, not YAML structure.
+fn is_block_scalar_header(value: &str) -> bool {
+    let t = value.trim_start();
+    t.starts_with('|') || t.starts_with('>')
 }
 
 /// `true` when the value portion of a `key:` line is empty — real value is on
@@ -711,6 +754,78 @@ mod tests {
             // and that the cleaned YAML round-trips line count.
             assert_eq!(out.cleaned_yaml.lines().count(), input.lines().count());
         }
+    }
+
+    #[test]
+    fn block_scalar_content_is_not_parsed_as_structure() {
+        // A markdown block scalar whose content contains a `#` heading, a
+        // `- ` bullet, and a `key:` line. None of these are YAML structure —
+        // they must survive verbatim in the cleaned YAML, and the field after
+        // the block must still parse as a top-level field.
+        let input =
+            "bio: |-\n  ## About me\n\n  - point one\n  role: engineer\n  Done.\nname: jane\n";
+        let out = prescan_fence_content(input);
+
+        // The heading is content, not a stripped comment.
+        assert!(
+            out.cleaned_yaml.contains("## About me"),
+            "block-scalar heading must survive: {:?}",
+            out.cleaned_yaml
+        );
+        assert!(out.cleaned_yaml.contains("- point one"));
+        assert!(out.cleaned_yaml.contains("role: engineer"));
+
+        // Nothing from inside the block leaked into items as a comment/field.
+        assert!(
+            !out.items.iter().any(|i| matches!(
+                i,
+                PreItem::Comment { text, .. } if text.contains("About")
+            )),
+            "block-scalar `#` line must not become a comment"
+        );
+        assert!(
+            !out.items
+                .iter()
+                .any(|i| matches!(i, PreItem::Field { key, .. } if key == "role")),
+            "block-scalar `key:` line must not become a field"
+        );
+
+        // The two real top-level fields are `bio` then `name`, in order.
+        let fields: Vec<&str> = out
+            .items
+            .iter()
+            .filter_map(|i| match i {
+                PreItem::Field { key, .. } => Some(key.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(fields, vec!["bio", "name"]);
+    }
+
+    #[test]
+    fn sequence_item_block_scalar_content_is_not_parsed_as_structure() {
+        // A `markdown[]` array authored as `- |-` block-scalar items. Content
+        // lines (heading, bullet, `key:`) must survive verbatim, and the next
+        // item at the dash indent must still parse as a sequence item.
+        let input = "items:\n  - |-\n    ## Heading\n    - inner bullet\n    role: x\n  - second\n";
+        let out = prescan_fence_content(input);
+
+        assert!(
+            out.cleaned_yaml.contains("## Heading"),
+            "block-scalar heading inside a sequence item must survive: {:?}",
+            out.cleaned_yaml
+        );
+        assert!(out.cleaned_yaml.contains("- inner bullet"));
+        assert!(out.cleaned_yaml.contains("role: x"));
+        // The heading must not have been captured as a comment.
+        assert!(
+            !out.nested_comments
+                .iter()
+                .any(|c| c.text.contains("Heading")),
+            "block-scalar `#` line must not become a nested comment"
+        );
+        // `second` is preserved (the block ended at the next dash).
+        assert!(out.cleaned_yaml.contains("- second"));
     }
 
     #[test]

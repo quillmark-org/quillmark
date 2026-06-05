@@ -73,6 +73,46 @@ main:
 }
 
 #[test]
+fn form_carries_field_example() {
+    let quill = quill_from_yaml(
+        r#"
+quill:
+  name: form_example_test
+  version: "1.0"
+  backend: typst
+  description: Example exposure test
+
+main:
+  fields:
+    title:
+      type: string
+      example: FIRSTNAME LASTNAME
+    status:
+      type: string
+      default: draft
+"#,
+    );
+
+    // Empty document: title is Missing, status is Default.
+    let md = "~~~card-yaml\n$quill: form_example_test\n$kind: main\n~~~\n";
+    let doc = Document::from_markdown(md).unwrap();
+    let form = quill.form(&doc);
+
+    // The `example` rung is surfaced even when the field is Missing, so an
+    // editor can render it as input guidance.
+    let title = form.main.values.get("title").expect("title");
+    assert_eq!(title.source, FormFieldSource::Missing);
+    assert_eq!(
+        title.example.as_ref().and_then(|v| v.as_str()),
+        Some("FIRSTNAME LASTNAME"),
+    );
+
+    // A field with no example carries `None`.
+    let status = form.main.values.get("status").expect("status");
+    assert!(status.example.is_none());
+}
+
+#[test]
 fn form_missing_field_uses_default() {
     let quill = quill_from_yaml(
         r#"

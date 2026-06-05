@@ -16,6 +16,10 @@ publish = true
 name = "quillmark"
 path = "src/main.rs"
 test = false
+# The binary shares the `quillmark` name with the library crate; documenting it
+# would collide at `target/doc/quillmark/index.html`. CLI internals don't need
+# rustdoc HTML, so skip them.
+doc = false
 
 [dependencies]
 clap = { version = "~4.5", features = ["derive"] }

@@ -35,6 +35,12 @@ pub enum FormFieldSource {
 pub struct FormFieldValue {
     pub value: Option<QuillValue>,
     pub default: Option<QuillValue>,
+    /// The schema `example` (illustrative shape), `None` when none is declared.
+    /// Editors surface it as input guidance — e.g. ghost text in an empty
+    /// field. It is never an effective value and never drives `source`; it is
+    /// the same `example` the `example` document and seeding draw from (the
+    /// `example` rung of the commitment ladder — see `prose/canon/SCHEMAS.md`).
+    pub example: Option<QuillValue>,
     pub source: FormFieldSource,
 }
 
@@ -135,34 +141,31 @@ fn project_card(schema: &CardSchema, fields: &IndexMap<String, QuillValue>) -> F
     let mut values: IndexMap<String, FormFieldValue> = IndexMap::new();
 
     let mut field_names: Vec<&str> = schema.fields.keys().map(String::as_str).collect();
-    field_names.sort_by_key(|name| {
-        schema
-            .fields
-            .get(*name)
-            .and_then(|fs| fs.ui.as_ref())
-            .and_then(|ui| ui.order)
-            .unwrap_or(i32::MAX)
-    });
+    field_names.sort_by_key(|name| schema.fields[*name].ui_order());
 
     for field_name in field_names {
         let field_schema = &schema.fields[field_name];
         let default = field_schema.default.clone();
 
+        let example = field_schema.example.clone();
         let ffv = match fields.get(field_name) {
             Some(v) => FormFieldValue {
                 value: Some(v.clone()),
                 default,
+                example,
                 source: FormFieldSource::Document,
             },
             None => match default {
                 Some(ref d) => FormFieldValue {
                     value: None,
                     default: Some(d.clone()),
+                    example,
                     source: FormFieldSource::Default,
                 },
                 None => FormFieldValue {
                     value: None,
                     default: None,
+                    example,
                     source: FormFieldSource::Missing,
                 },
             },
