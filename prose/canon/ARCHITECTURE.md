@@ -4,7 +4,7 @@
 
 ## TL;DR
 
-Quillmark converts Markdown with card-yaml metadata blocks into output artifacts (PDF, SVG, PNG, TXT). A `Quill` (the renderable shape) orchestrates the pipeline; backends do the heavy compilation.
+Quillmark converts Markdown with card-yaml blocks into output artifacts (PDF, SVG, PNG, TXT). A `Quill` (the renderable shape) orchestrates the pipeline; backends do the heavy compilation.
 
 ## Data Flow
 
@@ -26,7 +26,7 @@ High-level API: `Quillmark` (engine), `Quill` (renderable source + backend). Han
 
 ### `backends/quillmark-typst`
 
-Implements `Backend` for PDF, SVG, and PNG. Converts Markdown fields to Typst markup inside `open()`. Resolves fonts and assets. See [GLUE_METADATA.md](GLUE_METADATA.md).
+Implements `Backend` for PDF, SVG, and PNG. Converts Markdown fields to Typst markup inside `open()`. Resolves fonts and assets. See [PLATE_DATA.md](PLATE_DATA.md).
 
 ### `bindings/quillmark-python`
 
@@ -73,7 +73,7 @@ Property-based fuzz tests (proptest): `parse_fuzz` (YAML/Markdown parsing), `con
 - `source` — `&QuillSource` with static assets/packages, config, metadata
 - `json_data` — JSON object after coercion, defaults, normalization
 
-See [GLUE_METADATA.md](GLUE_METADATA.md) for the Typst helper package.
+See [PLATE_DATA.md](PLATE_DATA.md) for the Typst helper package.
 
 ## Backend Implementation
 

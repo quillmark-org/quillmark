@@ -29,7 +29,7 @@ such.
 
 ## 2. The card-yaml Format
 
-The card-yaml format isolates structured metadata from markdown prose.
+The card-yaml format isolates structured data from markdown prose.
 
 A document is a sequence of **blocks**. Each block is one card-yaml block
 followed by its prose body:

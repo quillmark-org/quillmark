@@ -8,7 +8,7 @@ Quills declare a semantic `version` in `Quill.yaml`, and documents carry an opti
 
 ## Version Format
 
-Semantic versioning: `MAJOR.MINOR.PATCH` (two-segment `MAJOR.MINOR` accepted, treated as `MAJOR.MINOR.0`).
+Semantic versioning: `MAJOR.MINOR.PATCH`. Two-segment `MAJOR.MINOR` passes validation in `Quill.yaml` (the raw string is stored as-is; no normalization occurs).
 
 | Increment | When |
 |-----------|------|
@@ -39,7 +39,7 @@ quill:
   backend: typst
   description: "Short description of this format"
   author: "..."          # optional
-  plate_file: "main.typ" # optional; selects the template entrypoint
+  plate_file: "plate.typ" # optional; conventional name
   ui: { ... }            # optional
 ```
 
