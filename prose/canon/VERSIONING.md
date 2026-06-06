@@ -1,10 +1,14 @@
 # Quill Versioning System
 
-> **Implementation**: `crates/core/src/version.rs`, `crates/quillmark/src/orchestration/`
+> **Implementation**: `crates/core/src/version.rs`
+
+## TL;DR
+
+Quills declare a semantic `version` in `Quill.yaml`, and documents carry an optional `$quill: name@selector` reference. The version selector is parsed and stored on `QuillReference` but is **not** resolved at runtime — the engine loads exactly one Quill from a path or in-memory file tree, and the only runtime check on `$quill` compares the *name* against the loaded Quill.
 
 ## Version Format
 
-Semantic versioning: `MAJOR.MINOR.PATCH` (two-segment `MAJOR.MINOR` also accepted, treated as `MAJOR.MINOR.0`).
+Semantic versioning: `MAJOR.MINOR.PATCH`. Two-segment `MAJOR.MINOR` passes validation in `Quill.yaml` (the raw string is stored as-is; no normalization occurs).
 
 | Increment | When |
 |-----------|------|
@@ -14,33 +18,19 @@ Semantic versioning: `MAJOR.MINOR.PATCH` (two-segment `MAJOR.MINOR` also accepte
 
 ## Document Syntax
 
-The version selector is carried on the root block's `$quill` system-metadata
-line (see [markdown-spec.md](../references/markdown-spec.md) §3.3):
+The version selector rides on the root block's `$quill` system-metadata line (see [markdown-spec.md](../references/markdown-spec.md) §3.3):
 
 ```
-$quill: my_format@2.1.0    # exact version
-$quill: my_format@2.1      # latest 2.1.x
-$quill: my_format@2        # latest 2.x.x
-$quill: my_format@latest   # latest overall (explicit)
-$quill: my_format          # latest overall (default)
+$quill: my_format@2.1.0    # exact
+$quill: my_format@2.1      # 2.1.x
+$quill: my_format@2        # 2.x.x
+$quill: my_format@latest   # latest (explicit)
+$quill: my_format          # latest (default)
 ```
 
-## Resolution
-
-Given versions `[1.0.0, 1.0.1, 1.1.0, 2.0.0, 2.1.0, 2.1.1, 3.0.0]`:
-
-| Selector | Resolves To |
-|----------|-------------|
-| `@3` | `3.0.0` |
-| `@2` | `2.1.1` |
-| `@2.1` | `2.1.1` |
-| `@2.1.0` | `2.1.0` |
-| `@latest` | `3.0.0` |
-| (none) | `3.0.0` |
+The selector parses into the `VersionSelector` on `QuillReference`. No registry consumes it: there is no collection of installed versions to match against, and the selector is never compared at render time. Treat it as an informational pin. The engine emits a `quill::ref_mismatch` warning only when the reference *name* differs from the loaded Quill; the selector is ignored.
 
 ## Quill.yaml
-
-`version` and `description` are both required:
 
 ```yaml
 quill:
@@ -48,15 +38,21 @@ quill:
   version: "2.1.0"
   backend: typst
   description: "Short description of this format"
+  author: "..."          # optional
+  plate_file: "plate.typ" # optional; conventional name
+  ui: { ... }            # optional
 ```
 
-`version` must parse as `MAJOR.MINOR.PATCH` (or `MAJOR.MINOR`); an invalid or missing value is a hard error at load time.
+`name`, `backend`, `version`, and `description` are required. `author`, `plate_file`, and `ui` are optional. Unknown keys under `quill:` are a hard error. `version` must parse as `MAJOR.MINOR.PATCH` (or `MAJOR.MINOR`); an invalid or missing value fails at load.
 
 ## Error Handling
 
-Version parse errors surface as `RenderError::QuillConfig` with a descriptive message. There is no runtime version-registry lookup — each Quill is loaded directly from a path or in-memory file tree.
+Two distinct failure paths:
 
-See [ERROR.md](ERROR.md) for error handling patterns.
+- **`Quill.yaml` version invalid** → `quill::invalid_version` diagnostic → surfaces as `RenderError::QuillConfig` at Quill load.
+- **Document `$quill` reference invalid** (e.g. `my_format@bad`) → `ParseError::InvalidQuillReference`, returned directly by the parser, never as `RenderError::QuillConfig`.
+
+See [ERROR.md](ERROR.md) for error patterns.
 
 ## Links
 

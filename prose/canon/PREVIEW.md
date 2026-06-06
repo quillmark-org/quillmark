@@ -58,7 +58,7 @@ pub trait SessionHandle: Any + Send + Sync {
 
 impl RenderSession {
     pub fn page_count(&self) -> usize;
-    pub fn warnings(&self) -> Vec<Diagnostic>;
+    pub fn warnings(&self) -> &[Diagnostic];
     pub fn render(&self, opts: &RenderOptions) -> Result<RenderResult, RenderError>;
     #[doc(hidden)]
     pub fn handle(&self) -> &dyn SessionHandle;
@@ -80,6 +80,12 @@ pub fn typst_session_of(s: &RenderSession) -> Option<&TypstSession>;
 ### TypeScript (WASM)
 
 ```ts
+class Quill {
+  readonly backendId: string;
+  readonly supportsCanvas: boolean;   // probe before mounting canvas UI / open()
+  open(doc: Document): RenderSession;
+}
+
 class RenderSession {
   readonly pageCount: number;
   readonly backendId: string;
@@ -123,7 +129,7 @@ the typst crate owns the typed surface, the WASM binding wires it to
 ```
 core::RenderSession            ← Box<dyn SessionHandle>
   └─ TypstSession              ← typst-only; holds PagedDocument
-       └─ typst-render::render ← PagedDocument + ppi → tiny_skia::Pixmap
+       └─ typst-render::render ← PagedDocument + scale → tiny_skia::Pixmap
             └─ Pixmap.demultiply() → RGBA8 buffer
                  └─ ImageData → ctx.putImageData
 ```
@@ -137,6 +143,7 @@ byte-identical.
 ## Lifecycle and consumer flow
 
 ```js
+if (!quill.supportsCanvas) return;            // non-typst backends have no painter
 const session = quill.open(doc);              // compiles once, caches PagedDocument
 const densityScale = (window.devicePixelRatio || 1) * userZoom;  // userZoom is a UI control
 

@@ -19,11 +19,12 @@ free.
 ~~~
 $quill: <name>@<version>
 $kind: main
+# system metadata; verbatim
 # <description>
 
 # <field description>
 # e.g. <example value>
-field: value  # <type>[; delete-ok]
+field: value  # <type>[<format>][; delete-ok]
 ~~~
 
 Write main body here.
@@ -90,7 +91,7 @@ Form: **`# <type>[<format>][; delete-ok]`**
   - `enum<a | b | c>`
   - omitted for `string`, `integer`, `number`, `boolean`, `object`,
     `markdown` (nothing meaningful to refine).
-- **Skip-ok tag** (optional, after `;`): the single tag `delete-ok`. Present
+- **`delete-ok` tag** (optional, after `;`): the single tag `delete-ok`. Present
   on Endorsed fields (fields with a `default:` in the schema), signalling
   "the rendered value is shippable as-is — keep or override". Absent on
   Unendorsed fields (fields without a `default:`), which carry the
@@ -309,6 +310,7 @@ to prevent corrupting the blueprint's document structure.
 ~~~
 $quill: cmu_letter@0.1.0
 $kind: main
+# system metadata; verbatim
 # Typeset letters that comply with Carnegie Mellon University letterhead standards.
 
 # The recipient's name and full mailing address.

@@ -56,7 +56,7 @@ Two escapers guard the two Typst contexts:
 | `~~strike~~` | `#strike[…]` |
 | `<u>text</u>` | `#underline[…]` |
 | `` `code` `` | `#raw("…")` (inline) |
-| fenced / indented code block | `#raw(block: true, lang: "…", "…")` |
+| fenced / indented code block | `#raw(block: true, lang: "…", "…")`; `lang:` emitted only when the language tag is non-empty |
 | `[text](url)`, autolinks | `#link("url")[text]` (link title dropped) |
 | `![alt](src)` | `#image("src")` (alt text dropped) |
 | `-`, `*`, `+` bullet | `- ` |
@@ -94,7 +94,8 @@ Block quotes are not wrapped — their text flows through inline.
 
 ## Integration
 
-`mark_to_typst` backs the `Content` filter (`crates/backends/typst/src/`),
-which embeds rendered body markup into Typst templates. Markup is wrapped for
-`eval(…, mode: "markup")`, so the output passes through `escape_string` on the
-way into the template.
+`transform_markdown_fields` (`lib.rs`) calls `mark_to_typst` on every field
+declared `contentMediaType: "text/markdown"` (scalar or `markdown[]` element),
+including card fields recursively. The resulting markup strings reach the
+template, which maps `eval(val, mode: "markup")` over them (`lib.typ.template`)
+to splice rendered body content into the document.
