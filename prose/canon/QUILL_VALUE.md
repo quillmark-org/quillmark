@@ -1,36 +1,29 @@
 # QuillValue - Centralized Value Type
 
-> **Implementation**: `crates/core/src/value.rs`
+> **Implementation**: `crates/core/src/`
 
-## Overview
+## TL;DR
 
-`QuillValue` is a unified value type backed by `serde_json::Value`. It provides a single canonical representation for metadata and fields, with YAML and JSON as the supported input formats.
+`QuillValue` is a newtype over `serde_json::Value` that gives Quillmark one canonical representation for metadata and fields. YAML and JSON are the only input formats; conversion happens at system boundaries.
 
-## Design Principles
+## Design
 
-1. **JSON Foundation** - Use `serde_json::Value` for simplicity and broad ecosystem support
-2. **Conversion Boundaries** - Convert YAML/JSON to `QuillValue` at system boundaries
-3. **Newtype Pattern** - Wrap JSON to add domain-specific methods and control API
-
-## Implementation
+- **JSON foundation** — `serde_json::Value` backing for ecosystem support.
+- **Boundary conversion** — YAML/JSON convert to `QuillValue` once, at entry points.
+- **Newtype** — wraps JSON to add domain methods and control the surface API.
 
 ```rust
 pub struct QuillValue(serde_json::Value);
 ```
 
-**Conversion methods:** `from_yaml_str()`, `from_json()`, `as_json()`, `into_json()`
+## Methods
 
-**Delegating methods:** `is_null()`, `as_str()`, `as_bool()`, `as_i64()`, `as_u64()`, `as_f64()`, `as_array()`, `as_object()`, `get(key)`
-- `get(key)` - Field access with `QuillValue` wrapping
-
-### Deref Implementation
+- **Constructors:** `string()`, `integer()`, `bool()`, `null()`
+- **Conversion:** `from_yaml_str()`, `from_json()`, `as_json()`, `into_json()`
+- **Delegating:** `is_null()`, `as_str()`, `as_bool()`, `as_i64()`, `as_u64()`, `as_f64()`, `as_array()`, `as_object()`, `get(key)` (wraps the result in `QuillValue`)
 
 Implements `Deref<Target = serde_json::Value>` for transparent access to JSON methods.
 
 ## Usage
 
-Used throughout the system:
-- Quill metadata and schemas
-- Parsed document fields
-- Field default and example values
-- FFI boundaries (Python, WASM)
+Quill metadata and schemas, parsed document fields, field default/example values, and FFI boundaries (Python, WASM).

@@ -5,7 +5,7 @@
 
 ## Overview
 
-Cards are structured metadata blocks inline within document content. All cards are stored in a single `$cards` array on the plate JSON, discriminated by each card's `$kind` value.
+Cards are structured-data blocks inline within document content. All cards are stored in a single `$cards` array on the plate JSON, discriminated by each card's `$kind` value.
 
 ## Data Model
 
@@ -102,7 +102,7 @@ See [`markdown-spec.md`](../references/markdown-spec.md) §3 for the full syntax
 
 ## Backend Consumption
 
-- **All backends**: cards are delivered as `data.$cards`, an array of objects each containing a `$kind` discriminator, the card's metadata fields, and a `$body` key with the card's body Markdown.
+- **All backends**: cards are delivered as `data.$cards`, an array of objects each containing a `$kind` discriminator, the card's payload fields, and a `$body` key with the card's body Markdown.
 - **`Quill::compile_data()`** returns the fully coerced and validated JSON, including `$cards`.
 
 ## Out-of-band Metadata (`$ext`)

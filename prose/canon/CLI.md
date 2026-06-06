@@ -13,6 +13,8 @@ quillmark render [OPTIONS] <QUILL_PATH> [MARKDOWN_FILE]
 
 `QUILL_PATH` provides the local quill bundle used for rendering. `MARKDOWN_FILE` requires a root bare `~~~` block (`~~~card-yaml` is also accepted) with a `$quill` system-metadata line because parsing enforces it.
 
+When `MARKDOWN_FILE` is omitted, the quill's seeded document is rendered instead (each field's `example:` with `default:`/zero interpolated), so the quill renders out of the box. Output defaults to `example.{format}`.
+
 Options:
 - `-o, --output <FILE>` — output file path (default: derived from input filename)
 - `-f, --format <FORMAT>` — `pdf`, `svg`, `png`, or `txt` (default: `pdf`)
@@ -54,7 +56,7 @@ Options:
 quillmark info <QUILL_PATH> [--json]
 ```
 
-Displays quill metadata (name, version, description, backend, field/card counts).
+Displays quill metadata: name, version, author, description, backend, field/card counts, defaults count, has-plate status, and any non-standard metadata keys. `--json` emits the same fields plus `has_plate` and a `metadata` object for non-standard keys. Standard keys (`backend`, `version`, `author`, `description`) are excluded from the metadata section.
 
 ## Project Structure
 
@@ -76,5 +78,6 @@ crates/bindings/cli/src/
 
 - `clap` — argument parsing
 - `quillmark` — rendering engine
+- `quillmark-typst` — Typst backend
 - `quillmark-core` — types
 - `serde_json` — JSON output
