@@ -102,10 +102,16 @@ inline-annotation slot — they are not user-defined data fields. (The YAML
 parser accepts a trailing ` # comment` on a `$` line, but the blueprint
 emitter does not attach one, and the canonical form drops every comment
 attached to a `$` line.) The root block's `$quill` line is emitted
-verbatim; its value is fixed and must not be modified. A composable
+verbatim; its value is fixed and must not be modified. The root block
+emits **no role-annotation comment** of its own — the `$` sigil marks its
+lines as system metadata, and this document carries the "do not modify"
+rule, so a `# …` line in that slot would only read as a leading
+annotation for the field below it. A composable
 card's kind is carried in its `$kind: <card_kind>` metadata line. Its
 `composable (0..N)` role is emitted as an own-line `# composable (0..N)`
-comment directly under the `$kind` line, ahead of the card description.
+comment directly under the `$kind` line, ahead of the card description —
+that comment carries the card's cardinality, which is structural
+information rather than a redundant instruction.
 
 Examples:
 

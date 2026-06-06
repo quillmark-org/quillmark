@@ -20,10 +20,11 @@
 //!   **Unendorsed** cells, which carry the `<must-fill>` sentinel in the
 //!   value cell instead.
 //! - **Metadata annotation.** The `$quill` / `$kind` system-metadata lines
-//!   have no inline-annotation slot, so their role annotation
-//!   (`system metadata; verbatim` for the root block,
-//!   `composable (0..N)` for cards) is emitted as an own-line `# …` comment
-//!   directly under the `$` line.
+//!   have no inline-annotation slot. The root block emits no role
+//!   annotation — the `$` sigil marks its lines as fixed system metadata,
+//!   and BLUEPRINT.md documents that `$quill` must not be modified. A
+//!   composable card emits its `composable (0..N)` role as an own-line
+//!   `# …` comment directly under the `$kind` line.
 //! - **Body regions** are signalled by `Write main body here.` after the main
 //!   fence and `Write <card kind> body here.` after each card fence. When
 //!   `body.example` is set, the example text is embedded verbatim instead.
@@ -99,10 +100,11 @@ fn write_comment(out: &mut String, text: &str) {
 }
 
 /// Emit the root block:
-/// `~~~\n$quill: …\n$kind: main\n# system metadata; …\n[# desc\n]<fields>~~~\n`.
+/// `~~~\n$quill: …\n$kind: main\n[# desc\n]<fields>~~~\n`.
 ///
-/// The `$quill` system-metadata line leads the block; the role annotation
-/// and the optional description follow as own-line comments.
+/// The `$quill` system-metadata line leads the block; the optional
+/// description follows as an own-line comment. No role annotation is
+/// emitted — the `$` sigil marks the line as fixed system metadata.
 fn write_main_fence(
     out: &mut String,
     card: &CardSchema,
@@ -116,7 +118,6 @@ fn write_main_fence(
     )));
     out.push('\n');
     out.push_str("$kind: main\n");
-    write_comment(out, "system metadata; verbatim");
     if let Some(desc) = description {
         write_comment(out, desc);
     }
@@ -703,7 +704,7 @@ main:
     }
 
     #[test]
-    fn quill_metadata_line_is_verbatim() {
+    fn root_header_emits_no_role_comment() {
         let t = cfg(r#"
 quill: { name: taro, version: 0.1.0, backend: typst, description: x }
 main:
@@ -711,8 +712,11 @@ main:
     flavor: { type: string, default: taro }
 "#)
         .blueprint();
+        // The root header goes straight from `$kind: main` to the
+        // description — no `# system metadata` role comment. The `$` sigil
+        // marks the lines as fixed; BLUEPRINT.md carries the instruction.
         assert!(t.starts_with(
-            "~~~\n$quill: taro@0.1.0\n$kind: main\n# system metadata; verbatim\n# x\n"
+            "~~~\n$quill: taro@0.1.0\n$kind: main\n# x\n"
         ));
         assert!(t.contains("\nWrite main body here.\n"));
     }
