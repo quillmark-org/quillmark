@@ -1,22 +1,21 @@
 # Plate Data Injection
 
 > **Implementation**: `crates/backends/typst/src/`
-> **Scope**: How parsed document data reaches plates/backends
+
+## TL;DR
+
+Plates get document data through a backend-injected virtual Typst package, not a template engine. Data flows in two stages: `Quill::compile_data()` produces validated, zero-filled JSON; `Backend::open()` applies backend-specific field transforms (markdown→markup, date parsing) before compilation.
 
 ## Overview
 
-Quillmark does not use a template engine for plates. Data flows in two stages:
-
-1. `Quill::compile_data()` coerces, validates, normalizes, and applies schema defaults to the root-block fields, producing a plain JSON object.
-2. `Backend::open()` receives that JSON and performs any backend-specific field transformations (e.g., converting markdown strings to Typst markup) before compilation.
+1. `Quill::compile_data()` coerces, validates, normalizes, and **zero-fills** the root-block fields into a plain JSON object: every absent schema field resolves to its authored value, else the schema `default:`, else its type-empty zero value. An incomplete document still renders; only a malformed one (surviving `<must-fill>` sentinel, or a value that won't coerce/validate) errors.
+2. `Backend::open()` receives that JSON and performs backend-specific field transformations (markdown strings → Typst markup, date parsing) before compilation.
 
 ### Data Shape
 
 - Document-level metadata uses `$`-prefixed keys: `$quill` (quill ref string), `$body` (root prose body), `$cards` (array of card objects)
 - Each card object carries `$kind` (discriminator), `$body` (card prose body), and the card's user fields flat
 - User payload fields sit flat at the root next to the `$` keys; field names match `[a-z_][a-z0-9_]*` and therefore never collide with `$` metadata
-- Defaults from the Quill schema are applied before serialization in stage 1
-- Markdown-to-Typst conversion and date parsing happen in stage 2, inside the backend
 
 ## Typst Helper Package
 
@@ -35,14 +34,13 @@ The Typst backend injects a virtual package `@local/quillmark-helper:<version>` 
 }
 ```
 
-The `$`-prefixed keys must be accessed via `.at("$...")` because Typst
-identifiers do not include the `$` character.
+The `$`-prefixed keys must be accessed via `.at("$...")` because Typst identifiers do not include `$`.
 
 Helper contents (generated in `backends/typst/helper.rs` from `lib.typ.template`):
-- `data`: parsed JSON dictionary of all fields; a `__meta__` key injected by the backend carries the list of markdown and date fields to process, then is consumed by the helper before `data` is exposed to plates — plates never see `__meta__`
-- Markdown fields (`contentMediaType: text/markdown`) are auto-evaluated into Typst content; date fields (`format: date-time`) are converted to Typst `datetime`
 
-## Guarantees
-
-- Plates see no internal shadow keys; `__meta__` is injected by the backend and consumed by the helper package before `data` is exposed
-- `Quill::compile_data` returns the pre-transformation JSON (coerced + normalized + defaults); markdown/date conversion occurs inside `Backend::open` and is not separately observable
+- `data`: parsed JSON dictionary of all fields. A `__meta__` key, injected by the backend, lists the content and date fields to process; the helper consumes and strips it before exposing `data`, so plates never see `__meta__`.
+- Content fields are auto-evaluated into Typst content. Two schema shapes qualify (see `content_field_names`):
+  - `contentMediaType: text/markdown` — a single markdown string converted in place.
+  - `markdown[]` (`{type: array, items: {contentMediaType: text/markdown}}`) — each array element converted individually.
+  Both are registered together in `__meta__.content_fields`; the helper maps `eval(.., mode: "markup")` over string values and over array elements.
+- Date fields (`format: date-time`) are converted to Typst `datetime`.

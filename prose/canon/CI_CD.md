@@ -2,63 +2,74 @@
 
 > **Implementation**: `.github/workflows/`
 
-Published crates: `quillmark-core`, `quillmark-typst`, `quillmark`, `quillmark-cli`.
+## TL;DR
 
-Not published: `quillmark-fixtures`, `quillmark-fuzz`, `quillmark-python`, `quillmark-wasm`.
+Four workflows. `ci.yml` runs lint/test/wasm on every PR and non-tag push. `release-prepare.yml` computes the next version, bumps the workspace, and opens a release PR. `release.yml` tags and publishes to crates.io, npm, and PyPI when that PR merges. `docs.yml` builds MkDocs and deploys to GitHub Pages on stable releases.
+
+Published crates: `quillmark-core`, `quillmark-typst`, `quillmark`, `quillmark-cli`. Not published: `quillmark-fixtures`, `quillmark-fuzz`, `quillmark-python`, `quillmark-wasm`.
 
 ---
 
-## 1) Continuous Integration (CI)
+## 1) CI (`ci.yml`)
 
-**Trigger**: pull requests and pushes to any branch except version tags.
-**Jobs** (all Linux, run in parallel):
+**Trigger**: pull requests and pushes to any ref except version tags (`tags-ignore: v**`).
+**Jobs** (all Linux, parallel):
 
 | Job | What it does |
 |-----|-------------|
-| `lint` | `cargo doc --no-deps --locked` with `-Dwarnings` (Clippy commented out, not yet enforced) |
+| `lint` | `cargo doc --no-deps --locked` with `RUSTDOCFLAGS=-Dwarnings` (Clippy commented out, not yet enforced) |
 | `test` | `cargo test --workspace --all-features --locked` |
-| `wasm` | builds WASM via `./scripts/build-wasm.sh --ci`, then runs `npx vitest run` |
+| `wasm` | builds via `./scripts/build-wasm.sh --ci`, then `npx vitest run` |
+
+The `wasm` job caches `target/wasm32-unknown-unknown/wasm-ci` + `pkg` under key `wasm-ci-${os}-${hashFiles('Cargo.lock','crates/**/*.rs')}`, rebuilding only when the lockfile or any crate source changes. The `wasm-ci-` namespace is deliberately disjoint from `release.yml`'s `wasm-release-` cache so a CI build (debug `wasm-ci` profile) can never be restored into a release job and published to npm.
 
 Excluded: multi-OS matrix, MSRV, security scanners, coverage, benchmarks.
 
 ---
 
-## 2) Continuous Delivery (CD)
+## 2) Release prepare (`release-prepare.yml`)
 
-### Release Preparation (`release-prepare.yml`)
+**Trigger**: `workflow_dispatch` with `bump` (`patch`/`minor`) and a `release_candidate` boolean.
 
-**Trigger**: `workflow_dispatch` from GitHub UI with a `bump` input (`patch` or `minor`) and an optional `release_candidate` boolean flag.
+1. **Compute next version** (custom bash, not `cargo-release`): reads the current `quillmark` version via `cargo metadata`.
+   - If current is `X.Y.Z-rc.N`: the base is fixed and `bump` is ignored. `release_candidate=true` → `X.Y.Z-rc.(N+1)`; false → promote to `X.Y.Z`.
+   - Otherwise apply `bump` (`minor` → `X.(Y+1).0`, `patch` → `X.Y.(Z+1)`), appending `-rc.1` when `release_candidate=true`.
+2. `cargo release version <computed> --workspace --no-confirm --execute` writes the literal computed string into every `Cargo.toml` and updates intra-workspace deps.
+3. Seeds a `CHANGELOG.md` section from `git log` since the last stable tag, then pushes `release/vX.Y.Z` and opens a PR into `main`.
 
-1. Installs `cargo-release` and runs `cargo release version <next>` to bump all workspace `Cargo.toml` versions and intra-workspace dependencies.
-2. Seeds a changelog entry and opens a PR from a `release/vX.Y.Z` branch into `main`.
-
-Merging the release PR triggers the Release workflow via a GitHub App token (PRs opened with the default `GITHUB_TOKEN` do not fire workflow events).
-
-### Release & Publish (`release.yml`)
-
-**Trigger**: pull request merged into `main` from a branch starting with `release/v`.
-
-**Phase 1 — Release** (runs first):
-1. Reads the workspace version and creates a `vX.Y.Z` tag on `main`.
-2. Creates a GitHub Release for the tag (marked as a pre-release for `-rc` versions).
-
-**Phase 2 — Publish** (all run in parallel, after release):
-
-| Target | Registry | Auth |
-|--------|----------|------|
-| Rust crates | crates.io | OIDC Trusted Publishing via `rust-lang/crates-io-auth-action` (`id-token: write`) |
-| WASM bindings | npm | OIDC Trusted Publisher (`id-token: write`) |
-| Python bindings | PyPI | OIDC Trusted Publishing via `pypa/gh-action-pypi-publish` (`id-token: write`) |
-
-- **Crates**: `cargo publish --locked --no-verify`
-- **WASM**: builds via `./scripts/build-wasm.sh`, runs `npx vitest run` (tests), publishes `@quillmark/wasm` with `--provenance`
-- **Python**: builds wheels via `maturin-action` for Linux (x86_64, aarch64), Windows (x64), macOS (aarch64) — Python 3.10–3.12 — plus sdist, then uploads to PyPI
+The PR uses a GitHub App token (`TAGGER_APP_ID`/`TAGGER_PRIVATE_KEY`) so CI runs on it and so its merge fires `release.yml` — PRs opened with the default `GITHUB_TOKEN` do not trigger workflow events.
 
 ---
 
-## 3) Versioning
+## 3) Release & publish (`release.yml`)
 
-- SemVer across all workspace crates and bindings.
-- Version bumps are initiated via GitHub UI (`workflow_dispatch`) and executed by `cargo-release` in CI, which opens a release PR; merging the PR tags `main` and publishes.
-- WASM npm package version is derived from the workspace version at build time (`scripts/build-wasm.sh`).
-- Python package version is derived from the workspace Cargo.toml via maturin's `dynamic = ["version"]`.
+**Trigger**: a `release/v*` PR merged into `main` (`pull_request: closed` + `merged == true`).
+
+**`prepare` job** (App token; the tag-creation ruleset blocks `GITHUB_TOKEN`): reads the workspace version, tags `vX.Y.Z`, extracts the matching `CHANGELOG.md` section, and creates a GitHub Release — `--prerelease` for versions containing `-`, else `--latest`.
+
+**Publish jobs** (parallel, `needs: prepare`, OIDC `id-token: write`):
+
+| Target | Registry | Command |
+|--------|----------|---------|
+| Rust crates | crates.io | `cargo publish --locked --no-verify` via `rust-lang/crates-io-auth-action` |
+| WASM | npm | `npm publish --access public --provenance` (Trusted Publisher) |
+| Python | PyPI | `pypa/gh-action-pypi-publish` over prebuilt wheels |
+
+- **WASM**: restores the `wasm-release-` cache (`wasm-release` profile), builds via `./scripts/build-wasm.sh`, runs `npx vitest run`, publishes `@quillmark/wasm`. Pre-release versions (containing `-`) publish with `--tag next` so they land on the `next` dist-tag instead of `latest`.
+- **Python**: `maturin-action` builds wheels for Linux (x86_64, aarch64), Windows (x64), macOS (aarch64) across Python 3.10–3.12, plus an sdist; artifacts are gathered and uploaded with `skip-existing`.
+
+---
+
+## 4) Docs (`docs.yml`)
+
+**Triggers**: published GitHub Releases, PRs touching `docs/**`/`mkdocs.yml`/the workflow, and `workflow_dispatch`.
+
+- `build`: `mkdocs build --strict`; uploads the Pages artifact except on PRs (PRs are build-only validation).
+- `deploy`: runs only for `workflow_dispatch` or a published **non-prerelease** release (RCs are skipped), deploying to GitHub Pages. Serialized via `concurrency: pages` with `cancel-in-progress: false`.
+
+---
+
+## Versioning
+
+- SemVer across all crates and bindings; one workspace version drives everything.
+- WASM npm version is derived from the workspace version at build time (`scripts/build-wasm.sh`); Python version comes from the workspace `Cargo.toml` via maturin `dynamic = ["version"]`.

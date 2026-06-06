@@ -13,8 +13,9 @@ This document is the authoritative syntax standard.
 
 Every valid CommonMark 0.31.2 document parses to the same block / inline
 structure under this spec, *except* for the deviations declared in §6.2
-(raw HTML), §3.2 (a bare `~~~` block with a blank line above it is a
-card-yaml block, not an ordinary fenced code block), and §3.2.1
+(raw HTML), §3.2 (a column-zero bare `~~~` block with a blank line above it
+is a card-yaml block, not an ordinary fenced code block; an indented `~~~`
+is not a card-yaml opener), and §3.2.1
 (root-block `---` alias — a `---` at document start followed by a matching
 `---` is interpreted as a YAML-frontmatter root block, not a thematic
 break / setext underline). Additionally, this spec defines:
@@ -28,11 +29,7 @@ such.
 
 ## 2. The card-yaml Format
 
-The card-yaml format isolates structured metadata from markdown prose. By
-keeping the data payload inside an explicitly delimited block, separate from
-the unstructured body that follows it, the format keeps LLM generation stable
-and prevents state corruption — a generator editing prose cannot accidentally
-disturb the structured fields, and vice versa.
+The card-yaml format isolates structured metadata from markdown prose.
 
 A document is a sequence of **blocks**. Each block is one card-yaml block
 followed by its prose body:
@@ -83,8 +80,8 @@ is that block's prose body.
 A card-yaml block has three parts, in order:
 
 1. **Opening fence** — exactly `~~~` (three tildes, no info string; see §3.2).
-   The legacy `~~~card-yaml` info string is also accepted but is no longer
-   canonical.
+   The `~~~card-yaml` info string is also accepted (non-canonical alias) on
+   input.
 2. **YAML payload** — a standard YAML mapping containing both system
    metadata (`$`-prefixed reserved keys; see §3.3) and the block's data
    fields (see §3.4).
@@ -102,9 +99,9 @@ the next opening fence or EOF.
   per CommonMark's fenced-code-block rule. (Exception: the root-block `---`
   alias in §3.2.1.)
 - **Info string.** The canonical opening fence carries **no info string** — a
-  bare `~~~`. The legacy info string `~~~card-yaml` is still accepted on input
-  (and parses identically) but is non-canonical: `toMarkdown` (§9) always
-  emits the bare `~~~` form. No other info string opens a card-yaml block — a
+  bare `~~~`. The info string `~~~card-yaml` is accepted on input and parses
+  identically, but is non-canonical: `toMarkdown` (§9) always emits the bare
+  `~~~` form. No other info string opens a card-yaml block — a
   `~~~` fence carrying any other info string (e.g. a language) is an ordinary
   CommonMark fenced code block.
 - **Escape hatch.** Because every column-zero `~~~` block is a card-yaml block,
@@ -122,8 +119,6 @@ the next opening fence or EOF.
   `~~~` opener, *except* when the opener is the very first line of the
   document. A `~~~` line without a blank line above it is **not** a card-yaml
   opener — it is treated as an ordinary CommonMark fenced code block.
-  Requiring the blank line keeps prose-body round-tripping stable and
-  prevents a card-yaml block from being absorbed into a preceding paragraph.
 
 ### 3.2.1 Root-Block `---` Alias
 
@@ -142,8 +137,8 @@ with the same payload.
   prior block has been parsed. Any other `---` line is delegated to
   CommonMark as a thematic break or setext-heading underline.
 - **Matched fences.** Within a single block, opener and closer must agree:
-  a `---` opener requires a `---` closer, and a `~~~` opener (bare or the
-  legacy `~~~card-yaml`) requires a `~~~` closer. Mixed forms (`---` … `~~~`,
+  a `---` opener requires a `---` closer, and a `~~~` opener (bare or
+  `~~~card-yaml`) requires a `~~~` closer. Mixed forms (`---` … `~~~`,
   `~~~` … `---`) leave the opener unclosed, so it falls through to CommonMark
   (code block to EOF, or a thematic break for a lone `---`) rather than being
   recognised as a block.
@@ -181,12 +176,11 @@ author wrote the line.
   reference as the block is read.
 - **`$kind: <value>`** — identifies a card's kind. The value is
   name-validated at parse time and must match `[a-z_][a-z0-9_]*`. The kind
-  `main` is **reserved for the document root**: the root block's kind is
-  `main` by virtue of position. An explicit `$kind: main` on the root is
-  accepted and round-trips byte-equal; omitting it is also accepted, in
-  which case the parser synthesises the entry at the canonical position
-  so the in-memory model is uniform. A non-`main` `$kind` on the root is
-  a parse error, and no composable card may declare `$kind: main`.
+  `main` is **reserved for the document root**: the root block's `$kind` is
+  `main` by position. An explicit `$kind: main` is accepted (round-trips
+  byte-equal); omitting it is also accepted and synthesised at parse time.
+  A non-`main` `$kind` on the root is a parse error. No composable card may
+  declare `$kind: main`.
 - **`$id: <value>`** — an opaque, optional identifier. Plain metadata: no
   validation, no uniqueness requirement; carried through round-trip
   unchanged.
@@ -201,12 +195,6 @@ author wrote the line.
 
 Rules:
 
-- The root block must declare `$quill: <ref>`. Its `$kind` is `main`
-  by position: an explicit `$kind: main` is accepted, an omitted `$kind`
-  is accepted (and synthesised on parse), and any other `$kind` value
-  is a parse error. A composable (non-root) block must declare
-  `$kind: <kind>` for some `<kind>` other than `main`, and must not
-  declare `$quill`.
 - `$` metadata entries may appear at any position within the payload, and
   may be interleaved with data fields. The emitter preserves source order
   (see §9); newly constructed metadata that does not have a source-order
@@ -231,15 +219,13 @@ data payload.
 
 - **Field names.** Every field name matches `/^[a-z_][a-z0-9_]*$/`. The
   pattern excludes `$` and uppercase, so a data field name can never collide
-  with the metadata sigil (`$quill`, `$kind`, `$id`, `$ext`, `$body`,
-  `$cards`) and
-  is consistently lowercase across the wire format.
+  with any `$`-prefixed system key and is consistently lowercase across the
+  wire format.
 - **Whitespace-only payload.** A block whose payload (after metadata
   extraction) is only whitespace yields an empty field set.
 - **YAML comments.** Both own-line comments (`# …` on their own line) and
   inline comments (`field: value  # note`) are supported on data fields and
-  round-trip through `toMarkdown`. (Comments targeting `$` metadata lines
-  are the one exception — see §3.3.) Comments inside nested YAML values
+  round-trip through `toMarkdown`. Comments inside nested YAML values
   (arrays, maps) are also preserved: the pre-scan captures each nested
   comment with a structural path and the emitter re-injects it at the
   matching position.
@@ -265,15 +251,14 @@ of:
 | `name@latest` | latest overall (explicit) |
 | `name` | latest overall (default — `@version` omitted) |
 
-Quill names match `/^[a-z][a-z0-9_]*$/`. Resolution of partial selectors to
+Quill names match `/^[a-z_][a-z0-9_]*$/`. Resolution of partial selectors to
 concrete versions is performed by the quill registry; this spec fixes only
 the surface syntax accepted on the `$quill` line.
 
 ## 4. Block Detection
 
 A single detector runs over the line stream. A `~~~` line — a bare `~~~`, or
-the legacy `~~~card-yaml` — opens a card-yaml block **iff** all of the
-following hold:
+`~~~card-yaml` — opens a card-yaml block **iff** all of the following hold:
 
 **D0 — Column zero.** The `~~~` opener has no leading spaces.
 
@@ -299,16 +284,12 @@ YAML content between recognised fence markers is opaque to detection — a
 opener (though the canonical payload never produces such a line). The same
 applies to `---` lines inside an open `---`-fenced root block.
 
-A `~~~` line that fails D0 or D1 is delegated to CommonMark as an ordinary
-fenced code block (see above). A `~~~` opener (D0 and D1 satisfied) with no
-matching `~~~` closer before EOF is likewise **not** a card-yaml block: per
-CommonMark an unclosed `~~~` fence is an ordinary code block running to end of
-document (a non-fatal unclosed-fence warning is emitted). Equivalently, a `---`
-root opener with no matching `---` closer is a thematic break, not frontmatter.
-In either case no block is built; a document left with no recognised root
-block fails with `MissingQuill` (§10). A `---` line that fails R1 falls through to CommonMark
-unless it pairs with a later `---` line that holds YAML-key content between
-them, in which case it is rejected as a misplaced composable card (§10).
+Failure of D0, D1, or D2 delegates the `~~~` line to CommonMark (an unclosed
+`~~~` opener becomes a code block to EOF, with a non-fatal unclosed-fence
+warning). A document with no closed root block fails with `MissingQuill`
+(§10). A `---` that fails R1 falls through to CommonMark unless it forms a
+paired block with YAML content, which is rejected as a misplaced composable
+card (§10).
 
 ### 4.1 Worked Example
 
@@ -400,7 +381,7 @@ handles them, but produce no Quillmark-specific output and may be
 implemented in a future revision:
 
 - Images (`![alt](src)`) — reserved for the asset-resolver integration;
-  required for v1 of this spec.
+  not yet implemented.
 - Math (`$…$`, `$$…$$`), footnotes, task lists, definition lists — not
   supported. In markdown body text `$` is literal; inside a `~~~` card-yaml
   payload `$` is reserved as the prefix for system-metadata keys (§3.3).
@@ -408,10 +389,6 @@ implemented in a future revision:
 - `<br>`, `<br/>`, `<br />` — follow the raw-HTML rule (non-rendering);
   authors use CommonMark-native hard breaks (trailing two spaces plus
   newline, or trailing `\\` plus newline).
-
-Backends MAY drop semantic data (e.g., link titles, image alt text)
-that has no equivalent in their render target. Such losses are backend
-concerns and are documented per backend, not in this spec.
 
 ## 7. Input Normalization
 
@@ -444,9 +421,11 @@ error when any is exceeded:
 | Document size | 10 MB |
 | YAML payload size per block | 1 MB |
 | YAML nesting depth | 100 |
-| Markdown block nesting depth | 100 |
 | Field count per block | 1000 |
 | Card count per document | 1000 |
+
+Markdown block nesting depth (100) is enforced by the Typst backend at
+render time, not by the parser.
 
 ## 9. Emission Contract
 
@@ -464,9 +443,9 @@ order), and a `~~~` closer. The root block must declare `$quill`;
 canonical emission also writes `$kind: main` on the root, synthesising
 it when the input omitted the line (see §3.3). Composable cards must
 declare `$kind: <kind>`. A document round-trips to this canonical
-shape — fence markers and YAML quoting are normalised, including the
-legacy `~~~card-yaml` opener and the `---`-fenced root alias (§3.2.1),
-both of which re-emit as bare `~~~`. `!fill` tags and YAML comments
+shape — fence markers and YAML quoting are normalised; the `~~~card-yaml`
+alias and the `---`-fenced root alias (§3.2.1) both re-emit as bare `~~~`.
+`!fill` tags and YAML comments
 (own-line and inline, including those adjacent to `$` lines) survive the
 round-trip.
 

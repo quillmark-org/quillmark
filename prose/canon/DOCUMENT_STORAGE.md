@@ -69,9 +69,9 @@ payload items is `type` (not `kind`) to keep it unambiguous next to the
 `$kind` metadata semantic. The full variant set is `quill | kind | id |
 ext | field | comment`; the `ext` variant carries the opaque `$ext` map
 verbatim and is stripped from `to_plate_json()` before backends see it.
-Parse-time warnings are not part of `Document` — they are returned
-separately by `Document::from_markdown_with_warnings` — so they never
-reach this format.
+Parse-time warnings live on `Document` (`warnings: Vec<Diagnostic>`) but
+are excluded from `PartialEq` and not serialized, so they never reach this
+format.
 
 ### Legacy schema (V0_81_0)
 
@@ -153,7 +153,7 @@ by any past version always loads.
 
 ## Gotchas
 
-- The schema version is a hand-set constant (`SCHEMA_V0_81_0`), **not**
+- The schema version is a hand-set constant (`SCHEMA_V0_82_0`), **not**
   `CARGO_PKG_VERSION` — bumping it is a deliberate act tied to a model change.
 - Unknown schema versions are rejected on read, never silently ignored.
 - DTO type names carry version suffixes with underscores

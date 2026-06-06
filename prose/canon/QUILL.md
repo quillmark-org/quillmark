@@ -42,7 +42,7 @@ pub struct Quill {
 }
 ```
 
-`metadata` is populated from `Quill.yaml` fields plus computed entries: `backend`, `description`, `version`, `author`, and any `typst_*` keys from the `[typst]` section.
+`metadata` is populated from `Quill.yaml` fields plus computed entries: `backend`, `description`, `version`, `author`, and any `typst_*` keys from the `typst:` section.
 
 ## In-memory Tree Contract (`engine.quill(tree)`)
 
@@ -74,6 +74,8 @@ quill:
   description: A beautiful format  # required; non-empty
   author: Jane Doe        # optional; defaults to "Unknown"
   plate_file: plate.typ   # optional; path to Typst template
+  ui:                     # optional; fallback for main.ui when absent
+    title: My Quill
 
 main:
   fields:
@@ -101,11 +103,12 @@ typst:
     - "@preview/some-package:1.0.0"
 ```
 
-Field names must be `snake_case` (match `[a-z_][a-z0-9_]*`). Capitalized or `$`-prefixed keys are rejected by the editor surface — document-level metadata sits on dedicated `$`-prefixed keys in the plate JSON (`$quill`, `$body`, `$cards`, `$kind`), and user fields stay lowercase so they cannot shadow it. Standalone `object` fields require a `properties` map. Every `array` field requires an `items:` element schema: use `items: { type: string }` (or `integer`, `markdown`, …) for a list of scalars, and `items: { type: object, properties: … }` for a list of objects.
+Field names must be `snake_case` (match `[a-z][a-z0-9_]*`). Capitalized or `$`-prefixed keys are rejected at config parse time with `quill::invalid_field_name` — document-level metadata sits on dedicated `$`-prefixed keys in the plate JSON (`$quill`, `$body`, `$cards`, `$kind`), and user fields stay lowercase so they cannot shadow it. Standalone `object` fields require a `properties` map. Every `array` field requires an `items:` element schema: use `items: { type: string }` (or `integer`, `markdown`, …) for a list of scalars, and `items: { type: object, properties: … }` for a list of objects.
 
 Metadata resolution:
 - `name`, `description`, `backend`, `version`, `author` are direct struct fields on `QuillConfig`. `description` (required, non-empty in the `quill:` section) describes the quill itself; it is independent of `QuillConfig.main.description`, which is the optional schema description authored under `main:` like any other card kind.
-- `metadata` on `Quill` stores `backend`, `description`, `version`, `author`, and `typst_*` keys from the `[typst]` section. The `quill:` section accepts only the documented keys; unknown keys produce a `quill::unknown_key` error rather than landing in `metadata`.
+- `metadata` on `Quill` stores `backend`, `description`, `version`, `author`, and `typst_*` keys from the `typst:` section. The `quill:` section accepts only `name`, `backend`, `description`, `version`, `author`, `plate_file`, and `ui`; unknown keys produce a `quill::unknown_key` error rather than landing in `metadata`.
+- `quill.ui` (a `UiCardSchema`, same shape as `card_kinds.<name>.ui`) is a fallback for `main.ui`: the `main` card uses `main.ui` when present, otherwise `quill.ui`.
 
 ## Strict Parsing
 

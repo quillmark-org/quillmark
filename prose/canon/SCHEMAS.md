@@ -34,7 +34,7 @@ Supported field types:
 - Returns `Result<IndexMap<String, QuillValue>, CoercionError>`
 - Coerces top-level fields and per-card fields to their declared types
 - Fails fast (`Err`) on the first value that cannot be coerced
-- Coercion rules per type: array wrapping plus element-wise coercion against the `items` schema (a bad element fails at its indexed path, e.g. `counts[1]`), boolean from string/int/float, number/integer from string, string/markdown pass-through, date/datetime format validation, object property recursion
+- Coercion rules per type: array wrapping plus element-wise coercion against the `items` schema (a bad element fails at its indexed path, e.g. `counts[1]`); boolean from string/int/float; number/integer from string or from boolean (`true→1`, `false→0`); string/markdown unwrap a length-1 string array into the bare string (else identity); date/datetime format validation; object property recursion
 - The blueprint's `<must-fill>` sentinel string passes through coercion
   unchanged so the validation layer can surface a placeholder diagnostic
   rather than a type-coercion error
