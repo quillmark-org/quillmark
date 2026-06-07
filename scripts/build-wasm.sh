@@ -57,8 +57,8 @@ fi
 # cargo build overwrites it.
 #
 # `--weak-refs` opts into FinalizationRegistry-based auto-free for
-# wasm-bindgen handles. `.free()` is still emitted for callers that want
-# deterministic teardown. Requires Node 14.6+ / all current evergreen browsers.
+# wasm-bindgen handles; `.free()` is still emitted for deterministic teardown.
+# (Runtime floor is the package.json `engines` field, not set here.)
 build_variant() {
     local subdir="$1"; shift
     local cargo_feature_args=("$@")
@@ -143,16 +143,14 @@ report_size() {
 report_size "core"   pkg/core/wasm_bg.wasm
 report_size "render" pkg/render/wasm_bg.wasm
 
-# Size budget on the core artifact: the whole point of the split is that core
-# excludes Typst (render is ~8 MB gzip). If core gzip ever crosses this ceiling,
-# Typst (or something nearly as heavy) has crept back into the no-features build
-# — fail the build so it can't ship silently. Measured core is ~0.66 MB gzip;
-# this 1.5 MB ceiling leaves room for normal core growth while staying ~5x below
-# the render artifact, so a Typst leak can't hide under it.
+# Size budget on the core artifact: the split only pays off if core stays
+# Typst-free. Typst is megabytes, so a leak back into the no-features build
+# would blow past this ceiling — fail rather than ship it silently. The gzip
+# ceiling sits well above core's real size and far below anything carrying Typst.
 #
 # Only enforced on the size-optimized release profile (where the artifact
-# publishes); the `wasm-ci` profile is unoptimized, so its absolute size is
-# meaningless against this ceiling.
+# publishes); the `wasm-ci` profile is unoptimized, so its size is meaningless
+# here.
 CORE_MAX_GZIP_BYTES=${CORE_MAX_GZIP_BYTES:-1500000}
 if [ -f pkg/core/wasm_bg.wasm ] && [ "$PROFILE" = "wasm-release" ]; then
     core_gz_bytes=$(gzip -9 -c pkg/core/wasm_bg.wasm | wc -c | tr -d '[:space:]')
