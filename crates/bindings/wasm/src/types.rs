@@ -4,7 +4,12 @@ use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 
-/// Output formats supported by backends
+/// Output formats supported by backends.
+///
+/// Render-only: the core (no-Typst) bundle has no rendering surface, so this
+/// type — and the `.d.ts` interface tsify emits for it — is gated behind the
+/// `render` feature to keep it out of `pkg/core/wasm.d.ts`.
+#[cfg(feature = "render")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "lowercase")]
@@ -15,6 +20,7 @@ pub enum OutputFormat {
     Png,
 }
 
+#[cfg(feature = "render")]
 impl From<OutputFormat> for quillmark_core::OutputFormat {
     fn from(format: OutputFormat) -> Self {
         match format {
@@ -26,6 +32,7 @@ impl From<OutputFormat> for quillmark_core::OutputFormat {
     }
 }
 
+#[cfg(feature = "render")]
 impl From<quillmark_core::OutputFormat> for OutputFormat {
     fn from(format: quillmark_core::OutputFormat) -> Self {
         match format {
@@ -148,7 +155,8 @@ impl From<Diagnostic> for quillmark_core::Diagnostic {
     }
 }
 
-/// Rendered artifact (PDF, SVG, etc.)
+/// Rendered artifact (PDF, SVG, etc.). Render-only (see [`OutputFormat`]).
+#[cfg(feature = "render")]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
@@ -163,6 +171,7 @@ pub struct Artifact {
     pub mime_type: String,
 }
 
+#[cfg(feature = "render")]
 impl Artifact {
     fn mime_type_for_format(format: OutputFormat) -> String {
         match format {
@@ -174,6 +183,7 @@ impl Artifact {
     }
 }
 
+#[cfg(feature = "render")]
 impl From<quillmark_core::Artifact> for Artifact {
     fn from(artifact: quillmark_core::Artifact) -> Self {
         let format = artifact.output_format.into();
@@ -185,7 +195,8 @@ impl From<quillmark_core::Artifact> for Artifact {
     }
 }
 
-/// Result of a render operation
+/// Result of a render operation. Render-only (see [`OutputFormat`]).
+#[cfg(feature = "render")]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
@@ -196,7 +207,8 @@ pub struct RenderResult {
     pub render_time_ms: f64,
 }
 
-/// Options for rendering
+/// Options for rendering. Render-only (see [`OutputFormat`]).
+#[cfg(feature = "render")]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
@@ -222,6 +234,7 @@ pub struct RenderOptions {
     pub producer: Option<String>,
 }
 
+#[cfg(feature = "render")]
 impl Default for RenderOptions {
     fn default() -> Self {
         RenderOptions {
@@ -233,6 +246,7 @@ impl Default for RenderOptions {
     }
 }
 
+#[cfg(feature = "render")]
 impl From<RenderOptions> for quillmark_core::RenderOptions {
     fn from(opts: RenderOptions) -> Self {
         Self {
@@ -251,6 +265,7 @@ mod tests {
     // ── OutputFormat ──────────────────────────────────────────────────────────
 
     #[test]
+    #[cfg(feature = "render")]
     fn test_output_format_serialization() {
         let pdf = OutputFormat::Pdf;
         let json_pdf = serde_json::to_string(&pdf).unwrap();
@@ -266,6 +281,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "render")]
     fn test_output_format_deserialization() {
         let pdf: OutputFormat = serde_json::from_str("\"pdf\"").unwrap();
         assert_eq!(pdf, OutputFormat::Pdf);
@@ -351,6 +367,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "render")]
     fn test_render_options_with_format() {
         let options = RenderOptions {
             format: Some(OutputFormat::Pdf),

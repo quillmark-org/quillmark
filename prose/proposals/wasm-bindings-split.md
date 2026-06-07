@@ -70,7 +70,9 @@ Consequences:
   - `Quill::from_tree(FileTreeNode) -> Result<Quill, …>` (pure;
     core-reachable)
   - `Quill::from_path(path) -> Result<Quill, …>` (filesystem walk stays
-    in `quillmark`; core remains fs-agnostic)
+    in `quillmark`; core remains fs-agnostic). *Landed as the free function
+    `quillmark::quill_from_path`, not an inherent constructor — see
+    Follow-up.*
 - **A `Quill` is portable across engines.** It is `Send + Sync` data
   tagged with intent ("I want backend `typst`"); any engine with a
   matching backend can render it. Same id may map to different backend
@@ -187,7 +189,8 @@ Two WASM modules have separate linear memories; a `Quill` / `Document`
 handle from core is unusable by render. This is fine because both models
 are serializable: a quill is a `Map<string, Uint8Array>` tree, and a
 `Document` round-trips through `toJson` / `fromJson`. Intended flow: the
-editor boots **core** (~0.34 MB) for schema/validation/seeding; on
+editor boots **core** (~0.66 MB gzip, see Measurement) for
+schema/validation/seeding; on
 preview/export it lazy-loads **render** (superset) and re-feeds the tree +
 `doc.toJson()`. The cross-module case is just the extreme of `Quill`
 being portable data.

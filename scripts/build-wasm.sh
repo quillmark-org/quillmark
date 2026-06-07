@@ -1,5 +1,10 @@
 #!/bin/bash
 set -e
+# pipefail so a failing `gzip` in `gzip -c … | wc -c` propagates instead of
+# being masked by `wc`'s exit 0. Without it the core size-budget check below
+# can silently read 0 bytes on a gzip failure and false-pass — defeating the
+# one guard rail that catches a Typst leak into the no-features core build.
+set -o pipefail
 
 # Builds TWO wasm artifacts from the one crate (see
 # prose/proposals/wasm-bindings-split.md):
@@ -38,6 +43,10 @@ cd "$(dirname "$0")/.."
 if ! command -v wasm-bindgen &> /dev/null; then
     echo "wasm-bindgen not found. Install it with:"
     echo "  cargo install wasm-bindgen-cli --version 0.2.118"
+    exit 1
+fi
+if ! command -v jq &> /dev/null; then
+    echo "jq not found (needed to read the package version from cargo metadata)." >&2
     exit 1
 fi
 
@@ -82,6 +91,10 @@ build_variant core --no-default-features
 
 # Extract version and create package.json from template
 VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "quillmark-wasm") | .version')
+if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+    echo "ERROR: could not determine quillmark-wasm version from cargo metadata." >&2
+    exit 1
+fi
 echo ""
 echo "Creating package.json..."
 sed "s/VERSION_PLACEHOLDER/$VERSION/" crates/bindings/wasm/package.template.json > pkg/package.json
@@ -144,7 +157,11 @@ report_size "render" pkg/render/wasm_bg.wasm
 # dependency of the no-features build at all).
 CORE_MAX_GZIP_BYTES=${CORE_MAX_GZIP_BYTES:-1500000}
 if [ -f pkg/core/wasm_bg.wasm ] && [ "$PROFILE" = "wasm-release" ]; then
-    core_gz_bytes=$(gzip -9 -c pkg/core/wasm_bg.wasm | wc -c)
+    core_gz_bytes=$(gzip -9 -c pkg/core/wasm_bg.wasm | wc -c | tr -d '[:space:]')
+    if ! [ "$core_gz_bytes" -gt 0 ] 2>/dev/null; then
+        echo "ERROR: could not measure core wasm gzip size (got '${core_gz_bytes}')." >&2
+        exit 1
+    fi
     if [ "$core_gz_bytes" -gt "$CORE_MAX_GZIP_BYTES" ]; then
         echo "ERROR: core wasm gzip ${core_gz_bytes} B exceeds budget ${CORE_MAX_GZIP_BYTES} B." >&2
         echo "       Typst or another heavy dep has leaked into the core (no-features) build." >&2

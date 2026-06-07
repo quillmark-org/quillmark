@@ -34,10 +34,11 @@ cargo add quillmark
 ## Quick Start (Rust)
 
 ```rust
-use quillmark::{Document, OutputFormat, Quillmark, RenderOptions};
+use quillmark::{quill_from_path, Document, OutputFormat, Quillmark, RenderOptions};
 
+// A `Quill` is engine-free, validated data — load it without an engine.
+let quill = quill_from_path("path/to/quill")?;
 let engine = Quillmark::new();
-let quill = engine.quill_from_path("path/to/quill")?;
 
 let markdown = r#"~~~
 $quill: my_quill
@@ -49,7 +50,9 @@ title: Example
 "#;
 
 let doc = Document::from_markdown(markdown)?;
-let result = quill.render(
+// Rendering is the engine's job; it dispatches to the quill's backend.
+let result = engine.render(
+    &quill,
     &doc,
     &RenderOptions {
         output_format: Some(OutputFormat::Pdf),
