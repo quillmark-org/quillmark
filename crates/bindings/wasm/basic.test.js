@@ -408,7 +408,7 @@ describe('Quillmark.quill', () => {
     expect(svg.artifacts[0].mimeType).toBe('image/svg+xml')
   })
 
-  it('should emit a quill::name_mismatch warning when the document quill ref differs from the quill name', () => {
+  it('should throw a quill::name_mismatch error when the document quill ref differs from the quill name', () => {
     const engine = new Quillmark()
     const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
 
@@ -421,11 +421,14 @@ title: Mismatch Test
 
 # Content`
     const doc = Document.fromMarkdown(otherMarkdown)
-    const result = quill.render(doc, { format: 'pdf' })
 
-    expect(result.warnings.length).toBe(1)
-    expect(result.warnings[0].code).toBe('quill::name_mismatch')
-    expect(result.artifacts.length).toBeGreaterThan(0)
+    try {
+      quill.render(doc, { format: 'pdf' })
+      throw new Error('render should have thrown on a $quill name mismatch')
+    } catch (err) {
+      expect(Array.isArray(err.diagnostics)).toBe(true)
+      expect(err.diagnostics[0].code).toBe('quill::name_mismatch')
+    }
   })
 })
 

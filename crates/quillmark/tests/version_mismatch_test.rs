@@ -1,10 +1,10 @@
-//! # `$quill` Name/Version Compatibility Tests
+//! # `$quill` Reference Enforcement Tests
 //!
 //! A document's `$quill: name@selector` reference is checked against the loaded
-//! quill at render time. A *name* mismatch is advisory (the engine renders with
-//! the quill it was handed and emits a `quill::name_mismatch` warning); a
-//! *version* mismatch is a hard error (`quill::version_mismatch`), since
-//! rendering against an incompatible format is a footgun.
+//! quill at render time (and in `dry_run`). The document may be perfectly valid,
+//! but rendering it against the wrong quill — a different *name*, or a `version`
+//! outside the selector — is a footgun, so it is a hard [`RenderError::QuillMismatch`]
+//! (`quill::name_mismatch` / `quill::version_mismatch`), never a warning.
 
 use quillmark::{Document, Quillmark};
 use quillmark_core::{OutputFormat, RenderError, RenderOptions};
@@ -49,6 +49,15 @@ fn render_ref(
     )
 }
 
+/// The single code carried by a `QuillMismatch` error (the check emits exactly one).
+fn mismatch_code(err: &RenderError) -> Option<&str> {
+    assert!(
+        matches!(err, RenderError::QuillMismatch { .. }),
+        "expected RenderError::QuillMismatch, got: {err:?}"
+    );
+    err.diagnostics().first().and_then(|d| d.code.as_deref())
+}
+
 #[test]
 fn version_out_of_selector_is_a_hard_error() {
     let temp_dir = TempDir::new().unwrap();
@@ -56,11 +65,7 @@ fn version_out_of_selector_is_a_hard_error() {
 
     // Document pins `@2`; loaded quill is 3.0.0 → incompatible → render fails.
     let err = render_ref(&quill_path, "test_quill@2").expect_err("render should fail");
-    let codes: Vec<_> = err.diagnostics().iter().filter_map(|d| d.code.as_deref()).collect();
-    assert!(
-        codes.contains(&"quill::version_mismatch"),
-        "expected version_mismatch error, got: {codes:?}"
-    );
+    assert_eq!(mismatch_code(&err), Some("quill::version_mismatch"));
 }
 
 #[test]
@@ -75,8 +80,18 @@ fn version_out_of_selector_fails_dry_run() {
     .unwrap();
 
     let err = quill.dry_run(&doc).expect_err("dry_run should fail");
-    let codes: Vec<_> = err.diagnostics().iter().filter_map(|d| d.code.as_deref()).collect();
-    assert!(codes.contains(&"quill::version_mismatch"), "got: {codes:?}");
+    assert_eq!(mismatch_code(&err), Some("quill::version_mismatch"));
+}
+
+#[test]
+fn name_mismatch_is_a_hard_error() {
+    let temp_dir = TempDir::new().unwrap();
+    let quill_path = make_quill(&temp_dir, "3.0.0");
+
+    // Name differs — render fails on the name, and the version is left
+    // unevaluated (a selector against a differently-named quill is moot).
+    let err = render_ref(&quill_path, "other_quill@2").expect_err("render should fail");
+    assert_eq!(mismatch_code(&err), Some("quill::name_mismatch"));
 }
 
 #[test]
@@ -85,7 +100,6 @@ fn exact_selector_match_renders() {
     let quill_path = make_quill(&temp_dir, "2.1.0");
 
     let result = render_ref(&quill_path, "test_quill@2.1.0").expect("render should succeed");
-    assert!(result.warnings.is_empty(), "got: {:?}", result.warnings);
     assert!(!result.artifacts.is_empty());
 }
 
@@ -95,8 +109,7 @@ fn minor_selector_matches_any_patch() {
     let quill_path = make_quill(&temp_dir, "2.1.5");
 
     // `@2.1` matches any patch in the 2.1 series.
-    let result = render_ref(&quill_path, "test_quill@2.1").expect("render should succeed");
-    assert!(result.warnings.is_empty(), "got: {:?}", result.warnings);
+    render_ref(&quill_path, "test_quill@2.1").expect("render should succeed");
 }
 
 #[test]
@@ -105,19 +118,5 @@ fn latest_selector_matches_any_version() {
     let quill_path = make_quill(&temp_dir, "9.9.9");
 
     // Bare name defaults to `Latest`, which matches any version.
-    let result = render_ref(&quill_path, "test_quill").expect("render should succeed");
-    assert!(result.warnings.is_empty(), "got: {:?}", result.warnings);
-}
-
-#[test]
-fn name_mismatch_warns_and_skips_the_version_check() {
-    let temp_dir = TempDir::new().unwrap();
-    let quill_path = make_quill(&temp_dir, "3.0.0");
-
-    // Name differs — the name warning fires and the (would-be incompatible)
-    // version selector is moot, so render still succeeds.
-    let result = render_ref(&quill_path, "other_quill@2").expect("render should succeed");
-    assert_eq!(result.warnings.len(), 1, "expected exactly one warning");
-    assert_eq!(result.warnings[0].code.as_deref(), Some("quill::name_mismatch"));
-    assert!(!result.artifacts.is_empty());
+    render_ref(&quill_path, "test_quill").expect("render should succeed");
 }

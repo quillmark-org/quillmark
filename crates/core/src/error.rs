@@ -352,6 +352,17 @@ pub enum RenderError {
         /// All configuration diagnostics. Always non-empty.
         diags: Vec<Diagnostic>,
     },
+
+    /// The document was rendered with a quill that does not satisfy its `$quill`
+    /// reference — a different *name* (`quill::name_mismatch`) or a `version`
+    /// outside the selector (`quill::version_mismatch`). Distinct from
+    /// [`ValidationFailed`](RenderError::ValidationFailed): the document is
+    /// well-formed; it was paired with the wrong quill. The remedy is to render
+    /// with the referenced quill or amend `$quill`, not to edit a field.
+    QuillMismatch {
+        /// The single mismatch diagnostic. Always non-empty.
+        diags: Vec<Diagnostic>,
+    },
 }
 
 impl RenderError {
@@ -364,7 +375,8 @@ impl RenderError {
             | RenderError::FormatNotSupported { diags }
             | RenderError::UnsupportedBackend { diags }
             | RenderError::ValidationFailed { diags }
-            | RenderError::QuillConfig { diags } => diags,
+            | RenderError::QuillConfig { diags }
+            | RenderError::QuillMismatch { diags } => diags,
         }
     }
 
@@ -377,7 +389,8 @@ impl RenderError {
             | RenderError::FormatNotSupported { diags }
             | RenderError::UnsupportedBackend { diags }
             | RenderError::ValidationFailed { diags }
-            | RenderError::QuillConfig { diags } => diags,
+            | RenderError::QuillConfig { diags }
+            | RenderError::QuillMismatch { diags } => diags,
         }
     }
 }
@@ -405,7 +418,8 @@ impl std::fmt::Display for RenderError {
             RenderError::EngineCreation { .. }
             | RenderError::InvalidPayload { .. }
             | RenderError::FormatNotSupported { .. }
-            | RenderError::UnsupportedBackend { .. } => match self.diagnostics().first() {
+            | RenderError::UnsupportedBackend { .. }
+            | RenderError::QuillMismatch { .. } => match self.diagnostics().first() {
                 Some(d) => write!(f, "{}", d.message),
                 None => write!(f, "render error"),
             },

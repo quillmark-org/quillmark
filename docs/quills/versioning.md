@@ -44,17 +44,20 @@ Supported selectors:
 
 A selector is a **pin**, not a resolver: Quillmark renders with the Quill it was
 handed and never picks among versions. At render time (and in `dry_run`) it
-checks that Quill against the reference:
+checks that Quill against the reference and **rejects a mismatch** — rendering a
+document against the wrong format is a footgun, so it errors rather than
+silently producing undefined output:
 
-- If the loaded Quill's **version** falls outside the selector (e.g. `my_quill@2`
-  against a `3.0.0` Quill), rendering **fails** with a `quill::version_mismatch`
-  error. Rendering a document against an incompatible format is a footgun, so it
-  is rejected rather than silently produced. Fix it by pointing at a Quill whose
-  version satisfies the selector, or by widening the selector (e.g. `@3` or
-  `@latest`).
-- If the **name** differs, a non-fatal `quill::name_mismatch` warning fires
-  instead and the version selector goes unchecked — the engine assumes you
-  deliberately rendered with a different Quill.
+- If the loaded Quill's **name** differs from the reference, rendering fails with
+  `quill::name_mismatch`.
+- If the name matches but the **version** falls outside the selector (e.g.
+  `my_quill@2` against a `3.0.0` Quill), rendering fails with
+  `quill::version_mismatch`.
+
+Fix either by pointing at the Quill the document targets, or by amending the
+`$quill` line — correct the name, or widen the selector (e.g. `@3` or `@latest`).
+A bare name or `@latest` matches any version, so a document that targets its
+Quill correctly never trips these checks.
 
 ## Practical Guidelines
 

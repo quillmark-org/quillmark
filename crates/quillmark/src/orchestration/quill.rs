@@ -64,7 +64,7 @@ impl Quill {
     }
 
     pub fn open(&self, doc: &Document) -> Result<RenderSession, RenderError> {
-        self.check_version_compatibility(doc)?;
+        self.check_quill_reference(doc)?;
         let json_data = self.compile_data(doc)?;
         let plate_content = self
             .source
@@ -72,11 +72,7 @@ impl Quill {
             .filter(|s| !s.is_empty())
             .unwrap_or("")
             .to_string();
-        let warnings: Vec<_> = self.name_mismatch_warning(doc).into_iter().collect();
-        let session = self
-            .backend
-            .open(&plate_content, &self.source, &json_data)?;
-        Ok(session.with_warnings(warnings))
+        self.backend.open(&plate_content, &self.source, &json_data)
     }
 
     /// Compile a document to JSON wire format for the backend.
@@ -121,7 +117,7 @@ impl Quill {
 
     /// Validate without backend compilation.
     pub fn dry_run(&self, doc: &Document) -> Result<(), RenderError> {
-        self.check_version_compatibility(doc)?;
+        self.check_quill_reference(doc)?;
         self.coerce_and_validate(doc).map(|_| ())
     }
 
@@ -154,64 +150,52 @@ impl Quill {
         Ok(coerced_doc)
     }
 
-    /// Warn when the document's `$quill` *name* differs from the loaded quill —
-    /// it was rendered with a different quill than declared. Advisory: the
-    /// engine renders with the quill it was handed. The *version* component is a
-    /// hard constraint instead — see [`Quill::check_version_compatibility`].
-    fn name_mismatch_warning(&self, doc: &Document) -> Option<Diagnostic> {
+    /// Enforce the document's `$quill` reference against the loaded quill.
+    ///
+    /// The reference is `name@selector`; both components must be satisfied or the
+    /// render is rejected. The document is well-formed — it was just paired with
+    /// the wrong quill, which is a footgun: a different schema, or an
+    /// incompatible format version, produces undefined output. So this fails
+    /// with [`RenderError::QuillMismatch`] rather than warning, and runs before
+    /// schema validation and compilation, where diagnostics computed against the
+    /// wrong quill would be noise.
+    ///
+    /// The name is the prerequisite — a selector belongs to a *named* quill, so
+    /// comparing it against a differently-named quill is meaningless. A name
+    /// mismatch short-circuits (`quill::name_mismatch`) and the version is left
+    /// unevaluated; otherwise the selector is checked (`quill::version_mismatch`).
+    /// The version is validated at load, so parsing is infallible in practice;
+    /// on the off chance it fails, the version check is skipped.
+    fn check_quill_reference(&self, doc: &Document) -> Result<(), RenderError> {
         let doc_ref = doc.quill_reference();
-        if doc_ref.name.as_str() == self.source.name() {
-            return None;
-        }
-        Some(
-            Diagnostic::new(
-                Severity::Warning,
+
+        if doc_ref.name.as_str() != self.source.name() {
+            return Err(quill_mismatch(
                 format!(
                     "document declares $quill '{}' but was rendered with '{}'",
                     doc_ref,
                     self.source.name()
                 ),
-            )
-            .with_code("quill::name_mismatch".to_string())
-            .with_hint(
-                "the $quill name is informational; ensure you are rendering with the intended quill"
-                    .to_string(),
-            ),
-        )
-    }
-
-    /// Hard-fail when the loaded quill's version does not satisfy the document's
-    /// `$quill` selector (e.g. `name@2` against a `3.0.0` quill): rendering a
-    /// document against an incompatible format is a footgun, so it errors rather
-    /// than warns. Only enforced when the names agree — a name mismatch is the
-    /// separate, advisory [`name_mismatch_warning`](Quill::name_mismatch_warning)
-    /// and makes the selector moot. The version is validated at load, so parsing
-    /// is infallible in practice; on the off chance it fails, the check is skipped.
-    fn check_version_compatibility(&self, doc: &Document) -> Result<(), RenderError> {
-        let doc_ref = doc.quill_reference();
-        if doc_ref.name.as_str() != self.source.name() {
-            return Ok(());
+                "quill::name_mismatch",
+                "render with the quill named by $quill, or update the $quill name",
+            ));
         }
+
         let Ok(quill_version) = Version::from_str(&self.source.config().version) else {
             return Ok(());
         };
-        if doc_ref.selector.matches(quill_version) {
-            return Ok(());
-        }
-        Err(RenderError::ValidationFailed {
-            diags: vec![Diagnostic::new(
-                Severity::Error,
+        if !doc_ref.selector.matches(quill_version) {
+            return Err(quill_mismatch(
                 format!(
                     "document declares $quill '{}' but the loaded quill is version '{}'",
                     doc_ref, quill_version
                 ),
-            )
-            .with_code("quill::version_mismatch".to_string())
-            .with_hint(
-                "render with a quill whose version satisfies the selector, or update the $quill selector"
-                    .to_string(),
-            )],
-        })
+                "quill::version_mismatch",
+                "render with a quill whose version satisfies the selector, or update the $quill selector",
+            ));
+        }
+
+        Ok(())
     }
 
     /// Validate `doc` against this quill's schema, returning every diagnostic
@@ -290,6 +274,17 @@ impl Quill {
                 }
             }
         }
+    }
+}
+
+/// Build a [`RenderError::QuillMismatch`] from a single message/code/hint.
+/// `Diagnostic::path` is unset — the mismatch is about the root `$quill` line,
+/// not a field.
+fn quill_mismatch(message: String, code: &str, hint: &str) -> RenderError {
+    RenderError::QuillMismatch {
+        diags: vec![Diagnostic::new(Severity::Error, message)
+            .with_code(code.to_string())
+            .with_hint(hint.to_string())],
     }
 }
 

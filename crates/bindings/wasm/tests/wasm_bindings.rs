@@ -43,27 +43,20 @@ fn test_quill_from_tree() {
     let _ = quill;
 }
 
-/// Rendering with a `$quill` ref that differs from the quill name must yield
-/// exactly one warning with code `quill::name_mismatch` and still produce an artifact.
+/// Rendering with a `$quill` ref that differs from the quill name is a hard
+/// error (`quill::name_mismatch`), surfaced to JS as a thrown error — the
+/// engine does not fall back to rendering with the loaded quill.
 #[wasm_bindgen_test]
-fn test_render_name_mismatch_warning() {
+fn test_render_name_mismatch_errors() {
     let engine = Quillmark::new();
     let quill = engine.quill(small_quill_tree()).expect("quill failed");
 
     let mismatch_md =
         "~~~card-yaml\n$quill: other_quill\n$kind: main\ntitle: Mismatch\n~~~\n\n# Content\n";
     let doc = Document::from_markdown(mismatch_md).expect("fromMarkdown failed");
-    let result = quill
-        .render(&doc, Some(RenderOptions::default()))
-        .expect("render should succeed despite mismatch");
+    let result = quill.render(&doc, Some(RenderOptions::default()));
 
-    assert_eq!(result.warnings.len(), 1, "expected exactly one warning");
-    assert_eq!(
-        result.warnings[0].code.as_deref(),
-        Some("quill::name_mismatch"),
-        "warning code should be quill::name_mismatch"
-    );
-    assert!(!result.artifacts.is_empty(), "artifact must be produced");
+    assert!(result.is_err(), "name mismatch must reject the render");
 }
 
 /// `quill.render(Document, opts)` — render via pre-parsed document.
