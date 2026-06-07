@@ -2,12 +2,13 @@
 //! [`QuillSource`] with a resolved backend.
 
 use indexmap::IndexMap;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use quillmark_core::{
     normalize::normalize_document, quill::CardSchema, zero_value, Backend, Card, Diagnostic,
     Document, OutputFormat, Payload, QuillSource, QuillValue, RenderError, RenderOptions,
-    RenderResult, RenderSession, Severity,
+    RenderResult, RenderSession, Severity, Version,
 };
 
 use crate::seed;
@@ -63,6 +64,7 @@ impl Quill {
     }
 
     pub fn open(&self, doc: &Document) -> Result<RenderSession, RenderError> {
+        self.check_quill_reference(doc)?;
         let json_data = self.compile_data(doc)?;
         let plate_content = self
             .source
@@ -70,11 +72,7 @@ impl Quill {
             .filter(|s| !s.is_empty())
             .unwrap_or("")
             .to_string();
-        let warnings: Vec<_> = self.ref_mismatch_warning(doc).into_iter().collect();
-        let session = self
-            .backend
-            .open(&plate_content, &self.source, &json_data)?;
-        Ok(session.with_warnings(warnings))
+        self.backend.open(&plate_content, &self.source, &json_data)
     }
 
     /// Compile a document to JSON wire format for the backend.
@@ -119,6 +117,7 @@ impl Quill {
 
     /// Validate without backend compilation.
     pub fn dry_run(&self, doc: &Document) -> Result<(), RenderError> {
+        self.check_quill_reference(doc)?;
         self.coerce_and_validate(doc).map(|_| ())
     }
 
@@ -151,27 +150,47 @@ impl Quill {
         Ok(coerced_doc)
     }
 
-    fn ref_mismatch_warning(&self, doc: &Document) -> Option<Diagnostic> {
+    /// Enforce the document's `$quill` reference (`name@selector`) against the
+    /// loaded quill, failing with [`RenderError::QuillMismatch`] if either
+    /// component diverges. The document is well-formed; it was paired with the
+    /// wrong quill — a different format, or an incompatible version of one —
+    /// which yields undefined output, so it errors rather than warns.
+    ///
+    /// Name is the prerequisite (a selector belongs to a *named* quill): a name
+    /// mismatch (`quill::name_mismatch`) short-circuits and the version is left
+    /// unevaluated; otherwise the selector is checked (`quill::version_mismatch`).
+    /// The version parses infallibly in practice (validated at load); if it
+    /// somehow doesn't, the version check is skipped.
+    fn check_quill_reference(&self, doc: &Document) -> Result<(), RenderError> {
         let doc_ref = doc.quill_reference();
+
         if doc_ref.name.as_str() != self.source.name() {
-            Some(
-                Diagnostic::new(
-                    Severity::Warning,
-                    format!(
-                        "document declares $quill '{}' but was rendered with '{}'",
-                        doc_ref,
-                        self.source.name()
-                    ),
-                )
-                .with_code("quill::ref_mismatch".to_string())
-                .with_hint(
-                    "the $quill reference is informational; ensure you are rendering with the intended quill"
-                        .to_string(),
+            return Err(quill_mismatch(
+                format!(
+                    "document declares $quill '{}' but was rendered with '{}'",
+                    doc_ref,
+                    self.source.name()
                 ),
-            )
-        } else {
-            None
+                "quill::name_mismatch",
+                "render with the quill named by $quill, or update the $quill name",
+            ));
         }
+
+        let Ok(quill_version) = Version::from_str(&self.source.config().version) else {
+            return Ok(());
+        };
+        if !doc_ref.selector.matches(quill_version) {
+            return Err(quill_mismatch(
+                format!(
+                    "document declares $quill '{}' but the loaded quill is version '{}'",
+                    doc_ref, quill_version
+                ),
+                "quill::version_mismatch",
+                "render with a quill whose version satisfies the selector, or update the $quill selector",
+            ));
+        }
+
+        Ok(())
     }
 
     /// Validate `doc` against this quill's schema, returning every diagnostic
@@ -250,6 +269,16 @@ impl Quill {
                 }
             }
         }
+    }
+}
+
+/// A single-diagnostic [`RenderError::QuillMismatch`]. `path` is unset — the
+/// mismatch is the root `$quill` line, not a field.
+fn quill_mismatch(message: String, code: &str, hint: &str) -> RenderError {
+    RenderError::QuillMismatch {
+        diags: vec![Diagnostic::new(Severity::Error, message)
+            .with_code(code.to_string())
+            .with_hint(hint.to_string())],
     }
 }
 

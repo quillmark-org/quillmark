@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Breaking (Rust API + bindings):** a document's `$quill` reference is now
+  **enforced** against the loaded quill. Rendering with a quill whose *name*
+  differs (`quill::name_mismatch`) or whose *version* falls outside the selector
+  (`quill::version_mismatch`) is a hard error via the new
+  `RenderError::QuillMismatch`, in both `render` and `dry_run`. Previously a name
+  mismatch was only the `quill::ref_mismatch` warning and the version selector
+  was unchecked. See [migration guide](docs/migrations/0.88-to-0.89.md).
 - **Fix (WASM bindings):** `Document.makeCard`'s generated TypeScript now marks
   `fields` (and `body`) as optional (`fields?: Record<string, unknown>`,
   `body?: string`), matching the doc comment and runtime behavior. They were

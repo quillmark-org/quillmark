@@ -40,6 +40,25 @@ Supported selectors:
 | `my_quill@1.2` | Latest 1.2.x |
 | `my_quill@1.2.0` | Exact version |
 
+## Compatibility Checks
+
+A selector is a **pin**, not a resolver: Quillmark renders with the Quill it was
+handed and never picks among versions. At render time (and in `dry_run`) it
+checks that Quill against the reference and **rejects a mismatch** — rendering a
+document against the wrong format is a footgun, so it errors rather than
+silently producing undefined output:
+
+- If the loaded Quill's **name** differs from the reference, rendering fails with
+  `quill::name_mismatch`.
+- If the name matches but the **version** falls outside the selector (e.g.
+  `my_quill@2` against a `3.0.0` Quill), rendering fails with
+  `quill::version_mismatch`.
+
+Fix either by pointing at the Quill the document targets, or by amending the
+`$quill` line — correct the name, or widen the selector (e.g. `@3` or `@latest`).
+A bare name or `@latest` matches any version, so a document that targets its
+Quill correctly never trips these checks.
+
 ## Practical Guidelines
 
 1. Start at `1.0.0` for your first stable internal format release.

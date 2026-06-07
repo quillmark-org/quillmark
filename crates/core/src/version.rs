@@ -102,6 +102,21 @@ pub enum VersionSelector {
     Latest,
 }
 
+impl VersionSelector {
+    /// Whether `v` satisfies this selector: `Exact` the identical version,
+    /// `Minor` any patch in the `MAJOR.MINOR` series, `Major` any version in the
+    /// `MAJOR` series, `Latest` anything. A compatibility check, not resolution
+    /// — a `false` is the `quill::version_mismatch` render error.
+    pub fn matches(&self, v: Version) -> bool {
+        match self {
+            VersionSelector::Exact(want) => *want == v,
+            VersionSelector::Minor(major, minor) => v.major == *major && v.minor == *minor,
+            VersionSelector::Major(major) => v.major == *major,
+            VersionSelector::Latest => true,
+        }
+    }
+}
+
 impl FromStr for VersionSelector {
     type Err = String;
 
@@ -331,6 +346,38 @@ mod tests {
 
         let major = VersionSelector::from_str("2").unwrap();
         assert_eq!(major, VersionSelector::Major(2));
+    }
+
+    #[test]
+    fn test_version_selector_matches() {
+        let v2_1_0 = Version::new(2, 1, 0);
+        let v2_1_3 = Version::new(2, 1, 3);
+        let v2_2_0 = Version::new(2, 2, 0);
+        let v3_0_0 = Version::new(3, 0, 0);
+
+        // Exact: only the identical version satisfies.
+        let exact = VersionSelector::Exact(v2_1_0);
+        assert!(exact.matches(v2_1_0));
+        assert!(!exact.matches(v2_1_3));
+        assert!(!exact.matches(v2_2_0));
+
+        // Minor: any patch within the 2.1 series.
+        let minor = VersionSelector::Minor(2, 1);
+        assert!(minor.matches(v2_1_0));
+        assert!(minor.matches(v2_1_3));
+        assert!(!minor.matches(v2_2_0));
+        assert!(!minor.matches(v3_0_0));
+
+        // Major: any minor/patch within the 2 series.
+        let major = VersionSelector::Major(2);
+        assert!(major.matches(v2_1_0));
+        assert!(major.matches(v2_2_0));
+        assert!(!major.matches(v3_0_0));
+
+        // Latest: matches anything.
+        let latest = VersionSelector::Latest;
+        assert!(latest.matches(v2_1_0));
+        assert!(latest.matches(v3_0_0));
     }
 
     #[test]

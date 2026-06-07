@@ -24,6 +24,7 @@ only the *kind* of failure; `diagnostics()` borrows the vector and
 - `UnsupportedBackend` — backend not registered
 - `ValidationFailed` — field coercion/schema validation failure
 - `QuillConfig` — Quill.yaml configuration error
+- `QuillMismatch` — the document was rendered with a quill that does not satisfy its `$quill` reference (wrong name, or version outside the selector). Distinct from `ValidationFailed`: the document is well-formed, but paired with the wrong quill. See [VERSIONING.md](VERSIONING.md).
 
 `ValidationFailed`, `QuillConfig`, and `CompilationFailed` routinely carry
 several diagnostics so every problem reaches the caller in one pass; the
