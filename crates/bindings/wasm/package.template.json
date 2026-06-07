@@ -12,24 +12,27 @@
     "url": "git+https://github.com/quillmark-org/quillmark.git"
   },
   "files": [
-    "bundler/wasm_bg.wasm",
-    "bundler/wasm_bg.js",
-    "bundler/wasm_bg.wasm.d.ts",
-    "bundler/wasm.js",
-    "bundler/wasm.d.ts",
+    "core",
+    "render",
     "CHANGELOG.md"
   ],
-  "main": "./bundler/wasm.js",
-  "module": "./bundler/wasm.js",
-  "types": "./bundler/wasm.d.ts",
+  "main": "./render/wasm.js",
+  "module": "./render/wasm.js",
+  "types": "./render/wasm.d.ts",
   "exports": {
     ".": {
-      "types": "./bundler/wasm.d.ts",
-      "import": "./bundler/wasm.js",
-      "default": "./bundler/wasm.js"
+      "types": "./render/wasm.d.ts",
+      "import": "./render/wasm.js",
+      "default": "./render/wasm.js"
+    },
+    "./core": {
+      "types": "./core/wasm.d.ts",
+      "import": "./core/wasm.js",
+      "default": "./core/wasm.js"
     }
   },
   "sideEffects": [
-    "./bundler/wasm.js"
+    "./core/wasm.js",
+    "./render/wasm.js"
   ]
 }

@@ -1,14 +1,19 @@
 use quillmark_core::{
-    Backend, Diagnostic, FileTreeNode, QuillIgnore, QuillSource, RenderError, Severity,
+    Backend, Diagnostic, Document, OutputFormat, Quill, RenderError, RenderOptions, RenderResult,
+    RenderSession, Severity,
 };
 use std::collections::HashMap;
-use std::error::Error as StdError;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use super::Quill;
-
-/// High-level engine for orchestrating backends and quills.
+/// High-level engine: a backend registry and render dispatcher.
+///
+/// The engine resolves a [`Quill`]'s *declared* backend at render time and is
+/// the sole home of backend-dependent surface — capability
+/// ([`supported_formats`](Self::supported_formats) /
+/// [`supports_canvas`](Self::supports_canvas)) and rendering
+/// ([`open`](Self::open) / [`render`](Self::render)). It no longer loads
+/// quills; construct those with [`Quill::from_tree`] or
+/// [`quill_from_path`](crate::quill_from_path).
 pub struct Quillmark {
     backends: HashMap<String, Arc<dyn Backend>>,
 }
@@ -16,6 +21,9 @@ pub struct Quillmark {
 impl Quillmark {
     /// Create a new Quillmark with auto-registered backends based on enabled features.
     pub fn new() -> Self {
+        // `mut` is unused when no backend features are enabled (e.g. a
+        // Typst-less core build), so allow it rather than cfg-juggle.
+        #[allow(unused_mut)]
         let mut engine = Self {
             backends: HashMap::new(),
         };
@@ -34,46 +42,80 @@ impl Quillmark {
         self.backends.insert(id, Arc::from(backend));
     }
 
-    /// Build and return a render-ready quill from an in-memory file tree.
-    pub fn quill(&self, tree: FileTreeNode) -> Result<Quill, RenderError> {
-        let source =
-            QuillSource::from_tree(tree).map_err(|diags| RenderError::QuillConfig { diags })?;
-        self.assemble(source)
-    }
-
-    /// Load a quill from a filesystem path and attach the appropriate backend.
-    pub fn quill_from_path<P: AsRef<Path>>(&self, path: P) -> Result<Quill, RenderError> {
-        let tree = load_tree_from_path(path.as_ref()).map_err(|e| RenderError::QuillConfig {
-            diags: vec![
-                Diagnostic::new(Severity::Error, format!("Failed to load quill: {}", e))
-                    .with_code("quill::load_failed".to_string()),
-            ],
-        })?;
-        self.quill(tree)
-    }
-
-    fn assemble(&self, source: QuillSource) -> Result<Quill, RenderError> {
-        let backend_id = source.backend_id();
-        let backend =
-            self.backends
-                .get(backend_id)
-                .ok_or_else(|| RenderError::UnsupportedBackend {
-                    diags: vec![Diagnostic::new(
-                        Severity::Error,
-                        format!("Backend '{}' not registered or not enabled", backend_id),
-                    )
-                    .with_code("engine::backend_not_found".to_string())
-                    .with_hint(format!(
-                        "Available backends: {}",
-                        self.backends.keys().cloned().collect::<Vec<_>>().join(", ")
-                    ))],
-                })?;
-        Ok(Quill::new(Arc::new(source), Arc::clone(backend)))
-    }
-
     /// Get a list of registered backend IDs.
     pub fn registered_backends(&self) -> Vec<&str> {
         self.backends.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// Resolve a quill's declared backend, erroring with `UnsupportedBackend`
+    /// when none is registered. The backend-existence check lives here — at
+    /// render time, not load time — so a backend-less core can still load and
+    /// validate quills.
+    fn resolve_backend(&self, quill: &Quill) -> Result<&Arc<dyn Backend>, RenderError> {
+        let backend_id = quill.backend_id();
+        self.backends
+            .get(backend_id)
+            .ok_or_else(|| RenderError::UnsupportedBackend {
+                diags: vec![Diagnostic::new(
+                    Severity::Error,
+                    format!("Backend '{}' not registered or not enabled", backend_id),
+                )
+                .with_code("engine::backend_not_found".to_string())
+                .with_hint(format!(
+                    "Available backends: {}",
+                    self.backends.keys().cloned().collect::<Vec<_>>().join(", ")
+                ))],
+            })
+    }
+
+    /// Open an iterative render session for `doc` against `quill`'s backend.
+    pub fn open(&self, quill: &Quill, doc: &Document) -> Result<RenderSession, RenderError> {
+        let backend = self.resolve_backend(quill)?;
+        quill.check_quill_reference(doc)?;
+        let json_data = quill.compile_data(doc)?;
+        let plate_content = quill
+            .plate()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("")
+            .to_string();
+        backend.open(&plate_content, quill, &json_data)
+    }
+
+    /// Render `doc` against `quill` in one shot. Convenience over
+    /// [`open`](Self::open) + [`RenderSession::render`]: an unset
+    /// `output_format` falls back to the backend's first supported format.
+    pub fn render(
+        &self,
+        quill: &Quill,
+        doc: &Document,
+        opts: &RenderOptions,
+    ) -> Result<RenderResult, RenderError> {
+        let default_format = self.supported_formats(quill)?.first().copied();
+        let session = self.open(quill, doc)?;
+        let resolved = RenderOptions {
+            output_format: opts.output_format.or(default_format),
+            ppi: opts.ppi,
+            pages: opts.pages.clone(),
+            producer: opts.producer.clone(),
+        };
+        session.render(&resolved)
+    }
+
+    /// The output formats `quill`'s backend can emit. Static capability —
+    /// resolves the backend but compiles nothing.
+    pub fn supported_formats(
+        &self,
+        quill: &Quill,
+    ) -> Result<&'static [OutputFormat], RenderError> {
+        Ok(self.resolve_backend(quill)?.supported_formats())
+    }
+
+    /// Whether `quill`'s backend can paint sessions to a canvas. Asked of the
+    /// real backend; `false` when the backend is unsupported or non-canvas.
+    pub fn supports_canvas(&self, quill: &Quill) -> bool {
+        self.resolve_backend(quill)
+            .map(|b| b.supports_canvas())
+            .unwrap_or(false)
     }
 }
 
@@ -81,68 +123,4 @@ impl Default for Quillmark {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Walk a filesystem path into an in-memory [`FileTreeNode`].
-///
-/// Honours a `.quillignore` file at the root; otherwise applies a default
-/// ignore set (`.git/`, `target/`, `node_modules/`, etc.).
-fn load_tree_from_path(path: &Path) -> Result<FileTreeNode, Box<dyn StdError + Send + Sync>> {
-    use std::fs;
-
-    let quillignore_path = path.join(".quillignore");
-    let ignore = if quillignore_path.exists() {
-        let content = fs::read_to_string(&quillignore_path)
-            .map_err(|e| format!("Failed to read .quillignore: {}", e))?;
-        QuillIgnore::from_content(&content)
-    } else {
-        QuillIgnore::default()
-    };
-
-    load_dir(path, path, &ignore)
-}
-
-fn load_dir(
-    current_dir: &Path,
-    base_dir: &Path,
-    ignore: &QuillIgnore,
-) -> Result<FileTreeNode, Box<dyn StdError + Send + Sync>> {
-    use std::fs;
-
-    if !current_dir.exists() {
-        return Ok(FileTreeNode::Directory {
-            files: HashMap::new(),
-        });
-    }
-
-    let mut files = HashMap::new();
-    for entry in fs::read_dir(current_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        let relative_path: PathBuf = path
-            .strip_prefix(base_dir)
-            .map_err(|e| format!("Failed to get relative path: {}", e))?
-            .to_path_buf();
-
-        if ignore.is_ignored(&relative_path) {
-            continue;
-        }
-
-        let filename = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .ok_or_else(|| format!("Invalid filename: {}", path.display()))?
-            .to_string();
-
-        if path.is_file() {
-            let contents = fs::read(&path)
-                .map_err(|e| format!("Failed to read file '{}': {}", path.display(), e))?;
-            files.insert(filename, FileTreeNode::File { contents });
-        } else if path.is_dir() {
-            let subdir_tree = load_dir(&path, base_dir, ignore)?;
-            files.insert(filename, subdir_tree);
-        }
-    }
-
-    Ok(FileTreeNode::Directory { files })
 }

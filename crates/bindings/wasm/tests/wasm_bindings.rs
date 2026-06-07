@@ -1,6 +1,6 @@
 use wasm_bindgen_test::*;
 
-use quillmark_wasm::{Document, Quillmark, RenderOptions};
+use quillmark_wasm::{Document, Quill, Quillmark, RenderOptions};
 
 mod common;
 
@@ -38,8 +38,7 @@ fn test_document_body_and_warnings() {
 
 #[wasm_bindgen_test]
 fn test_quill_from_tree() {
-    let engine = Quillmark::new();
-    let quill = engine.quill(small_quill_tree()).expect("quill failed");
+    let quill = Quill::from_tree(small_quill_tree()).expect("quill failed");
     let _ = quill;
 }
 
@@ -49,12 +48,12 @@ fn test_quill_from_tree() {
 #[wasm_bindgen_test]
 fn test_render_name_mismatch_errors() {
     let engine = Quillmark::new();
-    let quill = engine.quill(small_quill_tree()).expect("quill failed");
+    let quill = Quill::from_tree(small_quill_tree()).expect("quill failed");
 
     let mismatch_md =
         "~~~card-yaml\n$quill: other_quill\n$kind: main\ntitle: Mismatch\n~~~\n\n# Content\n";
     let doc = Document::from_markdown(mismatch_md).expect("fromMarkdown failed");
-    let result = quill.render(&doc, Some(RenderOptions::default()));
+    let result = engine.render(&quill, &doc, Some(RenderOptions::default()));
 
     assert!(result.is_err(), "name mismatch must reject the render");
 }
@@ -63,11 +62,11 @@ fn test_render_name_mismatch_errors() {
 #[wasm_bindgen_test]
 fn test_render_from_document() {
     let engine = Quillmark::new();
-    let quill = engine.quill(small_quill_tree()).expect("quill failed");
+    let quill = Quill::from_tree(small_quill_tree()).expect("quill failed");
 
     let doc = Document::from_markdown(SIMPLE_MARKDOWN).expect("fromMarkdown failed");
-    let result = quill
-        .render(&doc, Some(RenderOptions::default()))
+    let result = engine
+        .render(&quill, &doc, Some(RenderOptions::default()))
         .expect("render from Document failed");
 
     assert!(
@@ -91,10 +90,10 @@ fn test_artifact_bytes_is_uint8array() {
     use wasm_bindgen::{JsCast, JsValue};
 
     let engine = Quillmark::new();
-    let quill = engine.quill(small_quill_tree()).expect("quill failed");
+    let quill = Quill::from_tree(small_quill_tree()).expect("quill failed");
     let doc = Document::from_markdown(SIMPLE_MARKDOWN).expect("fromMarkdown failed");
-    let result = quill
-        .render(&doc, Some(RenderOptions::default()))
+    let result = engine
+        .render(&quill, &doc, Some(RenderOptions::default()))
         .expect("render failed");
     assert!(!result.artifacts.is_empty(), "should produce artifacts");
 
@@ -123,10 +122,10 @@ fn test_artifact_bytes_is_uint8array() {
 #[wasm_bindgen_test]
 fn test_open_session_render() {
     let engine = Quillmark::new();
-    let quill = engine.quill(small_quill_tree()).expect("quill failed");
+    let quill = Quill::from_tree(small_quill_tree()).expect("quill failed");
 
     let doc = Document::from_markdown(SIMPLE_MARKDOWN).expect("fromMarkdown failed");
-    let session = quill.open(&doc).expect("open failed");
+    let session = engine.open(&quill, &doc).expect("open failed");
     assert!(session.page_count() > 0, "session should expose page count");
 
     let result = session
@@ -227,23 +226,19 @@ fn test_quill_from_object_tree() {
     ];
 
     let engine = Quillmark::new();
-    let from_map = engine
-        .quill(common::tree(entries))
-        .expect("Map form failed");
-    let from_obj = engine
-        .quill(common::tree_object(entries))
-        .expect("Object form failed");
+    let from_map = Quill::from_tree(common::tree(entries)).expect("Map form failed");
+    let from_obj = Quill::from_tree(common::tree_object(entries)).expect("Object form failed");
 
     assert_eq!(from_map.backend_id(), from_obj.backend_id());
 
     // Both handles render the same document to the same artifact count/format.
     let doc = Document::from_markdown(SIMPLE_MARKDOWN).expect("fromMarkdown failed");
     let doc2 = Document::from_markdown(SIMPLE_MARKDOWN).expect("fromMarkdown failed");
-    let r_map = from_map
-        .render(&doc, Some(RenderOptions::default()))
+    let r_map = engine
+        .render(&from_map, &doc, Some(RenderOptions::default()))
         .expect("render from Map form");
-    let r_obj = from_obj
-        .render(&doc2, Some(RenderOptions::default()))
+    let r_obj = engine
+        .render(&from_obj, &doc2, Some(RenderOptions::default()))
         .expect("render from object form");
     assert_eq!(r_map.artifacts.len(), r_obj.artifacts.len());
 }
@@ -257,15 +252,15 @@ fn test_quill_metadata_and_schemas() {
     let get = |obj: &JsValue, key: &str| Reflect::get(obj, &JsValue::from_str(key)).unwrap();
     let get_str = |obj: &JsValue, key: &str| get(obj, key).as_string();
 
-    let quill = Quillmark::new()
-        .quill(common::tree(&[
-            (
-                "Quill.yaml",
-                b"quill:\n  name: meta_quill\n  backend: typst\n  version: \"0.2.1\"\n  plate_file: plate.typ\n  description: Metadata quill\nmain:\n  fields:\n    title:\n      type: string\n      ui:\n        group: Header\ncard_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n",
-            ),
-            ("plate.typ", b"= Title"),
-        ]))
-        .expect("quill load");
+    let engine = Quillmark::new();
+    let quill = Quill::from_tree(common::tree(&[
+        (
+            "Quill.yaml",
+            b"quill:\n  name: meta_quill\n  backend: typst\n  version: \"0.2.1\"\n  plate_file: plate.typ\n  description: Metadata quill\nmain:\n  fields:\n    title:\n      type: string\n      ui:\n        group: Header\ncard_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n",
+        ),
+        ("plate.typ", b"= Title"),
+    ]))
+    .expect("quill load");
 
     // metadata: identity from `quill:` section, no schema.
     let meta = quill.metadata();
@@ -277,7 +272,11 @@ fn test_quill_metadata_and_schemas() {
         get_str(&meta, "description").as_deref(),
         Some("Metadata quill")
     );
-    assert!(js_sys::Array::from(&get(&meta, "supportedFormats")).length() > 0);
+    // supportedFormats moved off `metadata` onto the engine.
+    let formats = engine
+        .supported_formats(&quill)
+        .expect("supported_formats");
+    assert!(js_sys::Array::from(&formats).length() > 0);
     assert!(get(&meta, "schema").is_undefined());
 
     // schema: user-fillable fields with ui hints. No QUILL/CARD sentinels.
@@ -293,15 +292,14 @@ fn test_quill_metadata_and_schemas() {
 /// leaving default-only fields absent (interpolated at render, not persisted).
 #[wasm_bindgen_test]
 fn test_quill_seed_document() {
-    let quill = Quillmark::new()
-        .quill(common::tree(&[
-            (
-                "Quill.yaml",
-                b"quill:\n  name: seed_quill\n  backend: typst\n  version: \"1.0\"\n  plate_file: plate.typ\n  description: Seed quill\nmain:\n  fields:\n    byline:\n      type: string\n      example: FIRST LAST\n    title:\n      type: string\n      default: Untitled\n",
-            ),
-            ("plate.typ", b"= Title"),
-        ]))
-        .expect("quill load");
+    let quill = Quill::from_tree(common::tree(&[
+        (
+            "Quill.yaml",
+            b"quill:\n  name: seed_quill\n  backend: typst\n  version: \"1.0\"\n  plate_file: plate.typ\n  description: Seed quill\nmain:\n  fields:\n    byline:\n      type: string\n      example: FIRST LAST\n    title:\n      type: string\n      default: Untitled\n",
+        ),
+        ("plate.typ", b"= Title"),
+    ]))
+    .expect("quill load");
 
     let md = quill.seed_document().to_markdown();
     assert!(
@@ -325,15 +323,14 @@ fn test_quill_seed_main_and_card() {
     let get = |obj: &JsValue, key: &str| Reflect::get(obj, &JsValue::from_str(key)).unwrap();
     let json = |v: &JsValue| js_sys::JSON::stringify(v).unwrap().as_string().unwrap();
 
-    let quill = Quillmark::new()
-        .quill(common::tree(&[
-            (
-                "Quill.yaml",
-                b"quill:\n  name: seed_quill\n  backend: typst\n  version: \"1.0\"\n  plate_file: plate.typ\n  description: Seed quill\nmain:\n  fields:\n    byline:\n      type: string\n      example: FIRST LAST\ncard_kinds:\n  note:\n    fields:\n      text:\n        type: string\n        example: NOTE EXAMPLE\n",
-            ),
-            ("plate.typ", b"= Title"),
-        ]))
-        .expect("quill load");
+    let quill = Quill::from_tree(common::tree(&[
+        (
+            "Quill.yaml",
+            b"quill:\n  name: seed_quill\n  backend: typst\n  version: \"1.0\"\n  plate_file: plate.typ\n  description: Seed quill\nmain:\n  fields:\n    byline:\n      type: string\n      example: FIRST LAST\ncard_kinds:\n  note:\n    fields:\n      text:\n        type: string\n        example: NOTE EXAMPLE\n",
+        ),
+        ("plate.typ", b"= Title"),
+    ]))
+    .expect("quill load");
 
     // seed_main: the `$kind: main` card, committing the byline example.
     let main = quill.seed_main();

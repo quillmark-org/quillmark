@@ -2,29 +2,38 @@
 //!
 //! WebAssembly bindings for Quillmark.
 //!
+//! Two artifacts ship from this one crate (see
+//! `prose/proposals/wasm-bindings-split.md`): a Typst-less **core**
+//! (`@quillmark/wasm/core`) for load / validate / schema / seed / blueprint, and
+//! a Typst-backed **render** superset (the root `@quillmark/wasm` import) that
+//! adds the engine and canvas preview. The `render` cargo feature (default)
+//! gates the engine half.
+//!
 //! ## API
 //!
-//! - [`Quillmark`] - engine for loading render-ready quills from in-memory trees
-//! - [`Quill`] - quill handle for rendering/compiling
+//! - [`Quill`] - engine-free, validated quill data (`fromTree` constructor;
+//!   validate / schema / metadata / seed / blueprint). Present in both builds.
+//! - [`Quillmark`] - render engine: `open` / `render` / `supportedFormats` /
+//!   `supportsCanvas`. Render build only.
 //! - [`engine::Document`] - typed parsed document (`fromMarkdown`/`fromJson` static
-//!   constructors, `toMarkdown`/`toJson` emitters)
+//!   constructors, `toMarkdown`/`toJson` emitters). Present in both builds.
 //!
-//! ## Usage
+//! ## Usage (render build)
 //!
-//! 1. Build a render-ready quill with `engine.quill(...)`
+//! 1. Build a quill with `Quill.fromTree(...)` (no engine needed)
 //! 2. Parse markdown via `Document.fromMarkdown(...)`
-//! 3. Render with `quill.render(...)`
+//! 3. Render with `engine.render(quill, doc, ...)`
 //!
 //! ## Example
 //!
 //! ```javascript
-//! import { Document, Quillmark } from '@quillmark-test/wasm';
+//! import { Document, Quill, Quillmark } from '@quillmark/wasm';
 //!
+//! const quill = Quill.fromTree(tree);
 //! const engine = new Quillmark();
-//! const quill = engine.quill(tree);
 //!
 //! const doc = Document.fromMarkdown(markdown);
-//! const result = quill.render(doc);
+//! const result = engine.render(quill, doc);
 //! const pdfBytes = result.artifacts[0].bytes;
 //! ```
 
@@ -34,7 +43,9 @@ mod engine;
 mod error;
 mod types;
 
-pub use engine::{Document, Quill, Quillmark, RenderSession};
+pub use engine::{Document, Quill};
+#[cfg(feature = "render")]
+pub use engine::{Quillmark, RenderSession};
 pub use error::WasmError;
 pub use types::*;
 

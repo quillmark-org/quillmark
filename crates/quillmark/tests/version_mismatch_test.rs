@@ -32,15 +32,14 @@ fn render_ref(
     quill_ref: &str,
 ) -> Result<quillmark_core::RenderResult, RenderError> {
     let engine = Quillmark::new();
-    let quill = engine
-        .quill_from_path(quill_path)
-        .expect("quill_from_path failed");
+    let quill = quillmark::quill_from_path(quill_path).expect("from_path failed");
     let markdown = format!(
         "~~~card-yaml\n$quill: {}\n$kind: main\n~~~\n\n# Content\n",
         quill_ref
     );
     let doc = Document::from_markdown(&markdown).expect("parse failed");
-    quill.render(
+    engine.render(
+        &quill,
         &doc,
         &RenderOptions {
             output_format: Some(OutputFormat::Pdf),
@@ -72,8 +71,7 @@ fn version_out_of_selector_is_a_hard_error() {
 fn version_out_of_selector_fails_dry_run() {
     let temp_dir = TempDir::new().unwrap();
     let quill_path = make_quill(&temp_dir, "3.0.0");
-    let engine = Quillmark::new();
-    let quill = engine.quill_from_path(&quill_path).unwrap();
+    let quill = quillmark::quill_from_path(&quill_path).unwrap();
     let doc = Document::from_markdown(
         "~~~card-yaml\n$quill: test_quill@2\n$kind: main\n~~~\n\n# Content\n",
     )

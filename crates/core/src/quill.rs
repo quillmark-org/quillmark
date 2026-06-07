@@ -1,6 +1,7 @@
-//! Quill source bundle types and implementations.
+//! The `Quill` type — portable, validated quill data.
 
 mod blueprint;
+mod compose;
 mod config;
 mod fill;
 mod formats;
@@ -9,6 +10,7 @@ mod load;
 mod query;
 mod schema;
 mod schema_yaml;
+mod seed;
 mod tree;
 mod types;
 pub(crate) mod validation;
@@ -27,20 +29,23 @@ use std::collections::HashMap;
 
 use crate::value::QuillValue;
 
-/// A quill source bundle — pure data parsed from an authored quill directory.
+/// Portable, validated quill data: the file bundle, parsed config, and
+/// metadata of an authored quill, tagged with its *declared* backend id.
 ///
-/// A `QuillSource` is the file-bundle, config, and metadata; it has no rendering
-/// ability. The engine composes a `QuillSource` with a resolved backend into a
-/// renderable `Quill` (see `quillmark::Quill`).
+/// A `Quill` holds no backend and needs no engine to construct or use. Every
+/// method here is a pure read of its parsed config — parse / load / validate /
+/// schema / seed / blueprint / compile. Rendering is the engine's job; see
+/// `quillmark::Quillmark`. Construct with [`Quill::from_tree`] (pure) or
+/// `quillmark::quill_from_path` (filesystem; fs stays out of core).
 #[derive(Clone)]
-pub struct QuillSource {
+pub struct Quill {
     pub(crate) metadata: HashMap<String, QuillValue>,
     pub(crate) plate: Option<String>,
     pub(crate) config: QuillConfig,
     pub(crate) files: FileTreeNode,
 }
 
-impl QuillSource {
+impl Quill {
     /// The quill's declared name.
     pub fn name(&self) -> &str {
         &self.config.name
@@ -72,9 +77,9 @@ impl QuillSource {
     }
 }
 
-impl std::fmt::Debug for QuillSource {
+impl std::fmt::Debug for Quill {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("QuillSource")
+        f.debug_struct("Quill")
             .field("name", &self.config.name)
             .field("backend_id", &self.config.backend)
             .field(

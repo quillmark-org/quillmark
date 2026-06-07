@@ -43,12 +43,14 @@
     ## Basic Usage
 
     ```javascript
-    import { Document, Quillmark } from "@quillmark/wasm";
+    // Root import is the render build (the API superset); for an editor that
+    // only validates, import from "@quillmark/wasm/core" to skip Typst.
+    import { Document, Quill, Quillmark } from "@quillmark/wasm";
 
-    const engine = new Quillmark();
     const enc = new TextEncoder();
 
-    const quill = engine.quill(new Map([
+    // A Quill is engine-free, validated data — no engine needed to load it.
+    const quill = Quill.fromTree(new Map([
       ["Quill.yaml", enc.encode("quill:\n  name: my_quill\n  backend: typst\n  version: 1.0.0\n  description: Demo\n  plate_file: plate.typ\n")],
       ["plate.typ", enc.encode("#import \"@local/quillmark-helper:0.1.0\": data\n#data.at(\"$body\")\n")],
     ]));
@@ -62,7 +64,10 @@
     # Hello World`;
 
     const doc = Document.fromMarkdown(markdown);
-    const result = quill.render(doc, { format: "pdf" });
+
+    // Rendering goes through the engine (render build).
+    const engine = new Quillmark();
+    const result = engine.render(quill, doc, { format: "pdf" });
     const pdfBytes = result.artifacts[0].bytes;
     ```
 
@@ -73,7 +78,7 @@
     and shares the cached compile with the byte-output `render` path.
 
     ```javascript
-    const session = quill.open(doc);                   // compile once
+    const session = engine.open(quill, doc);           // compile once
 
     // Surface session-level diagnostics from compile time.
     for (const w of session.warnings) console.warn(w.message);

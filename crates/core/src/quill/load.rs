@@ -1,17 +1,17 @@
-//! QuillSource loading and construction routines.
+//! Quill loading and construction routines.
 use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
-use super::{FileTreeNode, QuillConfig, QuillSource};
+use super::{FileTreeNode, QuillConfig, Quill};
 
 fn diag(message: impl Into<String>, code: &str) -> Diagnostic {
     Diagnostic::new(Severity::Error, message.into()).with_code(code.to_string())
 }
 
-impl QuillSource {
-    /// Create a QuillSource from a tree structure.
+impl Quill {
+    /// Create a Quill from a tree structure.
     ///
-    /// This is the authoritative method for creating a QuillSource from an
+    /// This is the authoritative method for creating a Quill from an
     /// in-memory file tree. Filesystem walking belongs upstream (see
     /// `quillmark::Quillmark::quill_from_path`).
     ///
@@ -47,7 +47,7 @@ impl QuillSource {
         Self::from_config(config, root)
     }
 
-    /// Create a QuillSource from a QuillConfig and file tree.
+    /// Create a Quill from a QuillConfig and file tree.
     fn from_config(config: QuillConfig, root: FileTreeNode) -> Result<Self, Vec<Diagnostic>> {
         let mut metadata: std::collections::HashMap<String, QuillValue> =
             std::collections::HashMap::new();
@@ -97,7 +97,7 @@ impl QuillSource {
             None
         };
 
-        let source = QuillSource {
+        let source = Quill {
             metadata,
             plate: plate_content,
             config,

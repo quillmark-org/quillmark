@@ -79,11 +79,21 @@ pub fn typst_session_of(s: &RenderSession) -> Option<&TypstSession>;
 
 ### TypeScript (WASM)
 
+Capability and rendering live on the **engine** (it holds the resolved
+backend); `Quill` is engine-free data. Canvas preview is in the **render**
+build only.
+
 ```ts
 class Quill {
-  readonly backendId: string;
-  readonly supportsCanvas: boolean;   // probe before mounting canvas UI / open()
-  open(doc: Document): RenderSession;
+  static fromTree(tree: Map<string, Uint8Array>): Quill;
+  readonly backendId: string;          // declared intent; not a resolved capability
+}
+
+class Quillmark {
+  supportsCanvas(quill: Quill): boolean;   // probe before mounting canvas UI / open()
+  supportedFormats(quill: Quill): OutputFormat[];
+  open(quill: Quill, doc: Document): RenderSession;
+  render(quill: Quill, doc: Document, opts?: RenderOptions): RenderResult;
 }
 
 class RenderSession {
@@ -143,8 +153,11 @@ byte-identical.
 ## Lifecycle and consumer flow
 
 ```js
-if (!quill.supportsCanvas) return;            // non-typst backends have no painter
-const session = quill.open(doc);              // compiles once, caches PagedDocument
+import { Quillmark } from '@quillmark/wasm';   // root = render build; canvas is render-only
+const engine = new Quillmark();
+
+if (!engine.supportsCanvas(quill)) return;    // non-typst backends have no painter
+const session = engine.open(quill, doc);      // compiles once, caches PagedDocument
 const densityScale = (window.devicePixelRatio || 1) * userZoom;  // userZoom is a UI control
 
 const result = session.paint(canvas.getContext('2d'), page, {
@@ -242,7 +255,15 @@ crates/
   preview itself. If/when added, would slot in via the same
   `TypstSession` accessor by exposing `IdeWorld` + an `OriginMap` from
   MD→Typst conversion.
-- **Cargo feature gate for the canvas path.** Consumers who want only
-  PDF/SVG output and no canvas dependency could opt out of `web-sys`.
-  Bundle-size impact is small relative to typst itself; defer until
-  there's real demand.
+
+## Feature gate (implemented)
+
+The whole canvas/render surface — the `Quillmark` engine, `RenderSession`,
+`paint` / `pageSize`, `CanvasCtx`, the `web-sys` dependency, and
+`quillmark_typst` — is gated behind the wasm crate's `render` feature
+(default). The **core** build (`--no-default-features`,
+`@quillmark/wasm/core`) drops all of it along with Typst, leaving
+`Document` + `Quill` for load / validate / schema / seed / blueprint. This
+realizes the once-deferred "opt out of the canvas dependency" — except the
+opt-out is the whole render half, not just `web-sys`, and the win is Typst
+(~8 MB), not the canvas glue. See [the split proposal](../proposals/wasm-bindings-split.md).

@@ -8,14 +8,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use quillmark_core::{FileTreeNode, QuillSource, RenderError};
+use quillmark_core::{FileTreeNode, Quill, RenderError};
 use quillmark_typst::compile::compile_to_pdf;
 
 /// Load a fixture quill from disk. Reuses `usaf_memo@0.2.0` as the host
 /// — `signature-field` doesn't depend on any quill-specific config so we
 /// just need a valid quill skeleton, and `usaf_memo` is the fixture the
 /// spikes validated.
-fn host_source() -> QuillSource {
+fn host_source() -> Quill {
     fn walk(dir: &Path) -> std::io::Result<FileTreeNode> {
         let mut files = HashMap::new();
         for entry in fs::read_dir(dir)? {
@@ -46,7 +46,7 @@ fn host_source() -> QuillSource {
         .join("usaf_memo")
         .join("0.2.0");
     let tree = walk(&quill_path).expect("walk fixture");
-    QuillSource::from_tree(tree).expect("load source")
+    Quill::from_tree(tree).expect("load source")
 }
 
 /// Empty data payload — our plates don't reference any fields.

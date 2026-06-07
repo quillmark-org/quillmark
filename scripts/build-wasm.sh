@@ -1,6 +1,20 @@
 #!/bin/bash
 set -e
+# pipefail so a failing `gzip` in `gzip -c … | wc -c` propagates instead of
+# being masked by `wc`'s exit 0. Without it the core size-budget check below
+# can silently read 0 bytes on a gzip failure and false-pass — defeating the
+# one guard rail that catches a Typst leak into the no-features core build.
+set -o pipefail
 
+# Builds TWO wasm artifacts from the one crate (see
+# prose/proposals/wasm-bindings-split.md):
+#
+#   pkg/core/    — no Typst: parse / load / validate / schema / seed / blueprint
+#   pkg/render/  — Typst-backed engine + RenderSession + canvas (API superset)
+#
+# shipped as one npm package with subpath exports `@quillmark/wasm/core` and
+# `@quillmark/wasm/render` (the root `.` export is render, the superset).
+#
 # Profile selection. Default is the size-optimized release build used for
 # npm publish. `--ci` switches to a fast-compiling profile for PR validation
 # where only correctness matters. Keep these two paths in sync with the
@@ -21,7 +35,7 @@ for arg in "$@"; do
     esac
 done
 
-echo "Building WASM module for @quillmark/wasm... [profile: $MODE_LABEL]"
+echo "Building WASM modules for @quillmark/wasm... [profile: $MODE_LABEL]"
 
 cd "$(dirname "$0")/.."
 
@@ -31,65 +45,77 @@ if ! command -v wasm-bindgen &> /dev/null; then
     echo "  cargo install wasm-bindgen-cli --version 0.2.118"
     exit 1
 fi
+if ! command -v jq &> /dev/null; then
+    echo "jq not found (needed to read the package version from cargo metadata)." >&2
+    exit 1
+fi
 
-echo ""
-echo "Building for target: bundler"
-
-# Step 1: Build WASM binary with cargo
-echo "Building WASM binary..."
-cargo build \
-    --target wasm32-unknown-unknown \
-    --profile "$PROFILE" \
-    --manifest-path crates/bindings/wasm/Cargo.toml
-
-# Step 2: Generate JS bindings with wasm-bindgen
+# Build one variant: cargo build with the given feature flags, then run
+# wasm-bindgen into pkg/<subdir>/. Both variants emit the same wasm artifact
+# name (quillmark_wasm.wasm) to the same target path, so they must run
+# sequentially — each wasm-bindgen pass consumes the build before the next
+# cargo build overwrites it.
 #
 # `--weak-refs` opts into FinalizationRegistry-based auto-free for
-# wasm-bindgen handles. `.free()` is still emitted as an eager hook for
-# callers that want deterministic teardown; opting in just ensures dropped
-# handles eventually get reclaimed without manual `.free()` discipline.
-# Requires Node 14.6+ / all current evergreen browsers.
-echo "Generating JS bindings for bundler..."
-mkdir -p pkg/bundler
-wasm-bindgen \
-    "target/wasm32-unknown-unknown/$PROFILE/quillmark_wasm.wasm" \
-    --out-dir pkg/bundler \
-    --out-name wasm \
-    --target bundler \
-    --weak-refs
+# wasm-bindgen handles; `.free()` is still emitted for deterministic teardown.
+# (Runtime floor is the package.json `engines` field, not set here.)
+build_variant() {
+    local subdir="$1"; shift
+    local cargo_feature_args=("$@")
+
+    echo ""
+    echo "Building variant: $subdir"
+    cargo build \
+        --target wasm32-unknown-unknown \
+        --profile "$PROFILE" \
+        --manifest-path crates/bindings/wasm/Cargo.toml \
+        "${cargo_feature_args[@]}"
+
+    mkdir -p "pkg/$subdir"
+    wasm-bindgen \
+        "target/wasm32-unknown-unknown/$PROFILE/quillmark_wasm.wasm" \
+        --out-dir "pkg/$subdir" \
+        --out-name wasm \
+        --target bundler \
+        --weak-refs
+}
+
+# render = default features (Typst). core = no features (Typst excluded).
+build_variant render
+build_variant core --no-default-features
 
 # Note: a wasm-opt -Oz pass was tried and removed. With the current
 # `wasm-release` profile (opt-level=z, fat LTO, codegen-units=1,
 # panic=abort, strip=true) it saves only ~15 KB raw / ~10 KB gzipped
 # (<0.1%) — not worth the build dependency or the extra build time.
 
-# Step 3: Extract version from Cargo.toml
+# Extract version and create package.json from template
 VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "quillmark-wasm") | .version')
-
-# Step 4: Create package.json from template
+if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+    echo "ERROR: could not determine quillmark-wasm version from cargo metadata." >&2
+    exit 1
+fi
+echo ""
 echo "Creating package.json..."
 sed "s/VERSION_PLACEHOLDER/$VERSION/" crates/bindings/wasm/package.template.json > pkg/package.json
 
-# Step 5: Copy README, CHANGELOG, and LICENSE files
+# Copy README, CHANGELOG, and LICENSE files
 if [ -f "crates/bindings/wasm/README.md" ]; then
     cp crates/bindings/wasm/README.md pkg/
 fi
-
 # Ship the workspace changelog so npmjs renders a Changelog tab for the
 # published package (it is listed in package.template.json's "files").
 if [ -f "CHANGELOG.md" ]; then
     cp CHANGELOG.md pkg/
 fi
-
 if [ -f "LICENSE-MIT" ]; then
     cp LICENSE-MIT pkg/
 fi
-
 if [ -f "LICENSE-APACHE" ]; then
     cp LICENSE-APACHE pkg/
 fi
 
-# Step 6: Create .gitignore for pkg directory
+# .gitignore for pkg directory
 cat > pkg/.gitignore << EOF
 *
 !.gitignore
@@ -97,21 +123,45 @@ EOF
 
 echo ""
 echo "WASM build complete!"
-echo "Output directory: pkg/"
+echo "Output directory: pkg/  (core/ + render/)"
 echo "Package version: $VERSION"
 
-# Show sizes (raw, gzip, brotli — transport size is what matters for delivery).
+# Show sizes — transport size (gzip/brotli) is what matters for delivery.
 report_size() {
     local label="$1" file="$2"
     [ -f "$file" ] || return 0
     local raw gz br
     raw=$(du -h "$file" | cut -f1)
-    gz=$(gzip -9 -c "$file" 2>/dev/null | wc -c | awk '{printf "%.1fM", $1/1048576}')
+    gz=$(gzip -9 -c "$file" 2>/dev/null | wc -c | awk '{printf "%.2fM", $1/1048576}')
     if command -v brotli &> /dev/null; then
-        br=$(brotli -9 -c "$file" 2>/dev/null | wc -c | awk '{printf "%.1fM", $1/1048576}')
+        br=$(brotli -9 -c "$file" 2>/dev/null | wc -c | awk '{printf "%.2fM", $1/1048576}')
         echo "WASM size ($label): raw=$raw gzip=$gz brotli=$br"
     else
         echo "WASM size ($label): raw=$raw gzip=$gz"
     fi
 }
-report_size "bundler" pkg/bundler/wasm_bg.wasm
+report_size "core"   pkg/core/wasm_bg.wasm
+report_size "render" pkg/render/wasm_bg.wasm
+
+# Size budget on the core artifact: the split only pays off if core stays
+# Typst-free. Typst is megabytes, so a leak back into the no-features build
+# would blow past this ceiling — fail rather than ship it silently. The gzip
+# ceiling sits well above core's real size and far below anything carrying Typst.
+#
+# Only enforced on the size-optimized release profile (where the artifact
+# publishes); the `wasm-ci` profile is unoptimized, so its size is meaningless
+# here.
+CORE_MAX_GZIP_BYTES=${CORE_MAX_GZIP_BYTES:-1500000}
+if [ -f pkg/core/wasm_bg.wasm ] && [ "$PROFILE" = "wasm-release" ]; then
+    core_gz_bytes=$(gzip -9 -c pkg/core/wasm_bg.wasm | wc -c | tr -d '[:space:]')
+    if ! [ "$core_gz_bytes" -gt 0 ] 2>/dev/null; then
+        echo "ERROR: could not measure core wasm gzip size (got '${core_gz_bytes}')." >&2
+        exit 1
+    fi
+    if [ "$core_gz_bytes" -gt "$CORE_MAX_GZIP_BYTES" ]; then
+        echo "ERROR: core wasm gzip ${core_gz_bytes} B exceeds budget ${CORE_MAX_GZIP_BYTES} B." >&2
+        echo "       Typst or another heavy dep has leaked into the core (no-features) build." >&2
+        exit 1
+    fi
+    echo "Core size budget OK: ${core_gz_bytes} B <= ${CORE_MAX_GZIP_BYTES} B gzip"
+fi

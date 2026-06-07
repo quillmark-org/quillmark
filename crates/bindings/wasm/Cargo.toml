@@ -12,8 +12,12 @@ publish = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-quillmark = { workspace = true }
-quillmark-typst = { workspace = true }
+# Direct path dep (not `workspace = true`) so `default-features = false` is
+# honoured — workspace inheritance forces the default `typst` feature on, which
+# would pull Typst into the core build. This crate is `publish = false`, so no
+# version pin is needed. `render` re-enables Typst via `quillmark/typst`.
+quillmark = { path = "../../quillmark", default-features = false }
+quillmark-typst = { workspace = true, optional = true }
 quillmark-core = { workspace = true }
 wasm-bindgen = "0.2"
 serde = { workspace = true }
@@ -23,13 +27,24 @@ serde-wasm-bindgen = "0.6"
 tsify = { version = "0.4.5", features = ["js"] }
 console_error_panic_hook = "0.1"
 js-sys = "0.3"
-web-sys = { version = "0.3", features = [
+web-sys = { version = "0.3", optional = true, features = [
     "CanvasRenderingContext2d",
     "HtmlCanvasElement",
     "ImageData",
     "OffscreenCanvas",
     "OffscreenCanvasRenderingContext2d",
 ] }
+
+[features]
+# Two artifacts from one crate. The boundary is *which types exist*, not
+# feature-gated methods inside a shared type (see
+# prose/proposals/wasm-bindings-split.md).
+default = ["render"]
+# Render build: the Typst-backed engine, RenderSession, and canvas preview.
+# Strict API superset of core; ~8MB of Typst is ~96% of the artifact.
+render = ["dep:quillmark-typst", "quillmark/typst", "dep:web-sys"]
+# Core build = no features: Document + Quill (parse / load / validate / schema
+# / seed / blueprint). No engine, no Typst — ~0.34MB gzipped.
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

@@ -6,28 +6,29 @@
 //! ## Quick Start
 //!
 //! ```no_run
-//! use quillmark::{Document, OutputFormat, Quillmark, RenderOptions};
+//! use quillmark::{quill_from_path, Document, OutputFormat, Quillmark, RenderOptions};
 //!
+//! let quill = quill_from_path("path/to/quill").unwrap();
 //! let engine = Quillmark::new();
-//! let quill = engine.quill_from_path("path/to/quill").unwrap();
 //!
 //! let parsed = Document::from_markdown("~~~\n$quill: my_quill\n$kind: main\ntitle: Hello\n~~~\n\n# Hello World").unwrap();
-//! let result = quill.render(&parsed, &RenderOptions {
+//! let result = engine.render(&quill, &parsed, &RenderOptions {
 //!     output_format: Some(OutputFormat::Pdf),
 //!     ..Default::default()
 //! }).unwrap();
 //! ```
 
-// Re-export core types for convenience. Note: `QuillSource` is not re-exported
-// at the crate root — Quillmark consumers work with the renderable `Quill`.
+// Re-export core types for convenience. `Quill` is the single quill type
+// (engine-free, validated data); construct it from an in-memory tree with
+// `Quill::from_tree`, or from disk with the `quill_from_path` helper below.
 pub use quillmark_core::{
-    Artifact, Backend, Card, Diagnostic, Document, Location, OutputFormat, ParseError,
-    ParseOutput, RenderError, RenderOptions, RenderResult, RenderSession, Severity,
+    Artifact, Backend, Card, Diagnostic, Document, Location, OutputFormat, ParseError, ParseOutput,
+    Quill, RenderError, RenderOptions, RenderResult, RenderSession, Severity,
 };
 
 // Declare modules
+mod load;
 pub mod orchestration;
-pub mod seed;
 
-// Re-export types from orchestration module
-pub use orchestration::{Quill, Quillmark};
+pub use load::quill_from_path;
+pub use orchestration::Quillmark;

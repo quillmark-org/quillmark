@@ -31,7 +31,7 @@ pub fn execute(args: InfoArgs) -> Result<()> {
 }
 
 fn print_json(quill: &quillmark::Quill) -> Result<()> {
-    let source = quill.source();
+    let source = quill;
     // Build a JSON object with the metadata
     let mut info = serde_json::Map::new();
     info.insert(
@@ -94,7 +94,7 @@ fn print_json(quill: &quillmark::Quill) -> Result<()> {
 }
 
 fn print_human_readable(quill: &quillmark::Quill) {
-    let source = quill.source();
+    let source = quill;
     let metadata = source.metadata();
     let config = source.config();
     println!("Quill: {}", source.name());

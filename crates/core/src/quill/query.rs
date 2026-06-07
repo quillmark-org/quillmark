@@ -1,9 +1,9 @@
-//! QuillSource file/query convenience methods.
+//! Quill file/query convenience methods.
 use std::path::{Path, PathBuf};
 
-use super::{FileTreeNode, QuillSource};
+use super::{FileTreeNode, Quill};
 
-impl QuillSource {
+impl Quill {
     /// Get file contents by path (relative to quill root)
     pub fn get_file<P: AsRef<Path>>(&self, path: P) -> Option<&[u8]> {
         self.files.get_file(path)

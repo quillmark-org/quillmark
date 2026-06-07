@@ -65,9 +65,9 @@ fn load_dir(
 }
 
 /// Test helper: filesystem equivalent of the old `Quill::from_path`.
-fn load_from_path<P: AsRef<Path>>(path: P) -> Result<QuillSource, Box<dyn StdError + Send + Sync>> {
+fn load_from_path<P: AsRef<Path>>(path: P) -> Result<Quill, Box<dyn StdError + Send + Sync>> {
     let tree = load_tree(path.as_ref())?;
-    QuillSource::from_tree(tree).map_err(|diags| {
+    Quill::from_tree(tree).map_err(|diags| {
         diags
             .iter()
             .map(|d| d.fmt_pretty())
@@ -305,7 +305,7 @@ fn test_from_tree() {
     let root = FileTreeNode::Directory { files: root_files };
 
     // Create Quill from tree
-    let quill = QuillSource::from_tree(root).unwrap();
+    let quill = Quill::from_tree(root).unwrap();
 
     // Validate the quill
     assert_eq!(quill.name(), "test_from_tree");
@@ -351,7 +351,7 @@ fn test_from_tree_structure_direct() {
 
     let root = FileTreeNode::Directory { files: root_files };
 
-    let quill = QuillSource::from_tree(root).unwrap();
+    let quill = Quill::from_tree(root).unwrap();
 
     assert_eq!(quill.name(), "direct_tree");
     assert!(quill.file_exists("src/main.rs"));
@@ -423,7 +423,7 @@ fn test_dir_exists_and_list_apis() {
     );
 
     let root = FileTreeNode::Directory { files: root_files };
-    let quill = QuillSource::from_tree(root).unwrap();
+    let quill = Quill::from_tree(root).unwrap();
 
     // Test dir_exists
     assert!(quill.dir_exists("assets"));
@@ -506,7 +506,7 @@ main:
     let root = FileTreeNode::Directory { files: root_files };
 
     // Create Quill from tree
-    let quill = QuillSource::from_tree(root).unwrap();
+    let quill = Quill::from_tree(root).unwrap();
 
     // Validate field schemas were parsed from QuillConfig
     assert_eq!(quill.config.main.fields.len(), 3);
@@ -622,7 +622,7 @@ fn test_quill_without_plate_file() {
     let root = FileTreeNode::Directory { files: root_files };
 
     // Create Quill from tree
-    let quill = QuillSource::from_tree(root).unwrap();
+    let quill = Quill::from_tree(root).unwrap();
 
     // Validate that plate is null (will use auto plate)
     assert!(quill.plate.clone().is_none());
@@ -907,7 +907,7 @@ typst:
     );
 
     let root = FileTreeNode::Directory { files: root_files };
-    let quill = QuillSource::from_tree(root).unwrap();
+    let quill = Quill::from_tree(root).unwrap();
 
     // Verify metadata includes backend and description
     assert!(quill.metadata.contains_key("backend"));
@@ -954,7 +954,7 @@ main:
     );
 
     let root = FileTreeNode::Directory { files: root_files };
-    let quill = QuillSource::from_tree(root).unwrap();
+    let quill = Quill::from_tree(root).unwrap();
 
     // Extract defaults
     let defaults = quill.config.main.defaults();

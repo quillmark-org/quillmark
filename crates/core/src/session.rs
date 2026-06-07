@@ -39,9 +39,13 @@ impl RenderSession {
         &*self.inner
     }
 
-    /// Attach session-level warnings. Appended to [`RenderResult::warnings`]
-    /// on every [`RenderSession::render`] call and surfaced verbatim by
-    /// [`RenderSession::warnings`].
+    /// Attach session-level warnings, surfaced by [`RenderSession::warnings`]
+    /// and appended to [`RenderResult::warnings`] on every
+    /// [`RenderSession::render`] call.
+    ///
+    /// A [`Backend`](crate::Backend) chains this onto the session it returns
+    /// from `open` to carry non-fatal open-time diagnostics. The built-in Typst
+    /// backend emits none, so the channel stays empty unless a backend opts in.
     pub fn with_warnings(mut self, warnings: Vec<Diagnostic>) -> Self {
         self.warnings = warnings;
         self
@@ -51,12 +55,9 @@ impl RenderSession {
         self.inner.page_count()
     }
 
-    /// Snapshot of session-level warnings attached at `Backend::open` time.
-    ///
-    /// Empty when the backend produced none. These are also appended to
-    /// [`RenderResult::warnings`] on each [`RenderSession::render`] call;
-    /// this accessor surfaces them to consumers (e.g. canvas previews) that
-    /// don't go through `render()`.
+    /// Session-level warnings attached at `Backend::open` time, also appended
+    /// to [`RenderResult::warnings`] on each [`RenderSession::render`] call.
+    /// Exposed for consumers (e.g. canvas previews) that never call `render()`.
     pub fn warnings(&self) -> &[Diagnostic] {
         &self.warnings
     }

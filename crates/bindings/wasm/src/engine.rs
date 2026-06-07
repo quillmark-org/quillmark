@@ -1,9 +1,13 @@
 //! Quillmark WASM Engine - Simplified API
 
 use crate::error::WasmError;
-use crate::types::{Diagnostic, RenderOptions, RenderResult};
+use crate::types::Diagnostic;
+#[cfg(feature = "render")]
+use crate::types::{RenderOptions, RenderResult};
 use js_sys::{Array, Uint8Array};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
+#[cfg(feature = "render")]
+use serde::Deserialize;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
@@ -76,7 +80,9 @@ export interface QuillSchema {
 
 /**
  * Identity snapshot mirroring the `quill:` section of `Quill.yaml`.
- * The schema lives on `Quill.schema`.
+ * The schema lives on `Quill.schema`; the backend's output formats are a
+ * resolved-backend capability read from the engine (`Quillmark.supportedFormats`),
+ * not part of this pure-config snapshot.
  * Extra `quill:` keys appear as `unknown`.
  */
 export interface QuillMetadata {
@@ -85,7 +91,6 @@ export interface QuillMetadata {
     backend: string;
     author: string;
     description: string;
-    supportedFormats: OutputFormat[];
     [key: string]: unknown;
 }
 "#;
@@ -124,12 +129,6 @@ export interface Card {
 }
 "#;
 
-/// Backend identifier for the only canvas-capable backend today. Both
-/// `Quill::supportsCanvas` and `RenderSession::supportsCanvas` route
-/// through this so the two APIs can't drift; if a second canvas backend
-/// ever ships, replace this with a richer check.
-const CANVAS_BACKEND_ID: &str = "typst";
-
 /// Maximum backing-store dimension the painter will produce, in device
 /// pixels per side. Real browser limits vary (~32k on Chrome/Firefox,
 /// 16k on Safari, lower on memory-constrained devices); 16384 is the
@@ -138,8 +137,10 @@ const CANVAS_BACKEND_ID: &str = "typst";
 /// `densityScale` proportionally and surfaces the actual backing
 /// dimensions in the returned `PaintResult` so consumers can detect the
 /// clamp.
+#[cfg(feature = "render")]
 const MAX_BACKING_DIMENSION: u32 = 16384;
 
+#[cfg(feature = "render")]
 fn now_ms() -> f64 {
     #[cfg(target_arch = "wasm32")]
     {
@@ -156,6 +157,9 @@ fn now_ms() -> f64 {
     }
 }
 
+/// Render engine: a backend registry and render dispatcher. Render build only —
+/// the core build constructs and validates quills without it.
+#[cfg(feature = "render")]
 #[wasm_bindgen]
 pub struct Quillmark {
     inner: quillmark::Quillmark,
@@ -172,10 +176,14 @@ pub struct Quill {
 /// (`pageCount === 0`); `paint(ctx, 0)` or `pageSize(0)` throws with
 /// `"page index 0 out of range (pageCount=0)"`. Branch on `pageCount === 0`
 /// rather than catching the error.
+#[cfg(feature = "render")]
 #[wasm_bindgen]
 pub struct RenderSession {
     inner: quillmark_core::RenderSession,
     backend_id: String,
+    /// Canvas capability of the backend that produced this session, captured
+    /// at open time. Mirrors the engine's `supportsCanvas`.
+    supports_canvas: bool,
 }
 
 /// Typed in-memory Quillmark document.
@@ -186,12 +194,14 @@ pub struct Document {
     parse_warnings: Vec<quillmark_core::Diagnostic>,
 }
 
+#[cfg(feature = "render")]
 impl Default for Quillmark {
     fn default() -> Self {
         Self::new()
     }
 }
 
+#[cfg(feature = "render")]
 #[wasm_bindgen]
 impl Quillmark {
     #[wasm_bindgen(constructor)]
@@ -201,31 +211,27 @@ impl Quillmark {
         }
     }
 
-    /// Load a quill from a file tree and attach the appropriate backend.
-    ///
-    /// Accepts either a `Map<string, Uint8Array>` or a plain object
-    /// (`Record<string, Uint8Array>`). Plain objects are walked via
-    /// `Object.entries` at the boundary; the Rust side sees a single
-    /// canonical shape.
-    #[wasm_bindgen(js_name = quill)]
-    pub fn quill(
-        &self,
-        #[wasm_bindgen(unchecked_param_type = "Map<string, Uint8Array>")] tree: JsValue,
-    ) -> Result<Quill, JsValue> {
-        let root = file_tree_from_js_tree(&tree)?;
-        let quill = self
+    /// Open an iterative render session for `doc` against `quill`'s backend.
+    #[wasm_bindgen(js_name = open)]
+    pub fn open(&self, quill: &Quill, doc: &Document) -> Result<RenderSession, JsValue> {
+        let session = self
             .inner
-            .quill(root)
+            .open(&quill.inner, &doc.inner)
             .map_err(|e| WasmError::from(e).to_js_value())?;
-        Ok(Quill { inner: quill })
+        Ok(RenderSession {
+            inner: session,
+            backend_id: quill.inner.backend_id().to_string(),
+            supports_canvas: self.inner.supports_canvas(&quill.inner),
+        })
     }
-}
 
-#[wasm_bindgen]
-impl Quill {
+    /// Render `doc` against `quill` in one shot. Convenience over `open` +
+    /// `RenderSession.render`: an unset `output_format` falls back to the
+    /// backend's first supported format.
     #[wasm_bindgen(js_name = render)]
     pub fn render(
         &self,
+        quill: &Quill,
         doc: &Document,
         opts: Option<RenderOptions>,
     ) -> Result<RenderResult, JsValue> {
@@ -233,7 +239,7 @@ impl Quill {
         let rust_opts: quillmark_core::RenderOptions = opts.unwrap_or_default().into();
         let result = self
             .inner
-            .render(&doc.inner, &rust_opts)
+            .render(&quill.inner, &doc.inner, &rust_opts)
             .map_err(|e| WasmError::from(e).to_js_value())?;
         let mut warnings: Vec<Diagnostic> =
             doc.parse_warnings.iter().cloned().map(Into::into).collect();
@@ -246,35 +252,61 @@ impl Quill {
         })
     }
 
-    #[wasm_bindgen(js_name = open)]
-    pub fn open(&self, doc: &Document) -> Result<RenderSession, JsValue> {
-        let session = self
+    /// The output formats `quill`'s backend can emit. Static capability —
+    /// resolves the backend but compiles nothing. Throws `UnsupportedBackend`
+    /// if no registered backend matches the quill's declared backend.
+    #[wasm_bindgen(js_name = supportedFormats, unchecked_return_type = "OutputFormat[]")]
+    pub fn supported_formats(&self, quill: &Quill) -> Result<JsValue, JsValue> {
+        let formats = self
             .inner
-            .open(&doc.inner)
+            .supported_formats(&quill.inner)
             .map_err(|e| WasmError::from(e).to_js_value())?;
-        Ok(RenderSession {
-            inner: session,
-            backend_id: self.inner.backend_id().to_string(),
+        let out: Vec<crate::types::OutputFormat> = formats.iter().map(|f| (*f).into()).collect();
+        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        out.serialize(&serializer).map_err(|e| {
+            WasmError::from(format!("supportedFormats: serialization failed: {e}")).to_js_value()
         })
     }
 
-    /// The resolved backend identifier (e.g. `"typst"`).
+    /// `true` iff `quill`'s backend can paint sessions to a canvas. Asked of
+    /// the real backend; `false` when the backend is unsupported or non-canvas.
+    /// Use as a precondition probe before mounting a canvas-based preview UI.
+    #[wasm_bindgen(js_name = supportsCanvas)]
+    pub fn supports_canvas(&self, quill: &Quill) -> bool {
+        self.inner.supports_canvas(&quill.inner)
+    }
+}
+
+#[wasm_bindgen]
+impl Quill {
+    /// Build a quill from a file tree. Pure — no backend, no engine; the
+    /// declared backend is resolved later, at render time.
+    ///
+    /// Accepts either a `Map<string, Uint8Array>` or a plain object
+    /// (`Record<string, Uint8Array>`). Plain objects are walked via
+    /// `Object.entries` at the boundary; the Rust side sees a single
+    /// canonical shape.
+    #[wasm_bindgen(js_name = fromTree)]
+    pub fn from_tree(
+        #[wasm_bindgen(unchecked_param_type = "Map<string, Uint8Array>")] tree: JsValue,
+    ) -> Result<Quill, JsValue> {
+        let root = file_tree_from_js_tree(&tree)?;
+        let quill = quillmark::Quill::from_tree(root)
+            .map_err(|diags| WasmError { diagnostics: diags }.to_js_value())?;
+        Ok(Quill { inner: quill })
+    }
+
+    /// The *declared* backend identifier (`config.backend`, e.g. `"typst"`).
+    /// Intent, not a resolved capability — capability (`supportedFormats` /
+    /// `supportsCanvas`) is read from the engine.
     #[wasm_bindgen(getter, js_name = backendId)]
     pub fn backend_id(&self) -> String {
         self.inner.backend_id().to_string()
     }
 
-    /// `true` iff `RenderSession.paint` and `RenderSession.pageSize` will
-    /// succeed for sessions opened by this quill. Use as a precondition
-    /// probe before mounting a canvas-based preview UI.
-    #[wasm_bindgen(getter, js_name = supportsCanvas)]
-    pub fn supports_canvas(&self) -> bool {
-        self.inner.backend_id() == CANVAS_BACKEND_ID
-    }
-
     #[wasm_bindgen(getter, js_name = blueprint)]
     pub fn blueprint(&self) -> String {
-        self.inner.source().config().blueprint()
+        self.inner.config().blueprint()
     }
 
     /// Document schema for the quill: the user-fillable fields plus their
@@ -283,16 +315,18 @@ impl Quill {
     /// `QuillSchema` shape.
     #[wasm_bindgen(getter, js_name = schema, unchecked_return_type = "QuillSchema")]
     pub fn schema(&self) -> JsValue {
-        let value = self.inner.source().config().schema();
+        let value = self.inner.config().schema();
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         value.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
     }
 
-    /// Identity snapshot of the `quill:` section of `Quill.yaml`, plus
-    /// `supportedFormats` and any extra `quill:` keys.
+    /// Identity snapshot of the `quill:` section of `Quill.yaml` plus any extra
+    /// `quill:` keys. Pure config — the backend's output formats are a
+    /// resolved-backend capability read from the engine
+    /// (`Quillmark.supportedFormats`), not part of this snapshot.
     #[wasm_bindgen(getter, js_name = metadata, unchecked_return_type = "QuillMetadata")]
     pub fn metadata(&self) -> JsValue {
-        let source = self.inner.source();
+        let source = &self.inner;
         let config = source.config();
 
         let mut obj = serde_json::Map::new();
@@ -315,20 +349,6 @@ impl Quill {
         obj.insert(
             "description".to_string(),
             serde_json::Value::String(config.description.clone()),
-        );
-
-        let formats: Vec<serde_json::Value> = self
-            .inner
-            .supported_formats()
-            .iter()
-            .map(|f| {
-                let wasm_format: crate::types::OutputFormat = (*f).into();
-                serde_json::to_value(wasm_format).unwrap_or(serde_json::Value::Null)
-            })
-            .collect();
-        obj.insert(
-            "supportedFormats".to_string(),
-            serde_json::Value::Array(formats),
         );
 
         // Unstructured keys declared under `quill:` (excluding fields already
@@ -1078,6 +1098,7 @@ fn js_bytes_for_tree_entry(path: &str, value: JsValue) -> Result<Vec<u8>, JsValu
 }
 
 /// TypeScript declarations for the canvas-preview surface.
+#[cfg(feature = "render")]
 #[wasm_bindgen(typescript_custom_section)]
 const CANVAS_PREVIEW_TS: &'static str = r#"
 /**
@@ -1150,6 +1171,7 @@ export interface PaintResult {
 }
 "#;
 
+#[cfg(feature = "render")]
 #[wasm_bindgen]
 impl RenderSession {
     #[wasm_bindgen(getter, js_name = pageCount)]
@@ -1163,10 +1185,11 @@ impl RenderSession {
         self.backend_id.clone()
     }
 
-    /// `true` iff `paint` and `pageSize` will succeed for this session.
+    /// `true` iff `paint` and `pageSize` will succeed for this session. The
+    /// backend's canvas capability, captured at open time.
     #[wasm_bindgen(getter, js_name = supportsCanvas)]
     pub fn supports_canvas(&self) -> bool {
-        self.backend_id == CANVAS_BACKEND_ID
+        self.supports_canvas
     }
 
     /// Non-fatal diagnostics emitted when opening the session. Also appended
@@ -1312,6 +1335,7 @@ impl RenderSession {
     }
 }
 
+#[cfg(feature = "render")]
 impl RenderSession {
     fn typst_session(&self, op: &str) -> Result<&quillmark_typst::TypstSession, JsValue> {
         quillmark_typst::typst_session_of(&self.inner).ok_or_else(|| {
@@ -1332,11 +1356,13 @@ impl RenderSession {
     }
 }
 
+#[cfg(feature = "render")]
 enum CanvasCtx<'a> {
     OnScreen(&'a web_sys::CanvasRenderingContext2d),
     OffScreen(&'a web_sys::OffscreenCanvasRenderingContext2d),
 }
 
+#[cfg(feature = "render")]
 impl<'a> CanvasCtx<'a> {
     fn from_js(ctx: &'a JsValue) -> Result<Self, JsValue> {
         if let Some(c) = ctx.dyn_ref::<web_sys::CanvasRenderingContext2d>() {
@@ -1378,6 +1404,7 @@ impl<'a> CanvasCtx<'a> {
     }
 }
 
+#[cfg(feature = "render")]
 #[derive(Serialize)]
 struct PageSize {
     #[serde(rename = "widthPt")]
@@ -1386,6 +1413,7 @@ struct PageSize {
     height_pt: f32,
 }
 
+#[cfg(feature = "render")]
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PaintOptions {
@@ -1395,6 +1423,7 @@ struct PaintOptions {
     density_scale: Option<f32>,
 }
 
+#[cfg(feature = "render")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PaintResult {

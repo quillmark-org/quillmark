@@ -18,7 +18,7 @@ pub struct BlueprintArgs {
 pub fn execute(args: BlueprintArgs) -> Result<()> {
     let quill = load_quill(&args.quill)?;
 
-    let blueprint = quill.source().config().blueprint();
+    let blueprint = quill.config().blueprint();
 
     // Output
     if let Some(output_path) = args.output {

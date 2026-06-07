@@ -8,7 +8,7 @@ use typst::utils::LazyHash;
 use typst::{Library, World};
 
 use crate::helper;
-use quillmark_core::QuillSource;
+use quillmark_core::Quill;
 
 static FALLBACK_REGULAR: &[u8] = include_bytes!("fonts/Figtree-Regular.ttf");
 static FALLBACK_BOLD: &[u8] = include_bytes!("fonts/Figtree-Bold.ttf");
@@ -31,7 +31,7 @@ pub struct QuillWorld {
 impl QuillWorld {
     /// Create a new QuillWorld from a quill template and Typst content
     pub fn new(
-        source: &QuillSource,
+        source: &Quill,
         main: &str,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut sources = HashMap::new();
@@ -96,7 +96,7 @@ impl QuillWorld {
     /// * `main` - The main Typst content to compile
     /// * `json_data` - JSON string containing document data
     pub fn new_with_data(
-        source: &QuillSource,
+        source: &Quill,
         main: &str,
         json_data: &str,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
@@ -136,7 +136,7 @@ impl QuillWorld {
 
     /// Loads fonts from quill's in-memory file system.
     fn load_fonts_from_quill(
-        source: &QuillSource,
+        source: &Quill,
     ) -> Result<Vec<Vec<u8>>, Box<dyn std::error::Error + Send + Sync>> {
         let mut font_data = Vec::new();
 
@@ -175,7 +175,7 @@ impl QuillWorld {
 
     /// Loads assets from quill's in-memory file system.
     fn load_assets_from_quill(
-        source: &QuillSource,
+        source: &Quill,
         binaries: &mut HashMap<FileId, Bytes>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Get all files that start with "assets/"
@@ -195,7 +195,7 @@ impl QuillWorld {
 
     /// Loads packages from quill's in-memory file system.
     fn load_packages_from_quill(
-        source: &QuillSource,
+        source: &Quill,
         sources: &mut HashMap<FileId, Source>,
         binaries: &mut HashMap<FileId, Bytes>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -265,7 +265,7 @@ impl QuillWorld {
 
     /// Loads files from a package directory in quill's in-memory file system.
     fn load_package_files_from_quill(
-        source: &QuillSource,
+        source: &Quill,
         package_dir: &Path,
         sources: &mut HashMap<FileId, Source>,
         binaries: &mut HashMap<FileId, Bytes>,
@@ -504,7 +504,7 @@ name = "minimal-package"
         use std::fs;
         use std::path::{Path, PathBuf};
 
-        use quillmark_core::{FileTreeNode, QuillSource};
+        use quillmark_core::{FileTreeNode, Quill};
 
         fn walk(dir: &Path) -> std::io::Result<FileTreeNode> {
             let mut files = HashMap::new();
@@ -544,7 +544,7 @@ name = "minimal-package"
         }
 
         let tree = walk(&quill_path).expect("walk fixture");
-        let source = QuillSource::from_tree(tree).expect("load source");
+        let source = Quill::from_tree(tree).expect("load source");
         let world = QuillWorld::new(&source, "// Test").unwrap();
 
         // Asset fonts should be loaded

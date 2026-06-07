@@ -71,7 +71,7 @@ beforeAll(() => {
   globalThis.OffscreenCanvasRenderingContext2D = FakeOffscreenCanvasRenderingContext2D
 })
 
-const { Quillmark, Document } = await import('@quillmark-wasm')
+const { Quillmark, Quill, Document } = await import('@quillmark-wasm')
 const { makeQuill } = await import('./test-helpers.js')
 
 const TEST_MARKDOWN = `~~~card-yaml
@@ -90,19 +90,21 @@ const TEST_PLATE = `#import "@local/quillmark-helper:0.1.0": data
 
 function openQuill() {
   const engine = new Quillmark()
-  return engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+  const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+  return { engine, quill }
 }
 
 function openSession() {
-  return openQuill().open(Document.fromMarkdown(TEST_MARKDOWN))
+  const { engine, quill } = openQuill()
+  return engine.open(quill, Document.fromMarkdown(TEST_MARKDOWN))
 }
 
 describe('RenderSession canvas preview', () => {
   it('exposes pageCount, backendId, supportsCanvas, warnings, and pageSize on a Typst session', () => {
-    const quill = openQuill()
-    expect(quill.supportsCanvas).toBe(true)
+    const { engine, quill } = openQuill()
+    expect(engine.supportsCanvas(quill)).toBe(true)
 
-    const session = quill.open(Document.fromMarkdown(TEST_MARKDOWN))
+    const session = engine.open(quill, Document.fromMarkdown(TEST_MARKDOWN))
     expect(session.pageCount).toBeGreaterThan(0)
     expect(session.backendId).toBe('typst')
     expect(session.supportsCanvas).toBe(true)

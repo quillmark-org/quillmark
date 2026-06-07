@@ -10,11 +10,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use lopdf::Object;
-use quillmark_core::{Backend, FileTreeNode, OutputFormat, QuillSource, RenderOptions};
+use quillmark_core::{Backend, FileTreeNode, OutputFormat, Quill, RenderOptions};
 use quillmark_typst::compile::compile_to_pdf;
 use quillmark_typst::TypstBackend;
 
-fn host_source() -> QuillSource {
+fn host_source() -> Quill {
     fn walk(dir: &Path) -> std::io::Result<FileTreeNode> {
         let mut files = HashMap::new();
         for entry in fs::read_dir(dir)? {
@@ -44,7 +44,7 @@ fn host_source() -> QuillSource {
         .join("quills")
         .join("usaf_memo")
         .join("0.2.0");
-    QuillSource::from_tree(walk(&quill_path).expect("walk fixture")).expect("load source")
+    Quill::from_tree(walk(&quill_path).expect("walk fixture")).expect("load source")
 }
 
 const PLATE: &str = "#set page(width: 400pt, height: 300pt)\n= Hello\n";

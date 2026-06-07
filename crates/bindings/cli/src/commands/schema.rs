@@ -18,7 +18,7 @@ pub struct SchemaArgs {
 pub fn execute(args: SchemaArgs) -> Result<()> {
     let quill = load_quill(&args.quill)?;
 
-    let config = quill.source().config();
+    let config = quill.config();
     let schema_yaml = config
         .schema_yaml()
         .map_err(|e| CliError::InvalidArgument(format!("Failed to serialize schema: {}", e)))?;

@@ -1,4 +1,4 @@
-use quillmark_wasm::Quillmark;
+use quillmark_wasm::Quill;
 use wasm_bindgen_test::*;
 
 mod common;
@@ -12,7 +12,6 @@ fn test_quill_from_tree_with_ui_metadata() {
         ),
         ("plate.typ", b"= Title"),
     ]);
-    let engine = Quillmark::new();
-    let quill = engine.quill(tree).expect("quill failed");
+    let quill = Quill::from_tree(tree).expect("quill failed");
     let _ = quill;
 }

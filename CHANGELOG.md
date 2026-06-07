@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- **Breaking (Rust API + bindings):** `Quill` is now engine-free, validated
+  data. It no longer holds a backend; the `Quillmark` engine becomes a backend
+  registry + render dispatcher. Rendering and capability move onto the engine:
+  `render` / `open` / `supported_formats` / `supports_canvas` take `&quill`
+  (JS: `engine.render(quill, doc)` etc.). The `engine.quill` / `quill_from_path`
+  factory is removed — construct with `Quill::from_tree` (JS `Quill.fromTree`)
+  or `quillmark::quill_from_path`. The backend-existence
+  check moves from load time to render time (`UnsupportedBackend` now surfaces
+  from the first engine call). `supportedFormats` leaves `Quill.metadata` (now
+  pure config) for `engine.supportedFormats(quill)`. `Backend` gains a
+  `supports_canvas()` capability method (default `false`; Typst `true`),
+  retiring the `backend_id == "typst"` magic string. See
+  [migration guide](docs/migrations/0.89-to-0.90.md).
+- **Breaking (Rust API):** `QuillSource` and the orchestration `Quill` collapse
+  into one core type, `quillmark_core::Quill` (held by value; the vestigial
+  `Arc` is dropped). `Backend::open` now takes `&Quill`; the consumer methods
+  and the `seed` module move into core; `quill.source()` is gone
+  (`quill.config()` is direct). Bindings already hid `QuillSource`, so JS/Python
+  consumers are unaffected by the rename.
+- **WASM packaging:** `@quillmark/wasm` now ships **two builds** from one crate,
+  gated by a `render` cargo feature — a Typst-less **core**
+  (`@quillmark/wasm/core`, ~0.66 MB gzip: `Document` + `Quill` for load /
+  validate / schema / seed / blueprint) and a Typst-backed **render** superset
+  (the root `@quillmark/wasm` import, ~8 MB: engine + `RenderSession` + canvas).
+  A release-time size budget guards the core artifact against Typst regressions.
 - **Breaking (Rust API + bindings):** a document's `$quill` reference is now
   **enforced** against the loaded quill. Rendering with a quill whose *name*
   differs (`quill::name_mismatch`) or whose *version* falls outside the selector

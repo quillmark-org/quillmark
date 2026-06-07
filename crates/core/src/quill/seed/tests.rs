@@ -3,9 +3,9 @@
 
 use std::collections::HashMap;
 
-use quillmark_core::quill::FileTreeNode;
+use crate::quill::FileTreeNode;
 
-use crate::{Quill, Quillmark};
+use crate::Quill;
 
 /// Build a minimal [`Quill`] from inline YAML with no filesystem dependencies.
 fn quill_from_yaml(yaml: &str) -> Quill {
@@ -17,9 +17,7 @@ fn quill_from_yaml(yaml: &str) -> Quill {
         },
     );
     let root = FileTreeNode::Directory { files };
-    Quillmark::new()
-        .quill(root)
-        .expect("quill_from_yaml: engine.quill failed")
+    Quill::from_tree(root).expect("quill_from_yaml: Quill::from_tree failed")
 }
 
 const QUILL: &str = r#"

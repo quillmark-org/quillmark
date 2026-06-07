@@ -8,6 +8,19 @@ Maintained by [TTQ](https://tonguetoquill.com).
 
 Use Quillmark in browsers/Node.js with explicit in-memory trees (`Map<string, Uint8Array>` / `Record<string, Uint8Array>`).
 
+The package ships **two bundles**:
+
+- `@quillmark/wasm/core` — Typst-less. Load, validate, schema, seed, and
+  blueprint a `Quill`, plus the full `Document` editing API.
+- `@quillmark/wasm` (the root import) — the superset: everything in core
+  **plus** the `Quillmark` engine, `RenderSession`, and canvas painting. This is
+  where Typst lives (~8 MB gzip), so an editor that only validates should import
+  `/core` and lazy-load the root on preview.
+
+The two bundles have **separate WASM linear memories**: a `Quill` / `Document`
+handle from one is not usable in the other. Cross as data — re-feed the `tree`
+to `Quill.fromTree`, round-trip the document through `doc.toJson()`.
+
 ## Build
 
 ```bash
@@ -29,10 +42,10 @@ npm test
 ## Usage
 
 ```ts
-import { Document, Quillmark } from "@quillmark-test/wasm";
+import { Document, Quill, Quillmark } from "@quillmark/wasm";
 
-const engine = new Quillmark();
-const quill = engine.quill(tree);
+const quill = Quill.fromTree(tree);   // engine-free: build + validate
+const engine = new Quillmark();       // needed only to render
 
 const markdown = `~~~
 $quill: my_quill
@@ -43,16 +56,17 @@ title: My Document
 # Hello`;
 
 const parsed = Document.fromMarkdown(markdown);
-const result = quill.render(parsed, { format: "pdf" });
+const result = engine.render(quill, parsed, { format: "pdf" });
 ```
 
 ## API
 
 ### `new Quillmark()`
-Create engine.
+Create the render engine. Holds the backends and renders; does **not** load quills.
 
-### `engine.quill(tree)`
-Build + validate + attach backend. Returns a render-ready `Quill`.
+### `Quill.fromTree(tree)`
+Build + validate a `Quill` from an in-memory tree. Pure — the declared backend
+is resolved at render time, not here. In both the `core` and `render` bundles.
 
 ### `Document.fromMarkdown(markdown)`
 Parse markdown to a parsed document. Throws a JS `Error` (with `.diagnostics`
@@ -206,18 +220,20 @@ There is one `Card` shape in both directions — `pushCard` / `insertCard` take
 exactly what `cards` / `removeCard` / `seedCard` return. Build a fresh card
 from a flat field map with `Document.makeCard(kind, fields?, body?)`.
 
-### `quill.render(parsed, opts?)` vs. `quill.open(parsed)`
+### `engine.render(quill, parsed, opts?)` vs. `engine.open(quill, parsed)`
 
-Use **`Quill.render`** for one-shot exports (PDF/SVG/PNG) — compiles, emits
-artifacts, done. Use **`RenderSession`** (returned by `Quill.open`) for
-reactive previews where you'll paint or re-emit pages multiple times: the
-session retains the compiled snapshot so subsequent `paint` / `render`
-calls skip recompilation. Don't open a session per export.
+Use **`engine.render`** for one-shot exports (PDF/SVG/PNG) — compiles, emits
+artifacts, done. Use **`RenderSession`** (returned by `engine.open`) for
+reactive previews where
+you'll paint or re-emit pages multiple times: the session retains the compiled
+snapshot so subsequent `paint` / `render` calls skip recompilation. Don't open
+a session per export.
 
-### `quill.render(parsed, opts?)`
-Render with a pre-parsed `Document`.
+### `engine.render(quill, parsed, opts?)`
+Render a pre-parsed `Document` against `quill`. Throws `UnsupportedBackend` if
+no registered backend matches the quill's declared backend.
 
-### `quill.open(parsed)` + `session.render(opts?)`
+### `engine.open(quill, parsed)` + `session.render(opts?)`
 Open once, render all or selected pages (`opts.pages`).
 
 The session also exposes `pageCount`, `backendId`, `supportsCanvas`,
@@ -273,8 +289,8 @@ canvas.style.height = `${result.layoutHeight}px`;
   `densityScale`. Loading the WASM module inside a Worker is the host's
   responsibility.
 - Backend support: gated by `supportsCanvas`. Probe upfront with
-  `quill.supportsCanvas` (or `session.supportsCanvas`) before mounting a
-  canvas-based UI; the throw on `paint` / `pageSize` remains the
+  `engine.supportsCanvas(quill)` (or `session.supportsCanvas`) before mounting
+  a canvas-based UI; the throw on `paint` / `pageSize` remains the
   enforcement contract and includes the resolved `backendId` for
   debugging.
 
@@ -287,7 +303,7 @@ A field's *cell* is inferred from whether its schema declares a `default:`:
   (`validation::field_absent`) — the render path zero-fills it
   silently. A surviving `<must-fill>` sentinel is fatal
   (`validation::must_fill_sentinel`). Partial documents are
-  first-class; `quill.render(doc)` only throws for malformed input.
+  first-class; `engine.render(quill, doc)` only throws for malformed input.
 - **Endorsed** (with `default:`) — `quill.blueprint` renders the
   default value followed by a `; delete-ok` annotation, and the default
   is used when the document omits the field.
@@ -319,7 +335,7 @@ compilation failures. The same shape applies to every throw site:
   variants (`InvalidFieldName`, `InvalidKindName`, `ReservedKind`,
   `IndexOutOfRange`) appear in `diagnostics[0].message` with the
   `[EditError::<Variant>]` prefix.
-- `quill.render` / `session.render` — backend compilation failures and
+- `engine.render` / `session.render` — backend compilation failures and
   validation errors.
 
 ### Lifecycle
@@ -338,7 +354,7 @@ For environments where `using` (the [explicit resource management][erm]
 proposal) hasn't landed, use an explicit `try` / `finally`:
 
 ```ts
-const session = quill.open(doc);
+const session = engine.open(quill, doc);
 try {
   for (let p = 0; p < session.pageCount; p++) {
     session.paint(ctx, p);
@@ -356,8 +372,8 @@ try {
   the legacy `~~~card-yaml` opener is still accepted but non-canonical)
   with a `$quill` system-metadata line. Empty input surfaces a dedicated
   "Empty markdown input cannot be parsed" message.
-- A `$quill` mismatch during `quill.render(parsed)` is a thrown error, not a warning: rendering with a quill whose *name* differs (`quill::name_mismatch`) or whose *version* falls outside the selector (`quill::version_mismatch`) is rejected.
-- Output schema APIs are no longer engine-level in WASM.
+- A `$quill` mismatch during `engine.render(quill, parsed)` is a thrown error, not a warning: rendering with a quill whose *name* differs (`quill::name_mismatch`) or whose *version* falls outside the selector (`quill::version_mismatch`) is rejected.
+- Output schema APIs live on `Quill`, not the engine.
 
 ## Changelog
 

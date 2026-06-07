@@ -25,7 +25,7 @@ use crate::error_mapping::map_typst_errors;
 use crate::overlay;
 use crate::world::QuillWorld;
 use quillmark_core::{
-    Artifact, Diagnostic, OutputFormat, QuillSource, RenderError, RenderResult, Severity,
+    Artifact, Diagnostic, OutputFormat, Quill, RenderError, RenderResult, Severity,
 };
 
 /// Internal compilation function
@@ -47,7 +47,7 @@ fn compile_document(world: &QuillWorld) -> Result<PagedDocument, RenderError> {
 
 /// Compile Typst source into a paged document with injected JSON data.
 pub fn compile_to_document(
-    source: &QuillSource,
+    source: &Quill,
     plated_content: &str,
     json_data: &str,
 ) -> Result<PagedDocument, RenderError> {
@@ -70,7 +70,7 @@ pub fn compile_to_document(
 /// This function creates a `@local/quillmark-helper:0.1.0` package containing
 /// the JSON data, which can be imported by the plate file.
 pub fn compile_to_pdf(
-    source: &QuillSource,
+    source: &Quill,
     plated_content: &str,
     json_data: &str,
 ) -> Result<Vec<u8>, RenderError> {
@@ -95,7 +95,7 @@ pub fn compile_to_pdf(
 /// This function creates a `@local/quillmark-helper:0.1.0` package containing
 /// the JSON data, which can be imported by the plate file.
 pub fn compile_to_svg(
-    source: &QuillSource,
+    source: &Quill,
     plated_content: &str,
     json_data: &str,
 ) -> Result<Vec<Vec<u8>>, RenderError> {
@@ -124,7 +124,7 @@ const DEFAULT_PPI: f32 = 144.0;
 /// * `json_data` - JSON string containing the document data
 /// * `ppi` - Pixels per inch. Defaults to 144.0 when `None`.
 pub fn compile_to_png(
-    source: &QuillSource,
+    source: &Quill,
     plated_content: &str,
     json_data: &str,
     ppi: Option<f32>,

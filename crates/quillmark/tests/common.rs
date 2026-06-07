@@ -20,13 +20,12 @@ pub fn demo(
         quills_path(quill_dir)
     };
     let engine = quillmark::Quillmark::new();
-    let quill = engine
-        .quill_from_path(quill_path.clone())
-        .expect("Failed to load quill");
+    let quill = quillmark::quill_from_path(quill_path.clone()).expect("Failed to load quill");
 
     let parsed = quill.seed_document();
 
-    let rendered = quill.render(
+    let rendered = engine.render(
+        &quill,
         &parsed,
         &quillmark_core::RenderOptions {
             output_format: Some(quillmark_core::OutputFormat::Pdf),
