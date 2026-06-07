@@ -291,8 +291,8 @@ impl Quill {
         #[wasm_bindgen(unchecked_param_type = "Map<string, Uint8Array>")] tree: JsValue,
     ) -> Result<Quill, JsValue> {
         let root = file_tree_from_js_tree(&tree)?;
-        let quill =
-            quillmark::quill_from_tree(root).map_err(|e| WasmError::from(e).to_js_value())?;
+        let quill = quillmark::Quill::from_tree(root)
+            .map_err(|diags| WasmError { diagnostics: diags }.to_js_value())?;
         Ok(Quill { inner: quill })
     }
 

@@ -19,8 +19,8 @@
 //! ```
 
 // Re-export core types for convenience. `Quill` is the single quill type
-// (engine-free, validated data); construct it with `Quill::from_tree` or the
-// `quill_from_path` / `quill_from_tree` helpers below.
+// (engine-free, validated data); construct it from an in-memory tree with
+// `Quill::from_tree`, or from disk with the `quill_from_path` helper below.
 pub use quillmark_core::{
     Artifact, Backend, Card, Diagnostic, Document, Location, OutputFormat, ParseError, ParseOutput,
     Quill, RenderError, RenderOptions, RenderResult, RenderSession, Severity,
@@ -30,5 +30,5 @@ pub use quillmark_core::{
 mod load;
 pub mod orchestration;
 
-pub use load::{quill_from_path, quill_from_tree};
+pub use load::quill_from_path;
 pub use orchestration::Quillmark;

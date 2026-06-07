@@ -22,7 +22,7 @@ Key exports: `Backend`, `Artifact`, `OutputFormat`, `RenderOptions`, `RenderSess
 
 ### `quillmark` (orchestration)
 
-High-level API: `Quillmark` (the engine — a backend registry + render dispatcher) plus the `quill_from_path` / `quill_from_tree` loaders. Re-exports core's `Quill`. Handles backend resolution at render time and auto-registration. Filesystem walking for `quill_from_path` lives here; core is filesystem-agnostic. The engine no longer constructs quills — it only renders them.
+High-level API: `Quillmark` (the engine — a backend registry + render dispatcher) plus the `quill_from_path` loader. Re-exports core's `Quill`. Handles backend resolution at render time and auto-registration. Filesystem walking for `quill_from_path` lives here; core is filesystem-agnostic (in-memory loading is `Quill::from_tree` in core). The engine does not construct quills — it only renders them.
 
 ### `backends/quillmark-typst`
 

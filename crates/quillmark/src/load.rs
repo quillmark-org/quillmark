@@ -1,8 +1,7 @@
-//! Quill construction helpers living in `quillmark` rather than core, so that
-//! filesystem access (`quill_from_path`) stays out of the fs-agnostic core.
-//!
-//! [`quill_from_tree`] wraps core's [`Quill::from_tree`] to surface a
-//! [`RenderError`] (the engine's error type) instead of raw diagnostics.
+//! Filesystem loading for quills, kept in `quillmark` so that fs access stays
+//! out of the fs-agnostic core. [`quill_from_path`] walks a directory into a
+//! [`FileTreeNode`] and hands it to core's [`Quill::from_tree`], surfacing
+//! config errors as a [`RenderError`].
 
 use std::collections::HashMap;
 use std::error::Error as StdError;
@@ -10,15 +9,11 @@ use std::path::{Path, PathBuf};
 
 use quillmark_core::{Diagnostic, FileTreeNode, Quill, QuillIgnore, RenderError, Severity};
 
-/// Build a quill from an in-memory file tree, surfacing config errors as a
-/// [`RenderError`]. Pure — no backend, no engine; the declared backend is
-/// resolved later, at render time.
-pub fn quill_from_tree(tree: FileTreeNode) -> Result<Quill, RenderError> {
-    Quill::from_tree(tree).map_err(|diags| RenderError::QuillConfig { diags })
-}
-
 /// Load a quill from a filesystem directory. Honours a root `.quillignore`,
 /// else a default ignore set. (The fs walk lives here; core stays fs-agnostic.)
+///
+/// Pure config load — no backend, no engine; the declared backend is resolved
+/// later, at render time. For an in-memory tree, call [`Quill::from_tree`].
 pub fn quill_from_path<P: AsRef<Path>>(path: P) -> Result<Quill, RenderError> {
     let tree = load_tree_from_path(path.as_ref()).map_err(|e| RenderError::QuillConfig {
         diags: vec![
@@ -26,7 +21,7 @@ pub fn quill_from_path<P: AsRef<Path>>(path: P) -> Result<Quill, RenderError> {
                 .with_code("quill::load_failed".to_string()),
         ],
     })?;
-    quill_from_tree(tree)
+    Quill::from_tree(tree).map_err(|diags| RenderError::QuillConfig { diags })
 }
 
 /// Walk a filesystem path into an in-memory [`FileTreeNode`].

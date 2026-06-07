@@ -262,8 +262,9 @@ duplication, not a concept boundary, so the two types collapsed into one.
   `validate`, `dry_run`, `seed_*`, `check_quill_reference`) and the `seed`
   module moved into core, since inherent methods must live with the type.
 - `Quill::from_tree` is the core constructor (→ `Vec<Diagnostic>`);
-  `quillmark::quill_from_path` / `quill_from_tree` are free functions that
-  surface a `RenderError` and keep fs out of core.
+  `quillmark::quill_from_path` is a free function that walks the fs and surfaces
+  a `RenderError`, keeping fs out of core. In-memory loading uses
+  `Quill::from_tree` directly — no wrapper.
 - The `Arc<QuillSource>` was vestigial and is dropped — `Quill` is held by value.
 - The `.source()` indirection is gone: `self.inner.source().config()` →
   `self.inner.config()` across the engine and bindings. JS/Python consumers see

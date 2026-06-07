@@ -8,7 +8,7 @@
   `render` / `open` / `supported_formats` / `supports_canvas` take `&quill`
   (JS: `engine.render(quill, doc)` etc.). The `engine.quill` / `quill_from_path`
   factory is removed — construct with `Quill::from_tree` (JS `Quill.fromTree`)
-  or `quillmark::quill_from_path` / `quill_from_tree`. The backend-existence
+  or `quillmark::quill_from_path`. The backend-existence
   check moves from load time to render time (`UnsupportedBackend` now surfaces
   from the first engine call). `supportedFormats` leaves `Quill.metadata` (now
   pure config) for `engine.supportedFormats(quill)`. `Backend` gains a

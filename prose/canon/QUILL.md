@@ -134,8 +134,9 @@ Construction:
   returns `Result<Quill, Vec<Diagnostic>>`. Exposed to JS as `Quill.fromTree`.
 - `quillmark::quill_from_path(path)` — load from a filesystem directory (fs walk
   lives in `quillmark`, not core); returns `Result<Quill, RenderError>`.
-- `quillmark::quill_from_tree(tree)` — `from_tree` wrapped to surface a
-  `RenderError` instead of raw diagnostics, for binding ergonomics.
+
+In-memory loading is `Quill::from_tree` directly; bindings map its
+`Vec<Diagnostic>` into their own error shape at the call site.
 
 The `Quill` carries no backend; rendering goes through the `Quillmark` engine
 (`engine.render` / `engine.open`). Note: `Quill::from_json` is not part of the
