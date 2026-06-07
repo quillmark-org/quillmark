@@ -18,8 +18,10 @@ export default defineConfig({
   plugins: [wasm(), topLevelAwait()],
   resolve: {
     alias: {
-      '@quillmark-wasm': WASM_BUNDLE_PATH,
+      // More specific first: rollup alias matches `find` followed by `/` or end,
+      // so `@quillmark-wasm/core` must precede the `@quillmark-wasm` prefix.
       '@quillmark-wasm/core': WASM_CORE_BUNDLE_PATH,
+      '@quillmark-wasm': WASM_BUNDLE_PATH,
     },
   },
   test: {

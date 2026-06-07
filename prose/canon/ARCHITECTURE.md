@@ -4,7 +4,7 @@
 
 ## TL;DR
 
-Quillmark converts Markdown with card-yaml blocks into output artifacts (PDF, SVG, PNG, TXT). A `Quill` (the renderable shape) orchestrates the pipeline; backends do the heavy compilation.
+Quillmark converts Markdown with card-yaml blocks into output artifacts (PDF, SVG, PNG, TXT). A `Quill` is portable, engine-free data (parse / validate / schema / seed / blueprint / compile); the `Quillmark` engine is a backend registry + render dispatcher; backends do the heavy compilation.
 
 ## Data Flow
 
@@ -18,11 +18,11 @@ Quillmark converts Markdown with card-yaml blocks into output artifacts (PDF, SV
 
 Foundation types and traits. No backend dependencies; backends depend on this crate.
 
-Key exports: `Backend`, `Artifact`, `OutputFormat`, `RenderOptions`, `RenderSession`, `Document`, `QuillSource`, `FileTreeNode`, `QuillIgnore`, `RenderError`, `Diagnostic`, `Severity`, `Location`, `RenderResult`, `QuillValue`, `QuillReference`, `Version`, `VersionSelector`.
+Key exports: `Backend`, `Artifact`, `OutputFormat`, `RenderOptions`, `RenderSession`, `Document`, `Quill`, `FileTreeNode`, `QuillIgnore`, `RenderError`, `Diagnostic`, `Severity`, `Location`, `RenderResult`, `QuillValue`, `QuillReference`, `Version`, `VersionSelector`. `Quill` is the single quill type — portable, validated data with the pure config-read operations (`validate`, `schema`, `metadata`, `blueprint`, `seed_*`, `compile_data`, `dry_run`); construct it with `Quill::from_tree`.
 
 ### `quillmark` (orchestration)
 
-High-level API: `Quillmark` (engine), `Quill` (renderable source + backend). Handles parse → normalize → compile, schema coercion, and backend auto-registration. Filesystem walking for `engine.quill_from_path` lives here; core is filesystem-agnostic.
+High-level API: `Quillmark` (the engine — a backend registry + render dispatcher) plus the `quill_from_path` / `quill_from_tree` loaders. Re-exports core's `Quill`. Handles backend resolution at render time and auto-registration. Filesystem walking for `quill_from_path` lives here; core is filesystem-agnostic. The engine no longer constructs quills — it only renders them.
 
 ### `backends/quillmark-typst`
 
@@ -41,7 +41,9 @@ PyO3 bindings published as `quillmark` on PyPI.
 
 wasm-bindgen bindings published as `@quillmark/wasm`. Supports bundler and Node.js targets. Builds with `--weak-refs` so wasm-bindgen handles are reclaimed by `FinalizationRegistry`; `.free()` remains as the eager teardown hook. Requires Node 14.6+ / current evergreen browsers.
 
-In addition to the byte-output verbs (`Quill.render`, `RenderSession.render`), exposes a Typst-only **canvas preview** path on `RenderSession`: `pageCount`, `pageSize(page)`, `paint(ctx, page, opts?)`, plus `backendId`, `supportsCanvas`, and `warnings`. The painter rasterizes pages directly from the cached `PagedDocument` into a `CanvasRenderingContext2D` or `OffscreenCanvasRenderingContext2D`, sizes the canvas backing store itself, and returns the chosen layout/pixel dimensions. Skips PNG/SVG round-trips. See [PREVIEW.md](PREVIEW.md).
+Ships **two artifacts from one crate**, gated by a `render` cargo feature: a Typst-less **core** (`@quillmark/wasm/core`) with `Document` + `Quill` for load / validate / schema / seed / blueprint, and a Typst-backed **render** superset (`@quillmark/wasm/render`) that adds the `Quillmark` engine + `RenderSession` + canvas. Core is ~0.66 MB gzip; render ~8 MB (Typst dominates). The two modules have separate linear memories, so values cross as serialized data (the quill tree + `doc.toJson()`), not shared handles. See [the split proposal](../proposals/wasm-bindings-split.md).
+
+In addition to the byte-output verbs (`engine.render`, `RenderSession.render`), the render build exposes a Typst-only **canvas preview** path on `RenderSession`: `pageCount`, `pageSize(page)`, `paint(ctx, page, opts?)`, plus `backendId`, `supportsCanvas`, and `warnings`. Capability lives on the engine (`engine.supportedFormats(quill)`, `engine.supportsCanvas(quill)`); the session mirrors it. The painter rasterizes pages directly from the cached `PagedDocument` into a `CanvasRenderingContext2D` or `OffscreenCanvasRenderingContext2D`, sizes the canvas backing store itself, and returns the chosen layout/pixel dimensions. Skips PNG/SVG round-trips. See [PREVIEW.md](PREVIEW.md).
 
 ### `bindings/quillmark-cli`
 
@@ -57,10 +59,9 @@ Property-based fuzz tests (proptest): `parse_fuzz` (YAML/Markdown parsing), `con
 
 ## Core Interfaces
 
-- **`Quillmark`** — Engine managing registered backends; auto-registers `TypstBackend` when the `typst` feature is enabled
-- **`Quill`** — Renderable shape in `quillmark`: pairs a `QuillSource` with a resolved `Backend`. Exposes `render`, `open`, `dry_run`, `compile_data`, plus `validate` (editor-facing: returns every schema diagnostic, including the non-fatal `field_absent` signal render demotes) and the `seed_document` / `seed_main` / `seed_card` starters that emit committed example documents and cards
-- **`QuillSource`** — Pure data in `quillmark-core`: file bundle + config + metadata; no render ability
-- **`Backend`** — Trait for output formats (`Send + Sync`): `id()`, `supported_formats()`, `open(plate, &QuillSource, json)`
+- **`Quillmark`** — Engine: a backend registry + render dispatcher. Auto-registers `TypstBackend` when the `typst` feature is enabled. Resolves a quill's declared backend at render time (erroring `UnsupportedBackend` on no match) and owns the backend-dependent surface — `render`, `open`, `supported_formats(&quill)`, `supports_canvas(&quill)`. It no longer constructs quills
+- **`Quill`** — The single quill type in `quillmark-core`: portable, validated, engine-free data (file bundle + config + metadata, tagged with a declared backend id). Held by value. Exposes the pure config-read operations: `dry_run`, `compile_data`, `backend_id`, plus `validate` (editor-facing: returns every schema diagnostic, including the non-fatal `field_absent` signal render demotes) and the `seed_document` / `seed_main` / `seed_card` starters that emit committed example documents and cards. Construct with `Quill::from_tree` or `quillmark::quill_from_path`
+- **`Backend`** — Trait for output formats (`Send + Sync`): `id()`, `supported_formats()`, `supports_canvas()` (default `false`), `open(plate, &Quill, json)`
 - **`RenderSession`** — Opaque handle returned by `Backend::open()`; call `render(opts)` to produce artifacts. Exposes `page_count()` and `warnings()` for consumers (e.g. canvas previews) that don't go through `render()`. Backends with richer typed surfaces expose them via a downcast helper that goes through `RenderSession::handle()` + `SessionHandle::as_any` (Typst uses this for canvas preview — see `quillmark_typst::typst_session_of`).
 - **`Document`** — Typed in-memory representation of a Quillmark Markdown file (root block, body, cards). Serializes via `serde` to a versioned JSON envelope (`StoredDocument`) for database persistence, decoupled from the evolving Markdown syntax — see [DOCUMENT_STORAGE.md](DOCUMENT_STORAGE.md)
 - **`Diagnostic`** — Structured error with severity, code, message, location, hint, source chain
@@ -69,14 +70,14 @@ Property-based fuzz tests (proptest): `parse_fuzz` (YAML/Markdown parsing), `con
 ## Data Injection
 
 `Backend::open()` receives:
-- `plate_content` — raw plate string from `QuillSource.plate` (empty string for plate-less backends)
-- `source` — `&QuillSource` with static assets/packages, config, metadata
+- `plate_content` — raw plate string from `Quill.plate` (empty string for plate-less backends)
+- `source` — `&Quill` with static assets/packages, config, metadata
 - `json_data` — JSON object after coercion, defaults, normalization
 
 See [PLATE_DATA.md](PLATE_DATA.md) for the Typst helper package.
 
 ## Backend Implementation
 
-Implement three methods of the `Backend` trait: `id()`, `supported_formats()`, `open()`. Return a `RenderSession` wrapping a `SessionHandle` that handles format-specific rendering.
+Implement `id()`, `supported_formats()`, and `open()` of the `Backend` trait; optionally override `supports_canvas()` (defaults to `false`) if the backend can paint to a canvas. Return a `RenderSession` wrapping a `SessionHandle` that handles format-specific rendering.
 
 See `backends/quillmark-typst` for the reference implementation.

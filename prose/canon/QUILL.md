@@ -1,19 +1,22 @@
 # Quill Resource File Structure and API
 
 > **Status**: Final design — opinionated, no backward compatibility
-> **Implementation**: `crates/core/src/quill/` (`QuillSource`),
-> `crates/quillmark/src/orchestration/` (`Quill`)
+> **Implementation**: `crates/core/src/quill/` (the `Quill` type and its
+> operations), `crates/quillmark/src/load.rs` (filesystem loading)
 
-## Type split: `QuillSource` vs `Quill`
+## The `Quill` type
 
-Two types model a loaded quill:
+One type models a loaded quill: **`Quill`** (in `quillmark-core`) — portable,
+validated data. It is the authored input (file bundle, parsed config, metadata)
+tagged with its *declared* backend id, and it carries the pure config-read
+operations (`validate`, `schema`, `metadata`, `blueprint`, `seed_*`,
+`compile_data`, `dry_run`). It holds **no backend** and needs **no engine** to
+construct or use; rendering is the engine's job (see
+[ARCHITECTURE.md](ARCHITECTURE.md)). A `Quill` is `Send + Sync` and portable
+across engines — any engine with a backend matching its `backend_id()` can
+render it.
 
-- **`QuillSource`** (in `quillmark-core`) is the authored input — file bundle,
-  parsed config, and metadata. It does not render.
-- **`Quill`** (in `quillmark`) is the renderable shape — an `Arc<QuillSource>`
-  paired with a resolved backend. Constructed only by the engine.
-
-Bindings expose `Quill` only; `QuillSource` is a Rust-internal type.
+Bindings expose `Quill` directly.
 
 A **quiver** is a collection of quills. The bundled fixtures under
 `crates/fixtures/resources/quills/` are one quiver; the
@@ -29,32 +32,28 @@ pub enum FileTreeNode {
     Directory { files: HashMap<String, FileTreeNode> },
 }
 
-pub struct QuillSource {
+pub struct Quill {
     pub(crate) metadata: HashMap<String, QuillValue>,
     pub(crate) plate: Option<String>,
     pub(crate) config: QuillConfig,
     pub(crate) files: FileTreeNode,
 }
-
-pub struct Quill {
-    source: Arc<QuillSource>,
-    backend: Arc<dyn Backend>,
-}
 ```
 
 `metadata` is populated from `Quill.yaml` fields plus computed entries: `backend`, `description`, `version`, `author`, and any `typst_*` keys from the `typst:` section.
 
-## In-memory Tree Contract (`engine.quill(tree)`)
+## In-memory Tree Contract (`Quill::from_tree`)
 
-In-memory construction routes through the engine as `engine.quill(tree)`. The
-core `QuillSource::from_tree` constructor is the single authoritative in-memory
-entry point; filesystem walking (`engine.quill_from_path`) lives in
-`quillmark` rather than in core. Input is a `FileTreeNode` directory tree
-with UTF-8 and binary file contents represented as bytes.
+In-memory construction is `Quill::from_tree(tree)` — a pure constructor in
+`quillmark-core` with no backend and no engine. Filesystem loading
+(`quillmark::quill_from_path`) lives in `quillmark` rather than in core, so core
+stays filesystem-agnostic. Input is a `FileTreeNode` directory tree with UTF-8
+and binary file contents represented as bytes.
 
-For JS/WASM consumers this is exposed as `engine.quill(...)` accepting a
-`Map<string, Uint8Array>` (path→bytes). Plain objects (`Record<string, Uint8Array>`)
-are also accepted and walked via `Object.entries` at the boundary.
+For JS/WASM consumers this is exposed as the static `Quill.fromTree(...)`
+accepting a `Map<string, Uint8Array>` (path→bytes). Plain objects
+(`Record<string, Uint8Array>`) are also accepted and walked via `Object.entries`
+at the boundary.
 
 Validation rules:
 1. Root MUST be a directory node
@@ -107,7 +106,7 @@ Field names must be `snake_case` (match `[a-z][a-z0-9_]*`). Capitalized or `$`-p
 
 Metadata resolution:
 - `name`, `description`, `backend`, `version`, `author` are direct struct fields on `QuillConfig`. `description` (required, non-empty in the `quill:` section) describes the quill itself; it is independent of `QuillConfig.main.description`, which is the optional schema description authored under `main:` like any other card kind.
-- `metadata` on `Quill` stores `backend`, `description`, `version`, `author`, and `typst_*` keys from the `typst:` section. The `quill:` section accepts only `name`, `backend`, `description`, `version`, `author`, `plate_file`, and `ui`; unknown keys produce a `quill::unknown_key` error rather than landing in `metadata`.
+- `metadata` on `Quill` stores `backend`, `description`, `version`, `author`, and `typst_*` keys from the `typst:` section. (Note: this identity `metadata` is pure config — the backend's `supportedFormats` is a resolved-backend capability read from the engine, not part of it.) The `quill:` section accepts only `name`, `backend`, `description`, `version`, `author`, `plate_file`, and `ui`; unknown keys produce a `quill::unknown_key` error rather than landing in `metadata`.
 - `quill.ui` (a `UiCardSchema`, same shape as `card_kinds.<name>.ui`) is a fallback for `main.ui`: the `main` card uses `main.ui` when present, otherwise `quill.ui`.
 
 ## Strict Parsing
@@ -126,15 +125,21 @@ Errors flow through `RenderError::QuillConfig { diags: Vec<Diagnostic> }` and su
 
 ## File Ignore Rules
 
-When loading from disk, `Quillmark::quill_from_path` respects a `.quillignore` file at the bundle root. If absent, default patterns apply: `.git/`, `.gitignore`, `.quillignore`, `target/`, `node_modules/`.
+When loading from disk, `quillmark::quill_from_path` respects a `.quillignore` file at the bundle root. If absent, default patterns apply: `.git/`, `.gitignore`, `.quillignore`, `target/`, `node_modules/`.
 
 ## API
 
 Construction:
-- `Quillmark::quill_from_path(path)` — load render-ready quill from filesystem directory
-- `Quillmark::quill(tree)` — load render-ready quill from in-memory file tree
+- `Quill::from_tree(tree)` (`quillmark-core`) — pure in-memory constructor;
+  returns `Result<Quill, Vec<Diagnostic>>`. Exposed to JS as `Quill.fromTree`.
+- `quillmark::quill_from_path(path)` — load from a filesystem directory (fs walk
+  lives in `quillmark`, not core); returns `Result<Quill, RenderError>`.
+- `quillmark::quill_from_tree(tree)` — `from_tree` wrapped to surface a
+  `RenderError` instead of raw diagnostics, for binding ergonomics.
 
-Note: `Quill::from_json` is not part of the public API.
+The `Quill` carries no backend; rendering goes through the `Quillmark` engine
+(`engine.render` / `engine.open`). Note: `Quill::from_json` is not part of the
+public API.
 
 File access on `FileTreeNode`:
 - `file_exists(path)` / `get_file(path)` — check/read file
