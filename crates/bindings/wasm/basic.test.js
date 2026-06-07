@@ -2,13 +2,13 @@
  * Smoke tests for quillmark-wasm — Document API (Phase 2)
  *
  * These tests cover the canonical flow:
- *   engine.quill(tree) → Document.fromMarkdown(markdown) → quill.render(doc, opts)
+ *   Quill.fromTree(tree) → Document.fromMarkdown(markdown) → engine.render(quill, doc, opts)
  *
  * Setup: Tests use the bundler build via @quillmark-wasm alias (see vitest.config.js)
  */
 
 import { describe, it, expect } from 'vitest'
-import { Quillmark, Document } from '@quillmark-wasm'
+import { Quillmark, Quill, Document } from '@quillmark-wasm'
 import { makeQuill } from './test-helpers.js'
 
 /** Read a field value from a card's payloadItems list by key. */
@@ -326,8 +326,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
 
 describe('Quillmark.quill', () => {
   it('should return a render-ready Quill', () => {
-    const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
     expect(quill).toBeDefined()
   })
 
@@ -336,30 +335,29 @@ describe('Quillmark.quill', () => {
     const mapTree = makeQuill({ name: 'test_quill', plate: TEST_PLATE })
     const objectTree = Object.fromEntries(mapTree)
 
-    const fromMap = engine.quill(mapTree)
-    const fromObject = engine.quill(objectTree)
+    const fromMap = Quill.fromTree(mapTree)
+    const fromObject = Quill.fromTree(objectTree)
 
     expect(fromMap.backendId).toBe(fromObject.backendId)
 
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    const r1 = fromMap.render(doc, { format: 'svg' })
-    const r2 = fromObject.render(doc, { format: 'svg' })
+    const r1 = engine.render(fromMap, doc, { format: 'svg' })
+    const r2 = engine.render(fromObject, doc, { format: 'svg' })
     expect(r1.artifacts.length).toBe(r2.artifacts.length)
   })
 
   it('should reject non-object trees with a clear error', () => {
-    const engine = new Quillmark()
-    expect(() => engine.quill(42)).toThrow()
-    expect(() => engine.quill('string')).toThrow()
-    expect(() => engine.quill(null)).toThrow()
+    expect(() => Quill.fromTree(42)).toThrow()
+    expect(() => Quill.fromTree('string')).toThrow()
+    expect(() => Quill.fromTree(null)).toThrow()
   })
 
   it('should render markdown to PDF via quill.render(doc) with default opts', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
-    const result = quill.render(doc)
+    const result = engine.render(quill, doc)
 
     expect(result).toBeDefined()
     expect(result.artifacts).toBeDefined()
@@ -373,10 +371,10 @@ describe('Quillmark.quill', () => {
 
   it('should render markdown to PDF via quill.render(doc, opts)', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
-    const result = quill.render(doc, { format: 'pdf' })
+    const result = engine.render(quill, doc, { format: 'pdf' })
 
     expect(result).toBeDefined()
     expect(result.artifacts).toBeDefined()
@@ -387,10 +385,10 @@ describe('Quillmark.quill', () => {
 
   it('should render markdown to SVG via quill.render(doc)', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
-    const result = quill.render(doc, { format: 'svg' })
+    const result = engine.render(quill, doc, { format: 'svg' })
 
     expect(result.artifacts.length).toBeGreaterThan(0)
     expect(result.artifacts[0].mimeType).toBe('image/svg+xml')
@@ -398,11 +396,11 @@ describe('Quillmark.quill', () => {
 
   it('should allow rendering the same Document multiple times', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
-    const pdf = quill.render(doc, { format: 'pdf' })
-    const svg = quill.render(doc, { format: 'svg' })
+    const pdf = engine.render(quill, doc, { format: 'pdf' })
+    const svg = engine.render(quill, doc, { format: 'svg' })
 
     expect(pdf.artifacts[0].mimeType).toBe('application/pdf')
     expect(svg.artifacts[0].mimeType).toBe('image/svg+xml')
@@ -410,7 +408,7 @@ describe('Quillmark.quill', () => {
 
   it('should throw a quill::name_mismatch error when the document quill ref differs from the quill name', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
 
     // Document declares a different quill name
     const otherMarkdown = `~~~card-yaml
@@ -423,7 +421,7 @@ title: Mismatch Test
     const doc = Document.fromMarkdown(otherMarkdown)
 
     try {
-      quill.render(doc, { format: 'pdf' })
+      engine.render(quill, doc, { format: 'pdf' })
       throw new Error('render should have thrown on a $quill name mismatch')
     } catch (err) {
       expect(Array.isArray(err.diagnostics)).toBe(true)
@@ -887,10 +885,10 @@ describe('Document editor surface — $ext mutators', () => {
 describe('quill.open + session.render', () => {
   it('should support open + session.render with pageCount', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
-    const session = quill.open(doc)
+    const session = engine.open(quill, doc)
     expect(typeof session.pageCount).toBe('number')
     expect(session.pageCount).toBeGreaterThan(0)
 
@@ -909,9 +907,9 @@ describe('quill.open + session.render', () => {
 
   it('should throw on out-of-bounds page indices', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    const session = quill.open(doc)
+    const session = engine.open(quill, doc)
     const oob = session.pageCount + 10
 
     expect(() => {
@@ -921,9 +919,9 @@ describe('quill.open + session.render', () => {
 
   it('should error when requesting page selection with PDF', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    const session = quill.open(doc)
+    const session = engine.open(quill, doc)
 
     expect(() => {
       session.render({ format: 'pdf', pages: [0] })
@@ -956,7 +954,7 @@ card_kinds:
 
   it('exposes identity on metadata and schemas on dedicated getters', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(
+    const quill = Quill.fromTree(
       makeQuill({ name: 'meta_test_quill', plate: TEST_PLATE, quillYaml: META_QUILL_YAML }),
     )
 
@@ -968,8 +966,11 @@ card_kinds:
     expect(meta.backend).toBe('typst')
     expect(meta.author).toBe('Unknown')
     expect(meta.description).toBe('Metadata test')
-    expect(Array.isArray(meta.supportedFormats)).toBe(true)
-    expect(meta.supportedFormats.length).toBeGreaterThan(0)
+    // supportedFormats moved off metadata onto the engine.
+    expect(meta.supportedFormats).toBeUndefined()
+    const supportedFormats = engine.supportedFormats(quill)
+    expect(Array.isArray(supportedFormats)).toBe(true)
+    expect(supportedFormats.length).toBeGreaterThan(0)
     expect(meta.schema).toBeUndefined()
 
     // schema: user-fillable fields + ui hints. No QUILL/CARD sentinels.
@@ -983,8 +984,7 @@ card_kinds:
   })
 
   it('metadata and schema are JSON.stringify-able (plain objects)', () => {
-    const engine = new Quillmark()
-    const quill = engine.quill(
+    const quill = Quill.fromTree(
       makeQuill({ name: 'meta_test_quill', plate: TEST_PLATE, quillYaml: META_QUILL_YAML }),
     )
     const meta = JSON.parse(JSON.stringify(quill.metadata))
@@ -1015,12 +1015,12 @@ describe('Document.clone', () => {
 
   it('produces a clone that renders equivalently to the original', () => {
     const engine = new Quillmark()
-    const quill = engine.quill(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const clone = doc.clone()
 
-    const r1 = quill.render(doc, { format: 'svg' })
-    const r2 = quill.render(clone, { format: 'svg' })
+    const r1 = engine.render(quill, doc, { format: 'svg' })
+    const r2 = engine.render(quill, clone, { format: 'svg' })
     expect(r1.artifacts.length).toBe(r2.artifacts.length)
   })
 })
@@ -1054,8 +1054,7 @@ card_kinds:
 `
 
   const buildQuill = () => {
-    const engine = new Quillmark()
-    return engine.quill(makeQuill({ name: 'validate_smoke_test', quillYaml: QUILL_YAML }))
+    return Quill.fromTree(makeQuill({ name: 'validate_smoke_test', quillYaml: QUILL_YAML }))
   }
 
   it('returns an empty array for a complete, well-formed document', () => {
@@ -1194,17 +1193,18 @@ main:
 
   const buildQuill = () => {
     const engine = new Quillmark()
-    return engine.quill(
+    const quill = Quill.fromTree(
       makeQuill({
         name: 'schema_test',
         plate: SCHEMA_PLATE,
         quillYaml: SCHEMA_QUILL_YAML,
       }),
     )
+    return { engine, quill }
   }
 
   it('schema fields carry no `required` axis', () => {
-    const quill = buildQuill()
+    const { quill } = buildQuill()
     const fields = quill.schema.main.fields
 
     expect(fields.title).toBeDefined()
@@ -1220,7 +1220,7 @@ main:
   })
 
   it('blueprint carries `<must-fill>` for Unendorsed fields and `; delete-ok` for Endorsed', () => {
-    const quill = buildQuill()
+    const { quill } = buildQuill()
     const blueprint = quill.blueprint
 
     expect(typeof blueprint).toBe('string')
@@ -1241,7 +1241,7 @@ main:
   })
 
   it('render tolerates an absent Unendorsed field (zero-filled, not an error)', () => {
-    const quill = buildQuill()
+    const { engine, quill } = buildQuill()
 
     // Document omits `title`. Schema declares no default → Unendorsed. Under
     // zero-filled render this is merely *incomplete*, not malformed: render
@@ -1258,14 +1258,14 @@ subtitle: "Just a subtitle"
 `
     const doc = Document.fromMarkdown(md)
 
-    const result = quill.render(doc, { format: 'svg' })
+    const result = engine.render(quill, doc, { format: 'svg' })
     expect(result).toBeDefined()
     expect(Array.isArray(result.artifacts)).toBe(true)
     expect(result.artifacts.length).toBeGreaterThan(0)
   })
 
   it('render throws `validation::must_fill_sentinel` when the `<must-fill>` sentinel is left in', () => {
-    const quill = buildQuill()
+    const { engine, quill } = buildQuill()
 
     // Document supplies the literal sentinel — the LLM forgot to fill it.
     const md = `~~~card-yaml
@@ -1279,7 +1279,7 @@ title: <must-fill>
     const doc = Document.fromMarkdown(md)
 
     try {
-      quill.render(doc, { format: 'svg' })
+      engine.render(quill, doc, { format: 'svg' })
       throw new Error('render should have thrown ValidationFailed')
     } catch (err) {
       expect(Array.isArray(err.diagnostics)).toBe(true)
@@ -1297,7 +1297,7 @@ title: <must-fill>
   })
 
   it('render succeeds when every Unendorsed field is supplied with a real value', () => {
-    const quill = buildQuill()
+    const { engine, quill } = buildQuill()
 
     const md = `~~~card-yaml
 $quill: schema_test
@@ -1308,12 +1308,12 @@ title: "A Real Title"
 # Body
 `
     const doc = Document.fromMarkdown(md)
-    const result = quill.render(doc, { format: 'svg' })
+    const result = engine.render(quill, doc, { format: 'svg' })
     expect(result.artifacts.length).toBeGreaterThan(0)
   })
 
   it('validate surfaces diagnostics for both absent and sentinel cases', () => {
-    const quill = buildQuill()
+    const { quill } = buildQuill()
 
     // Case 1: `title` absent. Schema declares no default → Unendorsed. `render`
     // demotes this to a non-fatal zero-fill, but `validate` surfaces it as the

@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Quillmark } from '@quillmark-wasm'
 
 function loadDirectory(dirPath) {
   const result = {};
