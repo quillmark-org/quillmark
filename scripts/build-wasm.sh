@@ -131,16 +131,18 @@ report_size "core"   pkg/core/wasm_bg.wasm
 report_size "render" pkg/render/wasm_bg.wasm
 
 # Size budget on the core artifact: the whole point of the split is that core
-# excludes Typst (~8 MB gzip). If core gzip ever crosses this floor, Typst (or
-# something nearly as heavy) has crept back into the no-features build — fail
-# the build so it can't ship silently. Measured core is ~0.34 MB gzip.
+# excludes Typst (render is ~8 MB gzip). If core gzip ever crosses this ceiling,
+# Typst (or something nearly as heavy) has crept back into the no-features build
+# — fail the build so it can't ship silently. Measured core is ~0.66 MB gzip;
+# this 1.5 MB ceiling leaves room for normal core growth while staying ~5x below
+# the render artifact, so a Typst leak can't hide under it.
 #
 # Only enforced for the size-optimized release profile: the `wasm-ci` profile
-# is unoptimized, so its absolute size is meaningless against this floor.
-# Release is where the artifact actually publishes, so that is where the floor
+# is unoptimized, so its absolute size is meaningless against this ceiling.
+# Release is where the artifact actually publishes, so that is where the ceiling
 # matters; CI's structural guarantee is the Cargo feature graph (Typst is not a
 # dependency of the no-features build at all).
-CORE_MAX_GZIP_BYTES=${CORE_MAX_GZIP_BYTES:-700000}
+CORE_MAX_GZIP_BYTES=${CORE_MAX_GZIP_BYTES:-1500000}
 if [ -f pkg/core/wasm_bg.wasm ] && [ "$PROFILE" = "wasm-release" ]; then
     core_gz_bytes=$(gzip -9 -c pkg/core/wasm_bg.wasm | wc -c)
     if [ "$core_gz_bytes" -gt "$CORE_MAX_GZIP_BYTES" ]; then

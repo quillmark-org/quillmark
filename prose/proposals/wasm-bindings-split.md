@@ -23,19 +23,27 @@ holds a backend.** It becomes engine-free, portable validated data. The
 exists only in the render build. The boundary falls on *which types
 exist*, not on feature-gated methods inside a shared type.
 
-## Measurement (spike result)
+## Measurement
 
 Both built with the shipping `wasm-release` profile (opt-level=z, fat
 LTO, 1 codegen-unit, stripped), gzipped at -9:
 
 | Artifact | Raw | Gzip |
 |---|---:|---:|
-| Core (parse · load · schema · validate · seed · blueprint) | 0.9 MB | **0.34 MB** |
-| Monolith (everything, incl. Typst) | 25.1 MB | **8.72 MB** |
+| Core (`Document` + `Quill`: parse · load · schema · validate · seed · blueprint) | 2.0 MB | **0.66 MB** |
+| Render (everything, incl. Typst) | 23 MB | **8.01 MB** |
 
-Typst is ~8 MB of the 8.7 MB gzip (~96%). Core is ~26× smaller. The
-~0.34 MB core floor is YAML/JSON/Unicode-table code, not Typst — there is
-little more to squeeze, but 8.7 MB → 0.34 MB is the win.
+Typst is the overwhelming bulk of render (~92% of the gzip); core is ~12×
+smaller and excludes Typst from its dependency graph entirely. The core
+floor is YAML/JSON/Unicode-table code plus the full `Document` editing API
+and the wasm-bindgen/serde glue — not Typst.
+
+> **As-built vs spike.** An early spike measured a leaner core at 0.34 MB
+> gzip; the shipped core is 0.66 MB because it carries the complete
+> `Document` mutation surface and binding glue the spike omitted, not any
+> Typst. The win is 8.01 MB → 0.66 MB, not the spike's 8.7 → 0.34. The
+> `build-wasm.sh` size budget guards core at 1.5 MB gzip — ~5× under render,
+> so a Typst regression can't hide, with headroom for normal core growth.
 
 ## Design
 
