@@ -153,7 +153,7 @@ byte-identical.
 ## Lifecycle and consumer flow
 
 ```js
-import { Quillmark } from '@quillmark/wasm/render';   // canvas is render-build only
+import { Quillmark } from '@quillmark/wasm';   // root = render build; canvas is render-only
 const engine = new Quillmark();
 
 if (!engine.supportsCanvas(quill)) return;    // non-typst backends have no painter

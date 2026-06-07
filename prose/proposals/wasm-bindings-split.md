@@ -11,8 +11,8 @@
 ## TL;DR
 
 Publish **two** WASM artifacts from one crate, gated by a `render` cargo
-feature, shipped as one npm package with two entry points
-(`@quillmark/wasm/core`, `@quillmark/wasm/render`). Render is an **API
+feature, shipped as one npm package with two entry points: `@quillmark/wasm/core`
+and the root `@quillmark/wasm` (render). Render is an **API
 superset** of core — same types and methods plus the engine; values cross
 between the two as serialized data, not shared handles (separate linear
 memories — see *Cross-module handoff*).

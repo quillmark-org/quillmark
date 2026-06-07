@@ -25,9 +25,8 @@
   gated by a `render` cargo feature — a Typst-less **core**
   (`@quillmark/wasm/core`, ~0.66 MB gzip: `Document` + `Quill` for load /
   validate / schema / seed / blueprint) and a Typst-backed **render** superset
-  (`@quillmark/wasm/render`, ~8 MB: engine + `RenderSession` + canvas). The root
-  import resolves to render. A release-time size budget guards the core artifact
-  against Typst regressions.
+  (the root `@quillmark/wasm` import, ~8 MB: engine + `RenderSession` + canvas).
+  A release-time size budget guards the core artifact against Typst regressions.
 - **Breaking (Rust API + bindings):** a document's `$quill` reference is now
   **enforced** against the loaded quill. Rendering with a quill whose *name*
   differs (`quill::name_mismatch`) or whose *version* falls outside the selector

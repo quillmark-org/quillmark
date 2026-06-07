@@ -8,14 +8,14 @@ Maintained by [TTQ](https://tonguetoquill.com).
 
 Use Quillmark in browsers/Node.js with explicit in-memory trees (`Map<string, Uint8Array>` / `Record<string, Uint8Array>`).
 
-The package ships **two bundles** behind subpath exports:
+The package ships **two bundles**:
 
 - `@quillmark/wasm/core` — Typst-less. Load, validate, schema, seed, and
   blueprint a `Quill`, plus the full `Document` editing API.
-- `@quillmark/wasm/render` (also the root `@quillmark/wasm`) — the superset:
-  everything in core **plus** the `Quillmark` engine, `RenderSession`, and
-  canvas painting. This is where Typst lives (~8 MB gzip), so an editor that
-  only validates should import `/core` and lazy-load `/render` on preview.
+- `@quillmark/wasm` (the root import) — the superset: everything in core
+  **plus** the `Quillmark` engine, `RenderSession`, and canvas painting. This is
+  where Typst lives (~8 MB gzip), so an editor that only validates should import
+  `/core` and lazy-load the root on preview.
 
 The two bundles have **separate WASM linear memories**: a `Quill` / `Document`
 handle from one is not usable in the other. Cross as data — re-feed the `tree`

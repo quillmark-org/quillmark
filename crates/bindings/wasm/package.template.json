@@ -29,11 +29,6 @@
       "types": "./core/wasm.d.ts",
       "import": "./core/wasm.js",
       "default": "./core/wasm.js"
-    },
-    "./render": {
-      "types": "./render/wasm.d.ts",
-      "import": "./render/wasm.js",
-      "default": "./render/wasm.js"
     }
   },
   "sideEffects": [
