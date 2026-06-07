@@ -6,9 +6,8 @@ use wasm_bindgen::prelude::*;
 
 /// Output formats supported by backends.
 ///
-/// Render-only: the core (no-Typst) bundle has no rendering surface, so this
-/// type — and the `.d.ts` interface tsify emits for it — is gated behind the
-/// `render` feature to keep it out of `pkg/core/wasm.d.ts`.
+/// Gated behind `render` so tsify omits its `.d.ts` interface from the core
+/// bundle (`pkg/core/wasm.d.ts`), which has no rendering surface.
 #[cfg(feature = "render")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
@@ -155,7 +154,7 @@ impl From<Diagnostic> for quillmark_core::Diagnostic {
     }
 }
 
-/// Rendered artifact (PDF, SVG, etc.). Render-only (see [`OutputFormat`]).
+/// Rendered artifact (PDF, SVG, etc.).
 #[cfg(feature = "render")]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
@@ -195,7 +194,7 @@ impl From<quillmark_core::Artifact> for Artifact {
     }
 }
 
-/// Result of a render operation. Render-only (see [`OutputFormat`]).
+/// Result of a render operation.
 #[cfg(feature = "render")]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
@@ -207,7 +206,7 @@ pub struct RenderResult {
     pub render_time_ms: f64,
 }
 
-/// Options for rendering. Render-only (see [`OutputFormat`]).
+/// Options for rendering.
 #[cfg(feature = "render")]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]

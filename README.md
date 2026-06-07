@@ -36,7 +36,7 @@ cargo add quillmark
 ```rust
 use quillmark::{quill_from_path, Document, OutputFormat, Quillmark, RenderOptions};
 
-// A `Quill` is engine-free, validated data — load it without an engine.
+// A `Quill` is engine-free, validated data.
 let quill = quill_from_path("path/to/quill")?;
 let engine = Quillmark::new();
 
@@ -50,7 +50,6 @@ title: Example
 "#;
 
 let doc = Document::from_markdown(markdown)?;
-// Rendering is the engine's job; it dispatches to the quill's backend.
 let result = engine.render(
     &quill,
     &doc,

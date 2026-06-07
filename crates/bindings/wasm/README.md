@@ -11,16 +11,15 @@ Use Quillmark in browsers/Node.js with explicit in-memory trees (`Map<string, Ui
 The package ships **two bundles** behind subpath exports:
 
 - `@quillmark/wasm/core` — Typst-less. Load, validate, schema, seed, and
-  blueprint a `Quill`, plus the full `Document` editing API. No rendering.
+  blueprint a `Quill`, plus the full `Document` editing API.
 - `@quillmark/wasm/render` (also the root `@quillmark/wasm`) — the superset:
   everything in core **plus** the `Quillmark` engine, `RenderSession`, and
   canvas painting. This is where Typst lives (~8 MB gzip), so an editor that
   only validates should import `/core` and lazy-load `/render` on preview.
 
-A `Quill` is engine-free, validated data — `Quill.fromTree(tree)` needs no
-engine. Rendering is the engine's job: `new Quillmark().render(quill, doc)`.
-Handles do **not** cross between the two bundles (separate linear memories);
-pass data (`tree`, `doc.toJson()`), not objects.
+The two bundles have **separate WASM linear memories**: a `Quill` / `Document`
+handle from one is not usable in the other. Cross as data — re-feed the `tree`
+to `Quill.fromTree`, round-trip the document through `doc.toJson()`.
 
 ## Build
 
@@ -46,7 +45,7 @@ npm test
 import { Document, Quill, Quillmark } from "@quillmark/wasm";
 
 const quill = Quill.fromTree(tree);   // engine-free: build + validate
-const engine = new Quillmark();       // owns the backends; needed only to render
+const engine = new Quillmark();       // needed only to render
 
 const markdown = `~~~
 $quill: my_quill
@@ -63,13 +62,11 @@ const result = engine.render(quill, parsed, { format: "pdf" });
 ## API
 
 ### `new Quillmark()`
-Create the render engine. It registers the backends and dispatches rendering;
-it does **not** load quills.
+Create the render engine. Holds the backends and renders; does **not** load quills.
 
 ### `Quill.fromTree(tree)`
-Build + validate a `Quill` from an in-memory tree. Pure — no backend, no
-engine; the declared backend is resolved later, at render time. Available in
-both the `core` and `render` bundles.
+Build + validate a `Quill` from an in-memory tree. Pure — the declared backend
+is resolved at render time, not here. In both the `core` and `render` bundles.
 
 ### `Document.fromMarkdown(markdown)`
 Parse markdown to a parsed document. Throws a JS `Error` (with `.diagnostics`
@@ -225,9 +222,9 @@ from a flat field map with `Document.makeCard(kind, fields?, body?)`.
 
 ### `engine.render(quill, parsed, opts?)` vs. `engine.open(quill, parsed)`
 
-Rendering lives on the **engine**, not on `Quill`. Use **`engine.render`** for
-one-shot exports (PDF/SVG/PNG) — compiles, emits artifacts, done. Use
-**`RenderSession`** (returned by `engine.open`) for reactive previews where
+Use **`engine.render`** for one-shot exports (PDF/SVG/PNG) — compiles, emits
+artifacts, done. Use **`RenderSession`** (returned by `engine.open`) for
+reactive previews where
 you'll paint or re-emit pages multiple times: the session retains the compiled
 snapshot so subsequent `paint` / `render` calls skip recompilation. Don't open
 a session per export.
@@ -376,7 +373,7 @@ try {
   with a `$quill` system-metadata line. Empty input surfaces a dedicated
   "Empty markdown input cannot be parsed" message.
 - A `$quill` mismatch during `engine.render(quill, parsed)` is a thrown error, not a warning: rendering with a quill whose *name* differs (`quill::name_mismatch`) or whose *version* falls outside the selector (`quill::version_mismatch`) is rejected.
-- Output schema APIs are no longer engine-level in WASM.
+- Output schema APIs live on `Quill`, not the engine.
 
 ## Changelog
 

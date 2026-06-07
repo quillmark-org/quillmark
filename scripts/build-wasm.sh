@@ -126,7 +126,7 @@ echo "WASM build complete!"
 echo "Output directory: pkg/  (core/ + render/)"
 echo "Package version: $VERSION"
 
-# Show sizes (raw, gzip, brotli — transport size is what matters for delivery).
+# Show sizes — transport size (gzip/brotli) is what matters for delivery.
 report_size() {
     local label="$1" file="$2"
     [ -f "$file" ] || return 0
@@ -150,11 +150,9 @@ report_size "render" pkg/render/wasm_bg.wasm
 # this 1.5 MB ceiling leaves room for normal core growth while staying ~5x below
 # the render artifact, so a Typst leak can't hide under it.
 #
-# Only enforced for the size-optimized release profile: the `wasm-ci` profile
-# is unoptimized, so its absolute size is meaningless against this ceiling.
-# Release is where the artifact actually publishes, so that is where the ceiling
-# matters; CI's structural guarantee is the Cargo feature graph (Typst is not a
-# dependency of the no-features build at all).
+# Only enforced on the size-optimized release profile (where the artifact
+# publishes); the `wasm-ci` profile is unoptimized, so its absolute size is
+# meaningless against this ceiling.
 CORE_MAX_GZIP_BYTES=${CORE_MAX_GZIP_BYTES:-1500000}
 if [ -f pkg/core/wasm_bg.wasm ] && [ "$PROFILE" = "wasm-release" ]; then
     core_gz_bytes=$(gzip -9 -c pkg/core/wasm_bg.wasm | wc -c | tr -d '[:space:]')
