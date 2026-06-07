@@ -71,6 +71,19 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Verify core build excludes Typst
+        # `cargo tree -i` exits 0 only when quillmark-typst IS in the no-features
+        # graph — i.e. a leak. The release size budget catches this too, but only
+        # on release; behavioural tests never see it (a leak doesn't change the
+        # API, just bloats the bundle ~12x). This is the PR-level guard.
+        run: |
+          if cargo tree -p quillmark-wasm --no-default-features \
+               --target wasm32-unknown-unknown -i quillmark-typst >/dev/null 2>&1; then
+            echo "::error::quillmark-typst leaked into the core (no-default-features) build"
+            exit 1
+          fi
+          echo "OK: quillmark-typst absent from the core feature graph"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

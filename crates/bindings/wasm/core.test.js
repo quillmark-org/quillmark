@@ -14,6 +14,10 @@ import { Quill, Document } from '@quillmark-wasm/core'
 
 const enc = new TextEncoder()
 
+// Card field accessor (mirrors the payloadItems shape used across the suite).
+const field = (card, key) =>
+  card.payloadItems.find((i) => i.type === 'field' && i.key === key)?.value
+
 // A minimal quill with one schema field — no plate/font needed; core never
 // renders, it only reads config.
 function makeCoreQuill() {
@@ -88,5 +92,36 @@ describe('@quillmark/wasm/core surface', () => {
 `
     const quill = Quill.fromTree(new Map([['Quill.yaml', enc.encode(yaml)]]))
     expect(quill.backendId).toBe('nonexistent')
+  })
+})
+
+// The core bundle's reason to exist is the editor: the full Document mutation +
+// persistence surface must work with Typst absent, not merely be present.
+describe('@quillmark/wasm/core Document editing (Typst-free)', () => {
+  it('builds, mutates, and round-trips a document with no engine', () => {
+    const doc = Document.fromMarkdown(`~~~
+$quill: core_test
+$kind: main
+title: Draft
+~~~
+
+# Body`)
+
+    // Edit the main card and append a composable card.
+    doc.setField('title', 'Final')
+    doc.pushCard(Document.makeCard('note', { author: 'Alice' }, 'A note.'))
+    expect(doc.cardCount).toBe(1)
+    expect(doc.cards[0].kind).toBe('note')
+
+    doc.updateCardField(0, 'author', 'Bob')
+    expect(field(doc.cards[0], 'author')).toBe('Bob')
+
+    // Storage DTO round-trips losslessly — the editor's persistence path.
+    const restored = Document.fromJson(doc.toJson())
+    expect(restored.equals(doc)).toBe(true)
+
+    // Removal works back down to empty.
+    doc.removeCard(0)
+    expect(doc.cardCount).toBe(0)
   })
 })
