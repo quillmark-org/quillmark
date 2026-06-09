@@ -6,9 +6,11 @@
   "description": "Vitest integration tests for quillmark-wasm",
   "scripts": {
     "test": "bash ../../../scripts/build-wasm.sh && vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
+    "typescript": "^5.4.0",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.5.0",
     "vitest": "^3.0.0"

@@ -19,7 +19,21 @@
 //     imports that backend's build (so a consumer that never renders never
 //     loads it), clones the canonical `Quill`/`Document` into the backend's
 //     memory ON DEMAND as data (`toTree`→`fromTree`, `toJson`→`fromJson`),
-//     renders, and frees the transient clones. The backend handles never escape.
+//     renders, and the backend handles never escape.
+//
+//     CLONE LIFETIMES (not all transient): the per-call `Document` clone IS
+//     transient — built and freed inside each call, because documents are small
+//     and mutate freely. The `Quill` clone is CACHED instead: re-cloning a quill
+//     per call means re-serializing its whole file tree Rust→JS, copying it into
+//     backend memory, and re-parsing + re-validating the bundle every time — and
+//     quills are validated, effectively-immutable bundles. So each `Engine`
+//     memoizes the backend-memory quill per (engine, backendId, canonical quill
+//     instance) in a `WeakMap` keyed on the canonical `Quill`: when the consumer
+//     drops the core quill the cache entry becomes collectable and wasm-bindgen
+//     weak-refs (`--weak-refs`) free the backend handle. The CONTRACT this buys:
+//     a `Quill` instance's contents are assumed never to change after
+//     construction — mutate by replacing the instance, or call `engine.invalidate
+//     (quill)` / `engine.invalidateAll()` to evict and free a stale clone.
 //
 // The cross-memory crossing is therefore invisible: a consumer hands canonical
 // `Quill`/`Document` to `engine.render(...)` and gets a `RenderResult` back.
@@ -48,11 +62,36 @@ export { Quill, Document, init } from '../core/wasm.js';
 
 // Backend builds are NEVER statically imported here — that would pull a
 // multi-MB binary into the eager graph and defeat lazy loading. Each entry is a
-// thunk returning a dynamic `import()`, so a backend's chunk is fetched only
-// when something actually renders against that backend.
+// DESCRIPTOR: `load` is a thunk returning a dynamic `import()` (a backend's
+// chunk is fetched only when something actually renders against that backend),
+// and `formats`/`canvas` are the STATIC capability manifest so the cheap probes
+// (`supportedFormats`/`supportsCanvas`) answer without loading the binary or
+// cloning the quill. The manifest values are verified against the backend's
+// Rust source (`crates/backends/typst/src/lib.rs` `SUPPORTED_FORMATS` and
+// `supports_canvas`) and pinned by the `runtime.test.js` drift-guard test, which
+// renders once and asserts the loaded backend reports the same list.
 const DEFAULT_BACKENDS = {
-	typst: () => import('../backends/typst/wasm.js')
+	typst: {
+		load: () => import('../backends/typst/wasm.js'),
+		formats: ['pdf', 'svg', 'png'], // crates/backends/typst/src/lib.rs SUPPORTED_FORMATS
+		canvas: true // crates/backends/typst/src/lib.rs supports_canvas() == true
+	}
 };
+
+/**
+ * Normalize a backend registry entry into a descriptor. Accepts BOTH forms:
+ *   - bare thunk: `() => import(...)` — a loader with NO static manifest. The
+ *     cheap probes cannot answer from it, so they fall back to the load+clone
+ *     `#withClones` route (see `supportedFormats`/`supportsCanvas`).
+ *   - descriptor: `{ load, formats?, canvas? }` — `load` is the thunk; when
+ *     `formats`/`canvas` are present, the probes answer from them with no load
+ *     and no clone.
+ * @param {(() => Promise<unknown>) | { load: () => Promise<unknown>, formats?: string[], canvas?: boolean }} entry
+ * @returns {{ load: () => Promise<unknown>, formats?: string[], canvas?: boolean }}
+ */
+function normalizeBackend(entry) {
+	return typeof entry === 'function' ? { load: entry } : entry;
+}
 
 /**
  * Render dispatcher over the canonical `Quill`/`Document`. One `Engine`
@@ -64,16 +103,51 @@ export class Engine {
 	#modules = new Map();
 	/** backendId → that backend's engine instance (the WASM backend registry). */
 	#engines = new Map();
-	/** backendId → () => Promise<module>. */
+	/** backendId → descriptor `{ load, formats?, canvas? }`. */
 	#loaders;
+	/**
+	 * backendId → WeakMap<canonical Quill, backend-memory Quill clone>. Caches
+	 * the expensive quill materialization per (engine, backend, canonical quill
+	 * instance). WeakMap so dropping the canonical quill makes its clone
+	 * collectable; the backend handle is then freed by wasm-bindgen weak-refs.
+	 * @type {Map<string, WeakMap<object, any>>}
+	 */
+	#quillClones = new Map();
 
 	/**
-	 * @param {{ backends?: Record<string, () => Promise<unknown>> }} [options]
-	 *   Extra or overriding backend loaders, merged over the built-ins. The
-	 *   default registry maps `"typst"` to the bundled Typst build.
+	 * @param {{ backends?: Record<string, (() => Promise<unknown>) | { load: () => Promise<unknown>, formats?: string[], canvas?: boolean }> }} [options]
+	 *   Extra or overriding backend loaders, merged over the built-ins. Each
+	 *   entry is either a bare thunk (`() => import(...)`, no static manifest) or
+	 *   a descriptor (`{ load, formats?, canvas? }`). Descriptor-form entries make
+	 *   `supportedFormats`/`supportsCanvas` free — no binary load, no quill clone.
+	 *   The default registry maps `"typst"` to the bundled Typst build (descriptor
+	 *   form). Bare thunks keep working but their probes fall back to load+clone.
 	 */
 	constructor(options) {
-		this.#loaders = { ...DEFAULT_BACKENDS, ...(options?.backends ?? {}) };
+		const merged = { ...DEFAULT_BACKENDS, ...(options?.backends ?? {}) };
+		/** @type {Record<string, { load: () => Promise<unknown>, formats?: string[], canvas?: boolean }>} */
+		const loaders = {};
+		for (const [id, entry] of Object.entries(merged)) {
+			loaders[id] = normalizeBackend(entry);
+		}
+		this.#loaders = loaders;
+	}
+
+	/**
+	 * Look up the registered descriptor for `backendId`, throwing the canonical
+	 * "no backend registered" error if none. Pure — touches no binary.
+	 * @param {string} backendId
+	 * @returns {{ load: () => Promise<unknown>, formats?: string[], canvas?: boolean }}
+	 */
+	#descriptorFor(backendId) {
+		const descriptor = this.#loaders[backendId];
+		if (!descriptor) {
+			throw new Error(
+				`Engine: no backend registered for '${backendId}'. ` +
+					`Known backends: ${Object.keys(this.#loaders).join(', ') || '(none)'}.`
+			);
+		}
+		return descriptor;
 	}
 
 	/**
@@ -82,13 +156,7 @@ export class Engine {
 	 * @returns {Promise<{ mod: any, engine: any }>}
 	 */
 	async #resolveBackend(backendId) {
-		const loader = this.#loaders[backendId];
-		if (!loader) {
-			throw new Error(
-				`Engine: no backend registered for '${backendId}'. ` +
-					`Known backends: ${Object.keys(this.#loaders).join(', ') || '(none)'}.`
-			);
-		}
+		const descriptor = this.#descriptorFor(backendId);
 
 		let modPromise = this.#modules.get(backendId);
 		if (!modPromise) {
@@ -96,7 +164,7 @@ export class Engine {
 			// renders share ONE import. Self-heal on failure so a transient load
 			// error doesn't poison every later attempt.
 			modPromise = Promise.resolve()
-				.then(loader)
+				.then(descriptor.load)
 				.catch((err) => {
 					this.#modules.delete(backendId);
 					throw err;
@@ -114,9 +182,41 @@ export class Engine {
 	}
 
 	/**
-	 * Materialize a transient clone of `quill` + `doc` in `backendId`'s memory,
-	 * run `fn` against the backend engine, and free the clones — even on throw.
-	 * `doc` is optional (capability probes need only the quill).
+	 * Get (or materialize-and-cache) the backend-memory `Quill` clone for
+	 * `quill` under `backendId`. On a cache miss the clone is built via
+	 * `toTree`→`fromTree` and stored in the per-backend `WeakMap` keyed on the
+	 * canonical `Quill` instance, so a later call with the same instance reuses
+	 * it (the hot-path fix: no re-serialize / re-copy / re-validate per call).
+	 * @param {any} mod the backend build module
+	 * @param {string} backendId
+	 * @param {{ toTree(): Map<string, Uint8Array> }} quill
+	 * @returns {any} the backend-memory quill clone
+	 */
+	#cachedQuillClone(mod, backendId, quill) {
+		let perQuill = this.#quillClones.get(backendId);
+		if (!perQuill) {
+			perQuill = new WeakMap();
+			this.#quillClones.set(backendId, perQuill);
+		}
+		let backendQuill = perQuill.get(quill);
+		if (!backendQuill) {
+			backendQuill = mod.Quill.fromTree(quill.toTree());
+			perQuill.set(quill, backendQuill);
+		}
+		return backendQuill;
+	}
+
+	/**
+	 * Materialize the backend-memory clones for `quill` + `doc` in `backendId`'s
+	 * memory and run `fn` against the backend engine. `doc` is optional
+	 * (capability probes need only the quill).
+	 *
+	 * Clone lifetimes differ by design: the `doc` clone is TRANSIENT — freed in
+	 * the `finally` of every call. The `quill` clone is CACHED per (engine,
+	 * backend, canonical quill instance) and is NOT freed here; it is dropped
+	 * with the canonical quill (WeakMap collection → wasm-bindgen weak-ref free)
+	 * or explicitly via `invalidate`/`invalidateAll`. A cache miss materializes
+	 * it once; subsequent calls reuse it.
 	 * @param {string} backendId
 	 * @param {{ toTree(): Map<string, Uint8Array> }} quill
 	 * @param {{ toJson(): string } | null} doc
@@ -124,25 +224,49 @@ export class Engine {
 	 */
 	async #withClones(backendId, quill, doc, fn) {
 		const { mod, engine } = await this.#resolveBackend(backendId);
-		// Allocate the quill clone, then bring BOTH the doc clone and `fn` under
-		// one try so every backend allocation is freed even if a later step throws
-		// (e.g. `Document.fromJson` rejecting a cross-version DTO). `fn` MUST be
-		// synchronous — the clones are freed as soon as it returns, so an async
-		// `fn` would have them freed mid-flight.
-		const backendQuill = mod.Quill.fromTree(quill.toTree());
+		// The quill clone is cached (see #cachedQuillClone); only the per-call doc
+		// clone is transient. Bring the doc clone + `fn` under one try so the doc
+		// clone is freed even if a later step throws (e.g. `Document.fromJson`
+		// rejecting a cross-version DTO). The cached quill clone is intentionally
+		// NOT freed here. `fn` MUST be synchronous — the doc clone is freed as soon
+		// as it returns, so an async `fn` would have it freed mid-flight.
+		const backendQuill = this.#cachedQuillClone(mod, backendId, quill);
 		let backendDoc = null;
 		try {
 			backendDoc = doc ? mod.Document.fromJson(doc.toJson()) : null;
 			return fn({ mod, engine, quill: backendQuill, doc: backendDoc });
 		} finally {
-			// Free independently: a throwing `backendDoc.free()` must not skip
-			// `backendQuill.free()`.
-			try {
-				backendDoc?.free();
-			} finally {
+			backendDoc?.free();
+		}
+	}
+
+	/**
+	 * Drop the cached backend-memory clone(s) of `quill` across ALL backends,
+	 * freeing each immediately. Escape hatch for the "same `Quill` instance,
+	 * republished contents" staleness the caching contract otherwise forbids:
+	 * the `Engine` assumes a `Quill` instance never changes after construction,
+	 * so mutate-by-replacing-the-instance, or call this after an in-place change.
+	 * @param {Quill} quill
+	 */
+	invalidate(quill) {
+		for (const perQuill of this.#quillClones.values()) {
+			const backendQuill = perQuill.get(quill);
+			if (backendQuill) {
+				perQuill.delete(quill);
 				backendQuill.free();
 			}
 		}
+	}
+
+	/**
+	 * Drop and free every cached backend-memory quill clone in this engine, for
+	 * every backend. Coarse counterpart to `invalidate`.
+	 */
+	invalidateAll() {
+		// WeakMaps aren't enumerable, so we can't iterate the cached clones to free
+		// them; replacing each map drops our strong refs so the entries (and their
+		// backend handles, via wasm-bindgen weak-refs) become collectable.
+		this.#quillClones = new Map();
 	}
 
 	/**
@@ -150,7 +274,7 @@ export class Engine {
 	 * @param {Quill} quill
 	 * @param {Document} doc
 	 * @param {object} [options] render options (`{ format, ppi, pages, producer }`)
-	 * @returns {Promise<import('../backends/typst/wasm').RenderResult>}
+	 * @returns {Promise<import('./runtime.js').RenderResult>}
 	 */
 	async render(quill, doc, options) {
 		return this.#withClones(quill.backendId, quill, doc, ({ engine, quill: q, doc: d }) =>
@@ -177,23 +301,43 @@ export class Engine {
 	}
 
 	/**
-	 * The output formats `quill`'s backend can emit. Resolves the backend but
-	 * compiles nothing.
+	 * The output formats `quill`'s backend can emit. A cheap, non-failing
+	 * pre-render probe: it depends only on `quill.backendId`.
+	 *
+	 * For a descriptor-form backend with a `formats` manifest (the default Typst
+	 * entry), this answers directly — NO binary load and NO quill clone. For a
+	 * bare-thunk backend (no manifest), it falls back to the load+clone
+	 * `#withClones` route, because the backend FFI is `supportedFormats(&Quill)`
+	 * (see `crates/bindings/wasm/src/engine.rs`) and so requires a backend-memory
+	 * quill to ask. Stays `async` either way; the manifest path just never awaits
+	 * a real load.
 	 * @param {Quill} quill
-	 * @returns {Promise<import('../backends/typst/wasm').OutputFormat[]>}
+	 * @returns {Promise<import('./runtime.js').OutputFormat[]>}
 	 */
 	async supportedFormats(quill) {
+		const descriptor = this.#descriptorFor(quill.backendId);
+		if (descriptor.formats) {
+			// Defensive copy so callers can't mutate the shared manifest.
+			return descriptor.formats.slice();
+		}
 		return this.#withClones(quill.backendId, quill, null, ({ engine, quill: q }) =>
 			engine.supportedFormats(q)
 		);
 	}
 
 	/**
-	 * Whether `quill`'s backend can paint sessions to a canvas.
+	 * Whether `quill`'s backend can paint sessions to a canvas. Cheap probe: see
+	 * `supportedFormats` — answers from the descriptor's `canvas` manifest when
+	 * present (no load, no clone), else falls back to `#withClones` for the same
+	 * FFI-shape reason (`supportsCanvas(&Quill)`).
 	 * @param {Quill} quill
 	 * @returns {Promise<boolean>}
 	 */
 	async supportsCanvas(quill) {
+		const descriptor = this.#descriptorFor(quill.backendId);
+		if (descriptor.canvas !== undefined) {
+			return descriptor.canvas;
+		}
 		return this.#withClones(quill.backendId, quill, null, ({ engine, quill: q }) =>
 			engine.supportsCanvas(q)
 		);

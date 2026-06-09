@@ -69,7 +69,16 @@ Create the render dispatcher. Routes each quill to its backend by
 quill/document into the backend's memory and freeing the clones internally.
 `render`, `open`, `supportedFormats`, and `supportsCanvas` are **async** (the
 first call may load a backend). Pass `{ backends }` to register or override
-backend loaders (`{ [backendId]: () => Promise<module> }`).
+backend loaders. Each entry is either a bare thunk
+(`{ [backendId]: () => Promise<module> }`) or a descriptor
+(`{ [backendId]: { load, formats?, canvas? } }`).
+
+**Capability probes are free.** `supportedFormats` and `supportsCanvas` depend
+only on `quill.backendId`, so for a **descriptor**-form backend that carries a
+static `formats`/`canvas` manifest (the bundled Typst entry does) they answer
+WITHOUT loading the multi-MB backend binary or cloning the quill. Use them as
+non-failing pre-render probes. A **bare-thunk** backend has no manifest, so its
+probes fall back to loading the binary and cloning the quill to ask the backend.
 
 ### `Quill.fromTree(tree)`
 Build + validate a `Quill` from an in-memory tree. Pure — the declared backend

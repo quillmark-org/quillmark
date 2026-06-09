@@ -7,6 +7,55 @@
 > and the user-facing migration is
 > [`docs/migrations/0.89-to-0.90.md`](docs/migrations/0.89-to-0.90.md).
 
+## Addendum — `/runtime` canonical layer (commits `0398b3a7`, `0216277b` + this followup)
+
+> Read this first. The body below describes the branch **as it stood before the
+> runtime layer existed** — when the root npm export was the Typst-backed render
+> superset and the package shipped `./core` + `./render` subpath exports. That
+> shape has since been replaced. The history below is left intact for the
+> rationale; this addendum records what is now true.
+
+**The root export is no longer the render build.** It is a hand-written
+canonical layer at `crates/bindings/wasm/runtime/{runtime.js,runtime.d.ts}`
+(shipped as `pkg/runtime/`) that:
+
+- **re-exports `/core`'s `Quill`/`Document` verbatim** — they are the *same*
+  classes, never wrappers, so a `/core` handle and a `/runtime` handle are one
+  type with no convert/adopt step (CANONICAL INVARIANT; see the header comment
+  in `runtime.js` and the `Quill === CoreQuill` test guard); and
+- adds an async **`Engine`** (`render` / `open` / `supportedFormats` /
+  `supportsCanvas`) that is the canonical render API. The engine routes on
+  `quill.backendId`, lazily `import()`s the backend build, clones the
+  quill/document into the backend's memory **as data** (`toTree`→`fromTree`,
+  `toJson`→`fromJson`), renders, and frees the clones — the core↔backend
+  cross-memory seam is invisible to callers.
+
+**Exports map changed.** `./render` is **removed**; the package `exports` map is
+now only `.` (the runtime layer) and `./core` (the Typst-less escape hatch). See
+`crates/bindings/wasm/package.template.json`.
+
+**The Typst build is now private** at `pkg/backends/typst/` (no longer a public
+`./render` subpath). It is reached only by the runtime layer's lazy
+`import('../backends/typst/wasm.js')`; consumers never import it directly.
+
+**`Quill.toTree()` was added to core** to serialize a quill for the data
+crossing into a backend's memory (the counterpart to `Quill.fromTree`).
+
+**Runtime-layer hardening (code tasks T2/T3/T4, landed):**
+
+- the `Engine`'s **capability manifest** — `supportedFormats` / `supportsCanvas`
+  are free, non-compiling probes answered from a static per-backend manifest
+  (no binary load, no quill clone) for descriptor-form backends; bare-thunk
+  backends fall back to the load+clone route;
+- **quill-clone caching** in the engine (a per-backend `WeakMap` keyed on the
+  canonical `Quill` instance), plus `invalidate` / `invalidateAll` to evict and
+  free cached backend-side clones;
+- **backend-neutral canonical render types** (`RenderResult`, `RenderOptions`,
+  `Artifact`, `OutputFormat`, `PageSize`, `PaintOptions`, `PaintResult`) defined
+  directly in `runtime.d.ts`, with a type-level drift guard
+  (`runtime.types.test-d.ts`, run via `npm run typecheck`) that fails if the
+  Typst backend's generated types diverge from the canonical ones.
+
 ## What and why
 
 A web content editor that only loads quill schemas and validates documents was
@@ -208,3 +257,9 @@ the only remaining `.source()` is `std::error::Error::source()`.
    against the deleted `orchestration/quill.rs` to confirm no behavior drift
    (only `self.source.X()` → `self.X()` and `&QuillSource` → `&Quill`).
 5. Python's `Arc<Quillmark>`-per-`Quill` pairing (decision #4).
+6. **The `/runtime` canonical layer** (`crates/bindings/wasm/runtime/{runtime.js,runtime.d.ts}`,
+   added after this debrief was first written — see the Addendum). Confirm the
+   re-export-not-wrap invariant (`Quill`/`Document` are core's classes verbatim),
+   that no backend build is statically imported into the eager graph (loaders are
+   `import()` thunks), and that the `#withClones` allocate/free discipline frees
+   every backend-side clone even on throw.

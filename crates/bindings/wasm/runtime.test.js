@@ -100,6 +100,157 @@ describe('@quillmark/wasm/runtime — Engine (hidden core→backend crossing)', 
     expect(typeof (await engine.supportsCanvas(quill))).toBe('boolean')
   })
 
+  it('manifest-backed capability probes do NOT load the backend', async () => {
+    // A descriptor-form counting loader: it carries the same manifest the
+    // default registry uses, so probes answer from the manifest (no load),
+    // while still counting any real binary load triggered by render.
+    let loaded = 0
+    const engine = new Engine({
+      backends: {
+        typst: {
+          load: () => {
+            loaded++
+            return import('../../../pkg/backends/typst/wasm.js')
+          },
+          formats: ['pdf', 'svg', 'png'],
+          canvas: true
+        }
+      }
+    })
+    const quill = makeRuntimeQuill()
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+
+    // Descriptor WITH a manifest → probes answer from the manifest, no load.
+    const formats = await engine.supportedFormats(quill)
+    expect(formats).toContain('pdf')
+    expect(typeof (await engine.supportsCanvas(quill))).toBe('boolean')
+    expect(loaded).toBe(0)
+
+    // A real render still triggers exactly one load.
+    await engine.render(quill, doc, { format: 'svg' })
+    expect(loaded).toBe(1)
+  })
+
+  it('manifest formats cannot drift from the loaded backend (drift guard)', async () => {
+    const engine = new Engine()
+    const quill = makeRuntimeQuill()
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+
+    // What the static manifest reports (no load).
+    const manifestFormats = await engine.supportedFormats(quill)
+    const manifestCanvas = await engine.supportsCanvas(quill)
+
+    // Force the backend to actually load, then ask the real engine directly.
+    await engine.render(quill, doc, { format: 'svg' })
+    const mod = await import('../../../pkg/backends/typst/wasm.js')
+    const backendEngine = new mod.Quillmark()
+    const backendQuill = mod.Quill.fromTree(quill.toTree())
+    try {
+      const realFormats = backendEngine.supportedFormats(backendQuill)
+      const realCanvas = backendEngine.supportsCanvas(backendQuill)
+      // The manifest must match what the binary reports, both directions.
+      expect([...manifestFormats].sort()).toEqual([...realFormats].sort())
+      expect(manifestCanvas).toBe(realCanvas)
+    } finally {
+      backendQuill.free()
+    }
+  })
+
+  it('bare-thunk custom loaders still work end to end (probe falls back to load)', async () => {
+    let loaded = 0
+    const engine = new Engine({
+      backends: {
+        // BARE THUNK form (no manifest) — must still resolve and render.
+        typst: () => {
+          loaded++
+          return import('../../../pkg/backends/typst/wasm.js')
+        }
+      }
+    })
+    const quill = makeRuntimeQuill()
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+
+    // Probe with no manifest must load the backend to answer (load+clone path).
+    const formats = await engine.supportedFormats(quill)
+    expect(formats).toContain('pdf')
+    expect(loaded).toBe(1)
+
+    // And rendering works against the same bare-thunk backend.
+    const result = await engine.render(quill, doc, { format: 'svg' })
+    expect(result.outputFormat).toBe('svg')
+  })
+
+  // A loader that wraps the real backend module so `Quill.fromTree` calls are
+  // counted (and still delegate to the real implementation). Used to prove the
+  // per-Engine quill-clone cache materializes the backend quill once per
+  // canonical instance instead of per render/open call.
+  function fromTreeCountingEngine(options) {
+    let fromTreeCalls = 0
+    const engine = new Engine({
+      ...options,
+      backends: {
+        typst: {
+          load: async () => {
+            const real = await import('../../../pkg/backends/typst/wasm.js')
+            const wrappedQuill = new Proxy(real.Quill, {
+              get(target, prop, receiver) {
+                if (prop === 'fromTree') {
+                  return (...args) => {
+                    fromTreeCalls++
+                    return target.fromTree(...args)
+                  }
+                }
+                return Reflect.get(target, prop, receiver)
+              }
+            })
+            return new Proxy(real, {
+              get(target, prop, receiver) {
+                if (prop === 'Quill') return wrappedQuill
+                return Reflect.get(target, prop, receiver)
+              }
+            })
+          },
+          formats: ['pdf', 'svg', 'png'],
+          canvas: true
+        }
+      }
+    })
+    return { engine, fromTreeCalls: () => fromTreeCalls }
+  }
+
+  it('caches the backend quill clone: rendering twice materializes it once', async () => {
+    const { engine, fromTreeCalls } = fromTreeCountingEngine()
+    const quill = makeRuntimeQuill()
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+
+    await engine.render(quill, doc, { format: 'svg' })
+    await engine.render(quill, doc, { format: 'svg' })
+    expect(fromTreeCalls()).toBe(1)
+  })
+
+  it('caches per canonical instance: two different quills → two materializations', async () => {
+    const { engine, fromTreeCalls } = fromTreeCountingEngine()
+    const quillA = makeRuntimeQuill()
+    const quillB = makeRuntimeQuill()
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+
+    await engine.render(quillA, doc, { format: 'svg' })
+    await engine.render(quillB, doc, { format: 'svg' })
+    expect(fromTreeCalls()).toBe(2)
+  })
+
+  it('invalidate(quill) re-materializes the clone on the next render', async () => {
+    const { engine, fromTreeCalls } = fromTreeCountingEngine()
+    const quill = makeRuntimeQuill()
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+
+    await engine.render(quill, doc, { format: 'svg' })
+    expect(fromTreeCalls()).toBe(1)
+    engine.invalidate(quill)
+    await engine.render(quill, doc, { format: 'svg' })
+    expect(fromTreeCalls()).toBe(2)
+  })
+
   it('opens an iterative session, renders pages, and frees it', async () => {
     const engine = new Engine()
     const quill = makeRuntimeQuill()
@@ -205,11 +356,12 @@ main:
     expect(loaded()).toBe(1)
   })
 
-  it('propagates a clone-construction failure (and frees the quill clone)', async () => {
-    // Exercises the teardown path when the SECOND clone (Document.fromJson)
-    // throws: the quill clone is already allocated and must still be freed.
-    // We can only assert the error surfaces (a leak is not observable from JS),
-    // but this pins the throw path the #withClones fix hardened.
+  it('propagates a clone-construction failure (doc clone), leaving the quill clone cached', async () => {
+    // Exercises the teardown path when the doc clone (Document.fromJson) throws:
+    // the quill clone is already materialized and cached (NOT freed here — that
+    // is the T3 caching contract), only the per-call doc clone is freed in the
+    // finally. We can only assert the error surfaces (cache/leak state is not
+    // observable from JS), but this pins the throw path #withClones guards.
     const engine = new Engine()
     const quill = makeRuntimeQuill()
     const badDoc = { backendId: 'typst', toJson: () => '{"not":"a valid storage DTO"}' }

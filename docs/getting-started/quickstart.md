@@ -43,9 +43,10 @@
     ## Basic Usage
 
     ```javascript
-    // Root import is the render build (the API superset); for an editor that
-    // only validates, import from "@quillmark/wasm/core" to skip Typst.
-    import { Document, Quill, Quillmark } from "@quillmark/wasm";
+    // Root import is the canonical API: Quill/Document (re-exported from core)
+    // plus the Engine render dispatcher. For an editor that only validates,
+    // import Quill/Document from "@quillmark/wasm/core" to skip Typst entirely.
+    import { Document, Quill, Engine } from "@quillmark/wasm";
 
     const enc = new TextEncoder();
 
@@ -65,9 +66,11 @@
 
     const doc = Document.fromMarkdown(markdown);
 
-    // Rendering goes through the engine (render build).
-    const engine = new Quillmark();
-    const result = engine.render(quill, doc, { format: "pdf" });
+    // Rendering goes through the Engine. Its methods are async — the first call
+    // lazily loads the Typst backend binary; the canonical quill crosses into
+    // backend memory internally (no manual fromTree/fromJson needed).
+    const engine = new Engine();
+    const result = await engine.render(quill, doc, { format: "pdf" });
     const pdfBytes = result.artifacts[0].bytes;
     ```
 
@@ -78,7 +81,7 @@
     and shares the cached compile with the byte-output `render` path.
 
     ```javascript
-    const session = engine.open(quill, doc);           // compile once
+    const session = await engine.open(quill, doc);     // compile once (async)
 
     // Surface session-level diagnostics from compile time.
     for (const w of session.warnings) console.warn(w.message);

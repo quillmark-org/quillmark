@@ -26,12 +26,21 @@
   and the `seed` module move into core; `quill.source()` is gone
   (`quill.config()` is direct). Bindings already hid `QuillSource`, so JS/Python
   consumers are unaffected by the rename.
-- **WASM packaging:** `@quillmark/wasm` now ships **two builds** from one crate,
-  gated by a `render` cargo feature — a Typst-less **core**
-  (`@quillmark/wasm/core`, ~0.66 MB gzip: `Document` + `Quill` for load /
-  validate / schema / seed / blueprint) and a Typst-backed **render** superset
-  (the root `@quillmark/wasm` import, ~8 MB: engine + `RenderSession` + canvas).
-  A release-time size budget guards the core artifact against Typst regressions.
+- **WASM packaging (root-export redesign):** the root `@quillmark/wasm` import is
+  now a hand-written **canonical layer** (`pkg/runtime/`) — it re-exports the
+  Typst-less core's `Quill` / `Document` **verbatim** (same classes, no wrappers)
+  and adds an async **`Engine`** (`render` / `open` / `supportedFormats` /
+  `supportsCanvas`) as the canonical render API. The old `./render` subpath export
+  is **removed**; the package `exports` map is now only `.` (the canonical layer)
+  and `./core` (the render-free escape hatch, ~0.66 MB gzip: `Document` + `Quill`
+  for load / validate / schema / seed / blueprint). The Typst backend binary is
+  now **private** (`pkg/backends/typst/`, not in the `exports` map): the `Engine`
+  lazy-`import()`s it on first render, clones the quill/document into its memory as
+  data (`Quill.toTree` → `fromTree`, `doc.toJson` → `fromJson`), and manages
+  those clones internally (the validated quill clone is cached per instance;
+  per-render document clones are freed) — consumers never import the backend or
+  cross a WASM memory boundary themselves. `Quill.toTree()` is added to core for that crossing. A release-time
+  size budget still guards the core artifact against Typst regressions.
 - **Breaking (Rust API + bindings):** a document's `$quill` reference is now
   **enforced** against the loaded quill. Rendering with a quill whose *name*
   differs (`quill::name_mismatch`) or whose *version* falls outside the selector
