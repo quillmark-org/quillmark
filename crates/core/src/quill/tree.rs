@@ -176,6 +176,47 @@ impl FileTreeNode {
         }
     }
 
+    /// Flatten the tree into `(path, contents)` pairs — the inverse of building
+    /// a tree by `insert`-ing each path. Paths are `"/"`-joined and relative
+    /// (no leading slash), exactly the key shape the WASM `Quill.fromTree`
+    /// boundary consumes, so `from_tree(flatten(t))` round-trips every file.
+    /// Output is sorted by path for deterministic ordering (the construction
+    /// side stores children in a `HashMap`, which has no inherent order).
+    ///
+    /// Only files are emitted: an EMPTY directory yields no entry and so is not
+    /// reconstructed by a `flatten` → `insert` round trip. This is intentional —
+    /// quill bundles are file-addressed and nothing in load/render depends on
+    /// empty directories — but it means the round trip preserves file contents,
+    /// not exact directory structure.
+    pub fn flatten(&self) -> Vec<(String, Vec<u8>)> {
+        let mut out = Vec::new();
+        self.flatten_into(String::new(), &mut out);
+        out.sort_by(|(a, _), (b, _)| a.cmp(b));
+        out
+    }
+
+    fn flatten_into(&self, prefix: String, out: &mut Vec<(String, Vec<u8>)>) {
+        match self {
+            FileTreeNode::File { contents } => {
+                // A File only reaches here with a non-empty prefix: the root is
+                // always a Directory, so every file is named by its parent.
+                if !prefix.is_empty() {
+                    out.push((prefix, contents.clone()));
+                }
+            }
+            FileTreeNode::Directory { files } => {
+                for (name, node) in files {
+                    let path = if prefix.is_empty() {
+                        name.clone()
+                    } else {
+                        format!("{}/{}", prefix, name)
+                    };
+                    node.flatten_into(path, out);
+                }
+            }
+        }
+    }
+
     pub fn print_tree(&self) -> String {
         self.print_tree_recursive("", "", true)
     }

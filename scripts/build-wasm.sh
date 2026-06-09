@@ -84,6 +84,15 @@ build_variant() {
 build_variant render
 build_variant core --no-default-features
 
+# runtime = the canonical consumer API: a hand-written JS layer (NOT generated
+# by wasm-bindgen) over core + the backend builds. It is plain source, so just
+# copy it into pkg/ alongside the generated variants.
+echo ""
+echo "Copying variant: runtime (hand-written canonical API)"
+mkdir -p pkg/runtime
+cp crates/bindings/wasm/runtime/runtime.js pkg/runtime/runtime.js
+cp crates/bindings/wasm/runtime/runtime.d.ts pkg/runtime/runtime.d.ts
+
 # Note: a wasm-opt -Oz pass was tried and removed. With the current
 # `wasm-release` profile (opt-level=z, fat LTO, codegen-units=1,
 # panic=abort, strip=true) it saves only ~15 KB raw / ~10 KB gzipped

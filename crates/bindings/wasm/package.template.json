@@ -14,6 +14,7 @@
   "files": [
     "core",
     "render",
+    "runtime",
     "CHANGELOG.md"
   ],
   "main": "./render/wasm.js",
@@ -29,10 +30,16 @@
       "types": "./core/wasm.d.ts",
       "import": "./core/wasm.js",
       "default": "./core/wasm.js"
+    },
+    "./runtime": {
+      "types": "./runtime/runtime.d.ts",
+      "import": "./runtime/runtime.js",
+      "default": "./runtime/runtime.js"
     }
   },
   "sideEffects": [
     "./core/wasm.js",
-    "./render/wasm.js"
+    "./render/wasm.js",
+    "./runtime/runtime.js"
   ]
 }
