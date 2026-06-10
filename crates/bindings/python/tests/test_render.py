@@ -2,16 +2,15 @@
 
 import pytest
 
-from quillmark import OutputFormat, Document, Quillmark, QuillmarkError
+from quillmark import OutputFormat, Document, Quill, QuillmarkError
 
 
-def test_save_artifact(taro_quill_dir, taro_md, tmp_path):
+def test_save_artifact(engine, taro_quill_dir, taro_md, tmp_path):
     """Test saving an artifact to file."""
-    engine = Quillmark()
-    quill = engine.quill_from_path(str(taro_quill_dir))
+    quill = Quill.from_path(str(taro_quill_dir))
 
     parsed = Document.from_markdown(taro_md)
-    result = quill.render(parsed, OutputFormat.PDF)
+    result = engine.render(quill, parsed, OutputFormat.PDF)
 
     output_path = tmp_path / "output.pdf"
     result.artifacts[0].save(str(output_path))
@@ -20,46 +19,42 @@ def test_save_artifact(taro_quill_dir, taro_md, tmp_path):
     assert output_path.stat().st_size > 0
 
 
-def test_quill_render_from_parsed_document(taro_quill_dir, taro_md):
-    """quill.render(Document) accepts a pre-parsed document."""
-    engine = Quillmark()
-    quill = engine.quill_from_path(str(taro_quill_dir))
+def test_engine_render_from_parsed_document(engine, taro_quill_dir, taro_md):
+    """engine.render(quill, Document) accepts a pre-parsed document."""
+    quill = Quill.from_path(str(taro_quill_dir))
     parsed = Document.from_markdown(taro_md)
 
-    result = quill.render(parsed)
+    result = engine.render(quill, parsed)
 
     assert len(result.artifacts) > 0
     assert len(result.artifacts[0].bytes) > 0
 
 
-def test_quill_render_with_explicit_format(taro_quill_dir, taro_md):
-    """quill.render() honours an explicit OutputFormat argument."""
-    engine = Quillmark()
-    quill = engine.quill_from_path(str(taro_quill_dir))
+def test_engine_render_with_explicit_format(engine, taro_quill_dir, taro_md):
+    """engine.render() honours an explicit OutputFormat argument."""
+    quill = Quill.from_path(str(taro_quill_dir))
 
     parsed = Document.from_markdown(taro_md)
-    result = quill.render(parsed, OutputFormat.SVG)
+    result = engine.render(quill, parsed, OutputFormat.SVG)
 
     assert len(result.artifacts) > 0
     assert result.format == OutputFormat.SVG
     assert result.artifacts[0].format == OutputFormat.SVG
 
 
-def test_render_result_carries_render_time(taro_quill_dir, taro_md):
+def test_render_result_carries_render_time(engine, taro_quill_dir, taro_md):
     """RenderResult.render_time_ms mirrors WASM `renderTimeMs`."""
-    engine = Quillmark()
-    quill = engine.quill_from_path(str(taro_quill_dir))
+    quill = Quill.from_path(str(taro_quill_dir))
     parsed = Document.from_markdown(taro_md)
 
-    result = quill.render(parsed, OutputFormat.PDF)
+    result = engine.render(quill, parsed, OutputFormat.PDF)
     assert isinstance(result.render_time_ms, float)
     assert result.render_time_ms >= 0.0
 
 
-def test_quill_render_name_mismatch_errors(taro_quill_dir):
+def test_engine_render_name_mismatch_errors(engine, taro_quill_dir):
     """Rendering a Document whose $quill names a different quill is a hard error."""
-    engine = Quillmark()
-    quill = engine.quill_from_path(str(taro_quill_dir))
+    quill = Quill.from_path(str(taro_quill_dir))
 
     # Build a document that names a different quill
     mismatch_md = (
@@ -74,18 +69,17 @@ def test_quill_render_name_mismatch_errors(taro_quill_dir):
     parsed = Document.from_markdown(mismatch_md)
 
     with pytest.raises(QuillmarkError) as exc_info:
-        quill.render(parsed)
+        engine.render(quill, parsed)
 
     codes = [d.code for d in exc_info.value.diagnostics]
     assert "quill::name_mismatch" in codes, f"expected name_mismatch error, got: {codes}"
 
 
-def test_quill_open_session_page_selection(taro_quill_dir, taro_md):
-    engine = Quillmark()
-    quill = engine.quill_from_path(str(taro_quill_dir))
+def test_engine_open_session_page_selection(engine, taro_quill_dir, taro_md):
+    quill = Quill.from_path(str(taro_quill_dir))
     parsed = Document.from_markdown(taro_md)
 
-    session = quill.open(parsed)
+    session = engine.open(quill, parsed)
     assert session.page_count > 0
 
     subset = session.render(OutputFormat.SVG, pages=[0])
@@ -93,33 +87,30 @@ def test_quill_open_session_page_selection(taro_quill_dir, taro_md):
     assert subset.format == OutputFormat.SVG
 
 
-def test_render_session_metadata(taro_quill_dir, taro_md):
+def test_render_session_metadata(engine, taro_quill_dir, taro_md):
     """RenderSession exposes backend_id, supports_canvas, and warnings."""
-    engine = Quillmark()
-    quill = engine.quill_from_path(str(taro_quill_dir))
+    quill = Quill.from_path(str(taro_quill_dir))
     parsed = Document.from_markdown(taro_md)
 
-    session = quill.open(parsed)
+    session = engine.open(quill, parsed)
     assert session.backend_id == quill.backend_id
-    assert session.supports_canvas == quill.supports_canvas
+    assert session.supports_canvas == engine.supports_canvas(quill)
     assert isinstance(session.warnings, list)
 
 
-def test_quill_supports_canvas(taro_quill_dir):
-    """Quill.supports_canvas is True for the typst backend."""
-    engine = Quillmark()
-    quill = engine.quill_from_path(str(taro_quill_dir))
+def test_engine_supports_canvas(engine, taro_quill_dir):
+    """engine.supports_canvas(quill) is True for the typst backend."""
+    quill = Quill.from_path(str(taro_quill_dir))
     # The fixture quill uses the typst backend, which is canvas-capable.
-    assert quill.supports_canvas is True
+    assert engine.supports_canvas(quill) is True
 
 
-def test_quill_render_full_document(taro_quill_dir, taro_md):
-    """quill.render(doc) renders successfully."""
-    engine = Quillmark()
-    quill = engine.quill_from_path(str(taro_quill_dir))
+def test_engine_render_full_document(engine, taro_quill_dir, taro_md):
+    """engine.render(quill, doc) renders successfully."""
+    quill = Quill.from_path(str(taro_quill_dir))
 
     parsed = Document.from_markdown(taro_md)
-    result = quill.render(parsed, OutputFormat.PDF)
+    result = engine.render(quill, parsed, OutputFormat.PDF)
 
     assert len(result.artifacts) > 0
     assert result.format == OutputFormat.PDF
@@ -150,14 +141,17 @@ Content
 
 
 def test_quill_load_error_carries_diagnostics(tmp_path):
-    """Quill-loading failures surface as QuillmarkError with diagnostics."""
+    """Quill-loading failures surface as QuillmarkError with diagnostics.
+
+    A malformed *config* still fails at load time — `Quill.from_path` validates
+    the config eagerly; only backend resolution is deferred to render.
+    """
     bogus = tmp_path / "not_a_quill"
     bogus.mkdir()
     (bogus / "Quill.yaml").write_text("quill: { name: x }\n")  # missing required keys
 
-    engine = Quillmark()
     with pytest.raises(QuillmarkError) as exc_info:
-        engine.quill_from_path(str(bogus))
+        Quill.from_path(str(bogus))
 
     exc = exc_info.value
     assert hasattr(exc, "diagnostics") and len(exc.diagnostics) >= 1, (

@@ -10,7 +10,6 @@ use quillmark::{
     RenderSession,
 };
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Instant;
 
 use crate::enums::{PyOutputFormat, PySeverity};
@@ -18,7 +17,7 @@ use crate::errors::{convert_edit_error, convert_render_error, raise_with_diagnos
 
 #[pyclass(name = "Quillmark")]
 pub struct PyQuillmark {
-    inner: Arc<Quillmark>,
+    inner: Quillmark,
 }
 
 #[pymethods]
@@ -26,19 +25,76 @@ impl PyQuillmark {
     #[new]
     fn new() -> Self {
         Self {
-            inner: Arc::new(Quillmark::new()),
+            inner: Quillmark::new(),
         }
     }
 
-    /// Load a quill from a filesystem directory. The returned `Quill` carries a
-    /// handle to this engine so its `render`/`open`/`supported_formats` keep
-    /// working; the quill itself is engine-free, validated data.
-    fn quill_from_path(&self, path: PathBuf) -> PyResult<PyQuill> {
-        let quill = quill_from_path(&path).map_err(convert_render_error)?;
-        Ok(PyQuill {
-            inner: quill,
-            engine: Arc::clone(&self.inner),
+    /// Render `doc` against `quill` in one shot, resolving `quill`'s backend on
+    /// this engine. The default `output_format` falls back to the backend's
+    /// first supported format. Raises `QuillmarkError` (`UnsupportedBackend`)
+    /// when the backend is not registered. Mirrors WASM `Engine.render`.
+    #[pyo3(signature = (quill, doc, format=None, ppi=None, pages=None, producer=None))]
+    fn render(
+        &self,
+        quill: &PyQuill,
+        doc: PyRef<'_, PyDocument>,
+        format: Option<PyOutputFormat>,
+        ppi: Option<f32>,
+        pages: Option<Vec<usize>>,
+        producer: Option<String>,
+    ) -> PyResult<PyRenderResult> {
+        let opts = quillmark_core::RenderOptions {
+            output_format: format.map(OutputFormat::from),
+            ppi,
+            pages,
+            producer,
+        };
+        let start = Instant::now();
+        let mut result = self
+            .inner
+            .render(&quill.inner, &doc.inner, &opts)
+            .map_err(convert_render_error)?;
+        let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+        result
+            .warnings
+            .splice(0..0, doc.parse_warnings.iter().cloned());
+        Ok(PyRenderResult {
+            inner: result,
+            render_time_ms: elapsed_ms,
         })
+    }
+
+    /// Open an iterative render session for `doc` against `quill`'s backend.
+    /// Mirrors WASM `Engine.open`.
+    fn open(&self, quill: &PyQuill, doc: PyRef<'_, PyDocument>) -> PyResult<PyRenderSession> {
+        let session = self
+            .inner
+            .open(&quill.inner, &doc.inner)
+            .map_err(convert_render_error)?;
+        Ok(PyRenderSession {
+            inner: session,
+            backend_id: quill.inner.backend_id().to_string(),
+            supports_canvas: self.inner.supports_canvas(&quill.inner),
+        })
+    }
+
+    /// The output formats `quill`'s backend can emit. Raises `QuillmarkError`
+    /// (`UnsupportedBackend`) for an unregistered backend. Mirrors WASM
+    /// `Engine.supportedFormats`.
+    fn supported_formats(&self, quill: &PyQuill) -> PyResult<Vec<PyOutputFormat>> {
+        Ok(self
+            .inner
+            .supported_formats(&quill.inner)
+            .map_err(convert_render_error)?
+            .iter()
+            .map(|f| (*f).into())
+            .collect())
+    }
+
+    /// `True` iff `quill`'s backend can paint to a canvas; `False` when the
+    /// backend is unsupported. Non-raising. Mirrors WASM `Engine.supportsCanvas`.
+    fn supports_canvas(&self, quill: &PyQuill) -> bool {
+        self.inner.supports_canvas(&quill.inner)
     }
 
     fn registered_backends(&self) -> Vec<String> {
@@ -53,26 +109,26 @@ impl PyQuillmark {
 #[pyclass(name = "Quill")]
 #[derive(Clone)]
 pub struct PyQuill {
+    /// Engine-free, portable, validated config data. The declared backend is
+    /// resolved later, at render time, by the `Quillmark` engine — never here.
     pub(crate) inner: Quill,
-    /// Engine used to resolve this quill's backend for `render` / `open` /
-    /// `supported_formats`. A `Quill` is portable, engine-free data; the
-    /// binding pairs it with the engine that loaded it for ergonomics.
-    pub(crate) engine: Arc<Quillmark>,
 }
 
 #[pymethods]
 impl PyQuill {
-    /// The resolved backend identifier (e.g. `"typst"`). Mirrors WASM `backendId`.
+    /// Load a quill from a filesystem directory. Pure config load — no backend,
+    /// no engine; the declared backend is resolved at render time by a
+    /// `Quillmark` engine. Mirrors WASM `Quill.fromTree`/Rust `quill_from_path`.
+    #[staticmethod]
+    fn from_path(path: PathBuf) -> PyResult<PyQuill> {
+        let quill = quill_from_path(&path).map_err(convert_render_error)?;
+        Ok(PyQuill { inner: quill })
+    }
+
+    /// The declared backend identifier (e.g. `"typst"`). Mirrors WASM `backendId`.
     #[getter]
     fn backend_id(&self) -> String {
         self.inner.backend_id().to_string()
-    }
-
-    /// `True` iff the resolved backend can paint to a canvas. Asked of the
-    /// real backend via the engine; `False` when the backend is unsupported.
-    #[getter]
-    fn supports_canvas(&self) -> bool {
-        self.engine.supports_canvas(&self.inner)
     }
 
     #[getter]
@@ -86,8 +142,10 @@ impl PyQuill {
         format!("{}@{}", source.name(), version)
     }
 
-    /// Identity snapshot mirroring the `quill:` section of `Quill.yaml`,
-    /// plus `supportedFormats`. Mirrors WASM `metadata`.
+    /// Identity snapshot mirroring the `quill:` section of `Quill.yaml`.
+    /// A pure config read — it never resolves a backend and never raises for
+    /// an unregistered one. Capability lives on the engine: read
+    /// `Quillmark.supported_formats(quill)`. Mirrors WASM `metadata`.
     #[getter]
     fn metadata<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         let source = &self.inner;
@@ -99,15 +157,6 @@ impl PyQuill {
         dict.set_item("backend", &config.backend)?;
         dict.set_item("author", &config.author)?;
         dict.set_item("description", &config.description)?;
-
-        let formats: Vec<PyOutputFormat> = self
-            .engine
-            .supported_formats(&self.inner)
-            .map_err(convert_render_error)?
-            .iter()
-            .map(|f| (*f).into())
-            .collect();
-        dict.set_item("supportedFormats", formats)?;
 
         // Forward unstructured keys declared under `quill:` (excluding the
         // typed ones already populated above).
@@ -137,59 +186,6 @@ impl PyQuill {
     #[getter]
     fn blueprint(&self) -> String {
         self.inner.config().blueprint()
-    }
-
-    #[getter]
-    fn supported_formats(&self) -> PyResult<Vec<PyOutputFormat>> {
-        Ok(self
-            .engine
-            .supported_formats(&self.inner)
-            .map_err(convert_render_error)?
-            .iter()
-            .map(|f| (*f).into())
-            .collect())
-    }
-
-    #[pyo3(signature = (doc, format=None, ppi=None, pages=None, producer=None))]
-    fn render(
-        &self,
-        doc: PyRef<'_, PyDocument>,
-        format: Option<PyOutputFormat>,
-        ppi: Option<f32>,
-        pages: Option<Vec<usize>>,
-        producer: Option<String>,
-    ) -> PyResult<PyRenderResult> {
-        let opts = quillmark_core::RenderOptions {
-            output_format: format.map(OutputFormat::from),
-            ppi,
-            pages,
-            producer,
-        };
-        let start = Instant::now();
-        let mut result = self
-            .engine
-            .render(&self.inner, &doc.inner, &opts)
-            .map_err(convert_render_error)?;
-        let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-        result
-            .warnings
-            .splice(0..0, doc.parse_warnings.iter().cloned());
-        Ok(PyRenderResult {
-            inner: result,
-            render_time_ms: elapsed_ms,
-        })
-    }
-
-    fn open(&self, doc: PyRef<'_, PyDocument>) -> PyResult<PyRenderSession> {
-        let session = self
-            .engine
-            .open(&self.inner, &doc.inner)
-            .map_err(convert_render_error)?;
-        Ok(PyRenderSession {
-            inner: session,
-            backend_id: self.inner.backend_id().to_string(),
-            supports_canvas: self.engine.supports_canvas(&self.inner),
-        })
     }
 
     /// Validate `doc` against this quill's schema, returning a list of

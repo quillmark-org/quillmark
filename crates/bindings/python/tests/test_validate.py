@@ -11,7 +11,7 @@ import json
 import pytest
 
 try:
-    from quillmark import Document, Quillmark
+    from quillmark import Document, Quill
     QUILLMARK_AVAILABLE = True
 except ImportError:
     QUILLMARK_AVAILABLE = False
@@ -54,12 +54,11 @@ card_kinds:
 
 
 def make_quill(tmp_path, yaml_content=QUILL_YAML_CONTENT):
-    """Write a minimal quill directory and load it."""
+    """Write a minimal quill directory and load it (engine-free)."""
     quill_dir = tmp_path / "quill"
     quill_dir.mkdir()
     (quill_dir / "Quill.yaml").write_text(yaml_content)
-    engine = Quillmark()
-    return engine.quill_from_path(quill_dir)
+    return Quill.from_path(quill_dir)
 
 
 def _md(*lines):

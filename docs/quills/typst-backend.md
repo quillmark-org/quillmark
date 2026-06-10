@@ -163,11 +163,11 @@ The label `<__qm_sig__>` and metadata `kind: "__qm_sig__"` are reserved for this
 
 PDF and SVG render as a single artifact. PNG renders one artifact per page.
 
-Python binding:
+Python binding (rendering lives on the engine, not the quill):
 
 ```python
 from quillmark import OutputFormat
-result = quill.render(doc, OutputFormat.PDF)   # or .SVG, .PNG
+result = engine.render(quill, doc, OutputFormat.PDF)   # or .SVG, .PNG
 ```
 
 WASM/JS binding (rendering lives on the engine, not the quill):

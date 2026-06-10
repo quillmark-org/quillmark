@@ -15,18 +15,75 @@
   `supports_canvas()` capability method (default `false`; Typst `true`),
   retiring the `backend_id == "typst"` magic string. See
   [migration guide](docs/migrations/0.89-to-0.90.md).
+- **Breaking (WASM/JS types):** `QuillMetadata` drops its `[key: string]: unknown`
+  index signature. Code reading removed or unknown metadata properties (e.g.
+  `quill.metadata.supportedFormats`) now fails at compile time with "Property
+  does not exist" instead of silently returning `undefined` at runtime. Cast to
+  `Record<string, unknown>` to reach extra `quill:` YAML keys if needed.
+- **Breaking (Python API):** the Python binding adopts the engine-free shape.
+  Render and capability move onto the `Quillmark` engine, taking a quill:
+  `engine.render(quill, doc)` / `engine.open(quill, doc)` /
+  `engine.supported_formats(quill)` / `engine.supports_canvas(quill)` (were
+  `quill.render(doc)` etc.). `Quill.from_path(path)` replaces
+  `Quillmark.quill_from_path(path)` — the engine is no longer a loader, and the
+  loaded `Quill` is engine-free. `quill.metadata` no longer contains
+  `supportedFormats` (read `engine.supported_formats(quill)`) and is now a pure,
+  infallible config read. Backend resolution moves from load to render time:
+  `UnsupportedBackend` surfaces from the first engine call, not from `from_path`.
+  See the [migration guide](docs/migrations/0.89-to-0.90.md#python).
 - **Breaking (Rust API):** `QuillSource` and the orchestration `Quill` collapse
   into one core type, `quillmark_core::Quill` (held by value; the vestigial
   `Arc` is dropped). `Backend::open` now takes `&Quill`; the consumer methods
   and the `seed` module move into core; `quill.source()` is gone
   (`quill.config()` is direct). Bindings already hid `QuillSource`, so JS/Python
   consumers are unaffected by the rename.
-- **WASM packaging:** `@quillmark/wasm` now ships **two builds** from one crate,
-  gated by a `render` cargo feature — a Typst-less **core**
-  (`@quillmark/wasm/core`, ~0.66 MB gzip: `Document` + `Quill` for load /
-  validate / schema / seed / blueprint) and a Typst-backed **render** superset
-  (the root `@quillmark/wasm` import, ~8 MB: engine + `RenderSession` + canvas).
-  A release-time size budget guards the core artifact against Typst regressions.
+- **WASM packaging (single root export):** the root `@quillmark/wasm` import is
+  now a hand-written **canonical layer** (`pkg/runtime/`) — it re-exports the
+  Typst-less core's `Quill` / `Document` **verbatim** (same classes, no wrappers)
+  and adds an async **`Engine`** (`render` / `open` / `supportedFormats` /
+  `supportsCanvas`) as the canonical render API. The package `exports` map has
+  exactly **one** public entry point, `.` (the canonical layer); the old
+  `./render` and `./core` subpath exports are both **removed**. Engine-free
+  editor/validation code (`Quill.fromTree`, `Document.fromMarkdown`) still loads
+  only the small internal core binary (~0.66 MB gzip) — no backend is loaded
+  until you render. The Typst backend binary is **private**
+  (`pkg/backends/typst/`, not in the `exports` map): the `Engine`
+  lazy-`import()`s it on first render, clones the quill/document into its memory as
+  data (`Quill.toTree` → `fromTree`, `doc.toJson` → `fromJson`), and manages
+  those clones internally (the validated quill clone is cached per instance;
+  per-render document clones are freed) — consumers never import the backend or
+  cross a WASM memory boundary themselves. `Quill.toTree()` is added to core for that crossing. A release-time
+  size budget still guards the core artifact against Typst regressions.
+- **WASM `Engine` (descriptor-only backend registry):** `new Engine({ backends })`
+  takes backend entries in **descriptor form only** — `{ load, formats, canvas }`
+  with `formats` and `canvas` **required**. The constructor validates each entry
+  and throws (naming the backend id) at construction. The capability probes
+  `supportedFormats` / `supportsCanvas` answer from this required manifest
+  **unconditionally**, never loading a backend binary or cloning the quill. The
+  bare-thunk loader form and its load+clone fallback path are removed.
+- **WASM `Engine` (no invalidation API):** the unreleased
+  `Engine.invalidate(quill)` / `invalidateAll()` methods are removed before
+  release. The backend-clone cache is keyed on the canonical `Quill` instance in
+  a `WeakMap`; a quill's contents never change after construction, so the only
+  invalidation semantic is to drop/replace the instance (the clone is freed with
+  it via the `WeakMap` + wasm-bindgen weak-refs). An explicit invalidation API
+  will ship with its first real consumer. The load-bearing invariant — a
+  canonical ref is immutable content within a runtime's lifespan — is now
+  recorded in `prose/canon/VERSIONING.md` (Ref Immutability).
+- **WASM `Engine` (session/canvas surface marked experimental):** `Engine.open`,
+  `RenderSession`, `paint`, `PaintOptions`, `PaintResult`, `PageSize`, and the
+  `supportsCanvas` probe are tagged `@experimental` in the shipped types and
+  README: they ship ahead of their first production consumer (the designed
+  canvas live-preview path) and may change shape in any 0.x release.
+  `Engine.render` and `supportedFormats` are the stable surface.
+- **WASM (typed error contract):** the root exports `QuillmarkError` — a
+  structural interface (`Error & { diagnostics: Diagnostic[] }`) naming the
+  shape every fallible method already throws — and an `isQuillmarkError(e)`
+  guard to narrow caught `unknown`s. No runtime behavior change: the WASM
+  layer still throws a plain `Error` with `diagnostics` attached (there is
+  deliberately no error class — a structural check works across builds and
+  WASM instances). Consumers can delete their hand-rolled
+  `.diagnostics`-extraction casts.
 - **Breaking (Rust API + bindings):** a document's `$quill` reference is now
   **enforced** against the loaded quill. Rendering with a quill whose *name*
   differs (`quill::name_mismatch`) or whose *version* falls outside the selector

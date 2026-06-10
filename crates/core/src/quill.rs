@@ -75,6 +75,15 @@ impl Quill {
     pub fn files(&self) -> &FileTreeNode {
         &self.files
     }
+
+    /// Flatten this quill's file bundle into `(path, contents)` pairs — the
+    /// inverse of [`Quill::from_tree`]'s input. `Quill::from_tree` of the
+    /// result reproduces an equivalent quill (every file is preserved; empty
+    /// directories are not — see [`FileTreeNode::flatten`]), so this is how a
+    /// quill crosses a process or WASM linear-memory boundary as plain data.
+    pub fn to_tree(&self) -> Vec<(String, Vec<u8>)> {
+        self.files.flatten()
+    }
 }
 
 impl std::fmt::Debug for Quill {

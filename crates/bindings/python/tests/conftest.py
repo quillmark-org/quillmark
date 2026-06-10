@@ -9,6 +9,8 @@ import shutil
 from pathlib import Path
 import pytest
 
+from quillmark import Quillmark
+
 WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
 RESOURCES_PATH = WORKSPACE_ROOT / "crates" / "fixtures" / "resources"
 QUILLS_PATH = RESOURCES_PATH / "quills"
@@ -40,6 +42,17 @@ def taro_quill_dir():
     assert fixture_path.exists(), f"Preferred fixture not found: {fixture_path}"
 
     return fixture_path
+
+
+@pytest.fixture
+def engine():
+    """A fresh `Quillmark` engine — the render / capability dispatcher.
+
+    A `Quill` is engine-free, validated data (`Quill.from_path`); render,
+    `open`, and capability probes (`supported_formats` / `supports_canvas`)
+    are asked of the engine, against a quill.
+    """
+    return Quillmark()
 
 
 TARO_MARKDOWN = '''~~~card-yaml

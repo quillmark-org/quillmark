@@ -2,7 +2,7 @@
 """Example demonstrating the quillmark-python Quill render API."""
 
 from pathlib import Path
-from quillmark import Quillmark, Document, OutputFormat
+from quillmark import Quillmark, Quill, Document, OutputFormat
 
 
 def main():
@@ -25,7 +25,7 @@ def main():
     print("=== Quillmark Python API Demo ===\n")
 
     engine = Quillmark()
-    quill = engine.quill_from_path(str(taro_dir))
+    quill = Quill.from_path(str(taro_dir))
 
     markdown = """~~~
 $quill: taro
@@ -44,9 +44,9 @@ I love **Taro** ice cream!
 
     print(f"Loaded quill: {quill.metadata['name']}")
     print(f"Backend: {quill.backend_id}")
-    print(f"Supported formats: {quill.supported_formats}")
+    print(f"Supported formats: {engine.supported_formats(quill)}")
 
-    result = quill.render(parsed, OutputFormat.PDF)
+    result = engine.render(quill, parsed, OutputFormat.PDF)
 
     print(f"Generated {len(result.artifacts)} artifact(s) in {result.render_time_ms:.1f} ms")
     for i, artifact in enumerate(result.artifacts):

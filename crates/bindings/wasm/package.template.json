@@ -13,26 +13,23 @@
   },
   "files": [
     "core",
-    "render",
+    "backends",
+    "runtime",
     "CHANGELOG.md"
   ],
-  "main": "./render/wasm.js",
-  "module": "./render/wasm.js",
-  "types": "./render/wasm.d.ts",
+  "main": "./runtime/runtime.js",
+  "module": "./runtime/runtime.js",
+  "types": "./runtime/runtime.d.ts",
   "exports": {
     ".": {
-      "types": "./render/wasm.d.ts",
-      "import": "./render/wasm.js",
-      "default": "./render/wasm.js"
-    },
-    "./core": {
-      "types": "./core/wasm.d.ts",
-      "import": "./core/wasm.js",
-      "default": "./core/wasm.js"
+      "types": "./runtime/runtime.d.ts",
+      "import": "./runtime/runtime.js",
+      "default": "./runtime/runtime.js"
     }
   },
   "sideEffects": [
     "./core/wasm.js",
-    "./render/wasm.js"
+    "./backends/typst/wasm.js",
+    "./runtime/runtime.js"
   ]
 }

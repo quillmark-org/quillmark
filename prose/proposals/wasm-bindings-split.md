@@ -1,5 +1,18 @@
 # WASM Bindings Split: Core + Render
 
+> **Superseded (2026-06):** This proposal describes the "root = render
+> superset, `/core` + `/render` subpaths" design. The shipped design is
+> different: a single public root export — a hand-written **canonical runtime
+> layer** that re-exports the internal Typst-less core build's `Quill` /
+> `Document` verbatim and adds an `Engine` render dispatcher that lazily loads
+> **private** backend builds (descriptor-registered, capability-manifested).
+> There is no public `/core` or `/render` subpath. See
+> [`crates/bindings/wasm/DEBRIEF.md`](../../crates/bindings/wasm/DEBRIEF.md) and
+> the migration guide
+> [`docs/migrations/0.89-to-0.90.md`](../../docs/migrations/0.89-to-0.90.md)
+> for the as-built architecture. The text below is kept as a historical record
+> and is not corrected.
+
 > **Motivation**: a web content editor that only loads quill schemas and
 > validates documents currently downloads and instantiates the full
 > rendering binding — ~8.7 MB gzipped — of which Typst is ~96%. Splitting

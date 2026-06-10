@@ -60,6 +60,30 @@ Three distinct failure paths:
 
 See [ERROR.md](ERROR.md) for error patterns.
 
+## Ref Immutability
+
+A canonical ref (`name@version`) is **immutable content**, at least within the
+lifespan of a runtime: once any layer has materialized a Quill for a ref, the
+content behind that ref never changes for that process. Publishing different
+content requires a version bump.
+
+Every cache between a document and its rendered output keys on this invariant,
+and none of them exposes an invalidation API — **by design**:
+
+- quiver's quill cache holds one `Quill` per canonical ref for the `Quiver`
+  instance's lifetime;
+- app-level services cache that same instance per canonical ref;
+- the wasm `Engine` caches backend-memory clones in a `WeakMap` keyed on the
+  canonical `Quill` instance, so a clone's lifetime follows the instance.
+
+"Invalidate" therefore means *replace the instance* — a new `Quill` at a new
+ref, or a new `Quiver` — and the downstream caches follow automatically
+(WeakMap + weak refs). `Engine.invalidate`/`invalidateAll` and consumer-side
+equivalents were removed with zero callers (CHANGELOG, unreleased 0.90): an
+invalidation API must arrive end-to-end with its first real consumer
+(republish-at-same-ref), and this invariant deliberately rules that consumer
+out.
+
 ## Links
 
 - [QUILL.md](QUILL.md) — Quill structure

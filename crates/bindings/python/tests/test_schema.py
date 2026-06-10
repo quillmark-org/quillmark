@@ -13,7 +13,7 @@ A field's *cell* is determined by whether the schema declares a `default:`.
 
 import pytest
 
-from quillmark import Document, OutputFormat, Quillmark, QuillmarkError
+from quillmark import Document, OutputFormat, Quill, QuillmarkError
 
 
 QUILL_YAML_CONTENT = """quill:
@@ -44,8 +44,7 @@ def make_quill(tmp_path, yaml_content=QUILL_YAML_CONTENT, plate=PLATE_TYP):
     quill_dir.mkdir()
     (quill_dir / "Quill.yaml").write_text(yaml_content)
     (quill_dir / "plate.typ").write_text(plate)
-    engine = Quillmark()
-    return engine.quill_from_path(str(quill_dir))
+    return Quill.from_path(str(quill_dir))
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +137,7 @@ def _diag_codes(exc):
     return [d.code for d in exc.diagnostics]
 
 
-def test_absent_unendorsed_is_nonfatal_signal(tmp_path):
+def test_absent_unendorsed_is_nonfatal_signal(engine, tmp_path):
     """An absent Unendorsed field is a non-fatal completeness signal, not a
     render gate.
 
@@ -159,7 +158,7 @@ def test_absent_unendorsed_is_nonfatal_signal(tmp_path):
     doc = Document.from_markdown(md)
 
     # Absence does not gate render: a merely incomplete document renders fine.
-    result = quill.render(doc, OutputFormat.PDF)
+    result = engine.render(quill, doc, OutputFormat.PDF)
     assert len(result.artifacts) > 0
 
     # The completeness signal is surfaced by validate, not render.
@@ -169,7 +168,7 @@ def test_absent_unendorsed_is_nonfatal_signal(tmp_path):
     )
 
 
-def test_render_reports_must_fill_sentinel(tmp_path):
+def test_render_reports_must_fill_sentinel(engine, tmp_path):
     """A field whose value is still the literal `<must-fill>` sentinel
     fails validation with ``validation::must_fill_sentinel``.
     """
@@ -185,7 +184,7 @@ def test_render_reports_must_fill_sentinel(tmp_path):
     doc = Document.from_markdown(md)
 
     with pytest.raises(QuillmarkError) as exc_info:
-        quill.render(doc, OutputFormat.PDF)
+        engine.render(quill, doc, OutputFormat.PDF)
 
     codes = _diag_codes(exc_info.value)
     assert "validation::must_fill_sentinel" in codes, (
@@ -193,7 +192,7 @@ def test_render_reports_must_fill_sentinel(tmp_path):
     )
 
 
-def test_absent_unendorsed_does_not_emit_legacy_codes(tmp_path):
+def test_absent_unendorsed_does_not_emit_legacy_codes(engine, tmp_path):
     """An absent Unendorsed field surfaces ``validation::field_absent``.
 
     Absence is a non-fatal signal (zero-filled render —
@@ -212,7 +211,7 @@ def test_absent_unendorsed_does_not_emit_legacy_codes(tmp_path):
     doc = Document.from_markdown(md)
 
     # render demotes field_absent → zero-fills and succeeds
-    result = quill.render(doc, OutputFormat.PDF)
+    result = engine.render(quill, doc, OutputFormat.PDF)
     assert len(result.artifacts) > 0
 
     # the validate surface carries only the canonical code
@@ -231,7 +230,7 @@ def test_absent_unendorsed_does_not_emit_legacy_codes(tmp_path):
     )
 
 
-def test_render_succeeds_when_unendorsed_supplied(tmp_path):
+def test_render_succeeds_when_unendorsed_supplied(engine, tmp_path):
     """Filling every Unendorsed field renders successfully — Endorsed
     fields fall back to their declared default."""
     quill = make_quill(tmp_path)
@@ -246,6 +245,6 @@ def test_render_succeeds_when_unendorsed_supplied(tmp_path):
     )
     doc = Document.from_markdown(md)
 
-    result = quill.render(doc, OutputFormat.PDF)
+    result = engine.render(quill, doc, OutputFormat.PDF)
     assert len(result.artifacts) > 0
     assert result.artifacts[0].format == OutputFormat.PDF

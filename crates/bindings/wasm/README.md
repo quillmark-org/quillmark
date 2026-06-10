@@ -8,18 +8,19 @@ Maintained by [TTQ](https://tonguetoquill.com).
 
 Use Quillmark in browsers/Node.js with explicit in-memory trees (`Map<string, Uint8Array>` / `Record<string, Uint8Array>`).
 
-The package ships **two bundles**:
+The package exposes **one import surface**:
 
-- `@quillmark/wasm/core` — Typst-less. Load, validate, schema, seed, and
-  blueprint a `Quill`, plus the full `Document` editing API.
-- `@quillmark/wasm` (the root import) — the superset: everything in core
-  **plus** the `Quillmark` engine, `RenderSession`, and canvas painting. This is
-  where Typst lives (~8 MB gzip), so an editor that only validates should import
-  `/core` and lazy-load the root on preview.
+- `@quillmark/wasm` (the root) — the **canonical API**: `Quill`, `Document`, and
+  an `Engine` that renders them.
 
-The two bundles have **separate WASM linear memories**: a `Quill` / `Document`
-handle from one is not usable in the other. Cross as data — re-feed the `tree`
-to `Quill.fromTree`, round-trip the document through `doc.toJson()`.
+`Quill` and `Document` are re-exported verbatim from the internal Typst-less
+core build, so engine-free editor/validation code (`Quill.fromTree`,
+`Document.fromMarkdown`) loads only that small core binary — no backend is
+loaded until you render. The `Engine` hides everything else: each backend (Typst
+today) is a separate, private WASM binary with its own linear memory, lazily
+loaded on the first render. The Engine clones a `Quill` / `Document` into the
+backend's memory as data and frees the clones — you never hold a backend object
+or cross a memory boundary yourself.
 
 ## Build
 
@@ -42,10 +43,10 @@ npm test
 ## Usage
 
 ```ts
-import { Document, Quill, Quillmark } from "@quillmark/wasm";
+import { Document, Quill, Engine } from "@quillmark/wasm";
 
 const quill = Quill.fromTree(tree);   // engine-free: build + validate
-const engine = new Quillmark();       // needed only to render
+const engine = new Engine();          // loads a backend lazily on first render
 
 const markdown = `~~~
 $quill: my_quill
@@ -56,17 +57,31 @@ title: My Document
 # Hello`;
 
 const parsed = Document.fromMarkdown(markdown);
-const result = engine.render(quill, parsed, { format: "pdf" });
+const result = await engine.render(quill, parsed, { format: "pdf" });
 ```
 
 ## API
 
-### `new Quillmark()`
-Create the render engine. Holds the backends and renders; does **not** load quills.
+### `new Engine(options?)`
+Create the render dispatcher. Routes each quill to its backend by
+`quill.backendId`, lazily loads that backend binary, and renders — cloning the
+quill/document into the backend's memory and freeing the clones internally.
+`render`, `open`, `supportedFormats`, and `supportsCanvas` are **async** (the
+first call may load a backend). Pass `{ backends }` to register or override
+backend descriptors. Each entry is a descriptor
+(`{ [backendId]: { load, formats, canvas } }`) where `load` is the lazy thunk
+returning the backend module and `formats`/`canvas` are the **required** static
+capability manifest. A malformed descriptor throws at `new Engine(...)`, naming
+the backend id.
+
+**Capability probes are always free.** `supportedFormats` and `supportsCanvas`
+depend only on `quill.backendId`, and answer from the descriptor's required
+`formats`/`canvas` manifest — never loading the multi-MB backend binary and
+never cloning the quill. Use them as non-failing pre-render probes.
 
 ### `Quill.fromTree(tree)`
 Build + validate a `Quill` from an in-memory tree. Pure — the declared backend
-is resolved at render time, not here. In both the `core` and `render` bundles.
+is resolved at render time, not here. Loads no backend binary.
 
 ### `Document.fromMarkdown(markdown)`
 Parse markdown to a parsed document. Throws a JS `Error` (with `.diagnostics`
@@ -222,6 +237,11 @@ from a flat field map with `Document.makeCard(kind, fields?, body?)`.
 
 ### `engine.render(quill, parsed, opts?)` vs. `engine.open(quill, parsed)`
 
+> **Experimental:** the entire session surface — `engine.open`,
+> `RenderSession`, `paint`, `PaintOptions`, `PaintResult`, `PageSize`, and the
+> `supportsCanvas` probe — ships ahead of its first production consumer and
+> may change shape in any 0.x release. `engine.render` is the stable path.
+
 Use **`engine.render`** for one-shot exports (PDF/SVG/PNG) — compiles, emits
 artifacts, done. Use **`RenderSession`** (returned by `engine.open`) for
 reactive previews where
@@ -315,11 +335,27 @@ code covers unreplaced sentinels.
 
 ### Errors
 
-Every method that can fail throws a JS `Error` with `.diagnostics` attached:
+Every method that can fail throws a **`QuillmarkError`** — a JS `Error` with
+`.diagnostics` attached. The type and a guard are exported from the root:
 
 ```ts
-{ message: string, diagnostics: Diagnostic[] }
+import { isQuillmarkError, type QuillmarkError } from "@quillmark/wasm";
+
+try {
+  const result = await engine.render(quill, doc);
+} catch (e) {
+  if (isQuillmarkError(e)) {
+    for (const d of e.diagnostics) console.error(d.severity, d.message);
+  } else {
+    throw e; // not a quillmark failure — programming error, re-throw
+  }
+}
 ```
+
+`QuillmarkError` is a **structural interface, not a class** — the WASM layer
+throws a real `Error` and attaches the property, so there is no constructor to
+`instanceof` against; narrow with `isQuillmarkError` (which also works on
+errors from any build or WASM instance in the page).
 
 `diagnostics` is always non-empty — length 1 for most failures, length N for
 backend compilation errors. `message` is derived from `diagnostics`

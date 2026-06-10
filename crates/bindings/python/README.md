@@ -13,10 +13,10 @@ pip install quillmark
 ## Quick Start
 
 ```python
-from quillmark import Quillmark, Document, OutputFormat
+from quillmark import Quillmark, Quill, Document, OutputFormat
 
-engine = Quillmark()
-quill = engine.quill_from_path("path/to/quill")
+engine = Quillmark()                       # backend registry + render dispatcher
+quill = Quill.from_path("path/to/quill")   # engine-free, validated config data
 
 markdown = """~~~
 $quill: my_quill
@@ -28,7 +28,7 @@ title: Hello World
 """
 
 parsed = Document.from_markdown(markdown)
-result = quill.render(parsed, OutputFormat.PDF)
+result = engine.render(quill, parsed, OutputFormat.PDF)
 result.artifacts[0].save("output.pdf")
 ```
 
@@ -38,37 +38,45 @@ The Python surface mirrors the [`@quillmark/wasm`](../wasm) package. Names
 follow `snake_case` conventions; the underlying concepts (and shapes of
 return values) are the same.
 
+**Capability principle:** a `Quill` is engine-free, validated config data —
+`quill.metadata` is a pure, infallible snapshot of the `quill:` section.
+Backend capability (`supported_formats` / `supports_canvas`) and rendering
+(`render` / `open`) are resolved by the engine, against a quill; they raise
+`QuillmarkError` (`UnsupportedBackend`) only if the declared backend isn't
+registered.
+
 ### `Quillmark`
 
 ```python
 engine = Quillmark()
-engine.registered_backends()      # ['typst']
-quill = engine.quill_from_path("path/to/quill")
+engine.registered_backends()              # ['typst']
+engine.render(quill, parsed, OutputFormat.PDF)   # ppi=, pages=, producer= optional
+engine.open(quill, parsed)                # RenderSession
+engine.supported_formats(quill)           # [OutputFormat.PDF, ...] (raises if backend unregistered)
+engine.supports_canvas(quill)             # True iff backend supports canvas preview (non-raising)
 ```
 
 ### `Quill`
 
 ```python
-quill.backend_id            # "typst"
-quill.supports_canvas       # True iff the backend supports canvas preview
+quill = Quill.from_path("path/to/quill")  # pure config load — no backend resolved here
+
+quill.backend_id            # "typst" (declared backend)
 quill.blueprint             # auto-generated annotated Markdown blueprint
 quill.schema                # structured dict of the quill's document schema
-quill.metadata              # identity snapshot of the quill: section
-quill.supported_formats     # [OutputFormat.PDF, ...]
+quill.metadata              # pure config snapshot of the quill: section (never raises)
 quill.quill_ref             # "name@version"
 
-result  = quill.render(parsed, OutputFormat.PDF)          # ppi=, pages= optional
-session = quill.open(parsed)
-diags   = quill.validate(parsed)                         # list of validation::* diagnostic dicts ([] = valid)
-seed    = quill.seed_document()                          # starter Document seeded from `example:` values
-main    = quill.seed_main()                              # just the $kind: main card (dict, like doc.main)
-card    = quill.seed_card("note")                        # one starter composable card (dict), None if kind undeclared
+diags   = quill.validate(parsed)          # list of validation::* diagnostic dicts ([] = valid)
+seed    = quill.seed_document()           # starter Document seeded from `example:` values
+main    = quill.seed_main()               # just the $kind: main card (dict, like doc.main)
+card    = quill.seed_card("note")         # one starter composable card (dict), None if kind undeclared
 ```
 
 ### `RenderSession`
 
 ```python
-session = quill.open(parsed)
+session = engine.open(quill, parsed)
 session.page_count
 session.backend_id
 session.supports_canvas
@@ -123,7 +131,7 @@ A field's *cell* is inferred from whether the schema declares a `default:`:
   (`validation::field_absent`) — the render path zero-fills it
   silently. A surviving `<must-fill>` sentinel is fatal
   (`validation::must_fill_sentinel`). Partial documents are
-  first-class; `quill.render()` only raises for malformed input.
+  first-class; `engine.render(quill, doc)` only raises for malformed input.
 - **Endorsed** (with `default:`) — the blueprint renders the default
   value with a `; delete-ok` annotation, and the default is used when
   the document omits the field.

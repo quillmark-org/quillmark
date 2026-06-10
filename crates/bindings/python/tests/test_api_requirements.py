@@ -3,7 +3,7 @@
 import re
 
 import pytest
-from quillmark import Quillmark, Document, OutputFormat, QuillmarkError
+from quillmark import Quillmark, Quill, Document, OutputFormat, QuillmarkError
 from conftest import QUILLS_PATH, _latest_version
 
 
@@ -38,14 +38,16 @@ def test_parsed_document_quill_ref():
         Document.from_markdown(markdown_without_quill)
 
 
-def test_quill_properties(taro_quill_dir):
-    """Test that Quill exposes all required properties."""
-    engine = Quillmark()
-    quill = engine.quill_from_path(str(taro_quill_dir))
+def test_quill_properties(engine, taro_quill_dir):
+    """Quill exposes its engine-free config surface; capability lives on the
+    engine, not the quill."""
+    quill = Quill.from_path(str(taro_quill_dir))
 
     metadata = quill.metadata
     assert isinstance(metadata, dict)
     assert metadata["name"] == "taro"
+    # metadata is a pure config snapshot — no capability key baked in.
+    assert "supportedFormats" not in metadata
     assert quill.backend_id == "typst"
     assert isinstance(quill.blueprint, str) and quill.blueprint != ""
 
@@ -54,16 +56,16 @@ def test_quill_properties(taro_quill_dir):
     assert "main" in schema
     assert "fields" in schema["main"]
 
-    supported_formats = quill.supported_formats
+    # Capability is resolved by the engine, against the quill.
+    supported_formats = engine.supported_formats(quill)
     assert isinstance(supported_formats, list)
     assert OutputFormat.PDF in supported_formats
 
 
-def test_full_workflow():
-    """Test loading quill via engine and rendering."""
-    engine = Quillmark()
+def test_full_workflow(engine):
+    """Test loading a quill engine-free and rendering through the engine."""
     taro_dir = QUILLS_PATH / "taro"
-    quill = engine.quill_from_path(str(_latest_version(taro_dir)))
+    quill = Quill.from_path(str(_latest_version(taro_dir)))
 
     markdown = "~~~card-yaml\n$quill: taro\n$kind: main\nauthor: Test Author\nice_cream: Chocolate\ntitle: Test\n~~~\n\nContent.\n"
     parsed = Document.from_markdown(markdown)
@@ -71,9 +73,9 @@ def test_full_workflow():
 
     assert "taro" in quill.quill_ref
     assert quill.backend_id == "typst"
-    assert OutputFormat.PDF in quill.supported_formats
+    assert OutputFormat.PDF in engine.supported_formats(quill)
 
-    result = quill.render(parsed, OutputFormat.PDF)
+    result = engine.render(quill, parsed, OutputFormat.PDF)
     assert len(result.artifacts) > 0
     assert result.artifacts[0].format == OutputFormat.PDF
     assert len(result.artifacts[0].bytes) > 0

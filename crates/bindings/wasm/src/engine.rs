@@ -83,7 +83,6 @@ export interface QuillSchema {
  * The schema lives on `Quill.schema`; the backend's output formats are a
  * resolved-backend capability read from the engine (`Quillmark.supportedFormats`),
  * not part of this pure-config snapshot.
- * Extra `quill:` keys appear as `unknown`.
  */
 export interface QuillMetadata {
     name: string;
@@ -91,7 +90,6 @@ export interface QuillMetadata {
     backend: string;
     author: string;
     description: string;
-    [key: string]: unknown;
 }
 "#;
 
@@ -294,6 +292,26 @@ impl Quill {
         let quill = quillmark::Quill::from_tree(root)
             .map_err(|diags| WasmError { diagnostics: diags }.to_js_value())?;
         Ok(Quill { inner: quill })
+    }
+
+    /// Flatten this quill back into its canonical file tree — the inverse of
+    /// [`fromTree`](Self::from_tree). Round-trips: `Quill.fromTree(q.toTree())`
+    /// reproduces an equivalent quill.
+    ///
+    /// This is how a quill crosses a WASM linear-memory boundary as data: a
+    /// `Quill` built in one build (e.g. the Typst-less `@quillmark/wasm/core`)
+    /// cannot be passed to an engine in another (separate linear memories), so
+    /// `@quillmark/wasm/runtime` re-feeds this tree to the backend build's
+    /// `Quill.fromTree` on demand. Keys are `"/"`-joined relative paths,
+    /// matching what `fromTree` accepts.
+    #[wasm_bindgen(js_name = toTree, unchecked_return_type = "Map<string, Uint8Array>")]
+    pub fn to_tree(&self) -> JsValue {
+        let map = js_sys::Map::new();
+        for (path, contents) in self.inner.to_tree() {
+            let bytes = Uint8Array::from(contents.as_slice());
+            map.set(&JsValue::from_str(&path), &bytes);
+        }
+        map.into()
     }
 
     /// The *declared* backend identifier (`config.backend`, e.g. `"typst"`).

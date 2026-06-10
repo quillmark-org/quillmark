@@ -16,8 +16,9 @@ guides in order.
   no longer loads quills (`Quill.fromTree` / `quillmark::quill_from_path`
   replace the factory) and now owns rendering and capability
   (`engine.render` / `open` / `supportedFormats` / `supportsCanvas` take the
-  quill). The WASM package splits into a Typst-less `@quillmark/wasm/core` and
-  the Typst-backed root `@quillmark/wasm` superset; `supportedFormats` leaves
+  quill). The WASM package exposes a single root `@quillmark/wasm` import — the
+  canonical layer over an internal Typst-less core build, with the Typst backend
+  loaded lazily on first render; `supportedFormats` leaves
   `Quill.metadata`;
   the backend is resolved at render time; and `QuillSource` collapses into a
   single core `Quill` (`Backend::open(&Quill)`).

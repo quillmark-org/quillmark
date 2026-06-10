@@ -315,6 +315,73 @@ fn test_from_tree() {
 }
 
 #[test]
+fn test_to_tree_round_trips_from_tree() {
+    // Build a tree with a nested directory to exercise the recursive flatten.
+    let quill_yaml = b"quill:\n  name: roundtrip\n  version: \"1.0\"\n  backend: typst\n  plate_file: plate.typ\n  description: Round-trip test\n".to_vec();
+    let plate = b"= Plate".to_vec();
+    let asset = b"\x00\x01\x02 binary asset".to_vec();
+
+    let mut root_files = HashMap::new();
+    root_files.insert(
+        "Quill.yaml".to_string(),
+        FileTreeNode::File {
+            contents: quill_yaml.clone(),
+        },
+    );
+    root_files.insert(
+        "plate.typ".to_string(),
+        FileTreeNode::File {
+            contents: plate.clone(),
+        },
+    );
+    let mut assets = HashMap::new();
+    assets.insert(
+        "logo.bin".to_string(),
+        FileTreeNode::File {
+            contents: asset.clone(),
+        },
+    );
+    root_files.insert("assets".to_string(), FileTreeNode::Directory { files: assets });
+    // An empty directory: documented to be dropped by flatten (file-addressed
+    // round trip), so it must NOT appear in to_tree() output.
+    root_files.insert(
+        "empty".to_string(),
+        FileTreeNode::Directory {
+            files: HashMap::new(),
+        },
+    );
+    let root = FileTreeNode::Directory { files: root_files };
+
+    let quill = Quill::from_tree(root).unwrap();
+
+    // to_tree yields every file by its "/"-joined relative path, sorted — and
+    // the empty `empty/` directory is absent (only files are emitted).
+    let flat = quill.to_tree();
+    assert_eq!(
+        flat,
+        vec![
+            ("Quill.yaml".to_string(), quill_yaml),
+            ("assets/logo.bin".to_string(), asset),
+            ("plate.typ".to_string(), plate),
+        ]
+    );
+    assert!(!flat.iter().any(|(p, _)| p.starts_with("empty")));
+
+    // Re-feeding the flattened tree reproduces an equivalent quill.
+    let mut rebuilt_root = FileTreeNode::Directory {
+        files: HashMap::new(),
+    };
+    for (path, contents) in quill.to_tree() {
+        rebuilt_root
+            .insert(&path, FileTreeNode::File { contents })
+            .unwrap();
+    }
+    let rebuilt = Quill::from_tree(rebuilt_root).unwrap();
+    assert_eq!(rebuilt.name(), quill.name());
+    assert_eq!(rebuilt.to_tree(), quill.to_tree());
+}
+
+#[test]
 fn test_from_tree_structure_direct() {
     // Test using from_tree_structure directly
     let mut root_files = HashMap::new();
