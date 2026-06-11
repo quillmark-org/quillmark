@@ -628,7 +628,7 @@ mod tests {
             !out.warnings
                 .iter()
                 .any(|w| w.code.as_deref() == Some("parse::comments_in_nested_yaml_dropped")),
-            "no dropped-comment warning expected; nested comments are now preserved"
+            "nested comments are preserved, so no dropped-comment warning is emitted"
         );
     }
 

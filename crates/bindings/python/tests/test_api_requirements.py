@@ -82,7 +82,7 @@ def test_full_workflow(engine):
 
 
 # ---------------------------------------------------------------------------
-# Phase 3 — editor surface tests
+# Editor surface tests
 # ---------------------------------------------------------------------------
 
 SIMPLE_MD = "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Hello\nauthor: Alice\n~~~\n\nBody text.\n"
@@ -467,7 +467,7 @@ def test_invariants_after_mutation_sequence():
 
 
 # ---------------------------------------------------------------------------
-# Phase 4c — emitter integration tests (fromMarkdown → mutate → emit → re-parse)
+# Emitter integration tests (fromMarkdown → mutate → emit → re-parse)
 # ---------------------------------------------------------------------------
 
 

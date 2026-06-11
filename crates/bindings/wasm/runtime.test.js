@@ -191,7 +191,7 @@ describe('@quillmark/wasm/runtime — Engine (hidden core→backend crossing)', 
   })
 
   it('throws at construction for a malformed backend descriptor (names the id)', () => {
-    // Bare thunk is no longer accepted — descriptors are required.
+    // A backend entry must be a descriptor `{ load, formats, canvas }`; a bare thunk is rejected.
     expect(() => new Engine({ backends: { typst: () => import('../../../pkg/backends/typst/wasm.js') } })).toThrow(
       /typst/
     )

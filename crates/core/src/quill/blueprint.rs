@@ -1111,10 +1111,10 @@ main:
         }
     }
 
-    /// Regression: string defaults that look numeric/boolean/null get
-    /// quoted so the schema-validated payload still types as `string`
-    /// after round-trip. Pre-saphyr, defaults like `1.0`, `on`, `01234`,
-    /// or `null` were emitted bare and re-parsed as the wrong YAML type.
+    /// String defaults that look numeric/boolean/null must be quoted so
+    /// the schema-validated payload still types as `string` after
+    /// round-trip — defaults like `1.0`, `on`, `01234`, or `null` must
+    /// not be emitted bare and re-parsed as the wrong YAML type.
     #[test]
     fn type_ambiguous_string_defaults_round_trip_as_strings() {
         let bp = cfg(r#"

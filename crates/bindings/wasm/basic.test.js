@@ -1,5 +1,5 @@
 /**
- * Smoke tests for quillmark-wasm — Document API (Phase 2)
+ * Smoke tests for quillmark-wasm — Document API
  *
  * These tests cover the canonical flow:
  *   Quill.fromTree(tree) → Document.fromMarkdown(markdown) → engine.render(quill, doc, opts)
@@ -149,7 +149,7 @@ This document has no $quill metadata.`
 })
 
 // ---------------------------------------------------------------------------
-// Document.toMarkdown — emitter integration tests (Phase 4c)
+// Document.toMarkdown — emitter integration tests
 // ---------------------------------------------------------------------------
 
 describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse', () => {
@@ -431,7 +431,7 @@ title: Mismatch Test
 })
 
 // ---------------------------------------------------------------------------
-// Document editor surface (Phase 3)
+// Document editor surface
 // ---------------------------------------------------------------------------
 
 describe('Document editor surface — setField / removeField', () => {
@@ -447,7 +447,7 @@ describe('Document editor surface — setField / removeField', () => {
     expect(field(doc.main, 'title')).toBe('Updated')
   })
 
-  it('setField throws EditError::InvalidFieldName for legacy uppercase names', () => {
+  it('setField throws EditError::InvalidFieldName for uppercase field names (BODY, CARDS, QUILL, CARD)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     for (const name of ['BODY', 'CARDS', 'QUILL', 'CARD']) {
       expect(() => doc.setField(name, 'x')).toThrow(/InvalidFieldName/)
@@ -478,7 +478,7 @@ describe('Document editor surface — setField / removeField', () => {
     expect(doc.removeField('nonexistent')).toBeUndefined()
   })
 
-  it('removeField throws EditError::InvalidFieldName for legacy uppercase names', () => {
+  it('removeField throws EditError::InvalidFieldName for uppercase field names (BODY, CARDS, QUILL, CARD)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     for (const name of ['BODY', 'CARDS', 'QUILL', 'CARD']) {
       expect(() => doc.removeField(name)).toThrow(/InvalidFieldName/)
@@ -1027,9 +1027,8 @@ describe('Document.clone', () => {
 
 // ---------------------------------------------------------------------------
 // quill.validate — editor-facing schema validation
-// NOTE: These tests cannot run in the devcontainer (no wasm-pack / browser
-//       runtime available).  They are written to run in CI where the WASM
-//       bundle is built by wasm-pack and loaded into a vitest/jsdom context.
+// Run via `npm test` after scripts/build-wasm.sh has produced the bundle;
+// vitest loads it in a Node environment.
 // ---------------------------------------------------------------------------
 
 describe('quill.validate', () => {

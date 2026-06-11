@@ -159,13 +159,13 @@ where
     let mut end_newline = true;
     let mut list_stack: Vec<ListType> = Vec::new();
     let mut strong_stack: Vec<StrongKind> = Vec::new();
-    let mut in_list_item = false; // Track if we're inside a list item
-    let mut list_item_first_block = false; // Track if we're on the first block of a list item
-    let mut in_code_block = false; // Track if we're inside a code block
+    let mut in_list_item = false;
+    let mut list_item_first_block = false;
+    let mut in_code_block = false;
     let mut code_block_buffer = String::new(); // Raw content of the current code block
     let mut code_block_lang = String::new(); // Sanitized language tag of the current code block
     let mut table_alignments: Vec<pulldown_cmark::Alignment> = Vec::new(); // Column alignments for current table
-    let mut depth = 0; // Track nesting depth for DoS prevention
+    let mut depth = 0; // Nesting depth, bounded for DoS prevention
     let mut in_image = false; // Suppress text events inside ![alt](src)
     let iter = iter.peekable();
 
@@ -229,7 +229,8 @@ where
                         end_newline = true;
                     }
                     Tag::HtmlBlock => {
-                        // HTML blocks are handled, no special tracking needed
+                        // No-op: block boundaries carry no markup; the inner
+                        // Html events are handled as they arrive.
                     }
                     Tag::List(start_number) => {
                         if !end_newline {
@@ -413,7 +414,7 @@ where
                         list_item_first_block = false;
                     }
                     TagEnd::HtmlBlock => {
-                        // HTML blocks are handled, no special tracking needed
+                        // No-op: see Tag::HtmlBlock.
                     }
                     TagEnd::List(_) => {
                         list_stack.pop();

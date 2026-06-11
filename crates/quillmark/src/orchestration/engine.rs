@@ -11,8 +11,8 @@ use std::sync::Arc;
 /// the sole home of backend-dependent surface — capability
 /// ([`supported_formats`](Self::supported_formats) /
 /// [`supports_canvas`](Self::supports_canvas)) and rendering
-/// ([`open`](Self::open) / [`render`](Self::render)). It no longer loads
-/// quills; construct those with [`Quill::from_tree`] or
+/// ([`open`](Self::open) / [`render`](Self::render)). Quill loading lives
+/// elsewhere: construct a [`Quill`] with [`Quill::from_tree`] or
 /// [`quill_from_path`](crate::quill_from_path).
 pub struct Quillmark {
     backends: HashMap<String, Arc<dyn Backend>>,

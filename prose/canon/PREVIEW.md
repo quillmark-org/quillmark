@@ -261,10 +261,8 @@ crates/
 The whole canvas/render surface — the `Quillmark` engine, `RenderSession`,
 `paint` / `pageSize`, `CanvasCtx`, the `web-sys` dependency, and
 `quillmark_typst` — is gated behind the wasm crate's `render` feature
-(default). The **core** build (`--no-default-features`) drops all of it along
-with Typst, leaving `Document` + `Quill` for load / validate / schema / seed /
-blueprint. This core build is the internal artifact the canonical runtime layer
-re-exports at the package root; it is not a public `/core` subpath. This
-realizes the once-deferred "opt out of the canvas dependency" — except the
-opt-out is the whole render half, not just `web-sys`, and the win is Typst
-(~8 MB), not the canvas glue. See [the split proposal](../proposals/wasm-bindings-split.md).
+(default). The **core** build (`--no-default-features`) excludes Typst and
+the entire render surface, leaving `Document` + `Quill` for load / validate /
+schema / seed / blueprint. This core build is the internal artifact the
+canonical runtime layer re-exports at the package root; it is not a public
+`/core` subpath. See [docs/migrations/0.89-to-0.90.md](../../docs/migrations/0.89-to-0.90.md).

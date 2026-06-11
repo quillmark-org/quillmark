@@ -24,7 +24,6 @@ doc = false
 [dependencies]
 clap = { version = "~4.5", features = ["derive"] }
 quillmark = { workspace = true }
-quillmark-typst = { workspace = true }
 quillmark-core = { workspace = true }
 serde_json = { workspace = true }
 

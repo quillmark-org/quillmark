@@ -2260,14 +2260,11 @@ dependencies = [
 name = "quillmark"
 version = "0.90.0"
 dependencies = [
- "indexmap",
  "quillmark-core",
  "quillmark-fixtures",
  "quillmark-typst",
- "serde",
  "serde_json",
  "tempfile",
- "thiserror",
 ]
 
 [[package]]
@@ -2277,7 +2274,6 @@ dependencies = [
  "clap",
  "quillmark",
  "quillmark-core",
- "quillmark-typst",
  "serde_json",
 ]
 
@@ -2301,9 +2297,6 @@ dependencies = [
 [[package]]
 name = "quillmark-fixtures"
 version = "0.90.0"
-dependencies = [
- "quillmark",
-]
 
 [[package]]
 name = "quillmark-fuzz"
@@ -2323,7 +2316,6 @@ dependencies = [
  "pyo3",
  "quillmark",
  "quillmark-core",
- "quillmark-typst",
  "serde_json",
 ]
 

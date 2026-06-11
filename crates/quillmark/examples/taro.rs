@@ -3,5 +3,5 @@ mod common;
 use common::demo;
 
 fn main() {
-    demo("taro", "taro.pdf", false).expect("Demo failed");
+    demo("taro", "taro.pdf").expect("Demo failed");
 }

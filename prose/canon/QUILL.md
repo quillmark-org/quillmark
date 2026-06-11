@@ -1,6 +1,5 @@
 # Quill Resource File Structure and API
 
-> **Status**: Final design — opinionated, no backward compatibility
 > **Implementation**: `crates/core/src/quill/` (the `Quill` type and its
 > operations), `crates/quillmark/src/load.rs` (filesystem loading)
 

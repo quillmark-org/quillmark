@@ -14,7 +14,6 @@ pub fn map_typst_errors(errors: &[SourceDiagnostic], world: &QuillWorld) -> Vec<
 
 /// Converts a single Typst diagnostic to a Quillmark diagnostic.
 fn map_single_diagnostic(error: &SourceDiagnostic, world: &QuillWorld) -> Diagnostic {
-    // Map Typst severity to Quillmark severity
     let severity = match error.severity {
         typst::diag::Severity::Error => Severity::Error,
         typst::diag::Severity::Warning => Severity::Warning,

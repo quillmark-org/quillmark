@@ -1,4 +1,4 @@
-//! Emit round-trip fuzz target — Phase 4b.
+//! Emit round-trip fuzz target.
 //!
 //! Property: for any input that `Document::from_markdown` accepts, the
 //! emission and re-parse chain must be stable:
