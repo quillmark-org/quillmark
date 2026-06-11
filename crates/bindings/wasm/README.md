@@ -28,8 +28,9 @@ or cross a memory boundary yourself.
 bash scripts/build-wasm.sh
 ```
 
-The script builds for `bundler` and `experimental-nodejs-module` targets with
-`--weak-refs` enabled (see [Lifecycle](#lifecycle)).
+The script builds two feature variants — the core (no Typst) and the default
+(Typst backend) — both with `--target bundler` and `--weak-refs` enabled
+(see [Lifecycle](#lifecycle)).
 
 ## Test
 
@@ -144,9 +145,9 @@ genuinely malformed Markdown.
 
 ### Storage compatibility across versions
 
-The `schema` value (`quillmark/document@0.81.0`) is the **model version**,
+The `schema` value (`quillmark/document@0.82.0`) is the **model version**,
 not the running crate version. It is a hand-set constant, bumped only when
-the `Document` model itself changes — so every `0.81.x` patch release reads
+the `Document` model itself changes — so every `0.82.x` patch release reads
 and writes that same value.
 
 - **Upgrading is safe.** A newer build always reads documents written by an

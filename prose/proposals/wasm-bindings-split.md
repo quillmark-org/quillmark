@@ -7,8 +7,6 @@
 > `Document` verbatim and adds an `Engine` render dispatcher that lazily loads
 > **private** backend builds (descriptor-registered, capability-manifested).
 > There is no public `/core` or `/render` subpath. See
-> [`crates/bindings/wasm/DEBRIEF.md`](../../crates/bindings/wasm/DEBRIEF.md) and
-> the migration guide
 > [`docs/migrations/0.89-to-0.90.md`](../../docs/migrations/0.89-to-0.90.md)
 > for the as-built architecture. The text below is kept as a historical record
 > and is not corrected.

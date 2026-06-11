@@ -64,9 +64,9 @@ quillmark render ./quills/usaf_memo memo.md -o output/final.pdf
 quillmark render ./quills/usaf_memo memo.md --format svg
 ```
 
-### Rendering the generated blueprint
+### Rendering the seeded document
 
-If you omit `MARKDOWN_FILE`, the quill's generated blueprint is rendered:
+If you omit `MARKDOWN_FILE`, the quill's seeded document is rendered:
 
 ```bash
 quillmark render ./quills/usaf_memo
@@ -98,11 +98,11 @@ quillmark render [OPTIONS] <QUILL_PATH> [MARKDOWN_FILE]
 
 **Arguments:**
 - `<QUILL_PATH>` - Path to quill directory
-- `[MARKDOWN_FILE]` - Path to markdown file with card-yaml blocks (optional; when omitted, the quill's generated blueprint is used)
+- `[MARKDOWN_FILE]` - Path to markdown file with card-yaml blocks (optional; when omitted, the quill's seeded document is rendered)
 
 **Options:**
 - `-o, --output <FILE>` - Output file path (default: derived from input filename)
-- `-f, --format <FORMAT>` - Output format: pdf, svg, txt (default: pdf)
+- `-f, --format <FORMAT>` - Output format: pdf, svg, png, txt (default: pdf)
 - `--stdout` - Write output to stdout instead of file
 - `-v, --verbose` - Show detailed processing information
 - `--quiet` - Suppress all non-error output
@@ -111,7 +111,7 @@ quillmark render [OPTIONS] <QUILL_PATH> [MARKDOWN_FILE]
 
 ### Example: Render USAF Memo
 
-Omitting the Markdown file renders the quill's generated blueprint:
+Omitting the Markdown file renders the quill's seeded document:
 
 ```bash
 quillmark render \
@@ -176,7 +176,6 @@ cargo run -- render path/to/quill document.md
 
 For architectural details and design decisions, see:
 - [CLI Design Document](../../prose/canon/CLI.md)
-- [Implementation Plan](../../prose/plans/cli-basic-render.md)
 
 ## Changelog
 

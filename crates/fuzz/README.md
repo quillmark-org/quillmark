@@ -32,6 +32,10 @@ cargo test --package quillmark-fuzz emit_roundtrip_fuzz
 
 ## Test Coverage
 
+### Type Coercion (`coerce_fuzz`)
+
+Property tests for `QuillConfig::coerce_payload`: no panics on arbitrary `(FieldSchema, Value)` pairs, well-formed error paths, and idempotence of successful coercions.
+
 ### Escaping Function Security (`convert_fuzz`)
 
 Tests for `escape_string` and `escape_markup` functions in `quillmark-typst`:
@@ -90,8 +94,9 @@ The fuzzing tests validate critical security properties:
 
 ## Architecture
 
-The fuzzing tests are organized into four modules:
+The fuzzing tests are organized into five modules:
 
+- `coerce_fuzz.rs` - Property tests for `QuillConfig::coerce_payload` (no-panic, well-formed error paths, idempotence)
 - `convert_fuzz.rs` - Tests for markdown to Typst conversion and escaping functions
 - `emit_roundtrip_fuzz.rs` - Round-trip stability tests (parse → emit → re-parse)
 - `filter_fuzz.rs` - Tests for filter input validation and injection safety
