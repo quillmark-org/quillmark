@@ -31,7 +31,9 @@ impl OutputWriter {
             }
             Ok(())
         } else {
-            unreachable!("Output path should be set if not using stdout")
+            Err(crate::errors::CliError::InvalidArgument(
+                "No output path configured and stdout output not selected".to_string(),
+            ))
         }
     }
 

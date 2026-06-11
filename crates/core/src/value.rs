@@ -13,6 +13,40 @@ use std::ops::Deref;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct QuillValue(serde_json::Value);
 
+/// `true` when `value` nests deeper than `max_depth` container levels.
+///
+/// Every path that stores a value into a `Document` — markdown parse,
+/// DTO/wire deserialization, the typed mutators, the binding converters —
+/// bounds nesting at the spec §8 limit
+/// ([`crate::document::limits::MAX_YAML_DEPTH`]), which makes the recursive
+/// consumers (emit, plate-JSON serialization, DTO conversion) bounded by
+/// construction. The walk is iterative (explicit stack), so the check
+/// itself cannot overflow on adversarially deep input — the very condition
+/// it exists to detect.
+pub fn json_depth_exceeds(value: &serde_json::Value, max_depth: usize) -> bool {
+    use serde_json::Value;
+    // (value, depth) pairs; depth counts container levels entered.
+    let mut stack: Vec<(&Value, usize)> = vec![(value, 0)];
+    while let Some((v, depth)) = stack.pop() {
+        match v {
+            Value::Array(items) => {
+                if depth + 1 > max_depth && !items.is_empty() {
+                    return true;
+                }
+                stack.extend(items.iter().map(|c| (c, depth + 1)));
+            }
+            Value::Object(map) => {
+                if depth + 1 > max_depth && !map.is_empty() {
+                    return true;
+                }
+                stack.extend(map.values().map(|c| (c, depth + 1)));
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 impl QuillValue {
     /// Create a QuillValue from a YAML string
     pub fn from_yaml_str(yaml_str: &str) -> Result<Self, serde_saphyr::Error> {

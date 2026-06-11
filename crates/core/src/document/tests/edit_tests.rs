@@ -648,3 +648,122 @@ fn test_ext_mutators_work_on_composable_cards() {
     assert_eq!(removed, Some(serde_json::json!({ "note": "x" })));
     assert!(doc.cards()[0].ext().is_none());
 }
+
+// ── §8 value-depth bound at every ingestion boundary (CORE-2) ────────────────
+
+/// Build `{"a":{"a":…}}` nested `depth` levels (iteratively, so the test
+/// itself stays stack-safe).
+fn deep_value(depth: usize) -> serde_json::Value {
+    let mut v = serde_json::json!(1);
+    for _ in 0..depth {
+        let mut m = serde_json::Map::new();
+        m.insert("a".to_string(), v);
+        v = serde_json::Value::Object(m);
+    }
+    v
+}
+
+#[test]
+fn set_field_rejects_value_past_depth_limit() {
+    let mut doc = crate::document::Document::from_markdown(
+        "~~~\n$quill: q@1.0\n$kind: main\n~~~\n",
+    )
+    .unwrap();
+    let ok = crate::value::QuillValue::from_json(deep_value(50));
+    assert!(doc.main_mut().set_field("x", ok).is_ok());
+
+    let too_deep = crate::value::QuillValue::from_json(deep_value(150));
+    let err = doc.main_mut().set_field("y", too_deep).unwrap_err();
+    assert!(
+        matches!(err, crate::document::EditError::ValueTooDeep { max: 100 }),
+        "expected ValueTooDeep, got {err:?}"
+    );
+    // set_fill and set_ext carry the same bound.
+    let too_deep = crate::value::QuillValue::from_json(deep_value(150));
+    assert!(doc.main_mut().set_fill("y", too_deep).is_err());
+    let serde_json::Value::Object(map) = deep_value(150) else {
+        unreachable!()
+    };
+    assert!(doc.main_mut().set_ext(map).is_err());
+    assert!(doc
+        .main_mut()
+        .set_ext_namespace("ns", deep_value(150))
+        .is_err());
+}
+
+#[test]
+fn storage_dto_rejects_value_past_depth_limit() {
+    // A hand-crafted storage DTO with an over-deep field value must be
+    // rejected with a clean error, not abort the process — the §8 bound
+    // holds on the storage path, not just the markdown parse path.
+    let stored = serde_json::json!({
+        "schema": "quillmark/document@0.82.0",
+        "main": {
+            "payload": {"items": [
+                {"type": "quill", "value": "q@1.0"},
+                {"type": "kind", "value": "main"},
+                {"type": "field", "key": "x", "value": deep_value(150)}
+            ]},
+            "body": ""
+        },
+        "cards": []
+    });
+    let err = serde_json::from_value::<crate::document::Document>(stored).unwrap_err();
+    assert!(
+        err.to_string().contains("deeper than the maximum"),
+        "expected depth error, got {err}"
+    );
+
+    // $ext carries the same bound.
+    let serde_json::Value::Object(deep_map) = deep_value(150) else {
+        unreachable!()
+    };
+    let stored = serde_json::json!({
+        "schema": "quillmark/document@0.82.0",
+        "main": {
+            "payload": {"items": [
+                {"type": "quill", "value": "q@1.0"},
+                {"type": "kind", "value": "main"},
+                {"type": "ext", "value": deep_map}
+            ]},
+            "body": ""
+        },
+        "cards": []
+    });
+    let err = serde_json::from_value::<crate::document::Document>(stored).unwrap_err();
+    assert!(
+        err.to_string().contains("deeper than the maximum"),
+        "expected $ext depth error, got {err}"
+    );
+}
+
+#[test]
+fn wire_card_rejects_value_past_depth_limit_and_bad_names() {
+    let wire: crate::document::CardWire = serde_json::from_value(serde_json::json!({
+        "kind": "note",
+        "payloadItems": [
+            {"type": "field", "key": "x", "value": deep_value(150)}
+        ],
+        "body": ""
+    }))
+    .unwrap();
+    let err = crate::document::Card::try_from(wire).unwrap_err();
+    assert!(
+        err.to_string().contains("deeper than the maximum"),
+        "expected depth error, got {err}"
+    );
+
+    let wire: crate::document::CardWire = serde_json::from_value(serde_json::json!({
+        "kind": "note",
+        "payloadItems": [
+            {"type": "field", "key": "Bad Name", "value": 1}
+        ],
+        "body": ""
+    }))
+    .unwrap();
+    let err = crate::document::Card::try_from(wire).unwrap_err();
+    assert!(
+        err.to_string().contains("[a-z_]"),
+        "expected name error, got {err}"
+    );
+}

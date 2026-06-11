@@ -11,10 +11,10 @@
 //! `remove_ext_namespace`, `replace_body`); [`Document`] keeps
 //! document-level ops (quill-ref, push/insert/remove/move card).
 //!
-//! The `$ext` mutators are unguarded: `$ext` is an opaque mapping that
-//! never reaches the plate JSON backends consume, so there is no field-name
-//! or kind invariant to enforce — only that the value is a mapping, which
-//! the types already guarantee.
+//! The `$ext` mutators carry no field-name invariant ($ext is an opaque
+//! mapping that never reaches the plate JSON backends consume), but they do
+//! enforce the §8 value-depth bound: `$ext` flows through the recursive
+//! emit and DTO paths like any other value.
 
 use unicode_normalization::UnicodeNormalization;
 
@@ -56,6 +56,58 @@ pub enum EditError {
 
     #[error("index {index} is out of range (len = {len})")]
     IndexOutOfRange { index: usize, len: usize },
+
+    #[error("value nests deeper than the maximum of {max} levels")]
+    ValueTooDeep { max: usize },
+}
+
+/// A field-level invariant violation, shared by every payload ingestion path.
+///
+/// Each boundary maps it to its own error type (`ParseError`,
+/// `StorageError`, `WireError`, `EditError`), so the invariant — every user
+/// field name matches `[a-z_][a-z0-9_]*` and no value nests past the §8
+/// depth limit — is enforced once, here, and a constructed `Document` can
+/// never violate it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldViolation {
+    /// The field name does not match `[a-z_][a-z0-9_]*` (spec §3.4 / §10).
+    InvalidName,
+    /// The value nests deeper than [`MAX_YAML_DEPTH`](crate::document::limits::MAX_YAML_DEPTH)
+    /// (spec §8).
+    TooDeep,
+}
+
+/// Map a [`FieldViolation`] to the mutator error surface.
+fn check_field(name: &str, value: &serde_json::Value) -> Result<(), EditError> {
+    validate_field(name, value).map_err(|v| match v {
+        FieldViolation::InvalidName => EditError::InvalidFieldName(name.to_string()),
+        FieldViolation::TooDeep => EditError::ValueTooDeep {
+            max: crate::document::limits::MAX_YAML_DEPTH,
+        },
+    })
+}
+
+/// Depth-bound an `$ext` map (its name is fixed; only depth applies).
+fn check_ext_depth(map: &serde_json::Map<String, serde_json::Value>) -> Result<(), EditError> {
+    let as_value = serde_json::Value::Object(map.clone());
+    if crate::value::json_depth_exceeds(&as_value, crate::document::limits::MAX_YAML_DEPTH) {
+        return Err(EditError::ValueTooDeep {
+            max: crate::document::limits::MAX_YAML_DEPTH,
+        });
+    }
+    Ok(())
+}
+
+/// Validate a user field at the payload boundary: name conformance and
+/// value-depth bound. See [`FieldViolation`] for the invariant.
+pub fn validate_field(key: &str, value: &serde_json::Value) -> Result<(), FieldViolation> {
+    if !is_valid_field_name(key) {
+        return Err(FieldViolation::InvalidName);
+    }
+    if crate::value::json_depth_exceeds(value, crate::document::limits::MAX_YAML_DEPTH) {
+        return Err(FieldViolation::TooDeep);
+    }
+    Ok(())
 }
 
 impl Document {
@@ -171,9 +223,7 @@ impl Card {
     /// Returns [`EditError::InvalidFieldName`] when `name` does not match
     /// `[a-z_][a-z0-9_]*`.
     pub fn set_field(&mut self, name: &str, value: QuillValue) -> Result<(), EditError> {
-        if !is_valid_field_name(name) {
-            return Err(EditError::InvalidFieldName(name.to_string()));
-        }
+        check_field(name, value.as_json())?;
         self.payload_mut().insert(name.to_string(), value);
         Ok(())
     }
@@ -182,9 +232,7 @@ impl Card {
     /// `Null` emits as `key: !fill`; scalars/sequences as `key: !fill <value>`.
     /// Same validation as [`Card::set_field`].
     pub fn set_fill(&mut self, name: &str, value: QuillValue) -> Result<(), EditError> {
-        if !is_valid_field_name(name) {
-            return Err(EditError::InvalidFieldName(name.to_string()));
-        }
+        check_field(name, value.as_json())?;
         self.payload_mut().insert_fill(name.to_string(), value);
         Ok(())
     }
@@ -206,8 +254,17 @@ impl Card {
     /// annotations, …) and is stripped from [`Document::to_plate_json`], so a
     /// write here can never affect a render. Any nested comments attached to a
     /// replaced `$ext` are dropped.
-    pub fn set_ext(&mut self, value: serde_json::Map<String, serde_json::Value>) {
+    /// Returns [`EditError::ValueTooDeep`] when the map nests past the §8
+    /// depth limit — `$ext` never reaches the plate JSON, but it does flow
+    /// through the recursive emit and DTO paths, so it carries the same
+    /// depth bound as user fields.
+    pub fn set_ext(
+        &mut self,
+        value: serde_json::Map<String, serde_json::Value>,
+    ) -> Result<(), EditError> {
+        check_ext_depth(&value)?;
         self.payload_mut().set_ext(value);
+        Ok(())
     }
 
     /// Remove the card's `$ext` map *entirely*, returning the previous map if
@@ -225,10 +282,24 @@ impl Card {
     /// This is the recommended way to write `$ext`: it preserves sibling
     /// namespaces, so independent consumers keying on their own slot
     /// (`$ext.presentation`, `$ext.agent`, …) don't clobber each other.
-    pub fn set_ext_namespace(&mut self, namespace: impl Into<String>, value: serde_json::Value) {
-        let mut map = self.payload_mut().take_ext().unwrap_or_default();
+    /// Returns [`EditError::ValueTooDeep`] when the merged map nests past
+    /// the §8 depth limit (see [`Card::set_ext`]); the card's `$ext` is
+    /// unchanged on error.
+    pub fn set_ext_namespace(
+        &mut self,
+        namespace: impl Into<String>,
+        value: serde_json::Value,
+    ) -> Result<(), EditError> {
+        let mut map = self
+            .payload_mut()
+            .ext()
+            .cloned()
+            .unwrap_or_default();
         map.insert(namespace.into(), value);
+        check_ext_depth(&map)?;
+        self.payload_mut().take_ext();
         self.payload_mut().set_ext(map);
+        Ok(())
     }
 
     /// Remove `namespace` from the card's `$ext` map, returning the value

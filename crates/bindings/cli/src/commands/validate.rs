@@ -183,14 +183,29 @@ fn validate_file_references(
     config: &QuillConfig,
     result: &mut ValidationResult,
 ) {
-    // Check plate_file reference
+    // Check plate_file reference. `plate_file` comes from the (untrusted)
+    // Quill.yaml, so reject anything that is not a simple relative filename
+    // before touching the filesystem: `Path::join` with an absolute path
+    // replaces the base entirely, and `..` escapes the quill root, either of
+    // which would turn `plate_path.exists()` into a host path-probing oracle.
     if let Some(ref plate_file) = config.plate_file {
-        let plate_path = quill_path.join(plate_file);
-        if !plate_path.exists() {
+        let rel = Path::new(plate_file);
+        if rel
+            .components()
+            .any(|c| !matches!(c, std::path::Component::Normal(_)))
+        {
             result.add_error(format!(
-                "Referenced plate_file '{}' does not exist",
+                "plate_file '{}' must be a relative path within the quill (no '..' or absolute components)",
                 plate_file
             ));
+        } else {
+            let plate_path = quill_path.join(rel);
+            if !plate_path.exists() {
+                result.add_error(format!(
+                    "Referenced plate_file '{}' does not exist",
+                    plate_file
+                ));
+            }
         }
     }
 }
@@ -210,7 +225,9 @@ fn validate_field_schemas(
     for (field_name, field_schema) in fields {
         if let Some(ref enum_values) = field_schema.enum_values {
             if enum_values.is_empty() {
-                result.add_warning(format!("{context} '{field_name}': enum constraint is empty"));
+                result.add_warning(format!(
+                    "{context} '{field_name}': enum constraint is empty"
+                ));
             }
         }
         if field_schema
@@ -246,7 +263,6 @@ fn validate_card_schema(card_name: &str, card_schema: &CardSchema, result: &mut 
     let context = format!("card '{}' field", card_name);
     validate_field_schemas(&card_schema.fields, result, &context);
 }
-
 
 fn print_validation_result(result: &ValidationResult, verbose: bool) {
     let error_count = result.error_count();

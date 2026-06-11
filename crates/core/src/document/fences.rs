@@ -273,15 +273,23 @@ pub(super) fn find_metadata_blocks(markdown: &str) -> Result<FenceScan, ParseErr
 
             // Scan for the matching `~~~` closer. A closer must be a tilde run
             // at least as long as the opener (CommonMark fence matching), so a
-            // shorter `~~~` inside a longer-fenced block stays payload.
+            // shorter `~~~` inside a longer-fenced block stays payload. It must
+            // also be at column zero (spec §3.2 / D2): the payload is YAML,
+            // where indentation is structural, so an indented `~~~` — e.g. a
+            // tilde code fence inside a `|` block-scalar value — is payload,
+            // never a closer. (A column-zero `~~~` can never be block-scalar
+            // content, so the closer is unambiguous.)
             let mut closer_k: Option<usize> = None;
             let mut j = k + 1;
             while j < lines.len() {
-                if let Some((_, _, true)) =
-                    code_fence_on_line(lines.line_text(j), Some((b'~', open_run)))
-                {
-                    closer_k = Some(j);
-                    break;
+                let candidate = lines.line_text(j);
+                if !candidate.starts_with(' ') {
+                    if let Some((_, _, true)) =
+                        code_fence_on_line(candidate, Some((b'~', open_run)))
+                    {
+                        closer_k = Some(j);
+                        break;
+                    }
                 }
                 j += 1;
             }

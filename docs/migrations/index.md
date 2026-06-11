@@ -12,6 +12,15 @@ guides in order.
 
 ## Available guides
 
+- [0.90 → 0.91](0.90-to-0.91.md) — the closing `~~~` of a card-yaml block must
+  be at column zero (an indented `~~~` is payload, fixing silent truncation of
+  block-scalar values containing tilde fences); data-field names
+  (`[a-z_][a-z0-9_]*`) and the 100-level nesting limit are enforced on every
+  input path (parse, storage, wire, mutators — `set_ext` now returns
+  `Result`); quill loading skips symlinks and caps file size; Python binding
+  raises `ValueError` for non-finite floats, out-of-64-bit integers, and
+  over-deep values. Plus no-action round-trip/output fixes (YAML 1.2 comment
+  handling, image alt text, nested-key quoting).
 - [0.89 → 0.90](0.89-to-0.90.md) — `Quill` becomes engine-free data: the engine
   no longer loads quills (`Quill.fromTree` / `quillmark::quill_from_path`
   replace the factory) and now owns rendering and capability

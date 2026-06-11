@@ -32,7 +32,7 @@ fn test_document_body_and_warnings() {
     // preserved verbatim. `toMarkdown` carries the body through unchanged.
     assert!(doc.to_markdown().contains("# Hello\n"));
     // warnings() returns JsValue (array) — just verify it's defined
-    let warnings = doc.warnings();
+    let warnings = doc.warnings().unwrap();
     assert!(!warnings.is_undefined());
 }
 
@@ -185,13 +185,13 @@ fn test_json_dto_drops_parse_warnings() {
         "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Hi\nweird: !custom value\n~~~\n\nBody\n";
     let doc = Document::from_markdown(warn_md).expect("fromMarkdown failed");
     assert!(
-        js_sys::Array::from(&doc.warnings()).length() > 0,
+        js_sys::Array::from(&doc.warnings().unwrap()).length() > 0,
         "source document must carry a parse warning"
     );
 
     let restored = Document::from_json(&doc.to_json()).expect("fromJson failed");
     assert_eq!(
-        js_sys::Array::from(&restored.warnings()).length(),
+        js_sys::Array::from(&restored.warnings().unwrap()).length(),
         0,
         "DTO-reconstructed document must have no warnings"
     );
@@ -263,7 +263,7 @@ fn test_quill_metadata_and_schemas() {
     .expect("quill load");
 
     // metadata: identity from `quill:` section, no schema.
-    let meta = quill.metadata();
+    let meta = quill.metadata().unwrap();
     assert_eq!(get_str(&meta, "name").as_deref(), Some("meta_quill"));
     assert_eq!(get_str(&meta, "version").as_deref(), Some("0.2.1"));
     assert_eq!(get_str(&meta, "backend").as_deref(), Some("typst"));
@@ -280,7 +280,7 @@ fn test_quill_metadata_and_schemas() {
     assert!(get(&meta, "schema").is_undefined());
 
     // schema: user-fillable fields with ui hints. No QUILL/CARD sentinels.
-    let schema = quill.schema();
+    let schema = quill.schema().unwrap();
     let main_fields = get(&get(&schema, "main"), "fields");
     assert!(get(&get(&main_fields, "title"), "ui").is_object());
     assert!(get(&main_fields, "QUILL").is_undefined());
@@ -333,7 +333,7 @@ fn test_quill_seed_main_and_card() {
     .expect("quill load");
 
     // seed_main: the `$kind: main` card, committing the byline example.
-    let main = quill.seed_main();
+    let main = quill.seed_main().unwrap();
     assert_eq!(get(&main, "kind").as_string().as_deref(), Some("main"));
     assert!(
         json(&main).contains("FIRST LAST"),
@@ -342,7 +342,7 @@ fn test_quill_seed_main_and_card() {
     );
 
     // seed_card: a known kind seeds its example; an unknown kind is undefined.
-    let note = quill.seed_card("note");
+    let note = quill.seed_card("note").unwrap();
     assert_eq!(get(&note, "kind").as_string().as_deref(), Some("note"));
     assert!(
         json(&note).contains("NOTE EXAMPLE"),
@@ -350,7 +350,7 @@ fn test_quill_seed_main_and_card() {
         json(&note)
     );
     assert!(
-        quill.seed_card("missing").is_undefined(),
+        quill.seed_card("missing").unwrap().is_undefined(),
         "unknown kind must be undefined"
     );
 }
@@ -386,8 +386,8 @@ fn test_document_clone_independence() {
 
     // Warnings are a JS array on both handles. Length-equality is the
     // observable guarantee for parse-warning preservation.
-    let orig_warns = js_sys::Array::from(&doc.warnings());
-    let clone_warns = js_sys::Array::from(&clone.warnings());
+    let orig_warns = js_sys::Array::from(&doc.warnings().unwrap());
+    let clone_warns = js_sys::Array::from(&clone.warnings().unwrap());
     assert_eq!(
         orig_warns.length(),
         clone_warns.length(),

@@ -261,3 +261,48 @@ fn card_fence_without_blank_line_above_is_not_a_card() {
         .iter()
         .any(|w| w.code.as_deref() == Some("parse::card_fence_missing_blank")));
 }
+
+// ── Column-zero closer rule (spec §3.2 / D2) ──────────────────────────────────
+
+#[test]
+fn indented_tilde_inside_block_scalar_is_payload_not_closer() {
+    // The CORE-1 corruption case: a tilde code fence embedded in a `|`
+    // block-scalar value. The indented `~~~` lines are payload by the
+    // column-zero closer rule; only the column-zero `~~~` closes the block.
+    let src = "\
+~~~
+$quill: q@1.0
+$kind: main
+snippet: |
+  Here is code:
+  ~~~
+  let x = 1;
+  ~~~
+  done
+~~~
+
+The body.
+";
+    let doc = Document::from_markdown(src).unwrap();
+    assert_eq!(
+        doc.main().payload().get("snippet").unwrap().as_str(),
+        Some("Here is code:\n~~~\nlet x = 1;\n~~~\ndone\n"),
+        "block scalar must keep the embedded tilde fence intact"
+    );
+    assert_eq!(doc.main().body(), "\nThe body.\n");
+}
+
+#[test]
+fn indented_tilde_line_never_closes_a_card_fence() {
+    // An indented `~~~` (1–3 spaces, valid as a CommonMark closer) is not a
+    // card-yaml closer. With no column-zero closer, the opener falls through
+    // to CommonMark as an unclosed code block, with the standard warning —
+    // a diagnostic, not silent truncation.
+    let src = "~~~\n$quill: q@1.0\n$kind: main\nx: 1\n  ~~~\n";
+    let err = Document::from_markdown(src).unwrap_err();
+    // No closed root block → MissingQuill (the `~~~` ran to EOF as code).
+    assert!(
+        matches!(err, crate::error::ParseError::MissingQuill(_)),
+        "expected MissingQuill, got {err:?}"
+    );
+}

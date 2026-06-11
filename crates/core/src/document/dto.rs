@@ -400,16 +400,45 @@ impl TryFrom<PayloadItemV0_82_0> for PayloadItem {
             }
             PayloadItemV0_82_0::Kind { value } => PayloadItem::Kind { value },
             PayloadItemV0_82_0::Id { value } => PayloadItem::Id { value },
-            PayloadItemV0_82_0::Ext { value } => PayloadItem::Ext {
-                value,
-                nested_comments: Vec::new(),
-            },
-            PayloadItemV0_82_0::Field { key, value, fill } => PayloadItem::Field {
-                key,
-                value: QuillValue::from_json(value),
-                fill,
-                nested_comments: Vec::new(),
-            },
+            PayloadItemV0_82_0::Ext { value } => {
+                let as_value = serde_json::Value::Object(value);
+                if crate::value::json_depth_exceeds(
+                    &as_value,
+                    crate::document::limits::MAX_YAML_DEPTH,
+                ) {
+                    return Err(StorageError::Malformed(format!(
+                        "$ext nests deeper than the maximum of {} levels",
+                        crate::document::limits::MAX_YAML_DEPTH
+                    )));
+                }
+                let serde_json::Value::Object(value) = as_value else {
+                    unreachable!("constructed as Object above")
+                };
+                PayloadItem::Ext {
+                    value,
+                    nested_comments: Vec::new(),
+                }
+            }
+            PayloadItemV0_82_0::Field { key, value, fill } => {
+                use super::edit::{validate_field, FieldViolation};
+                validate_field(&key, &value).map_err(|v| {
+                    StorageError::Malformed(match v {
+                        FieldViolation::InvalidName => format!(
+                            "invalid field name {key:?}: must match [a-z_][a-z0-9_]*"
+                        ),
+                        FieldViolation::TooDeep => format!(
+                            "field {key:?} nests deeper than the maximum of {} levels",
+                            crate::document::limits::MAX_YAML_DEPTH
+                        ),
+                    })
+                })?;
+                PayloadItem::Field {
+                    key,
+                    value: QuillValue::from_json(value),
+                    fill,
+                    nested_comments: Vec::new(),
+                }
+            }
             PayloadItemV0_82_0::Comment { text, inline } => PayloadItem::Comment { text, inline },
         })
     }

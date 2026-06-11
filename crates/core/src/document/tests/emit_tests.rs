@@ -298,3 +298,39 @@ fn empty_map_omitted_from_emit() {
         md
     );
 }
+
+#[test]
+fn nested_map_keys_with_structural_chars_emit_valid_yaml() {
+    // A nested mapping key that requires YAML quoting (`: `, a leading flow
+    // indicator, edge whitespace, or a type-ambiguous form) must be emitted
+    // quoted so the document re-parses to the same key, rather than producing
+    // YAML that fails to parse or maps to a different key.
+    use crate::document::{Card, Payload};
+    use crate::value::QuillValue;
+    use indexmap::IndexMap;
+
+    let mut payload: IndexMap<String, QuillValue> = IndexMap::new();
+    payload.insert(
+        "config".to_string(),
+        QuillValue::from_json(serde_json::json!({
+            "a: b": 1,
+            "*star": 2,
+            "n": 3,
+            "needs # comment": 4
+        })),
+    );
+    let mut p = Payload::from_index_map(payload);
+    p.set_quill("test".parse().unwrap());
+    p.set_kind("main");
+    let main = Card::from_parts(p, String::new());
+    let doc = Document::from_main_and_cards(main, vec![], vec![]);
+
+    let md = doc.to_markdown();
+    let reparsed = Document::from_markdown(&md)
+        .unwrap_or_else(|e| panic!("emitted YAML must re-parse, got error {e}\n{md}"));
+    let cfg = reparsed.main().payload().get("config").unwrap().as_json();
+    assert_eq!(cfg["a: b"], serde_json::json!(1));
+    assert_eq!(cfg["*star"], serde_json::json!(2));
+    assert_eq!(cfg["n"], serde_json::json!(3));
+    assert_eq!(cfg["needs # comment"], serde_json::json!(4));
+}

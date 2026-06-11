@@ -418,10 +418,78 @@ fn split_key(line: &str) -> Option<(String, String)> {
     Some((key, rest))
 }
 
-/// Split `value` into `(value_without_comment, trailing_comment)`.
-/// Respects `"..."` and `'...'` quoting; ` #` or `\t#` outside quotes
-/// starts a comment.
+/// Split `value` into `(value_without_comment, trailing_comment)` following
+/// YAML's rules. A `#` preceded by whitespace (or at value start) begins a
+/// comment, except inside a quoted scalar — and a quote opens a quoted
+/// scalar only when it is the *first* character of the scalar, or appears
+/// inside a flow collection (`[`/`{`). Inside a plain scalar, `'` and `"`
+/// are ordinary characters: `x: it's fine # note` carries a comment.
 fn split_trailing_comment(value: &str) -> (String, Option<String>) {
+    let bytes = value.as_bytes();
+    let Some(first) = bytes.iter().position(|b| !matches!(b, b' ' | b'\t')) else {
+        return (value.to_string(), None);
+    };
+    match bytes[first] {
+        // Quoted scalar: skip the quoted body, then scan for a comment. An
+        // unterminated quote means the scalar continues on the next line —
+        // no comment on this one.
+        b'"' | b'\'' => match find_quote_end(bytes, first) {
+            Some(end) => find_comment_from(value, end + 1),
+            None => (value.to_string(), None),
+        },
+        // Flow collection: quotes open quoted scalars anywhere inside, so
+        // track quote state across the whole value.
+        b'[' | b'{' => split_flow_trailing_comment(value),
+        // Plain scalar (or block-scalar header): quotes are ordinary
+        // characters; only the whitespace-then-`#` rule applies.
+        _ => find_comment_from(value, 0),
+    }
+}
+
+/// Byte index of the closing quote of the quoted scalar opening at `start`,
+/// honouring `\"` escapes in double quotes and `''` escapes in single quotes.
+fn find_quote_end(bytes: &[u8], start: usize) -> Option<usize> {
+    let quote = bytes[start];
+    let mut i = start + 1;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if quote == b'"' && b == b'\\' {
+            i += 2;
+            continue;
+        }
+        if b == quote {
+            if quote == b'\'' && bytes.get(i + 1) == Some(&b'\'') {
+                i += 2; // '' is an escaped quote, not the closer
+                continue;
+            }
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Scan `value` from byte `from` for a `#` preceded by whitespace (or at the
+/// scan start) and split there. Quote characters are not interpreted.
+fn find_comment_from(value: &str, from: usize) -> (String, Option<String>) {
+    let bytes = value.as_bytes();
+    let mut prev_was_ws = true;
+    for i in from..bytes.len() {
+        let b = bytes[i];
+        if b == b'#' && prev_was_ws {
+            let v = value[..i].trim_end().to_string();
+            let c = value[i..].to_string();
+            return (v, Some(c));
+        }
+        prev_was_ws = matches!(b, b' ' | b'\t');
+    }
+    (value.to_string(), None)
+}
+
+/// Comment split for flow-collection values (`[…]` / `{…}`), where quoted
+/// scalars can open anywhere: track quote state across the value and split
+/// at the first whitespace-preceded `#` outside quotes.
+fn split_flow_trailing_comment(value: &str) -> (String, Option<String>) {
     let bytes = value.as_bytes();
     let mut i = 0;
     let mut prev_was_ws = true;
@@ -837,4 +905,75 @@ mod tests {
             "expected error; !fill on mappings is rejected"
         );
     }
+    // ── split_trailing_comment: YAML 1.2 conformance ─────────────────────────
+
+    #[test]
+    fn comment_after_plain_scalar_with_apostrophe() {
+        // YAML: in a plain scalar, `'` is an ordinary character; the
+        // whitespace-preceded `#` still starts a comment.
+        let (v, c) = split_trailing_comment(" it's a test # note");
+        assert_eq!(v, " it's a test");
+        assert_eq!(c.as_deref(), Some("# note"));
+    }
+
+    #[test]
+    fn comment_after_plain_scalar_with_double_quote() {
+        let (v, c) = split_trailing_comment(" don\"t # note");
+        assert_eq!(v, " don\"t");
+        assert_eq!(c.as_deref(), Some("# note"));
+    }
+
+    #[test]
+    fn hash_inside_quoted_scalar_is_not_a_comment() {
+        let (v, c) = split_trailing_comment(" 'a # b'");
+        assert_eq!(v, " 'a # b'");
+        assert_eq!(c, None);
+
+        let (v, c) = split_trailing_comment(" \"a # b\"");
+        assert_eq!(v, " \"a # b\"");
+        assert_eq!(c, None);
+    }
+
+    #[test]
+    fn comment_after_quoted_scalar() {
+        let (v, c) = split_trailing_comment(" 'a # b' # real");
+        assert_eq!(v, " 'a # b'");
+        assert_eq!(c.as_deref(), Some("# real"));
+
+        // '' is an escaped quote, not the closer.
+        let (v, c) = split_trailing_comment(" 'it''s # x' # real");
+        assert_eq!(v, " 'it''s # x'");
+        assert_eq!(c.as_deref(), Some("# real"));
+
+        // \" is an escaped quote in double-quoted scalars.
+        let (v, c) = split_trailing_comment(" \"a \\\" # b\" # real");
+        assert_eq!(v, " \"a \\\" # b\"");
+        assert_eq!(c.as_deref(), Some("# real"));
+    }
+
+    #[test]
+    fn unterminated_quote_means_multiline_scalar_no_comment() {
+        let (v, c) = split_trailing_comment(" \"starts here # not a comment");
+        assert_eq!(v, " \"starts here # not a comment");
+        assert_eq!(c, None);
+    }
+
+    #[test]
+    fn flow_collection_tracks_quotes_anywhere() {
+        let (v, c) = split_trailing_comment(" [a, \"b # c\"] # real");
+        assert_eq!(v, " [a, \"b # c\"]");
+        assert_eq!(c.as_deref(), Some("# real"));
+
+        let (v, c) = split_trailing_comment(" [a, \"b # c\"]");
+        assert_eq!(c, None);
+        assert_eq!(v, " [a, \"b # c\"]");
+    }
+
+    #[test]
+    fn hash_without_preceding_whitespace_is_not_a_comment() {
+        let (v, c) = split_trailing_comment(" a#b");
+        assert_eq!(v, " a#b");
+        assert_eq!(c, None);
+    }
+
 }

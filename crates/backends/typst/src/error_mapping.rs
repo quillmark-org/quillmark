@@ -46,7 +46,11 @@ fn map_single_diagnostic(error: &SourceDiagnostic, world: &QuillWorld) -> Diagno
 fn resolve_span_to_location(span: &typst::syntax::Span, world: &QuillWorld) -> Option<Location> {
     use typst::World;
 
-    let source_id = world.main();
+    // Resolve the span against its OWN source file. A diagnostic originating in
+    // an injected helper package or a vendored package must report coordinates
+    // (and a path) in that file, not in main.typ. Spans with no file id (the
+    // detached span) fall back to main.
+    let source_id = span.id().unwrap_or_else(|| world.main());
     let source = world.source(source_id).ok()?;
     let range = source.range(*span)?;
 

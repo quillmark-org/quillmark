@@ -17,6 +17,7 @@ pub fn convert_edit_error(err: EditError) -> PyErr {
         EditError::InvalidKindName(_) => "InvalidKindName",
         EditError::ReservedKind => "ReservedKind",
         EditError::IndexOutOfRange { .. } => "IndexOutOfRange",
+        EditError::ValueTooDeep { .. } => "ValueTooDeep",
     };
     let message = format!("[EditError::{}] {}", variant, err);
     raise_with_diagnostics(vec![Diagnostic::new(Severity::Error, message.clone())], message)

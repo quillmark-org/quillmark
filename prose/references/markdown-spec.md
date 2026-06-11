@@ -109,11 +109,17 @@ the next opening fence or EOF.
   (```` ``` ````). A `~~~` fence carrying a language info string is also an
   ordinary code block. There is no "longer tilde run" escape — more tildes
   still open a card.
-- **Indentation.** The opening `~~~` is at column zero — **no leading
-  spaces**. An indented opener (1–3 spaces) is *not* a card-yaml opener: it
-  is delegated to CommonMark as an ordinary fenced code block, exactly like
-  an opener that fails the blank-line rule below. (The closing `~~~` may carry
-  up to three leading spaces, matching CommonMark's closing-fence rule.)
+- **Indentation.** Both fences are at column zero — **no leading spaces**.
+  An indented opener (1–3 spaces) is *not* a card-yaml opener: it is
+  delegated to CommonMark as an ordinary fenced code block, exactly like an
+  opener that fails the blank-line rule below. The closing `~~~` must also
+  be at column zero: the payload between the fences is YAML, where
+  indentation is structural, so an indented `~~~` is payload (e.g. a line
+  of a block scalar), never a closer. (This deliberately tightens
+  CommonMark's closing-fence rule, which tolerates 1–3 leading spaces —
+  that leniency exists for indented openers and list contexts, neither of
+  which applies to card-yaml blocks, and honouring it would let a tilde
+  fence inside a `|` block-scalar value silently truncate the block.)
 - **Line endings.** `\n` and `\r\n` are equally accepted.
 - **Blank-line rule.** A blank line is required immediately above every
   `~~~` opener, *except* when the opener is the very first line of the
@@ -265,7 +271,9 @@ A single detector runs over the line stream. A `~~~` line — a bare `~~~`, or
 **D1 — Blank line above.** The `~~~` line is line 1 of the document, or the
 line immediately above it is blank.
 
-**D2 — Closing fence.** A matching `~~~` line appears later in the document.
+**D2 — Closing fence.** A matching `~~~` line at **column zero** appears
+later in the document. An indented `~~~` line is payload (§3.2), never a
+closer.
 
 A `~~~` line that fails D0 (an indented opener) or D1 is **not** a card-yaml
 opener; it is delegated to CommonMark, where an indented `~~~` is still a
@@ -281,8 +289,13 @@ the `---` line is blank.
 
 YAML content between recognised fence markers is opaque to detection — a
 `~~~` line inside an open block is part of that block's payload, not a new
-opener (though the canonical payload never produces such a line). The same
-applies to `---` lines inside an open `---`-fenced root block.
+opener (though the canonical payload never produces such a line). In
+particular, an *indented* `~~~` inside the payload — e.g. a tilde code fence
+embedded in a `|` block-scalar value — is payload by the column-zero closer
+rule (D2). A *column-zero* `~~~` can never be block-scalar content (YAML
+requires scalar content to be indented past its key), so the closer is
+unambiguous. The same opacity applies to `---` lines inside an open
+`---`-fenced root block.
 
 Failure of D0, D1, or D2 delegates the `~~~` line to CommonMark (an unclosed
 `~~~` opener becomes a code block to EOF, with a non-fatal unclosed-fence
@@ -374,14 +387,17 @@ No other syntax deviates from CommonMark. Delimiter-run semantics for `*`,
 `_`, `**`, `__`, and `~~` follow CommonMark and GFM exactly — in particular,
 `__text__` renders as strong emphasis, identical to `**text**`.
 
-### 6.3 Out of Scope
+### 6.3 Limited or Out of Scope
 
 The following are parsed where CommonMark or pulldown-cmark already
-handles them, but produce no Quillmark-specific output and may be
-implemented in a future revision:
+handles them, but produce limited or no Quillmark-specific output; fuller
+support may come in a future revision:
 
-- Images (`![alt](src)`) — reserved for the asset-resolver integration;
-  not yet implemented.
+- Images (`![alt](src)`) — the markup *is* rendered by the Typst backend as
+  `#image("src", alt: "alt")`, with the alt text preserved as the output's
+  accessibility alternate text. What remains future work is asset-resolver
+  integration: `src` is emitted verbatim and resolved by the backend's
+  virtual filesystem, with no dedicated asset-resolution layer yet.
 - Math (`$…$`, `$$…$$`), footnotes, task lists, definition lists — not
   supported. In markdown body text `$` is literal; inside a `~~~` card-yaml
   payload `$` is reserved as the prefix for system-metadata keys (§3.3).

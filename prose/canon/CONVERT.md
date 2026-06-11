@@ -58,7 +58,7 @@ Two escapers guard the two Typst contexts:
 | `` `code` `` | `#raw("…")` (inline) |
 | fenced / indented code block | `#raw(block: true, lang: "…", "…")`; `lang:` emitted only when the language tag is non-empty |
 | `[text](url)`, autolinks | `#link("url")[text]` (link title dropped) |
-| `![alt](src)` | `#image("src")` (alt text dropped) |
+| `![alt](src)` | `#image("src", alt: "alt")`; `alt:` omitted when empty. Markup inside the alt is flattened to text (`alt:` is a string); the link-style title is dropped (no Typst counterpart, as for links) |
 | `-`, `*`, `+` bullet | `- ` |
 | ordered list | `+ ` auto-numbered; first item emits `N. ` when the list starts at `N ≠ 1` |
 | hard break | `#linebreak()` |

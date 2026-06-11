@@ -204,9 +204,8 @@ impl PyQuill {
         doc: PyRef<'_, PyDocument>,
     ) -> PyResult<Bound<'py, PyList>> {
         let diags = self.inner.validate(&doc.inner);
-        let json_value = serde_json::to_value(&diags).map_err(|e| {
-            PyValueError::new_err(format!("validate: serialization failed: {e}"))
-        })?;
+        let json_value = serde_json::to_value(&diags)
+            .map_err(|e| PyValueError::new_err(format!("validate: serialization failed: {e}")))?;
         let py_obj = json_to_py(py, &json_value)?;
         let list = py_obj
             .downcast::<PyList>()
@@ -431,7 +430,10 @@ impl PyDocument {
     /// `$ext`.
     fn set_ext(&mut self, value: Bound<'_, PyAny>) -> PyResult<()> {
         let map = py_to_object(&value, "set_ext")?;
-        self.inner.main_mut().set_ext(map);
+        self.inner
+            .main_mut()
+            .set_ext(map)
+            .map_err(convert_edit_error)?;
         Ok(())
     }
 
@@ -448,7 +450,10 @@ impl PyDocument {
     /// namespaces are preserved so independent consumers don't clobber each other.
     fn set_ext_namespace(&mut self, namespace: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
         let json = py_to_json(&value)?;
-        self.inner.main_mut().set_ext_namespace(namespace, json);
+        self.inner
+            .main_mut()
+            .set_ext_namespace(namespace, json)
+            .map_err(convert_edit_error)?;
         Ok(())
     }
 
@@ -469,7 +474,9 @@ impl PyDocument {
     /// main card; `set_card_ext_namespace` is the sibling-safe alternative.
     fn set_card_ext(&mut self, index: usize, value: Bound<'_, PyAny>) -> PyResult<()> {
         let map = py_to_object(&value, "set_card_ext")?;
-        self.card_mut_or_raise(index)?.set_ext(map);
+        self.card_mut_or_raise(index)?
+            .set_ext(map)
+            .map_err(convert_edit_error)?;
         Ok(())
     }
 
@@ -496,7 +503,8 @@ impl PyDocument {
     ) -> PyResult<()> {
         let json = py_to_json(&value)?;
         self.card_mut_or_raise(index)?
-            .set_ext_namespace(namespace, json);
+            .set_ext_namespace(namespace, json)
+            .map_err(convert_edit_error)?;
         Ok(())
     }
 
@@ -509,7 +517,9 @@ impl PyDocument {
         index: usize,
         namespace: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let removed = self.card_mut_or_raise(index)?.remove_ext_namespace(namespace);
+        let removed = self
+            .card_mut_or_raise(index)?
+            .remove_ext_namespace(namespace);
         ext_value_to_py(py, removed)
     }
 
@@ -557,8 +567,8 @@ impl PyDocument {
             payload_items,
             body: body.unwrap_or_default(),
         };
-        let card =
-            quillmark_core::Card::try_from(wire).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let card = quillmark_core::Card::try_from(wire)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
         card_to_pydict(py, &card)
     }
 
@@ -901,7 +911,10 @@ fn card_to_pydict<'py>(
 
     match &wire.ext {
         Some(ext_map) => {
-            d.set_item("ext", json_to_py(py, &serde_json::Value::Object(ext_map.clone()))?)?;
+            d.set_item(
+                "ext",
+                json_to_py(py, &serde_json::Value::Object(ext_map.clone()))?,
+            )?;
         }
         None => d.set_item("ext", py.None())?,
     }
@@ -951,7 +964,24 @@ fn py_to_quillvalue(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::QuillV
 }
 
 fn py_to_json(value: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
+    py_to_json_at(value, 0)
+}
+
+/// Recursive worker for [`py_to_json`], depth-bounded at the core §8 nesting
+/// limit. The bound serves two purposes: this function's own recursion cannot
+/// overflow the native stack on an adversarially deep Python object, and the
+/// produced value is rejected at the same nesting level the core payload
+/// boundary would reject it (`depth` is 0-based — the outermost container is
+/// visited at `depth == 0` — so the `>=` mirrors core's level-101 cutoff).
+fn py_to_json_at(value: &Bound<'_, PyAny>, depth: usize) -> PyResult<serde_json::Value> {
     use pyo3::types::{PyBool, PyFloat, PyInt, PyList, PyString};
+
+    if depth >= quillmark_core::document::limits::MAX_YAML_DEPTH {
+        return Err(PyValueError::new_err(format!(
+            "value nests deeper than the maximum of {} levels",
+            quillmark_core::document::limits::MAX_YAML_DEPTH
+        )));
+    }
 
     if value.is_none() {
         return Ok(serde_json::Value::Null);
@@ -961,11 +991,28 @@ fn py_to_json(value: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
         return Ok(serde_json::Value::Bool(b));
     }
     if value.is_instance_of::<PyInt>() {
-        let i: i64 = value.extract()?;
-        return Ok(serde_json::json!(i));
+        // Python ints are unbounded; map to i64, then u64, before giving up so
+        // large positive values still convert losslessly. Report overflow as a
+        // ValueError rather than letting PyO3's raw OverflowError leak across
+        // the binding boundary.
+        if let Ok(i) = value.extract::<i64>() {
+            return Ok(serde_json::json!(i));
+        }
+        if let Ok(u) = value.extract::<u64>() {
+            return Ok(serde_json::json!(u));
+        }
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "integer value is out of range for JSON conversion (exceeds 64-bit)",
+        ));
     }
     if value.is_instance_of::<PyFloat>() {
         let f: f64 = value.extract()?;
+        if !f.is_finite() {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "non-finite float value '{}' cannot be represented in JSON",
+                f
+            )));
+        }
         return Ok(serde_json::json!(f));
     }
     if value.is_instance_of::<PyString>() {
@@ -975,7 +1022,7 @@ fn py_to_json(value: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
     if value.is_instance_of::<PyList>() {
         let list = value.downcast::<PyList>()?;
         let arr: PyResult<Vec<serde_json::Value>> =
-            list.iter().map(|item| py_to_json(&item)).collect();
+            list.iter().map(|item| py_to_json_at(&item, depth + 1)).collect();
         return Ok(serde_json::Value::Array(arr?));
     }
     if value.is_instance_of::<PyDict>() {
@@ -983,7 +1030,7 @@ fn py_to_json(value: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
         let mut map = serde_json::Map::new();
         for (k, v) in dict.iter() {
             let key: String = k.extract()?;
-            map.insert(key, py_to_json(&v)?);
+            map.insert(key, py_to_json_at(&v, depth + 1)?);
         }
         return Ok(serde_json::Value::Object(map));
     }

@@ -165,11 +165,53 @@ where
     let mut code_block_buffer = String::new(); // Raw content of the current code block
     let mut code_block_lang = String::new(); // Sanitized language tag of the current code block
     let mut table_alignments: Vec<pulldown_cmark::Alignment> = Vec::new(); // Column alignments for current table
-    let mut depth = 0; // Nesting depth, bounded for DoS prevention
-    let mut in_image = false; // Suppress text events inside ![alt](src)
+    let mut depth = 0usize; // Nesting depth, bounded for DoS prevention
+    let mut image_depth = 0usize; // > 0 while inside ![alt](src); alt text is collected
+    let mut image_dest = String::new(); // dest_url of the image being collected
+    let mut image_alt = String::new(); // accumulated alt text of the image being collected
     let iter = iter.peekable();
 
     for (event, range) in iter {
+        // Inside an image: collect the alt text until the matching
+        // TagEnd::Image, then emit the #image call with an `alt:` parameter
+        // (spec §6.3 — alt text feeds the PDF's accessibility alternate
+        // text). `alt:` is a string in Typst, so markup inside the alt is
+        // flattened to its text content; a nested image contributes its own
+        // alt text to the outer image's.
+        if image_depth > 0 {
+            // Nested images bump only `image_depth`, not `depth`, so they
+            // bypass the MAX_NESTING_DEPTH guard. That's intentional and safe:
+            // alt collection is an iterative O(events) walk over an
+            // already-materialized event stream (itself bounded by the input
+            // size cap), with no recursion or per-level allocation beyond the
+            // linear alt string.
+            match &event {
+                Event::Start(Tag::Image { .. }) => image_depth += 1,
+                Event::End(TagEnd::Image) => {
+                    image_depth -= 1;
+                    if image_depth == 0 {
+                        // The opening Tag::Image incremented `depth` through the
+                        // normal path; balance it here since this End is intercepted.
+                        depth = depth.saturating_sub(1);
+                        output.push_str("#image(\"");
+                        output.push_str(&escape_string(&image_dest));
+                        output.push('"');
+                        let alt = image_alt.trim();
+                        if !alt.is_empty() {
+                            output.push_str(", alt: \"");
+                            output.push_str(&escape_string(alt));
+                            output.push('"');
+                        }
+                        output.push(')');
+                        end_newline = false;
+                    }
+                }
+                Event::Text(t) | Event::Code(t) => image_alt.push_str(t),
+                Event::SoftBreak | Event::HardBreak => image_alt.push(' '),
+                _ => {}
+            }
+            continue;
+        }
         match event {
             Event::Start(tag) => {
                 // Track nesting depth
@@ -308,12 +350,14 @@ where
                     Tag::Image {
                         dest_url, title: _, ..
                     } => {
-                        // Spec §6.3: images are required for v1. Emit #image("url") and
-                        // suppress alt-text events until TagEnd::Image.
-                        output.push_str("#image(\"");
-                        output.push_str(&escape_string(&dest_url));
-                        output.push_str("\")");
-                        in_image = true;
+                        // Spec §6.3: image markup renders to #image. Defer emission to the
+                        // intercept above: alt-text events are collected until
+                        // TagEnd::Image, then `#image("url")` / `#image("url", alt: "…")`
+                        // is emitted. (The link-style title has no Typst counterpart
+                        // and is dropped, as for links.)
+                        image_dest = dest_url.to_string();
+                        image_alt.clear();
+                        image_depth = 1;
                         end_newline = false;
                     }
                     Tag::Heading { level, .. } => {
@@ -456,8 +500,9 @@ where
                         end_newline = false;
                     }
                     TagEnd::Image => {
-                        // Alt text was suppressed; just clear the in_image flag.
-                        in_image = false;
+                        // Unreachable in practice: TagEnd::Image is consumed by the
+                        // image intercept above while image_depth > 0. Reaching here
+                        // means an unbalanced end tag — ignore it.
                     }
                     TagEnd::Heading(_) => {
                         output.push('\n');
@@ -487,9 +532,7 @@ where
                 }
             }
             Event::Text(text) => {
-                if in_image {
-                    // Suppress alt text inside ![alt](src) — spec §6.3
-                } else if in_code_block {
+                if in_code_block {
                     // Code block content - no escaping needed. Buffered so the fence
                     // width can be computed from the full content (see TagEnd::CodeBlock).
                     code_block_buffer.push_str(&text);
@@ -1803,23 +1846,50 @@ mod tests {
 
     #[test]
     fn test_image_renders_as_image() {
-        // Spec §6.3: images are required for v1; emit #image("url").
+        // Spec §6.3: images emit #image("url", alt: "…") — alt text feeds the
+        // PDF's accessibility alternate text.
         let md = "![alt text](path/to/img.png)";
         let out = mark_to_typst(md).unwrap();
         assert!(
-            out.contains("#image(\"path/to/img.png\")"),
-            "image must emit #image(\"…\"): {out}"
+            out.contains("#image(\"path/to/img.png\", alt: \"alt text\")"),
+            "image must emit #image with alt: {out}"
         );
-        assert!(!out.contains("alt text"), "alt text suppressed: {out}");
     }
 
     #[test]
     fn test_image_with_empty_alt() {
+        // No alt → no alt: parameter.
         let md = "![](x.png)";
         let out = mark_to_typst(md).unwrap();
         assert!(
             out.contains("#image(\"x.png\")"),
-            "empty-alt image emits #image: {out}"
+            "empty-alt image emits #image without alt: {out}"
+        );
+        assert!(!out.contains("alt:"), "no alt parameter when empty: {out}");
+    }
+
+    #[test]
+    fn test_image_alt_with_markup_flattens_to_text() {
+        // alt: is a string parameter, so markup inside the alt is flattened
+        // to its text content — and must NOT leak markup (e.g. `#emph[]`)
+        // into the surrounding output.
+        let md = "![a *b* `c`](x.png)";
+        let out = mark_to_typst(md).unwrap();
+        assert!(
+            out.contains("#image(\"x.png\", alt: \"a b c\")"),
+            "markup in alt flattens to text: {out}"
+        );
+        assert!(!out.contains("#emph"), "no leaked markup from alt: {out}");
+        assert!(!out.contains("#raw"), "no leaked code markup from alt: {out}");
+    }
+
+    #[test]
+    fn test_image_alt_with_quotes_and_backslashes_is_escaped() {
+        let md = r#"![say "hi" \\ now](x.png)"#;
+        let out = mark_to_typst(md).unwrap();
+        assert!(
+            out.contains(r#"alt: "say \"hi\" \\ now""#),
+            "alt is string-escaped: {out}"
         );
     }
 

@@ -327,7 +327,7 @@ fn emit_field(
 ) {
     if fill {
         push_indent(out, indent);
-        out.push_str(key);
+        emit_key_at(out, key, indent);
         match value {
             JsonValue::Null => {
                 out.push_str(": !fill");
@@ -371,7 +371,7 @@ fn emit_field(
         }
         JsonValue::Object(map) => {
             push_indent(out, indent);
-            out.push_str(key);
+            emit_key_at(out, key, indent);
             out.push(':');
             push_trailer(out, inline_trailer);
             out.push('\n');
@@ -379,14 +379,14 @@ fn emit_field(
         }
         JsonValue::Array(items) if items.is_empty() => {
             push_indent(out, indent);
-            out.push_str(key);
+            emit_key_at(out, key, indent);
             out.push_str(": []");
             push_trailer(out, inline_trailer);
             out.push('\n');
         }
         JsonValue::Array(items) => {
             push_indent(out, indent);
-            out.push_str(key);
+            emit_key_at(out, key, indent);
             out.push(':');
             push_trailer(out, inline_trailer);
             out.push('\n');
@@ -394,7 +394,7 @@ fn emit_field(
         }
         _ => {
             push_indent(out, indent);
-            out.push_str(key);
+            emit_key_at(out, key, indent);
             out.push_str(": ");
             emit_scalar(out, value);
             push_trailer(out, inline_trailer);
@@ -539,33 +539,33 @@ fn emit_field_inline(
 ) {
     match value {
         JsonValue::Object(map) if map.is_empty() => {
-            out.push_str(key);
+            emit_key(out, key);
             out.push_str(": {}");
             push_trailer(out, inline_trailer);
             out.push('\n');
         }
         JsonValue::Object(map) => {
-            out.push_str(key);
+            emit_key(out, key);
             out.push(':');
             push_trailer(out, inline_trailer);
             out.push('\n');
             emit_mapping_children(out, map, child_indent, path, nested);
         }
         JsonValue::Array(items) if items.is_empty() => {
-            out.push_str(key);
+            emit_key(out, key);
             out.push_str(": []");
             push_trailer(out, inline_trailer);
             out.push('\n');
         }
         JsonValue::Array(items) => {
-            out.push_str(key);
+            emit_key(out, key);
             out.push(':');
             push_trailer(out, inline_trailer);
             out.push('\n');
             emit_sequence_children(out, items, child_indent + 2, path, nested);
         }
         _ => {
-            out.push_str(key);
+            emit_key(out, key);
             out.push_str(": ");
             emit_scalar(out, value);
             push_trailer(out, inline_trailer);
@@ -577,6 +577,28 @@ fn emit_field_inline(
 fn emit_scalar(out: &mut String, value: &JsonValue) {
     let s = saphyr_emit_scalar(value);
     out.push_str(&s);
+}
+
+/// Emit a *nested* mapping key, quoting it through the same scalar path as
+/// values. Nested keys are arbitrary user data (never name-validated) and are
+/// re-parsed by serde_saphyr, so a key containing `:`/`#`, a leading YAML
+/// indicator (`*`, `&`, `?`, `-`, …), edge whitespace, or a type-ambiguous form
+/// (`n`, `true`, `123`) must be quoted or the emitted document re-parses to a
+/// different key — breaking the round-trip/idempotence contract.
+fn emit_key(out: &mut String, key: &str) {
+    out.push_str(&saphyr_emit_scalar(&JsonValue::String(key.to_string())));
+}
+
+/// Emit a mapping key at `indent`. Top-level field names (indent 0) are emitted
+/// verbatim: the line-oriented prescan accepts only bare `[a-z_][a-z0-9_]*`
+/// field names there, so quoting one would make it unparseable. Nested keys
+/// (indent > 0) route through [`emit_key`] for correct YAML quoting.
+fn emit_key_at(out: &mut String, key: &str, indent: usize) {
+    if indent == 0 {
+        out.push_str(key);
+    } else {
+        emit_key(out, key);
+    }
 }
 
 /// `prefer_block_scalars: false` forces multi-line strings to double-quoted

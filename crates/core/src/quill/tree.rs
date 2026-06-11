@@ -27,17 +27,21 @@ impl FileTreeNode {
             return Some(self);
         }
 
-        // Split path into components
-        let components: Vec<_> = path
-            .components()
-            .filter_map(|c| {
-                if let std::path::Component::Normal(s) = c {
-                    s.to_str()
-                } else {
-                    None
-                }
-            })
-            .collect();
+        // Collect path components, rejecting any non-Normal component so that
+        // `..`, `.`, and absolute roots resolve to `None` rather than being
+        // silently dropped. Dropping them makes `get_file("a/../b")` navigate to
+        // `a/b`, an asymmetry with `insert` (which rejects such paths) that
+        // could mask path handling that assumes `get_node` normalizes.
+        let mut components: Vec<&str> = Vec::new();
+        for c in path.components() {
+            match c {
+                std::path::Component::Normal(s) => match s.to_str() {
+                    Some(s) => components.push(s),
+                    None => return None,
+                },
+                _ => return None,
+            }
+        }
 
         if components.is_empty() {
             return Some(self);
@@ -251,5 +255,36 @@ impl FileTreeNode {
         }
 
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample() -> FileTreeNode {
+        let mut root = FileTreeNode::Directory {
+            files: std::collections::HashMap::new(),
+        };
+        root.insert(
+            "a/b.txt",
+            FileTreeNode::File {
+                contents: b"hi".to_vec(),
+            },
+        )
+        .unwrap();
+        root
+    }
+
+    #[test]
+    fn get_node_rejects_traversal_components() {
+        let t = sample();
+        // Normal lookups resolve.
+        assert!(t.get_file("a/b.txt").is_some());
+        // `..`, `.`, and absolute roots resolve to None rather than being
+        // silently dropped (which would make `a/../b.txt` navigate to `a/b.txt`).
+        assert!(t.get_node("a/../b.txt").is_none());
+        assert!(t.get_node("./a/b.txt").is_none());
+        assert!(t.get_node("/a/b.txt").is_none());
     }
 }

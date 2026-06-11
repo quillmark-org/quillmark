@@ -370,6 +370,23 @@ pub(super) fn decompose_with_warnings(
 /// typed system [`PayloadItem`] from `meta_items`; comments pass through
 /// verbatim. Any parsed-map keys the pre-scan didn't capture are appended
 /// at the end so we never silently drop values.
+/// Validate a user field entering the payload from the parse path,
+/// mapping a violation to `ParseError::InvalidStructure` (spec §10).
+fn validate_parsed_field(key: &str, value: &serde_json::Value) -> Result<(), ParseError> {
+    use crate::document::edit::{validate_field, FieldViolation};
+    validate_field(key, value).map_err(|v| match v {
+        FieldViolation::InvalidName => ParseError::InvalidStructure(format!(
+            "invalid data-field name `{}`: field names must match [a-z_][a-z0-9_]*",
+            key
+        )),
+        FieldViolation::TooDeep => ParseError::InvalidStructure(format!(
+            "field `{}` nests deeper than the maximum of {} levels",
+            key,
+            crate::document::limits::MAX_YAML_DEPTH
+        )),
+    })
+}
+
 fn build_payload(
     meta_items: &[PayloadItem],
     pre_items: &[PreItem],
@@ -427,6 +444,7 @@ fn build_payload(
                             key
                         )));
                     }
+                    validate_parsed_field(key, &value)?;
                     items.push(PayloadItem::Field {
                         key: key.clone(),
                         value: QuillValue::from_json(value),
@@ -455,6 +473,7 @@ fn build_payload(
         if consumed_user_keys.contains(key) {
             continue;
         }
+        validate_parsed_field(key, value)?;
         items.push(PayloadItem::Field {
             key: key.clone(),
             value: QuillValue::from_json(value.clone()),

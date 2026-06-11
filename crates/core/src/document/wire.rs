@@ -90,6 +90,10 @@ pub struct CardWire {
 pub enum WireError {
     /// The `quill` string is not a valid `name@version` reference.
     InvalidQuillReference { value: String, reason: String },
+    /// A field violates the payload invariant: a name failing
+    /// `[a-z_][a-z0-9_]*`, or a value (including `$ext`) nesting past the
+    /// §8 depth limit.
+    InvalidField { key: String, reason: String },
 }
 
 impl std::fmt::Display for WireError {
@@ -97,6 +101,9 @@ impl std::fmt::Display for WireError {
         match self {
             WireError::InvalidQuillReference { value, reason } => {
                 write!(f, "invalid `quill` reference {value:?}: {reason}")
+            }
+            WireError::InvalidField { key, reason } => {
+                write!(f, "invalid field {key:?}: {reason}")
             }
         }
     }
@@ -147,15 +154,20 @@ impl TryFrom<CardWire> for Card {
             .payload_items
             .into_iter()
             .map(|item| match item {
-                PayloadItemWire::Field { key, value, fill } => PayloadItem::Field {
-                    key,
-                    value: QuillValue::from_json(value),
-                    fill,
-                    nested_comments: Vec::new(),
-                },
-                PayloadItemWire::Comment { text, inline } => PayloadItem::Comment { text, inline },
+                PayloadItemWire::Field { key, value, fill } => {
+                    validate_wire_field(&key, &value)?;
+                    Ok(PayloadItem::Field {
+                        key,
+                        value: QuillValue::from_json(value),
+                        fill,
+                        nested_comments: Vec::new(),
+                    })
+                }
+                PayloadItemWire::Comment { text, inline } => {
+                    Ok(PayloadItem::Comment { text, inline })
+                }
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, WireError>>()?;
 
         // Build the user fields/comments, then apply each `$` entry through its
         // setter so the canonical `$quill < $kind < $id < $ext` ordering holds
@@ -173,10 +185,40 @@ impl TryFrom<CardWire> for Card {
             payload.set_id(id);
         }
         if let Some(ext) = wire.ext {
+            let as_value = JsonValue::Object(ext);
+            if crate::value::json_depth_exceeds(&as_value, crate::document::limits::MAX_YAML_DEPTH)
+            {
+                return Err(WireError::InvalidField {
+                    key: "$ext".to_string(),
+                    reason: format!(
+                        "nests deeper than the maximum of {} levels",
+                        crate::document::limits::MAX_YAML_DEPTH
+                    ),
+                });
+            }
+            let JsonValue::Object(ext) = as_value else {
+                unreachable!("constructed as Object above")
+            };
             payload.set_ext(ext);
         }
         Ok(Card::from_parts(payload, wire.body))
     }
+}
+
+/// Validate a wire field against the payload invariant (see
+/// `edit::validate_field`), mapping a violation to [`WireError::InvalidField`].
+fn validate_wire_field(key: &str, value: &JsonValue) -> Result<(), WireError> {
+    use super::edit::{validate_field, FieldViolation};
+    validate_field(key, value).map_err(|v| WireError::InvalidField {
+        key: key.to_string(),
+        reason: match v {
+            FieldViolation::InvalidName => "field names must match [a-z_][a-z0-9_]*".to_string(),
+            FieldViolation::TooDeep => format!(
+                "nests deeper than the maximum of {} levels",
+                crate::document::limits::MAX_YAML_DEPTH
+            ),
+        },
+    })
 }
 
 #[cfg(test)]

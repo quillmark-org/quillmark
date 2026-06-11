@@ -332,10 +332,9 @@ impl Quill {
     /// surface — drives form editors and LLM/MCP consumers alike. Returns the
     /// `QuillSchema` shape.
     #[wasm_bindgen(getter, js_name = schema, unchecked_return_type = "QuillSchema")]
-    pub fn schema(&self) -> JsValue {
+    pub fn schema(&self) -> Result<JsValue, JsValue> {
         let value = self.inner.config().schema();
-        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-        value.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
+        serialize_or_throw(&value, "schema")
     }
 
     /// Identity snapshot of the `quill:` section of `Quill.yaml` plus any extra
@@ -343,7 +342,7 @@ impl Quill {
     /// resolved-backend capability read from the engine
     /// (`Quillmark.supportedFormats`), not part of this snapshot.
     #[wasm_bindgen(getter, js_name = metadata, unchecked_return_type = "QuillMetadata")]
-    pub fn metadata(&self) -> JsValue {
+    pub fn metadata(&self) -> Result<JsValue, JsValue> {
         let source = &self.inner;
         let config = source.config();
 
@@ -385,8 +384,7 @@ impl Quill {
         }
 
         let val = serde_json::Value::Object(obj);
-        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-        val.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
+        serialize_or_throw(&val, "metadata")
     }
 
     /// Validate `doc` against this quill's schema, returning every diagnostic
@@ -428,7 +426,7 @@ impl Quill {
     /// isolation, committing each field's `example:` value. Returns the same
     /// `Card` shape as the `Document.main` getter.
     #[wasm_bindgen(js_name = seedMain, unchecked_return_type = "Card")]
-    pub fn seed_main(&self) -> JsValue {
+    pub fn seed_main(&self) -> Result<JsValue, JsValue> {
         card_to_js(&self.inner.seed_main())
     }
 
@@ -438,10 +436,10 @@ impl Quill {
     /// quill's schema, else a `Card` that feeds straight into
     /// `Document.pushCard` / `insertCard`.
     #[wasm_bindgen(js_name = seedCard, unchecked_return_type = "Card | undefined")]
-    pub fn seed_card(&self, card_kind: &str) -> JsValue {
+    pub fn seed_card(&self, card_kind: &str) -> Result<JsValue, JsValue> {
         match self.inner.seed_card(card_kind) {
             Some(core_card) => card_to_js(&core_card),
-            None => JsValue::UNDEFINED,
+            None => Ok(JsValue::UNDEFINED),
         }
     }
 }
@@ -588,16 +586,15 @@ impl Document {
     /// The document's main (entry) card. Allocates and serializes on each
     /// call — cache locally if read in a hot loop.
     #[wasm_bindgen(getter, js_name = main, unchecked_return_type = "Card")]
-    pub fn main(&self) -> JsValue {
+    pub fn main(&self) -> Result<JsValue, JsValue> {
         card_to_js(self.inner.main())
     }
 
     #[wasm_bindgen(getter, js_name = cards, unchecked_return_type = "Card[]")]
-    pub fn cards(&self) -> JsValue {
+    pub fn cards(&self) -> Result<JsValue, JsValue> {
         let cards: Vec<quillmark_core::CardWire> =
             self.inner.cards().iter().map(Into::into).collect();
-        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-        cards.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
+        serialize_or_throw(&cards, "cards")
     }
 
     /// Number of composable cards (excludes the main card). O(1).
@@ -614,15 +611,14 @@ impl Document {
     }
 
     #[wasm_bindgen(getter, js_name = warnings, unchecked_return_type = "Diagnostic[]")]
-    pub fn warnings(&self) -> JsValue {
+    pub fn warnings(&self) -> Result<JsValue, JsValue> {
         let diags: Vec<Diagnostic> = self
             .parse_warnings
             .iter()
             .cloned()
             .map(Into::into)
             .collect();
-        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-        diags.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
+        serialize_or_throw(&diags, "warnings")
     }
 
     // ── Mutators ──────────────────────────────────────────────────────────────
@@ -665,13 +661,7 @@ impl Document {
             .remove_field(name)
             .map_err(|e| edit_error_to_js(&e))?;
         Ok(match removed {
-            Some(v) => {
-                let serializer =
-                    serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-                v.as_json()
-                    .serialize(&serializer)
-                    .unwrap_or(JsValue::UNDEFINED)
-            }
+            Some(v) => serialize_or_throw(v.as_json(), "removeField")?,
             None => JsValue::UNDEFINED,
         })
     }
@@ -683,7 +673,10 @@ impl Document {
     #[wasm_bindgen(js_name = setExt)]
     pub fn set_ext(&mut self, value: JsValue) -> Result<(), JsValue> {
         let map = js_value_to_object(&value, "setExt")?;
-        self.inner.main_mut().set_ext(map);
+        self.inner
+            .main_mut()
+            .set_ext(map)
+            .map_err(|e| edit_error_to_js(&e))?;
         Ok(())
     }
 
@@ -692,7 +685,7 @@ impl Document {
     /// every namespace at once — prefer `removeExtNamespace` to clear only your
     /// own slot while leaving sibling consumers' state intact.
     #[wasm_bindgen(js_name = removeExt, unchecked_return_type = "Record<string, unknown> | undefined")]
-    pub fn remove_ext(&mut self) -> JsValue {
+    pub fn remove_ext(&mut self) -> Result<JsValue, JsValue> {
         ext_map_to_js(self.inner.main_mut().remove_ext())
     }
 
@@ -703,7 +696,10 @@ impl Document {
     #[wasm_bindgen(js_name = setExtNamespace)]
     pub fn set_ext_namespace(&mut self, namespace: &str, value: JsValue) -> Result<(), JsValue> {
         let json = js_value_to_json(value, "setExtNamespace")?;
-        self.inner.main_mut().set_ext_namespace(namespace, json);
+        self.inner
+            .main_mut()
+            .set_ext_namespace(namespace, json)
+            .map_err(|e| edit_error_to_js(&e))?;
         Ok(())
     }
 
@@ -712,7 +708,7 @@ impl Document {
     /// state: sibling namespaces survive, and when the last namespace is removed
     /// the `$ext` entry is dropped entirely (not left as `$ext: {}`).
     #[wasm_bindgen(js_name = removeExtNamespace)]
-    pub fn remove_ext_namespace(&mut self, namespace: &str) -> JsValue {
+    pub fn remove_ext_namespace(&mut self, namespace: &str) -> Result<JsValue, JsValue> {
         json_value_to_js(self.inner.main_mut().remove_ext_namespace(namespace))
     }
 
@@ -722,7 +718,9 @@ impl Document {
     #[wasm_bindgen(js_name = setCardExt)]
     pub fn set_card_ext(&mut self, index: usize, value: JsValue) -> Result<(), JsValue> {
         let map = js_value_to_object(&value, "setCardExt")?;
-        self.card_mut_or_throw(index)?.set_ext(map);
+        self.card_mut_or_throw(index)?
+            .set_ext(map)
+            .map_err(|e| edit_error_to_js(&e))?;
         Ok(())
     }
 
@@ -731,7 +729,7 @@ impl Document {
     /// Prefer `removeCardExtNamespace` to clear only one consumer's slot.
     #[wasm_bindgen(js_name = removeCardExt, unchecked_return_type = "Record<string, unknown> | undefined")]
     pub fn remove_card_ext(&mut self, index: usize) -> Result<JsValue, JsValue> {
-        Ok(ext_map_to_js(self.card_mut_or_throw(index)?.remove_ext()))
+        ext_map_to_js(self.card_mut_or_throw(index)?.remove_ext())
     }
 
     /// Merge `value` into the composable card's `$ext` map under `namespace`,
@@ -746,7 +744,8 @@ impl Document {
     ) -> Result<(), JsValue> {
         let json = js_value_to_json(value, "setCardExtNamespace")?;
         self.card_mut_or_throw(index)?
-            .set_ext_namespace(namespace, json);
+            .set_ext_namespace(namespace, json)
+            .map_err(|e| edit_error_to_js(&e))?;
         Ok(())
     }
 
@@ -759,10 +758,10 @@ impl Document {
         index: usize,
         namespace: &str,
     ) -> Result<JsValue, JsValue> {
-        Ok(json_value_to_js(
+        json_value_to_js(
             self.card_mut_or_throw(index)?
                 .remove_ext_namespace(namespace),
-        ))
+        )
     }
 
     /// Replace the QUILL reference string. Throws if `ref_str` is invalid.
@@ -862,10 +861,10 @@ impl Document {
     }
 
     #[wasm_bindgen(js_name = removeCard, unchecked_return_type = "Card | undefined")]
-    pub fn remove_card(&mut self, index: usize) -> JsValue {
+    pub fn remove_card(&mut self, index: usize) -> Result<JsValue, JsValue> {
         match self.inner.remove_card(index) {
             Some(core_card) => card_to_js(&core_card),
-            None => JsValue::UNDEFINED,
+            None => Ok(JsValue::UNDEFINED),
         }
     }
 
@@ -912,13 +911,7 @@ impl Document {
             .remove_field(name)
             .map_err(|e| edit_error_to_js(&e))?;
         Ok(match removed {
-            Some(v) => {
-                let serializer =
-                    serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-                v.as_json()
-                    .serialize(&serializer)
-                    .unwrap_or(JsValue::UNDEFINED)
-            }
+            Some(v) => serialize_or_throw(v.as_json(), "removeField")?,
             None => JsValue::UNDEFINED,
         })
     }
@@ -953,6 +946,7 @@ fn edit_error_to_js(err: &quillmark_core::EditError) -> JsValue {
         quillmark_core::EditError::InvalidKindName(_) => "InvalidKindName",
         quillmark_core::EditError::ReservedKind => "ReservedKind",
         quillmark_core::EditError::IndexOutOfRange { .. } => "IndexOutOfRange",
+        quillmark_core::EditError::ValueTooDeep { .. } => "ValueTooDeep",
     };
     WasmError::from(format!("[EditError::{}] {}", variant, err)).to_js_value()
 }
@@ -977,21 +971,35 @@ fn js_value_to_object(
     }
 }
 
+/// Serialize `value` to its JS shape (maps as objects), throwing a
+/// `WasmError` naming `what` when serialization fails. The throwing
+/// counterpart of a silent `undefined` fallback: `undefined` from a getter
+/// reads as "property absent" and crashes callers far from the cause, where
+/// a thrown error names it.
+fn serialize_or_throw<T: serde::Serialize + ?Sized>(
+    value: &T,
+    what: &str,
+) -> Result<JsValue, JsValue> {
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    value
+        .serialize(&serializer)
+        .map_err(|e| WasmError::from(format!("{what}: serialization failed: {e}")).to_js_value())
+}
+
 /// Serialize an optional JSON value to JS, or `undefined` when `None`. Backs
 /// both the namespaced reads (any value) and the whole-map reads (via
 /// `ext_map_to_js`).
-fn json_value_to_js(value: Option<serde_json::Value>) -> JsValue {
+fn json_value_to_js(value: Option<serde_json::Value>) -> Result<JsValue, JsValue> {
     match value {
-        Some(v) => {
-            let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-            v.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
-        }
-        None => JsValue::UNDEFINED,
+        Some(v) => serialize_or_throw(&v, "ext value"),
+        None => Ok(JsValue::UNDEFINED),
     }
 }
 
 /// Serialize an optional `$ext` map to a JS object, or `undefined` when `None`.
-fn ext_map_to_js(map: Option<serde_json::Map<String, serde_json::Value>>) -> JsValue {
+fn ext_map_to_js(
+    map: Option<serde_json::Map<String, serde_json::Value>>,
+) -> Result<JsValue, JsValue> {
     json_value_to_js(map.map(serde_json::Value::Object))
 }
 
@@ -999,11 +1007,8 @@ fn ext_map_to_js(map: Option<serde_json::Map<String, serde_json::Value>>) -> JsV
 /// the canonical [`CardWire`](quillmark_core::CardWire). The single place WASM
 /// turns a core card into JS — used by `Document.main`, `cards`, `removeCard`,
 /// and the seed getters.
-fn card_to_js(card: &quillmark_core::Card) -> JsValue {
-    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-    quillmark_core::CardWire::from(card)
-        .serialize(&serializer)
-        .unwrap_or(JsValue::UNDEFINED)
+fn card_to_js(card: &quillmark_core::Card) -> Result<JsValue, JsValue> {
+    serialize_or_throw(&quillmark_core::CardWire::from(card), "card")
 }
 
 /// Deserialize a `Card`-shaped JS value into a core
@@ -1213,7 +1218,7 @@ impl RenderSession {
     /// Non-fatal diagnostics emitted when opening the session. Also appended
     /// to `RenderResult.warnings` on each `render()` call.
     #[wasm_bindgen(getter, js_name = warnings, unchecked_return_type = "Diagnostic[]")]
-    pub fn warnings(&self) -> JsValue {
+    pub fn warnings(&self) -> Result<JsValue, JsValue> {
         let diags: Vec<Diagnostic> = self
             .inner
             .warnings()
@@ -1221,8 +1226,7 @@ impl RenderSession {
             .cloned()
             .map(Into::into)
             .collect();
-        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-        diags.serialize(&serializer).unwrap_or(JsValue::UNDEFINED)
+        serialize_or_throw(&diags, "warnings")
     }
 
     #[wasm_bindgen(js_name = render)]
@@ -1323,6 +1327,16 @@ impl RenderSession {
         };
 
         let render_scale = (layout_scale as f64) * effective_density;
+        // `layout_scale` and `density` are each validated finite/positive, but
+        // their product (or the f64->f32 cast) can still overflow to infinity
+        // for extreme inputs — e.g. a zero-dimension page bypasses the
+        // MAX_BACKING_DIMENSION clamp. Guard before handing it to the renderer.
+        if !render_scale.is_finite() || render_scale <= 0.0 || render_scale > f32::MAX as f64 {
+            return Err(WasmError::from(
+                "paint: computed render scale is non-finite or out of range",
+            )
+            .to_js_value());
+        }
 
         let (pixel_w, pixel_h, mut rgba) = typst
             .render_rgba(page, render_scale as f32)

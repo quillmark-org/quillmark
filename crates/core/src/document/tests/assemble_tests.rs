@@ -534,11 +534,11 @@ Item 1 body";
 }
 
 #[test]
-fn test_uppercase_payload_keys_pass_parser() {
-    // Uppercase YAML keys (e.g. `BODY`/`CARDS`) pass the parser: the wire
-    // format namespaces metadata under `$`-prefixed keys, so user payload
-    // keys can be arbitrary — they're filtered downstream by the editor
-    // surface's `[a-z_][a-z0-9_]*` rule, not the parser.
+fn test_uppercase_payload_keys_rejected_at_parse() {
+    // Spec §3.4/§10: data-field names must match [a-z_][a-z0-9_]*, enforced
+    // at parse time — the same invariant the mutators and DTO/wire paths
+    // enforce, so a constructed Document can never hold a non-conforming
+    // name (which would also break the bare-key emit round-trip).
     let markdown = "~~~card-yaml
 $quill: test_quill
 $kind: main
@@ -549,8 +549,11 @@ $kind: section
 BODY: Test
 ~~~";
 
-    let result = decompose(markdown);
-    assert!(result.is_ok(), "uppercase payload keys parse fine");
+    let err = decompose(markdown).unwrap_err();
+    assert!(
+        err.to_string().contains("BODY"),
+        "non-conforming field name is a parse error naming the key: {err}"
+    );
 }
 
 #[test]
@@ -1477,20 +1480,21 @@ fn test_payload_at_eof_no_trailing_newline() {
 
 #[test]
 fn test_unicode_in_yaml_keys() {
+    // Unicode is welcome in *values* (next test); field *names* are
+    // restricted to [a-z_][a-z0-9_]* (spec §3.4) and rejected at parse.
     let markdown =
         "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitre: Bonjour\nタイトル: こんにちは\n~~~\n\nBody.";
-    let doc = decompose(markdown).unwrap();
+    let err = decompose(markdown).unwrap_err();
+    assert!(
+        err.to_string().contains("field names must match"),
+        "non-ASCII field name is a parse error: {err}"
+    );
+
+    // A conforming name with a Unicode value parses fine.
+    let ok = "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitre: こんにちは\n~~~\n";
+    let doc = decompose(ok).unwrap();
     assert_eq!(
         doc.main().payload().get("titre").unwrap().as_str().unwrap(),
-        "Bonjour"
-    );
-    assert_eq!(
-        doc.main()
-            .payload()
-            .get("タイトル")
-            .unwrap()
-            .as_str()
-            .unwrap(),
         "こんにちは"
     );
 }
