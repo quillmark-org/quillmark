@@ -23,12 +23,6 @@
 use crate::document::Card;
 use unicode_normalization::UnicodeNormalization;
 
-#[derive(Debug, thiserror::Error)]
-pub enum NormalizationError {
-    #[error("JSON nesting too deep: {depth} levels (max: {max} levels)")]
-    NestingTooDeep { depth: usize, max: usize },
-}
-
 #[inline]
 fn is_bidi_char(c: char) -> bool {
     matches!(

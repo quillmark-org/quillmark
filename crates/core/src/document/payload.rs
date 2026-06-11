@@ -35,8 +35,8 @@
 //! (`quill`, `kind`, `id`, `ext`, `set_quill`, `set_kind`, `set_id`,
 //! `set_ext`).
 //!
-//! This preserves the historical "payload as a key/value map of user data"
-//! API while letting comment preservation and `$` access ride on the same
+//! The map-style accessors present the payload as a key/value map of user
+//! data, while comment preservation and `$` access ride on the same
 //! underlying storage.
 
 use indexmap::IndexMap;

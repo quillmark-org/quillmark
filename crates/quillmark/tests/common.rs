@@ -9,16 +9,8 @@ use std::error::Error;
 /// Uses the `example` reference document (example › default › zero) so cells
 /// carry illustrative values and the document renders out of the box; the
 /// plain `blueprint()` keeps the `<must-fill>` sentinel, which is malformed.
-pub fn demo(
-    quill_dir: &str,
-    render_output: &str,
-    use_resource_path: bool,
-) -> Result<(), Box<dyn Error>> {
-    let quill_path = if use_resource_path {
-        quillmark_fixtures::resource_path(quill_dir)
-    } else {
-        quills_path(quill_dir)
-    };
+pub fn demo(quill_dir: &str, render_output: &str) -> Result<(), Box<dyn Error>> {
+    let quill_path = quills_path(quill_dir);
     let engine = quillmark::Quillmark::new();
     let quill = quillmark::quill_from_path(quill_path.clone()).expect("Failed to load quill");
 

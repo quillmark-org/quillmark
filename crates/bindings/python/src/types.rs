@@ -1028,7 +1028,7 @@ fn ext_map_to_py<'py>(
 
 /// Build a core [`Card`](quillmark_core::Card) from a Python `Card` dict via
 /// the canonical [`CardWire`](quillmark_core::CardWire) (core owns the
-/// construction). Accepts the snake_case `payload_items` key; a stale flat
+/// construction). Accepts the snake_case `payload_items` key; a flat
 /// `{ kind, fields }` dict fails loudly (`deny_unknown_fields`) rather than
 /// yielding an empty card.
 fn py_dict_to_card(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::Card> {

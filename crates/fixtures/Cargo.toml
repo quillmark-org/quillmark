@@ -5,8 +5,3 @@ edition.workspace = true
 description = "Test fixtures and utilities for Quillmark"
 license.workspace = true
 publish = false  # Don't publish test fixtures to crates.io
-
-
-
-[dependencies]
-quillmark = { workspace = true }

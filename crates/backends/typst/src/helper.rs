@@ -53,6 +53,8 @@ mod tests {
 
         assert!(lib.contains("Version: 0.1.0"));
         assert!(lib.contains("json(bytes("));
+        // The template must expose only the private `_parse-date` helper —
+        // no public `parse-date` and no `eval-markup` symbol.
         assert!(!lib.contains("eval-markup"));
         assert!(lib.contains("#let _parse-date(s)"));
         assert!(!lib.contains("#let parse-date(s)"));

@@ -9,7 +9,9 @@
 //!
 //! ## Test Organization
 //!
+//! - `coerce_fuzz` - Tests for schema-driven value coercion
 //! - `convert_fuzz` - Tests for markdown to Typst conversion and escaping
+//! - `emit_roundtrip_fuzz` - Tests that emitted markdown re-parses losslessly
 //! - `filter_fuzz` - Tests for filter input validation and injection safety
 //! - `parse_fuzz` - Tests for YAML payload and markdown parsing
 

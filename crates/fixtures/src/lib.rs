@@ -60,21 +60,3 @@ pub fn write_example_output(name: &str, content: &[u8]) -> Result<(), std::io::E
 
     Ok(())
 }
-
-/// List all available resource files
-pub fn list_resources() -> Result<Vec<String>, std::io::Error> {
-    use std::fs;
-
-    let resources_dir = resource_path("");
-    let entries = fs::read_dir(resources_dir)?;
-
-    let mut resources = Vec::new();
-    for entry in entries {
-        let entry = entry?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        resources.push(name);
-    }
-
-    resources.sort();
-    Ok(resources)
-}

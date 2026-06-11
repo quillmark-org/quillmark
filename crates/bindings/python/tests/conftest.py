@@ -5,7 +5,6 @@ These fixtures prefer using the canonical repository fixtures located in
 original simple fallbacks are used so tests remain robust in odd layouts.
 """
 
-import shutil
 from pathlib import Path
 import pytest
 
@@ -31,11 +30,9 @@ def _latest_version(quill_dir: Path) -> Path:
 
 @pytest.fixture
 def taro_quill_dir():
-    """Provide a test quill directory.
+    """Return the path to the taro fixture quill (latest version).
 
-    This will copy an existing fixture from `quillmark-fixtures/resources`
-    into the test temporary directory so tests can safely mutate files.
-    The default fixture used is `taro`.
+    Tests must not mutate it in place.
     """
     fixture_path = _latest_version(QUILLS_PATH / "taro")
 

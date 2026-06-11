@@ -52,9 +52,9 @@ fn test_unsupported_backend_errors_at_render_time() {
     let temp_dir = TempDir::new().unwrap();
     let quill_path = make_quill_dir(&temp_dir, "bad_backend_quill", "non_existent");
 
-    // Loading no longer resolves a backend: it succeeds even for an unknown
-    // backend id, tagging the quill with the declared intent. The
-    // backend-existence check moved to render time.
+    // Loading does not resolve a backend: it succeeds for an unknown backend
+    // id, tagging the quill with the declared intent. The backend-existence
+    // check happens at render time.
     let quill = quillmark::quill_from_path(quill_path).expect("load succeeds; backend resolved later");
     assert_eq!(quill.backend_id(), "non_existent");
 

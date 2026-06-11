@@ -28,7 +28,6 @@ use quillmark_core::{
     Artifact, Diagnostic, OutputFormat, Quill, RenderError, RenderResult, Severity,
 };
 
-/// Internal compilation function
 fn compile_document(world: &QuillWorld) -> Result<PagedDocument, RenderError> {
     let Warned { output, warnings } = typst::compile::<PagedDocument>(world);
 

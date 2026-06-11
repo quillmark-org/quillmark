@@ -48,3 +48,8 @@ render = ["dep:quillmark-typst", "quillmark/typst", "dep:web-sys"]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
+
+[package.metadata.cargo-machete]
+# serde_bytes is used via `#[serde(with = "serde_bytes")]` in src/types.rs,
+# which cargo-machete cannot see.
+ignored = ["serde_bytes"]

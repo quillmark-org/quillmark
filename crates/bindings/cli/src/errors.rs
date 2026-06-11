@@ -42,24 +42,6 @@ impl From<quillmark_core::ParseError> for CliError {
     }
 }
 
-impl From<Box<dyn std::error::Error + Send + Sync>> for CliError {
-    fn from(err: Box<dyn std::error::Error + Send + Sync>) -> Self {
-        // Check if it's a RenderError we can extract
-        if let Some(render_err) = err.downcast_ref::<RenderError>() {
-            // Clone the diagnostic information
-            let diagnostics = render_err.diagnostics();
-            // Recreate the error based on the first diagnostic
-            if !diagnostics.is_empty() {
-                // For now, wrap as InvalidArgument with detailed message
-                return CliError::InvalidArgument(format!("{}", render_err));
-            }
-        }
-
-        // For other errors, wrap as InvalidArgument
-        CliError::InvalidArgument(err.to_string())
-    }
-}
-
 pub type Result<T> = std::result::Result<T, CliError>;
 
 /// Print detailed diagnostics for CLI errors

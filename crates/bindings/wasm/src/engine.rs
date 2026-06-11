@@ -1013,9 +1013,9 @@ fn card_to_js(card: &quillmark_core::Card) -> JsValue {
 fn js_to_card(value: &JsValue) -> Result<quillmark_core::Card, JsValue> {
     // `serde_wasm_bindgen` does not honor the core type's
     // `#[serde(deny_unknown_fields)]` (it looks up known fields rather than
-    // visiting every key), so enforce it here to match the Python binding and
-    // fail loudly on the retired flat `{ kind, fields }` shape instead of
-    // yielding a silently-empty card.
+    // visiting every key), so enforce it here to match the Python binding:
+    // a flat `{ kind, fields }` object fails loudly instead of yielding a
+    // silently-empty card.
     if let Some(obj) = value.dyn_ref::<js_sys::Object>() {
         const ALLOWED: &[&str] = &["kind", "quill", "id", "ext", "payloadItems", "body"];
         for key in js_sys::Object::keys(obj).iter() {

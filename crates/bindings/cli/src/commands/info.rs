@@ -31,12 +31,11 @@ pub fn execute(args: InfoArgs) -> Result<()> {
 }
 
 fn print_json(quill: &quillmark::Quill) -> Result<()> {
-    let source = quill;
     // Build a JSON object with the metadata
     let mut info = serde_json::Map::new();
     info.insert(
         "name".to_string(),
-        serde_json::Value::String(source.name().to_string()),
+        serde_json::Value::String(quill.name().to_string()),
     );
     info.insert(
         "backend".to_string(),
@@ -44,7 +43,7 @@ fn print_json(quill: &quillmark::Quill) -> Result<()> {
     );
 
     // Extract metadata fields: version, author, description
-    let metadata = source.metadata();
+    let metadata = quill.metadata();
     if let Some(version) = metadata.get("version") {
         info.insert("version".to_string(), version.as_json().clone());
     }
@@ -58,9 +57,9 @@ fn print_json(quill: &quillmark::Quill) -> Result<()> {
     // Add counts
     info.insert(
         "field_count".to_string(),
-        serde_json::Value::Number(source.config().main.fields.len().into()),
+        serde_json::Value::Number(quill.config().main.fields.len().into()),
     );
-    let card_count = source.config().card_kinds.len();
+    let card_count = quill.config().card_kinds.len();
     if card_count > 0 {
         info.insert(
             "card_count".to_string(),
@@ -69,7 +68,7 @@ fn print_json(quill: &quillmark::Quill) -> Result<()> {
     }
     info.insert(
         "has_plate".to_string(),
-        serde_json::Value::Bool(source.plate().is_some()),
+        serde_json::Value::Bool(quill.plate().is_some()),
     );
 
     // Add any additional metadata (excluding the standard fields already included)
@@ -94,10 +93,9 @@ fn print_json(quill: &quillmark::Quill) -> Result<()> {
 }
 
 fn print_human_readable(quill: &quillmark::Quill) {
-    let source = quill;
-    let metadata = source.metadata();
-    let config = source.config();
-    println!("Quill: {}", source.name());
+    let metadata = quill.metadata();
+    let config = quill.config();
+    println!("Quill: {}", quill.name());
 
     if let Some(description) = metadata.get("description") {
         if let Some(desc_str) = description.as_str() {
@@ -140,7 +138,7 @@ fn print_human_readable(quill: &quillmark::Quill) {
     // Plate
     println!(
         "  Has plate:   {}",
-        if source.plate().is_some() {
+        if quill.plate().is_some() {
             "yes"
         } else {
             "no"

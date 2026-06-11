@@ -4,9 +4,7 @@ use quillmark_core::Document;
 proptest! {
     #[test]
     fn fuzz_decompose_no_panic(s in "\\PC{0,1000}") {
-        // Test that decompose doesn't panic on arbitrary input
         let _ = Document::from_markdown(&s);
-        // We don't care about the result, just that it doesn't panic
     }
 
     #[test]

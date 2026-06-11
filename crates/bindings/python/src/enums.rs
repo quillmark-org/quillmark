@@ -29,7 +29,7 @@ macro_rules! py_enum {
                 }
             }
 
-            // Use a static all() method instead
+            // Static all() — pyo3 enums expose iteration via a classmethod-style static.
             #[staticmethod]
             fn all() -> Vec<Self> {
                 vec![$(Self::$variant),*]
@@ -55,7 +55,6 @@ py_enum! {
     }
 }
 
-// From implementations (same as before)
 impl From<PyOutputFormat> for OutputFormat {
     fn from(val: PyOutputFormat) -> Self {
         match val {
