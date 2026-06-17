@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.91.0 - 2026-06-17
+
+- Upgrade Typst backend to 0.15 (#720)
+- Security audit: resolve 10 findings, document 6 open issues (#719)
+- Hygiene pass: simplifications, dead code removal, and docs cleanup (#718)
+
+
 ## v0.90.0 - 2026-06-10
 
 
