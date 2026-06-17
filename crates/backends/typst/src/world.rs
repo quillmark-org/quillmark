@@ -1,14 +1,23 @@
 use std::collections::HashMap;
 use std::path::Path;
 use typst::diag::{FileError, FileResult};
-use typst::foundations::{Bytes, Datetime};
-use typst::syntax::{package::PackageSpec, FileId, Source, VirtualPath};
+use typst::foundations::{Bytes, Datetime, Duration};
+use typst::syntax::{package::PackageSpec, FileId, RootedPath, Source, VirtualPath, VirtualRoot};
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
 use typst::{Library, World};
 
 use crate::helper;
 use quillmark_core::Quill;
+
+/// Build a [`FileId`] for a virtual path, optionally scoped to a package.
+///
+/// Typst 0.15 routes file ids through [`RootedPath`]: project-local files use
+/// [`VirtualRoot::Project`], package files use [`VirtualRoot::Package`].
+fn file_id(spec: Option<PackageSpec>, vpath: VirtualPath) -> FileId {
+    let root = spec.map_or(VirtualRoot::Project, VirtualRoot::Package);
+    FileId::new(RootedPath::new(root, vpath))
+}
 
 static FALLBACK_REGULAR: &[u8] = include_bytes!("fonts/Figtree-Regular.ttf");
 static FALLBACK_BOLD: &[u8] = include_bytes!("fonts/Figtree-Bold.ttf");
@@ -71,7 +80,10 @@ impl QuillWorld {
         Self::load_packages_from_quill(source, &mut sources, &mut binaries)?;
 
         // Create main source
-        let main_id = FileId::new(None, VirtualPath::new("main.typ"));
+        let main_id = file_id(
+            None,
+            VirtualPath::new("main.typ").expect("\"main.typ\" is a valid virtual path"),
+        );
         let source = Source::new(main_id, main.to_string());
 
         Ok(Self {
@@ -121,15 +133,16 @@ impl QuillWorld {
 
         // Generate and inject lib.typ
         let lib_content = helper::generate_lib_typ(json_data);
-        let lib_path = VirtualPath::new("lib.typ");
-        let lib_id = FileId::new(Some(spec.clone()), lib_path);
+        let lib_path = VirtualPath::new("lib.typ").expect("\"lib.typ\" is a valid virtual path");
+        let lib_id = file_id(Some(spec.clone()), lib_path);
         self.sources
             .insert(lib_id, Source::new(lib_id, lib_content));
 
         // Generate and inject typst.toml (as binary)
         let toml_content = helper::generate_typst_toml();
-        let toml_path = VirtualPath::new("typst.toml");
-        let toml_id = FileId::new(Some(spec), toml_path);
+        let toml_path =
+            VirtualPath::new("typst.toml").expect("\"typst.toml\" is a valid virtual path");
+        let toml_id = file_id(Some(spec), toml_path);
         self.binaries
             .insert(toml_id, Bytes::new(toml_content.into_bytes()));
     }
@@ -184,9 +197,19 @@ impl QuillWorld {
         for asset_path in asset_paths {
             if let Some(contents) = source.get_file(&asset_path) {
                 // Create virtual path for the asset
-                let virtual_path = VirtualPath::new(asset_path.to_string_lossy().as_ref());
-                let file_id = FileId::new(None, virtual_path);
-                binaries.insert(file_id, Bytes::new(contents.to_vec()));
+                let virtual_path = match VirtualPath::new(asset_path.to_string_lossy().as_ref()) {
+                    Ok(vpath) => vpath,
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: Skipping asset with invalid path {}: {}",
+                            asset_path.display(),
+                            e
+                        );
+                        continue;
+                    }
+                };
+                let id = file_id(None, virtual_path);
+                binaries.insert(id, Bytes::new(contents.to_vec()));
             }
         }
 
@@ -283,29 +306,42 @@ impl QuillWorld {
                     format!("Failed to get relative path for {}", file_path.display())
                 })?;
 
-                let virtual_path = VirtualPath::new(relative_path.to_string_lossy().as_ref());
-                let file_id = FileId::new(package_spec.clone(), virtual_path);
+                let virtual_path =
+                    match VirtualPath::new(relative_path.to_string_lossy().as_ref()) {
+                        Ok(vpath) => vpath,
+                        Err(e) => {
+                            eprintln!(
+                                "Warning: Skipping package file with invalid path {}: {}",
+                                file_path.display(),
+                                e
+                            );
+                            continue;
+                        }
+                    };
+                let id = file_id(package_spec.clone(), virtual_path);
 
                 // Check if this is a source file (.typ) or binary
                 if let Some(ext) = file_path.extension() {
                     if ext == "typ" {
                         let source_content = String::from_utf8_lossy(contents);
-                        let source = Source::new(file_id, source_content.to_string());
-                        sources.insert(file_id, source);
+                        let source = Source::new(id, source_content.to_string());
+                        sources.insert(id, source);
                     } else {
-                        binaries.insert(file_id, Bytes::new(contents.to_vec()));
+                        binaries.insert(id, Bytes::new(contents.to_vec()));
                     }
                 } else {
                     // No extension, treat as binary
-                    binaries.insert(file_id, Bytes::new(contents.to_vec()));
+                    binaries.insert(id, Bytes::new(contents.to_vec()));
                 }
             }
         }
 
         // Verify entrypoint if specified
         if let (Some(spec), Some(entrypoint_name)) = (&package_spec, entrypoint) {
-            let entrypoint_path = VirtualPath::new(entrypoint_name);
-            let entrypoint_file_id = FileId::new(Some(spec.clone()), entrypoint_path);
+            let entrypoint_path = VirtualPath::new(entrypoint_name).map_err(|e| {
+                format!("Invalid entrypoint path {}: {}", entrypoint_name, e)
+            })?;
+            let entrypoint_file_id = file_id(Some(spec.clone()), entrypoint_path);
 
             if !sources.contains_key(&entrypoint_file_id) {
                 eprintln!(
@@ -339,7 +375,7 @@ impl World for QuillWorld {
             Ok(source.clone())
         } else {
             Err(FileError::NotFound(
-                id.vpath().as_rootless_path().to_owned(),
+                id.vpath().get_without_slash().into(),
             ))
         }
     }
@@ -349,7 +385,7 @@ impl World for QuillWorld {
             Ok(bytes.clone())
         } else {
             Err(FileError::NotFound(
-                id.vpath().as_rootless_path().to_owned(),
+                id.vpath().get_without_slash().into(),
             ))
         }
     }
@@ -363,17 +399,17 @@ impl World for QuillWorld {
         None
     }
 
-    fn today(&self, offset: Option<i64>) -> Option<Datetime> {
+    fn today(&self, offset: Option<Duration>) -> Option<Datetime> {
         // On native targets we can use the system clock. On wasm32 we call into
         // the JavaScript Date API via js-sys to get UTC date components.
         #[cfg(not(target_arch = "wasm32"))]
         {
-            use time::{Duration, OffsetDateTime};
+            use time::{Duration as TimeDuration, OffsetDateTime};
 
-            // Get current UTC time and apply optional hour offset
+            // Get current UTC time and apply the optional offset
             let now = OffsetDateTime::now_utc();
-            let adjusted = if let Some(hours) = offset {
-                now + Duration::hours(hours)
+            let adjusted = if let Some(offset) = offset {
+                now + TimeDuration::seconds(offset.seconds() as i64)
             } else {
                 now
             };
@@ -396,10 +432,10 @@ impl World for QuillWorld {
             let month = (d.get_utc_month() as u8).saturating_add(1);
             let day = d.get_utc_date() as u8;
 
-            // Apply hour offset if requested by constructing a JS Date with hours
-            if let Some(hours) = offset {
-                // Create a new Date representing now + offset hours
-                let millis = d.get_time() + (hours as f64) * 3_600_000.0;
+            // Apply the offset if requested by constructing a JS Date
+            if let Some(offset) = offset {
+                // Create a new Date representing now + offset
+                let millis = d.get_time() + offset.seconds() * 1_000.0;
                 let d2 = Date::new(&JsValue::from_f64(millis));
                 let year = d2.get_utc_full_year() as i32;
                 let month = (d2.get_utc_month() as u8).saturating_add(1);

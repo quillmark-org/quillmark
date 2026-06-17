@@ -6,7 +6,7 @@
 //! the default producer string.
 
 use quillmark_core::RenderError;
-use typst::layout::PagedDocument;
+use typst_layout::PagedDocument;
 
 mod extract;
 mod inject;

@@ -15,7 +15,7 @@ use pdf_writer::writers::Form;
 use pdf_writer::{Chunk, Finish, Name, Rect, Ref, TextStr};
 
 use quillmark_core::RenderError;
-use typst::layout::PagedDocument;
+use typst_layout::PagedDocument;
 
 use crate::pdf_scan::{
     append_incremental_update, assert_traditional_xref, err, extract_outer_dict, find_dict_value,
@@ -87,18 +87,18 @@ pub(crate) fn inject(
     if !placements.is_empty() {
         let page_ids = resolve_page_ids(&pdf, catalog_id)?;
         let page_count = page_ids.len();
-        if doc.pages.len() != page_count {
+        if doc.pages().len() != page_count {
             return Err(err(
                 CODE_PARSE,
                 format!(
                     "page count mismatch: typst document has {} pages, PDF has {}",
-                    doc.pages.len(),
+                    doc.pages().len(),
                     page_count
                 ),
             ));
         }
         let page_heights_pt: Vec<f32> = doc
-            .pages
+            .pages()
             .iter()
             .map(|p| p.frame.size().y.to_pt() as f32)
             .collect();
@@ -211,7 +211,7 @@ fn dict_object(id: u32, inner: &[u8]) -> UpdatedObject {
 }
 
 /// Replace `/Producer`'s value if present, else append the entry. typst_pdf
-/// 0.14 never emits `/Producer`, so the append branch is the live path; the
+/// never emits `/Producer`, so the append branch is the live path; the
 /// replace branch guards future typst versions and idempotent re-runs.
 fn upsert_producer(info_dict: &[u8], literal: &[u8]) -> Vec<u8> {
     let key = b"/Producer";
@@ -271,7 +271,7 @@ fn pdf_text_string(s: &str) -> Vec<u8> {
 
 /// Three cases for the existing `/Annots`: absent (write a fresh array);
 /// inline array (splice widget refs before `]`); indirect reference (hard
-/// error — typst-pdf 0.14 doesn't emit this shape).
+/// error — typst-pdf doesn't emit this shape).
 fn rewrite_page_with_annots(pg_dict: &[u8], widget_refs: &[u32]) -> Result<Vec<u8>, RenderError> {
     let widgets_str = widget_refs
         .iter()
@@ -316,7 +316,7 @@ fn rewrite_page_with_annots(pg_dict: &[u8], widget_refs: &[u32]) -> Result<Vec<u
                 Err(err(
                     "typst::overlay_indirect_annots",
                     "/Annots is an indirect reference; only inline arrays are supported \
-                     (typst-pdf 0.14 emits inline)",
+                     (typst-pdf emits inline)",
                 ))
             } else {
                 Err(err(CODE_PARSE, "/Annots is neither array nor indirect ref"))

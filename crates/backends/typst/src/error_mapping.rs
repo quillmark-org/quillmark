@@ -20,10 +20,10 @@ fn map_single_diagnostic(error: &SourceDiagnostic, world: &QuillWorld) -> Diagno
     };
 
     // Extract location from span
-    let location = resolve_span_to_location(&error.span, world);
+    let location = resolve_span_to_location(error.span, world);
 
     // Get first hint if available
-    let hint = error.hints.first().map(|h| h.to_string());
+    let hint = error.hints.first().map(|h| h.v.to_string());
 
     // Extract error code from message (simple heuristic)
     let code = Some(format!(
@@ -42,9 +42,9 @@ fn map_single_diagnostic(error: &SourceDiagnostic, world: &QuillWorld) -> Diagno
     }
 }
 
-/// Resolves a Typst span to a Quillmark Location.
-fn resolve_span_to_location(span: &typst::syntax::Span, world: &QuillWorld) -> Option<Location> {
-    use typst::World;
+/// Resolves a Typst diagnostic span to a Quillmark Location.
+fn resolve_span_to_location(span: typst::syntax::DiagSpan, world: &QuillWorld) -> Option<Location> {
+    use typst::{World, WorldExt};
 
     // Resolve the span against its OWN source file. A diagnostic originating in
     // an injected helper package or a vendored package must report coordinates
@@ -52,14 +52,14 @@ fn resolve_span_to_location(span: &typst::syntax::Span, world: &QuillWorld) -> O
     // detached span) fall back to main.
     let source_id = span.id().unwrap_or_else(|| world.main());
     let source = world.source(source_id).ok()?;
-    let range = source.range(*span)?;
+    let range = world.range(span)?;
 
     let text = source.text();
     let line = text[..range.start].matches('\n').count() + 1;
     let column = range.start - text[..range.start].rfind('\n').map_or(0, |pos| pos + 1) + 1;
 
     Some(Location {
-        file: source.id().vpath().as_rootless_path().display().to_string(),
+        file: source.id().vpath().get_without_slash().to_string(),
         line: line as u32,
         column: column as u32,
     })

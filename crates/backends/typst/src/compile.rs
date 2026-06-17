@@ -18,8 +18,11 @@
 //! The output bytes can be written to a file or returned directly to the caller.
 
 use typst::diag::Warned;
-use typst::layout::PagedDocument;
+use typst::utils::Scalar;
+use typst_layout::PagedDocument;
 use typst_pdf::PdfOptions;
+use typst_render::RenderOptions;
+use typst_svg::SvgOptions;
 
 use crate::error_mapping::map_typst_errors;
 use crate::overlay;
@@ -27,6 +30,14 @@ use crate::world::QuillWorld;
 use quillmark_core::{
     Artifact, Diagnostic, OutputFormat, Quill, RenderError, RenderResult, Severity,
 };
+
+/// Build raster render options for a given pixels-per-point scale factor.
+fn render_options(pixel_per_pt: f32) -> RenderOptions {
+    RenderOptions {
+        pixel_per_pt: Scalar::new(pixel_per_pt as f64),
+        ..Default::default()
+    }
+}
 
 fn compile_document(world: &QuillWorld) -> Result<PagedDocument, RenderError> {
     let Warned { output, warnings } = typst::compile::<PagedDocument>(world);
@@ -101,8 +112,8 @@ pub fn compile_to_svg(
     let document = compile_to_document(source, plated_content, json_data)?;
 
     let mut pages = Vec::new();
-    for page in &document.pages {
-        let svg = typst_svg::svg(page);
+    for page in document.pages() {
+        let svg = typst_svg::svg(page, &SvgOptions::default());
         pages.push(svg.into_bytes());
     }
 
@@ -133,8 +144,8 @@ pub fn compile_to_png(
     let ppi = ppi.unwrap_or(DEFAULT_PPI);
 
     let mut pages = Vec::new();
-    for page in &document.pages {
-        let pixmap = typst_render::render(page, ppi / 72.0);
+    for page in document.pages() {
+        let pixmap = typst_render::render(page, &render_options(ppi / 72.0));
         let png_data = pixmap
             .encode_png()
             .map_err(|e| RenderError::CompilationFailed {
@@ -176,7 +187,7 @@ pub(crate) fn render_document_pages(
         });
     }
 
-    let page_count = document.pages.len();
+    let page_count = document.pages().len();
     let selected_indices: Vec<usize> = match pages {
         Some(slice) => {
             let out_of_bounds: Vec<usize> =
@@ -203,7 +214,8 @@ pub(crate) fn render_document_pages(
             let artifacts = selected_indices
                 .into_iter()
                 .map(|idx| Artifact {
-                    bytes: typst_svg::svg(&document.pages[idx]).into_bytes(),
+                    bytes: typst_svg::svg(&document.pages()[idx], &SvgOptions::default())
+                        .into_bytes(),
                     output_format: OutputFormat::Svg,
                 })
                 .collect();
@@ -211,9 +223,10 @@ pub(crate) fn render_document_pages(
         }
         OutputFormat::Png => {
             let scale = ppi.unwrap_or(DEFAULT_PPI) / 72.0;
+            let opts = render_options(scale);
             let mut artifacts = Vec::with_capacity(selected_indices.len());
             for idx in selected_indices {
-                let pixmap = typst_render::render(&document.pages[idx], scale);
+                let pixmap = typst_render::render(&document.pages()[idx], &opts);
                 let png_data = pixmap
                     .encode_png()
                     .map_err(|e| RenderError::CompilationFailed {

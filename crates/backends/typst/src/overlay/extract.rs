@@ -7,10 +7,9 @@
 use std::collections::HashMap;
 
 use typst::foundations::{Label, Selector, Value};
-use typst::introspection::Location;
-use typst::layout::PagedDocument;
+use typst::introspection::{Introspector, Location};
 use typst::utils::PicoStr;
-use typst::Document;
+use typst_layout::PagedDocument;
 
 use quillmark_core::{Diagnostic, RenderError, Severity};
 
@@ -64,7 +63,9 @@ pub(crate) fn extract(doc: &PagedDocument) -> Result<Vec<SigPlacement>, RenderEr
         }
         by_name.insert(name.clone(), loc);
 
-        let pos = intro.position(loc);
+        let pos = intro
+            .position(loc)
+            .ok_or_else(|| err(CODE_INTERNAL, "signature-field metadata has no position"))?;
         placements.push(SigPlacement {
             name,
             page: pos.page.get().saturating_sub(1),

@@ -68,7 +68,7 @@ const SUPPORTED_FORMATS: &[OutputFormat] =
 /// [`typst_session_of`].
 #[derive(Debug)]
 pub struct TypstSession {
-    document: typst::layout::PagedDocument,
+    document: typst_layout::PagedDocument,
     page_count: usize,
     /// Extracted once at `open`. Consumed by PDF inject; unused for SVG/PNG.
     sig_placements: Vec<overlay::SigPlacement>,
@@ -79,7 +79,7 @@ impl TypstSession {
     ///
     /// Returns `None` if `page` is out of range.
     pub fn page_size_pt(&self, page: usize) -> Option<(f32, f32)> {
-        let frame = &self.document.pages.get(page)?.frame;
+        let frame = &self.document.pages().get(page)?.frame;
         let size = frame.size();
         Some((size.x.to_pt() as f32, size.y.to_pt() as f32))
     }
@@ -91,8 +91,14 @@ impl TypstSession {
     /// height_px * 4` bytes, row-major, ready to hand to `ImageData` or any
     /// other RGBA consumer. Returns `None` if `page` is out of range.
     pub fn render_rgba(&self, page: usize, scale: f32) -> Option<(u32, u32, Vec<u8>)> {
-        let p = self.document.pages.get(page)?;
-        let pixmap = typst_render::render(p, scale);
+        let p = self.document.pages().get(page)?;
+        let pixmap = typst_render::render(
+            p,
+            &typst_render::RenderOptions {
+                pixel_per_pt: typst::utils::Scalar::new(scale as f64),
+                ..Default::default()
+            },
+        );
         let width = pixmap.width();
         let height = pixmap.height();
         let mut rgba = Vec::with_capacity((width as usize) * (height as usize) * 4);
@@ -188,7 +194,7 @@ impl Backend for TypstBackend {
         let json_str =
             serde_json::to_string(&transformed_json).unwrap_or_else(|_| "{}".to_string());
         let document = compile::compile_to_document(source, plate_content, &json_str)?;
-        let page_count = document.pages.len();
+        let page_count = document.pages().len();
         let sig_placements = overlay::extract(&document)?;
         let session = TypstSession {
             document,
