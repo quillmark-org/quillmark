@@ -94,7 +94,7 @@ def test_cards_empty_when_none():
 def test_quill_ref(taro_md):
     """Test that quill_ref returns the QUILL reference, including version."""
     doc = Document.from_markdown(taro_md)
-    assert doc.quill_ref() == "taro@0.1"
+    assert doc.quill_ref == "taro@0.1"
 
 
 def test_warnings_empty_on_clean_doc(taro_md):
@@ -120,7 +120,7 @@ def test_json_dto_round_trip(taro_md):
     assert "quillmark/document@0.82.0" in dto
 
     restored = Document.from_json(dto)
-    assert restored.quill_ref() == doc.quill_ref()
+    assert restored.quill_ref == doc.quill_ref
     assert restored.to_markdown() == doc.to_markdown()
 
 
@@ -150,7 +150,7 @@ def test_try_from_json_round_trip(taro_md):
 
     restored = Document.try_from_json(dto)
     assert restored is not None
-    assert restored.quill_ref() == doc.quill_ref()
+    assert restored.quill_ref == doc.quill_ref
 
 
 def test_try_from_json_returns_none_on_markdown(taro_md):
@@ -197,7 +197,7 @@ def test_clone_preserves_state(taro_md):
     doc = Document.from_markdown(taro_md)
     cloned = doc.clone()
 
-    assert cloned.quill_ref() == doc.quill_ref()
+    assert cloned.quill_ref == doc.quill_ref
     assert cloned == doc
 
 
@@ -308,3 +308,31 @@ def test_remove_card_field_legacy_uppercase_rejected():
     doc = Document.from_markdown(md)
     with pytest.raises(QuillmarkError, match="InvalidFieldName"):
         doc.remove_card_field(0, "BODY")
+
+
+def test_diagnostic_str_is_canonical_pretty_text():
+    """str(diagnostic) is the canonical pretty-printed text; repr is concise."""
+    warn_md = (
+        "~~~card-yaml\n$quill: my_quill\n$kind: main\ntitle: Hi\n"
+        "weird: !custom value\n~~~\n\nBody\n"
+    )
+    doc = Document.from_markdown(warn_md)
+    assert len(doc.warnings) > 0, "source document should have a parse warning"
+
+    diag = doc.warnings[0]
+    pretty = str(diag)
+    assert isinstance(pretty, str) and pretty.strip() != ""
+    assert diag.message in pretty
+    assert "Diagnostic(" in repr(diag)
+
+
+def test_document_authoring_text_helpers():
+    """Document exposes the canonical core authoring texts (WASM parity)."""
+    rules = Document.format_rules()
+    assert isinstance(rules, str) and rules.strip() != ""
+
+    hint = Document.quill_ref_hint()
+    assert isinstance(hint, str) and hint.strip() != ""
+
+    instr = Document.blueprint_instruction("taro")
+    assert isinstance(instr, str) and "taro" in instr

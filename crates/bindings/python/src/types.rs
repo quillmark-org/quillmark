@@ -7,7 +7,6 @@ use pyo3::Bound;
 
 use quillmark::{
     quill_from_path, Diagnostic, Document, Location, OutputFormat, Quill, Quillmark, RenderResult,
-    RenderSession,
 };
 use std::path::PathBuf;
 use std::time::Instant;
@@ -64,20 +63,6 @@ impl PyQuillmark {
         })
     }
 
-    /// Open an iterative render session for `doc` against `quill`'s backend.
-    /// Mirrors WASM `Engine.open`.
-    fn open(&self, quill: &PyQuill, doc: PyRef<'_, PyDocument>) -> PyResult<PyRenderSession> {
-        let session = self
-            .inner
-            .open(&quill.inner, &doc.inner)
-            .map_err(convert_render_error)?;
-        Ok(PyRenderSession {
-            inner: session,
-            backend_id: quill.inner.backend_id().to_string(),
-            supports_canvas: self.inner.supports_canvas(&quill.inner),
-        })
-    }
-
     /// The output formats `quill`'s backend can emit. Raises `QuillmarkError`
     /// (`UnsupportedBackend`) for an unregistered backend. Mirrors WASM
     /// `Engine.supportedFormats`.
@@ -89,12 +74,6 @@ impl PyQuillmark {
             .iter()
             .map(|f| (*f).into())
             .collect())
-    }
-
-    /// `True` iff `quill`'s backend can paint to a canvas; `False` when the
-    /// backend is unsupported. Non-raising. Mirrors WASM `Engine.supportsCanvas`.
-    fn supports_canvas(&self, quill: &PyQuill) -> bool {
-        self.inner.supports_canvas(&quill.inner)
     }
 
     fn registered_backends(&self) -> Vec<String> {
@@ -312,6 +291,28 @@ impl PyDocument {
         quillmark_core::document::SCHEMA_V0_82_0
     }
 
+    /// Canonical card-yaml authoring rules — the core text every surface shows.
+    /// Mirrors WASM `Document.formatRules`. Cache it; the value never changes.
+    #[staticmethod]
+    fn format_rules() -> &'static str {
+        quillmark_core::document::FORMAT_RULES
+    }
+
+    /// Authoring-ergonomics header introducing a blueprint to an LLM/MCP
+    /// consumer for `quill_name`. Mirrors WASM `Document.blueprintInstruction`.
+    #[staticmethod]
+    fn blueprint_instruction(quill_name: &str) -> String {
+        quillmark_core::document::blueprint_instruction(quill_name)
+    }
+
+    /// The canonical `$quill` reference grammar as author-facing text — matches
+    /// the `hint` on `parse::invalid_quill_reference`. Mirrors WASM
+    /// `Document.quillRefHint`. Cache it; the value never changes.
+    #[staticmethod]
+    fn quill_ref_hint() -> &'static str {
+        quillmark_core::quill_ref_hint()
+    }
+
     /// Emit canonical Quillmark Markdown. Round-trip safe.
     fn to_markdown(&self) -> String {
         self.inner.to_markdown()
@@ -322,6 +323,7 @@ impl PyDocument {
         serde_json::to_string(&self.inner).expect("Document serialization is infallible")
     }
 
+    #[getter]
     fn quill_ref(&self) -> String {
         self.inner.quill_reference().to_string()
     }
@@ -659,65 +661,6 @@ pub struct PyRenderResult {
     pub(crate) render_time_ms: f64,
 }
 
-#[pyclass(name = "RenderSession")]
-pub struct PyRenderSession {
-    pub(crate) inner: RenderSession,
-    pub(crate) backend_id: String,
-    /// Canvas capability of the backend that produced this session, captured
-    /// at open time. Mirrors `Quill.supports_canvas`.
-    pub(crate) supports_canvas: bool,
-}
-
-#[pymethods]
-impl PyRenderSession {
-    #[getter]
-    fn page_count(&self) -> usize {
-        self.inner.page_count()
-    }
-
-    #[getter]
-    fn backend_id(&self) -> &str {
-        &self.backend_id
-    }
-
-    #[getter]
-    fn supports_canvas(&self) -> bool {
-        self.supports_canvas
-    }
-
-    #[getter]
-    fn warnings(&self) -> Vec<PyDiagnostic> {
-        self.inner
-            .warnings()
-            .iter()
-            .map(|d| PyDiagnostic { inner: d.clone() })
-            .collect()
-    }
-
-    #[pyo3(signature = (format=None, ppi=None, pages=None, producer=None))]
-    fn render(
-        &self,
-        format: Option<PyOutputFormat>,
-        ppi: Option<f32>,
-        pages: Option<Vec<usize>>,
-        producer: Option<String>,
-    ) -> PyResult<PyRenderResult> {
-        let opts = quillmark::RenderOptions {
-            output_format: format.map(OutputFormat::from),
-            ppi,
-            pages,
-            producer,
-        };
-        let start = Instant::now();
-        let result = self.inner.render(&opts).map_err(convert_render_error)?;
-        let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-        Ok(PyRenderResult {
-            inner: result,
-            render_time_ms: elapsed_ms,
-        })
-    }
-}
-
 #[pymethods]
 impl PyRenderResult {
     #[getter]
@@ -804,6 +747,20 @@ pub struct PyDiagnostic {
 
 #[pymethods]
 impl PyDiagnostic {
+    /// Canonical pretty-printed diagnostic text — the same rendering the CLI
+    /// and WASM (`Document.formatDiagnostic`) emit, so a diagnostic reads
+    /// identically no matter which surface shows it.
+    fn __str__(&self) -> String {
+        self.inner.fmt_pretty()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Diagnostic(severity={:?}, code={:?}, message={:?})",
+            self.inner.severity, self.inner.code, self.inner.message,
+        )
+    }
+
     #[getter]
     fn severity(&self) -> PySeverity {
         self.inner.severity.into()

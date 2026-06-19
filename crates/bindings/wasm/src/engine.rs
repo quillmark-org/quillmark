@@ -511,35 +511,37 @@ impl Document {
         quillmark_core::document::SCHEMA_V0_82_0.to_string()
     }
 
-    /// Authoring-format rules for the card-yaml markdown surface — the same
-    /// text every binding (CLI, Python, MCP) shows so callers reading errors
-    /// from one binding can use the rules from any other. Read once at
-    /// startup and cache; the value never changes between calls.
+    /// Authoring-format rules for the card-yaml markdown surface. The canonical
+    /// text is core's (`quillmark_core::document::FORMAT_RULES`), re-exposed
+    /// here for JS consumers so it matches any other surface that draws from the
+    /// same source. Read once at startup and cache; the value never changes
+    /// between calls.
     #[wasm_bindgen(js_name = formatRules)]
     pub fn format_rules() -> String {
         quillmark_core::document::FORMAT_RULES.to_string()
     }
 
     /// Authoring-ergonomics header introducing a blueprint to an LLM/MCP
-    /// consumer for the given `quillName`. Surfaced verbatim by every binding
-    /// so the wording stays uniform across CLI / Python / MCP.
+    /// consumer for the given `quillName`. Re-exposes core's canonical text for
+    /// JS consumers; any surface that draws from the same core source stays
+    /// uniform.
     #[wasm_bindgen(js_name = blueprintInstruction)]
     pub fn blueprint_instruction(quill_name: &str) -> String {
         quillmark_core::document::blueprint_instruction(quill_name)
     }
 
-    /// The canonical `$quill` reference grammar as author-facing text. Single
-    /// source of truth (CLI, Python, MCP): drive schema `describe` and
-    /// validation messages from this instead of re-stating the rule — it
-    /// matches the `hint` on `parse::invalid_quill_reference`. Cache it; the
-    /// value never changes.
+    /// The canonical `$quill` reference grammar as author-facing text. Core is
+    /// the single source of truth: drive schema `describe` and validation
+    /// messages from this instead of re-stating the rule — it matches the
+    /// `hint` on `parse::invalid_quill_reference`. Cache it; the value never
+    /// changes.
     #[wasm_bindgen(js_name = quillRefHint)]
     pub fn quill_ref_hint() -> String {
         quillmark_core::quill_ref_hint().to_string()
     }
 
-    /// Render a Diagnostic as the canonical pretty-printed text every binding
-    /// shows (CLI, Python, MCP). Single source of truth so a Diagnostic looks
+    /// Render a Diagnostic as the canonical pretty-printed text (core's
+    /// `Diagnostic::fmt_pretty`). Single source of truth so a Diagnostic looks
     /// identical no matter which consumer surfaces it.
     #[wasm_bindgen(js_name = formatDiagnostic)]
     pub fn format_diagnostic(diag: Diagnostic) -> String {

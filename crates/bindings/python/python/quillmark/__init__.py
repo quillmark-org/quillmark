@@ -10,7 +10,6 @@ from ._quillmark import (
     Quillmark,
     QuillmarkError,
     RenderResult,
-    RenderSession,
     Severity,
 )
 
@@ -24,7 +23,6 @@ __all__ = [
     "Quillmark",
     "QuillmarkError",
     "RenderResult",
-    "RenderSession",
     "Severity",
 ]
 

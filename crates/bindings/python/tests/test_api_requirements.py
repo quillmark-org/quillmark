@@ -31,7 +31,7 @@ def test_parsed_document_quill_ref():
     """Test that Document exposes quill_ref method."""
     markdown_with_quill = "~~~card-yaml\n$quill: my_quill\n$kind: main\ntitle: Test\n~~~\n\n# Content\n"
     parsed = Document.from_markdown(markdown_with_quill)
-    assert parsed.quill_ref() == "my_quill"
+    assert parsed.quill_ref == "my_quill"
 
     markdown_without_quill = "# Just content\n\nNo card-yaml block here.\n"
     with pytest.raises(QuillmarkError):
@@ -69,7 +69,7 @@ def test_full_workflow(engine):
 
     markdown = "~~~card-yaml\n$quill: taro\n$kind: main\nauthor: Test Author\nice_cream: Chocolate\ntitle: Test\n~~~\n\nContent.\n"
     parsed = Document.from_markdown(markdown)
-    assert parsed.quill_ref() == "taro"
+    assert parsed.quill_ref == "taro"
 
     assert "taro" in quill.quill_ref
     assert quill.backend_id == "typst"
@@ -181,7 +181,7 @@ def test_set_quill_ref():
     """set_quill_ref changes the quill reference."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.set_quill_ref("new_quill")
-    assert doc.quill_ref() == "new_quill"
+    assert doc.quill_ref == "new_quill"
 
 
 def test_replace_body():
@@ -463,7 +463,7 @@ def test_invariants_after_mutation_sequence():
         assert kind and kind == kind.lower(), f"invalid kind '{kind}'"
 
     # Document identity preserved
-    assert doc.quill_ref() == "test_quill"
+    assert doc.quill_ref == "test_quill"
 
 
 # ---------------------------------------------------------------------------

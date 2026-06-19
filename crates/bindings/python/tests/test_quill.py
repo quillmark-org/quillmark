@@ -35,6 +35,3 @@ def test_quill_from_path_bad_backend_loads_then_fails_at_render(tmp_path):
     )
     with pytest.raises(QuillmarkError):
         engine.render(quill, doc, OutputFormat.PDF)
-
-    # supports_canvas is non-raising: False for an unregistered backend.
-    assert engine.supports_canvas(quill) is False
