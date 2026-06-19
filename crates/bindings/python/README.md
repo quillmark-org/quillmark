@@ -34,16 +34,17 @@ result.artifacts[0].save("output.pdf")
 
 ## API surface
 
-The Python surface mirrors the [`@quillmark/wasm`](../wasm) package. Names
-follow `snake_case` conventions; the underlying concepts (and shapes of
-return values) are the same.
+The Python surface mirrors the [`@quillmark/wasm`](../wasm) package for the
+shared document model. Names follow `snake_case` conventions; the underlying
+concepts (and shapes of return values) are the same. Python renders in one
+shot via `engine.render`; the iterative render-session and canvas-preview
+surface is WASM-only (see `prose/canon/PREVIEW.md`).
 
 **Capability principle:** a `Quill` is engine-free, validated config data —
 `quill.metadata` is a pure, infallible snapshot of the `quill:` section.
-Backend capability (`supported_formats` / `supports_canvas`) and rendering
-(`render` / `open`) are resolved by the engine, against a quill; they raise
-`QuillmarkError` (`UnsupportedBackend`) only if the declared backend isn't
-registered.
+The format probe (`supported_formats`) and rendering (`render`) are resolved
+by the engine, against a quill; they raise `QuillmarkError`
+(`UnsupportedBackend`) only if the declared backend isn't registered.
 
 ### `Quillmark`
 
@@ -51,9 +52,7 @@ registered.
 engine = Quillmark()
 engine.registered_backends()              # ['typst']
 engine.render(quill, parsed, OutputFormat.PDF)   # ppi=, pages=, producer= optional
-engine.open(quill, parsed)                # RenderSession
 engine.supported_formats(quill)           # [OutputFormat.PDF, ...] (raises if backend unregistered)
-engine.supports_canvas(quill)             # True iff backend supports canvas preview (non-raising)
 ```
 
 ### `Quill`
@@ -71,17 +70,6 @@ diags   = quill.validate(parsed)          # list of validation::* diagnostic dic
 seed    = quill.seed_document()           # starter Document seeded from `example:` values
 main    = quill.seed_main()               # just the $kind: main card (dict, like doc.main)
 card    = quill.seed_card("note")         # one starter composable card (dict), None if kind undeclared
-```
-
-### `RenderSession`
-
-```python
-session = engine.open(quill, parsed)
-session.page_count
-session.backend_id
-session.supports_canvas
-session.warnings
-session.render(OutputFormat.SVG, pages=[0])
 ```
 
 ### `RenderResult` / `Artifact`

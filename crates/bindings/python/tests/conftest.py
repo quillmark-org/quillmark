@@ -45,9 +45,9 @@ def taro_quill_dir():
 def engine():
     """A fresh `Quillmark` engine — the render / capability dispatcher.
 
-    A `Quill` is engine-free, validated data (`Quill.from_path`); render,
-    `open`, and capability probes (`supported_formats` / `supports_canvas`)
-    are asked of the engine, against a quill.
+    A `Quill` is engine-free, validated data (`Quill.from_path`); rendering
+    (`render`) and the format probe (`supported_formats`) are asked of the
+    engine, against a quill.
     """
     return Quillmark()
 

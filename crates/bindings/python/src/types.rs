@@ -7,7 +7,6 @@ use pyo3::Bound;
 
 use quillmark::{
     quill_from_path, Diagnostic, Document, Location, OutputFormat, Quill, Quillmark, RenderResult,
-    RenderSession,
 };
 use std::path::PathBuf;
 use std::time::Instant;
@@ -64,20 +63,6 @@ impl PyQuillmark {
         })
     }
 
-    /// Open an iterative render session for `doc` against `quill`'s backend.
-    /// Mirrors WASM `Engine.open`.
-    fn open(&self, quill: &PyQuill, doc: PyRef<'_, PyDocument>) -> PyResult<PyRenderSession> {
-        let session = self
-            .inner
-            .open(&quill.inner, &doc.inner)
-            .map_err(convert_render_error)?;
-        Ok(PyRenderSession {
-            inner: session,
-            backend_id: quill.inner.backend_id().to_string(),
-            supports_canvas: self.inner.supports_canvas(&quill.inner),
-        })
-    }
-
     /// The output formats `quill`'s backend can emit. Raises `QuillmarkError`
     /// (`UnsupportedBackend`) for an unregistered backend. Mirrors WASM
     /// `Engine.supportedFormats`.
@@ -89,12 +74,6 @@ impl PyQuillmark {
             .iter()
             .map(|f| (*f).into())
             .collect())
-    }
-
-    /// `True` iff `quill`'s backend can paint to a canvas; `False` when the
-    /// backend is unsupported. Non-raising. Mirrors WASM `Engine.supportsCanvas`.
-    fn supports_canvas(&self, quill: &PyQuill) -> bool {
-        self.inner.supports_canvas(&quill.inner)
     }
 
     fn registered_backends(&self) -> Vec<String> {
@@ -657,65 +636,6 @@ impl PyDocument {
 pub struct PyRenderResult {
     pub(crate) inner: RenderResult,
     pub(crate) render_time_ms: f64,
-}
-
-#[pyclass(name = "RenderSession")]
-pub struct PyRenderSession {
-    pub(crate) inner: RenderSession,
-    pub(crate) backend_id: String,
-    /// Canvas capability of the backend that produced this session, captured
-    /// at open time. Mirrors `Quill.supports_canvas`.
-    pub(crate) supports_canvas: bool,
-}
-
-#[pymethods]
-impl PyRenderSession {
-    #[getter]
-    fn page_count(&self) -> usize {
-        self.inner.page_count()
-    }
-
-    #[getter]
-    fn backend_id(&self) -> &str {
-        &self.backend_id
-    }
-
-    #[getter]
-    fn supports_canvas(&self) -> bool {
-        self.supports_canvas
-    }
-
-    #[getter]
-    fn warnings(&self) -> Vec<PyDiagnostic> {
-        self.inner
-            .warnings()
-            .iter()
-            .map(|d| PyDiagnostic { inner: d.clone() })
-            .collect()
-    }
-
-    #[pyo3(signature = (format=None, ppi=None, pages=None, producer=None))]
-    fn render(
-        &self,
-        format: Option<PyOutputFormat>,
-        ppi: Option<f32>,
-        pages: Option<Vec<usize>>,
-        producer: Option<String>,
-    ) -> PyResult<PyRenderResult> {
-        let opts = quillmark::RenderOptions {
-            output_format: format.map(OutputFormat::from),
-            ppi,
-            pages,
-            producer,
-        };
-        let start = Instant::now();
-        let result = self.inner.render(&opts).map_err(convert_render_error)?;
-        let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-        Ok(PyRenderResult {
-            inner: result,
-            render_time_ms: elapsed_ms,
-        })
-    }
 }
 
 #[pymethods]

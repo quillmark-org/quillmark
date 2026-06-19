@@ -75,34 +75,14 @@ def test_engine_render_name_mismatch_errors(engine, taro_quill_dir):
     assert "quill::name_mismatch" in codes, f"expected name_mismatch error, got: {codes}"
 
 
-def test_engine_open_session_page_selection(engine, taro_quill_dir, taro_md):
+def test_engine_render_page_selection(engine, taro_quill_dir, taro_md):
+    """engine.render with pages=[...] emits a page subset in one shot."""
     quill = Quill.from_path(str(taro_quill_dir))
     parsed = Document.from_markdown(taro_md)
 
-    session = engine.open(quill, parsed)
-    assert session.page_count > 0
-
-    subset = session.render(OutputFormat.SVG, pages=[0])
+    subset = engine.render(quill, parsed, OutputFormat.SVG, pages=[0])
     assert len(subset.artifacts) == 1
     assert subset.format == OutputFormat.SVG
-
-
-def test_render_session_metadata(engine, taro_quill_dir, taro_md):
-    """RenderSession exposes backend_id, supports_canvas, and warnings."""
-    quill = Quill.from_path(str(taro_quill_dir))
-    parsed = Document.from_markdown(taro_md)
-
-    session = engine.open(quill, parsed)
-    assert session.backend_id == quill.backend_id
-    assert session.supports_canvas == engine.supports_canvas(quill)
-    assert isinstance(session.warnings, list)
-
-
-def test_engine_supports_canvas(engine, taro_quill_dir):
-    """engine.supports_canvas(quill) is True for the typst backend."""
-    quill = Quill.from_path(str(taro_quill_dir))
-    # The fixture quill uses the typst backend, which is canvas-capable.
-    assert engine.supports_canvas(quill) is True
 
 
 def test_engine_render_full_document(engine, taro_quill_dir, taro_md):
