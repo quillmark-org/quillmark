@@ -7,9 +7,8 @@ contract.
 
 Tested in CI (the `dotnet` job) and published to NuGet as the `Quillmark`
 package. The interop design and error contract are documented in the
-crate-level rustdoc (`src/lib.rs`); the binding's place in the workspace is
-covered by the `bindings/quillmark-dotnet` section of the canon architecture
-doc (`prose/canon/ARCHITECTURE.md`).
+crate-level rustdoc (`src/lib.rs`); the binding's place among the language
+surfaces is covered by the canon bindings doc (`prose/canon/BINDINGS.md`).
 
 ## Architecture
 

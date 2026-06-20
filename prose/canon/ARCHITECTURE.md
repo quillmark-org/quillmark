@@ -28,32 +28,11 @@ High-level API: `Quillmark` (the engine — a backend registry + render dispatch
 
 Implements `Backend` for PDF, SVG, and PNG. Converts Markdown fields to Typst markup inside `open()`. Resolves fonts and assets. See [PLATE_DATA.md](PLATE_DATA.md).
 
-### `bindings/quillmark-python`
+### `bindings/*`
 
-PyO3 bindings published as `quillmark` on PyPI.
-
-> **Status: experimental, second-class binding.** The Python surface lags
-> the WASM binding in coverage and in error-shape uniformity. New
-> diagnostics / contract work lands in WASM first; Python catches up on a
-> best-effort basis. Do not gate releases on Python parity.
-
-### `bindings/quillmark-wasm`
-
-wasm-bindgen bindings published as `@quillmark/wasm`. Builds with `--target bundler` and `--weak-refs` so wasm-bindgen handles are reclaimed by `FinalizationRegistry`; `.free()` remains as the eager teardown hook. Requires Node 22+ / current evergreen browsers.
-
-Ships **multiple artifacts from one crate** behind a single public root export. The root `@quillmark/wasm` is a hand-written **canonical runtime layer** that re-exports the internal Typst-less **core** build's `Document` + `Quill` (load / validate / schema / seed / blueprint) verbatim and adds an `Engine` render dispatcher. Each backend (Typst today) is a **private** build with its own linear memory, lazily loaded on the first render — there is no public `/core` or `/render` subpath. The core build is ~0.66 MB gzip; the Typst backend ~8 MB (Typst dominates), loaded only when something renders. Backend handles never escape the `Engine`: it clones the quill tree + `doc.toJson()` into the backend's memory as serialized data and frees the clones. See [the split proposal](../proposals/wasm-bindings-split.md) (superseded) and [the as-built 0.90 design](../../docs/migrations/0.89-to-0.90.md).
-
-In addition to the byte-output verbs (`engine.render`, `RenderSession.render`), the Typst backend build exposes a Typst-only **canvas preview** path on `RenderSession`: `pageCount`, `pageSize(page)`, `paint(ctx, page, opts?)`, plus `backendId`, `supportsCanvas`, and `warnings`. Capability lives on the engine (`engine.supportedFormats(quill)`, `engine.supportsCanvas(quill)`); the session mirrors it. The painter rasterizes pages directly from the cached `PagedDocument` into a `CanvasRenderingContext2D` or `OffscreenCanvasRenderingContext2D`, sizes the canvas backing store itself, and returns the chosen layout/pixel dimensions. Skips PNG/SVG round-trips. See [PREVIEW.md](PREVIEW.md).
-
-### `bindings/quillmark-dotnet`
-
-C-ABI `cdylib` consumed from C# via P/Invoke, published as `Quillmark` on NuGet — the .NET analogue of the PyO3 module. A flat `qm_*` C ABI over `quillmark` plus a hand-written managed layer (`csharp/`) that reassembles the typed surface, deliberately **symmetrical with the Python binding** method-for-method. Structured data (cards, schema, metadata, diagnostics, field values) crosses as `serde` JSON from the same core types the other bindings use; stateful objects cross as opaque handles; panics are trapped at the boundary (the analogue of PyO3's trapping / the WASM panic hook) and surface as the single `QuillmarkException`. The NuGet package carries the native library per RID under `runtimes/<rid>/native/`.
-
-> **Status: experimental, second-class binding.** Mirrors the Python surface and shares its footing — render-only (no canvas preview), best-effort parity, not a release gate.
-
-### `bindings/quillmark-cli`
-
-Standalone binary. See [CLI.md](CLI.md).
+Language surfaces over the one core engine: `quillmark-python` (PyO3, PyPI),
+`quillmark-wasm` (wasm-bindgen, npm), `quillmark-dotnet` (P/Invoke, NuGet), and
+`quillmark-cli` (the `quillmark` binary). See [BINDINGS.md](BINDINGS.md).
 
 ### `quillmark-fixtures`
 
