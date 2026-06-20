@@ -65,12 +65,20 @@ public sealed class Quill : NativeObject
     public Card SeedMain() =>
         Card.FromJson(Interop.CallString(NativeMethods.qm_quill_seed_main_json(Handle), "seed_main"));
 
-    /// <summary>Seed a starter composable card of the given kind, or <c>null</c>
-    /// when the kind is not declared.</summary>
-    public Card? SeedCard(string cardKind)
+    /// <summary>Seed a starter composable card of the given kind, layering an
+    /// optional per-kind seed <paramref name="overlay"/> over the schema-example
+    /// base (<c>overlay › example › absent</c>); <c>null</c> when the kind is not
+    /// declared. Pass a document's <c>$seed</c> entry for the kind as the overlay
+    /// so a card added to a template-derived document inherits its curated
+    /// starting values; omit it for the bare schema seed.</summary>
+    public Card? SeedCard(string cardKind, object? overlay = null)
     {
+        byte[]? overlayJson = overlay is null
+            ? null
+            : Interop.ToUtf8(Interop.SerializeValue(overlay, "seed_card overlay"));
         string json = Interop.CallString(
-            NativeMethods.qm_quill_seed_card_json(Handle, Interop.ToUtf8(cardKind)), "seed_card");
+            NativeMethods.qm_quill_seed_card_json(Handle, Interop.ToUtf8(cardKind), overlayJson),
+            "seed_card");
         return Interop.FromJson<Card>(json);
     }
 }

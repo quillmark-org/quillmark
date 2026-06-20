@@ -116,6 +116,10 @@ pub struct CardWire {
     /// The block's opaque `$ext` map, if declared. Omitted when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ext: Option<JsonMap<String, JsonValue>>,
+    /// The block's `$seed` map (keyed by card-kind), if declared. Present on
+    /// the main card only. Omitted when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<JsonMap<String, JsonValue>>,
     /// User fields and comments, in source order.
     #[serde(default, alias = "payload_items")]
     pub payload_items: Vec<PayloadItemWire>,
@@ -157,6 +161,7 @@ impl From<&Card> for CardWire {
             quill: None,
             id: None,
             ext: None,
+            seed: None,
             payload_items: Vec::new(),
             body: card.body().to_string(),
         };
@@ -166,6 +171,7 @@ impl From<&Card> for CardWire {
                 PayloadItem::Kind { value } => wire.kind = value.clone(),
                 PayloadItem::Id { value } => wire.id = Some(value.clone()),
                 PayloadItem::Ext { value, .. } => wire.ext = Some(value.clone()),
+                PayloadItem::Seed { value, .. } => wire.seed = Some(value.clone()),
                 PayloadItem::Field {
                     key, value, fill, ..
                 } => {
@@ -258,6 +264,23 @@ impl TryFrom<CardWire> for Card {
                 unreachable!("constructed as Object above")
             };
             payload.set_ext(ext);
+        }
+        if let Some(seed) = wire.seed {
+            let as_value = JsonValue::Object(seed);
+            if crate::value::json_depth_exceeds(&as_value, crate::document::limits::MAX_YAML_DEPTH)
+            {
+                return Err(WireError::InvalidField {
+                    key: "$seed".to_string(),
+                    reason: format!(
+                        "nests deeper than the maximum of {} levels",
+                        crate::document::limits::MAX_YAML_DEPTH
+                    ),
+                });
+            }
+            let JsonValue::Object(seed) = as_value else {
+                unreachable!("constructed as Object above")
+            };
+            payload.set_seed(seed);
         }
         Ok(Card::from_parts(payload, wire.body))
     }
@@ -358,6 +381,7 @@ mod tests {
             quill: None,
             id: None,
             ext: None,
+            seed: None,
             payload_items: vec![PayloadItemWire::Field {
                 key: "x".to_string(),
                 value: json!(1),
@@ -382,6 +406,7 @@ mod tests {
             quill: Some("@nope".to_string()),
             id: None,
             ext: None,
+            seed: None,
             payload_items: Vec::new(),
             body: String::new(),
         })

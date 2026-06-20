@@ -327,6 +327,19 @@ pub(super) fn decompose_with_warnings(
             ));
         }
 
+        // Seeding overlays live on the document root only (like `$quill`).
+        if block
+            .meta_items
+            .iter()
+            .any(|m| matches!(m, PayloadItem::Seed { .. }))
+        {
+            return Err(ParseError::InvalidStructure(
+                "A composable card-yaml block must not carry `$seed` — only the \
+                 document's root block carries seeding overlays."
+                    .to_string(),
+            ));
+        }
+
         let card_payload = build_payload(
             &block.meta_items,
             &block.pre_items,

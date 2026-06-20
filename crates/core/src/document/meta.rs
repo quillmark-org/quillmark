@@ -1,7 +1,7 @@
 //! Validation helpers for card-yaml `$`-prefixed system metadata.
 //!
-//! The closed set of `$` keys (`$quill`, `$kind`, `$id`, `$ext`) and their
-//! typed values are stored as variants of [`super::PayloadItem`] inside a
+//! The closed set of `$` keys (`$quill`, `$kind`, `$id`, `$ext`, `$seed`) and
+//! their typed values are stored as variants of [`super::PayloadItem`] inside a
 //! card's unified [`super::Payload`] item list — they sit alongside user
 //! fields and comments in source order, which is what makes inline-comment
 //! preservation symmetric across the `$`/non-`$` boundary.
@@ -32,6 +32,7 @@ pub(super) fn meta_key(item: &PayloadItem) -> Option<&'static str> {
         PayloadItem::Kind { .. } => Some("$kind"),
         PayloadItem::Id { .. } => Some("$id"),
         PayloadItem::Ext { .. } => Some("$ext"),
+        PayloadItem::Seed { .. } => Some("$seed"),
         PayloadItem::Field { .. } | PayloadItem::Comment { .. } => None,
     }
 }
@@ -41,14 +42,15 @@ pub(super) fn meta_key(item: &PayloadItem) -> Option<&'static str> {
 /// in source order. The keys are removed from `payload` so the caller can
 /// build the user-field portion from what remains.
 ///
-/// The accepted keys are the closed set `{$quill, $kind, $id, $ext}`. Any
-/// other `$`-prefixed key is a parse error. Duplicate keys cannot arise
+/// The accepted keys are the closed set `{$quill, $kind, $id, $ext, $seed}`.
+/// Any other `$`-prefixed key is a parse error. Duplicate keys cannot arise
 /// here — the YAML parser rejects them as duplicate mapping keys before
 /// this function runs.
 ///
 /// `$quill` and `$kind` require string scalars (non-string YAML types are
-/// rejected). `$id` accepts any scalar and stringifies it. `$ext` requires
-/// a YAML mapping (object) — its contents are carried opaquely.
+/// rejected). `$id` accepts any scalar and stringifies it. `$ext` and `$seed`
+/// each require a YAML mapping (object); `$ext` contents are carried opaquely,
+/// while `$seed` is a map keyed by card-kind interpreted by the seeding layer.
 pub(super) fn extract_meta_items(payload: &mut JsonValue) -> Result<Vec<PayloadItem>, ParseError> {
     let map = match payload {
         JsonValue::Object(m) => m,
@@ -108,10 +110,22 @@ pub(super) fn extract_meta_items(payload: &mut JsonValue) -> Result<Vec<PayloadI
                     )));
                 }
             },
+            "$seed" => match value {
+                JsonValue::Object(map) => PayloadItem::Seed {
+                    value: map,
+                    nested_comments: Vec::new(),
+                },
+                other => {
+                    return Err(ParseError::InvalidStructure(format!(
+                        "Invalid `$seed` value — expected a mapping, got {}",
+                        yaml_type_name(&other)
+                    )));
+                }
+            },
             other => {
                 return Err(ParseError::InvalidStructure(format!(
                     "Unknown `{}` system-metadata key — the card-yaml block \
-                     accepts only `$quill`, `$kind`, `$id`, and `$ext`",
+                     accepts only `$quill`, `$kind`, `$id`, `$ext`, and `$seed`",
                     other
                 )));
             }

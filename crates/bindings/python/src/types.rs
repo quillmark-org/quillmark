@@ -212,15 +212,24 @@ impl PyQuill {
     }
 
     /// Seed a starter composable card of the given kind (carries `$kind`),
-    /// committing its fields' `example` values and leaving every other field
-    /// absent; `None` if `card_kind` is not declared. Returns the same dict
-    /// shape as `Document.cards` / `remove_card`. Mirrors WASM `seedCard`.
+    /// layering an optional per-kind seed `overlay` over the schema-example
+    /// base (`overlay › example › absent`); `None` if `card_kind` is not
+    /// declared. Returns the same dict shape as `Document.cards` /
+    /// `remove_card`. Pass `document.seed(card_kind)` as `overlay` so a card
+    /// added to a template-derived document inherits its curated starting
+    /// values; omit it for the bare schema seed. Mirrors WASM `seedCard`.
+    #[pyo3(signature = (card_kind, overlay=None))]
     fn seed_card<'py>(
         &self,
         py: Python<'py>,
         card_kind: &str,
+        overlay: Option<Bound<'_, PyAny>>,
     ) -> PyResult<Option<Bound<'py, PyDict>>> {
-        match self.inner.seed_card(card_kind) {
+        let overlay = match overlay {
+            Some(value) => quillmark_core::SeedOverlay::from_json(&py_to_json(&value)?),
+            None => None,
+        };
+        match self.inner.seed_card(card_kind, overlay.as_ref()) {
             Some(card) => Ok(Some(card_to_pydict(py, &card)?)),
             None => Ok(None),
         }
@@ -471,6 +480,42 @@ impl PyDocument {
         ext_value_to_py(py, self.inner.main_mut().remove_ext_namespace(namespace))
     }
 
+    /// The raw `$seed[card_kind]` overlay (sparse fields plus an optional
+    /// `$body`) on the main card, or `None`. Hand the result to
+    /// `quill.seed_card(card_kind, …)` so a newly-added card inherits the
+    /// document's curated starting values. A read — it never mutates the doc.
+    fn seed<'py>(&self, py: Python<'py>, card_kind: &str) -> PyResult<Bound<'py, PyAny>> {
+        let entry = self
+            .inner
+            .main()
+            .seed()
+            .and_then(|m| m.get(card_kind).cloned());
+        ext_value_to_py(py, entry)
+    }
+
+    /// Merge a card-kind's seed `overlay` into the main card's `$seed` map
+    /// under `card_kind`, preserving sibling kinds. Sets the starting values
+    /// new cards of that kind spawn with.
+    fn set_seed_namespace(&mut self, card_kind: &str, overlay: Bound<'_, PyAny>) -> PyResult<()> {
+        let json = py_to_json(&overlay)?;
+        self.inner
+            .main_mut()
+            .set_seed_namespace(card_kind, json)
+            .map_err(convert_edit_error)?;
+        Ok(())
+    }
+
+    /// Remove `card_kind` from the main card's `$seed` map, returning its
+    /// overlay or `None`; drops `$seed` entirely once empty. Sibling kinds
+    /// survive.
+    fn remove_seed_namespace<'py>(
+        &mut self,
+        py: Python<'py>,
+        card_kind: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        ext_value_to_py(py, self.inner.main_mut().remove_seed_namespace(card_kind))
+    }
+
     /// Replace the `$ext` map on the composable card at `index`. Raises on
     /// out-of-range index or non-dict value. Named to mirror `set_ext` on the
     /// main card; `set_card_ext_namespace` is the sibling-safe alternative.
@@ -567,6 +612,7 @@ impl PyDocument {
             quill: None,
             id: None,
             ext: None,
+            seed: None,
             payload_items,
             body: body.unwrap_or_default(),
         };
@@ -889,6 +935,16 @@ fn card_to_pydict<'py>(
             )?;
         }
         None => d.set_item("ext", py.None())?,
+    }
+
+    match &wire.seed {
+        Some(seed_map) => {
+            d.set_item(
+                "seed",
+                json_to_py(py, &serde_json::Value::Object(seed_map.clone()))?,
+            )?;
+        }
+        None => d.set_item("seed", py.None())?,
     }
 
     d.set_item("body", &wire.body)?;

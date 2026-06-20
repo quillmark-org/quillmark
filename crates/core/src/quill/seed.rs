@@ -31,30 +31,51 @@ use indexmap::IndexMap;
 
 use super::Quill;
 use crate::quill::CardSchema;
-use crate::{Card, Document, Payload, QuillReference, QuillValue};
+use crate::{Card, Document, Payload, QuillReference, QuillValue, SeedOverlay};
 
-/// Build the seeded `(payload, body)` for one card schema: each field that
-/// declares an `example` is committed, ordered by `ui.order` (matching the
-/// blueprint); fields without an `example` are omitted. The `$quill` /
-/// `$kind` system metadata is attached by the caller.
-fn seed_parts(schema: &CardSchema) -> (Payload, String) {
-    let mut names: Vec<&str> = schema.fields.keys().map(String::as_str).collect();
-    names.sort_by_key(|name| schema.fields[*name].ui_order());
-
-    let mut fields: IndexMap<String, QuillValue> = IndexMap::new();
-    for name in names {
-        if let Some(example) = &schema.fields[name].example {
-            fields.insert(name.to_string(), example.clone());
+/// Build the seeded `(payload, body)` for one card schema, layering an optional
+/// [`SeedOverlay`] over the schema-example base. Per field the precedence is
+/// `overlay › example › absent`; the overlay may also add a field the base
+/// omits (a `default`-only field with no `example`). The final fields are
+/// ordered by `ui.order` (matching the blueprint). Only fields declared on the
+/// schema are included — an overlay key naming no schema field is ignored here
+/// (the editor-surface validator flags it). Body: `overlay › body.example ›
+/// empty`, honored only when the kind enables bodies. The `$quill` / `$kind`
+/// system metadata is attached by the caller.
+fn seed_parts(schema: &CardSchema, overlay: Option<&SeedOverlay>) -> (Payload, String) {
+    // Merge the example base with the overlay (schema-declared fields only).
+    let mut merged: IndexMap<String, QuillValue> = IndexMap::new();
+    for (name, field) in &schema.fields {
+        if let Some(example) = &field.example {
+            merged.insert(name.clone(), example.clone());
+        }
+    }
+    if let Some(overlay) = overlay {
+        for (name, value) in &overlay.fields {
+            if schema.fields.contains_key(name) {
+                merged.insert(name.clone(), value.clone());
+            }
         }
     }
 
-    // Body region carries `body.example` when declared and bodies are enabled,
-    // mirroring the blueprint; otherwise it is empty.
-    let body = if schema.body_enabled() {
+    // Order by `ui.order`. Every key is a declared field here, so the lookup
+    // always resolves; the `i32::MAX` fallback is defensive.
+    let mut entries: Vec<(String, QuillValue)> = merged.into_iter().collect();
+    entries.sort_by_key(|(name, _)| {
         schema
-            .body
-            .as_ref()
-            .and_then(|b| b.example.clone())
+            .fields
+            .get(name)
+            .map(|f| f.ui_order())
+            .unwrap_or(i32::MAX)
+    });
+    let fields: IndexMap<String, QuillValue> = entries.into_iter().collect();
+
+    // Body region: an overlay body wins, else `body.example`, else empty —
+    // and only when bodies are enabled for the kind.
+    let body = if schema.body_enabled() {
+        overlay
+            .and_then(|o| o.body.clone())
+            .or_else(|| schema.body.as_ref().and_then(|b| b.example.clone()))
             .unwrap_or_default()
     } else {
         String::new()
@@ -74,7 +95,9 @@ fn main_reference(quill: &Quill) -> QuillReference {
 }
 
 pub(crate) fn seed_main(quill: &Quill) -> Card {
-    let (mut payload, body) = seed_parts(&quill.config().main);
+    // The main card is never seeded from an overlay — `$seed` keys range over
+    // composable `card_kinds`, and `main` is not one of them.
+    let (mut payload, body) = seed_parts(&quill.config().main, None);
     payload.set_quill(main_reference(quill));
     // The root block carries `$kind: main` alongside `$quill` (see the
     // markdown spec); set it so a seeded main card round-trips through
@@ -83,25 +106,32 @@ pub(crate) fn seed_main(quill: &Quill) -> Card {
     Card::from_parts(payload, body)
 }
 
-pub(crate) fn seed_card_for_kind(quill: &Quill, card_kind: &str) -> Option<Card> {
+pub(crate) fn seed_card_for_kind(
+    quill: &Quill,
+    card_kind: &str,
+    overlay: Option<&SeedOverlay>,
+) -> Option<Card> {
     let schema = quill.config().card_kind(card_kind)?;
-    Some(seed_composable(schema))
+    Some(seed_composable(schema, overlay))
 }
 
-/// Seed a single composable card from its schema (sets `$kind`, never `$quill`).
-fn seed_composable(schema: &CardSchema) -> Card {
-    let (mut payload, body) = seed_parts(schema);
+/// Seed a single composable card from its schema and an optional overlay (sets
+/// `$kind`, never `$quill`).
+fn seed_composable(schema: &CardSchema, overlay: Option<&SeedOverlay>) -> Card {
+    let (mut payload, body) = seed_parts(schema, overlay);
     payload.set_kind(schema.name.clone());
     Card::from_parts(payload, body)
 }
 
 pub(crate) fn seed_document(quill: &Quill) -> Document {
+    // A fresh document carries no `$seed`, so every kind seeds from its schema
+    // example base (overlay = `None`).
     let main = seed_main(quill);
     let cards = quill
         .config()
         .card_kinds
         .iter()
-        .map(seed_composable)
+        .map(|schema| seed_composable(schema, None))
         .collect();
     Document::from_main_and_cards(main, cards, Vec::new())
 }

@@ -161,6 +161,29 @@ fn path_is_fill(fills: &[Vec<CommentPathSegment>], path: &[CommentPathSegment]) 
     fills.iter().any(|p| p.as_slice() == path)
 }
 
+/// Emit the `$seed: …` block. Same shape as [`emit_ext_block`]: an empty map
+/// emits inline as `$seed: {}`, a non-empty map as a `$seed:` header followed
+/// by indented block-style children.
+fn emit_seed_block(
+    out: &mut String,
+    value: &serde_json::Map<String, JsonValue>,
+    trailer: Option<&str>,
+    nested: &[NestedComment],
+) {
+    if value.is_empty() {
+        out.push_str("$seed: {}");
+        push_trailer(out, trailer);
+        out.push('\n');
+        return;
+    }
+    out.push_str("$seed:");
+    push_trailer(out, trailer);
+    out.push('\n');
+    let path: Vec<CommentPathSegment> = Vec::new();
+    // `$seed` is out-of-band data and never carries `!must_fill`.
+    emit_mapping_children(out, value, 2, &path, nested, &[]);
+}
+
 fn emit_block(out: &mut String, card: &Card) {
     out.push_str("~~~\n");
     emit_payload_items(out, card.payload().items());
@@ -198,6 +221,12 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
                 nested_comments,
             } => {
                 emit_ext_block(out, value, trailer, nested_comments);
+            }
+            PayloadItem::Seed {
+                value,
+                nested_comments,
+            } => {
+                emit_seed_block(out, value, trailer, nested_comments);
             }
             PayloadItem::Field {
                 key,

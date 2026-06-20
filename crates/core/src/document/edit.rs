@@ -98,6 +98,12 @@ fn check_ext_depth(map: &serde_json::Map<String, serde_json::Value>) -> Result<(
     Ok(())
 }
 
+/// Depth-bound a `$seed` map. Mirrors [`check_ext_depth`]: `$seed` rides the
+/// same recursive emit/DTO paths, so it carries the same §8 depth bound.
+fn check_seed_depth(map: &serde_json::Map<String, serde_json::Value>) -> Result<(), EditError> {
+    check_ext_depth(map)
+}
+
 /// Validate a user field at the payload boundary: name conformance and
 /// value-depth bound. See [`FieldViolation`] for the invariant.
 pub fn validate_field(key: &str, value: &serde_json::Value) -> Result<(), FieldViolation> {
@@ -317,6 +323,46 @@ impl Card {
         let removed = map.remove(namespace);
         if !map.is_empty() {
             self.payload_mut().set_ext(map);
+        }
+        removed
+    }
+
+    /// The raw `$seed` map (keyed by card-kind), or `None`. For a parsed,
+    /// per-kind overlay use [`crate::Document::seed`]. Only the main card
+    /// carries `$seed`.
+    pub fn seed(&self) -> Option<&serde_json::Map<String, serde_json::Value>> {
+        self.payload().seed()
+    }
+
+    /// Merge a card-kind's seed overlay `value` into the card's `$seed` map
+    /// under `card_kind`, creating the map when absent and replacing any
+    /// existing overlay for that kind. Sibling kinds are preserved — this is
+    /// the per-kind-safe writer, the seed analogue of
+    /// [`Card::set_ext_namespace`]. Returns [`EditError::ValueTooDeep`] when
+    /// the merged map nests past the §8 depth limit; the card is unchanged on
+    /// error.
+    pub fn set_seed_namespace(
+        &mut self,
+        card_kind: impl Into<String>,
+        value: serde_json::Value,
+    ) -> Result<(), EditError> {
+        let mut map = self.payload_mut().seed().cloned().unwrap_or_default();
+        map.insert(card_kind.into(), value);
+        check_seed_depth(&map)?;
+        self.payload_mut().take_seed();
+        self.payload_mut().set_seed(map);
+        Ok(())
+    }
+
+    /// Remove `card_kind` from the card's `$seed` map, returning the overlay
+    /// stored there (or `None`). When removing the last kind empties the map,
+    /// the `$seed` entry is dropped entirely (not left as `$seed: {}`).
+    /// The seed analogue of [`Card::remove_ext_namespace`].
+    pub fn remove_seed_namespace(&mut self, card_kind: &str) -> Option<serde_json::Value> {
+        let mut map = self.payload_mut().take_seed()?;
+        let removed = map.remove(card_kind);
+        if !map.is_empty() {
+            self.payload_mut().set_seed(map);
         }
         removed
     }

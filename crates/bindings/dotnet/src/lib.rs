@@ -448,18 +448,33 @@ pub unsafe extern "C" fn qm_quill_seed_main_json(quill: *mut Quill) -> *mut c_ch
     })
 }
 
-/// Card JSON for a starter composable card of `kind`, or JSON `null` when the
-/// kind is not declared. Matches `PyQuill.seed_card`.
+/// Card JSON for a starter composable card of `kind`, layering an optional
+/// per-kind seed `overlay` (a JSON object, or null/`"null"` for none) over the
+/// schema-example base, or JSON `null` when the kind is not declared. Matches
+/// `PyQuill.seed_card`.
 #[no_mangle]
 pub unsafe extern "C" fn qm_quill_seed_card_json(
     quill: *mut Quill,
     kind: *const c_char,
+    overlay_json: *const c_char,
 ) -> *mut c_char {
     ffi_try!(std::ptr::null_mut(), {
         let (Some(q), Some(kind)) = (borrow_ref(quill), borrow_str(kind)) else {
             return std::ptr::null_mut();
         };
-        match q.seed_card(kind) {
+        let overlay = match borrow_str(overlay_json).map(str::trim) {
+            Some(s) if !s.is_empty() && s != "null" => {
+                match serde_json::from_str::<serde_json::Value>(s) {
+                    Ok(value) => quillmark_core::SeedOverlay::from_json(&value),
+                    Err(e) => {
+                        set_error_message(format!("seed_card: invalid `overlay` JSON: {e}"));
+                        return std::ptr::null_mut();
+                    }
+                }
+            }
+            _ => None,
+        };
+        match q.seed_card(kind, overlay.as_ref()) {
             Some(card) => card_to_json(&card),
             None => to_c_string("null"),
         }
@@ -591,6 +606,7 @@ pub unsafe extern "C" fn qm_document_make_card_json(
                             key,
                             value,
                             fill: false,
+                            nested_fills: Vec::new(),
                         });
                     }
                 }
@@ -606,6 +622,7 @@ pub unsafe extern "C" fn qm_document_make_card_json(
         quill: None,
         id: None,
         ext: None,
+        seed: None,
         payload_items,
         body: borrow_str(body).unwrap_or("").to_string(),
     };

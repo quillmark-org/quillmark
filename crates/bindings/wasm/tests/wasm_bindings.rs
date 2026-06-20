@@ -342,7 +342,8 @@ fn test_quill_seed_main_and_card() {
     );
 
     // seed_card: a known kind seeds its example; an unknown kind is undefined.
-    let note = quill.seed_card("note").unwrap();
+    // `None`/undefined overlay → the bare schema seed.
+    let note = quill.seed_card("note", JsValue::UNDEFINED).unwrap();
     assert_eq!(get(&note, "kind").as_string().as_deref(), Some("note"));
     assert!(
         json(&note).contains("NOTE EXAMPLE"),
@@ -350,9 +351,65 @@ fn test_quill_seed_main_and_card() {
         json(&note)
     );
     assert!(
-        quill.seed_card("missing").unwrap().is_undefined(),
+        quill
+            .seed_card("missing", JsValue::UNDEFINED)
+            .unwrap()
+            .is_undefined(),
         "unknown kind must be undefined"
     );
+}
+
+/// `$seed` overlays: `Document.seed(kind)` reads the per-kind overlay,
+/// `Quill.seedCard(kind, overlay)` layers it over the schema example
+/// (overlay › example), and `setSeedNamespace` / `removeSeedNamespace`
+/// write and clear it.
+#[wasm_bindgen_test]
+fn test_seed_overlay_round_trip() {
+    use wasm_bindgen::JsValue;
+
+    let json = |v: &JsValue| js_sys::JSON::stringify(v).unwrap().as_string().unwrap();
+
+    let quill = Quill::from_tree(common::tree(&[
+        (
+            "Quill.yaml",
+            b"quill:\n  name: seed_quill\n  backend: typst\n  version: \"1.0\"\n  plate_file: plate.typ\n  description: Seed quill\nmain:\n  fields:\n    byline:\n      type: string\n      example: FIRST LAST\ncard_kinds:\n  note:\n    fields:\n      text:\n        type: string\n        example: NOTE EXAMPLE\n",
+        ),
+        ("plate.typ", b"= Title"),
+    ]))
+    .expect("quill load");
+
+    let md = "~~~card-yaml\n$quill: seed_quill@1.0\n$kind: main\n$seed:\n  note:\n    text: OVERLAY TEXT\n~~~\n";
+    let doc = Document::from_markdown(md).expect("fromMarkdown failed");
+
+    // Document.seed(kind) returns the per-kind overlay object (or undefined).
+    let overlay = doc.seed("note").unwrap();
+    assert!(json(&overlay).contains("OVERLAY TEXT"));
+    assert!(doc.seed("missing").unwrap().is_undefined());
+
+    // seedCard with the overlay layers it over the example; without it the
+    // bare schema example is used.
+    let with_overlay = quill.seed_card("note", overlay).unwrap();
+    assert!(
+        json(&with_overlay).contains("OVERLAY TEXT"),
+        "overlay value must win: {}",
+        json(&with_overlay)
+    );
+    let bare = quill.seed_card("note", JsValue::UNDEFINED).unwrap();
+    assert!(
+        json(&bare).contains("NOTE EXAMPLE"),
+        "bare seed uses the example: {}",
+        json(&bare)
+    );
+
+    // setSeedNamespace writes an overlay; seed() reads it back; remove clears.
+    let mut doc2 =
+        Document::from_markdown("~~~card-yaml\n$quill: seed_quill@1.0\n$kind: main\n~~~\n")
+            .expect("fromMarkdown failed");
+    let overlay_in = js_sys::JSON::parse("{\"text\":\"WRITTEN\"}").unwrap();
+    doc2.set_seed_namespace("note", overlay_in).unwrap();
+    assert!(json(&doc2.seed("note").unwrap()).contains("WRITTEN"));
+    doc2.remove_seed_namespace("note").unwrap();
+    assert!(doc2.seed("note").unwrap().is_undefined());
 }
 
 /// `doc.clone()` returns an independent handle: mutations on the clone

@@ -38,7 +38,7 @@ bindings) and never a storage option.
 
 ## The Format
 
-The current schema (`quillmark/document@0.82.0`) carries each card's full
+The current schema (`quillmark/document@0.92.0`) carries each card's full
 ordered payload — typed `$` system metadata, user fields, and YAML
 comments interleaved in source order — as a single discriminated-union
 item list. This is what makes inline-comment preservation symmetric across
@@ -46,7 +46,7 @@ the `$`/non-`$` boundary.
 
 ```json
 {
-  "schema": "quillmark/document@0.82.0",
+  "schema": "quillmark/document@0.92.0",
   "main": {
     "payload": {
       "items": [
@@ -67,8 +67,9 @@ each variant carries a frozen DTO tree. Quill references are stored as
 strings (parsed back via `QuillReference::from_str`). The discriminator on
 payload items is `type` (not `kind`) to keep it unambiguous next to the
 `$kind` metadata semantic. The full variant set is `quill | kind | id |
-ext | field | comment`; the `ext` variant carries the opaque `$ext` map
-verbatim and is stripped from `to_plate_json()` before backends see it.
+ext | seed | field | comment`; the `ext` and `seed` variants carry the
+`$ext` / `$seed` maps verbatim and are stripped from `to_plate_json()`
+before backends see it.
 Parse-time warnings live on `Document` (`warnings: Vec<Diagnostic>`) but
 are excluded from `PartialEq` and not serialized, so they never reach this
 format.
@@ -112,12 +113,16 @@ value, because patches do not change the format.
 The first schema version was `0.81.0`. `0.82.0` migrated `Document` to a
 unified payload-item list (typed `$` entries living alongside user fields
 and comments in a single `Vec<PayloadItem>` instead of a separate
-`sentinel + frontmatter` pair). `0.92.0` added a per-field `nested_fills`
-list to the `Field` item, so `!must_fill` markers nested inside a field
-value survive a storage round-trip (the JSON `value` projection is
-fill-free); the V0_82_0 → V0_92_0 migration is structural, defaulting
-`nested_fills` to empty (no 0.82.0 document carried nested markers).
-Migrations chain on read: `V0_81_0 → V0_82_0 → V0_92_0`.
+`sentinel + frontmatter` pair). `0.92.0` added two things to the `Field`/
+payload model: a per-field `nested_fills` list on the `Field` item, so
+`!must_fill` markers nested inside a field value survive a storage
+round-trip (the JSON `value` projection is fill-free), and the `seed`
+payload-item variant (the `$seed` per-card-kind overlay map). The
+V0_82_0 → V0_92_0 migration is structural — old payload items map 1:1,
+`nested_fills` defaults to empty (no 0.82.0 document carried nested
+markers) and the new `seed` variant is simply never produced from an
+older blob. Migrations chain on read (`V0_81_0 → V0_82_0 → V0_92_0`),
+with only the newest DTO converting to the live `Document`.
 
 ## Adding a Schema Version
 
@@ -135,7 +140,7 @@ When the `Document` wire format changes again:
 5. **Write the migration** — `From<DocumentV0_92_0> for DocumentV0_NN_0`.
    This is the only real labor: it encodes how old fields map to the new
    model (renames, restructures, defaults for new fields).
-6. **Extend** the reader:
+6. **Extend** the reader (each older blob migrates one hop, then chains):
    ```rust
    match stored {
        StoredDocument::V0_NN_0(p) => Document::try_from(p),
@@ -143,10 +148,9 @@ When the `Document` wire format changes again:
        StoredDocument::V0_82_0(p) => {
            Document::try_from(DocumentV0_NN_0::from(DocumentV0_92_0::from(p)))
        }
-       StoredDocument::V0_81_0(p) => {
-           let v92 = DocumentV0_92_0::from(DocumentV0_82_0::from(p));
-           Document::try_from(DocumentV0_NN_0::from(v92))
-       }
+       StoredDocument::V0_81_0(p) => Document::try_from(DocumentV0_NN_0::from(
+           DocumentV0_92_0::from(DocumentV0_82_0::from(p)),
+       )),
    }
    ```
 
@@ -159,7 +163,7 @@ by any past version always loads.
 
 ## Gotchas
 
-- The schema version is a hand-set constant (`SCHEMA_V0_82_0`), **not**
+- The schema version is a hand-set constant (`SCHEMA_V0_92_0`), **not**
   `CARGO_PKG_VERSION` — bumping it is a deliberate act tied to a model change.
 - Unknown schema versions are rejected on read, never silently ignored.
 - DTO type names carry version suffixes with underscores

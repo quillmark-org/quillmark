@@ -46,7 +46,7 @@ internal static class NativeMethods
     [DllImport(Lib)] internal static extern IntPtr qm_quill_validate_json(IntPtr quill, IntPtr doc);
     [DllImport(Lib)] internal static extern IntPtr qm_quill_seed_document(IntPtr quill);
     [DllImport(Lib)] internal static extern IntPtr qm_quill_seed_main_json(IntPtr quill);
-    [DllImport(Lib)] internal static extern IntPtr qm_quill_seed_card_json(IntPtr quill, byte[] kind);
+    [DllImport(Lib)] internal static extern IntPtr qm_quill_seed_card_json(IntPtr quill, byte[] kind, byte[]? overlayJson);
 
     // ── Document: constructors & statics ────────────────────────────────────
     [DllImport(Lib)] internal static extern IntPtr qm_document_from_markdown(byte[] markdown);

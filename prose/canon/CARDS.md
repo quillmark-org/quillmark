@@ -116,3 +116,43 @@ template renders are not affected by editor state. Consumers
 namespace inside the map (`$ext.presentation`, `$ext.agent`, …) to avoid
 collisions when more than one tool carries state on the same card. See
 [markdown-spec.md §3.3](../references/markdown-spec.md) for the full specification.
+
+## Per-kind Seed Overlays (`$seed`)
+
+`$seed` is the structural twin of `$ext` — a system-metadata mapping carried on
+the **main card only**, round-tripping through Markdown and the storage DTO and
+stripped before backends — but the seeding layer *interprets* it. It is
+**root-only** like `$quill`: a composable card carrying `$seed` is rejected at
+parse and on storage load. It answers
+"what does a *new* card of kind K start with in this document": each entry,
+keyed by composable card-kind, is a **sparse overlay** of the user fields (plus
+an optional reserved `$body` string) a freshly-added card of that kind inherits.
+
+````markdown
+~~~
+$quill: usaf_memo@0.2.0
+$kind: main
+$seed:
+  indorsement:                 # keyed by card-kind; never "main"
+    from: 49 FW/CC
+    signature_block:
+      - "JANE A. DOE, Col, USAF"
+      - "Commander"
+~~~
+````
+
+`Quill::seed_card(kind, overlay)` layers the overlay over the quill's
+schema-`example:` seed, per field `overlay › example › absent`, ordered by
+`ui.order` (see [SCHEMAS.md](SCHEMAS.md) "Document seeding"). The overlay is
+*sparse*: fields it omits keep flowing from the live quill seed, so it tracks
+the quill rather than freezing a snapshot. `Document::seed(kind)` reads the
+parsed overlay; the consumer passes it to `seed_card` (`quill.seedCard(kind,
+doc.seed(kind))`) — a read of the document, never a mutation of it.
+
+The main card **carries** `$seed` but is never a *subject* of it: its keys range
+over `card_kinds`, and `main ∉ card_kinds` (a `$seed.main` entry is an advisory
+unknown-kind). Overlays are validated only on the editor surface
+(`Quill::validate`, warning-severity, rooted at `$seed.<kind>[.<field>]`) and
+**never gate render** — `compile_data` / `dry_run` ignore `$seed` entirely. A
+malformed overlay surfaces enforcement only when a card is actually spawned from
+it, as an ordinary card diagnostic on that card.

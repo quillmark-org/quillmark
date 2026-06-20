@@ -9,3 +9,4 @@ mod ext_tests;
 mod fence_conformance_tests;
 mod lossiness_tests;
 mod number_edge_tests;
+mod seed_tests;

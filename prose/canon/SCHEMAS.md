@@ -94,6 +94,7 @@ floor, `FieldSchema::ui_order` for ordering):
 | render (fidelity) | authored › `default:` › zero | zero | plate JSON — [Zero-filled render](#zero-filled-render) |
 | `blueprint` document | `default:` › `<must-fill>` | sentinel | annotated string — [BLUEPRINT.md](BLUEPRINT.md) |
 | seeding | `example:` › absent | (deferred to render floor) | committed `Document` — [Document seeding](#document-seeding) |
+| add-card (into a document) | `$seed` overlay › `example:` › absent | (deferred to render floor) | a new composable `Card` — [Document seeding](#document-seeding) |
 | editor (consumer-side) | authored / `default:` / missing (uncollapsed; `example:` as guidance) | — | a `Document`-payload × schema join the UI consumer performs directly (no engine projection); completeness comes from `Quill::validate` |
 
 Two seams are deliberate, not uniform: the floor is `zero` on every projection
@@ -184,6 +185,22 @@ hands back a committed `Document` already carrying the `example:` values, the
 rest deferred to the render floor for fidelity. It is the only "filled-out"
 projection — there is no annotated `example` string. Implemented by
 `Quill::seed_document` (with `seed_main` / `seed_card`) in `quillmark`.
+
+### Per-document seed overlays (`$seed`)
+
+Seeding a *new card into an existing document* — `Quill::seed_card(kind,
+overlay)` — adds one more rung above `example:`: a curated, per-document
+**overlay** read from the main card's `$seed` map. Per field the precedence is
+**`$seed` overlay › `example:` › absent** (ordered by `ui.order`), and `default`
+/ `zero` stay deferred to the render floor exactly as everywhere else, so the
+"never persist a `default`" invariant holds. The overlay is *sparse* — fields it
+omits keep flowing from the schema seed, so it tracks an evolving quill rather
+than freezing a snapshot. This is how a template author customizes the values
+new cards spawn with; it lives in the document (a template *is* a document), so
+markdown writers and MCP agents see the same source. See
+[CARDS.md](CARDS.md) "Per-kind Seed Overlays" for the `$seed` mechanics. The
+`example: → absent` document-seeding above is the `overlay = None` case (a fresh
+document carries no `$seed`).
 
 ## Schema emission
 

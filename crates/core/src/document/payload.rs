@@ -70,6 +70,21 @@ pub enum PayloadItem {
         value: JsonMap<String, JsonValue>,
         nested_comments: Vec<NestedComment>,
     },
+    /// `$seed` system metadata — a mapping keyed by composable card-kind,
+    /// each entry a sparse "overlay" (the user fields, plus an optional
+    /// `$body` string, that a newly-added card of that kind starts with).
+    /// **Root-only** (like `$quill`): carried on the main card and read by the
+    /// seeding layer ([`crate::Document::seed`]); a composable card carrying
+    /// `$seed` is rejected at parse and on storage load. Like `$ext` it never
+    /// reaches the plate JSON and always round-trips through Markdown and the
+    /// storage DTO; unlike `$ext` the seeding layer interprets it (see
+    /// [`crate::Quill::seed_card`]). `nested_comments` carries YAML comments
+    /// inside the `$seed` mapping, with paths **relative** to the `$seed`
+    /// value tree.
+    Seed {
+        value: JsonMap<String, JsonValue>,
+        nested_comments: Vec<NestedComment>,
+    },
     /// A user-defined YAML field, optionally tagged `!must_fill`.
     ///
     /// `nested_comments` carries YAML comments inside the field's value
@@ -114,6 +129,9 @@ impl PayloadItem {
             }
             | PayloadItem::Ext {
                 nested_comments, ..
+            }
+            | PayloadItem::Seed {
+                nested_comments, ..
             } => nested_comments,
             _ => &[],
         }
@@ -134,14 +152,15 @@ impl PayloadItem {
     }
 
     /// Canonical sort rank for typed `$` entries: `$quill` < `$kind` <
-    /// `$id` < `$ext`. Returns `None` for user fields and comments, which
-    /// are positioned by source order and never reshuffled.
+    /// `$id` < `$ext` < `$seed`. Returns `None` for user fields and comments,
+    /// which are positioned by source order and never reshuffled.
     fn meta_rank(&self) -> Option<u8> {
         match self {
             PayloadItem::Quill { .. } => Some(0),
             PayloadItem::Kind { .. } => Some(1),
             PayloadItem::Id { .. } => Some(2),
             PayloadItem::Ext { .. } => Some(3),
+            PayloadItem::Seed { .. } => Some(4),
             _ => None,
         }
     }
@@ -213,11 +232,20 @@ impl Payload {
                 inline: nc.inline,
             };
 
-            // `$ext` is encoded with the literal key "$ext" at the head of
-            // the path; everything else is a user field.
+            // `$ext` / `$seed` are encoded with their literal key at the head
+            // of the path; everything else is a user field.
             if target_key == "$ext" {
                 if let Some(slot) = items.iter_mut().find_map(|i| match i {
                     PayloadItem::Ext {
+                        nested_comments, ..
+                    } => Some(nested_comments),
+                    _ => None,
+                }) {
+                    slot.push(relative);
+                }
+            } else if target_key == "$seed" {
+                if let Some(slot) = items.iter_mut().find_map(|i| match i {
+                    PayloadItem::Seed {
                         nested_comments, ..
                     } => Some(nested_comments),
                     _ => None,
@@ -255,6 +283,9 @@ impl Payload {
                 PayloadItem::Ext {
                     nested_comments, ..
                 } => ("$ext".to_string(), nested_comments),
+                PayloadItem::Seed {
+                    nested_comments, ..
+                } => ("$seed".to_string(), nested_comments),
                 _ => continue,
             };
             for nc in comments {
@@ -322,6 +353,16 @@ impl Payload {
         })
     }
 
+    /// The raw `$seed` map (keyed by card-kind), if declared. The seeding
+    /// layer interprets it; it never reaches the plate JSON. For a parsed,
+    /// per-kind view use [`crate::Document::seed`].
+    pub fn seed(&self) -> Option<&JsonMap<String, JsonValue>> {
+        self.items.iter().find_map(|i| match i {
+            PayloadItem::Seed { value, .. } => Some(value),
+            _ => None,
+        })
+    }
+
     /// Set or replace the `$quill` entry. Inserts at canonical position
     /// (before any `$kind` / `$id` / `$ext`) when adding. Comments are
     /// untouched.
@@ -355,6 +396,17 @@ impl Payload {
         });
     }
 
+    /// Set or replace the `$seed` entry. Inserted at the canonical position
+    /// (after `$quill` / `$kind` / `$id` / `$ext`, before any user field).
+    /// Nested comments on a replaced `$seed` are dropped, like
+    /// [`set_ext`](Self::set_ext).
+    pub fn set_seed(&mut self, value: JsonMap<String, JsonValue>) {
+        self.upsert_meta(PayloadItem::Seed {
+            value,
+            nested_comments: Vec::new(),
+        });
+    }
+
     /// Remove the `$quill` entry, returning the previous value if any.
     pub fn take_quill(&mut self) -> Option<QuillReference> {
         let pos = self
@@ -376,6 +428,19 @@ impl Payload {
             .position(|i| matches!(i, PayloadItem::Ext { .. }))?;
         match self.items.remove(pos) {
             PayloadItem::Ext { value, .. } => Some(value),
+            _ => unreachable!(),
+        }
+    }
+
+    /// Remove the `$seed` entry, returning the previous map if any. Any
+    /// nested comments attached to the entry are dropped.
+    pub fn take_seed(&mut self) -> Option<JsonMap<String, JsonValue>> {
+        let pos = self
+            .items
+            .iter()
+            .position(|i| matches!(i, PayloadItem::Seed { .. }))?;
+        match self.items.remove(pos) {
+            PayloadItem::Seed { value, .. } => Some(value),
             _ => unreachable!(),
         }
     }

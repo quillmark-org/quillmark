@@ -13,13 +13,14 @@
 //! ## Schema versions
 //!
 //! - **`quillmark/document@0.92.0`** — current. The V0_82_0 model plus a
-//!   per-field `nested_fills` list, so `!must_fill` markers nested inside a
-//!   field value (an object leaf, a key in an array element) survive a
-//!   storage round-trip. This is the format newly serialized documents use.
+//!   per-field `nested_fills` list (so `!must_fill` markers nested inside a
+//!   field value survive a storage round-trip) and the `$seed` payload-item
+//!   variant (per-card-kind seed overlays). This is the format newly
+//!   serialized documents use.
 //! - **`quillmark/document@0.82.0`** — legacy. Encodes the unified
 //!   [`Payload`] item list (typed `$` entries, user fields, and comments
-//!   interleaved in source order) but carries top-level fill only. Kept
-//!   read-only; migrated forward to V0_92_0 on read.
+//!   interleaved in source order) but carries top-level fill only and no
+//!   `$seed`. Kept read-only; migrated forward to V0_92_0 on read.
 //! - **`quillmark/document@0.81.0`** — legacy. Encodes the pre-unification
 //!   shape with a separate `sentinel` (the typed `$quill` / `$kind`) and a
 //!   `frontmatter` item list (user fields + comments only). Kept read-only
@@ -55,8 +56,9 @@ pub const SCHEMA_V0_81_0: &str = "quillmark/document@0.81.0";
 pub const SCHEMA_V0_82_0: &str = "quillmark/document@0.82.0";
 
 /// Schema version for the V0_92_0 wire format. Newly serialized documents
-/// carry this tag. Adds per-field `nested_fills` so `!must_fill` markers
-/// nested inside a field value survive a storage round-trip.
+/// carry this tag. Adds per-field `nested_fills` (so `!must_fill` markers
+/// nested inside a field value survive a storage round-trip) and the `$seed`
+/// payload-item variant.
 pub const SCHEMA_V0_92_0: &str = "quillmark/document@0.92.0";
 
 /// Read the `schema` field from a raw storage DTO payload without
@@ -84,11 +86,11 @@ pub fn peek_schema_version(json: &str) -> Option<String> {
 #[serde(tag = "schema")]
 pub enum StoredDocument {
     /// Current (V0_92_0) document model — unified payload items with
-    /// per-field nested fill paths.
+    /// per-field nested fill paths and `$seed`.
     #[serde(rename = "quillmark/document@0.92.0")]
     V0_92_0(DocumentV0_92_0),
     /// Legacy (V0_82_0) document model — unified payload items, top-level
-    /// fill only. Read-only; migrated on reconstruction.
+    /// fill only and no `$seed`. Read-only; migrated on reconstruction.
     #[serde(rename = "quillmark/document@0.82.0")]
     V0_82_0(DocumentV0_82_0),
     /// Legacy (V0_81_0) document model — separate sentinel + frontmatter.
@@ -132,7 +134,7 @@ impl std::fmt::Display for StorageError {
 
 impl std::error::Error for StorageError {}
 
-// ─── V0_82_0 wire format (legacy, read-only) ──────────────────────────────────
+// ─── V0_82_0 wire format (legacy; read + migrate forward only) ────────────────
 
 /// Frozen `0.82.0` representation of a [`Document`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -237,18 +239,30 @@ pub struct PayloadV0_92_0 {
     pub nested_comments: Vec<NestedCommentV0_92_0>,
 }
 
-/// Frozen `0.92.0` representation of a unified payload item. Identical to
-/// `V0_82_0` except `Field` carries `nested_fills`: the paths of `!must_fill`
-/// markers nested inside the field value (the JSON `value` is fill-free).
+/// Frozen `0.92.0` representation of a unified payload item. Extends
+/// `V0_82_0` with the `Seed` variant and a per-`Field` `nested_fills` list:
+/// the paths of `!must_fill` markers nested inside the field value (the JSON
+/// `value` is fill-free).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum PayloadItemV0_92_0 {
+    /// `$quill` system metadata — the quill reference string.
     Quill { value: String },
+    /// `$kind` system metadata.
     Kind { value: String },
+    /// `$id` system metadata.
     Id { value: String },
+    /// `$ext` system metadata — an opaque mapping carrying out-of-band
+    /// extension data. Never emitted into the plate JSON.
     Ext {
         value: serde_json::Map<String, serde_json::Value>,
     },
+    /// `$seed` system metadata — a mapping keyed by card-kind carrying the
+    /// per-kind seed overlays. Never emitted into the plate JSON.
+    Seed {
+        value: serde_json::Map<String, serde_json::Value>,
+    },
+    /// A user-defined field.
     Field {
         key: String,
         value: serde_json::Value,
@@ -257,6 +271,7 @@ pub enum PayloadItemV0_92_0 {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         nested_fills: Vec<Vec<CommentPathSegmentV0_92_0>>,
     },
+    /// A YAML comment.
     Comment {
         text: String,
         #[serde(default)]
@@ -340,7 +355,13 @@ impl From<&PayloadItem> for PayloadItemV0_92_0 {
             PayloadItem::Id { value } => PayloadItemV0_92_0::Id {
                 value: value.clone(),
             },
+            // `Ext` / `Seed` wire variants carry no `nested_comments` field —
+            // their comments live in the payload-level sidecar after
+            // `flat_nested_comments` re-prefixes them with `$ext` / `$seed`.
             PayloadItem::Ext { value, .. } => PayloadItemV0_92_0::Ext {
+                value: value.clone(),
+            },
+            PayloadItem::Seed { value, .. } => PayloadItemV0_92_0::Seed {
                 value: value.clone(),
             },
             // The JSON `value` projection is fill-free; nested `!must_fill`
@@ -395,12 +416,11 @@ impl TryFrom<StoredDocument> for Document {
     type Error = StorageError;
 
     fn try_from(stored: StoredDocument) -> Result<Self, Self::Error> {
-        // Migrations chain: only the newest DTO converts to the live model.
+        // Migrations chain: only the newest DTO converts to the live model;
+        // older versions migrate forward (V0_81 → V0_82 → V0_92).
         match stored {
             StoredDocument::V0_92_0(payload) => Document::try_from(payload),
-            StoredDocument::V0_82_0(payload) => {
-                Document::try_from(DocumentV0_92_0::from(payload))
-            }
+            StoredDocument::V0_82_0(payload) => Document::try_from(DocumentV0_92_0::from(payload)),
             StoredDocument::V0_81_0(payload) => {
                 Document::try_from(DocumentV0_92_0::from(DocumentV0_82_0::from(payload)))
             }
@@ -427,6 +447,11 @@ impl TryFrom<DocumentV0_92_0> for Document {
             if card.quill().is_some() {
                 return Err(StorageError::Malformed(
                     "composable cards must not carry a $quill entry".into(),
+                ));
+            }
+            if card.seed().is_some() {
+                return Err(StorageError::Malformed(
+                    "composable cards must not carry a $seed entry".into(),
                 ));
             }
             if let Some(kind) = card.kind() {
@@ -474,7 +499,7 @@ impl TryFrom<PayloadV0_92_0> for Payload {
             .map(NestedComment::from)
             .collect();
         // Partition the flat wire-format sidecar onto the matching
-        // Field / Ext items (paths become relative to the owning value).
+        // Field / Ext / Seed items (paths become relative to the owning value).
         Ok(Payload::from_items_with_flat_nested(items, nested))
     }
 }
@@ -496,20 +521,15 @@ impl TryFrom<PayloadItemV0_92_0> for PayloadItem {
             PayloadItemV0_92_0::Kind { value } => PayloadItem::Kind { value },
             PayloadItemV0_92_0::Id { value } => PayloadItem::Id { value },
             PayloadItemV0_92_0::Ext { value } => {
-                let as_value = serde_json::Value::Object(value);
-                if crate::value::json_depth_exceeds(
-                    &as_value,
-                    crate::document::limits::MAX_YAML_DEPTH,
-                ) {
-                    return Err(StorageError::Malformed(format!(
-                        "$ext nests deeper than the maximum of {} levels",
-                        crate::document::limits::MAX_YAML_DEPTH
-                    )));
-                }
-                let serde_json::Value::Object(value) = as_value else {
-                    unreachable!("constructed as Object above")
-                };
+                let value = depth_check_meta_map(value, "$ext")?;
                 PayloadItem::Ext {
+                    value,
+                    nested_comments: Vec::new(),
+                }
+            }
+            PayloadItemV0_92_0::Seed { value } => {
+                let value = depth_check_meta_map(value, "$seed")?;
+                PayloadItem::Seed {
                     value,
                     nested_comments: Vec::new(),
                 }
@@ -550,6 +570,25 @@ impl TryFrom<PayloadItemV0_92_0> for PayloadItem {
     }
 }
 
+/// Depth-bound a `$ext` / `$seed` mapping at the storage boundary; both flow
+/// through the recursive emit/DTO paths and carry the §8 value-depth limit.
+fn depth_check_meta_map(
+    value: serde_json::Map<String, serde_json::Value>,
+    key: &str,
+) -> Result<serde_json::Map<String, serde_json::Value>, StorageError> {
+    let as_value = serde_json::Value::Object(value);
+    if crate::value::json_depth_exceeds(&as_value, crate::document::limits::MAX_YAML_DEPTH) {
+        return Err(StorageError::Malformed(format!(
+            "{key} nests deeper than the maximum of {} levels",
+            crate::document::limits::MAX_YAML_DEPTH
+        )));
+    }
+    let serde_json::Value::Object(value) = as_value else {
+        unreachable!("constructed as Object above")
+    };
+    Ok(value)
+}
+
 impl From<NestedCommentV0_92_0> for NestedComment {
     fn from(nc: NestedCommentV0_92_0) -> Self {
         NestedComment {
@@ -576,8 +615,9 @@ impl From<CommentPathSegmentV0_92_0> for CommentPathSegment {
 
 // ─── V0_82_0 → V0_92_0 migration ──────────────────────────────────────────────
 //
-// Structural: the only shape change is the new `Field.nested_fills`, which is
-// empty for every 0.82.0 document (that format never carried nested markers).
+// Purely structural: V0_82_0 has neither `$seed` nor `Field.nested_fills`, so
+// every variant maps 1:1 — the new `Seed` variant is never produced and
+// `nested_fills` defaults to empty (that format never carried nested markers).
 
 impl From<DocumentV0_82_0> for DocumentV0_92_0 {
     fn from(d: DocumentV0_82_0) -> Self {
@@ -1093,4 +1133,100 @@ title: Hi
         assert!(err.to_string().contains("invalid quill reference"));
     }
 
+    #[test]
+    fn v0_82_0_payload_loads_via_migration() {
+        // A 0.82.0 blob (no `$seed`) migrates forward (0.82 → 0.92) to the live
+        // model, then re-serializes under the current tag.
+        let json = r#"{
+            "schema": "quillmark/document@0.82.0",
+            "main": {
+                "payload": {"items": [
+                    {"type": "quill", "value": "usaf_memo@0.1"},
+                    {"type": "kind", "value": "main"},
+                    {"type": "field", "key": "title", "value": "Hello"}
+                ]},
+                "body": "Body."
+            },
+            "cards": []
+        }"#;
+        let doc: Document = serde_json::from_str(json).unwrap();
+        assert_eq!(doc.main().kind(), Some("main"));
+        assert_eq!(
+            doc.main().payload().get("title").unwrap().as_str(),
+            Some("Hello")
+        );
+        let reser = serde_json::to_string(&doc).unwrap();
+        assert_eq!(peek_schema_version(&reser).as_deref(), Some(SCHEMA_V0_92_0));
+    }
+
+    #[test]
+    fn v0_82_0_blob_with_seed_item_is_rejected() {
+        // Proves the schema bump was necessary: `{"type":"seed"}` is not a legal
+        // V0_82_0 payload item, so a blob claiming the 0.82.0 tag must fail
+        // rather than silently load.
+        let json = r#"{
+            "schema": "quillmark/document@0.82.0",
+            "main": {
+                "payload": {"items": [
+                    {"type": "quill", "value": "q@1.0"},
+                    {"type": "kind", "value": "main"},
+                    {"type": "seed", "value": {"indorsement": {"from": "X"}}}
+                ]},
+                "body": ""
+            },
+            "cards": []
+        }"#;
+        assert!(serde_json::from_str::<Document>(json).is_err());
+    }
+
+    #[test]
+    fn rejects_composable_card_with_seed() {
+        // `$seed` is root-only (like `$quill`): a stored composable card
+        // carrying it fails to load.
+        let json = r#"{
+            "schema": "quillmark/document@0.92.0",
+            "main": {
+                "payload": {"items": [
+                    {"type": "quill", "value": "q@1.0"},
+                    {"type": "kind", "value": "main"}
+                ]},
+                "body": ""
+            },
+            "cards": [
+                {"payload": {"items": [
+                    {"type": "kind", "value": "indorsement"},
+                    {"type": "seed", "value": {"note": {"from": "X"}}}
+                ]}, "body": ""}
+            ]
+        }"#;
+        let err = serde_json::from_str::<Document>(json).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("composable cards must not carry a $seed entry"));
+    }
+
+    #[test]
+    fn v0_92_0_seed_item_round_trips() {
+        let json = r#"{
+            "schema": "quillmark/document@0.92.0",
+            "main": {
+                "payload": {"items": [
+                    {"type": "quill", "value": "q@1.0"},
+                    {"type": "kind", "value": "main"},
+                    {"type": "seed", "value": {"indorsement": {"from": "49 FW/CC"}}}
+                ]},
+                "body": ""
+            },
+            "cards": []
+        }"#;
+        let doc: Document = serde_json::from_str(json).unwrap();
+        let overlay = doc.seed("indorsement").expect("overlay present");
+        assert_eq!(
+            overlay.fields.get("from").and_then(|v| v.as_str()),
+            Some("49 FW/CC")
+        );
+        let reser: Document =
+            serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+        assert_eq!(doc, reser);
+    }
 }
