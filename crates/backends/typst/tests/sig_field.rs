@@ -1,15 +1,16 @@
 //! End-to-end acceptance tests for the unsigned-SigField overlay feature.
 //!
-//! Compiles each plate through `compile_to_pdf`, parses the output with
-//! lopdf, and asserts the AcroForm structure. Manual Acrobat verification
-//! still required per the spec — see `prose/...` or the PR description.
+//! Compiles each plate through the public `Backend`/`RenderSession` path,
+//! parses the output with lopdf, and asserts the AcroForm structure. Manual
+//! Acrobat verification still required per the spec — see `prose/...` or the
+//! PR description.
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use quillmark_core::{FileTreeNode, Quill, RenderError};
-use quillmark_typst::compile::compile_to_pdf;
+use quillmark_core::{Backend, FileTreeNode, OutputFormat, Quill, RenderError, RenderOptions};
+use quillmark_typst::TypstBackend;
 
 /// Load a fixture quill from disk. Reuses `usaf_memo@0.2.0` as the host
 /// — `signature-field` doesn't depend on any quill-specific config so we
@@ -49,11 +50,15 @@ fn host_source() -> Quill {
     Quill::from_tree(tree).expect("load source")
 }
 
-/// Empty data payload — our plates don't reference any fields.
-const MIN_JSON: &str = r#"{}"#;
-
 fn compile(plate: &str) -> Result<Vec<u8>, RenderError> {
-    compile_to_pdf(&host_source(), plate, MIN_JSON)
+    // Our plates don't reference data fields, so an empty payload suffices.
+    let source = host_source();
+    let session = TypstBackend.open(plate, &source, &serde_json::json!({}))?;
+    let result = session.render(&RenderOptions {
+        output_format: Some(OutputFormat::Pdf),
+        ..Default::default()
+    })?;
+    Ok(result.artifacts[0].bytes.clone())
 }
 
 // ─── regression: each widget has exactly one /Subtype entry ──────────────────

@@ -45,16 +45,6 @@ use super::{Card, Document};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
 
-/// Schema version for the V0_81_0 wire format. Documents written by
-/// `quillmark-core` `0.81.x` carry this tag and are migrated forward on
-/// read.
-pub const SCHEMA_V0_81_0: &str = "quillmark/document@0.81.0";
-
-/// Schema version for the V0_82_0 wire format. Read-only legacy as of
-/// V0_92_0; documents written by `0.82.x`–`0.91.x` carry this tag and are
-/// migrated forward on read.
-pub const SCHEMA_V0_82_0: &str = "quillmark/document@0.82.0";
-
 /// Schema version for the V0_92_0 wire format. Newly serialized documents
 /// carry this tag. Adds per-field `nested_fills` (so `!must_fill` markers
 /// nested inside a field value survive a storage round-trip) and the `$seed`

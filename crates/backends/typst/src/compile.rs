@@ -1,21 +1,17 @@
 //! # Typst Compilation
 //!
-//! This module compiles Typst documents to output formats (PDF, SVG, and PNG).
-//!
-//! ## Functions
-//!
-//! - [`compile_to_pdf()`] - Compile Typst to PDF format
-//! - [`compile_to_svg()`] - Compile Typst to SVG format (one file per page)
-//! - [`compile_to_png()`] - Compile Typst to PNG format (one image per page) at a given PPI
+//! Compiles a plate plus injected JSON data into a Typst paged document, then
+//! renders selected pages to output bytes (PDF, SVG, or PNG).
 //!
 //! ## Process
 //!
-//! 1. Creates a `QuillWorld` with the quill's assets and packages
-//! 2. Compiles the Typst document using the Typst compiler
-//! 3. Converts to target format (PDF, SVG, or PNG)
-//! 4. Returns output bytes
+//! 1. Create a `QuillWorld` with the quill's assets and packages.
+//! 2. Compile the Typst document with the Typst compiler.
+//! 3. Render the requested pages to the target format.
 //!
-//! The output bytes can be written to a file or returned directly to the caller.
+//! Crate-internal entry points: [`compile_to_document`] (source → paged
+//! document) and [`render_document_pages`] (paged document → artifacts). The
+//! public surface is the [`crate::TypstBackend`] `Backend` implementation.
 
 use typst::diag::Warned;
 use typst::utils::Scalar;
@@ -56,7 +52,7 @@ fn compile_document(world: &QuillWorld) -> Result<PagedDocument, RenderError> {
 }
 
 /// Compile Typst source into a paged document with injected JSON data.
-pub fn compile_to_document(
+pub(crate) fn compile_to_document(
     source: &Quill,
     plated_content: &str,
     json_data: &str,
@@ -75,91 +71,8 @@ pub fn compile_to_document(
     compile_document(&world)
 }
 
-/// Compiles a Typst document to PDF format with JSON data injection.
-///
-/// This function creates a `@local/quillmark-helper:0.1.0` package containing
-/// the JSON data, which can be imported by the plate file.
-pub fn compile_to_pdf(
-    source: &Quill,
-    plated_content: &str,
-    json_data: &str,
-) -> Result<Vec<u8>, RenderError> {
-    let document = compile_to_document(source, plated_content, json_data)?;
-    let placements = overlay::extract(&document)?;
-
-    let pdf = typst_pdf::pdf(&document, &PdfOptions::default()).map_err(|e| {
-        RenderError::CompilationFailed {
-            diags: vec![Diagnostic::new(
-                Severity::Error,
-                format!("PDF generation failed: {:?}", e),
-            )
-            .with_code("typst::pdf_generation".to_string())],
-        }
-    })?;
-
-    overlay::inject(pdf, &document, &placements, &overlay::default_producer())
-}
-
-/// Compiles a Typst document to SVG format with JSON data injection.
-///
-/// This function creates a `@local/quillmark-helper:0.1.0` package containing
-/// the JSON data, which can be imported by the plate file.
-pub fn compile_to_svg(
-    source: &Quill,
-    plated_content: &str,
-    json_data: &str,
-) -> Result<Vec<Vec<u8>>, RenderError> {
-    let document = compile_to_document(source, plated_content, json_data)?;
-
-    let mut pages = Vec::new();
-    for page in document.pages() {
-        let svg = typst_svg::svg(page, &SvgOptions::default());
-        pages.push(svg.into_bytes());
-    }
-
-    Ok(pages)
-}
-
 /// Default pixels per inch for PNG rendering (2x at 72pt/inch).
 const DEFAULT_PPI: f32 = 144.0;
-
-/// Compiles a Typst document to PNG format with JSON data injection.
-///
-/// Returns one PNG image (as bytes) per page.
-///
-/// # Arguments
-///
-/// * `quill` - The quill template containing assets and configuration
-/// * `plated_content` - The plate file content (Typst source)
-/// * `json_data` - JSON string containing the document data
-/// * `ppi` - Pixels per inch. Defaults to 144.0 when `None`.
-pub fn compile_to_png(
-    source: &Quill,
-    plated_content: &str,
-    json_data: &str,
-    ppi: Option<f32>,
-) -> Result<Vec<Vec<u8>>, RenderError> {
-    let document = compile_to_document(source, plated_content, json_data)?;
-
-    let ppi = ppi.unwrap_or(DEFAULT_PPI);
-
-    let mut pages = Vec::new();
-    for page in document.pages() {
-        let pixmap = typst_render::render(page, &render_options(ppi / 72.0));
-        let png_data = pixmap
-            .encode_png()
-            .map_err(|e| RenderError::CompilationFailed {
-                diags: vec![Diagnostic::new(
-                    Severity::Error,
-                    format!("PNG encoding failed: {}", e),
-                )
-                .with_code("typst::png_encoding".to_string())],
-            })?;
-        pages.push(png_data);
-    }
-
-    Ok(pages)
-}
 
 /// Render selected pages from an already-compiled Typst document.
 ///

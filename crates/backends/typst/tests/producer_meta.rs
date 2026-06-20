@@ -11,7 +11,6 @@ use std::path::{Path, PathBuf};
 
 use lopdf::Object;
 use quillmark_core::{Backend, FileTreeNode, OutputFormat, Quill, RenderOptions};
-use quillmark_typst::compile::compile_to_pdf;
 use quillmark_typst::TypstBackend;
 
 fn host_source() -> Quill {
@@ -49,6 +48,20 @@ fn host_source() -> Quill {
 
 const PLATE: &str = "#set page(width: 400pt, height: 300pt)\n= Hello\n";
 
+/// Render a plate to PDF bytes via the public `Backend`/`RenderSession` path.
+fn render_pdf(source: &Quill, plate: &str) -> Vec<u8> {
+    let session = TypstBackend
+        .open(plate, source, &serde_json::json!({}))
+        .expect("open session");
+    let result = session
+        .render(&RenderOptions {
+            output_format: Some(OutputFormat::Pdf),
+            ..Default::default()
+        })
+        .expect("render ok");
+    result.artifacts[0].bytes.clone()
+}
+
 /// Extract the decoded `/Info` `/Producer` string from a PDF.
 fn producer_of(pdf: &[u8]) -> Vec<u8> {
     info_string(pdf, b"Producer")
@@ -71,14 +84,14 @@ fn info_string(pdf: &[u8], key: &[u8]) -> Vec<u8> {
 
 #[test]
 fn default_producer_is_quillmark_version() {
-    let pdf = compile_to_pdf(&host_source(), PLATE, "{}").expect("compile ok");
+    let pdf = render_pdf(&host_source(), PLATE);
     let expected = format!("Quillmark {}", env!("CARGO_PKG_VERSION"));
     assert_eq!(producer_of(&pdf), expected.as_bytes());
 }
 
 #[test]
 fn default_pass_preserves_typst_creator() {
-    let pdf = compile_to_pdf(&host_source(), PLATE, "{}").expect("compile ok");
+    let pdf = render_pdf(&host_source(), PLATE);
     let creator = info_string(&pdf, b"Creator");
     assert!(
         creator.starts_with(b"Typst"),
@@ -143,7 +156,7 @@ fn producer_composes_with_signature_field() {
 #set page(width: 600pt, height: 400pt, margin: 50pt)
 #signature-field("a")
 "#;
-    let pdf = compile_to_pdf(&host_source(), plate, "{}").expect("compile ok");
+    let pdf = render_pdf(&host_source(), plate);
 
     // /Producer present.
     let expected = format!("Quillmark {}", env!("CARGO_PKG_VERSION"));

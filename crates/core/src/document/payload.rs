@@ -441,18 +441,6 @@ impl Payload {
         self.set_meta(MetaKey::Seed, value);
     }
 
-    /// Remove the `$quill` entry, returning the previous value if any.
-    pub fn take_quill(&mut self) -> Option<QuillReference> {
-        let pos = self
-            .items
-            .iter()
-            .position(|i| matches!(i, PayloadItem::Quill { .. }))?;
-        match self.items.remove(pos) {
-            PayloadItem::Quill { reference } => Some(reference),
-            _ => unreachable!(),
-        }
-    }
-
     /// Remove an out-of-band meta entry, returning the previous map if any.
     /// Any nested comments attached to the entry are dropped.
     fn take_meta(&mut self, want: MetaKey) -> Option<JsonMap<String, JsonValue>> {
