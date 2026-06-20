@@ -19,8 +19,8 @@
 //!    `fill: true` marker on the resulting `Field` item.
 //!
 //! `!must_fill` is the only recognized fill tag. Every other custom tag
-//! (`!include`, `!env`, the former `!fill` alias, …) is treated alike: dropped
-//! with a `parse::unsupported_yaml_tag` warning, the scalar value kept.
+//! (`!include`, `!env`, …) is treated alike: dropped with a
+//! `parse::unsupported_yaml_tag` warning, the scalar value kept.
 
 use crate::Diagnostic;
 use crate::Severity;
@@ -645,8 +645,8 @@ fn split_flow_trailing_comment(value: &str) -> (String, Option<String>) {
 }
 
 /// The placeholder tag. `!must_fill` is the only recognized fill tag; any
-/// other custom tag (including the former `!fill` alias) is treated as a
-/// noncanonical tag — dropped with a `parse::unsupported_yaml_tag` warning.
+/// other custom tag is treated as a noncanonical tag — dropped with a
+/// `parse::unsupported_yaml_tag` warning.
 const FILL_TAGS: [&str; 1] = ["!must_fill"];
 
 /// If `trimmed` begins with a fill tag (either the bare tag or the tag
@@ -759,9 +759,8 @@ mod tests {
 
     #[test]
     fn fill_alias_is_rejected_as_noncanonical_tag() {
-        // `!fill` is no longer an alias for `!must_fill`. It is treated like any
-        // other custom tag: not a fill marker, dropped with an unsupported-tag
-        // warning, the value kept.
+        // `!fill` is an unrecognized custom tag, not a fill marker. It is dropped
+        // with an unsupported-tag warning; the value is kept.
         let input = "dept: !fill Department\n";
         let out = prescan_fence_content(input);
         assert_eq!(

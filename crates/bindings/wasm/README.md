@@ -329,10 +329,9 @@ A field's *cell* is inferred from whether its schema declares a `default:`:
   default value followed by a `; delete-ok` annotation, and the default
   is used when the document omits the field.
 
-`QuillFieldSchema` no longer carries a `required` axis. The legacy
-`validation::missing_required` code has been replaced by
-`validation::field_absent`; the `validation::must_fill_sentinel`
-code covers unreplaced sentinels.
+`QuillFieldSchema` has no `required` axis. Absent Unendorsed fields emit
+`validation::field_absent`; a surviving `<must-fill>` sentinel emits
+`validation::must_fill_sentinel`.
 
 ### Errors
 
