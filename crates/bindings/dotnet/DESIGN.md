@@ -68,10 +68,15 @@ error slot and returns a null handle by contract).
 
 1. **`linux-arm64`** is not yet in the release matrix (no first-party hosted
    runner used here); add via cross-compilation or an arm runner when needed.
-2. **`QmBytes` returned by value.** Artifact bytes cross as a 16-byte
-   `{ ptr, len }` struct returned by value. Correct on SysV/Win x64 and exercised
-   by the render test; revisit if a new target's ABI returns small structs
-   differently.
+2. **`QmBytes` returned by value (assumption, not a defect).** Artifact bytes
+   cross as a 16-byte `{ ptr, len }` blittable struct returned by value. The
+   binding assumes P/Invoke marshals this correctly per platform ABI, which
+   holds for every shipped RID (SysV x86-64 `RAX:RDX`, Win64 hidden-pointer,
+   AArch64 `X0:X1`) and is exercised end-to-end by the render test (which reads
+   the bytes and checks the `%PDF` header), so an ABI mismatch on a future
+   target would fail CI loudly rather than corrupt silently. Switching to an
+   out-param (or a length-then-copy two-call) would erase the assumption but is
+   speculative until such a target exists.
 3. **Thread-local error.** Matches PyO3's implicit per-call model; correct as
    long as each fallible call's result/error is consumed before the next call on
    the same thread, which the C# wrappers do inline.
