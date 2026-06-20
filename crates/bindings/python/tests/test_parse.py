@@ -117,7 +117,7 @@ def test_json_dto_round_trip(taro_md):
 
     dto = doc.to_json()
     assert isinstance(dto, str)
-    assert "quillmark/document@0.82.0" in dto
+    assert "quillmark/document@0.92.0" in dto
 
     restored = Document.from_json(dto)
     assert restored.quill_ref == doc.quill_ref
@@ -165,7 +165,7 @@ def test_schema_version_of_reads_dto(taro_md):
     doc = Document.from_markdown(taro_md)
     dto = doc.to_json()
 
-    assert Document.schema_version_of(dto) == "quillmark/document@0.82.0"
+    assert Document.schema_version_of(dto) == "quillmark/document@0.92.0"
 
 
 def test_schema_version_of_returns_unknown_future_versions():

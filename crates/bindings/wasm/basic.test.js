@@ -223,7 +223,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const dto = doc.toJson()
     expect(typeof dto).toBe('string')
-    expect(dto).toContain('quillmark/document@0.82.0')
+    expect(dto).toContain('quillmark/document@0.92.0')
   })
 
   it('round-trips losslessly: fromJson(toJson(doc)) equals doc', () => {
@@ -249,7 +249,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
   it('toJson output is standard JSON parseable by the JSON global', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const parsed = JSON.parse(doc.toJson())
-    expect(parsed.schema).toBe('quillmark/document@0.82.0')
+    expect(parsed.schema).toBe('quillmark/document@0.92.0')
   })
 
   it('drops parse-time warnings on reconstruction', () => {

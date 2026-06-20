@@ -525,7 +525,7 @@ impl Document {
     /// the tag advances only when the wire format changes, not on every release.
     #[wasm_bindgen(js_name = currentSchemaVersion)]
     pub fn current_schema_version() -> String {
-        quillmark_core::document::SCHEMA_V0_82_0.to_string()
+        quillmark_core::document::SCHEMA_V0_92_0.to_string()
     }
 
     /// Authoring-format rules for the card-yaml markdown surface. The canonical

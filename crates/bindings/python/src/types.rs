@@ -297,7 +297,7 @@ impl PyDocument {
     /// Schema version this build writes.
     #[staticmethod]
     fn current_schema_version() -> &'static str {
-        quillmark_core::document::SCHEMA_V0_82_0
+        quillmark_core::document::SCHEMA_V0_92_0
     }
 
     /// Canonical card-yaml authoring rules — the core text every surface shows.
