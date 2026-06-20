@@ -38,6 +38,13 @@ public sealed class Card
     [JsonPropertyName("quill")] public string? Quill { get; set; }
     [JsonPropertyName("id")] public string? Id { get; set; }
     [JsonPropertyName("ext")] public Dictionary<string, JsonElement>? Ext { get; set; }
+
+    /// <summary>The block's <c>$seed</c> map (keyed by composable card-kind),
+    /// present on the main card only. Each entry is the per-kind seed overlay a
+    /// newly-added card of that kind starts with; pass one to
+    /// <see cref="Quill.SeedCard"/>. <c>null</c> when the card declares no
+    /// <c>$seed</c>.</summary>
+    [JsonPropertyName("seed")] public Dictionary<string, JsonElement>? Seed { get; set; }
     [JsonPropertyName("payloadItems")] public List<PayloadItem> PayloadItems { get; set; } = new();
     [JsonPropertyName("body")] public string Body { get; set; } = "";
 
