@@ -40,7 +40,7 @@ pub use dto::{
 };
 pub use edit::EditError;
 pub use meta::{is_valid_kind_name, validate_composable_kind, CardKindError};
-pub use payload::{Payload, PayloadItem};
+pub use payload::{MetaKey, Payload, PayloadItem};
 pub use wire::{CardWire, PayloadItemWire, WireError};
 
 /// Authoring-format rules for the `~~~` card-yaml markdown surface.

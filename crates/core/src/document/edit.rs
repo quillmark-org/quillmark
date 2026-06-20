@@ -87,8 +87,9 @@ fn check_field(name: &str, value: &serde_json::Value) -> Result<(), EditError> {
     })
 }
 
-/// Depth-bound an `$ext` map (its name is fixed; only depth applies).
-fn check_ext_depth(map: &serde_json::Map<String, serde_json::Value>) -> Result<(), EditError> {
+/// Depth-bound an out-of-band meta map (`$ext` / `$seed`). Both ride the same
+/// recursive emit/DTO paths, so they carry the same §8 depth bound.
+fn check_meta_depth(map: &serde_json::Map<String, serde_json::Value>) -> Result<(), EditError> {
     let as_value = serde_json::Value::Object(map.clone());
     if crate::value::json_depth_exceeds(&as_value, crate::document::limits::MAX_YAML_DEPTH) {
         return Err(EditError::ValueTooDeep {
@@ -96,12 +97,6 @@ fn check_ext_depth(map: &serde_json::Map<String, serde_json::Value>) -> Result<(
         });
     }
     Ok(())
-}
-
-/// Depth-bound a `$seed` map. Mirrors [`check_ext_depth`]: `$seed` rides the
-/// same recursive emit/DTO paths, so it carries the same §8 depth bound.
-fn check_seed_depth(map: &serde_json::Map<String, serde_json::Value>) -> Result<(), EditError> {
-    check_ext_depth(map)
 }
 
 /// Validate a user field at the payload boundary: name conformance and
@@ -268,7 +263,7 @@ impl Card {
         &mut self,
         value: serde_json::Map<String, serde_json::Value>,
     ) -> Result<(), EditError> {
-        check_ext_depth(&value)?;
+        check_meta_depth(&value)?;
         self.payload_mut().set_ext(value);
         Ok(())
     }
@@ -302,7 +297,7 @@ impl Card {
             .cloned()
             .unwrap_or_default();
         map.insert(namespace.into(), value);
-        check_ext_depth(&map)?;
+        check_meta_depth(&map)?;
         self.payload_mut().take_ext();
         self.payload_mut().set_ext(map);
         Ok(())
@@ -348,7 +343,7 @@ impl Card {
     ) -> Result<(), EditError> {
         let mut map = self.payload_mut().seed().cloned().unwrap_or_default();
         map.insert(card_kind.into(), value);
-        check_seed_depth(&map)?;
+        check_meta_depth(&map)?;
         self.payload_mut().take_seed();
         self.payload_mut().set_seed(map);
         Ok(())

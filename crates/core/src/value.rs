@@ -267,6 +267,14 @@ impl QuillValue {
         out
     }
 
+    /// Fill paths *nested inside* this value — every [`fill_paths`](Self::fill_paths)
+    /// entry except the empty (root) path. A root fill is carried separately as
+    /// the `fill` flag on the owning field, so the wire / storage DTO record
+    /// only the nested ones here.
+    pub fn nonroot_fill_paths(&self) -> impl Iterator<Item = Vec<PathSegment>> {
+        self.fill_paths().into_iter().filter(|p| !p.is_empty())
+    }
+
     /// Set `fill = true` on the node at `path` (relative to the root).
     /// Returns `false` if the path does not resolve to a node.
     pub fn set_fill_at(&mut self, path: &[PathSegment]) -> bool {

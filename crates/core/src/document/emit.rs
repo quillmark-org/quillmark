@@ -128,29 +128,32 @@ fn emit_meta_line(out: &mut String, key: &str, value: &str, trailer: Option<&str
     out.push('\n');
 }
 
-/// Emit the `$ext: …` block. An empty map emits inline as `$ext: {}` so the
-/// declaration survives the round-trip; a non-empty map emits as a `$ext:`
-/// header followed by indented block-style children. `nested` carries
-/// comments with paths relative to the `$ext` value tree (the `$ext` key
-/// itself is not in the path) — the child mapping walker re-injects them
-/// at the matching positions.
-fn emit_ext_block(
+/// Emit an out-of-band meta block (`$ext` / `$seed`). An empty map emits inline
+/// as `<key>: {}` so the declaration survives the round-trip; a non-empty map
+/// emits as a `<key>:` header followed by indented block-style children.
+/// `nested` carries comments with paths relative to the value tree (the meta
+/// key itself is not in the path) — the child mapping walker re-injects them at
+/// the matching positions. Meta maps are out-of-band data and never carry
+/// `!must_fill`.
+fn emit_meta_block(
     out: &mut String,
+    key: &str,
     value: &serde_json::Map<String, JsonValue>,
     trailer: Option<&str>,
     nested: &[NestedComment],
 ) {
     if value.is_empty() {
-        out.push_str("$ext: {}");
+        out.push_str(key);
+        out.push_str(": {}");
         push_trailer(out, trailer);
         out.push('\n');
         return;
     }
-    out.push_str("$ext:");
+    out.push_str(key);
+    out.push(':');
     push_trailer(out, trailer);
     out.push('\n');
     let path: Vec<CommentPathSegment> = Vec::new();
-    // `$ext` is out-of-band data and never carries `!must_fill`.
     emit_mapping_children(out, value, 2, &path, nested, &[]);
 }
 
@@ -159,29 +162,6 @@ fn emit_ext_block(
 /// scan is cheaper than building a hash set per field.
 fn path_is_fill(fills: &[Vec<CommentPathSegment>], path: &[CommentPathSegment]) -> bool {
     fills.iter().any(|p| p.as_slice() == path)
-}
-
-/// Emit the `$seed: …` block. Same shape as [`emit_ext_block`]: an empty map
-/// emits inline as `$seed: {}`, a non-empty map as a `$seed:` header followed
-/// by indented block-style children.
-fn emit_seed_block(
-    out: &mut String,
-    value: &serde_json::Map<String, JsonValue>,
-    trailer: Option<&str>,
-    nested: &[NestedComment],
-) {
-    if value.is_empty() {
-        out.push_str("$seed: {}");
-        push_trailer(out, trailer);
-        out.push('\n');
-        return;
-    }
-    out.push_str("$seed:");
-    push_trailer(out, trailer);
-    out.push('\n');
-    let path: Vec<CommentPathSegment> = Vec::new();
-    // `$seed` is out-of-band data and never carries `!must_fill`.
-    emit_mapping_children(out, value, 2, &path, nested, &[]);
 }
 
 fn emit_block(out: &mut String, card: &Card) {
@@ -216,17 +196,12 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
             PayloadItem::Id { value } => {
                 emit_meta_line(out, "id", value, trailer);
             }
-            PayloadItem::Ext {
+            PayloadItem::Meta {
+                key,
                 value,
                 nested_comments,
             } => {
-                emit_ext_block(out, value, trailer, nested_comments);
-            }
-            PayloadItem::Seed {
-                value,
-                nested_comments,
-            } => {
-                emit_seed_block(out, value, trailer, nested_comments);
+                emit_meta_block(out, key.as_str(), value, trailer, nested_comments);
             }
             PayloadItem::Field {
                 key,

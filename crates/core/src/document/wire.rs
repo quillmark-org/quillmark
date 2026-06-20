@@ -27,7 +27,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 
-use super::payload::{Payload, PayloadItem};
+use super::payload::{MetaKey, Payload, PayloadItem};
 use super::Card;
 use crate::value::{PathSegment, QuillValue};
 use crate::version::QuillReference;
@@ -170,15 +170,21 @@ impl From<&Card> for CardWire {
                 PayloadItem::Quill { reference } => wire.quill = Some(reference.to_string()),
                 PayloadItem::Kind { value } => wire.kind = value.clone(),
                 PayloadItem::Id { value } => wire.id = Some(value.clone()),
-                PayloadItem::Ext { value, .. } => wire.ext = Some(value.clone()),
-                PayloadItem::Seed { value, .. } => wire.seed = Some(value.clone()),
+                PayloadItem::Meta {
+                    key: MetaKey::Ext,
+                    value,
+                    ..
+                } => wire.ext = Some(value.clone()),
+                PayloadItem::Meta {
+                    key: MetaKey::Seed,
+                    value,
+                    ..
+                } => wire.seed = Some(value.clone()),
                 PayloadItem::Field {
                     key, value, fill, ..
                 } => {
                     let nested_fills = value
-                        .fill_paths()
-                        .into_iter()
-                        .filter(|p| !p.is_empty())
+                        .nonroot_fill_paths()
                         .map(|p| p.iter().map(PathStepWire::from).collect())
                         .collect();
                     wire.payload_items.push(PayloadItemWire::Field {

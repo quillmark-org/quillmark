@@ -6,7 +6,7 @@
 
 use serde_json::json;
 
-use crate::document::{Document, PayloadItem};
+use crate::document::{Document, MetaKey, PayloadItem};
 
 fn parse(src: &str) -> Document {
     Document::from_markdown(src).expect("source should parse")
@@ -233,7 +233,13 @@ title: Hi
     assert!(matches!(items[0], PayloadItem::Quill { .. }));
     assert!(matches!(items[1], PayloadItem::Kind { .. }));
     assert!(matches!(items[2], PayloadItem::Id { .. }));
-    assert!(matches!(items[3], PayloadItem::Ext { .. }));
+    assert!(matches!(
+        items[3],
+        PayloadItem::Meta {
+            key: MetaKey::Ext,
+            ..
+        }
+    ));
     assert!(matches!(items[4], PayloadItem::Field { .. }));
 }
 

@@ -19,7 +19,7 @@ use std::str::FromStr;
 
 use serde_json::Value as JsonValue;
 
-use super::payload::PayloadItem;
+use super::payload::{MetaKey, PayloadItem};
 use crate::error::ParseError;
 use crate::version::QuillReference;
 
@@ -31,8 +31,7 @@ pub(super) fn meta_key(item: &PayloadItem) -> Option<&'static str> {
         PayloadItem::Quill { .. } => Some("$quill"),
         PayloadItem::Kind { .. } => Some("$kind"),
         PayloadItem::Id { .. } => Some("$id"),
-        PayloadItem::Ext { .. } => Some("$ext"),
-        PayloadItem::Seed { .. } => Some("$seed"),
+        PayloadItem::Meta { key, .. } => Some(key.as_str()),
         PayloadItem::Field { .. } | PayloadItem::Comment { .. } => None,
     }
 }
@@ -98,30 +97,23 @@ pub(super) fn extract_meta_items(payload: &mut JsonValue) -> Result<Vec<PayloadI
             "$id" => PayloadItem::Id {
                 value: scalar_to_string(&key, value)?,
             },
-            "$ext" => match value {
-                JsonValue::Object(map) => PayloadItem::Ext {
-                    value: map,
-                    nested_comments: Vec::new(),
-                },
-                other => {
-                    return Err(ParseError::InvalidStructure(format!(
-                        "Invalid `$ext` value — expected a mapping, got {}",
-                        yaml_type_name(&other)
-                    )));
+            "$ext" | "$seed" => {
+                let meta_key = MetaKey::from_key_str(&key).expect("matched $ext/$seed above");
+                match value {
+                    JsonValue::Object(map) => PayloadItem::Meta {
+                        key: meta_key,
+                        value: map,
+                        nested_comments: Vec::new(),
+                    },
+                    other => {
+                        return Err(ParseError::InvalidStructure(format!(
+                            "Invalid `{}` value — expected a mapping, got {}",
+                            meta_key.as_str(),
+                            yaml_type_name(&other)
+                        )));
+                    }
                 }
-            },
-            "$seed" => match value {
-                JsonValue::Object(map) => PayloadItem::Seed {
-                    value: map,
-                    nested_comments: Vec::new(),
-                },
-                other => {
-                    return Err(ParseError::InvalidStructure(format!(
-                        "Invalid `$seed` value — expected a mapping, got {}",
-                        yaml_type_name(&other)
-                    )));
-                }
-            },
+            }
             other => {
                 return Err(ParseError::InvalidStructure(format!(
                     "Unknown `{}` system-metadata key — the card-yaml block \

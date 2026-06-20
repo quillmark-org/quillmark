@@ -39,7 +39,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 use super::meta::validate_composable_kind;
-use super::payload::{Payload, PayloadItem};
+use super::payload::{MetaKey, Payload, PayloadItem};
 use super::prescan::{CommentPathSegment, NestedComment};
 use super::{Card, Document};
 use crate::value::QuillValue;
@@ -355,13 +355,23 @@ impl From<&PayloadItem> for PayloadItemV0_92_0 {
             PayloadItem::Id { value } => PayloadItemV0_92_0::Id {
                 value: value.clone(),
             },
-            // `Ext` / `Seed` wire variants carry no `nested_comments` field —
-            // their comments live in the payload-level sidecar after
+            // The storage DTO keeps `$ext` / `$seed` as explicit, self-describing
+            // variants; the live model's unified `Meta` is split back out by key.
+            // Neither wire variant carries a `nested_comments` field — their
+            // comments live in the payload-level sidecar after
             // `flat_nested_comments` re-prefixes them with `$ext` / `$seed`.
-            PayloadItem::Ext { value, .. } => PayloadItemV0_92_0::Ext {
+            PayloadItem::Meta {
+                key: MetaKey::Ext,
+                value,
+                ..
+            } => PayloadItemV0_92_0::Ext {
                 value: value.clone(),
             },
-            PayloadItem::Seed { value, .. } => PayloadItemV0_92_0::Seed {
+            PayloadItem::Meta {
+                key: MetaKey::Seed,
+                value,
+                ..
+            } => PayloadItemV0_92_0::Seed {
                 value: value.clone(),
             },
             // The JSON `value` projection is fill-free; nested `!must_fill`
@@ -374,9 +384,7 @@ impl From<&PayloadItem> for PayloadItemV0_92_0 {
                 value: value.as_json().clone(),
                 fill: *fill,
                 nested_fills: value
-                    .fill_paths()
-                    .into_iter()
-                    .filter(|p| !p.is_empty())
+                    .nonroot_fill_paths()
                     .map(|p| p.iter().map(CommentPathSegmentV0_92_0::from).collect())
                     .collect(),
             },
@@ -520,20 +528,16 @@ impl TryFrom<PayloadItemV0_92_0> for PayloadItem {
             }
             PayloadItemV0_92_0::Kind { value } => PayloadItem::Kind { value },
             PayloadItemV0_92_0::Id { value } => PayloadItem::Id { value },
-            PayloadItemV0_92_0::Ext { value } => {
-                let value = depth_check_meta_map(value, "$ext")?;
-                PayloadItem::Ext {
-                    value,
-                    nested_comments: Vec::new(),
-                }
-            }
-            PayloadItemV0_92_0::Seed { value } => {
-                let value = depth_check_meta_map(value, "$seed")?;
-                PayloadItem::Seed {
-                    value,
-                    nested_comments: Vec::new(),
-                }
-            }
+            PayloadItemV0_92_0::Ext { value } => PayloadItem::Meta {
+                key: MetaKey::Ext,
+                value: depth_check_meta_map(value, "$ext")?,
+                nested_comments: Vec::new(),
+            },
+            PayloadItemV0_92_0::Seed { value } => PayloadItem::Meta {
+                key: MetaKey::Seed,
+                value: depth_check_meta_map(value, "$seed")?,
+                nested_comments: Vec::new(),
+            },
             PayloadItemV0_92_0::Field {
                 key,
                 value,

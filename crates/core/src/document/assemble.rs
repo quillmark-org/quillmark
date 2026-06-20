@@ -331,7 +331,7 @@ pub(super) fn decompose_with_warnings(
         if block
             .meta_items
             .iter()
-            .any(|m| matches!(m, PayloadItem::Seed { .. }))
+            .any(|m| matches!(m, PayloadItem::Meta { key, .. } if key.is_root_only()))
         {
             return Err(ParseError::InvalidStructure(
                 "A composable card-yaml block must not carry `$seed` — only the \
