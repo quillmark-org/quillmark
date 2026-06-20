@@ -391,7 +391,8 @@ impl PyDocument {
         self.inner.main().body()
     }
 
-    /// Main (entry) card as a dict with `kind`, `payload_items`, `ext`, and `body`.
+    /// Main (entry) card as a dict with `kind`, `quill`, `id`, `payload_items`,
+    /// `ext`, `seed`, and `body`.
     #[getter]
     fn main<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         card_to_pydict(py, self.inner.main())

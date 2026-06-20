@@ -162,8 +162,8 @@ impl SeedOverlay {
 
     /// Build an overlay from a single `$seed[<kind>]` JSON map: the reserved
     /// `$body` string becomes [`body`](Self::body); every other entry becomes
-    /// a field. A non-string `$body` is ignored here (the editor-surface
-    /// validator flags it).
+    /// a field. A non-string `$body` is silently ignored (no body override) —
+    /// the editor-surface validator skips `$body`, so it is not flagged.
     fn from_json_map(map: &serde_json::Map<String, serde_json::Value>) -> Self {
         let mut fields = indexmap::IndexMap::new();
         let mut body = None;

@@ -104,8 +104,15 @@ public sealed class Document : NativeObject, IEquatable<Document>
     public override bool Equals(object? obj) => obj is Document other && Equals(other);
 
     /// <summary>Consistent with <see cref="Equals(Document)"/>: equal documents
-    /// serialize to byte-identical storage JSON, so they hash identically.</summary>
-    public override int GetHashCode() => ToJson().GetHashCode();
+    /// serialize to byte-identical storage JSON, so they hash identically. A
+    /// throwing <c>GetHashCode</c> violates the contract (it is called from
+    /// collections), so a serialization failure degrades to a constant rather
+    /// than propagating.</summary>
+    public override int GetHashCode()
+    {
+        try { return ToJson().GetHashCode(); }
+        catch (QuillmarkException) { return 0; }
+    }
 
     /// <summary>Emit canonical Quillmark Markdown. Round-trip safe.</summary>
     public string ToMarkdown() =>

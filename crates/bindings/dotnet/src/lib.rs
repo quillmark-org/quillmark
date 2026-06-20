@@ -561,7 +561,7 @@ pub unsafe extern "C" fn qm_document_schema_version_of(json: *const c_char) -> *
 
 #[no_mangle]
 pub extern "C" fn qm_document_current_schema_version() -> *mut c_char {
-    to_c_string(quillmark_core::document::SCHEMA_V0_82_0)
+    to_c_string(quillmark_core::document::SCHEMA_V0_92_0)
 }
 
 #[no_mangle]
@@ -590,49 +590,51 @@ pub unsafe extern "C" fn qm_document_make_card_json(
     fields_json: *const c_char,
     body: *const c_char,
 ) -> *mut c_char {
-    clear_error();
-    let Some(kind) = borrow_str(kind) else {
-        set_error_message("make_card: null kind");
-        return std::ptr::null_mut();
-    };
-    let mut payload_items = Vec::new();
-    if let Some(fields) = borrow_str(fields_json) {
-        let trimmed = fields.trim();
-        if !trimmed.is_empty() && trimmed != "null" {
-            match serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(trimmed) {
-                Ok(map) => {
-                    for (key, value) in map {
-                        payload_items.push(PayloadItemWire::Field {
-                            key,
-                            value,
-                            fill: false,
-                            nested_fills: Vec::new(),
-                        });
+    ffi_try!(std::ptr::null_mut(), {
+        clear_error();
+        let Some(kind) = borrow_str(kind) else {
+            set_error_message("make_card: null kind");
+            return std::ptr::null_mut();
+        };
+        let mut payload_items = Vec::new();
+        if let Some(fields) = borrow_str(fields_json) {
+            let trimmed = fields.trim();
+            if !trimmed.is_empty() && trimmed != "null" {
+                match serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(trimmed) {
+                    Ok(map) => {
+                        for (key, value) in map {
+                            payload_items.push(PayloadItemWire::Field {
+                                key,
+                                value,
+                                fill: false,
+                                nested_fills: Vec::new(),
+                            });
+                        }
                     }
-                }
-                Err(e) => {
-                    set_error_message(format!("make_card: `fields` must be an object: {e}"));
-                    return std::ptr::null_mut();
+                    Err(e) => {
+                        set_error_message(format!("make_card: `fields` must be an object: {e}"));
+                        return std::ptr::null_mut();
+                    }
                 }
             }
         }
-    }
-    let wire = CardWire {
-        kind: kind.to_string(),
-        quill: None,
-        id: None,
-        ext: None,
-        seed: None,
-        payload_items,
-        body: borrow_str(body).unwrap_or("").to_string(),
-    };
-    match Card::try_from(wire) {
-        Ok(card) => card_to_json(&card),
-        Err(e) => {
-            set_error_message(e.to_string());
-            std::ptr::null_mut()
+        let wire = CardWire {
+            kind: kind.to_string(),
+            quill: None,
+            id: None,
+            ext: None,
+            seed: None,
+            payload_items,
+            body: borrow_str(body).unwrap_or("").to_string(),
+        };
+        match Card::try_from(wire) {
+            Ok(card) => card_to_json(&card),
+            Err(e) => {
+                set_error_message(e.to_string());
+                std::ptr::null_mut()
+            }
         }
-    }
+    })
 }
 
 // ══════════════════════════════════════════════════════════════════════════
