@@ -105,22 +105,25 @@ change the byte layout.
 
 The schema version is tied to the **crate version at which the `Document`
 wire format was last changed** — not the running crate version. The
-current format was fixed in `0.82.0`, so the version tag is
-`quillmark/document@0.82.0`; every `0.82.x` patch release writes that same
+current format was fixed in `0.92.0`, so the version tag is
+`quillmark/document@0.92.0`; every later patch release writes that same
 value, because patches do not change the format.
 
 The first schema version was `0.81.0`. `0.82.0` migrated `Document` to a
 unified payload-item list (typed `$` entries living alongside user fields
 and comments in a single `Vec<PayloadItem>` instead of a separate
-`sentinel + frontmatter` pair). The migration is structural: the V0_81_0
-sentinel becomes a prelude of typed `$` items, then user fields and
-comments append in their original order.
+`sentinel + frontmatter` pair). `0.92.0` added a per-field `nested_fills`
+list to the `Field` item, so `!must_fill` markers nested inside a field
+value survive a storage round-trip (the JSON `value` projection is
+fill-free); the V0_82_0 → V0_92_0 migration is structural, defaulting
+`nested_fills` to empty (no 0.82.0 document carried nested markers).
+Migrations chain on read: `V0_81_0 → V0_82_0 → V0_92_0`.
 
 ## Adding a Schema Version
 
 When the `Document` wire format changes again:
 
-1. **Freeze** the current `DocumentV0_82_0` type tree — leave its struct
+1. **Freeze** the current `DocumentV0_92_0` type tree — leave its struct
    /enum definitions and serde derives untouched so existing rows still parse.
 2. **Remove** the conversions binding the old DTO to the *live* `Document`
    (`From<&Document>` and `TryFrom<… for Document>`); they no longer compile
@@ -129,24 +132,27 @@ When the `Document` wire format changes again:
    plus its `From<&Document>` and `TryFrom<… for Document>` conversions.
 4. **Add** the `StoredDocument::V0_NN_0` variant, tagged
    `#[serde(rename = "quillmark/document@0.NN.0")]`.
-5. **Write the migration** — `From<DocumentV0_82_0> for DocumentV0_NN_0`.
+5. **Write the migration** — `From<DocumentV0_92_0> for DocumentV0_NN_0`.
    This is the only real labor: it encodes how old fields map to the new
    model (renames, restructures, defaults for new fields).
 6. **Extend** the reader:
    ```rust
    match stored {
        StoredDocument::V0_NN_0(p) => Document::try_from(p),
-       StoredDocument::V0_82_0(p) => Document::try_from(DocumentV0_NN_0::from(p)),
+       StoredDocument::V0_92_0(p) => Document::try_from(DocumentV0_NN_0::from(p)),
+       StoredDocument::V0_82_0(p) => {
+           Document::try_from(DocumentV0_NN_0::from(DocumentV0_92_0::from(p)))
+       }
        StoredDocument::V0_81_0(p) => {
-           let v82 = DocumentV0_82_0::from(p);
-           Document::try_from(DocumentV0_NN_0::from(v82))
+           let v92 = DocumentV0_92_0::from(DocumentV0_82_0::from(p));
+           Document::try_from(DocumentV0_NN_0::from(v92))
        }
    }
    ```
 
 Old and new DTOs **coexist permanently** in `dto.rs`. Migrations chain
-(`V0_81_0 → V0_82_0 → V0_NN_0 → …`); only the newest DTO converts to the
-live `Document`, so each migration step stays small as versions accumulate.
+(`V0_81_0 → V0_82_0 → V0_92_0 → V0_NN_0 → …`); only the newest DTO converts to
+the live `Document`, so each migration step stays small as versions accumulate.
 The cost of this design is one frozen type tree per schema version plus
 one migration function per version bump; the benefit is that a row written
 by any past version always loads.
