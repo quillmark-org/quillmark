@@ -206,7 +206,7 @@ author wrote the line.
   mapping; scalars and sequences are rejected. Like `$ext` it carries verbatim
   through Markdown and storage DTO round-trips and **never** appears in the
   plate JSON consumed by backends; unlike `$ext` the seeding layer interprets
-  it (see [CARDS.md](../canon/CARDS.md)). Overlays are validated advisorily by
+  it. Overlays are validated advisorily by
   `Quill::validate` and never gate render. An empty `$seed: {}` is preserved.
 
 - `$` metadata entries may appear at any position within the payload, and
