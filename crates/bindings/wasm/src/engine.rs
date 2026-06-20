@@ -460,7 +460,7 @@ impl Quill {
     pub fn seed_card(
         &self,
         card_kind: &str,
-        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown> | undefined")]
+        #[wasm_bindgen(unchecked_optional_param_type = "Record<string, unknown>")]
         overlay: JsValue,
     ) -> Result<JsValue, JsValue> {
         let overlay = if overlay.is_undefined() || overlay.is_null() {

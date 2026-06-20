@@ -34,6 +34,18 @@ import type {
 	PaintResult as TypstPaintResult
 } from '../../../pkg/backends/typst/wasm';
 
+import type { Quill as CoreQuill } from '../../../pkg/core/wasm.js';
+
+// CALL-SHAPE GUARD: the `$seed` overlay is an OPTIONAL trailing argument, so the
+// pre-`$seed` call site `quill.seedCard(kind)` must keep compiling — the
+// 0.91→0.92 migration guide promises unmodified call sites compile unchanged.
+// wasm-bindgen renders an `Option`-shaped JsValue param as a required
+// `arg | undefined` unless tagged `unchecked_optional_param_type`; this asserts
+// the optional (`overlay?:`) signature so that drift can't silently return.
+declare const seedQuill: CoreQuill;
+void (() => seedQuill.seedCard('note'));
+void (() => seedQuill.seedCard('note', { from: '49 FW/CC' }));
+
 // One mutual-assignability pair per hoisted type: typst → canonical and
 // canonical → typst. `void` the bindings so "declared but never read" is not an
 // error under noUnusedLocals.
