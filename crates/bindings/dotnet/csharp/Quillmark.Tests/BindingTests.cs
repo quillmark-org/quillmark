@@ -14,7 +14,7 @@ public class BindingTests
     [Fact]
     public void Engine_RegistersTypstBackend()
     {
-        using var engine = new Quillmark();
+        using var engine = new QuillmarkEngine();
         Assert.Contains("typst", engine.RegisteredBackends());
     }
 
@@ -30,7 +30,7 @@ public class BindingTests
     [Fact]
     public void Engine_SupportedFormats_IncludesPdf()
     {
-        using var engine = new Quillmark();
+        using var engine = new QuillmarkEngine();
         using var quill = Quill.FromPath(Fixtures.TaroQuill());
         Assert.Contains(OutputFormat.Pdf, engine.SupportedFormats(quill));
     }
@@ -38,7 +38,7 @@ public class BindingTests
     [Fact]
     public void Render_ProducesPdfArtifact()
     {
-        using var engine = new Quillmark();
+        using var engine = new QuillmarkEngine();
         using var quill = Quill.FromPath(Fixtures.TaroQuill());
         using var doc = Document.FromMarkdown(Fixtures.SampleMarkdown);
 

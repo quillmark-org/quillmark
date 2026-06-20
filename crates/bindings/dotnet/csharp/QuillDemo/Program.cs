@@ -47,7 +47,7 @@ if (!Directory.Exists(taroDir))
 
 Console.WriteLine("=== Quillmark .NET API Demo ===\n");
 
-using var engine = new Quillmark.Quillmark();
+using var engine = new QuillmarkEngine();
 using var quill = Quill.FromPath(taroDir);
 
 const string markdown = """

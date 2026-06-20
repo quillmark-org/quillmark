@@ -17,7 +17,7 @@ the package; no extra setup. Targets .NET 8+.
 ```csharp
 using Quillmark;
 
-using var engine = new Quillmark.Quillmark();          // backend registry + dispatcher
+using var engine = new QuillmarkEngine();              // backend registry + dispatcher
 using var quill  = Quill.FromPath("path/to/quill");    // engine-free, validated config
 
 using var doc = Document.FromMarkdown("""
@@ -34,12 +34,12 @@ using RenderResult result = engine.Render(quill, doc, OutputFormat.Pdf);
 result.Artifacts[0].Save("output.pdf");
 ```
 
-`Quillmark`, `Quill`, `Document`, and `RenderResult` own native resources —
+`QuillmarkEngine`, `Quill`, `Document`, and `RenderResult` own native resources —
 wrap them in `using` (or `Dispose()`).
 
 ## API
 
-**`Quillmark`** (engine) — `Render(quill, doc, format?, ppi?, pages?, producer?)`,
+**`QuillmarkEngine`** — `Render(quill, doc, format?, ppi?, pages?, producer?)`,
 `SupportedFormats(quill)`, `RegisteredBackends()`.
 
 **`Quill`** — `FromPath(path)`; then `BackendId`, `QuillRef`, `Metadata`,
