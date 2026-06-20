@@ -7,12 +7,23 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>Quillmark</AssemblyName>
     <RootNamespace>Quillmark</RootNamespace>
-    <PackageId>Quillmark</PackageId>
-    <Description>.NET bindings for Quillmark — format-first Markdown rendering.</Description>
-    <Authors>Quillmark Contributors</Authors>
-    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- NuGet package metadata -->
+    <PackageId>Quillmark</PackageId>
+    <Description>.NET bindings for Quillmark — format-first Markdown rendering (Markdown + YAML card metadata → PDF/SVG/PNG via a Typst backend).</Description>
+    <Authors>Quillmark Contributors</Authors>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageProjectUrl>https://quillmark-org.github.io/quillmark/</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/quillmark-org/quillmark</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>markdown;pdf;typst;rendering;templates</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- A managed assembly that carries native libraries; it is not itself a
+         platform-specific build, so suppress the "no RID" pack warning. -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+
     <!-- The native cdylib built by `cargo build -p quillmark-dotnet`. -->
     <NativeLibraryName Condition="$([MSBuild]::IsOSPlatform('Linux'))">libquillmark_dotnet.so</NativeLibraryName>
     <NativeLibraryName Condition="$([MSBuild]::IsOSPlatform('OSX'))">libquillmark_dotnet.dylib</NativeLibraryName>
@@ -21,13 +32,30 @@
     <CargoTargetDir>$(MSBuildThisFileDirectory)../../../../../target/$(CargoProfile)</CargoTargetDir>
   </PropertyGroup>
 
+  <!-- Package README (the binding's, not the repo root's). -->
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" Condition="Exists('../../README.md')" />
+  </ItemGroup>
+
   <!--
-    Copy the cargo-built native library next to the managed assembly so the
-    default P/Invoke resolver finds it. Build the native side first:
-        cargo build -p quillmark-dotnet
-    (add `CargoProfile=release` here and `--release` to cargo for release).
+    Per-RID native libraries for the NuGet package. CI stages each platform's
+    cdylib into `runtimes/<rid>/native/` (see the release workflow) before
+    `dotnet pack`; consuming projects then resolve the right native asset via
+    NuGet's runtime graph. The glob matches nothing for a local dev build,
+    where CopyNativeLibrary below supplies the host library instead.
   -->
-  <Target Name="CopyNativeLibrary" BeforeTargets="Build;Publish">
+  <ItemGroup>
+    <None Include="runtimes/**" Pack="true" PackagePath="runtimes/" />
+  </ItemGroup>
+
+  <!--
+    Local dev/test convenience: copy the cargo-built native library next to the
+    managed assembly so the default P/Invoke resolver finds it. Build the native
+    side first: `cargo build -p quillmark-dotnet` (add `CargoProfile=release`
+    here and `--release` to cargo for release). Skipped during `dotnet pack`,
+    which uses the staged `runtimes/` instead.
+  -->
+  <Target Name="CopyNativeLibrary" BeforeTargets="Build;Publish" Condition="'$(_IsPacking)' != 'true'">
     <PropertyGroup>
       <NativeLibrarySource>$(CargoTargetDir)/$(NativeLibraryName)</NativeLibrarySource>
     </PropertyGroup>
@@ -40,6 +68,13 @@
         <Link>$(NativeLibraryName)</Link>
       </None>
     </ItemGroup>
+  </Target>
+
+  <!-- Mark pack runs so CopyNativeLibrary stands down. -->
+  <Target Name="_FlagPacking" BeforeTargets="GenerateNuspec">
+    <PropertyGroup>
+      <_IsPacking>true</_IsPacking>
+    </PropertyGroup>
   </Target>
 
 </Project>

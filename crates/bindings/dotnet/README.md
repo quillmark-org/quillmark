@@ -1,14 +1,12 @@
-# Quillmark — .NET bindings (spike)
+# Quillmark — .NET bindings
 
-.NET bindings for Quillmark's format-first Markdown rendering engine, built to
-be **symmetrical with the [Python binding](../python)**: the same concepts, the
+.NET bindings for Quillmark's format-first Markdown rendering engine,
+**symmetrical with the [Python binding](../python)**: the same concepts, the
 same method names (in .NET casing), and the same single-exception error
 contract.
 
-> **Status: spike.** The native ABI and the managed surface are complete and
-> compile, and the test suite mirrors the Python one. What remains before this
-> is shippable is packaging (a multi-RID NuGet) and CI wiring — see
-> [`SPIKE.md`](SPIKE.md).
+Tested in CI (the `dotnet` job) and published to NuGet as the `Quillmark`
+package. For the interop design and trade-offs, see [`DESIGN.md`](DESIGN.md).
 
 ## Architecture
 
