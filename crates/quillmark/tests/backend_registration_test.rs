@@ -1,9 +1,7 @@
 //! # Backend Registration Tests
 
 use quillmark::{Document, OutputFormat, Quill, Quillmark, RenderError};
-use quillmark_core::{
-    session::SessionHandle, Artifact, Backend, RenderOptions, RenderResult,
-};
+use quillmark_core::{session::SessionHandle, Artifact, Backend, RenderOptions, RenderResult};
 use std::fs;
 use tempfile::TempDir;
 
@@ -123,4 +121,3 @@ fn test_render_with_custom_backend() {
     assert!(!result.artifacts.is_empty());
     assert_eq!(result.artifacts[0].output_format, OutputFormat::Txt);
 }
-

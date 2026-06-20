@@ -62,7 +62,7 @@ pub mod session;
 pub use session::RenderSession;
 
 pub mod quill;
-pub use quill::{zero_value, FileTreeNode, QuillIgnore, Quill, STANDARD_METADATA_KEYS};
+pub use quill::{zero_value, FileTreeNode, Quill, QuillIgnore, STANDARD_METADATA_KEYS};
 
 pub mod value;
 pub use value::{json_depth_exceeds, PathSegment, QuillValue};

@@ -106,7 +106,10 @@ $bogus: x
     )
     .unwrap_err()
     .to_string();
-    assert!(err.contains("$seed"), "closed-set message should list $seed: {err}");
+    assert!(
+        err.contains("$seed"),
+        "closed-set message should list $seed: {err}"
+    );
 }
 
 #[test]
@@ -372,7 +375,11 @@ fn seed_overlay_drops_reserved_keys_other_than_body() {
     assert!(overlay.fields.contains_key("from"));
     assert!(!overlay.fields.contains_key("$kind"));
     assert!(!overlay.fields.contains_key("$quill"));
-    assert_eq!(overlay.fields.len(), 1, "only the user field should survive");
+    assert_eq!(
+        overlay.fields.len(),
+        1,
+        "only the user field should survive"
+    );
 }
 
 // ── Plate JSON ─────────────────────────────────────────────────────────────
@@ -394,8 +401,14 @@ title: Hi
     );
     let plate = doc.to_plate_json();
     let obj = plate.as_object().expect("plate is an object");
-    assert!(!obj.contains_key("$seed"), "plate must not contain `$seed`: {plate}");
-    assert!(!obj.contains_key("seed"), "plate must not contain `seed`: {plate}");
+    assert!(
+        !obj.contains_key("$seed"),
+        "plate must not contain `$seed`: {plate}"
+    );
+    assert!(
+        !obj.contains_key("seed"),
+        "plate must not contain `seed`: {plate}"
+    );
     assert_eq!(obj.get("title").and_then(|v| v.as_str()), Some("Hi"));
     assert!(obj.contains_key("$quill"));
     assert!(obj.contains_key("$cards"));
@@ -426,7 +439,10 @@ Body.
     assert_eq!(doc.to_markdown(), restored.to_markdown());
 
     // The DTO carries `"type": "seed"` under the current 0.92.0 schema tag.
-    assert!(json.contains("\"type\":\"seed\""), "expected seed variant in DTO: {json}");
+    assert!(
+        json.contains("\"type\":\"seed\""),
+        "expected seed variant in DTO: {json}"
+    );
     assert!(
         json.contains("quillmark/document@0.92.0"),
         "expected 0.92.0 schema tag: {json}",

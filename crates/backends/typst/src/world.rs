@@ -306,18 +306,18 @@ impl QuillWorld {
                     format!("Failed to get relative path for {}", file_path.display())
                 })?;
 
-                let virtual_path =
-                    match VirtualPath::new(relative_path.to_string_lossy().as_ref()) {
-                        Ok(vpath) => vpath,
-                        Err(e) => {
-                            eprintln!(
-                                "Warning: Skipping package file with invalid path {}: {}",
-                                file_path.display(),
-                                e
-                            );
-                            continue;
-                        }
-                    };
+                let virtual_path = match VirtualPath::new(relative_path.to_string_lossy().as_ref())
+                {
+                    Ok(vpath) => vpath,
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: Skipping package file with invalid path {}: {}",
+                            file_path.display(),
+                            e
+                        );
+                        continue;
+                    }
+                };
                 let id = file_id(package_spec.clone(), virtual_path);
 
                 // Check if this is a source file (.typ) or binary
@@ -338,9 +338,8 @@ impl QuillWorld {
 
         // Verify entrypoint if specified
         if let (Some(spec), Some(entrypoint_name)) = (&package_spec, entrypoint) {
-            let entrypoint_path = VirtualPath::new(entrypoint_name).map_err(|e| {
-                format!("Invalid entrypoint path {}: {}", entrypoint_name, e)
-            })?;
+            let entrypoint_path = VirtualPath::new(entrypoint_name)
+                .map_err(|e| format!("Invalid entrypoint path {}: {}", entrypoint_name, e))?;
             let entrypoint_file_id = file_id(Some(spec.clone()), entrypoint_path);
 
             if !sources.contains_key(&entrypoint_file_id) {
@@ -374,9 +373,7 @@ impl World for QuillWorld {
         } else if let Some(source) = self.sources.get(&id) {
             Ok(source.clone())
         } else {
-            Err(FileError::NotFound(
-                id.vpath().get_without_slash().into(),
-            ))
+            Err(FileError::NotFound(id.vpath().get_without_slash().into()))
         }
     }
 
@@ -384,9 +381,7 @@ impl World for QuillWorld {
         if let Some(bytes) = self.binaries.get(&id) {
             Ok(bytes.clone())
         } else {
-            Err(FileError::NotFound(
-                id.vpath().get_without_slash().into(),
-            ))
+            Err(FileError::NotFound(id.vpath().get_without_slash().into()))
         }
     }
 

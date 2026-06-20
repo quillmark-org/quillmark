@@ -55,7 +55,8 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 #[test]
 fn usaf_memo_signature_widget_aligns_with_signature_block() {
     let engine = Quillmark::new();
-    let quill = quillmark::quill_from_path(quills_path("usaf_memo")).expect("usaf_memo should load");
+    let quill =
+        quillmark::quill_from_path(quills_path("usaf_memo")).expect("usaf_memo should load");
 
     // The seeded document exercises the main memo *and* a representative
     // indorsement card (one instance per declared kind), so both the

@@ -375,7 +375,9 @@ pub unsafe extern "C" fn qm_quill_metadata_json(quill: *mut Quill) -> *mut c_cha
         obj.insert("author".into(), config.author.clone().into());
         obj.insert("description".into(), config.description.clone().into());
         for (key, value) in q.metadata() {
-            if quillmark_core::STANDARD_METADATA_KEYS.contains(&key.as_str()) || obj.contains_key(key) {
+            if quillmark_core::STANDARD_METADATA_KEYS.contains(&key.as_str())
+                || obj.contains_key(key)
+            {
                 continue;
             }
             obj.insert(key.clone(), value.as_json().clone());
@@ -1091,10 +1093,7 @@ pub unsafe extern "C" fn qm_document_insert_card(
 /// Remove and return the card at `index` as Card JSON, or JSON `null` when out
 /// of range. Null pointer means a null handle.
 #[no_mangle]
-pub unsafe extern "C" fn qm_document_remove_card(
-    doc: *mut DocHandle,
-    index: usize,
-) -> *mut c_char {
+pub unsafe extern "C" fn qm_document_remove_card(doc: *mut DocHandle, index: usize) -> *mut c_char {
     ffi_try!(std::ptr::null_mut(), {
         let Some(doc) = borrow_mut(doc) else {
             return std::ptr::null_mut();
@@ -1144,10 +1143,7 @@ pub unsafe extern "C" fn qm_document_set_card_kind(
 
 /// Resolve a mutable composable card, reporting the same `IndexOutOfRange`
 /// edit error the other card mutators raise.
-unsafe fn card_mut_or_report<'a>(
-    doc: &'a mut DocHandle,
-    index: usize,
-) -> Result<&'a mut Card, ()> {
+unsafe fn card_mut_or_report<'a>(doc: &'a mut DocHandle, index: usize) -> Result<&'a mut Card, ()> {
     let len = doc.inner.cards().len();
     doc.inner.card_mut(index).ok_or_else(|| {
         report_edit_error(EditError::IndexOutOfRange { index, len });

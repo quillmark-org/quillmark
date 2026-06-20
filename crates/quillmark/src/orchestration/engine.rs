@@ -103,10 +103,7 @@ impl Quillmark {
 
     /// The output formats `quill`'s backend can emit. Static capability —
     /// resolves the backend but compiles nothing.
-    pub fn supported_formats(
-        &self,
-        quill: &Quill,
-    ) -> Result<&'static [OutputFormat], RenderError> {
+    pub fn supported_formats(&self, quill: &Quill) -> Result<&'static [OutputFormat], RenderError> {
         Ok(self.resolve_backend(quill)?.supported_formats())
     }
 

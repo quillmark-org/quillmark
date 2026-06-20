@@ -190,15 +190,17 @@ impl Backend for TypstBackend {
                 .collect(),
         );
 
-        let json_str = serde_json::to_string(&transformed_json).map_err(|e| {
-            RenderError::EngineCreation {
+        let json_str =
+            serde_json::to_string(&transformed_json).map_err(|e| RenderError::EngineCreation {
                 diags: vec![Diagnostic::new(
                     Severity::Error,
-                    format!("failed to serialize document data for the typst backend: {}", e),
+                    format!(
+                        "failed to serialize document data for the typst backend: {}",
+                        e
+                    ),
                 )
                 .with_code("backend::data_serialization_failed".to_string())],
-            }
-        })?;
+            })?;
         let document = compile::compile_to_document(source, plate_content, &json_str)?;
         let page_count = document.pages().len();
         let sig_placements = overlay::extract(&document)?;
@@ -670,7 +672,10 @@ mod tests {
         let result = transform_markdown_fields(&fields, &schema);
         let meta = result.get("__meta__").expect("missing __meta__").as_json();
 
-        assert_eq!(meta["card_date_fields"]["indorsement"], json!(["signed_on"]));
+        assert_eq!(
+            meta["card_date_fields"]["indorsement"],
+            json!(["signed_on"])
+        );
     }
 
     #[test]

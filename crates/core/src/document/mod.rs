@@ -31,8 +31,8 @@ pub mod limits;
 pub mod meta;
 pub mod payload;
 pub mod prescan;
-pub(crate) mod yaml_hints;
 pub mod wire;
+pub(crate) mod yaml_hints;
 
 pub use dto::{peek_schema_version, StorageError, StoredDocument, SCHEMA_V0_92_0};
 pub use edit::EditError;
@@ -176,7 +176,10 @@ impl SeedOverlay {
                 // rather than smuggle a `$`-key into the field set.
                 continue;
             } else {
-                fields.insert(key.clone(), crate::value::QuillValue::from_json(value.clone()));
+                fields.insert(
+                    key.clone(),
+                    crate::value::QuillValue::from_json(value.clone()),
+                );
             }
         }
         SeedOverlay { fields, body }

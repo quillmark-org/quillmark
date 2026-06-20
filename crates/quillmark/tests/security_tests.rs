@@ -126,9 +126,8 @@ fn test_unknown_dollar_metadata_rejected() {
     let injections = ["$body", "$cards", "$arbitrary"];
 
     for key in injections {
-        let markdown = format!(
-            "~~~card-yaml\n$quill: test_quill\n$kind: main\n{key}: injected\n~~~\n\nBody",
-        );
+        let markdown =
+            format!("~~~card-yaml\n$quill: test_quill\n$kind: main\n{key}: injected\n~~~\n\nBody",);
         let result = Document::from_markdown(&markdown);
         assert!(
             result.is_err(),

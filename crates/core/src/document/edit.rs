@@ -306,11 +306,7 @@ impl Card {
         namespace: impl Into<String>,
         value: serde_json::Value,
     ) -> Result<(), EditError> {
-        let mut map = self
-            .payload_mut()
-            .ext()
-            .cloned()
-            .unwrap_or_default();
+        let mut map = self.payload_mut().ext().cloned().unwrap_or_default();
         map.insert(namespace.into(), value);
         check_meta_depth(&map)?;
         self.payload_mut().take_ext();

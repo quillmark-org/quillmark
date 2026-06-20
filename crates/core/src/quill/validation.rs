@@ -116,13 +116,30 @@ impl std::fmt::Display for ValidationError {
                 default,
             } => {
                 // Line 1: what we got vs what the schema says.
-                write!(f, "Field `{path}` got {actual} `{source_token}`, schema declares `{expected}`")?;
+                write!(
+                    f,
+                    "Field `{path}` got {actual} `{source_token}`, schema declares `{expected}`"
+                )?;
                 if let Some(d) = default {
                     write!(f, " with default `{d}`")?;
                 }
-                write!(f, ". {hint}", hint = type_mismatch_hint(path, expected, actual, source_token, default.as_deref()))
+                write!(
+                    f,
+                    ". {hint}",
+                    hint = type_mismatch_hint(
+                        path,
+                        expected,
+                        actual,
+                        source_token,
+                        default.as_deref()
+                    )
+                )
             }
-            ValidationError::EnumViolation { path, value, allowed } => {
+            ValidationError::EnumViolation {
+                path,
+                value,
+                allowed,
+            } => {
                 write!(
                     f,
                     "field `{path}` value `{value}` not in allowed set {allowed:?}"
@@ -742,10 +759,7 @@ main:
     #[test]
     fn missing_field_with_default_is_ok() {
         // Endorsed field absent from document → no error; default applies.
-        let config = config_with(
-            "    memo_for:\n      type: string\n      default: \"\"",
-            "",
-        );
+        let config = config_with("    memo_for:\n      type: string\n      default: \"\"", "");
         let doc = doc_from_fm(&[]);
         assert!(validate_typed_document(&config, &doc).is_ok());
     }
@@ -966,7 +980,10 @@ main:
             .hint
             .as_deref()
             .expect("field_absent diagnostic should carry a hint");
-        assert!(hint.contains("string"), "hint missing expected type: {hint}");
+        assert!(
+            hint.contains("string"),
+            "hint missing expected type: {hint}"
+        );
         assert!(
             !hint.contains(MUST_FILL_SENTINEL),
             "absent-branch hint must not mention the sentinel: {hint}"
@@ -980,10 +997,7 @@ main:
             expected: "string".to_string(),
         };
         let diag = err.to_diagnostic();
-        assert_eq!(
-            diag.code.as_deref(),
-            Some("validation::must_fill_sentinel")
-        );
+        assert_eq!(diag.code.as_deref(), Some("validation::must_fill_sentinel"));
         let hint = diag
             .hint
             .as_deref()
@@ -1007,7 +1021,9 @@ main:
             .find(|e| matches!(e, ValidationError::TypeMismatch { .. }))
             .expect("expected TypeMismatch");
         let diag = err.to_diagnostic();
-        let hint = diag.hint.expect("TypeMismatch diagnostic should carry a hint");
+        let hint = diag
+            .hint
+            .expect("TypeMismatch diagnostic should carry a hint");
         assert!(
             err.to_string().ends_with(&hint),
             "message tail must equal hint; msg={msg}, hint={hint}",
@@ -1023,14 +1039,19 @@ main:
             card: "skills".to_string(),
         };
         let diag = err.to_diagnostic();
-        let hint = diag.hint.expect("BodyDisabled diagnostic should carry a hint");
+        let hint = diag
+            .hint
+            .expect("BodyDisabled diagnostic should carry a hint");
         assert!(hint.contains("remove the body content"));
     }
 
     #[test]
     fn type_mismatch_message_has_canonical_shape_quote_exit() {
         // Integer source under a `string` schema → quote-the-value exit.
-        let config = config_with("    build_number:\n      type: string\n      default: \"\"", "");
+        let config = config_with(
+            "    build_number:\n      type: string\n      default: \"\"",
+            "",
+        );
         let doc = doc_from_fm(&[("build_number", json!(42))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         let msg = errors

@@ -189,7 +189,10 @@ fn fill_tag_is_rejected_as_noncanonical() {
 
     let fm = out.document.main().payload();
     assert_eq!(fm.get("memo_from").and_then(|v| v.as_str()), Some("draft"));
-    assert!(!fm.is_fill("memo_from"), "`!fill` must not record a fill marker");
+    assert!(
+        !fm.is_fill("memo_from"),
+        "`!fill` must not record a fill marker"
+    );
     assert!(
         out.warnings
             .iter()
@@ -234,7 +237,9 @@ fn unsupported_fill_position_warns_not_silently_dropped() {
     );
     // Supported block-style nested marker must NOT warn.
     assert!(
-        !warns("~~~card-yaml\n$quill: q\n$kind: main\naddr:\n  street: !must_fill\n  city: x\n~~~\n"),
+        !warns(
+            "~~~card-yaml\n$quill: q\n$kind: main\naddr:\n  street: !must_fill\n  city: x\n~~~\n"
+        ),
         "block-style nested marker must not warn"
     );
     // A quoted scalar that merely contains the literal text must NOT warn.
@@ -284,7 +289,8 @@ fn nested_must_fill_round_trips() {
 /// same as at the top level.
 #[test]
 fn nested_must_fill_on_mapping_is_rejected() {
-    let src = "~~~card-yaml\n$quill: q\n$kind: main\nouter:\n  inner: !must_fill\n    leaf: 1\n~~~\n";
+    let src =
+        "~~~card-yaml\n$quill: q\n$kind: main\nouter:\n  inner: !must_fill\n    leaf: 1\n~~~\n";
     let err = Document::from_markdown(src);
     assert!(
         err.is_err(),
@@ -802,9 +808,11 @@ fn array_element_nested_fill_survives_markdown_and_storage() {
     assert!(emitted.contains("name: Alice"), "Got:\n{}", emitted);
 
     // Storage (serde) round-trip preserves the nested marker on recipients[0].org.
-    let restored: Document =
-        serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
-    assert_eq!(doc, restored, "nested array-element fill must survive storage");
+    let restored: Document = serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+    assert_eq!(
+        doc, restored,
+        "nested array-element fill must survive storage"
+    );
     assert_eq!(
         emitted,
         restored.to_markdown(),

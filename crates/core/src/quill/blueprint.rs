@@ -152,9 +152,7 @@ fn write_card_fields(out: &mut String, card: &CardSchema) {
 /// order) with `ui.order` sorting within each cluster. The grouping is purely
 /// positional now — no banner is emitted — so the clusters are flattened into a
 /// single field stream.
-fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
-    fields: I,
-) -> Vec<&'a FieldSchema> {
+fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(fields: I) -> Vec<&'a FieldSchema> {
     let mut sorted: Vec<&FieldSchema> = fields.into_iter().collect();
     sorted.sort_by_key(|f| f.ui_order());
     let mut groups: Vec<(Option<&str>, Vec<&FieldSchema>)> = Vec::new();
@@ -660,7 +658,10 @@ main:
 "#)
         .blueprint();
         assert!(t.contains("counts: <must-fill>  # array<integer>\n"), "{t}");
-        assert!(t.contains("sections: <must-fill>  # array<markdown>\n"), "{t}");
+        assert!(
+            t.contains("sections: <must-fill>  # array<markdown>\n"),
+            "{t}"
+        );
         assert!(t.contains("tags: <must-fill>  # array<string>\n"), "{t}");
     }
 
@@ -715,9 +716,7 @@ main:
         // The root header goes straight from `$kind: main` to the
         // description — no `# system metadata` role comment. The `$` sigil
         // marks the lines as fixed; BLUEPRINT.md carries the instruction.
-        assert!(t.starts_with(
-            "~~~\n$quill: taro@0.1.0\n$kind: main\n# x\n"
-        ));
+        assert!(t.starts_with("~~~\n$quill: taro@0.1.0\n$kind: main\n# x\n"));
         assert!(t.contains("\nWrite main body here.\n"));
     }
 

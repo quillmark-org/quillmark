@@ -341,7 +341,10 @@ fn test_to_tree_round_trips_from_tree() {
             contents: asset.clone(),
         },
     );
-    root_files.insert("assets".to_string(), FileTreeNode::Directory { files: assets });
+    root_files.insert(
+        "assets".to_string(),
+        FileTreeNode::Directory { files: assets },
+    );
     // An empty directory: documented to be dropped by flatten (file-addressed
     // round trip), so it must NOT appear in to_tree() output.
     root_files.insert(
@@ -1969,10 +1972,10 @@ main:
           type: string
 "#;
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
-    assert!(err
-        .iter()
-        .any(|d| d.code.as_deref() == Some("quill::array_properties_not_supported")
-            && d.message.contains("rows")));
+    assert!(err.iter().any(
+        |d| d.code.as_deref() == Some("quill::array_properties_not_supported")
+            && d.message.contains("rows")
+    ));
 }
 
 #[test]
@@ -1995,10 +1998,10 @@ main:
           type: integer
 "#;
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
-    assert!(err
-        .iter()
-        .any(|d| d.code.as_deref() == Some("quill::nested_array_not_supported")
-            && d.message.contains("grid")));
+    assert!(err.iter().any(
+        |d| d.code.as_deref() == Some("quill::nested_array_not_supported")
+            && d.message.contains("grid")
+    ));
 }
 
 #[test]
@@ -2025,10 +2028,10 @@ main:
               type: string
 "#;
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
-    assert!(err
-        .iter()
-        .any(|d| d.code.as_deref() == Some("quill::nested_array_not_supported")
-            && d.message.contains("rows")));
+    assert!(err.iter().any(
+        |d| d.code.as_deref() == Some("quill::nested_array_not_supported")
+            && d.message.contains("rows")
+    ));
 }
 
 #[test]
@@ -2053,10 +2056,10 @@ main:
             type: string
 "#;
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
-    assert!(err
-        .iter()
-        .any(|d| d.code.as_deref() == Some("quill::nested_array_not_supported")
-            && d.message.contains("address")));
+    assert!(err.iter().any(
+        |d| d.code.as_deref() == Some("quill::nested_array_not_supported")
+            && d.message.contains("address")
+    ));
 }
 
 #[test]
@@ -2282,11 +2285,7 @@ main:
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
-    assert!(config
-        .main
-        .ui
-        .as_ref()
-        .is_none_or(|ui| ui.title.is_none()));
+    assert!(config.main.ui.as_ref().is_none_or(|ui| ui.title.is_none()));
 }
 
 #[test]
@@ -2818,15 +2817,15 @@ main:
 #[test]
 fn example_integer_type_rejects_float_example() {
     // type: integer with example: 20.04 fails — float is not an integer.
-    let yaml = example_default_yaml(
-        "    year:\n      type: integer\n      example: 20.04\n",
-    );
+    let yaml = example_default_yaml("    year:\n      type: integer\n      example: 20.04\n");
     let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
     assert!(
-        errors.iter().any(|d| d.code.as_deref() == Some("quill::example_type_mismatch")
-            && d.message.contains("year")
-            && d.message.contains("integer")
-            && d.message.contains("float")),
+        errors.iter().any(
+            |d| d.code.as_deref() == Some("quill::example_type_mismatch")
+                && d.message.contains("year")
+                && d.message.contains("integer")
+                && d.message.contains("float")
+        ),
         "expected example_type_mismatch error for integer/float, got: {:?}",
         errors
     );
@@ -2836,9 +2835,8 @@ fn example_integer_type_rejects_float_example() {
 fn example_string_type_rejects_unquoted_decimal_example() {
     // The canonical bug: type: string with example: 20.04 — YAML parses the
     // bare token as a float, and the LLM would copy it back unquoted.
-    let yaml = example_default_yaml(
-        "    min_os_version:\n      type: string\n      example: 20.04\n",
-    );
+    let yaml =
+        example_default_yaml("    min_os_version:\n      type: string\n      example: 20.04\n");
     let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
     let diag = errors
         .iter()
@@ -2858,24 +2856,23 @@ fn example_string_type_rejects_unquoted_decimal_example() {
 #[test]
 fn example_string_type_accepts_quoted_decimal_example() {
     // The fix: quoting forces the YAML parser to keep it as a string.
-    let yaml = example_default_yaml(
-        "    min_os_version:\n      type: string\n      example: \"20.04\"\n",
-    );
+    let yaml =
+        example_default_yaml("    min_os_version:\n      type: string\n      example: \"20.04\"\n");
     QuillConfig::from_yaml(&yaml).expect("quoted string example should load");
 }
 
 #[test]
 fn example_boolean_type_rejects_string_example() {
     // type: boolean with example: "true" — the LLM would emit it as a string.
-    let yaml = example_default_yaml(
-        "    flag:\n      type: boolean\n      example: \"true\"\n",
-    );
+    let yaml = example_default_yaml("    flag:\n      type: boolean\n      example: \"true\"\n");
     let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
     assert!(
-        errors.iter().any(|d| d.code.as_deref() == Some("quill::example_type_mismatch")
-            && d.message.contains("flag")
-            && d.message.contains("boolean")
-            && d.message.contains("string")),
+        errors.iter().any(
+            |d| d.code.as_deref() == Some("quill::example_type_mismatch")
+                && d.message.contains("flag")
+                && d.message.contains("boolean")
+                && d.message.contains("string")
+        ),
         "expected example_type_mismatch error for boolean/string, got: {:?}",
         errors
     );
@@ -2889,10 +2886,12 @@ fn example_array_type_rejects_string_example() {
     );
     let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
     assert!(
-        errors.iter().any(|d| d.code.as_deref() == Some("quill::example_type_mismatch")
-            && d.message.contains("tags")
-            && d.message.contains("array")
-            && d.message.contains("string")),
+        errors.iter().any(
+            |d| d.code.as_deref() == Some("quill::example_type_mismatch")
+                && d.message.contains("tags")
+                && d.message.contains("array")
+                && d.message.contains("string")
+        ),
         "expected example_type_mismatch error for array/string, got: {:?}",
         errors
     );
@@ -2924,9 +2923,7 @@ fn example_in_enum_loads_successfully() {
 #[test]
 fn default_with_type_mismatch_is_rejected() {
     // Defaults are validated the same way as examples.
-    let yaml = example_default_yaml(
-        "    version:\n      type: string\n      default: 20.04\n",
-    );
+    let yaml = example_default_yaml("    version:\n      type: string\n      default: 20.04\n");
     let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
     let diag = errors
         .iter()
@@ -2950,9 +2947,7 @@ fn datetime_type_mismatch_reports_datetime_not_string() {
     // The mismatch message must name the field's declared type verbatim
     // (`datetime`), not the internal string-family collapse — otherwise the
     // author is told they declared `string` when they wrote `datetime`.
-    let yaml = example_default_yaml(
-        "    signed_on:\n      type: datetime\n      example: 42\n",
-    );
+    let yaml = example_default_yaml("    signed_on:\n      type: datetime\n      example: 42\n");
     let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
     let diag = errors
         .iter()
@@ -2968,9 +2963,7 @@ fn datetime_type_mismatch_reports_datetime_not_string() {
 
 #[test]
 fn markdown_type_mismatch_reports_markdown_not_string() {
-    let yaml = example_default_yaml(
-        "    body:\n      type: markdown\n      default: 42\n",
-    );
+    let yaml = example_default_yaml("    body:\n      type: markdown\n      default: 42\n");
     let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
     let diag = errors
         .iter()

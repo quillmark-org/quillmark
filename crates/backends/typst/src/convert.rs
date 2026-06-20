@@ -96,7 +96,10 @@ enum ListType {
     Bullet,
     /// Ordered list. `start` is the first item's number (CommonMark preserves it);
     /// `first` tracks whether the next item is the list's first.
-    Ordered { start: u64, first: bool },
+    Ordered {
+        start: u64,
+        first: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1232,7 +1235,10 @@ mod tests {
     fn test_code_block_standalone() {
         let markdown = "```rust\nfn main() {}\n```";
         let typst = mark_to_typst(markdown).unwrap();
-        assert_eq!(typst, "#raw(block: true, lang: \"rust\", \"fn main() {}\")\n\n");
+        assert_eq!(
+            typst,
+            "#raw(block: true, lang: \"rust\", \"fn main() {}\")\n\n"
+        );
     }
 
     #[test]
@@ -1279,7 +1285,10 @@ mod tests {
         let markdown = "- Item text\n\n  ```\n  code here\n  ```";
         let typst = mark_to_typst(markdown).unwrap();
         // The `#raw(...)` call sits at the list-item continuation indent.
-        assert_eq!(typst, "- Item text\n\n  #raw(block: true, \"code here\")\n\n");
+        assert_eq!(
+            typst,
+            "- Item text\n\n  #raw(block: true, \"code here\")\n\n"
+        );
     }
 
     #[test]
@@ -1880,7 +1889,10 @@ mod tests {
             "markup in alt flattens to text: {out}"
         );
         assert!(!out.contains("#emph"), "no leaked markup from alt: {out}");
-        assert!(!out.contains("#raw"), "no leaked code markup from alt: {out}");
+        assert!(
+            !out.contains("#raw"),
+            "no leaked code markup from alt: {out}"
+        );
     }
 
     #[test]

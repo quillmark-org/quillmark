@@ -2,7 +2,7 @@
 use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
-use super::{FileTreeNode, QuillConfig, Quill};
+use super::{FileTreeNode, Quill, QuillConfig};
 
 fn diag(message: impl Into<String>, code: &str) -> Diagnostic {
     Diagnostic::new(Severity::Error, message.into()).with_code(code.to_string())

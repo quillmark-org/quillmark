@@ -77,7 +77,11 @@ fn seed_main_commits_only_example_fields() {
     // Main card carries `$quill: name@version` and `$kind: main`.
     let reference = card.quill().expect("main card must carry $quill");
     assert_eq!(reference.name, "seed_test");
-    assert_eq!(card.kind(), Some("main"), "main card must carry $kind: main");
+    assert_eq!(
+        card.kind(),
+        Some("main"),
+        "main card must carry $kind: main"
+    );
 
     // Body region carries `body.example`.
     assert_eq!(card.body(), "Main body text.");
@@ -96,10 +100,17 @@ fn seeded_document_round_trips_through_markdown() {
         .expect("seeded document must re-parse from its own markdown");
 
     // Main metadata survives — this is what the `$kind: main` fix guarantees.
-    assert_eq!(reparsed.main().quill().map(|r| r.name.as_str()), Some("seed_test"));
+    assert_eq!(
+        reparsed.main().quill().map(|r| r.name.as_str()),
+        Some("seed_test")
+    );
     assert_eq!(reparsed.main().kind(), Some("main"));
     assert_eq!(
-        reparsed.main().payload().get("title").and_then(|v| v.as_str()),
+        reparsed
+            .main()
+            .payload()
+            .get("title")
+            .and_then(|v| v.as_str()),
         Some("FIRSTNAME LASTNAME"),
     );
     // The markdown layer normalizes a body to a single trailing newline;
@@ -110,7 +121,10 @@ fn seeded_document_round_trips_through_markdown() {
     assert_eq!(reparsed.cards().len(), 1);
     assert_eq!(reparsed.cards()[0].kind(), Some("note"));
     assert_eq!(
-        reparsed.cards()[0].payload().get("author").and_then(|v| v.as_str()),
+        reparsed.cards()[0]
+            .payload()
+            .get("author")
+            .and_then(|v| v.as_str()),
         Some("A. Author"),
     );
 }
@@ -209,7 +223,10 @@ fn overlay_adds_a_field_the_base_omits() {
         .is_none());
     let ov = overlay(json!({ "tag": "pinned" }));
     let card = quill.seed_card("note", Some(&ov)).expect("known kind");
-    assert_eq!(card.payload().get("tag").and_then(|v| v.as_str()), Some("pinned"));
+    assert_eq!(
+        card.payload().get("tag").and_then(|v| v.as_str()),
+        Some("pinned")
+    );
     // `author` still flows from its example (sparse fall-through).
     assert_eq!(
         card.payload().get("author").and_then(|v| v.as_str()),
@@ -307,7 +324,10 @@ fn seed_overlay_type_mismatch_is_advisory_and_does_not_gate_render() {
     );
 
     // The malformed overlay never blocks render — `$seed` is stripped.
-    assert!(quill.compile_data(&doc).is_ok(), "compile_data must ignore $seed");
+    assert!(
+        quill.compile_data(&doc).is_ok(),
+        "compile_data must ignore $seed"
+    );
     assert!(quill.dry_run(&doc).is_ok(), "dry_run must ignore $seed");
 }
 

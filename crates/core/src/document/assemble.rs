@@ -149,8 +149,7 @@ pub(super) fn build_block(
             Ok(parsed) => parsed,
             Err(e) => {
                 let line = markdown[..block_start].lines().count() + 1;
-                let enriched =
-                    super::yaml_hints::enrich_yaml_error(&e.to_string(), &content);
+                let enriched = super::yaml_hints::enrich_yaml_error(&e.to_string(), &content);
                 return Err(ParseError::YamlErrorWithLocation {
                     message: enriched.message,
                     line,
@@ -220,9 +219,9 @@ pub(super) fn decompose_with_warnings(
     let (blocks, warnings) = find_metadata_blocks(markdown)?;
 
     if blocks.is_empty() {
-        return Err(crate::error::ParseError::MissingQuill(missing_block_message(
-            markdown,
-        )));
+        return Err(crate::error::ParseError::MissingQuill(
+            missing_block_message(markdown),
+        ));
     }
 
     // The root block must declare a `$quill` reference.

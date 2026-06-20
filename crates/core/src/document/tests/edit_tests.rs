@@ -665,10 +665,8 @@ fn deep_value(depth: usize) -> serde_json::Value {
 
 #[test]
 fn set_field_rejects_value_past_depth_limit() {
-    let mut doc = crate::document::Document::from_markdown(
-        "~~~\n$quill: q@1.0\n$kind: main\n~~~\n",
-    )
-    .unwrap();
+    let mut doc =
+        crate::document::Document::from_markdown("~~~\n$quill: q@1.0\n$kind: main\n~~~\n").unwrap();
     let ok = crate::value::QuillValue::from_json(deep_value(50));
     assert!(doc.main_mut().set_field("x", ok).is_ok());
 

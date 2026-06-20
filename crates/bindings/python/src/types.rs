@@ -1029,8 +1029,10 @@ fn py_to_json_at(value: &Bound<'_, PyAny>, depth: usize) -> PyResult<serde_json:
     }
     if value.is_instance_of::<PyList>() {
         let list = value.downcast::<PyList>()?;
-        let arr: PyResult<Vec<serde_json::Value>> =
-            list.iter().map(|item| py_to_json_at(&item, depth + 1)).collect();
+        let arr: PyResult<Vec<serde_json::Value>> = list
+            .iter()
+            .map(|item| py_to_json_at(&item, depth + 1))
+            .collect();
         return Ok(serde_json::Value::Array(arr?));
     }
     if value.is_instance_of::<PyDict>() {

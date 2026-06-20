@@ -87,5 +87,4 @@ mod tests {
         assert!(toml.contains("namespace = \"local\""));
         assert!(toml.contains("entrypoint = \"lib.typ\""));
     }
-
 }

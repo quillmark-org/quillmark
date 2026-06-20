@@ -537,9 +537,9 @@ impl TryFrom<PayloadItemV0_92_0> for PayloadItem {
                 use super::edit::{validate_field, FieldViolation};
                 validate_field(&key, &value).map_err(|v| {
                     StorageError::Malformed(match v {
-                        FieldViolation::InvalidName => format!(
-                            "invalid field name {key:?}: must match [a-z_][a-z0-9_]*"
-                        ),
+                        FieldViolation::InvalidName => {
+                            format!("invalid field name {key:?}: must match [a-z_][a-z0-9_]*")
+                        }
                         FieldViolation::TooDeep => format!(
                             "field {key:?} nests deeper than the maximum of {} levels",
                             crate::document::limits::MAX_YAML_DEPTH
@@ -1224,8 +1224,7 @@ title: Hi
             overlay.fields.get("from").and_then(|v| v.as_str()),
             Some("49 FW/CC")
         );
-        let reser: Document =
-            serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+        let reser: Document = serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
         assert_eq!(doc, reser);
     }
 }

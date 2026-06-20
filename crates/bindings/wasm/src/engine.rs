@@ -5,9 +5,9 @@ use crate::types::Diagnostic;
 #[cfg(feature = "render")]
 use crate::types::{RenderOptions, RenderResult};
 use js_sys::{Array, Uint8Array};
-use serde::Serialize;
 #[cfg(feature = "render")]
 use serde::Deserialize;
+use serde::Serialize;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
@@ -460,7 +460,8 @@ impl Quill {
     pub fn seed_card(
         &self,
         card_kind: &str,
-        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown> | undefined")] overlay: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown> | undefined")]
+        overlay: JsValue,
     ) -> Result<JsValue, JsValue> {
         let overlay = if overlay.is_undefined() || overlay.is_null() {
             None
@@ -852,8 +853,9 @@ impl Document {
     #[wasm_bindgen(js_name = makeCard, unchecked_return_type = "Card")]
     pub fn make_card(
         kind: String,
-        #[wasm_bindgen(unchecked_optional_param_type = "Record<string, unknown>")]
-        fields: Option<JsValue>,
+        #[wasm_bindgen(unchecked_optional_param_type = "Record<string, unknown>")] fields: Option<
+            JsValue,
+        >,
         #[wasm_bindgen(unchecked_optional_param_type = "string")] body: Option<String>,
     ) -> Result<JsValue, JsValue> {
         let field_map: serde_json::Map<String, serde_json::Value> = match fields {
@@ -884,8 +886,9 @@ impl Document {
             body: body.unwrap_or_default(),
         };
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-        wire.serialize(&serializer)
-            .map_err(|e| WasmError::from(format!("makeCard: serialization failed: {e}")).to_js_value())
+        wire.serialize(&serializer).map_err(|e| {
+            WasmError::from(format!("makeCard: serialization failed: {e}")).to_js_value()
+        })
     }
 
     /// Append a card to the end of the card list. Accepts a `Card` (the shape

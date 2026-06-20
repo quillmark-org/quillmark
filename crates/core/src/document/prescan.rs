@@ -405,7 +405,10 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
     // round-trip — inside a flow collection (`{…}` / `[…]`) or on a bare
     // sequence element — where serde_saphyr would silently drop it. Warn rather
     // than lose the marker quietly.
-    if cleaned_lines.iter().any(|l| line_has_unsupported_fill_tag(l)) {
+    if cleaned_lines
+        .iter()
+        .any(|l| line_has_unsupported_fill_tag(l))
+    {
         out.warnings.push(
             Diagnostic::new(
                 Severity::Warning,
@@ -1146,5 +1149,4 @@ mod tests {
         assert_eq!(v, " a#b");
         assert_eq!(c, None);
     }
-
 }

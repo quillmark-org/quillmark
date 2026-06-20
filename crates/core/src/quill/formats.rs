@@ -4,25 +4,20 @@ use time::format_description::well_known::Rfc3339;
 use time::format_description::{self, FormatItem};
 use time::{Date, OffsetDateTime, PrimitiveDateTime};
 
-static DATE_FMT: LazyLock<Vec<FormatItem<'static>>> = LazyLock::new(|| {
-    format_description::parse("[year]-[month]-[day]").expect("valid format")
-});
+static DATE_FMT: LazyLock<Vec<FormatItem<'static>>> =
+    LazyLock::new(|| format_description::parse("[year]-[month]-[day]").expect("valid format"));
 
 // Local (no-offset) forms tried in order — most-specific first so that a
 // string like "…T12:00:00.5" does not partially match the plain HMS variant.
 static LOCAL_FMTS: LazyLock<[Vec<FormatItem<'static>>; 6]> = LazyLock::new(|| {
     [
-        format_description::parse(
-            "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond]",
-        )
-        .expect("valid format"),
+        format_description::parse("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond]")
+            .expect("valid format"),
         format_description::parse("[year]-[month]-[day]T[hour]:[minute]:[second]")
             .expect("valid format"),
         format_description::parse("[year]-[month]-[day]T[hour]:[minute]").expect("valid format"),
-        format_description::parse(
-            "[year]-[month]-[day] [hour]:[minute]:[second].[subsecond]",
-        )
-        .expect("valid format"),
+        format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second].[subsecond]")
+            .expect("valid format"),
         format_description::parse("[year]-[month]-[day] [hour]:[minute]:[second]")
             .expect("valid format"),
         format_description::parse("[year]-[month]-[day] [hour]:[minute]").expect("valid format"),
@@ -94,13 +89,13 @@ mod tests {
             "2026-06-01T",
             "2026-06-01T12",
             "2026-06-01T12:",
-            "2026-06-01T12:0",   // single-digit minute
+            "2026-06-01T12:0",      // single-digit minute
             "2026-06-01T12:00:00 ", // trailing space
             "2026-06-01T12:00:00+",
             "2026-06-01T12:00:00X",
-            "2026-13-01",        // month out of range
-            "2026-02-30",        // calendar-invalid date (Feb 30)
-            "2026-6-1",          // single-digit month/day (not zero-padded)
+            "2026-13-01", // month out of range
+            "2026-02-30", // calendar-invalid date (Feb 30)
+            "2026-6-1",   // single-digit month/day (not zero-padded)
         ] {
             assert!(!is_valid_datetime(s), "expected invalid: {s}");
         }

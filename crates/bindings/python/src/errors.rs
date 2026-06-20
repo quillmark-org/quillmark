@@ -13,7 +13,10 @@ create_exception!(_quillmark, QuillmarkError, PyException);
 
 pub fn convert_edit_error(err: EditError) -> PyErr {
     let message = format!("[EditError::{}] {}", err.variant_name(), err);
-    raise_with_diagnostics(vec![Diagnostic::new(Severity::Error, message.clone())], message)
+    raise_with_diagnostics(
+        vec![Diagnostic::new(Severity::Error, message.clone())],
+        message,
+    )
 }
 
 pub fn convert_render_error(err: RenderError) -> PyErr {

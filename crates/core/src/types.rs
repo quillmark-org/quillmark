@@ -117,7 +117,11 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("docx"), "{msg}");
         for fmt in OutputFormat::ALL {
-            assert!(msg.contains(fmt.as_str()), "choices missing {}: {msg}", fmt.as_str());
+            assert!(
+                msg.contains(fmt.as_str()),
+                "choices missing {}: {msg}",
+                fmt.as_str()
+            );
         }
     }
 }

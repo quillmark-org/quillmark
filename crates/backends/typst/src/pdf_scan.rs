@@ -308,8 +308,7 @@ fn read_value_end(b: &[u8], start: usize) -> Option<usize> {
                 while j < b.len() && matches!(b[j], b' ' | b'\t' | b'\n' | b'\r') {
                     j += 1;
                 }
-                if b.get(j).copied() == Some(b'R')
-                    && b.get(j + 1).is_none_or(|c| is_pdf_delim(*c))
+                if b.get(j).copied() == Some(b'R') && b.get(j + 1).is_none_or(|c| is_pdf_delim(*c))
                 {
                     return Some(j + 1);
                 }

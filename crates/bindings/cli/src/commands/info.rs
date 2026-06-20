@@ -139,11 +139,7 @@ fn print_human_readable(quill: &quillmark::Quill) {
     // Plate
     println!(
         "  Has plate:   {}",
-        if quill.plate().is_some() {
-            "yes"
-        } else {
-            "no"
-        }
+        if quill.plate().is_some() { "yes" } else { "no" }
     );
 
     // Additional metadata

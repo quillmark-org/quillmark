@@ -162,7 +162,9 @@ main:
     );
 
     // The plate projection carries the zero value for the absent field.
-    let data = quill.compile_data(&parsed).expect("compile_data should succeed");
+    let data = quill
+        .compile_data(&parsed)
+        .expect("compile_data should succeed");
     assert_eq!(
         data.get("title").and_then(|v| v.as_str()),
         Some(""),
