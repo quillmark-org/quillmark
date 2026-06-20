@@ -21,9 +21,9 @@ any time, but is cheapest to batch with the break). Effort S/M/L, Payoff H/M/L.
 
 ## Status — paid off in this branch
 
-The low-risk / high-leverage subset has been applied here (correctness fixes,
-risk-free `$seed` hardening since the key is unreleased, additive de-duplication
-validated by `cargo check --workspace`, and docs hygiene):
+Applied here (correctness fixes, risk-free `$seed` hardening since the key is
+unreleased, additive de-duplication, the dead-`pub`-API removals, the .NET
+panic-guard sweep, and docs hygiene):
 
 - **Correctness:** C1 (`__meta__` no longer leaks into card objects), C6
   (serialization failure → diagnostic, not silent `"{}"`), B2 (`schema()`
@@ -33,20 +33,29 @@ validated by `cargo check --workspace`, and docs hygiene):
 - **De-duplication (core now owns the tables):** E1 (`OutputFormat`
   `as_str`/`mime_type`/`ALL`/`Display`/`FromStr`), E2 (`EditError::variant_name`),
   E9 (`STANDARD_METADATA_KEYS`). F3 (`; delete-ok` doc).
+- **Dead / foot-gun `pub` API removed (breaking):** C3 (dead `compile_to_*`
+  trio; tests moved to the `Backend`/`RenderSession` path), C4 (`compile`/`helper`
+  modules made private), A4 (`Payload::take_quill`), A2 (unused
+  `SCHEMA_V0_81_0`/`V0_82_0` re-exports).
+- **.NET FFI safety (breaking):** D3 — every `unsafe extern "C"` entry point
+  (49 of them) now traps panics via `ffi_try!`, so a panic becomes a
+  `QuillmarkException` instead of aborting the host process.
 - **Docs / hygiene:** F1 (migration nav), F2 (changelog), F4/F5/F7 (stale refs,
   landed-proposal banner, dead workspace metadata).
 
 Regression tests added (card `__meta__`, seed-overlay reserved keys, seed-kind
 validation, `OutputFormat` round-trip). `cargo test` green for
-core/typst/cli/quillmark; bindings (wasm/python/.NET) type-check and rely on CI
-for their runtime suites.
+core/typst/cli/quillmark; `cargo build -p quillmark-dotnet`, `cargo check
+--workspace`, and `cargo doc -Dwarnings` clean; bindings (wasm/python/.NET)
+rely on CI for their runtime suites.
 
 **Deliberately deferred** (need focused, separately-reviewed changes — larger
 breaks or behavior changes that can't be locally test-verified): the
 `RenderError` flatten (SIMPL #1), `Quill::from_tree` warnings channel (B1), the
-.NET `ffi_try!` panic-guard sweep (D3), the binding error-contract fixes
-(E3/D2/D4), `convert`/world warning plumbing (C2/C5), the dead-`pub`-API
-removals (A2/A4/C3/C4), and the `quill_reference()` field promotion (A6).
+remaining binding error-contract fixes (E3 Python `ValueError` → `QuillmarkError`,
+D2 .NET `Diagnostic.ToString`, D4 .NET `set_quill_ref` code/hint, E4 Python
+card-dict casing), `convert`/world warning plumbing (C2/C5), and the
+`quill_reference()` field promotion (A6).
 
 ---
 
