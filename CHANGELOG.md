@@ -9,35 +9,6 @@
 
 ## v0.90.0 - 2026-06-10
 
-
-
-## v0.89.1 - 2026-06-10
-
-- chore(release): v0.89.1-rc.1 (#714)
-- feat(wasm)!: 0.90 canonical API — engine-free Quill, single root export, typed errors; Python parity (#713)
-- Proposal: WASM bindings split (core + render) via backend-decoupled Quill (#710)
-- Add version selector matching and mismatch warnings (#708)
-- docs: density-optimization pass on user-facing docs (#703)
-- Remove role annotation from root block metadata header (#707)
-- canon: audit and correct all prose/canon/ docs (#704)
-- Fix makeCard fields/body typed as required in WASM .d.ts (#702)
-- Update CLAUDE.md
-
-
-## v0.89.1-rc.1 - 2026-06-10
-
-- feat(wasm)!: 0.90 canonical API — engine-free Quill, single root export, typed errors; Python parity (#713)
-- Proposal: WASM bindings split (core + render) via backend-decoupled Quill (#710)
-- Add version selector matching and mismatch warnings (#708)
-- docs: density-optimization pass on user-facing docs (#703)
-- Remove role annotation from root block metadata header (#707)
-- canon: audit and correct all prose/canon/ docs (#704)
-- Fix makeCard fields/body typed as required in WASM .d.ts (#702)
-- Update CLAUDE.md
-
-
-## Unreleased
-
 - **Breaking (Rust API + bindings):** `Quill` is now engine-free, validated
   data. It no longer holds a backend; the `Quillmark` engine becomes a backend
   registry + render dispatcher. Rendering and capability move onto the engine:
@@ -133,6 +104,30 @@
   typed as required because `unchecked_param_type` drops the `?` marker; the
   bindings now use `unchecked_optional_param_type`. Callers can build a bare
   card with `Document.makeCard('kind')`.
+
+## v0.89.1 - 2026-06-10
+
+- chore(release): v0.89.1-rc.1 (#714)
+- feat(wasm)!: 0.90 canonical API — engine-free Quill, single root export, typed errors; Python parity (#713)
+- Proposal: WASM bindings split (core + render) via backend-decoupled Quill (#710)
+- Add version selector matching and mismatch warnings (#708)
+- docs: density-optimization pass on user-facing docs (#703)
+- Remove role annotation from root block metadata header (#707)
+- canon: audit and correct all prose/canon/ docs (#704)
+- Fix makeCard fields/body typed as required in WASM .d.ts (#702)
+- Update CLAUDE.md
+
+
+## v0.89.1-rc.1 - 2026-06-10
+
+- feat(wasm)!: 0.90 canonical API — engine-free Quill, single root export, typed errors; Python parity (#713)
+- Proposal: WASM bindings split (core + render) via backend-decoupled Quill (#710)
+- Add version selector matching and mismatch warnings (#708)
+- docs: density-optimization pass on user-facing docs (#703)
+- Remove role annotation from root block metadata header (#707)
+- canon: audit and correct all prose/canon/ docs (#704)
+- Fix makeCard fields/body typed as required in WASM .d.ts (#702)
+- Update CLAUDE.md
 
 ## v0.88.0 - 2026-06-05
 

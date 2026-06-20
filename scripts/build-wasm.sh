@@ -6,8 +6,8 @@ set -e
 # one guard rail that catches a Typst leak into the no-features core build.
 set -o pipefail
 
-# Builds TWO wasm artifacts from the one crate (see
-# prose/proposals/wasm-bindings-split.md):
+# Builds TWO wasm artifacts from the one crate (the as-built design is
+# documented in docs/migrations/0.89-to-0.90.md):
 #
 #   pkg/core/           — no Typst: parse / load / validate / schema / seed / blueprint
 #   pkg/backends/typst/ — Typst-backed engine + RenderSession + canvas (a private

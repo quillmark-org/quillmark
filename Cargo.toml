@@ -65,10 +65,6 @@ tempfile = "~3.23"
 proptest = "~1.5"
 quillmark-fixtures = { path = "crates/fixtures" }
 
-[workspace.metadata.workspaces]
-# Exclude fixtures from publishing since it's dev-only
-no_individual_tags = true
-
 [profile.dev]
 opt-level = 0
 debug = true

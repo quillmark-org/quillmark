@@ -1,5 +1,10 @@
 # MCP Field-Schema and Blueprint Redesign
 
+> **Landed in 0.84** (see [0.83 → 0.84](../../docs/migrations/0.83-to-0.84.md)).
+> Retained for historical context. The two-cell Must-Fill / Endorsed model and
+> the `<must-fill>` / `; delete-ok` grammar this proposed are now canon in
+> `prose/canon/SCHEMAS.md` and `prose/canon/BLUEPRINT.md`.
+
 > **Motivation**: friction in an MCP consumer's eval, where LLM authors
 > writing Quillmark Markdown systematically misunderstood the
 > `required` / `optional` / `default` axes on field schemas. This
