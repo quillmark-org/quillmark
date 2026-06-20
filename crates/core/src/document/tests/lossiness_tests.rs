@@ -179,21 +179,30 @@ fn custom_tags_lose_tag_but_keep_value() {
     );
 }
 
-/// The legacy `!fill` spelling is accepted as a deprecated alias and
-/// normalized to `!must_fill` on emit.
+/// `!fill` is not an alias for `!must_fill`: it is treated like any other
+/// noncanonical tag — dropped with an unsupported-tag warning, the value kept,
+/// and no fill marker recorded.
 #[test]
-fn legacy_fill_alias_normalizes_to_must_fill() {
+fn fill_tag_is_rejected_as_noncanonical() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nmemo_from: !fill draft\n~~~\n";
-    let doc = Document::from_markdown(src).unwrap();
+    let out = Document::from_markdown_with_warnings(src).unwrap();
 
-    let fm = doc.main().payload();
+    let fm = out.document.main().payload();
     assert_eq!(fm.get("memo_from").and_then(|v| v.as_str()), Some("draft"));
-    assert!(fm.is_fill("memo_from"), "alias must record the fill marker");
-
-    let emitted = doc.to_markdown();
+    assert!(!fm.is_fill("memo_from"), "`!fill` must not record a fill marker");
     assert!(
-        emitted.contains("memo_from: !must_fill") && !emitted.contains("!fill "),
-        "`!fill` alias must be normalized to `!must_fill` on emit\nGot:\n{}",
+        out.warnings
+            .iter()
+            .any(|w| w.code.as_deref() == Some("parse::unsupported_yaml_tag")),
+        "`!fill` must warn as an unsupported tag; got: {:?}",
+        out.warnings
+    );
+
+    // The dropped tag means a plain value: no `!must_fill`, no `!fill` on emit.
+    let emitted = out.document.to_markdown();
+    assert!(
+        !emitted.contains("!fill") && !emitted.contains("!must_fill"),
+        "rejected tag must not reappear on emit\nGot:\n{}",
         emitted
     );
 }

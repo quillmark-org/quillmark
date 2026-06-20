@@ -16,12 +16,11 @@
 //!    serde_saphyr; the value survives but the tag annotation is lost. We
 //!    detect `!must_fill` on top-level scalar fields, strip the tag from the
 //!    cleaned YAML (so serde_saphyr sees a plain scalar), and record a
-//!    `fill: true` marker on the resulting `Field` item. The legacy spelling
-//!    `!fill` is accepted as a deprecated alias and normalized to
-//!    `!must_fill` on emit.
+//!    `fill: true` marker on the resulting `Field` item.
 //!
-//! Other custom tags (`!include`, `!env`, …) are stripped with a
-//! `parse::unsupported_yaml_tag` warning.
+//! `!must_fill` is the only recognized fill tag. Every other custom tag
+//! (`!include`, `!env`, the former `!fill` alias, …) is treated alike: dropped
+//! with a `parse::unsupported_yaml_tag` warning, the scalar value kept.
 
 use crate::Diagnostic;
 use crate::Severity;
@@ -645,10 +644,10 @@ fn split_flow_trailing_comment(value: &str) -> (String, Option<String>) {
     (value.to_string(), None)
 }
 
-/// Fill tags, in canonical-first order. `!fill` is a deprecated alias for
-/// `!must_fill`; both are accepted on input and normalized to `!must_fill`
-/// on emit.
-const FILL_TAGS: [&str; 2] = ["!must_fill", "!fill"];
+/// The placeholder tag. `!must_fill` is the only recognized fill tag; any
+/// other custom tag (including the former `!fill` alias) is treated as a
+/// noncanonical tag — dropped with a `parse::unsupported_yaml_tag` warning.
+const FILL_TAGS: [&str; 1] = ["!must_fill"];
 
 /// If `trimmed` begins with a fill tag (either the bare tag or the tag
 /// followed by whitespace), return the remainder after the tag. A tag that
@@ -667,7 +666,7 @@ fn strip_fill_tag(trimmed: &str) -> Option<&str> {
     None
 }
 
-/// Inspect a field value for `!must_fill` (or the `!fill` alias) and other tags.
+/// Inspect a field value for the `!must_fill` tag and other (noncanonical) tags.
 ///
 /// Returns `(fill, value_without_tag, had_other_tag, fill_target_err)`.
 /// `fill_target_err` is set when the fill tag targets a mapping (rejected;
@@ -759,32 +758,25 @@ mod tests {
     }
 
     #[test]
-    fn detects_fill_on_scalar() {
+    fn fill_alias_is_rejected_as_noncanonical_tag() {
+        // `!fill` is no longer an alias for `!must_fill`. It is treated like any
+        // other custom tag: not a fill marker, dropped with an unsupported-tag
+        // warning, the value kept.
         let input = "dept: !fill Department\n";
         let out = prescan_fence_content(input);
         assert_eq!(
             out.items,
             vec![PreItem::Field {
                 key: "dept".to_string(),
-                fill: true,
+                fill: false,
             }]
         );
-        assert!(out.cleaned_yaml.contains("dept: Department"));
-        assert!(!out.cleaned_yaml.contains("!fill"));
-    }
-
-    #[test]
-    fn detects_bare_fill() {
-        let input = "dept: !fill\n";
-        let out = prescan_fence_content(input);
-        assert_eq!(
-            out.items,
-            vec![PreItem::Field {
-                key: "dept".to_string(),
-                fill: true,
-            }]
+        assert!(
+            out.warnings
+                .iter()
+                .any(|w| w.code.as_deref() == Some("parse::unsupported_yaml_tag")),
+            "`!fill` must warn as an unsupported tag"
         );
-        assert!(!out.cleaned_yaml.contains("!fill"));
     }
 
     #[test]
@@ -819,8 +811,10 @@ mod tests {
 
     #[test]
     fn fillet_is_not_a_fill_tag() {
-        // A tag that merely starts with `!fill` must not be treated as fill.
-        let input = "x: !fillet value\n";
+        // A tag that merely starts with the fill-tag prefix must not be treated
+        // as fill (`!must_filler` shares the `!must_fill` prefix; `!fillet` is
+        // unrelated). Both are ordinary noncanonical tags.
+        let input = "x: !must_filler value\n";
         let out = prescan_fence_content(input);
         assert_eq!(
             out.items,
@@ -963,11 +957,11 @@ mod tests {
 
     #[test]
     fn fill_on_flow_sequence_allowed() {
-        let input = "x: !fill [1, 2]\n";
+        let input = "x: !must_fill [1, 2]\n";
         let out = prescan_fence_content(input);
         assert!(
             out.fill_target_errors.is_empty(),
-            "expected no error; !fill on sequences is supported"
+            "expected no error; !must_fill on sequences is supported"
         );
         assert_eq!(
             out.items,
@@ -1076,11 +1070,11 @@ mod tests {
 
     #[test]
     fn fill_on_flow_mapping_errors() {
-        let input = "x: !fill {a: 1}\n";
+        let input = "x: !must_fill {a: 1}\n";
         let out = prescan_fence_content(input);
         assert!(
             !out.fill_target_errors.is_empty(),
-            "expected error; !fill on mappings is rejected"
+            "expected error; !must_fill on mappings is rejected"
         );
     }
     // ── split_trailing_comment: YAML 1.2 conformance ─────────────────────────

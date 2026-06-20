@@ -248,10 +248,10 @@ data payload.
   sequence element** (`- !must_fill`) cannot be round-tripped and is reported
   with a `parse::fill_marker_unsupported_position` warning (the value is kept,
   the marker is not); markers under YAML **anchors/merge keys** are likewise
-  not preserved. The older spelling `!fill` is accepted as a deprecated input
-  alias and normalised to `!must_fill` on emit. Any other custom tag
-  (`!include`, `!env`, …) is dropped with a `parse::unsupported_yaml_tag`
-  warning; the scalar value is kept but the tag does not round-trip.
+  not preserved. `!must_fill` is the only fill tag: every other custom tag —
+  `!include`, `!env`, and the former `!fill` spelling — is dropped with a
+  `parse::unsupported_yaml_tag` warning; the scalar value is kept but the tag
+  does not round-trip.
 
 ### 3.5 Version Selectors
 
