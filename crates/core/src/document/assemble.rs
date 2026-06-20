@@ -524,7 +524,17 @@ fn apply_nested_fills(
                 render_path(path)
             )));
         }
-        value.set_fill_at(rest);
+        // The path came from our own prescan over the same source, so it must
+        // resolve against the parsed tree. A miss means prescan and the YAML
+        // parser disagreed on structure — surface it loudly in dev/test builds
+        // rather than silently dropping the marker.
+        let applied = value.set_fill_at(rest);
+        debug_assert!(
+            applied,
+            "prescan recorded a nested fill path that did not resolve against \
+             the parsed value: `{}`",
+            render_path(path)
+        );
     }
     Ok(())
 }

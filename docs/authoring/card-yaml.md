@@ -164,19 +164,29 @@ identically to comments on data fields.
 
 ## Placeholder Fields (`!must_fill`)
 
-A top-level field tagged `!must_fill` marks the value as a placeholder awaiting
-input. The tag round-trips through parsing and emit, so editors and bindings
-can detect and update placeholders without losing them.
+A field tagged `!must_fill` marks the value as a placeholder awaiting input.
+The tag round-trips through parsing and emit, so editors and bindings can
+detect and update placeholders without losing them.
 
 ```yaml
 recipient: !must_fill
 department: !must_fill Department Here
 tags: !must_fill []
+addr:
+  street: !must_fill        # nested leaf, inside an object
+  city: Anytown
+recipients:
+  - name: !must_fill        # nested leaf, inside an array element
+    role: lead
 ```
 
-`!must_fill` is valid on scalars (string, number, bool, null) and sequences. It is
-rejected on mappings. Other custom YAML tags (`!include`, `!env`, …) are
-dropped with a warning.
+`!must_fill` is valid on scalars (string, number, bool, null) and sequences,
+both at the top level and on leaves nested inside objects and array elements.
+It is rejected on mappings (tag the leaves, not the container). Other custom
+YAML tags (`!include`, `!env`, …) are dropped with a warning.
+
+> **Deprecated alias.** The older spelling `!fill` is still accepted on input
+> but is silently normalised to `!must_fill` on emit. Prefer `!must_fill`.
 
 ## Field-name Rules
 

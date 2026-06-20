@@ -209,7 +209,11 @@ impl QuillValue {
         let node = Node::from_json(&json_val);
         let json = OnceLock::new();
         // Seed the projection with the value we were handed so the common
-        // render path doesn't re-lower it.
+        // render path doesn't re-lower it. This trades memory for speed:
+        // until dropped, the data is held twice (the `node` tree plus the
+        // cached JSON). Acceptable for the render-hot path; leaving the cache
+        // empty here would halve memory at the cost of re-lowering on first
+        // `as_json`.
         let _ = json.set(json_val);
         QuillValue { node, json }
     }

@@ -743,3 +743,25 @@ fn seq_item_inline_first_key_fill_round_trips() {
     let emitted2 = Document::from_markdown(&emitted).unwrap().to_markdown();
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
+
+/// A `!must_fill` marker on an own-line (non-first) key inside an array element
+/// survives both the markdown round-trip and the storage (serde) round-trip,
+/// and a second emit cycle is idempotent.
+#[test]
+fn array_element_nested_fill_survives_markdown_and_storage() {
+    let src = "~~~card-yaml\n$quill: q@0.1\n$kind: main\nrecipients:\n  - name: Alice\n    org: !must_fill\n~~~\n\nBody.\n";
+    let doc = Document::from_markdown(src).unwrap();
+    let emitted = doc.to_markdown();
+    assert!(emitted.contains("org: !must_fill"), "Got:\n{}", emitted);
+    assert!(emitted.contains("name: Alice"), "Got:\n{}", emitted);
+
+    // Storage (serde) round-trip preserves the nested marker on recipients[0].org.
+    let restored: Document =
+        serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+    assert_eq!(doc, restored, "nested array-element fill must survive storage");
+    assert_eq!(
+        emitted,
+        restored.to_markdown(),
+        "markdown must be identical after a storage round-trip"
+    );
+}

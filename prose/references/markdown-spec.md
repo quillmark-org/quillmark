@@ -235,12 +235,16 @@ data payload.
   (arrays, maps) are also preserved: the pre-scan captures each nested
   comment with a structural path and the emitter re-injects it at the
   matching position.
-- **The `!must_fill` tag.** `!must_fill` is the single supported YAML tag; it marks a
-  top-level data field as a placeholder awaiting user input and round-trips
-  through emit. `!must_fill` may be applied to scalars (string, integer, float,
-  bool, null) and sequences; it is rejected on mappings because Quillmark's
-  schema has no top-level `type: object`. `!must_fill` may not be applied to a
-  `$` metadata key. Any other custom tag (`!include`, `!env`, …) is
+- **The `!must_fill` tag.** `!must_fill` marks a data field as a placeholder
+  awaiting user input and round-trips through emit. It applies both to a
+  top-level field and to a leaf nested inside an object or an array element
+  (e.g. `addr.street`, `recipients[0].name`); nested markers are recorded on
+  the value tree and survive markdown, live-wire, and storage round-trips.
+  `!must_fill` may be applied to scalars (string, integer, float, bool, null)
+  and sequences; it is rejected on a mapping (tag the leaves, not the
+  container). `!must_fill` may not be applied to a `$` metadata key. The older
+  spelling `!fill` is accepted as a deprecated input alias and normalised to
+  `!must_fill` on emit. Any other custom tag (`!include`, `!env`, …) is
   dropped with a `parse::unsupported_yaml_tag` warning; the scalar value is
   kept but the tag does not round-trip.
 
