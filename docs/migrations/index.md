@@ -12,6 +12,12 @@ guides in order.
 
 ## Available guides
 
+- [0.91 → 0.92](0.91-to-0.92.md) — the additive `$seed` system key carries
+  per-card-kind seed overlays (`seedCard` gains an optional overlay argument);
+  **and** the placeholder tag `!fill` is renamed to `!must_fill` with no alias —
+  a stale `!fill` silently loses its placeholder status (warning, not error), so
+  rewrite your sources. The storage schema bumps to `quillmark/document@0.92.0`
+  (gaining `seed` and per-field `nested_fills`; old blobs migrate).
 - [0.90 → 0.91](0.90-to-0.91.md) — the closing `~~~` of a card-yaml block must
   be at column zero (an indented `~~~` is payload, fixing silent truncation of
   block-scalar values containing tilde fences); data-field names

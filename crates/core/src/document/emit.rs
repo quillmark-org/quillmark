@@ -85,7 +85,7 @@ impl Document {
     ///   (empty-mapping omission, programmatic field removal) degrade to
     ///   own-line comments at the same indent so the comment text is preserved
     ///   even when its position shifts.
-    /// - **`!fill` tags**: round-trip via the `fill` flag on `PayloadItem::Field`.
+    /// - **`!must_fill` tags**: round-trip via the `fill` flag on `PayloadItem::Field`.
     ///
     /// # What is lost
     ///
@@ -128,29 +128,40 @@ fn emit_meta_line(out: &mut String, key: &str, value: &str, trailer: Option<&str
     out.push('\n');
 }
 
-/// Emit the `$ext: …` block. An empty map emits inline as `$ext: {}` so the
-/// declaration survives the round-trip; a non-empty map emits as a `$ext:`
-/// header followed by indented block-style children. `nested` carries
-/// comments with paths relative to the `$ext` value tree (the `$ext` key
-/// itself is not in the path) — the child mapping walker re-injects them
-/// at the matching positions.
-fn emit_ext_block(
+/// Emit an out-of-band meta block (`$ext` / `$seed`). An empty map emits inline
+/// as `<key>: {}` so the declaration survives the round-trip; a non-empty map
+/// emits as a `<key>:` header followed by indented block-style children.
+/// `nested` carries comments with paths relative to the value tree (the meta
+/// key itself is not in the path) — the child mapping walker re-injects them at
+/// the matching positions. Meta maps are out-of-band data and never carry
+/// `!must_fill`.
+fn emit_meta_block(
     out: &mut String,
+    key: &str,
     value: &serde_json::Map<String, JsonValue>,
     trailer: Option<&str>,
     nested: &[NestedComment],
 ) {
     if value.is_empty() {
-        out.push_str("$ext: {}");
+        out.push_str(key);
+        out.push_str(": {}");
         push_trailer(out, trailer);
         out.push('\n');
         return;
     }
-    out.push_str("$ext:");
+    out.push_str(key);
+    out.push(':');
     push_trailer(out, trailer);
     out.push('\n');
     let path: Vec<CommentPathSegment> = Vec::new();
-    emit_mapping_children(out, value, 2, &path, nested);
+    emit_mapping_children(out, value, 2, &path, nested, &[]);
+}
+
+/// `true` when `path` (relative to a field value) carries a `!must_fill`
+/// marker. Fill sets are small (one entry per placeholder), so a linear
+/// scan is cheaper than building a hash set per field.
+fn path_is_fill(fills: &[Vec<CommentPathSegment>], path: &[CommentPathSegment]) -> bool {
+    fills.iter().any(|p| p.as_slice() == path)
 }
 
 fn emit_block(out: &mut String, card: &Card) {
@@ -185,11 +196,12 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
             PayloadItem::Id { value } => {
                 emit_meta_line(out, "id", value, trailer);
             }
-            PayloadItem::Ext {
+            PayloadItem::Meta {
+                key,
                 value,
                 nested_comments,
             } => {
-                emit_ext_block(out, value, trailer, nested_comments);
+                emit_meta_block(out, key.as_str(), value, trailer, nested_comments);
             }
             PayloadItem::Field {
                 key,
@@ -200,6 +212,9 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
                 // Paths in `nested_comments` are relative to this field's
                 // value, so the container path starts empty.
                 let path: Vec<CommentPathSegment> = Vec::new();
+                // `!must_fill` markers on nested nodes, as paths relative to
+                // this field's value; the top-level marker rides on `*fill`.
+                let fills = value.fill_paths();
                 emit_field(
                     out,
                     key,
@@ -208,6 +223,7 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
                     *fill,
                     &path,
                     nested_comments,
+                    &fills,
                     trailer,
                 );
             }
@@ -311,8 +327,8 @@ fn push_trailer(out: &mut String, trailer: Option<&str>) {
 /// `path` is the container path for nested-comment interleaving. Empty objects
 /// are omitted; their inline trailer degrades to an own-line comment to
 /// preserve the text. Empty arrays emit `key: []\n`. When `fill` is `true`:
-/// scalars → `key: !fill <value>`, empty seqs → `key: !fill []`, null →
-/// `key: !fill`, non-empty seqs → `key: !fill\n  - …`. Mappings with `fill`
+/// scalars → `key: !must_fill <value>`, empty seqs → `key: !must_fill []`, null →
+/// `key: !must_fill`, non-empty seqs → `key: !must_fill\n  - …`. Mappings with `fill`
 /// are rejected at parse and never reach this path.
 #[allow(clippy::too_many_arguments)]
 fn emit_field(
@@ -323,6 +339,7 @@ fn emit_field(
     fill: bool,
     path: &[CommentPathSegment],
     nested: &[NestedComment],
+    fills: &[Vec<CommentPathSegment>],
     inline_trailer: Option<&str>,
 ) {
     if fill {
@@ -330,26 +347,26 @@ fn emit_field(
         emit_key_at(out, key, indent);
         match value {
             JsonValue::Null => {
-                out.push_str(": !fill");
+                out.push_str(": !must_fill");
                 push_trailer(out, inline_trailer);
                 out.push('\n');
             }
             JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {
-                out.push_str(": !fill ");
+                out.push_str(": !must_fill ");
                 emit_scalar(out, value);
                 push_trailer(out, inline_trailer);
                 out.push('\n');
             }
             JsonValue::Array(items) if items.is_empty() => {
-                out.push_str(": !fill []");
+                out.push_str(": !must_fill []");
                 push_trailer(out, inline_trailer);
                 out.push('\n');
             }
             JsonValue::Array(items) => {
-                out.push_str(": !fill");
+                out.push_str(": !must_fill");
                 push_trailer(out, inline_trailer);
                 out.push('\n');
-                emit_sequence_children(out, items, indent + 2, path, nested);
+                emit_sequence_children(out, items, indent + 2, path, nested, fills);
             }
             JsonValue::Object(_) => {
                 out.push_str(": ");
@@ -375,7 +392,7 @@ fn emit_field(
             out.push(':');
             push_trailer(out, inline_trailer);
             out.push('\n');
-            emit_mapping_children(out, map, indent + 2, path, nested);
+            emit_mapping_children(out, map, indent + 2, path, nested, fills);
         }
         JsonValue::Array(items) if items.is_empty() => {
             push_indent(out, indent);
@@ -390,7 +407,7 @@ fn emit_field(
             out.push(':');
             push_trailer(out, inline_trailer);
             out.push('\n');
-            emit_sequence_children(out, items, indent + 2, path, nested);
+            emit_sequence_children(out, items, indent + 2, path, nested, fills);
         }
         _ => {
             push_indent(out, indent);
@@ -409,13 +426,25 @@ fn emit_mapping_children(
     child_indent: usize,
     path: &[CommentPathSegment],
     nested: &[NestedComment],
+    fills: &[Vec<CommentPathSegment>],
 ) {
     for (i, (k, v)) in map.iter().enumerate() {
         emit_own_line_pending(out, path, i, child_indent, nested);
         let trailer = find_inline_trailer(out, path, i, child_indent, nested);
         let mut child_path = path.to_vec();
         child_path.push(CommentPathSegment::Key(k.clone()));
-        emit_field(out, k, v, child_indent, false, &child_path, nested, trailer);
+        let child_fill = path_is_fill(fills, &child_path);
+        emit_field(
+            out,
+            k,
+            v,
+            child_indent,
+            child_fill,
+            &child_path,
+            nested,
+            fills,
+            trailer,
+        );
     }
     emit_own_line_pending(out, path, map.len(), child_indent, nested);
     emit_orphan_inlines(out, path, map.len(), child_indent, nested);
@@ -427,13 +456,14 @@ fn emit_sequence_children(
     base_indent: usize,
     path: &[CommentPathSegment],
     nested: &[NestedComment],
+    fills: &[Vec<CommentPathSegment>],
 ) {
     for (i, item) in items.iter().enumerate() {
         emit_own_line_pending(out, path, i, base_indent, nested);
         let trailer = find_inline_trailer(out, path, i, base_indent, nested);
         let mut child_path = path.to_vec();
         child_path.push(CommentPathSegment::Index(i));
-        emit_sequence_item(out, item, base_indent, &child_path, nested, trailer);
+        emit_sequence_item(out, item, base_indent, &child_path, nested, fills, trailer);
     }
     emit_own_line_pending(out, path, items.len(), base_indent, nested);
     emit_orphan_inlines(out, path, items.len(), base_indent, nested);
@@ -442,12 +472,14 @@ fn emit_sequence_children(
 /// Emit a single `- <value>\n` sequence item. When the item is a mapping,
 /// if both the seq-item trailer and the first key's trailer are present,
 /// the inner one degrades to an own-line comment.
+#[allow(clippy::too_many_arguments)]
 fn emit_sequence_item(
     out: &mut String,
     value: &JsonValue,
     base_indent: usize,
     path: &[CommentPathSegment],
     nested: &[NestedComment],
+    fills: &[Vec<CommentPathSegment>],
     inline_trailer: Option<&str>,
 ) {
     match value {
@@ -477,8 +509,10 @@ fn emit_sequence_item(
                         k,
                         v,
                         base_indent + 2,
+                        path_is_fill(fills, &child_path),
                         &child_path,
                         nested,
+                        fills,
                         line_trailer,
                     );
                     if let (Some(_), Some(loser)) = (inline_trailer, inner_trailer) {
@@ -494,9 +528,10 @@ fn emit_sequence_item(
                         k,
                         v,
                         base_indent + 2,
-                        false,
+                        path_is_fill(fills, &child_path),
                         &child_path,
                         nested,
+                        fills,
                         inner_trailer,
                     );
                 }
@@ -515,7 +550,7 @@ fn emit_sequence_item(
             out.push('-');
             push_trailer(out, inline_trailer);
             out.push('\n');
-            emit_sequence_children(out, inner, base_indent + 2, path, nested);
+            emit_sequence_children(out, inner, base_indent + 2, path, nested, fills);
         }
         _ => {
             push_indent(out, base_indent);
@@ -528,15 +563,49 @@ fn emit_sequence_item(
 }
 
 /// Emit `key: <value>\n` where the caller already wrote `- ` on the current line.
+#[allow(clippy::too_many_arguments)]
 fn emit_field_inline(
     out: &mut String,
     key: &str,
     value: &JsonValue,
     child_indent: usize,
+    fill: bool,
     path: &[CommentPathSegment],
     nested: &[NestedComment],
+    fills: &[Vec<CommentPathSegment>],
     inline_trailer: Option<&str>,
 ) {
+    if fill {
+        emit_key(out, key);
+        match value {
+            JsonValue::Null => out.push_str(": !must_fill"),
+            JsonValue::Array(items) if items.is_empty() => out.push_str(": !must_fill []"),
+            JsonValue::Array(items) => {
+                out.push_str(": !must_fill");
+                push_trailer(out, inline_trailer);
+                out.push('\n');
+                emit_sequence_children(out, items, child_indent + 2, path, nested, fills);
+                return;
+            }
+            JsonValue::Object(_) => {
+                // `!must_fill` on a mapping is rejected at parse; emit plainly.
+                out.push(':');
+                push_trailer(out, inline_trailer);
+                out.push('\n');
+                if let JsonValue::Object(map) = value {
+                    emit_mapping_children(out, map, child_indent, path, nested, fills);
+                }
+                return;
+            }
+            _ => {
+                out.push_str(": !must_fill ");
+                emit_scalar(out, value);
+            }
+        }
+        push_trailer(out, inline_trailer);
+        out.push('\n');
+        return;
+    }
     match value {
         JsonValue::Object(map) if map.is_empty() => {
             emit_key(out, key);
@@ -549,7 +618,7 @@ fn emit_field_inline(
             out.push(':');
             push_trailer(out, inline_trailer);
             out.push('\n');
-            emit_mapping_children(out, map, child_indent, path, nested);
+            emit_mapping_children(out, map, child_indent, path, nested, fills);
         }
         JsonValue::Array(items) if items.is_empty() => {
             emit_key(out, key);
@@ -562,7 +631,7 @@ fn emit_field_inline(
             out.push(':');
             push_trailer(out, inline_trailer);
             out.push('\n');
-            emit_sequence_children(out, items, child_indent + 2, path, nested);
+            emit_sequence_children(out, items, child_indent + 2, path, nested, fills);
         }
         _ => {
             emit_key(out, key);
@@ -770,6 +839,7 @@ mod tests {
             false,
             &p("empty_map"),
             &[],
+            &[],
             None,
         );
         assert_eq!(out, "");
@@ -786,6 +856,7 @@ mod tests {
             0,
             false,
             &p("empty_map"),
+            &[],
             &[],
             Some("orphan"),
         );
@@ -804,6 +875,7 @@ mod tests {
             false,
             &p("empty_seq"),
             &[],
+            &[],
             None,
         );
         assert_eq!(out, "empty_seq: []\n");
@@ -820,6 +892,7 @@ mod tests {
             0,
             false,
             &p("title"),
+            &[],
             &[],
             Some("greeting"),
         );
@@ -838,6 +911,7 @@ mod tests {
             false,
             &p("outer"),
             &[],
+            &[],
             Some("note"),
         );
         assert_eq!(out, "outer: # note\n  inner: 1\n");
@@ -855,9 +929,10 @@ mod tests {
             true,
             &p("recipient"),
             &[],
+            &[],
             None,
         );
-        assert_eq!(out, "recipient: !fill\n");
+        assert_eq!(out, "recipient: !must_fill\n");
     }
 
     #[test]
@@ -872,9 +947,10 @@ mod tests {
             true,
             &p("dept"),
             &[],
+            &[],
             None,
         );
-        assert_eq!(out, "dept: !fill placeholder\n");
+        assert_eq!(out, "dept: !must_fill placeholder\n");
     }
 
     #[test]
@@ -889,9 +965,10 @@ mod tests {
             true,
             &p("dept"),
             &[],
+            &[],
             Some("note"),
         );
-        assert_eq!(out, "dept: !fill placeholder # note\n");
+        assert_eq!(out, "dept: !must_fill placeholder # note\n");
     }
 
     #[test]
@@ -906,8 +983,9 @@ mod tests {
             true,
             &p("count"),
             &[],
+            &[],
             None,
         );
-        assert_eq!(out, "count: !fill 42\n");
+        assert_eq!(out, "count: !must_fill 42\n");
     }
 }

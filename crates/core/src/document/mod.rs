@@ -34,10 +34,13 @@ pub mod prescan;
 pub(crate) mod yaml_hints;
 pub mod wire;
 
-pub use dto::{peek_schema_version, StorageError, StoredDocument, SCHEMA_V0_81_0, SCHEMA_V0_82_0};
+pub use dto::{
+    peek_schema_version, StorageError, StoredDocument, SCHEMA_V0_81_0, SCHEMA_V0_82_0,
+    SCHEMA_V0_92_0,
+};
 pub use edit::EditError;
 pub use meta::{is_valid_kind_name, validate_composable_kind, CardKindError};
-pub use payload::{Payload, PayloadItem};
+pub use payload::{MetaKey, Payload, PayloadItem};
 pub use wire::{CardWire, PayloadItemWire, WireError};
 
 /// Authoring-format rules for the `~~~` card-yaml markdown surface.
@@ -50,7 +53,7 @@ pub const FORMAT_RULES: &str = "Document format rules:
 \u{2022} Block opener and closer are EXACTLY `~~~` (three tildes, no info string). The `~~~card-yaml` opener is also accepted as a non-canonical alias.
 \u{2022} A blank line must precede every `~~~` block opener (unless it is line 1), and the opener must be at column zero (no leading spaces). An indented `~~~` is an ordinary code block, not a card.
 \u{2022} The first block is the root and MUST contain `$quill: <name>@<version>` and `$kind: main`. Additional blocks declare composable cards via `$kind: <card_kind>`.
-\u{2022} Reserved `$`-keys: `$quill`, `$kind`, `$id`, `$ext`. User fields use lowercase snake_case.
+\u{2022} Reserved `$`-keys: `$quill`, `$kind`, `$id`, `$ext`, `$seed`. User fields use lowercase snake_case.
 \u{2022} Prose body is the text after a block's closing `~~~`, up to the next opener or EOF. To include a literal fenced code block in prose, use a backtick fence (```); any column-zero `~~~` block is parsed as card metadata.
 \u{2022} `; delete-ok` fields carry a default \u{2014} keep the line, override the value, or delete the entire line to use the default. Do not write `field:`, `field: null`, or `field: ~` \u{2014} all three parse as explicit YAML null and fail validation.
 \u{2022} Numbers and booleans MUST be unquoted (`year: 2025`, `pinned: true`); quoting turns them into strings and fails validation.
@@ -133,6 +136,50 @@ impl Card {
     }
 }
 
+/// A parsed, per-kind **seed overlay**: the sparse fields (and optional body)
+/// a newly-added card of a given kind starts with. Built from a `$seed[<kind>]`
+/// entry of the main card's [`Card::seed`] map via [`SeedOverlay::from_json`],
+/// and layered over the quill's schema-example seed by
+/// [`crate::Quill::seed_card`] (overlay › example › absent). The reserved inner
+/// key `$body` carries the body override; every other key is a user field.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SeedOverlay {
+    /// Field-value overrides, keyed by field name.
+    pub fields: indexmap::IndexMap<String, crate::value::QuillValue>,
+    /// Body override, when the overlay declares a `$body` string.
+    pub body: Option<String>,
+}
+
+impl SeedOverlay {
+    /// Parse an overlay from a `$seed[<kind>]` JSON value, or `None` when it is
+    /// not a mapping. Use this to turn the raw overlay object a consumer reads
+    /// from the main card's `$seed` map ([`Card::seed`]) into a typed overlay to
+    /// hand to [`crate::Quill::seed_card`] — e.g.
+    /// `doc.main().seed().and_then(|m| m.get(kind)).and_then(SeedOverlay::from_json)`.
+    pub fn from_json(value: &serde_json::Value) -> Option<Self> {
+        value.as_object().map(Self::from_json_map)
+    }
+
+    /// Build an overlay from a single `$seed[<kind>]` JSON map: the reserved
+    /// `$body` string becomes [`body`](Self::body); every other entry becomes
+    /// a field. A non-string `$body` is silently ignored (no body override) —
+    /// the editor-surface validator skips `$body`, so it is not flagged.
+    fn from_json_map(map: &serde_json::Map<String, serde_json::Value>) -> Self {
+        let mut fields = indexmap::IndexMap::new();
+        let mut body = None;
+        for (key, value) in map {
+            if key == "$body" {
+                if let Some(s) = value.as_str() {
+                    body = Some(s.to_string());
+                }
+            } else {
+                fields.insert(key.clone(), crate::value::QuillValue::from_json(value.clone()));
+            }
+        }
+        SeedOverlay { fields, body }
+    }
+}
+
 /// A fully-parsed Quillmark document. Serde routes through [`StoredDocument`];
 /// for the plate wire shape see [`Document::to_plate_json`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -159,6 +206,10 @@ impl Document {
         debug_assert!(
             cards.iter().all(|c| c.quill().is_none()),
             "composable cards must not carry `$quill`"
+        );
+        debug_assert!(
+            cards.iter().all(|c| c.seed().is_none()),
+            "composable cards must not carry `$seed`"
         );
         Self {
             main,

@@ -101,9 +101,26 @@ export interface QuillMetadata {
 /// by `pushCard` / `insertCard` / `Document.makeCard`.
 #[wasm_bindgen(typescript_custom_section)]
 const CARD_TS: &'static str = r#"
+/**
+ * A path to a value nested inside a field `value`: `string` keys and
+ * `number` array indices, e.g. `["addr", "street"]` or `["recipients", 0, "name"]`.
+ */
+export type PathStep = string | number;
+
 /** A field or comment entry in a `Card.payloadItems` list. */
 export type PayloadItem =
-    | { type: "field"; key: string; value: unknown; fill?: boolean }
+    | {
+          type: "field";
+          key: string;
+          value: unknown;
+          fill?: boolean;
+          /**
+           * Paths to `!must_fill` markers nested *inside* `value` (the `value`
+           * projection itself is fill-free). Absent when the field has no nested
+           * placeholders. Preserved across `pushCard` / `makeCard`.
+           */
+          nestedFills?: PathStep[][];
+      }
     | { type: "comment"; text: string; inline?: boolean };
 
 /**
@@ -114,14 +131,16 @@ export type PayloadItem =
  *
  * `$` system entries are hoisted to named fields: `kind` (the `$kind`, empty
  * string when none), optional `quill` (the `$quill` `name@version`, main card
- * only), optional `id` (`$id`), and optional `ext` (`$ext`). `payloadItems`
- * carries user fields and comments in order.
+ * only), optional `id` (`$id`), optional `ext` (`$ext`), and optional `seed`
+ * (the `$seed` per-kind overlay map, main card only). `payloadItems` carries
+ * user fields and comments in order.
  */
 export interface Card {
     kind: string;
     quill?: string;
     id?: string;
     ext?: Record<string, unknown>;
+    seed?: Record<string, unknown>;
     payloadItems: PayloadItem[];
     body: string;
 }
@@ -431,13 +450,28 @@ impl Quill {
     }
 
     /// Seed a starter composable `Card` of the given kind (carries `$kind`),
-    /// committing its fields' `example:` values and leaving every other field
-    /// absent. Returns `undefined` if `cardKind` is not declared in this
-    /// quill's schema, else a `Card` that feeds straight into
-    /// `Document.pushCard` / `insertCard`.
+    /// layering an optional per-kind seed `overlay` over the schema-example
+    /// base (`overlay › example › absent`). Returns `undefined` if `cardKind`
+    /// is not declared in this quill's schema, else a `Card` that feeds
+    /// straight into `Document.pushCard` / `insertCard`.
+    ///
+    /// Pass `document.main.seed?.[cardKind]` as `overlay` so a card added to a
+    /// template-derived document inherits its curated starting values; omit it
+    /// (or pass `undefined` / `null`) for the bare schema seed. `overlay` is a
+    /// plain object — this reads the document, it does not mutate it.
     #[wasm_bindgen(js_name = seedCard, unchecked_return_type = "Card | undefined")]
-    pub fn seed_card(&self, card_kind: &str) -> Result<JsValue, JsValue> {
-        match self.inner.seed_card(card_kind) {
+    pub fn seed_card(
+        &self,
+        card_kind: &str,
+        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown> | undefined")] overlay: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let overlay = if overlay.is_undefined() || overlay.is_null() {
+            None
+        } else {
+            let json = js_value_to_json(overlay, "seedCard")?;
+            quillmark_core::SeedOverlay::from_json(&json)
+        };
+        match self.inner.seed_card(card_kind, overlay.as_ref()) {
             Some(core_card) => card_to_js(&core_card),
             None => Ok(JsValue::UNDEFINED),
         }
@@ -508,7 +542,7 @@ impl Document {
     /// the tag advances only when the wire format changes, not on every release.
     #[wasm_bindgen(js_name = currentSchemaVersion)]
     pub fn current_schema_version() -> String {
-        quillmark_core::document::SCHEMA_V0_82_0.to_string()
+        quillmark_core::document::SCHEMA_V0_92_0.to_string()
     }
 
     /// Authoring-format rules for the card-yaml markdown surface. The canonical
@@ -625,7 +659,7 @@ impl Document {
 
     // ── Mutators ──────────────────────────────────────────────────────────────
 
-    /// Update a payload field on the main card. Clears any existing `!fill` marker.
+    /// Update a payload field on the main card. Clears any existing `!must_fill` marker.
     ///
     /// Throws if `name` does not match `[a-z_][a-z0-9_]*`.
     #[wasm_bindgen(js_name = setField)]
@@ -640,7 +674,7 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Update a payload field on the main card and mark it as `!fill`.
+    /// Update a payload field on the main card and mark it as `!must_fill`.
     /// Throws on invalid name (see [`setField`](Document::set_field)).
     #[wasm_bindgen(js_name = setFill)]
     pub fn set_fill(&mut self, name: &str, value: JsValue) -> Result<(), JsValue> {
@@ -712,6 +746,28 @@ impl Document {
     #[wasm_bindgen(js_name = removeExtNamespace)]
     pub fn remove_ext_namespace(&mut self, namespace: &str) -> Result<JsValue, JsValue> {
         json_value_to_js(self.inner.main_mut().remove_ext_namespace(namespace))
+    }
+
+    /// Merge a card-kind's seed `overlay` into the main card's `$seed` map
+    /// under `cardKind`, preserving sibling kinds. Sets the starting values
+    /// new cards of that kind spawn with. Throws if `overlay` cannot be
+    /// serialized or nests too deep.
+    #[wasm_bindgen(js_name = setSeedNamespace)]
+    pub fn set_seed_namespace(&mut self, card_kind: &str, overlay: JsValue) -> Result<(), JsValue> {
+        let json = js_value_to_json(overlay, "setSeedNamespace")?;
+        self.inner
+            .main_mut()
+            .set_seed_namespace(card_kind, json)
+            .map_err(|e| edit_error_to_js(&e))?;
+        Ok(())
+    }
+
+    /// Remove `cardKind` from the main card's `$seed` map, returning its
+    /// overlay or `undefined`; drops `$seed` entirely once empty. Sibling
+    /// kinds survive.
+    #[wasm_bindgen(js_name = removeSeedNamespace)]
+    pub fn remove_seed_namespace(&mut self, card_kind: &str) -> Result<JsValue, JsValue> {
+        json_value_to_js(self.inner.main_mut().remove_seed_namespace(card_kind))
     }
 
     /// Replace the `$ext` map on the composable card at `index`. Throws if out
@@ -818,6 +874,7 @@ impl Document {
                 key,
                 value,
                 fill: false,
+                nested_fills: Vec::new(),
             })
             .collect();
         let wire = quillmark_core::CardWire {
@@ -825,6 +882,7 @@ impl Document {
             quill: None,
             id: None,
             ext: None,
+            seed: None,
             payload_items,
             body: body.unwrap_or_default(),
         };
@@ -1024,7 +1082,7 @@ fn js_to_card(value: &JsValue) -> Result<quillmark_core::Card, JsValue> {
     // a flat `{ kind, fields }` object fails loudly instead of yielding a
     // silently-empty card.
     if let Some(obj) = value.dyn_ref::<js_sys::Object>() {
-        const ALLOWED: &[&str] = &["kind", "quill", "id", "ext", "payloadItems", "body"];
+        const ALLOWED: &[&str] = &["kind", "quill", "id", "ext", "seed", "payloadItems", "body"];
         for key in js_sys::Object::keys(obj).iter() {
             if let Some(k) = key.as_string() {
                 if !ALLOWED.contains(&k.as_str()) {

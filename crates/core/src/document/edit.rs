@@ -87,8 +87,9 @@ fn check_field(name: &str, value: &serde_json::Value) -> Result<(), EditError> {
     })
 }
 
-/// Depth-bound an `$ext` map (its name is fixed; only depth applies).
-fn check_ext_depth(map: &serde_json::Map<String, serde_json::Value>) -> Result<(), EditError> {
+/// Depth-bound an out-of-band meta map (`$ext` / `$seed`). Both ride the same
+/// recursive emit/DTO paths, so they carry the same §8 depth bound.
+fn check_meta_depth(map: &serde_json::Map<String, serde_json::Value>) -> Result<(), EditError> {
     let as_value = serde_json::Value::Object(map.clone());
     if crate::value::json_depth_exceeds(&as_value, crate::document::limits::MAX_YAML_DEPTH) {
         return Err(EditError::ValueTooDeep {
@@ -218,7 +219,7 @@ impl Card {
         Ok(Card::from_parts(payload, String::new()))
     }
 
-    /// Set a payload field, clearing any `!fill` marker on that key.
+    /// Set a payload field, clearing any `!must_fill` marker on that key.
     ///
     /// Returns [`EditError::InvalidFieldName`] when `name` does not match
     /// `[a-z_][a-z0-9_]*`.
@@ -228,8 +229,8 @@ impl Card {
         Ok(())
     }
 
-    /// Set a payload field and mark it as a `!fill` placeholder.
-    /// `Null` emits as `key: !fill`; scalars/sequences as `key: !fill <value>`.
+    /// Set a payload field and mark it as a `!must_fill` placeholder.
+    /// `Null` emits as `key: !must_fill`; scalars/sequences as `key: !must_fill <value>`.
     /// Same validation as [`Card::set_field`].
     pub fn set_fill(&mut self, name: &str, value: QuillValue) -> Result<(), EditError> {
         check_field(name, value.as_json())?;
@@ -262,7 +263,7 @@ impl Card {
         &mut self,
         value: serde_json::Map<String, serde_json::Value>,
     ) -> Result<(), EditError> {
-        check_ext_depth(&value)?;
+        check_meta_depth(&value)?;
         self.payload_mut().set_ext(value);
         Ok(())
     }
@@ -296,7 +297,7 @@ impl Card {
             .cloned()
             .unwrap_or_default();
         map.insert(namespace.into(), value);
-        check_ext_depth(&map)?;
+        check_meta_depth(&map)?;
         self.payload_mut().take_ext();
         self.payload_mut().set_ext(map);
         Ok(())
@@ -317,6 +318,46 @@ impl Card {
         let removed = map.remove(namespace);
         if !map.is_empty() {
             self.payload_mut().set_ext(map);
+        }
+        removed
+    }
+
+    /// The raw `$seed` map (keyed by card-kind), or `None`. For a parsed,
+    /// per-kind overlay, index this map by kind and pass the entry to
+    /// [`crate::SeedOverlay::from_json`]. Only the main card carries `$seed`.
+    pub fn seed(&self) -> Option<&serde_json::Map<String, serde_json::Value>> {
+        self.payload().seed()
+    }
+
+    /// Merge a card-kind's seed overlay `value` into the card's `$seed` map
+    /// under `card_kind`, creating the map when absent and replacing any
+    /// existing overlay for that kind. Sibling kinds are preserved — this is
+    /// the per-kind-safe writer, the seed analogue of
+    /// [`Card::set_ext_namespace`]. Returns [`EditError::ValueTooDeep`] when
+    /// the merged map nests past the §8 depth limit; the card is unchanged on
+    /// error.
+    pub fn set_seed_namespace(
+        &mut self,
+        card_kind: impl Into<String>,
+        value: serde_json::Value,
+    ) -> Result<(), EditError> {
+        let mut map = self.payload_mut().seed().cloned().unwrap_or_default();
+        map.insert(card_kind.into(), value);
+        check_meta_depth(&map)?;
+        self.payload_mut().take_seed();
+        self.payload_mut().set_seed(map);
+        Ok(())
+    }
+
+    /// Remove `card_kind` from the card's `$seed` map, returning the overlay
+    /// stored there (or `None`). When removing the last kind empties the map,
+    /// the `$seed` entry is dropped entirely (not left as `$seed: {}`).
+    /// The seed analogue of [`Card::remove_ext_namespace`].
+    pub fn remove_seed_namespace(&mut self, card_kind: &str) -> Option<serde_json::Value> {
+        let mut map = self.payload_mut().take_seed()?;
+        let removed = map.remove(card_kind);
+        if !map.is_empty() {
+            self.payload_mut().set_seed(map);
         }
         removed
     }

@@ -2293,6 +2293,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "quillmark-dotnet"
+version = "0.91.0"
+dependencies = [
+ "quillmark",
+ "quillmark-core",
+ "serde_json",
+]
+
+[[package]]
 name = "quillmark-fixtures"
 version = "0.91.0"
 

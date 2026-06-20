@@ -166,3 +166,53 @@ def test_seed_main_and_card(tmp_path):
     assert "NOTE TAG" in json.dumps(note), "tag example must be committed"
 
     assert quill.seed_card("missing") is None, "unknown kind must be None"
+
+
+def test_seed_card_with_overlay_layers_over_example(tmp_path):
+    """seed_card(kind, overlay) layers the overlay over the schema example
+    (overlay > example); without an overlay the bare example is used."""
+    quill = make_quill(tmp_path)
+
+    # Override `tag`; pin `body` (a default-only field with no example).
+    card = quill.seed_card("note", {"tag": "PINNED", "body": "Pinned body"})
+    blob = json.dumps(card)
+    assert "PINNED" in blob, "overlay value wins over the example"
+    assert "Pinned body" in blob, "overlay can pin a default-only field"
+
+    bare = json.dumps(quill.seed_card("note"))
+    assert "NOTE TAG" in bare and "PINNED" not in bare
+
+
+def test_document_seed_and_set_seed_namespace_round_trip(tmp_path):
+    """main['seed'][kind] reads what set_seed_namespace wrote; the overlay
+    feeds straight back into seed_card; remove_seed_namespace clears it."""
+
+    def seed_of(document, kind):
+        # The per-kind overlay lives on the main card's `$seed` map; there is
+        # no `Document.seed` convenience.
+        return (document.main["seed"] or {}).get(kind)
+
+    quill = make_quill(tmp_path)
+    doc = Document.from_markdown(_md())  # empty main card
+
+    assert seed_of(doc, "note") is None
+    doc.set_seed_namespace("note", {"tag": "WRITTEN"})
+    assert seed_of(doc, "note")["tag"] == "WRITTEN"
+
+    card = quill.seed_card("note", seed_of(doc, "note"))
+    assert "WRITTEN" in json.dumps(card)
+
+    doc.remove_seed_namespace("note")
+    assert seed_of(doc, "note") is None
+
+
+def test_seed_overlay_validation_is_advisory(tmp_path):
+    """A type-mismatched overlay surfaces a WARNING rooted at its seed path —
+    seed overlays are advisory and never gate render."""
+    quill = make_quill(tmp_path)
+    doc = Document.from_markdown(_md("$seed:", "  note:", "    tag: 123"))
+
+    diags = quill.validate(doc)
+    seed_diags = [d for d in diags if (d.get("path") or "").startswith("$seed")]
+    assert seed_diags, f"expected a seed-rooted diagnostic; got: {diags}"
+    assert all(d.get("severity") == "warning" for d in seed_diags)

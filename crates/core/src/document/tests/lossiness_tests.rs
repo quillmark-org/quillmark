@@ -1,4 +1,4 @@
-//! Round-trip tests for comments, `!fill`, and custom tags.
+//! Round-trip tests for comments, `!must_fill`, and custom tags.
 //!
 //! Both own-line and trailing inline YAML comments round-trip at their
 //! source position. Own-line comments in a block's payload (below the
@@ -6,7 +6,7 @@
 //! host disappears at emit
 //! time (empty-mapping omission, programmatic field removal) degrade to
 //! own-line comments at the same indent so the comment text is preserved
-//! even when its position shifts. `!fill` on scalars and sequences round-
+//! even when its position shifts. `!must_fill` on scalars and sequences round-
 //! trips. String quoting is normalised to saphyr's canonical form (plain
 //! when safe, quoted when the value would otherwise be misread on
 //! re-parse) — type fidelity is guaranteed; the exact quoting style is
@@ -132,12 +132,12 @@ fn block_scalar_sequence_items_round_trip() {
 
 // ── Category: Custom tags ─────────────────────────────────────────────────────
 
-/// `!fill` tags round-trip; other custom tags are rejected with a warning
+/// `!must_fill` tags round-trip; other custom tags are rejected with a warning
 /// and the tag is dropped.
 #[test]
 fn custom_tags_lose_tag_but_keep_value() {
-    // `!fill` case: round-trip with fill preserved.
-    let src = "~~~card-yaml\n$quill: q\n$kind: main\nmemo_from: !fill 2d lt example\n~~~\n";
+    // `!must_fill` case: round-trip with fill preserved.
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\nmemo_from: !must_fill 2d lt example\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
 
     let fm = doc.main().payload();
@@ -150,8 +150,8 @@ fn custom_tags_lose_tag_but_keep_value() {
 
     let emitted = doc.to_markdown();
     assert!(
-        emitted.contains("memo_from: !fill"),
-        "`!fill` tag must round-trip\nGot:\n{}",
+        emitted.contains("memo_from: !must_fill"),
+        "`!must_fill` tag must round-trip\nGot:\n{}",
         emitted
     );
 
@@ -161,7 +161,7 @@ fn custom_tags_lose_tag_but_keep_value() {
         "fill marker must survive a full round-trip"
     );
 
-    // Non-`!fill` tag case: warning + dropped tag.
+    // Non-`!must_fill` tag case: warning + dropped tag.
     let src2 = "~~~card-yaml\n$quill: q\n$kind: main\nmemo_from: !include value.txt\n~~~\n";
     let out = Document::from_markdown_with_warnings(src2).unwrap();
     assert!(
@@ -179,10 +179,123 @@ fn custom_tags_lose_tag_but_keep_value() {
     );
 }
 
-/// `!fill` on a bare key (no value) emits `key: !fill` and preserves null.
+/// `!fill` is not an alias for `!must_fill`: it is treated like any other
+/// noncanonical tag — dropped with an unsupported-tag warning, the value kept,
+/// and no fill marker recorded.
+#[test]
+fn fill_tag_is_rejected_as_noncanonical() {
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\nmemo_from: !fill draft\n~~~\n";
+    let out = Document::from_markdown_with_warnings(src).unwrap();
+
+    let fm = out.document.main().payload();
+    assert_eq!(fm.get("memo_from").and_then(|v| v.as_str()), Some("draft"));
+    assert!(!fm.is_fill("memo_from"), "`!fill` must not record a fill marker");
+    assert!(
+        out.warnings
+            .iter()
+            .any(|w| w.code.as_deref() == Some("parse::unsupported_yaml_tag")),
+        "`!fill` must warn as an unsupported tag; got: {:?}",
+        out.warnings
+    );
+
+    // The dropped tag means a plain value: no `!must_fill`, no `!fill` on emit.
+    let emitted = out.document.to_markdown();
+    assert!(
+        !emitted.contains("!fill") && !emitted.contains("!must_fill"),
+        "rejected tag must not reappear on emit\nGot:\n{}",
+        emitted
+    );
+}
+
+/// `!must_fill` in a position prescan cannot lift — inside a flow collection
+/// or on a bare sequence element — would be silently dropped by the YAML
+/// parser, so it is reported with a warning rather than lost quietly.
+/// Block-style nested markers (the supported form) do not warn.
+#[test]
+fn unsupported_fill_position_warns_not_silently_dropped() {
+    let code = "parse::fill_marker_unsupported_position";
+    let warns = |src: &str| {
+        Document::from_markdown_with_warnings(src)
+            .unwrap()
+            .warnings
+            .iter()
+            .any(|w| w.code.as_deref() == Some(code))
+    };
+
+    // Flow collection containing a marker.
+    assert!(
+        warns("~~~card-yaml\n$quill: q\n$kind: main\naddr: {street: !must_fill, city: x}\n~~~\n"),
+        "flow-collection marker must warn"
+    );
+    // Bare sequence element.
+    assert!(
+        warns("~~~card-yaml\n$quill: q\n$kind: main\ntags:\n  - !must_fill\n  - a\n~~~\n"),
+        "bare sequence-element marker must warn"
+    );
+    // Supported block-style nested marker must NOT warn.
+    assert!(
+        !warns("~~~card-yaml\n$quill: q\n$kind: main\naddr:\n  street: !must_fill\n  city: x\n~~~\n"),
+        "block-style nested marker must not warn"
+    );
+    // A quoted scalar that merely contains the literal text must NOT warn.
+    assert!(
+        !warns("~~~card-yaml\n$quill: q\n$kind: main\nnote: \"see !must_fill docs\"\n~~~\n"),
+        "quoted literal must not warn"
+    );
+}
+
+/// `!must_fill` on a nested mapping leaf is captured on that leaf's tree
+/// node and round-trips at the correct depth.
+#[test]
+fn nested_must_fill_round_trips() {
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\naddr:\n  street: !must_fill\n  city: Springfield\n~~~\n";
+    let doc = Document::from_markdown(src).unwrap();
+
+    let fm = doc.main().payload();
+    let addr = fm.get("addr").unwrap();
+    assert!(
+        addr.get("street").unwrap().fill(),
+        "nested `street` must carry the fill marker"
+    );
+    assert!(!addr.get("city").unwrap().fill(), "`city` must not");
+    assert_eq!(addr.get("city").unwrap().as_str(), Some("Springfield"));
+    // The marker is on the leaf node, not the parent object.
+    assert!(!addr.fill());
+
+    let emitted = doc.to_markdown();
+    assert!(
+        emitted.contains("street: !must_fill") && emitted.contains("city: Springfield"),
+        "nested fill must round-trip at depth\nGot:\n{}",
+        emitted
+    );
+
+    let doc2 = Document::from_markdown(&emitted).unwrap();
+    assert!(doc2
+        .main()
+        .payload()
+        .get("addr")
+        .unwrap()
+        .get("street")
+        .unwrap()
+        .fill());
+}
+
+/// `!must_fill` on a nested mapping (object-valued node) is rejected, the
+/// same as at the top level.
+#[test]
+fn nested_must_fill_on_mapping_is_rejected() {
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\nouter:\n  inner: !must_fill\n    leaf: 1\n~~~\n";
+    let err = Document::from_markdown(src);
+    assert!(
+        err.is_err(),
+        "`!must_fill` on an object-valued nested key must be rejected"
+    );
+}
+
+/// `!must_fill` on a bare key (no value) emits `key: !must_fill` and preserves null.
 #[test]
 fn fill_tag_bare_null_round_trip() {
-    let src = "~~~card-yaml\n$quill: q\n$kind: main\nrecipient: !fill\n~~~\n";
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\nrecipient: !must_fill\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let fm = doc.main().payload();
@@ -192,17 +305,17 @@ fn fill_tag_bare_null_round_trip() {
 
     let emitted = doc.to_markdown();
     assert!(
-        emitted.contains("recipient: !fill\n"),
-        "bare `!fill` must round-trip as `key: !fill`\nGot:\n{}",
+        emitted.contains("recipient: !must_fill\n"),
+        "bare `!must_fill` must round-trip as `key: !must_fill`\nGot:\n{}",
         emitted
     );
 }
 
-/// `!fill` on a top-level block sequence round-trips, preserving items and
+/// `!must_fill` on a top-level block sequence round-trips, preserving items and
 /// the fill marker.
 #[test]
 fn fill_tag_block_sequence_round_trip() {
-    let src = "~~~card-yaml\n$quill: q\n$kind: main\nrecipient: !fill\n  - Dr. Who\n  - 1 TARDIS Lane\n~~~\n";
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\nrecipient: !must_fill\n  - Dr. Who\n  - 1 TARDIS Lane\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     let fm = doc.main().payload();
@@ -215,8 +328,8 @@ fn fill_tag_block_sequence_round_trip() {
 
     let emitted = doc.to_markdown();
     assert!(
-        emitted.contains("recipient: !fill\n"),
-        "`!fill` on sequence must emit `key: !fill` before the block\nGot:\n{}",
+        emitted.contains("recipient: !must_fill\n"),
+        "`!must_fill` on sequence must emit `key: !must_fill` before the block\nGot:\n{}",
         emitted
     );
 
@@ -225,10 +338,10 @@ fn fill_tag_block_sequence_round_trip() {
     assert_eq!(doc2, doc, "full round-trip must be equal");
 }
 
-/// `!fill` on a flow sequence round-trips (normalised to block form).
+/// `!must_fill` on a flow sequence round-trips (normalised to block form).
 #[test]
 fn fill_tag_flow_sequence_round_trip() {
-    let src = "~~~card-yaml\n$quill: q\n$kind: main\ntags: !fill [a, b, c]\n~~~\n";
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\ntags: !must_fill [a, b, c]\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
     let fm = doc.main().payload();
     assert!(fm.is_fill("tags"));
@@ -243,10 +356,10 @@ fn fill_tag_flow_sequence_round_trip() {
     assert_eq!(doc2, doc);
 }
 
-/// `!fill` on an empty sequence round-trips as `key: !fill []`.
+/// `!must_fill` on an empty sequence round-trips as `key: !must_fill []`.
 #[test]
 fn fill_tag_empty_sequence_round_trip() {
-    let src = "~~~card-yaml\n$quill: q\n$kind: main\nitems: !fill []\n~~~\n";
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\nitems: !must_fill []\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
     let fm = doc.main().payload();
     assert!(fm.is_fill("items"));
@@ -257,8 +370,8 @@ fn fill_tag_empty_sequence_round_trip() {
 
     let emitted = doc.to_markdown();
     assert!(
-        emitted.contains("items: !fill []\n"),
-        "empty fill-sequence must round-trip as `key: !fill []`\nGot:\n{}",
+        emitted.contains("items: !must_fill []\n"),
+        "empty fill-sequence must round-trip as `key: !must_fill []`\nGot:\n{}",
         emitted
     );
 
@@ -266,28 +379,28 @@ fn fill_tag_empty_sequence_round_trip() {
     assert_eq!(doc2, doc);
 }
 
-/// `!fill` on a top-level mapping is rejected at parse.
+/// `!must_fill` on a top-level mapping is rejected at parse.
 #[test]
 fn fill_tag_mapping_rejected() {
-    let src = "~~~card-yaml\n$quill: q\n$kind: main\nx: !fill {a: 1}\n~~~\n";
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\nx: !must_fill {a: 1}\n~~~\n";
     let err = Document::from_markdown(src).unwrap_err();
     assert!(
-        err.to_string().contains("!fill") && err.to_string().contains("mapping"),
+        err.to_string().contains("!must_fill") && err.to_string().contains("mapping"),
         "expected mapping-rejection error; got: {}",
         err
     );
 }
 
-/// `!fill` on every supported scalar type round-trips with the correct type.
+/// `!must_fill` on every supported scalar type round-trips with the correct type.
 #[test]
 fn fill_tag_all_scalar_types_round_trip() {
     let src = concat!(
         "~~~card-yaml\n$quill: q\n$kind: main\n",
-        "s: !fill hello\n",
-        "i: !fill 42\n",
-        "f: !fill 3.14\n",
-        "b: !fill true\n",
-        "n: !fill\n",
+        "s: !must_fill hello\n",
+        "i: !must_fill 42\n",
+        "f: !must_fill 3.14\n",
+        "b: !must_fill true\n",
+        "n: !must_fill\n",
         "~~~\n",
     );
 
@@ -531,10 +644,10 @@ fn card_payload_comment_round_trips() {
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
 
-/// Inline comment with `!fill` round-trips with the tag intact.
+/// Inline comment with `!must_fill` round-trips with the tag intact.
 #[test]
 fn fill_with_inline_comment_round_trips() {
-    let src = "~~~card-yaml\n$quill: q\n$kind: main\ndept: !fill Sales # placeholder\n~~~\n";
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\ndept: !must_fill Sales # placeholder\n~~~\n";
 
     let doc = Document::from_markdown(src).unwrap();
     assert!(
@@ -544,8 +657,8 @@ fn fill_with_inline_comment_round_trips() {
 
     let emitted = doc.to_markdown();
     assert!(
-        emitted.contains("dept: !fill Sales # placeholder"),
-        "`!fill` and inline comment must round-trip together\nGot:\n{}",
+        emitted.contains("dept: !must_fill Sales # placeholder"),
+        "`!must_fill` and inline comment must round-trip together\nGot:\n{}",
         emitted
     );
 
@@ -656,4 +769,45 @@ fn own_line_then_inline_round_trip() {
     let doc2 = Document::from_markdown(&emitted).unwrap();
     let emitted2 = doc2.to_markdown();
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
+}
+
+/// A `!must_fill` marker on the *first* key of a sequence-item mapping
+/// (`- key: !must_fill`) sits on the dash line, which Case 4 never sees.
+/// Prescan inspects it inline so the marker survives parse and round-trips.
+#[test]
+fn seq_item_inline_first_key_fill_round_trips() {
+    let src = "~~~card-yaml\n$quill: q\n$kind: main\nrecipients:\n  - name: !must_fill\n    role: lead\n~~~\n\nBody.\n";
+    let doc = Document::from_markdown(src).unwrap();
+    let emitted = doc.to_markdown();
+    assert!(
+        emitted.contains("- name: !must_fill"),
+        "first-key fill marker must survive round-trip\nGot:\n{}",
+        emitted
+    );
+    // Non-fill sibling keys are unaffected.
+    assert!(emitted.contains("role: lead"), "Got:\n{}", emitted);
+    let emitted2 = Document::from_markdown(&emitted).unwrap().to_markdown();
+    assert_eq!(emitted, emitted2, "round-trip must be idempotent");
+}
+
+/// A `!must_fill` marker on an own-line (non-first) key inside an array element
+/// survives both the markdown round-trip and the storage (serde) round-trip,
+/// and a second emit cycle is idempotent.
+#[test]
+fn array_element_nested_fill_survives_markdown_and_storage() {
+    let src = "~~~card-yaml\n$quill: q@0.1\n$kind: main\nrecipients:\n  - name: Alice\n    org: !must_fill\n~~~\n\nBody.\n";
+    let doc = Document::from_markdown(src).unwrap();
+    let emitted = doc.to_markdown();
+    assert!(emitted.contains("org: !must_fill"), "Got:\n{}", emitted);
+    assert!(emitted.contains("name: Alice"), "Got:\n{}", emitted);
+
+    // Storage (serde) round-trip preserves the nested marker on recipients[0].org.
+    let restored: Document =
+        serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+    assert_eq!(doc, restored, "nested array-element fill must survive storage");
+    assert_eq!(
+        emitted,
+        restored.to_markdown(),
+        "markdown must be identical after a storage round-trip"
+    );
 }

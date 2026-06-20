@@ -391,12 +391,7 @@ impl World for QuillWorld {
     }
 
     fn font(&self, index: usize) -> Option<Font> {
-        // First check if we have an asset font at this index
-        if let Some(font) = self.fonts.get(index) {
-            return Some(font.clone());
-        }
-
-        None
+        self.fonts.get(index).cloned()
     }
 
     fn today(&self, offset: Option<Duration>) -> Option<Datetime> {

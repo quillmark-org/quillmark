@@ -157,18 +157,18 @@ with the same payload.
 ### 3.3 System Metadata (`$`)
 
 A block's YAML payload may contain **`$`-prefixed reserved keys** that carry
-system metadata. The set is **closed**: only `$quill`, `$kind`, `$id`, and
-`$ext` are accepted. Any other `$`-prefixed key is a parse error. These
+system metadata. The set is **closed**: only `$quill`, `$kind`, `$id`,
+`$ext`, and `$seed` are accepted. Any other `$`-prefixed key is a parse error. These
 keys are ordinary YAML — they are read by the same YAML parser that handles
 the rest of the payload — but they are **extracted** from the user field
 set after parsing; they are not part of the data model's field map (§3.4).
 
 In the typed model, the `$` entries live as typed variants of the
 unified payload-item list (`PayloadItem::Quill`, `PayloadItem::Kind`,
-`PayloadItem::Id`, `PayloadItem::Ext`), interleaved in source order with
-user fields and YAML comments. They are surfaced through typed
-accessors — `card.quill()`, `card.kind()`, `card.id()`, `card.ext()` —
-which return `Option<…>`. On a successfully parsed document the root
+`PayloadItem::Id`, `PayloadItem::Ext`, `PayloadItem::Seed`), interleaved in
+source order with user fields and YAML comments. They are surfaced through typed
+accessors — `card.quill()`, `card.kind()`, `card.id()`, `card.ext()`,
+`card.seed()` — which return `Option<…>`. On a successfully parsed document the root
 card always returns `Some(_)` for both `quill()` and `kind()` (with
 `kind() == "main"`); composable cards return `None` for `quill()` and
 `Some(_)` for `kind()` (any value other than `"main"`). The root's
@@ -198,16 +198,25 @@ author wrote the line.
   backends (§5). Bespoke consumers namespace their state inside the
   map — e.g. `$ext.presentation.title` for an editor-side card rename.
   An empty `$ext: {}` is preserved as a distinct, explicit declaration.
-
-Rules:
+- **`$seed: <mapping>`** — an optional **mapping keyed by composable
+  card-kind**, present on the **root block only**; a composable block carrying
+  `$seed` is a parse error, exactly like `$quill`. Each entry is a *sparse
+  overlay* — the user fields (plus an optional reserved `$body` string) that a
+  newly-added card of that kind starts with, layered over the quill's
+  schema-`example:` seed (`overlay › example › absent`). Required to be a YAML
+  mapping; scalars and sequences are rejected. Like `$ext` it carries verbatim
+  through Markdown and storage DTO round-trips and **never** appears in the
+  plate JSON consumed by backends; unlike `$ext` the seeding layer interprets
+  it. Overlays are validated advisorily by
+  `Quill::validate` and never gate render. An empty `$seed: {}` is preserved.
 
 - `$` metadata entries may appear at any position within the payload, and
   may be interleaved with data fields. The emitter preserves source order
   (see §9); newly constructed metadata that does not have a source-order
-  is emitted in the canonical key order `$quill`, `$kind`, `$id`, `$ext`.
+  is emitted in the canonical key order `$quill`, `$kind`, `$id`, `$ext`, `$seed`.
 - A duplicate `$key` within a single block is a parse error (a YAML mapping
   cannot carry two entries under the same key).
-- An unknown `$key` (anything outside `{quill, kind, id, ext}`) is a parse
+- An unknown `$key` (anything outside `{quill, kind, id, ext, seed}`) is a parse
   error.
 - An invalid `$quill` reference is a parse error.
 - A `$`-prefixed key whose value type is wrong for the key (e.g. a sequence
@@ -235,14 +244,23 @@ data payload.
   (arrays, maps) are also preserved: the pre-scan captures each nested
   comment with a structural path and the emitter re-injects it at the
   matching position.
-- **The `!fill` tag.** `!fill` is the single supported YAML tag; it marks a
-  top-level data field as a placeholder awaiting user input and round-trips
-  through emit. `!fill` may be applied to scalars (string, integer, float,
-  bool, null) and sequences; it is rejected on mappings because Quillmark's
-  schema has no top-level `type: object`. `!fill` may not be applied to a
-  `$` metadata key. Any other custom tag (`!include`, `!env`, …) is
-  dropped with a `parse::unsupported_yaml_tag` warning; the scalar value is
-  kept but the tag does not round-trip.
+- **The `!must_fill` tag.** `!must_fill` marks a data field as a placeholder
+  awaiting user input and round-trips through emit. It applies both to a
+  top-level field and to a leaf nested inside an object or an array element
+  (e.g. `addr.street`, `recipients[0].name`); nested markers are recorded on
+  the value tree and survive markdown, live-wire, and storage round-trips.
+  `!must_fill` may be applied to scalars (string, integer, float, bool, null)
+  and sequences; it is rejected on a mapping (tag the leaves, not the
+  container). `!must_fill` may not be applied to a `$` metadata key. The marker
+  is preserved only in **block style** — `key: !must_fill` at any depth. A
+  marker written inside a **flow collection** (`{…}` / `[…]`) or on a **bare
+  sequence element** (`- !must_fill`) cannot be round-tripped and is reported
+  with a `parse::fill_marker_unsupported_position` warning (the value is kept,
+  the marker is not); markers under YAML **anchors/merge keys** are likewise
+  not preserved. `!must_fill` is the only fill tag: every other custom tag —
+  `!include`, `!env`, and the former `!fill` spelling — is dropped with a
+  `parse::unsupported_yaml_tag` warning; the scalar value is kept but the tag
+  does not round-trip.
 
 ### 3.5 Version Selectors
 
@@ -461,14 +479,14 @@ it when the input omitted the line (see §3.3). Composable cards must
 declare `$kind: <kind>`. A document round-trips to this canonical
 shape — fence markers and YAML quoting are normalised; the `~~~card-yaml`
 alias and the `---`-fenced root alias (§3.2.1) both re-emit as bare `~~~`.
-`!fill` tags and YAML comments
+`!must_fill` tags and YAML comments
 (own-line and inline, including those adjacent to `$` lines) survive the
 round-trip.
 
 Programmatically constructed metadata that does not have a source-order
-emits in the canonical key order `$quill`, `$kind`, `$id`, `$ext` — the
-typed mutators (`set_quill` / `set_kind` / `set_id` / `set_ext`) insert
-at these positions.
+emits in the canonical key order `$quill`, `$kind`, `$id`, `$ext`, `$seed` — the
+typed mutators (`set_quill` / `set_kind` / `set_id` / `set_ext` / `set_seed`)
+insert at these positions.
 
 ### 9.1 Canonical Idempotence
 

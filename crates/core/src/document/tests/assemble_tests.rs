@@ -1039,16 +1039,16 @@ Body.";
 
 #[test]
 fn fill_on_dollar_key_is_rejected() {
-    // `!fill` is not permitted on `$` metadata keys — they are extracted
+    // `!must_fill` is not permitted on `$` metadata keys — they are extracted
     // into typed metadata and have no placeholder semantics.
     let markdown = "~~~card-yaml
-$quill: !fill test_quill
+$quill: !must_fill test_quill
 $kind: main
 ~~~";
     let err = decompose(markdown).unwrap_err().to_string();
     assert!(
-        err.contains("`!fill`") && err.contains("$quill"),
-        "expected !fill-on-$ rejection, got: {err}"
+        err.contains("`!must_fill`") && err.contains("$quill"),
+        "expected !must_fill-on-$ rejection, got: {err}"
     );
 }
 
@@ -1951,7 +1951,7 @@ fn test_yaml_custom_tags_in_payload() {
     let markdown = "~~~card-yaml
 $quill: test_quill
 $kind: main
-memo_from: !fill 2d lt example
+memo_from: !must_fill 2d lt example
 regular_field: normal value
 ~~~
 

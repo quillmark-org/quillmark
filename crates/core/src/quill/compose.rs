@@ -9,7 +9,9 @@ use indexmap::IndexMap;
 use super::{seed, CardSchema, Quill};
 use crate::normalize::normalize_document;
 use crate::quill::zero_value;
-use crate::{Card, Diagnostic, Document, Payload, QuillValue, RenderError, Severity, Version};
+use crate::{
+    Card, Diagnostic, Document, Payload, QuillValue, RenderError, SeedOverlay, Severity, Version,
+};
 
 impl Quill {
     /// Applies coercion, validation, normalization, and **zero-filled render**:
@@ -149,10 +151,82 @@ impl Quill {
     /// the quill schema (`quill.config().schema()`), where fields carry their
     /// `ui.order` as the presentation-ordering signal.
     pub fn validate(&self, doc: &Document) -> Vec<Diagnostic> {
-        match self.config().validate_document(doc) {
+        let mut diags = match self.config().validate_document(doc) {
             Ok(()) => Vec::new(),
             Err(errors) => errors.iter().map(|e| e.to_diagnostic()).collect(),
+        };
+        diags.extend(self.validate_seed(doc));
+        diags
+    }
+
+    /// Advisory validation of the main card's `$seed` overlays.
+    ///
+    /// Seed overlays are editor-surface only: they never gate render
+    /// (`compile_data` / `dry_run` ignore `$seed`), so every diagnostic here is
+    /// a **warning** rooted at `$seed.<kind>[.<field>]`. An overlay keyed by a
+    /// name that is not a declared `card_kind` is flagged; otherwise each
+    /// overlaid field is checked against that kind's schema with the same
+    /// conformance core the schema's own `example:` / `default:` literals use
+    /// (partial values allowed, no `<must-fill>` sentinel or absence gating).
+    /// The reserved `$body` key is the body override, not a field, and is
+    /// skipped.
+    fn validate_seed(&self, doc: &Document) -> Vec<Diagnostic> {
+        let Some(seed_map) = doc.main().payload().seed() else {
+            return Vec::new();
+        };
+        let config = self.config();
+        let mut diags = Vec::new();
+        for (kind, overlay) in seed_map {
+            let Some(card_schema) = config.card_kind(kind) else {
+                diags.push(
+                    Diagnostic::new(
+                        Severity::Warning,
+                        format!("`$seed` overlay targets unknown card kind `{kind}`"),
+                    )
+                    .with_code("validation::seed_unknown_kind".to_string())
+                    .with_path(format!("$seed.{kind}"))
+                    .with_hint(format!(
+                        "Remove the `{kind}` overlay, or rename it to a declared card kind."
+                    )),
+                );
+                continue;
+            };
+            let Some(obj) = overlay.as_object() else {
+                diags.push(
+                    Diagnostic::new(
+                        Severity::Warning,
+                        format!("`$seed.{kind}` must be a mapping of field overrides"),
+                    )
+                    .with_code("validation::seed_overlay_shape".to_string())
+                    .with_path(format!("$seed.{kind}")),
+                );
+                continue;
+            };
+            for (field, value) in obj {
+                if field == "$body" {
+                    continue;
+                }
+                let field_path = format!("$seed.{kind}.{field}");
+                let Some(field_schema) = card_schema.fields.get(field) else {
+                    diags.push(
+                        Diagnostic::new(
+                            Severity::Warning,
+                            format!("`$seed.{kind}.{field}` is not a field of card kind `{kind}`"),
+                        )
+                        .with_code("validation::seed_unknown_field".to_string())
+                        .with_path(field_path),
+                    );
+                    continue;
+                };
+                let qv = QuillValue::from_json(value.clone());
+                for violation in
+                    super::validation::validate_schema_literal(field_schema, &qv, &field_path)
+                {
+                    diags.push(seed_violation_diagnostic(&violation));
+                }
+            }
         }
+        diags
     }
 
     /// Seed a starter [`Document`]: the main card plus one instance of each
@@ -171,10 +245,15 @@ impl Quill {
         seed::seed_main(self)
     }
 
-    /// Seed a starter composable [`Card`] of the given kind (carries `$kind`);
-    /// `None` if the kind is not declared. Use to add a new card to a document.
-    pub fn seed_card(&self, card_kind: &str) -> Option<Card> {
-        seed::seed_card_for_kind(self, card_kind)
+    /// Seed a starter composable [`Card`] of the given kind (carries `$kind`),
+    /// layering an optional per-kind [`SeedOverlay`] over the schema-example
+    /// base (`overlay › example › absent`); `None` if the kind is not declared.
+    /// Use to add a new card to a document — pass the document's `$seed` entry
+    /// for the kind (`doc.main().seed().and_then(|m| m.get(card_kind)).and_then(SeedOverlay::from_json)`)
+    /// so a card spawned into a template-derived document inherits its curated
+    /// starting values, and `None` for the bare schema seed.
+    pub fn seed_card(&self, card_kind: &str, overlay: Option<&SeedOverlay>) -> Option<Card> {
+        seed::seed_card_for_kind(self, card_kind, overlay)
     }
 
     fn validate_document(&self, doc: &Document) -> Result<(), RenderError> {
@@ -215,6 +294,19 @@ fn quill_mismatch(message: String, code: &str, hint: &str) -> RenderError {
             .with_code(code.to_string())
             .with_hint(hint.to_string())],
     }
+}
+
+/// Render a seed-overlay validation error as a **warning**-severity diagnostic
+/// — seed overlays are advisory and never gate render. The error's `path` is
+/// already rooted at `$seed.<kind>.<field>` by the caller.
+fn seed_violation_diagnostic(v: &super::validation::ValidationError) -> Diagnostic {
+    let mut diag = Diagnostic::new(Severity::Warning, v.to_string())
+        .with_code(v.code().to_string())
+        .with_path(v.path().to_string());
+    if let Some(hint) = v.hint() {
+        diag = diag.with_hint(hint);
+    }
+    diag
 }
 
 /// Wrap a coercion error into `RenderError::ValidationFailed`.

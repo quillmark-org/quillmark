@@ -212,15 +212,24 @@ impl PyQuill {
     }
 
     /// Seed a starter composable card of the given kind (carries `$kind`),
-    /// committing its fields' `example` values and leaving every other field
-    /// absent; `None` if `card_kind` is not declared. Returns the same dict
-    /// shape as `Document.cards` / `remove_card`. Mirrors WASM `seedCard`.
+    /// layering an optional per-kind seed `overlay` over the schema-example
+    /// base (`overlay › example › absent`); `None` if `card_kind` is not
+    /// declared. Returns the same dict shape as `Document.cards` /
+    /// `remove_card`. Pass `document.main["seed"][card_kind]` as `overlay` so a
+    /// card added to a template-derived document inherits its curated starting
+    /// values; omit it for the bare schema seed. Mirrors WASM `seedCard`.
+    #[pyo3(signature = (card_kind, overlay=None))]
     fn seed_card<'py>(
         &self,
         py: Python<'py>,
         card_kind: &str,
+        overlay: Option<Bound<'_, PyAny>>,
     ) -> PyResult<Option<Bound<'py, PyDict>>> {
-        match self.inner.seed_card(card_kind) {
+        let overlay = match overlay {
+            Some(value) => quillmark_core::SeedOverlay::from_json(&py_to_json(&value)?),
+            None => None,
+        };
+        match self.inner.seed_card(card_kind, overlay.as_ref()) {
             Some(card) => Ok(Some(card_to_pydict(py, &card)?)),
             None => Ok(None),
         }
@@ -288,7 +297,7 @@ impl PyDocument {
     /// Schema version this build writes.
     #[staticmethod]
     fn current_schema_version() -> &'static str {
-        quillmark_core::document::SCHEMA_V0_82_0
+        quillmark_core::document::SCHEMA_V0_92_0
     }
 
     /// Canonical card-yaml authoring rules — the core text every surface shows.
@@ -382,7 +391,8 @@ impl PyDocument {
         self.inner.main().body()
     }
 
-    /// Main (entry) card as a dict with `kind`, `payload_items`, `ext`, and `body`.
+    /// Main (entry) card as a dict with `kind`, `quill`, `id`, `payload_items`,
+    /// `ext`, `seed`, and `body`.
     #[getter]
     fn main<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
         card_to_pydict(py, self.inner.main())
@@ -469,6 +479,29 @@ impl PyDocument {
         namespace: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
         ext_value_to_py(py, self.inner.main_mut().remove_ext_namespace(namespace))
+    }
+
+    /// Merge a card-kind's seed `overlay` into the main card's `$seed` map
+    /// under `card_kind`, preserving sibling kinds. Sets the starting values
+    /// new cards of that kind spawn with.
+    fn set_seed_namespace(&mut self, card_kind: &str, overlay: Bound<'_, PyAny>) -> PyResult<()> {
+        let json = py_to_json(&overlay)?;
+        self.inner
+            .main_mut()
+            .set_seed_namespace(card_kind, json)
+            .map_err(convert_edit_error)?;
+        Ok(())
+    }
+
+    /// Remove `card_kind` from the main card's `$seed` map, returning its
+    /// overlay or `None`; drops `$seed` entirely once empty. Sibling kinds
+    /// survive.
+    fn remove_seed_namespace<'py>(
+        &mut self,
+        py: Python<'py>,
+        card_kind: &str,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        ext_value_to_py(py, self.inner.main_mut().remove_seed_namespace(card_kind))
     }
 
     /// Replace the `$ext` map on the composable card at `index`. Raises on
@@ -558,6 +591,7 @@ impl PyDocument {
                     key,
                     value: py_to_json(&v)?,
                     fill: false,
+                    nested_fills: Vec::new(),
                 });
             }
         }
@@ -566,6 +600,7 @@ impl PyDocument {
             quill: None,
             id: None,
             ext: None,
+            seed: None,
             payload_items,
             body: body.unwrap_or_default(),
         };
@@ -850,11 +885,25 @@ fn card_to_pydict<'py>(
     for item in &wire.payload_items {
         let entry = PyDict::new(py);
         match item {
-            quillmark_core::PayloadItemWire::Field { key, value, fill } => {
+            quillmark_core::PayloadItemWire::Field {
+                key,
+                value,
+                fill,
+                nested_fills,
+            } => {
                 entry.set_item("type", "field")?;
                 entry.set_item("key", key)?;
                 entry.set_item("value", json_to_py(py, value)?)?;
                 entry.set_item("fill", *fill)?;
+                // Paths to `!must_fill` markers nested inside `value` (the JSON
+                // projection is fill-free). Mirrors the WASM `nestedFills` field;
+                // omitted when empty so simple cards stay clean. The serde-based
+                // reverse path (`py_dict_to_card`) reads it back.
+                if !nested_fills.is_empty() {
+                    let nf = serde_json::to_value(nested_fills)
+                        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+                    entry.set_item("nestedFills", json_to_py(py, &nf)?)?;
+                }
             }
             quillmark_core::PayloadItemWire::Comment { text, inline } => {
                 entry.set_item("type", "comment")?;
@@ -874,6 +923,16 @@ fn card_to_pydict<'py>(
             )?;
         }
         None => d.set_item("ext", py.None())?,
+    }
+
+    match &wire.seed {
+        Some(seed_map) => {
+            d.set_item(
+                "seed",
+                json_to_py(py, &serde_json::Value::Object(seed_map.clone()))?,
+            )?;
+        }
+        None => d.set_item("seed", py.None())?,
     }
 
     d.set_item("body", &wire.body)?;

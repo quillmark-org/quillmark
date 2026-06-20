@@ -24,10 +24,9 @@
 
 ## Bindings
 
+- **[BINDINGS.md](BINDINGS.md)** - Language surfaces (Python, WASM, .NET, CLI) over the one core engine
 - **[CLI.md](CLI.md)** - Command-line interface
 - **[PREVIEW.md](PREVIEW.md)** - WASM-only Typst canvas preview path
-- Python bindings (PyO3): see `crates/bindings/python/` rustdoc
-- WebAssembly bindings: see `crates/bindings/wasm/` rustdoc
 
 ## Infrastructure
 
