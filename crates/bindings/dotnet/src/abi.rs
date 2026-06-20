@@ -103,8 +103,9 @@ pub(crate) unsafe fn borrow_mut<'a, T>(ptr: *mut T) -> Option<&'a mut T> {
 }
 
 /// An owned byte buffer handed to the caller (artifact bytes). The caller must
-/// return it with [`qm_free_bytes`]; the fields mirror a `Vec<u8>` minus
-/// capacity, which `qm_free_bytes` reconstructs from `len`.
+/// return it with [`qm_free_bytes`]. The buffer is allocated as a boxed slice
+/// (capacity == `len` by construction), so `qm_free_bytes` can soundly
+/// reconstruct and drop it from `ptr` + `len` alone.
 #[repr(C)]
 pub struct QmBytes {
     pub ptr: *mut u8,
@@ -112,11 +113,14 @@ pub struct QmBytes {
 }
 
 impl QmBytes {
-    pub(crate) fn from_vec(mut v: Vec<u8>) -> QmBytes {
-        v.shrink_to_fit();
-        let ptr = v.as_mut_ptr();
-        let len = v.len();
-        std::mem::forget(v);
+    pub(crate) fn from_vec(v: Vec<u8>) -> QmBytes {
+        // Into a boxed slice so the allocation's capacity equals `len` — freeing
+        // a `Vec` with a mismatched capacity (which `shrink_to_fit` does not
+        // guarantee) hands the allocator the wrong layout, which is UB.
+        let mut boxed = v.into_boxed_slice();
+        let ptr = boxed.as_mut_ptr();
+        let len = boxed.len();
+        std::mem::forget(boxed);
         QmBytes { ptr, len }
     }
 
@@ -140,7 +144,10 @@ pub extern "C" fn qm_free_string(ptr: *mut c_char) {
 #[no_mangle]
 pub extern "C" fn qm_free_bytes(bytes: QmBytes) {
     if !bytes.ptr.is_null() && bytes.len != 0 {
-        unsafe { drop(Vec::from_raw_parts(bytes.ptr, bytes.len, bytes.len)) };
+        // Reconstruct the boxed slice produced by `QmBytes::from_vec` (capacity
+        // == len), so the allocator gets the exact layout it handed out.
+        let slice = std::ptr::slice_from_raw_parts_mut(bytes.ptr, bytes.len);
+        unsafe { drop(Box::from_raw(slice)) };
     }
 }
 

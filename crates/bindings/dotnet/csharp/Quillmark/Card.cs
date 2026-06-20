@@ -19,6 +19,13 @@ public sealed class PayloadItem
     [JsonPropertyName("value")] public JsonElement? Value { get; set; }
     [JsonPropertyName("fill")] public bool? Fill { get; set; }
 
+    /// <summary>Paths to <c>!must_fill</c> markers nested inside <see cref="Value"/>
+    /// (the JSON <see cref="Value"/> projection is fill-free). Each path is a list
+    /// of steps — an object key (string) or array index (number) — mirroring the
+    /// core <c>nestedFills</c>. Null/omitted for a top-level-only or no-fill field;
+    /// preserved here so a card round-trips without losing nested markers.</summary>
+    [JsonPropertyName("nestedFills")] public List<List<JsonElement>>? NestedFills { get; set; }
+
     // Comment entries
     [JsonPropertyName("text")] public string? Text { get; set; }
     [JsonPropertyName("inline")] public bool? Inline { get; set; }

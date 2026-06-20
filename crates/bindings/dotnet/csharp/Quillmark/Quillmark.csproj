@@ -30,6 +30,7 @@
     <NativeLibraryName Condition="$([MSBuild]::IsOSPlatform('Windows'))">quillmark_dotnet.dll</NativeLibraryName>
     <CargoProfile Condition="'$(CargoProfile)' == ''">debug</CargoProfile>
     <CargoTargetDir>$(MSBuildThisFileDirectory)../../../../../target/$(CargoProfile)</CargoTargetDir>
+    <NativeLibrarySource>$(CargoTargetDir)/$(NativeLibraryName)</NativeLibrarySource>
   </PropertyGroup>
 
   <!-- Package README (the binding's, not the repo root's). -->
@@ -54,20 +55,28 @@
     side first: `cargo build -p quillmark-dotnet` (set CargoProfile=release here
     and pass the release flag to cargo for a release build). Skipped during
     `dotnet pack`, which uses the staged `runtimes/` instead.
+
+    The `None` item is injected before `AssignTargetPaths` (rather than in a
+    `BeforeTargets="Build"` target) so it is also picked up by
+    `GetCopyToOutputDirectoryItems` — the target a *referencing* project (e.g.
+    `Quillmark.Tests`) invokes to gather transitive copy items. Adding it only
+    at build time copies the library into this project's output but not into a
+    consumer's, which is how the test project ended up without the cdylib.
   -->
-  <Target Name="CopyNativeLibrary" BeforeTargets="Build;Publish" Condition="'$(_IsPacking)' != 'true'">
-    <PropertyGroup>
-      <NativeLibrarySource>$(CargoTargetDir)/$(NativeLibraryName)</NativeLibrarySource>
-    </PropertyGroup>
-    <Warning
-      Condition="!Exists('$(NativeLibrarySource)')"
-      Text="Native library not found at $(NativeLibrarySource). Run `cargo build -p quillmark-dotnet` first." />
-    <ItemGroup Condition="Exists('$(NativeLibrarySource)')">
+  <Target Name="CopyNativeLibrary" BeforeTargets="AssignTargetPaths"
+          Condition="'$(_IsPacking)' != 'true' And Exists('$(NativeLibrarySource)')">
+    <ItemGroup>
       <None Include="$(NativeLibrarySource)">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         <Link>$(NativeLibraryName)</Link>
       </None>
     </ItemGroup>
+  </Target>
+
+  <!-- Loud, early warning when the native side has not been built yet. -->
+  <Target Name="WarnMissingNativeLibrary" BeforeTargets="Build"
+          Condition="'$(_IsPacking)' != 'true' And !Exists('$(NativeLibrarySource)')">
+    <Warning Text="Native library not found at $(NativeLibrarySource). Run `cargo build -p quillmark-dotnet` first." />
   </Target>
 
   <!-- Mark pack runs so CopyNativeLibrary stands down. -->
