@@ -73,9 +73,11 @@ pub enum PayloadItem {
     /// `$seed` system metadata — a mapping keyed by composable card-kind,
     /// each entry a sparse "overlay" (the user fields, plus an optional
     /// `$body` string, that a newly-added card of that kind starts with).
-    /// Carried on the main card only. Like `$ext` it never reaches the plate
-    /// JSON and always round-trips through Markdown and the storage DTO;
-    /// unlike `$ext` the seeding layer interprets it (see
+    /// The seeding layer reads it from the **main card** only
+    /// ([`crate::Document::seed`]); like `$ext`, the parser accepts it on any
+    /// card, but a `$seed` outside the main card is inert. Like `$ext` it never
+    /// reaches the plate JSON and always round-trips through Markdown and the
+    /// storage DTO; unlike `$ext` the seeding layer interprets it (see
     /// [`crate::Quill::seed_card`]). `nested_comments` carries YAML comments
     /// inside the `$seed` mapping, with paths **relative** to the `$seed`
     /// value tree.
