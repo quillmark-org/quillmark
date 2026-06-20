@@ -218,7 +218,7 @@ impl Card {
         Ok(Card::from_parts(payload, String::new()))
     }
 
-    /// Set a payload field, clearing any `!fill` marker on that key.
+    /// Set a payload field, clearing any `!must_fill` marker on that key.
     ///
     /// Returns [`EditError::InvalidFieldName`] when `name` does not match
     /// `[a-z_][a-z0-9_]*`.
@@ -228,8 +228,8 @@ impl Card {
         Ok(())
     }
 
-    /// Set a payload field and mark it as a `!fill` placeholder.
-    /// `Null` emits as `key: !fill`; scalars/sequences as `key: !fill <value>`.
+    /// Set a payload field and mark it as a `!must_fill` placeholder.
+    /// `Null` emits as `key: !must_fill`; scalars/sequences as `key: !must_fill <value>`.
     /// Same validation as [`Card::set_field`].
     pub fn set_fill(&mut self, name: &str, value: QuillValue) -> Result<(), EditError> {
         check_field(name, value.as_json())?;

@@ -117,7 +117,7 @@ def test_json_dto_round_trip(taro_md):
 
     dto = doc.to_json()
     assert isinstance(dto, str)
-    assert "quillmark/document@0.82.0" in dto
+    assert "quillmark/document@0.92.0" in dto
 
     restored = Document.from_json(dto)
     assert restored.quill_ref == doc.quill_ref
@@ -165,7 +165,7 @@ def test_schema_version_of_reads_dto(taro_md):
     doc = Document.from_markdown(taro_md)
     dto = doc.to_json()
 
-    assert Document.schema_version_of(dto) == "quillmark/document@0.82.0"
+    assert Document.schema_version_of(dto) == "quillmark/document@0.92.0"
 
 
 def test_schema_version_of_returns_unknown_future_versions():
@@ -336,3 +336,41 @@ def test_document_authoring_text_helpers():
 
     instr = Document.blueprint_instruction("taro")
     assert isinstance(instr, str) and "taro" in instr
+
+
+def test_nested_fill_exposed_as_nested_fills():
+    """A nested !must_fill marker is exposed as `nestedFills` on the field item
+    and survives the storage round-trip (binding parity for nested fills)."""
+    md = (
+        "~~~card-yaml\n$quill: q@0.1\n$kind: main\n"
+        "addr:\n  street: !must_fill\n  city: Anytown\n~~~\n"
+    )
+    doc = Document.from_markdown(md)
+    addr = next(i for i in doc.main["payload_items"] if i.get("key") == "addr")
+    assert addr.get("nestedFills") == [["street"]], addr
+    # Storage round-trip preserves the nested marker.
+    restored = Document.from_json(doc.to_json())
+    assert "street: !must_fill" in restored.to_markdown()
+
+
+def test_nested_fill_push_card_round_trip():
+    """A card dict carrying `nestedFills` can be pushed and the nested marker
+    is reconstructed on emit (the dict -> Card serde path reads it back)."""
+    doc = Document.from_markdown(
+        "~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: x\n~~~\n"
+    )
+    doc.push_card(
+        {
+            "kind": "note",
+            "payload_items": [
+                {
+                    "type": "field",
+                    "key": "addr",
+                    "value": {"street": None, "city": "A"},
+                    "nestedFills": [["street"]],
+                }
+            ],
+            "body": "",
+        }
+    )
+    assert "street: !must_fill" in doc.to_markdown()

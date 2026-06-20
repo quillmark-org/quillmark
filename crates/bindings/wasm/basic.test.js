@@ -223,7 +223,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const dto = doc.toJson()
     expect(typeof dto).toBe('string')
-    expect(dto).toContain('quillmark/document@0.82.0')
+    expect(dto).toContain('quillmark/document@0.92.0')
   })
 
   it('round-trips losslessly: fromJson(toJson(doc)) equals doc', () => {
@@ -249,7 +249,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
   it('toJson output is standard JSON parseable by the JSON global', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const parsed = JSON.parse(doc.toJson())
-    expect(parsed.schema).toBe('quillmark/document@0.82.0')
+    expect(parsed.schema).toBe('quillmark/document@0.92.0')
   })
 
   it('drops parse-time warnings on reconstruction', () => {
@@ -1348,5 +1348,51 @@ title: <must-fill>
           d.hint.includes('<must-fill>'),
       ),
     ).toBe(true)
+  })
+})
+
+describe('nested !must_fill', () => {
+  it('exposes nestedFills on a field item, surviving storage and pushCard', () => {
+    const md = `~~~card-yaml
+$quill: q@0.1
+$kind: main
+addr:
+  street: !must_fill
+  city: Anytown
+~~~
+`
+    const doc = Document.fromMarkdown(md)
+    const addr = doc.main.payloadItems.find((i) => i.key === 'addr')
+    expect(addr.nestedFills).toEqual([['street']])
+
+    // Storage round-trip preserves the nested marker.
+    const restored = Document.fromJson(doc.toJson())
+    expect(restored.toMarkdown()).toContain('street: !must_fill')
+
+    // A card built with nestedFills survives pushCard → emit.
+    const doc2 = Document.fromMarkdown(
+      '~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: x\n~~~\n',
+    )
+    doc2.pushCard({
+      kind: 'note',
+      payloadItems: [
+        {
+          type: 'field',
+          key: 'addr',
+          value: { street: null, city: 'A' },
+          nestedFills: [['street']],
+        },
+      ],
+      body: '',
+    })
+    expect(doc2.toMarkdown()).toContain('street: !must_fill')
+  })
+
+  it('omits nestedFills for a field with no nested markers', () => {
+    const doc = Document.fromMarkdown(
+      '~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: Hello\n~~~\n',
+    )
+    const title = doc.main.payloadItems.find((i) => i.key === 'title')
+    expect(title.nestedFills).toBeUndefined()
   })
 })

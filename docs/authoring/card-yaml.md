@@ -162,21 +162,35 @@ title: My Document  # an inline comment
 Comments adjacent to `$` metadata keys — own-line or inline — round-trip
 identically to comments on data fields.
 
-## Placeholder Fields (`!fill`)
+## Placeholder Fields (`!must_fill`)
 
-A top-level field tagged `!fill` marks the value as a placeholder awaiting
-input. The tag round-trips through parsing and emit, so editors and bindings
-can detect and update placeholders without losing them.
+A field tagged `!must_fill` marks the value as a placeholder awaiting input.
+The tag round-trips through parsing and emit, so editors and bindings can
+detect and update placeholders without losing them.
 
 ```yaml
-recipient: !fill
-department: !fill Department Here
-tags: !fill []
+recipient: !must_fill
+department: !must_fill Department Here
+tags: !must_fill []
+addr:
+  street: !must_fill        # nested leaf, inside an object
+  city: Anytown
+recipients:
+  - name: !must_fill        # nested leaf, inside an array element
+    role: lead
 ```
 
-`!fill` is valid on scalars (string, number, bool, null) and sequences. It is
-rejected on mappings. Other custom YAML tags (`!include`, `!env`, …) are
-dropped with a warning.
+`!must_fill` is valid on scalars (string, number, bool, null) and sequences,
+both at the top level and on leaves nested inside objects and array elements.
+It is rejected on mappings (tag the leaves, not the container). `!must_fill`
+is the only placeholder tag; every other custom YAML tag (`!include`, `!env`,
+and the former `!fill` spelling) is dropped with a warning and the value kept.
+
+Use **block style** for placeholders. A marker written inside a flow
+collection (`addr: {street: !must_fill}`), on a bare sequence element
+(`- !must_fill`), or under a YAML anchor/merge key is **not** preserved — the
+flow and bare-element cases emit a `parse::fill_marker_unsupported_position`
+warning so the loss is never silent.
 
 ## Field-name Rules
 
@@ -196,7 +210,7 @@ opener, the `$` metadata lines in the canonical order `$quill`, `$kind`,
 `$id`, `$ext`, the remaining data fields, and a `~~~` closer. The root
 block emits both `$quill` and `$kind: main`; composable cards emit
 `$kind: <kind>` plus any `$id` / `$ext` they declared. Fence markers,
-key ordering, and YAML quoting are normalised; `!fill` tags and YAML
+key ordering, and YAML quoting are normalised; `!must_fill` tags and YAML
 comments (own-line and inline trailing, including those adjacent to `$`
 lines) survive the round-trip.
 

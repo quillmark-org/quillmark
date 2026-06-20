@@ -1,17 +1,144 @@
 //! Value type for unified representation of TOML/YAML/JSON values.
 //!
-//! This module provides [`QuillValue`], a newtype wrapper around `serde_json::Value`
-//! that centralizes all value conversions across the Quillmark system.
+//! [`QuillValue`] is an **annotated value tree**: every node carries a
+//! `fill` flag (the in-memory form of the `!must_fill` YAML tag) alongside
+//! its data. The tree is the authoritative representation. For the data
+//! API (`as_json`, `as_array`, `as_object`, `Deref`) a plain
+//! [`serde_json::Value`] projection is materialized lazily and cached; that
+//! projection is **fill-free** — it is a derived view of the data, not a
+//! second source of truth. Fill never reaches the JSON projection, so
+//! rendering and wire layers that consume `as_json()` are unaffected by it.
 
-use serde::{Deserialize, Serialize};
+use indexmap::IndexMap;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::Value as JsonValue;
 use std::ops::Deref;
+use std::sync::OnceLock;
 
-/// Unified value type backed by `serde_json::Value`.
+/// Unified value type: an annotated tree of JSON-shaped data where every
+/// node additionally records whether it was tagged `!must_fill`.
 ///
-/// This type is used throughout Quillmark to represent metadata, fields, and other
-/// dynamic values. It provides conversion methods for TOML and YAML.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct QuillValue(serde_json::Value);
+/// Construction (`from_json`, `from_yaml_str`, the scalar constructors)
+/// produces nodes with `fill = false`; the `!must_fill` markers are applied
+/// by the document layer. `QuillValue` exposes no data-mutating methods —
+/// only `set_fill`/`with_fill`, which do not affect the JSON projection —
+/// so the cached projection never goes stale.
+pub struct QuillValue {
+    node: Node,
+    /// Lazily materialized, fill-free [`serde_json::Value`] view of `node`.
+    json: OnceLock<JsonValue>,
+}
+
+/// One node of the annotated tree: a `fill` flag plus the data.
+#[derive(Debug, Clone, PartialEq)]
+struct Node {
+    fill: bool,
+    kind: Kind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum Kind {
+    Null,
+    Bool(bool),
+    Number(serde_json::Number),
+    String(String),
+    Array(Vec<Node>),
+    Object(IndexMap<String, Node>),
+}
+
+/// One step of a path into a value tree: an object key or an array index.
+///
+/// This is the canonical path-segment type for the whole crate; the document
+/// layer aliases it as `CommentPathSegment` for nested-comment paths.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PathSegment {
+    Key(String),
+    Index(usize),
+}
+
+fn collect_fill_paths(node: &Node, prefix: &mut Vec<PathSegment>, out: &mut Vec<Vec<PathSegment>>) {
+    if node.fill {
+        out.push(prefix.clone());
+    }
+    match &node.kind {
+        Kind::Array(items) => {
+            for (i, child) in items.iter().enumerate() {
+                prefix.push(PathSegment::Index(i));
+                collect_fill_paths(child, prefix, out);
+                prefix.pop();
+            }
+        }
+        Kind::Object(entries) => {
+            for (k, child) in entries {
+                prefix.push(PathSegment::Key(k.clone()));
+                collect_fill_paths(child, prefix, out);
+                prefix.pop();
+            }
+        }
+        _ => {}
+    }
+}
+
+fn node_at_mut<'a>(node: &'a mut Node, path: &[PathSegment]) -> Option<&'a mut Node> {
+    let mut cur = node;
+    for seg in path {
+        cur = match (&mut cur.kind, seg) {
+            (Kind::Object(entries), PathSegment::Key(k)) => entries.get_mut(k)?,
+            (Kind::Array(items), PathSegment::Index(i)) => items.get_mut(*i)?,
+            _ => return None,
+        };
+    }
+    Some(cur)
+}
+
+fn node_is_object(node: &Node, path: &[PathSegment]) -> bool {
+    fn at<'a>(node: &'a Node, path: &[PathSegment]) -> Option<&'a Node> {
+        let mut cur = node;
+        for seg in path {
+            cur = match (&cur.kind, seg) {
+                (Kind::Object(entries), PathSegment::Key(k)) => entries.get(k)?,
+                (Kind::Array(items), PathSegment::Index(i)) => items.get(*i)?,
+                _ => return None,
+            };
+        }
+        Some(cur)
+    }
+    matches!(at(node, path).map(|n| &n.kind), Some(Kind::Object(_)))
+}
+
+impl Node {
+    fn from_json(value: &JsonValue) -> Node {
+        let kind = match value {
+            JsonValue::Null => Kind::Null,
+            JsonValue::Bool(b) => Kind::Bool(*b),
+            JsonValue::Number(n) => Kind::Number(n.clone()),
+            JsonValue::String(s) => Kind::String(s.clone()),
+            JsonValue::Array(items) => Kind::Array(items.iter().map(Node::from_json).collect()),
+            JsonValue::Object(map) => Kind::Object(
+                map.iter()
+                    .map(|(k, v)| (k.clone(), Node::from_json(v)))
+                    .collect(),
+            ),
+        };
+        Node { fill: false, kind }
+    }
+
+    fn to_json(&self) -> JsonValue {
+        match &self.kind {
+            Kind::Null => JsonValue::Null,
+            Kind::Bool(b) => JsonValue::Bool(*b),
+            Kind::Number(n) => JsonValue::Number(n.clone()),
+            Kind::String(s) => JsonValue::String(s.clone()),
+            Kind::Array(items) => JsonValue::Array(items.iter().map(Node::to_json).collect()),
+            Kind::Object(entries) => JsonValue::Object(
+                entries
+                    .iter()
+                    .map(|(k, n)| (k.clone(), n.to_json()))
+                    .collect(),
+            ),
+        }
+    }
+}
 
 /// `true` when `value` nests deeper than `max_depth` container levels.
 ///
@@ -48,45 +175,114 @@ pub fn json_depth_exceeds(value: &serde_json::Value, max_depth: usize) -> bool {
 }
 
 impl QuillValue {
+    fn from_node(node: Node) -> Self {
+        QuillValue {
+            node,
+            json: OnceLock::new(),
+        }
+    }
+
     /// Create a QuillValue from a YAML string
     pub fn from_yaml_str(yaml_str: &str) -> Result<Self, serde_saphyr::Error> {
         let json_val: serde_json::Value = serde_saphyr::from_str(yaml_str)?;
-        Ok(QuillValue(json_val))
+        Ok(Self::from_json(json_val))
     }
 
-    /// Get a reference to the underlying JSON value
+    /// Get a reference to the value's JSON projection.
+    ///
+    /// The projection is materialized on first use and cached. It carries
+    /// the data only; `!must_fill` markers are not represented in JSON.
     pub fn as_json(&self) -> &serde_json::Value {
-        &self.0
+        self.json.get_or_init(|| self.node.to_json())
     }
 
-    /// Convert into the underlying JSON value
+    /// Convert into the underlying JSON value (fill markers are dropped).
     pub fn into_json(self) -> serde_json::Value {
-        self.0
+        match self.json.into_inner() {
+            Some(json) => json,
+            None => self.node.to_json(),
+        }
     }
 
-    /// Create a QuillValue directly from a JSON value
+    /// Create a QuillValue from a JSON value, with every node `fill = false`.
     pub fn from_json(json_val: serde_json::Value) -> Self {
-        QuillValue(json_val)
+        let node = Node::from_json(&json_val);
+        let json = OnceLock::new();
+        // Seed the projection with the value we were handed so the common
+        // render path doesn't re-lower it. This trades memory for speed:
+        // until dropped, the data is held twice (the `node` tree plus the
+        // cached JSON). Acceptable for the render-hot path; leaving the cache
+        // empty here would halve memory at the cost of re-lowering on first
+        // `as_json`.
+        let _ = json.set(json_val);
+        QuillValue { node, json }
     }
 
     /// String value.
     pub fn string(s: impl Into<String>) -> Self {
-        QuillValue(serde_json::Value::String(s.into()))
+        Self::from_json(serde_json::Value::String(s.into()))
     }
 
     /// Integer value.
     pub fn integer(n: i64) -> Self {
-        QuillValue(serde_json::Value::Number(n.into()))
+        Self::from_json(serde_json::Value::Number(n.into()))
     }
 
     /// Boolean value.
     pub fn bool(b: bool) -> Self {
-        QuillValue(serde_json::Value::Bool(b))
+        Self::from_json(serde_json::Value::Bool(b))
     }
 
     /// Null value.
     pub fn null() -> Self {
-        QuillValue(serde_json::Value::Null)
+        Self::from_json(serde_json::Value::Null)
+    }
+
+    /// Whether this value's root node carries the `!must_fill` marker.
+    pub fn fill(&self) -> bool {
+        self.node.fill
+    }
+
+    /// Set the root node's `!must_fill` marker, consuming `self`.
+    pub fn with_fill(mut self, fill: bool) -> Self {
+        self.node.fill = fill;
+        self
+    }
+
+    /// Set the root node's `!must_fill` marker in place.
+    ///
+    /// Does not invalidate the JSON projection: `fill` is never part of it.
+    pub fn set_fill(&mut self, fill: bool) {
+        self.node.fill = fill;
+    }
+
+    /// Paths (relative to this value's root) of every node carrying the
+    /// `!must_fill` marker. The root, if filled, is reported as the empty
+    /// path. The JSON projection carries no fill, so this is the only way to
+    /// observe nested fill markers.
+    pub fn fill_paths(&self) -> Vec<Vec<PathSegment>> {
+        let mut out = Vec::new();
+        let mut prefix = Vec::new();
+        collect_fill_paths(&self.node, &mut prefix, &mut out);
+        out
+    }
+
+    /// Set `fill = true` on the node at `path` (relative to the root).
+    /// Returns `false` if the path does not resolve to a node.
+    pub fn set_fill_at(&mut self, path: &[PathSegment]) -> bool {
+        match node_at_mut(&mut self.node, path) {
+            Some(n) => {
+                n.fill = true;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Whether the node at `path` (relative to the root) is a mapping.
+    /// Used to reject `!must_fill` on object-valued nodes.
+    pub fn is_object_at(&self, path: &[PathSegment]) -> bool {
+        node_is_object(&self.node, path)
     }
 }
 
@@ -94,55 +290,103 @@ impl Deref for QuillValue {
     type Target = serde_json::Value;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        self.as_json()
     }
 }
 
-// Implement common delegating methods for convenience
+impl PartialEq for QuillValue {
+    /// Two values are equal when their annotated trees (data **and** fill)
+    /// are equal. The cached JSON projection is derived and not compared.
+    fn eq(&self, other: &Self) -> bool {
+        self.node == other.node
+    }
+}
+
+impl Clone for QuillValue {
+    fn clone(&self) -> Self {
+        let json = OnceLock::new();
+        if let Some(cached) = self.json.get() {
+            let _ = json.set(cached.clone());
+        }
+        QuillValue {
+            node: self.node.clone(),
+            json,
+        }
+    }
+}
+
+impl std::fmt::Debug for QuillValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.node.fill {
+            write!(f, "QuillValue(!must_fill {:?})", self.as_json())
+        } else {
+            write!(f, "QuillValue({:?})", self.as_json())
+        }
+    }
+}
+
+impl Serialize for QuillValue {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.as_json().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for QuillValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let json = serde_json::Value::deserialize(deserializer)?;
+        Ok(QuillValue::from_json(json))
+    }
+}
+
+// Common delegating accessors, projected through the JSON view so existing
+// consumers keep their serde_json-shaped API unchanged.
 impl QuillValue {
     /// Check if the value is null
     pub fn is_null(&self) -> bool {
-        self.0.is_null()
+        self.as_json().is_null()
     }
 
     /// Get the value as a string reference
     pub fn as_str(&self) -> Option<&str> {
-        self.0.as_str()
+        self.as_json().as_str()
     }
 
     /// Get the value as a boolean
     pub fn as_bool(&self) -> Option<bool> {
-        self.0.as_bool()
+        self.as_json().as_bool()
     }
 
     /// Get the value as an i64
     pub fn as_i64(&self) -> Option<i64> {
-        self.0.as_i64()
+        self.as_json().as_i64()
     }
 
     /// Get the value as a u64
     pub fn as_u64(&self) -> Option<u64> {
-        self.0.as_u64()
+        self.as_json().as_u64()
     }
 
     /// Get the value as an f64
     pub fn as_f64(&self) -> Option<f64> {
-        self.0.as_f64()
+        self.as_json().as_f64()
     }
 
     /// Get the value as an array reference
     pub fn as_array(&self) -> Option<&Vec<serde_json::Value>> {
-        self.0.as_array()
+        self.as_json().as_array()
     }
 
     /// Get the value as an object reference
     pub fn as_object(&self) -> Option<&serde_json::Map<String, serde_json::Value>> {
-        self.0.as_object()
+        self.as_json().as_object()
     }
 
-    /// Get a field from an object by key
+    /// Get a field from an object by key, preserving the child's fill markers.
     pub fn get(&self, key: &str) -> Option<QuillValue> {
-        self.0.get(key).map(|v| QuillValue(v.clone()))
+        match &self.node.kind {
+            Kind::Object(entries) => entries.get(key).map(|n| QuillValue::from_node(n.clone())),
+            _ => None,
+        }
     }
 }
 
@@ -226,11 +470,11 @@ mod tests {
     #[test]
     fn test_yaml_custom_tags_ignored_at_value_level() {
         // At the raw `QuillValue::from_yaml_str` layer, custom YAML tags
-        // (including `!fill`) pass through serde_saphyr which drops the
+        // (including `!must_fill`) pass through serde_saphyr which drops the
         // tag and returns the underlying scalar.  The tag is recovered at
         // the `Document` layer by `document::prescan`: see
         // `document::tests::lossiness_tests::custom_tags_lose_tag_but_keep_value`.
-        let yaml_str = "memo_from: !fill 2d lt example";
+        let yaml_str = "memo_from: !must_fill 2d lt example";
         let quill_val = QuillValue::from_yaml_str(yaml_str).unwrap();
 
         assert_eq!(
@@ -238,5 +482,32 @@ mod tests {
             Some("2d lt example")
         );
     }
-}
 
+    #[test]
+    fn json_round_trips_through_the_tree() {
+        // from_json → as_json must be identity, preserving object key order
+        // (serde_json `preserve_order`) and number kinds.
+        let original = serde_json::json!({
+            "z": 1,
+            "a": [true, "x", 3.5, null],
+            "nested": { "k": 42 }
+        });
+        let qv = QuillValue::from_json(original.clone());
+        assert_eq!(qv.as_json(), &original);
+
+        // A value re-lowered from the tree (not the seeded cache) also matches.
+        let relowered = QuillValue::from_node(qv.node.clone()).into_json();
+        assert_eq!(relowered, original);
+    }
+
+    #[test]
+    fn fill_marker_rides_on_the_node_not_the_json() {
+        let qv = QuillValue::string("draft").with_fill(true);
+        assert!(qv.fill());
+        // Projection is fill-free and equal to the plain scalar.
+        assert_eq!(qv.as_json(), &serde_json::json!("draft"));
+        // Equality is fill-sensitive.
+        assert_ne!(qv, QuillValue::string("draft"));
+        assert_eq!(qv, QuillValue::string("draft").with_fill(true));
+    }
+}

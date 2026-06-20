@@ -101,9 +101,26 @@ export interface QuillMetadata {
 /// by `pushCard` / `insertCard` / `Document.makeCard`.
 #[wasm_bindgen(typescript_custom_section)]
 const CARD_TS: &'static str = r#"
+/**
+ * A path to a value nested inside a field `value`: `string` keys and
+ * `number` array indices, e.g. `["addr", "street"]` or `["recipients", 0, "name"]`.
+ */
+export type PathStep = string | number;
+
 /** A field or comment entry in a `Card.payloadItems` list. */
 export type PayloadItem =
-    | { type: "field"; key: string; value: unknown; fill?: boolean }
+    | {
+          type: "field";
+          key: string;
+          value: unknown;
+          fill?: boolean;
+          /**
+           * Paths to `!must_fill` markers nested *inside* `value` (the `value`
+           * projection itself is fill-free). Absent when the field has no nested
+           * placeholders. Preserved across `pushCard` / `makeCard`.
+           */
+          nestedFills?: PathStep[][];
+      }
     | { type: "comment"; text: string; inline?: boolean };
 
 /**
@@ -508,7 +525,7 @@ impl Document {
     /// the tag advances only when the wire format changes, not on every release.
     #[wasm_bindgen(js_name = currentSchemaVersion)]
     pub fn current_schema_version() -> String {
-        quillmark_core::document::SCHEMA_V0_82_0.to_string()
+        quillmark_core::document::SCHEMA_V0_92_0.to_string()
     }
 
     /// Authoring-format rules for the card-yaml markdown surface. The canonical
@@ -625,7 +642,7 @@ impl Document {
 
     // ── Mutators ──────────────────────────────────────────────────────────────
 
-    /// Update a payload field on the main card. Clears any existing `!fill` marker.
+    /// Update a payload field on the main card. Clears any existing `!must_fill` marker.
     ///
     /// Throws if `name` does not match `[a-z_][a-z0-9_]*`.
     #[wasm_bindgen(js_name = setField)]
@@ -640,7 +657,7 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Update a payload field on the main card and mark it as `!fill`.
+    /// Update a payload field on the main card and mark it as `!must_fill`.
     /// Throws on invalid name (see [`setField`](Document::set_field)).
     #[wasm_bindgen(js_name = setFill)]
     pub fn set_fill(&mut self, name: &str, value: JsValue) -> Result<(), JsValue> {
@@ -818,6 +835,7 @@ impl Document {
                 key,
                 value,
                 fill: false,
+                nested_fills: Vec::new(),
             })
             .collect();
         let wire = quillmark_core::CardWire {

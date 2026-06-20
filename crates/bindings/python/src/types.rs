@@ -288,7 +288,7 @@ impl PyDocument {
     /// Schema version this build writes.
     #[staticmethod]
     fn current_schema_version() -> &'static str {
-        quillmark_core::document::SCHEMA_V0_82_0
+        quillmark_core::document::SCHEMA_V0_92_0
     }
 
     /// Canonical card-yaml authoring rules — the core text every surface shows.
@@ -558,6 +558,7 @@ impl PyDocument {
                     key,
                     value: py_to_json(&v)?,
                     fill: false,
+                    nested_fills: Vec::new(),
                 });
             }
         }
@@ -850,11 +851,25 @@ fn card_to_pydict<'py>(
     for item in &wire.payload_items {
         let entry = PyDict::new(py);
         match item {
-            quillmark_core::PayloadItemWire::Field { key, value, fill } => {
+            quillmark_core::PayloadItemWire::Field {
+                key,
+                value,
+                fill,
+                nested_fills,
+            } => {
                 entry.set_item("type", "field")?;
                 entry.set_item("key", key)?;
                 entry.set_item("value", json_to_py(py, value)?)?;
                 entry.set_item("fill", *fill)?;
+                // Paths to `!must_fill` markers nested inside `value` (the JSON
+                // projection is fill-free). Mirrors the WASM `nestedFills` field;
+                // omitted when empty so simple cards stay clean. The serde-based
+                // reverse path (`py_dict_to_card`) reads it back.
+                if !nested_fills.is_empty() {
+                    let nf = serde_json::to_value(nested_fills)
+                        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+                    entry.set_item("nestedFills", json_to_py(py, &nf)?)?;
+                }
             }
             quillmark_core::PayloadItemWire::Comment { text, inline } => {
                 entry.set_item("type", "comment")?;

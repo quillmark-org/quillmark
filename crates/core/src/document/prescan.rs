@@ -12,14 +12,15 @@
 //!    ordinal indicating where in the container they sit. The emitter
 //!    re-injects them at the matching position. See [`NestedComment`].
 //!
-//! 3. **`!fill` tags.** Custom YAML tags are accepted and dropped by
+//! 3. **`!must_fill` tags.** Custom YAML tags are accepted and dropped by
 //!    serde_saphyr; the value survives but the tag annotation is lost. We
-//!    detect `!fill` on top-level scalar fields, strip the tag from the
+//!    detect `!must_fill` on top-level scalar fields, strip the tag from the
 //!    cleaned YAML (so serde_saphyr sees a plain scalar), and record a
 //!    `fill: true` marker on the resulting `Field` item.
 //!
-//! Other custom tags (`!include`, `!env`, …) are stripped with a
-//! `parse::unsupported_yaml_tag` warning.
+//! `!must_fill` is the only recognized fill tag. Every other custom tag
+//! (`!include`, `!env`, the former `!fill` alias, …) is treated alike: dropped
+//! with a `parse::unsupported_yaml_tag` warning, the scalar value kept.
 
 use crate::Diagnostic;
 use crate::Severity;
@@ -36,11 +37,10 @@ pub enum PreItem {
 }
 
 /// One segment of a path into the parsed YAML structure.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CommentPathSegment {
-    Key(String),
-    Index(usize),
-}
+///
+/// Aliased to the crate-wide [`crate::value::PathSegment`] so prescan,
+/// emit, and the value tree all speak one path type.
+pub use crate::value::PathSegment as CommentPathSegment;
 
 /// A comment inside a nested mapping or sequence.
 ///
@@ -60,13 +60,17 @@ pub struct NestedComment {
 /// Output of [`prescan_fence_content`].
 #[derive(Debug, Clone, Default)]
 pub struct PreScan {
-    /// YAML with `!fill` tags stripped and comment lines removed; fed to serde_saphyr.
+    /// YAML with `!must_fill` tags stripped and comment lines removed; fed to serde_saphyr.
     pub cleaned_yaml: String,
     /// Top-level fields and comments in source order.
     pub items: Vec<PreItem>,
     pub nested_comments: Vec<NestedComment>,
+    /// Paths of nested fields tagged `!must_fill`, relative to the fence root
+    /// (the first segment is the owning top-level key). Applied onto the
+    /// value tree by the assembler. Top-level fills ride on `PreItem::Field`.
+    pub nested_fills: Vec<Vec<CommentPathSegment>>,
     pub warnings: Vec<Diagnostic>,
-    /// `!fill` on mappings — turned into `ParseError::InvalidStructure` by the parser.
+    /// `!must_fill` on mappings — turned into `ParseError::InvalidStructure` by the parser.
     pub fill_target_errors: Vec<String>,
 }
 
@@ -179,6 +183,12 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
             let after_dash_trimmed = after_dash.trim_start();
             let inline_indent_offset = indent + 2 + (after_dash.len() - after_dash_trimmed.len());
 
+            // The first key of a sequence-item mapping (`- key: value`) sits on
+            // the dash line, so Case 4 never sees it. Inspect it here for a fill
+            // marker / unsupported tag, mirroring Case 4. `dash_body_clean`, when
+            // set, is the tag-stripped `key:value` rewritten onto the dash line
+            // so serde_saphyr parses the bare value.
+            let mut dash_body_clean: Option<String> = None;
             if after_dash_trimmed.is_empty() {
                 stack.push(Frame {
                     indent: indent + 2,
@@ -186,7 +196,32 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
                     kind: None,
                     child_count: 0,
                 });
-            } else if split_key(after_dash_trimmed).is_some() {
+            } else if let Some((key, after_colon)) = split_key(after_dash_trimmed) {
+                let (fill, value_without_tag, had_non_fill_tag, fill_target_err) =
+                    inspect_fill_and_tags(&after_colon, &key);
+                if had_non_fill_tag {
+                    out.warnings.push(
+                        Diagnostic::new(
+                            Severity::Warning,
+                            format!(
+                                "YAML tag on key `{}` is not supported; the tag has been dropped and the value kept",
+                                key
+                            ),
+                        )
+                        .with_code("parse::unsupported_yaml_tag".to_string()),
+                    );
+                }
+                if let Some(err) = fill_target_err {
+                    out.fill_target_errors.push(err);
+                }
+                if fill {
+                    let mut key_path = item_path.clone();
+                    key_path.push(CommentPathSegment::Key(key.clone()));
+                    out.nested_fills.push(key_path);
+                }
+                if fill || had_non_fill_tag {
+                    dash_body_clean = Some(format!("{}:{}", key, value_without_tag));
+                }
                 stack.push(Frame {
                     indent: inline_indent_offset,
                     path: item_path,
@@ -195,18 +230,22 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
                 });
             }
 
-            if let Some(c) = trailing_comment {
+            if let Some(c) = &trailing_comment {
                 out.nested_comments.push(NestedComment {
                     container_path: parent_path,
                     position: item_index,
-                    text: strip_comment_marker(&c).to_string(),
+                    text: strip_comment_marker(c).to_string(),
                     inline: true,
                 });
+            }
+            // Rewrite the dash line when a tag was stripped and/or a trailing
+            // comment was lifted off; otherwise pass the original through.
+            if dash_body_clean.is_some() || trailing_comment.is_some() {
                 let head = format!("{:width$}", "", width = indent);
-                let body = if after_dash.trim_end().is_empty() {
-                    "-".to_string()
-                } else {
-                    format!("- {}", after_dash.trim_end())
+                let body = match dash_body_clean {
+                    Some(b) => format!("- {}", b),
+                    None if after_dash.trim_end().is_empty() => "-".to_string(),
+                    None => format!("- {}", after_dash.trim_end()),
                 };
                 cleaned_lines.push(format!("{}{}", head, body));
             } else {
@@ -305,20 +344,44 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
             }
 
             let (value_part, trailing_comment) = split_trailing_comment(&after_colon);
-            if let Some(c) = trailing_comment {
-                out.nested_comments.push(NestedComment {
-                    container_path: parent_path,
-                    position: key_index,
-                    text: strip_comment_marker(&c).to_string(),
-                    inline: true,
-                });
+
+            let (fill, value_without_tag, had_non_fill_tag, fill_target_err) =
+                inspect_fill_and_tags(&value_part, &key);
+            if had_non_fill_tag {
+                out.warnings.push(
+                    Diagnostic::new(
+                        Severity::Warning,
+                        format!(
+                            "YAML tag on key `{}` is not supported; the tag has been dropped and the value kept",
+                            key
+                        ),
+                    )
+                    .with_code("parse::unsupported_yaml_tag".to_string()),
+                );
+            }
+            if let Some(err) = fill_target_err {
+                out.fill_target_errors.push(err);
+            }
+            if fill {
+                out.nested_fills.push(key_path.clone());
+            }
+
+            if trailing_comment.is_some() || fill {
+                if let Some(c) = trailing_comment {
+                    out.nested_comments.push(NestedComment {
+                        container_path: parent_path,
+                        position: key_index,
+                        text: strip_comment_marker(&c).to_string(),
+                        inline: true,
+                    });
+                }
                 let head = format!("{:width$}", "", width = indent);
-                cleaned_lines.push(format!("{}{}:{}", head, key, value_part));
+                cleaned_lines.push(format!("{}{}:{}", head, key, value_without_tag));
             } else {
                 cleaned_lines.push(line.to_string());
             }
 
-            if has_empty_inline_value(&after_colon) {
+            if has_empty_inline_value(&value_without_tag) {
                 stack.push(Frame {
                     indent: indent + 2,
                     path: key_path,
@@ -327,7 +390,7 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
                 });
             }
 
-            if is_block_scalar_header(&value_part) {
+            if is_block_scalar_header(&value_without_tag) {
                 block_scalar_indent = Some(indent);
             }
             continue;
@@ -336,8 +399,63 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
         cleaned_lines.push(line.to_string());
     }
 
+    // Catch-all: prescan lifts every `!must_fill` it can preserve (block-style
+    // `key: !must_fill` and `- key: !must_fill`), stripping the tag from the
+    // cleaned text. Any tag that survives here sits in a position we cannot
+    // round-trip — inside a flow collection (`{…}` / `[…]`) or on a bare
+    // sequence element — where serde_saphyr would silently drop it. Warn rather
+    // than lose the marker quietly.
+    if cleaned_lines.iter().any(|l| line_has_unsupported_fill_tag(l)) {
+        out.warnings.push(
+            Diagnostic::new(
+                Severity::Warning,
+                "a `!must_fill` marker appears in a flow collection or on a bare \
+                 sequence element and is not preserved; use block style \
+                 (`key: !must_fill`) to mark a placeholder"
+                    .to_string(),
+            )
+            .with_code("parse::fill_marker_unsupported_position".to_string()),
+        );
+    }
+
     out.cleaned_yaml = cleaned_lines.join("\n");
     out
+}
+
+/// True when `line` still carries a `!must_fill` / `!fill` tag in a value or
+/// element position that prescan could not lift. Block-style markers are
+/// stripped before this runs, so a survivor means an unsupported position.
+/// The boundary checks keep a quoted scalar that merely contains the literal
+/// text (e.g. `note: "see !must_fill"`) from matching.
+fn line_has_unsupported_fill_tag(line: &str) -> bool {
+    for tag in FILL_TAGS {
+        let mut from = 0;
+        while let Some(rel) = line[from..].find(tag) {
+            let at = from + rel;
+            let after = at + tag.len();
+            // Trailing boundary: a real tag ends at whitespace, flow
+            // punctuation, or end of line — not mid-word (`!fillet`).
+            let trailing_ok = line[after..]
+                .chars()
+                .next()
+                .is_none_or(|c| c.is_whitespace() || matches!(c, ',' | '}' | ']'));
+            // Leading boundary: the tag sits in value/element position —
+            // directly after `{` / `[` / `,`, or after whitespace following
+            // `:` / `-` / `,` / `{` / `[`.
+            let before = line[..at].trim_end_matches([' ', '\t']);
+            let had_ws = before.len() != at;
+            let leading_ok = match before.chars().last() {
+                Some('{') | Some('[') | Some(',') => true,
+                Some(':') | Some('-') => had_ws,
+                _ => false,
+            };
+            if trailing_ok && leading_ok {
+                return true;
+            }
+            from = after;
+        }
+    }
+    false
 }
 
 /// Return the index of the deepest frame matching `indent` and `kind`,
@@ -526,10 +644,32 @@ fn split_flow_trailing_comment(value: &str) -> (String, Option<String>) {
     (value.to_string(), None)
 }
 
-/// Inspect a field value for `!fill` and other tags.
+/// The placeholder tag. `!must_fill` is the only recognized fill tag; any
+/// other custom tag (including the former `!fill` alias) is treated as a
+/// noncanonical tag — dropped with a `parse::unsupported_yaml_tag` warning.
+const FILL_TAGS: [&str; 1] = ["!must_fill"];
+
+/// If `trimmed` begins with a fill tag (either the bare tag or the tag
+/// followed by whitespace), return the remainder after the tag. A tag that
+/// is merely a prefix of a longer word (e.g. `!fillet`) does not match.
+fn strip_fill_tag(trimmed: &str) -> Option<&str> {
+    for tag in FILL_TAGS {
+        if trimmed == tag {
+            return Some("");
+        }
+        if let Some(rest) = trimmed.strip_prefix(tag) {
+            if rest.starts_with(' ') || rest.starts_with('\t') {
+                return Some(rest);
+            }
+        }
+    }
+    None
+}
+
+/// Inspect a field value for the `!must_fill` tag and other (noncanonical) tags.
 ///
 /// Returns `(fill, value_without_tag, had_other_tag, fill_target_err)`.
-/// `fill_target_err` is set when `!fill` targets a mapping (rejected;
+/// `fill_target_err` is set when the fill tag targets a mapping (rejected;
 /// scalars and sequences are allowed).
 fn inspect_fill_and_tags(value: &str, key: &str) -> (bool, String, bool, Option<String>) {
     let trimmed = value.trim_start();
@@ -539,29 +679,22 @@ fn inspect_fill_and_tags(value: &str, key: &str) -> (bool, String, bool, Option<
         return (false, value.to_string(), false, None);
     }
 
-    if trimmed == "!fill" {
-        let reconstructed = value[..leading_ws_len].to_string();
-        return (true, reconstructed, false, None);
-    }
-
-    if let Some(rest) = trimmed.strip_prefix("!fill") {
-        if rest.starts_with(' ') || rest.starts_with('\t') || rest.is_empty() {
-            let rest_trim = rest.trim_start();
-            let err = if rest_trim.starts_with('{') {
-                Some(format!(
-                    "`!fill` on key `{}` targets a mapping; `!fill` is supported on scalars and sequences only",
-                    key
-                ))
-            } else {
-                None
-            };
-            let reconstructed = if rest_trim.is_empty() {
-                value[..leading_ws_len].to_string()
-            } else {
-                format!(" {}", rest_trim)
-            };
-            return (true, reconstructed, false, err);
-        }
+    if let Some(rest) = strip_fill_tag(trimmed) {
+        let rest_trim = rest.trim_start();
+        let err = if rest_trim.starts_with('{') {
+            Some(format!(
+                "`!must_fill` on key `{}` targets a mapping; `!must_fill` is supported on scalars and sequences only",
+                key
+            ))
+        } else {
+            None
+        };
+        let reconstructed = if rest_trim.is_empty() {
+            value[..leading_ws_len].to_string()
+        } else {
+            format!(" {}", rest_trim)
+        };
+        return (true, reconstructed, false, err);
     }
 
     if trimmed.starts_with('!') {
@@ -625,8 +758,30 @@ mod tests {
     }
 
     #[test]
-    fn detects_fill_on_scalar() {
+    fn fill_alias_is_rejected_as_noncanonical_tag() {
+        // `!fill` is no longer an alias for `!must_fill`. It is treated like any
+        // other custom tag: not a fill marker, dropped with an unsupported-tag
+        // warning, the value kept.
         let input = "dept: !fill Department\n";
+        let out = prescan_fence_content(input);
+        assert_eq!(
+            out.items,
+            vec![PreItem::Field {
+                key: "dept".to_string(),
+                fill: false,
+            }]
+        );
+        assert!(
+            out.warnings
+                .iter()
+                .any(|w| w.code.as_deref() == Some("parse::unsupported_yaml_tag")),
+            "`!fill` must warn as an unsupported tag"
+        );
+    }
+
+    #[test]
+    fn detects_must_fill_on_scalar() {
+        let input = "dept: !must_fill Department\n";
         let out = prescan_fence_content(input);
         assert_eq!(
             out.items,
@@ -636,12 +791,13 @@ mod tests {
             }]
         );
         assert!(out.cleaned_yaml.contains("dept: Department"));
+        assert!(!out.cleaned_yaml.contains("!must_fill"));
         assert!(!out.cleaned_yaml.contains("!fill"));
     }
 
     #[test]
-    fn detects_bare_fill() {
-        let input = "dept: !fill\n";
+    fn detects_bare_must_fill() {
+        let input = "dept: !must_fill\n";
         let out = prescan_fence_content(input);
         assert_eq!(
             out.items,
@@ -650,7 +806,23 @@ mod tests {
                 fill: true,
             }]
         );
-        assert!(!out.cleaned_yaml.contains("!fill"));
+        assert!(!out.cleaned_yaml.contains("!must_fill"));
+    }
+
+    #[test]
+    fn fillet_is_not_a_fill_tag() {
+        // A tag that merely starts with the fill-tag prefix must not be treated
+        // as fill (`!must_filler` shares the `!must_fill` prefix; `!fillet` is
+        // unrelated). Both are ordinary noncanonical tags.
+        let input = "x: !must_filler value\n";
+        let out = prescan_fence_content(input);
+        assert_eq!(
+            out.items,
+            vec![PreItem::Field {
+                key: "x".to_string(),
+                fill: false,
+            }]
+        );
     }
 
     #[test]
@@ -785,11 +957,11 @@ mod tests {
 
     #[test]
     fn fill_on_flow_sequence_allowed() {
-        let input = "x: !fill [1, 2]\n";
+        let input = "x: !must_fill [1, 2]\n";
         let out = prescan_fence_content(input);
         assert!(
             out.fill_target_errors.is_empty(),
-            "expected no error; !fill on sequences is supported"
+            "expected no error; !must_fill on sequences is supported"
         );
         assert_eq!(
             out.items,
@@ -898,11 +1070,11 @@ mod tests {
 
     #[test]
     fn fill_on_flow_mapping_errors() {
-        let input = "x: !fill {a: 1}\n";
+        let input = "x: !must_fill {a: 1}\n";
         let out = prescan_fence_content(input);
         assert!(
             !out.fill_target_errors.is_empty(),
-            "expected error; !fill on mappings is rejected"
+            "expected error; !must_fill on mappings is rejected"
         );
     }
     // ── split_trailing_comment: YAML 1.2 conformance ─────────────────────────

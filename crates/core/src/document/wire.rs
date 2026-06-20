@@ -29,7 +29,7 @@ use serde_json::{Map as JsonMap, Value as JsonValue};
 
 use super::payload::{Payload, PayloadItem};
 use super::Card;
-use crate::value::QuillValue;
+use crate::value::{PathSegment, QuillValue};
 use crate::version::QuillReference;
 
 /// One entry in a [`CardWire`]'s `payload_items`: a user field or a comment.
@@ -41,9 +41,20 @@ pub enum PayloadItemWire {
     Field {
         key: String,
         value: JsonValue,
-        /// `true` when written as `key: !fill <value>` in source / marked fill.
+        /// `true` when the field itself is `key: !must_fill <value>` in source.
         #[serde(default)]
         fill: bool,
+        /// Paths to `!must_fill` markers nested *inside* `value` (e.g. a leaf
+        /// property of an object, or a key within an array element). The JSON
+        /// `value` projection is fill-free, so these carry the nested markers
+        /// across the wire. Empty for a top-level-only or no-fill field.
+        #[serde(
+            default,
+            rename = "nestedFills",
+            alias = "nested_fills",
+            skip_serializing_if = "Vec::is_empty"
+        )]
+        nested_fills: Vec<Vec<PathStepWire>>,
     },
     /// A YAML comment line (text excludes the leading `#`).
     Comment {
@@ -52,6 +63,34 @@ pub enum PayloadItemWire {
         #[serde(default)]
         inline: bool,
     },
+}
+
+/// One step in a nested fill path: an object key or an array index. Serializes
+/// **untagged** — a key as a JSON string, an index as a JSON number — so a path
+/// is a plain JS array like `["addr", "street"]` or `["recipients", 0, "name"]`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PathStepWire {
+    Index(usize),
+    Key(String),
+}
+
+impl From<&PathSegment> for PathStepWire {
+    fn from(seg: &PathSegment) -> Self {
+        match seg {
+            PathSegment::Key(k) => PathStepWire::Key(k.clone()),
+            PathSegment::Index(i) => PathStepWire::Index(*i),
+        }
+    }
+}
+
+impl From<&PathStepWire> for PathSegment {
+    fn from(seg: &PathStepWire) -> Self {
+        match seg {
+            PathStepWire::Key(k) => PathSegment::Key(k.clone()),
+            PathStepWire::Index(i) => PathSegment::Index(*i),
+        }
+    }
 }
 
 /// Canonical live wire form of a [`Card`]. See the module docs.
@@ -129,11 +168,20 @@ impl From<&Card> for CardWire {
                 PayloadItem::Ext { value, .. } => wire.ext = Some(value.clone()),
                 PayloadItem::Field {
                     key, value, fill, ..
-                } => wire.payload_items.push(PayloadItemWire::Field {
-                    key: key.clone(),
-                    value: value.as_json().clone(),
-                    fill: *fill,
-                }),
+                } => {
+                    let nested_fills = value
+                        .fill_paths()
+                        .into_iter()
+                        .filter(|p| !p.is_empty())
+                        .map(|p| p.iter().map(PathStepWire::from).collect())
+                        .collect();
+                    wire.payload_items.push(PayloadItemWire::Field {
+                        key: key.clone(),
+                        value: value.as_json().clone(),
+                        fill: *fill,
+                        nested_fills,
+                    })
+                }
                 PayloadItem::Comment { text, inline } => {
                     wire.payload_items.push(PayloadItemWire::Comment {
                         text: text.clone(),
@@ -154,11 +202,21 @@ impl TryFrom<CardWire> for Card {
             .payload_items
             .into_iter()
             .map(|item| match item {
-                PayloadItemWire::Field { key, value, fill } => {
+                PayloadItemWire::Field {
+                    key,
+                    value,
+                    fill,
+                    nested_fills,
+                } => {
                     validate_wire_field(&key, &value)?;
+                    let mut qv = QuillValue::from_json(value);
+                    for path in &nested_fills {
+                        let segs: Vec<PathSegment> = path.iter().map(PathSegment::from).collect();
+                        qv.set_fill_at(&segs);
+                    }
                     Ok(PayloadItem::Field {
                         key,
-                        value: QuillValue::from_json(value),
+                        value: qv,
                         fill,
                         nested_comments: Vec::new(),
                     })
@@ -226,6 +284,33 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// Nested `!must_fill` markers inside a field value survive Card → wire →
+    /// Card via the `nestedFills` path list (the JSON projection is fill-free).
+    #[test]
+    fn card_wire_round_trips_nested_fill() {
+        let mut addr = QuillValue::from_json(json!({"street": null, "city": "Anytown"}));
+        assert!(addr.set_fill_at(&[PathSegment::Key("street".to_string())]));
+        let payload = Payload::from_items(vec![PayloadItem::Field {
+            key: "addr".to_string(),
+            value: addr,
+            fill: false,
+            nested_comments: Vec::new(),
+        }]);
+        let card = Card::from_parts(payload, String::new());
+
+        let wire = CardWire::from(&card);
+        let as_json = serde_json::to_value(&wire).unwrap();
+        assert_eq!(
+            as_json["payloadItems"][0]["nestedFills"],
+            json!([["street"]]),
+            "nested fill path rides the wire as a JS array; JSON value stays fill-free"
+        );
+        assert_eq!(as_json["payloadItems"][0]["value"], json!({"street": null, "city": "Anytown"}));
+
+        let back = Card::try_from(wire).expect("wire → card");
+        assert_eq!(back, card, "nested fill must survive Card → wire → Card");
+    }
+
     /// A field-and-comment card with `$kind` round-trips Card → wire → Card.
     #[test]
     fn card_wire_round_trips_fields_and_comment() {
@@ -277,6 +362,7 @@ mod tests {
                 key: "x".to_string(),
                 value: json!(1),
                 fill: false,
+                nested_fills: Vec::new(),
             }],
             body: String::new(),
         })

@@ -6,7 +6,7 @@
 //!
 //! - **System metadata** — typed `$quill` / `$kind` / `$id` / `$ext`
 //!   entries.
-//! - **User fields** — `key: value` pairs with an optional `!fill` flag.
+//! - **User fields** — `key: value` pairs with an optional `!must_fill` flag.
 //! - **Comments** — own-line or trailing inline, attached to whichever
 //!   item they immediately follow at emit time.
 //!
@@ -70,7 +70,7 @@ pub enum PayloadItem {
         value: JsonMap<String, JsonValue>,
         nested_comments: Vec<NestedComment>,
     },
-    /// A user-defined YAML field, optionally tagged `!fill`.
+    /// A user-defined YAML field, optionally tagged `!must_fill`.
     ///
     /// `nested_comments` carries YAML comments inside the field's value
     /// (only meaningful when the value is a mapping or sequence); paths
@@ -79,8 +79,8 @@ pub enum PayloadItem {
     Field {
         key: String,
         value: QuillValue,
-        /// `true` when the field was written as `key: !fill <value>` or
-        /// `key: !fill` in source.
+        /// `true` when the field was written as `key: !must_fill <value>` or
+        /// `key: !must_fill` in source.
         fill: bool,
         nested_comments: Vec<NestedComment>,
     },
@@ -455,7 +455,7 @@ impl Payload {
         self.get(key).is_some()
     }
 
-    /// `true` if a user field with this key is marked `!fill`.
+    /// `true` if a user field with this key is marked `!must_fill`.
     pub fn is_fill(&self, key: &str) -> bool {
         self.items.iter().any(|item| match item {
             PayloadItem::Field { key: k, fill, .. } => k == key && *fill,
@@ -496,7 +496,7 @@ impl Payload {
         None
     }
 
-    /// Insert or update a user field and mark it as a `!fill` placeholder.
+    /// Insert or update a user field and mark it as a `!must_fill` placeholder.
     /// Preserves position for existing keys; appends new keys at the end.
     /// Replacing an existing field discards its `nested_comments`.
     pub fn insert_fill(&mut self, key: impl Into<String>, value: QuillValue) -> Option<QuillValue> {

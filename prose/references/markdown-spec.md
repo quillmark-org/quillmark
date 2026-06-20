@@ -235,14 +235,23 @@ data payload.
   (arrays, maps) are also preserved: the pre-scan captures each nested
   comment with a structural path and the emitter re-injects it at the
   matching position.
-- **The `!fill` tag.** `!fill` is the single supported YAML tag; it marks a
-  top-level data field as a placeholder awaiting user input and round-trips
-  through emit. `!fill` may be applied to scalars (string, integer, float,
-  bool, null) and sequences; it is rejected on mappings because Quillmark's
-  schema has no top-level `type: object`. `!fill` may not be applied to a
-  `$` metadata key. Any other custom tag (`!include`, `!env`, …) is
-  dropped with a `parse::unsupported_yaml_tag` warning; the scalar value is
-  kept but the tag does not round-trip.
+- **The `!must_fill` tag.** `!must_fill` marks a data field as a placeholder
+  awaiting user input and round-trips through emit. It applies both to a
+  top-level field and to a leaf nested inside an object or an array element
+  (e.g. `addr.street`, `recipients[0].name`); nested markers are recorded on
+  the value tree and survive markdown, live-wire, and storage round-trips.
+  `!must_fill` may be applied to scalars (string, integer, float, bool, null)
+  and sequences; it is rejected on a mapping (tag the leaves, not the
+  container). `!must_fill` may not be applied to a `$` metadata key. The marker
+  is preserved only in **block style** — `key: !must_fill` at any depth. A
+  marker written inside a **flow collection** (`{…}` / `[…]`) or on a **bare
+  sequence element** (`- !must_fill`) cannot be round-tripped and is reported
+  with a `parse::fill_marker_unsupported_position` warning (the value is kept,
+  the marker is not); markers under YAML **anchors/merge keys** are likewise
+  not preserved. `!must_fill` is the only fill tag: every other custom tag —
+  `!include`, `!env`, and the former `!fill` spelling — is dropped with a
+  `parse::unsupported_yaml_tag` warning; the scalar value is kept but the tag
+  does not round-trip.
 
 ### 3.5 Version Selectors
 
@@ -461,7 +470,7 @@ it when the input omitted the line (see §3.3). Composable cards must
 declare `$kind: <kind>`. A document round-trips to this canonical
 shape — fence markers and YAML quoting are normalised; the `~~~card-yaml`
 alias and the `---`-fenced root alias (§3.2.1) both re-emit as bare `~~~`.
-`!fill` tags and YAML comments
+`!must_fill` tags and YAML comments
 (own-line and inline, including those adjacent to `$` lines) survive the
 round-trip.
 

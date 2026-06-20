@@ -65,7 +65,7 @@ pub mod quill;
 pub use quill::{zero_value, FileTreeNode, QuillIgnore, Quill};
 
 pub mod value;
-pub use value::{json_depth_exceeds, QuillValue};
+pub use value::{json_depth_exceeds, PathSegment, QuillValue};
 
 pub mod normalize;
 

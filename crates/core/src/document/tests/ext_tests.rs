@@ -103,7 +103,7 @@ fn fill_on_ext_is_rejected() {
 ~~~card-yaml
 $quill: q@1.0
 $kind: main
-$ext: !fill
+$ext: !must_fill
   foo: 1
 ~~~
 ",
@@ -111,8 +111,8 @@ $ext: !fill
     .unwrap_err()
     .to_string();
     assert!(
-        err.contains("`!fill`") && err.contains("$ext"),
-        "expected !fill-on-$ext rejection, got: {err}",
+        err.contains("`!must_fill`") && err.contains("$ext"),
+        "expected !must_fill-on-$ext rejection, got: {err}",
     );
 }
 
