@@ -1220,7 +1220,12 @@ title: Hi
             "cards": []
         }"#;
         let doc: Document = serde_json::from_str(json).unwrap();
-        let overlay = doc.seed("indorsement").expect("overlay present");
+        let overlay = doc
+            .main()
+            .seed()
+            .and_then(|m| m.get("indorsement"))
+            .and_then(crate::SeedOverlay::from_json)
+            .expect("overlay present");
         assert_eq!(
             overlay.fields.get("from").and_then(|v| v.as_str()),
             Some("49 FW/CC")

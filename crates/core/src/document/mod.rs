@@ -137,11 +137,11 @@ impl Card {
 }
 
 /// A parsed, per-kind **seed overlay**: the sparse fields (and optional body)
-/// a newly-added card of a given kind starts with. Read from the main card's
-/// `$seed` map by [`Document::seed`], and layered over the quill's
-/// schema-example seed by [`crate::Quill::seed_card`] (overlay › example ›
-/// absent). The reserved inner key `$body` carries the body override; every
-/// other key is a user field.
+/// a newly-added card of a given kind starts with. Built from a `$seed[<kind>]`
+/// entry of the main card's [`Card::seed`] map via [`SeedOverlay::from_json`],
+/// and layered over the quill's schema-example seed by
+/// [`crate::Quill::seed_card`] (overlay › example › absent). The reserved inner
+/// key `$body` carries the body override; every other key is a user field.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SeedOverlay {
     /// Field-value overrides, keyed by field name.
@@ -152,9 +152,10 @@ pub struct SeedOverlay {
 
 impl SeedOverlay {
     /// Parse an overlay from a `$seed[<kind>]` JSON value, or `None` when it is
-    /// not a mapping. Bindings use this to turn the raw overlay object a
-    /// consumer reads from `$seed` (e.g. via [`Document::seed`]) back into a
-    /// typed overlay to hand to [`crate::Quill::seed_card`].
+    /// not a mapping. Use this to turn the raw overlay object a consumer reads
+    /// from the main card's `$seed` map ([`Card::seed`]) into a typed overlay to
+    /// hand to [`crate::Quill::seed_card`] — e.g.
+    /// `doc.main().seed().and_then(|m| m.get(kind)).and_then(SeedOverlay::from_json)`.
     pub fn from_json(value: &serde_json::Value) -> Option<Self> {
         value.as_object().map(Self::from_json_map)
     }
@@ -244,16 +245,6 @@ impl Document {
 
     pub fn cards(&self) -> &[Card] {
         &self.cards
-    }
-
-    /// The parsed [`SeedOverlay`] for `card_kind`, read from the main card's
-    /// `$seed` map, or `None` when no overlay is declared for that kind (or
-    /// the entry is not a mapping). This is the read-only input to
-    /// [`crate::Quill::seed_card`]: the document supplies the overlay, the
-    /// quill composes it over the schema-example seed.
-    pub fn seed(&self, card_kind: &str) -> Option<SeedOverlay> {
-        let entry = self.main.payload().seed()?.get(card_kind)?.as_object()?;
-        Some(SeedOverlay::from_json_map(entry))
     }
 
     pub fn cards_mut(&mut self) -> &mut [Card] {

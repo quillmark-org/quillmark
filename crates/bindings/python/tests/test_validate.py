@@ -184,20 +184,26 @@ def test_seed_card_with_overlay_layers_over_example(tmp_path):
 
 
 def test_document_seed_and_set_seed_namespace_round_trip(tmp_path):
-    """Document.seed(kind) reads what set_seed_namespace wrote; the overlay
+    """main['seed'][kind] reads what set_seed_namespace wrote; the overlay
     feeds straight back into seed_card; remove_seed_namespace clears it."""
+
+    def seed_of(document, kind):
+        # The per-kind overlay lives on the main card's `$seed` map; there is
+        # no `Document.seed` convenience.
+        return (document.main["seed"] or {}).get(kind)
+
     quill = make_quill(tmp_path)
     doc = Document.from_markdown(_md())  # empty main card
 
-    assert doc.seed("note") is None
+    assert seed_of(doc, "note") is None
     doc.set_seed_namespace("note", {"tag": "WRITTEN"})
-    assert doc.seed("note")["tag"] == "WRITTEN"
+    assert seed_of(doc, "note")["tag"] == "WRITTEN"
 
-    card = quill.seed_card("note", doc.seed("note"))
+    card = quill.seed_card("note", seed_of(doc, "note"))
     assert "WRITTEN" in json.dumps(card)
 
     doc.remove_seed_namespace("note")
-    assert doc.seed("note") is None
+    assert seed_of(doc, "note") is None
 
 
 def test_seed_overlay_validation_is_advisory(tmp_path):

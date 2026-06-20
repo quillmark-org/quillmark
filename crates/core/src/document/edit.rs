@@ -328,8 +328,8 @@ impl Card {
     }
 
     /// The raw `$seed` map (keyed by card-kind), or `None`. For a parsed,
-    /// per-kind overlay use [`crate::Document::seed`]. Only the main card
-    /// carries `$seed`.
+    /// per-kind overlay, index this map by kind and pass the entry to
+    /// [`crate::SeedOverlay::from_json`]. Only the main card carries `$seed`.
     pub fn seed(&self) -> Option<&serde_json::Map<String, serde_json::Value>> {
         self.payload().seed()
     }

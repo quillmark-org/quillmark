@@ -248,9 +248,10 @@ impl Quill {
     /// Seed a starter composable [`Card`] of the given kind (carries `$kind`),
     /// layering an optional per-kind [`SeedOverlay`] over the schema-example
     /// base (`overlay › example › absent`); `None` if the kind is not declared.
-    /// Use to add a new card to a document — pass `doc.seed(card_kind)` as the
-    /// overlay so a card spawned into a template-derived document inherits its
-    /// curated starting values, and `None` for the bare schema seed.
+    /// Use to add a new card to a document — pass the document's `$seed` entry
+    /// for the kind (`doc.main().seed().and_then(|m| m.get(card_kind)).and_then(SeedOverlay::from_json)`)
+    /// so a card spawned into a template-derived document inherits its curated
+    /// starting values, and `None` for the bare schema seed.
     pub fn seed_card(&self, card_kind: &str, overlay: Option<&SeedOverlay>) -> Option<Card> {
         seed::seed_card_for_kind(self, card_kind, overlay)
     }

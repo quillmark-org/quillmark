@@ -73,8 +73,9 @@ pub enum PayloadItem {
     /// `$seed` system metadata — a mapping keyed by composable card-kind,
     /// each entry a sparse "overlay" (the user fields, plus an optional
     /// `$body` string, that a newly-added card of that kind starts with).
-    /// **Root-only** (like `$quill`): carried on the main card and read by the
-    /// seeding layer ([`crate::Document::seed`]); a composable card carrying
+    /// **Root-only** (like `$quill`): carried on the main card and read via
+    /// [`Card::seed`](crate::Card::seed) (then [`crate::SeedOverlay::from_json`])
+    /// by the seeding layer; a composable card carrying
     /// `$seed` is rejected at parse and on storage load. Like `$ext` it never
     /// reaches the plate JSON and always round-trips through Markdown and the
     /// storage DTO; unlike `$ext` the seeding layer interprets it (see
@@ -355,7 +356,8 @@ impl Payload {
 
     /// The raw `$seed` map (keyed by card-kind), if declared. The seeding
     /// layer interprets it; it never reaches the plate JSON. For a parsed,
-    /// per-kind view use [`crate::Document::seed`].
+    /// per-kind overlay, index this map by kind and pass the entry to
+    /// [`crate::SeedOverlay::from_json`].
     pub fn seed(&self) -> Option<&JsonMap<String, JsonValue>> {
         self.items.iter().find_map(|i| match i {
             PayloadItem::Seed { value, .. } => Some(value),

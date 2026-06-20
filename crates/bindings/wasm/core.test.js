@@ -107,22 +107,22 @@ card_kinds:
       '~~~\n$quill: seed_core@1.0.0\n$kind: main\n$seed:\n  note:\n    author: Custom Author\n~~~\n',
     )
 
-    // Document.seed(kind) reads the per-kind overlay (undefined for unknown).
-    const overlay = doc.seed('note')
+    // The per-kind overlay is read off main.seed[kind] (undefined for unknown).
+    const overlay = doc.main.seed?.note
     expect(overlay.author).toBe('Custom Author')
-    expect(doc.seed('missing')).toBeUndefined()
+    expect(doc.main.seed?.missing).toBeUndefined()
 
     // seedCard layers it over the example (overlay › example); omitting the
     // overlay yields the bare schema example.
     expect(field(quill.seedCard('note', overlay), 'author')).toBe('Custom Author')
     expect(field(quill.seedCard('note'), 'author')).toBe('A. Author')
 
-    // setSeedNamespace writes an overlay; seed() reads it back; remove clears.
+    // setSeedNamespace writes an overlay; main.seed reads it back; remove clears.
     const doc2 = Document.fromMarkdown('~~~\n$quill: seed_core@1.0.0\n$kind: main\n~~~\n')
     doc2.setSeedNamespace('note', { author: 'Written' })
-    expect(doc2.seed('note').author).toBe('Written')
+    expect(doc2.main.seed?.note.author).toBe('Written')
     doc2.removeSeedNamespace('note')
-    expect(doc2.seed('note')).toBeUndefined()
+    expect(doc2.main.seed?.note).toBeUndefined()
   })
 
   it('loads even when the declared backend is unknown (resolved at render time)', () => {

@@ -258,7 +258,7 @@ title: Hi
 }
 
 #[test]
-fn document_seed_parses_overlay_with_body() {
+fn seed_overlay_parses_with_body() {
     let doc = parse(
         "\
 ~~~card-yaml
@@ -271,7 +271,13 @@ $seed:
 ~~~
 ",
     );
-    let overlay = doc.seed("indorsement").expect("overlay present");
+    // The overlay is read off the main card's `$seed` map and parsed via
+    // `SeedOverlay::from_json` (there is no `Document::seed` convenience).
+    let seed = doc.main().seed();
+    let overlay = seed
+        .and_then(|m| m.get("indorsement"))
+        .and_then(crate::SeedOverlay::from_json)
+        .expect("overlay present");
     assert_eq!(
         overlay.fields.get("from").and_then(|v| v.as_str()),
         Some("49 FW/CC"),
@@ -280,7 +286,7 @@ $seed:
     // `$body` is the body override, not a field.
     assert!(!overlay.fields.contains_key("$body"));
     // An undeclared kind yields no overlay.
-    assert!(doc.seed("missing").is_none());
+    assert!(seed.and_then(|m| m.get("missing")).is_none());
 }
 
 #[test]

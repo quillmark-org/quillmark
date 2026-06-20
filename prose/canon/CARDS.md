@@ -145,9 +145,12 @@ $seed:
 schema-`example:` seed, per field `overlay › example › absent`, ordered by
 `ui.order` (see [SCHEMAS.md](SCHEMAS.md) "Document seeding"). The overlay is
 *sparse*: fields it omits keep flowing from the live quill seed, so it tracks
-the quill rather than freezing a snapshot. `Document::seed(kind)` reads the
-parsed overlay; the consumer passes it to `seed_card` (`quill.seedCard(kind,
-doc.seed(kind))`) — a read of the document, never a mutation of it.
+the quill rather than freezing a snapshot. The overlay is read off the main
+card's `$seed` map (`Card::seed`, exposed as `card.seed` in the bindings) and
+parsed by `SeedOverlay::from_json`; the consumer passes it to `seed_card`
+(`quill.seedCard(kind, doc.main.seed?.[kind])`) — a read of the document, never
+a mutation of it. There is no dedicated `Document::seed` accessor: `$seed` is
+read through the card, exactly like `$ext`.
 
 The main card **carries** `$seed` but is never a *subject* of it: its keys range
 over `card_kinds`, and `main ∉ card_kinds` (a `$seed.main` entry is an advisory

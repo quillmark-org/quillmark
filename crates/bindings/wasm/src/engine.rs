@@ -455,7 +455,7 @@ impl Quill {
     /// is not declared in this quill's schema, else a `Card` that feeds
     /// straight into `Document.pushCard` / `insertCard`.
     ///
-    /// Pass `document.seed(cardKind)` as `overlay` so a card added to a
+    /// Pass `document.main.seed?.[cardKind]` as `overlay` so a card added to a
     /// template-derived document inherits its curated starting values; omit it
     /// (or pass `undefined` / `null`) for the bare schema seed. `overlay` is a
     /// plain object — this reads the document, it does not mutate it.
@@ -746,21 +746,6 @@ impl Document {
     #[wasm_bindgen(js_name = removeExtNamespace)]
     pub fn remove_ext_namespace(&mut self, namespace: &str) -> Result<JsValue, JsValue> {
         json_value_to_js(self.inner.main_mut().remove_ext_namespace(namespace))
-    }
-
-    /// The raw `$seed[cardKind]` overlay object on the main card (the sparse
-    /// fields plus an optional `$body`), or `undefined`. Hand the result to
-    /// `quill.seedCard(cardKind, …)` so a newly-added card inherits the
-    /// document's curated starting values. This is a read — it never mutates
-    /// the document.
-    #[wasm_bindgen(js_name = seed, unchecked_return_type = "Record<string, unknown> | undefined")]
-    pub fn seed(&self, card_kind: &str) -> Result<JsValue, JsValue> {
-        let entry = self
-            .inner
-            .main()
-            .seed()
-            .and_then(|m| m.get(card_kind).cloned());
-        json_value_to_js(entry)
     }
 
     /// Merge a card-kind's seed `overlay` into the main card's `$seed` map

@@ -215,8 +215,8 @@ impl PyQuill {
     /// layering an optional per-kind seed `overlay` over the schema-example
     /// base (`overlay › example › absent`); `None` if `card_kind` is not
     /// declared. Returns the same dict shape as `Document.cards` /
-    /// `remove_card`. Pass `document.seed(card_kind)` as `overlay` so a card
-    /// added to a template-derived document inherits its curated starting
+    /// `remove_card`. Pass `document.main["seed"][card_kind]` as `overlay` so a
+    /// card added to a template-derived document inherits its curated starting
     /// values; omit it for the bare schema seed. Mirrors WASM `seedCard`.
     #[pyo3(signature = (card_kind, overlay=None))]
     fn seed_card<'py>(
@@ -478,19 +478,6 @@ impl PyDocument {
         namespace: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
         ext_value_to_py(py, self.inner.main_mut().remove_ext_namespace(namespace))
-    }
-
-    /// The raw `$seed[card_kind]` overlay (sparse fields plus an optional
-    /// `$body`) on the main card, or `None`. Hand the result to
-    /// `quill.seed_card(card_kind, …)` so a newly-added card inherits the
-    /// document's curated starting values. A read — it never mutates the doc.
-    fn seed<'py>(&self, py: Python<'py>, card_kind: &str) -> PyResult<Bound<'py, PyAny>> {
-        let entry = self
-            .inner
-            .main()
-            .seed()
-            .and_then(|m| m.get(card_kind).cloned());
-        ext_value_to_py(py, entry)
     }
 
     /// Merge a card-kind's seed `overlay` into the main card's `$seed` map
