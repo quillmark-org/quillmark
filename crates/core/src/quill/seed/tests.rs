@@ -3,9 +3,16 @@
 
 use std::collections::HashMap;
 
+use serde_json::json;
+
 use crate::quill::FileTreeNode;
 
-use crate::Quill;
+use crate::{Document, Quill, SeedOverlay, Severity};
+
+/// Build a [`SeedOverlay`] from a JSON object (the `$seed[<kind>]` shape).
+fn overlay(value: serde_json::Value) -> SeedOverlay {
+    SeedOverlay::from_json(&value).expect("overlay json must be an object")
+}
 
 /// Build a minimal [`Quill`] from inline YAML with no filesystem dependencies.
 fn quill_from_yaml(yaml: &str) -> Quill {
@@ -175,6 +182,67 @@ fn seed_card_for_known_and_unknown_kind() {
     );
 }
 
+// ── Overlay layering (overlay › example › absent) ───────────────────────────
+
+#[test]
+fn overlay_overrides_example_and_falls_through_for_untouched_fields() {
+    let quill = quill_from_yaml(QUILL);
+    // Override only `author`; leave the rest to the schema seed.
+    let ov = overlay(json!({ "author": "Custom Author" }));
+    let card = quill.seed_card("note", Some(&ov)).expect("known kind");
+    assert_eq!(
+        card.payload().get("author").and_then(|v| v.as_str()),
+        Some("Custom Author"),
+        "overlay value wins over the example",
+    );
+}
+
+#[test]
+fn overlay_adds_a_field_the_base_omits() {
+    let quill = quill_from_yaml(QUILL);
+    // `tag` has no example, so the bare seed omits it; the overlay adds it.
+    assert!(quill
+        .seed_card("note", None)
+        .unwrap()
+        .payload()
+        .get("tag")
+        .is_none());
+    let ov = overlay(json!({ "tag": "pinned" }));
+    let card = quill.seed_card("note", Some(&ov)).expect("known kind");
+    assert_eq!(card.payload().get("tag").and_then(|v| v.as_str()), Some("pinned"));
+    // `author` still flows from its example (sparse fall-through).
+    assert_eq!(
+        card.payload().get("author").and_then(|v| v.as_str()),
+        Some("A. Author"),
+    );
+}
+
+#[test]
+fn overlay_fields_are_ordered_by_ui_order() {
+    let quill = quill_from_yaml(QUILL);
+    // Overlay touches `tag` (declared 2nd) and `author` (declared 1st); the
+    // result must still be ordered by ui.order, not overlay insertion order.
+    let ov = overlay(json!({ "tag": "pinned", "author": "Custom" }));
+    let card = quill.seed_card("note", Some(&ov)).expect("known kind");
+    let keys: Vec<&str> = card.payload().keys().map(String::as_str).collect();
+    assert_eq!(keys, vec!["author", "tag"]);
+}
+
+#[test]
+fn overlay_body_overrides_and_non_schema_keys_are_ignored() {
+    let quill = quill_from_yaml(QUILL);
+    // `note` has no body.example, so the bare seed body is empty.
+    assert_eq!(quill.seed_card("note", None).unwrap().body(), "");
+    // An overlay `$body` wins; a non-schema field is ignored.
+    let ov = overlay(json!({ "author": "X", "$body": "Overlay body.", "bogus": "drop me" }));
+    let card = quill.seed_card("note", Some(&ov)).expect("known kind");
+    assert_eq!(card.body(), "Overlay body.");
+    assert!(
+        card.payload().get("bogus").is_none(),
+        "a key naming no schema field must not land on the card",
+    );
+}
+
 /// `body.example` is only seeded when bodies are enabled for the kind.
 #[test]
 fn seed_omits_body_when_body_disabled() {
@@ -210,5 +278,62 @@ card_kinds:
     assert_eq!(
         card.payload().get("value").and_then(|v| v.as_str()),
         Some("V"),
+    );
+}
+
+// ── Advisory `$seed` validation (editor surface only; never gates render) ────
+
+/// A minimal `seed_test` document carrying a raw `$seed` YAML block.
+fn doc_with_seed(seed_block: &str) -> Document {
+    let md = format!("~~~card-yaml\n$quill: seed_test@1.0\n$kind: main\n{seed_block}~~~\n");
+    Document::from_markdown(&md).expect("doc should parse")
+}
+
+#[test]
+fn seed_overlay_type_mismatch_is_advisory_and_does_not_gate_render() {
+    let quill = quill_from_yaml(QUILL);
+    // `author` is a string; an integer overlay value is a type mismatch.
+    let doc = doc_with_seed("$seed:\n  note:\n    author: 123\n");
+
+    let diags = quill.validate(&doc);
+    let seed_diag = diags
+        .iter()
+        .find(|d| d.path.as_deref() == Some("$seed.note.author"))
+        .expect("a diagnostic rooted at the seed field");
+    assert_eq!(
+        seed_diag.severity,
+        Severity::Warning,
+        "seed diagnostics are advisory, not errors",
+    );
+
+    // The malformed overlay never blocks render — `$seed` is stripped.
+    assert!(quill.compile_data(&doc).is_ok(), "compile_data must ignore $seed");
+    assert!(quill.dry_run(&doc).is_ok(), "dry_run must ignore $seed");
+}
+
+#[test]
+fn seed_overlay_unknown_kind_is_flagged_but_renders() {
+    let quill = quill_from_yaml(QUILL);
+    let doc = doc_with_seed("$seed:\n  bogus_kind:\n    x: 1\n");
+    let diags = quill.validate(&doc);
+    let d = diags
+        .iter()
+        .find(|d| d.code.as_deref() == Some("validation::seed_unknown_kind"))
+        .expect("unknown-kind advisory");
+    assert_eq!(d.path.as_deref(), Some("$seed.bogus_kind"));
+    assert_eq!(d.severity, Severity::Warning);
+    assert!(quill.compile_data(&doc).is_ok());
+}
+
+#[test]
+fn well_formed_seed_overlay_yields_no_seed_diagnostics() {
+    let quill = quill_from_yaml(QUILL);
+    let doc = doc_with_seed("$seed:\n  note:\n    author: Custom\n");
+    let diags = quill.validate(&doc);
+    assert!(
+        !diags
+            .iter()
+            .any(|d| d.path.as_deref().is_some_and(|p| p.starts_with("$seed"))),
+        "a well-formed overlay should produce no seed diagnostics: {diags:?}",
     );
 }

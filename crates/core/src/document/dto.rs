@@ -1049,4 +1049,74 @@ title: Hi
         assert!(err.to_string().contains("invalid quill reference"));
     }
 
+    #[test]
+    fn v0_82_0_payload_loads_via_migration() {
+        // A 0.82.0 blob (no `$seed`) migrates forward (0.82 → 0.92) to the live
+        // model, then re-serializes under the current tag.
+        let json = r#"{
+            "schema": "quillmark/document@0.82.0",
+            "main": {
+                "payload": {"items": [
+                    {"type": "quill", "value": "usaf_memo@0.1"},
+                    {"type": "kind", "value": "main"},
+                    {"type": "field", "key": "title", "value": "Hello"}
+                ]},
+                "body": "Body."
+            },
+            "cards": []
+        }"#;
+        let doc: Document = serde_json::from_str(json).unwrap();
+        assert_eq!(doc.main().kind(), Some("main"));
+        assert_eq!(
+            doc.main().payload().get("title").unwrap().as_str(),
+            Some("Hello")
+        );
+        let reser = serde_json::to_string(&doc).unwrap();
+        assert_eq!(peek_schema_version(&reser).as_deref(), Some(SCHEMA_V0_92_0));
+    }
+
+    #[test]
+    fn v0_82_0_blob_with_seed_item_is_rejected() {
+        // Proves the schema bump was necessary: `{"type":"seed"}` is not a legal
+        // V0_82_0 payload item, so a blob claiming the 0.82.0 tag must fail
+        // rather than silently load.
+        let json = r#"{
+            "schema": "quillmark/document@0.82.0",
+            "main": {
+                "payload": {"items": [
+                    {"type": "quill", "value": "q@1.0"},
+                    {"type": "kind", "value": "main"},
+                    {"type": "seed", "value": {"indorsement": {"from": "X"}}}
+                ]},
+                "body": ""
+            },
+            "cards": []
+        }"#;
+        assert!(serde_json::from_str::<Document>(json).is_err());
+    }
+
+    #[test]
+    fn v0_92_0_seed_item_round_trips() {
+        let json = r#"{
+            "schema": "quillmark/document@0.92.0",
+            "main": {
+                "payload": {"items": [
+                    {"type": "quill", "value": "q@1.0"},
+                    {"type": "kind", "value": "main"},
+                    {"type": "seed", "value": {"indorsement": {"from": "49 FW/CC"}}}
+                ]},
+                "body": ""
+            },
+            "cards": []
+        }"#;
+        let doc: Document = serde_json::from_str(json).unwrap();
+        let overlay = doc.seed("indorsement").expect("overlay present");
+        assert_eq!(
+            overlay.fields.get("from").and_then(|v| v.as_str()),
+            Some("49 FW/CC")
+        );
+        let reser: Document =
+            serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+        assert_eq!(doc, reser);
+    }
 }
