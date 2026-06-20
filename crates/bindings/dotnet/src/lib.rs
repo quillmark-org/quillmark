@@ -275,31 +275,35 @@ pub unsafe extern "C" fn qm_engine_supported_formats(
     engine: *mut Quillmark,
     quill: *mut Quill,
 ) -> *mut c_char {
-    clear_error();
-    let (Some(engine), Some(quill)) = (borrow_ref(engine), borrow_ref(quill)) else {
-        set_error_message("supported_formats: null handle");
-        return std::ptr::null_mut();
-    };
-    match engine.supported_formats(quill) {
-        Ok(formats) => {
-            let names: Vec<&str> = formats.iter().map(|f| format_to_str(*f)).collect();
-            to_c_string(serde_json::to_string(&names).unwrap_or_else(|_| "[]".into()))
+    ffi_try!(std::ptr::null_mut(), {
+        clear_error();
+        let (Some(engine), Some(quill)) = (borrow_ref(engine), borrow_ref(quill)) else {
+            set_error_message("supported_formats: null handle");
+            return std::ptr::null_mut();
+        };
+        match engine.supported_formats(quill) {
+            Ok(formats) => {
+                let names: Vec<&str> = formats.iter().map(|f| format_to_str(*f)).collect();
+                to_c_string(serde_json::to_string(&names).unwrap_or_else(|_| "[]".into()))
+            }
+            Err(e) => {
+                report_render_error(e);
+                std::ptr::null_mut()
+            }
         }
-        Err(e) => {
-            report_render_error(e);
-            std::ptr::null_mut()
-        }
-    }
+    })
 }
 
 /// JSON array of registered backend ids (e.g. `["typst"]`).
 #[no_mangle]
 pub unsafe extern "C" fn qm_engine_registered_backends(engine: *mut Quillmark) -> *mut c_char {
-    let Some(engine) = borrow_ref(engine) else {
-        return to_c_string("[]");
-    };
-    let names: Vec<&str> = engine.registered_backends();
-    to_c_string(serde_json::to_string(&names).unwrap_or_else(|_| "[]".into()))
+    ffi_try!(std::ptr::null_mut(), {
+        let Some(engine) = borrow_ref(engine) else {
+            return to_c_string("[]");
+        };
+        let names: Vec<&str> = engine.registered_backends();
+        to_c_string(serde_json::to_string(&names).unwrap_or_else(|_| "[]".into()))
+    })
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -331,23 +335,27 @@ pub extern "C" fn qm_quill_free(ptr: *mut Quill) {
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_quill_backend_id(quill: *mut Quill) -> *mut c_char {
-    match borrow_ref(quill) {
-        Some(q) => to_c_string(q.backend_id().to_string()),
-        None => std::ptr::null_mut(),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        match borrow_ref(quill) {
+            Some(q) => to_c_string(q.backend_id().to_string()),
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_quill_quill_ref(quill: *mut Quill) -> *mut c_char {
-    let Some(q) = borrow_ref(quill) else {
-        return std::ptr::null_mut();
-    };
-    let version = q
-        .metadata()
-        .get("version")
-        .and_then(|v| v.as_str())
-        .unwrap_or("0.0.0");
-    to_c_string(format!("{}@{}", q.name(), version))
+    ffi_try!(std::ptr::null_mut(), {
+        let Some(q) = borrow_ref(quill) else {
+            return std::ptr::null_mut();
+        };
+        let version = q
+            .metadata()
+            .get("version")
+            .and_then(|v| v.as_str())
+            .unwrap_or("0.0.0");
+        to_c_string(format!("{}@{}", q.name(), version))
+    })
 }
 
 /// JSON object mirroring the `quill:` section: typed keys plus forwarded
@@ -355,39 +363,45 @@ pub unsafe extern "C" fn qm_quill_quill_ref(quill: *mut Quill) -> *mut c_char {
 /// backend. Matches `PyQuill.metadata`.
 #[no_mangle]
 pub unsafe extern "C" fn qm_quill_metadata_json(quill: *mut Quill) -> *mut c_char {
-    let Some(q) = borrow_ref(quill) else {
-        return std::ptr::null_mut();
-    };
-    let config = q.config();
-    let mut obj = serde_json::Map::new();
-    obj.insert("name".into(), config.name.clone().into());
-    obj.insert("version".into(), config.version.clone().into());
-    obj.insert("backend".into(), config.backend.clone().into());
-    obj.insert("author".into(), config.author.clone().into());
-    obj.insert("description".into(), config.description.clone().into());
-    for (key, value) in q.metadata() {
-        if quillmark_core::STANDARD_METADATA_KEYS.contains(&key.as_str()) || obj.contains_key(key) {
-            continue;
+    ffi_try!(std::ptr::null_mut(), {
+        let Some(q) = borrow_ref(quill) else {
+            return std::ptr::null_mut();
+        };
+        let config = q.config();
+        let mut obj = serde_json::Map::new();
+        obj.insert("name".into(), config.name.clone().into());
+        obj.insert("version".into(), config.version.clone().into());
+        obj.insert("backend".into(), config.backend.clone().into());
+        obj.insert("author".into(), config.author.clone().into());
+        obj.insert("description".into(), config.description.clone().into());
+        for (key, value) in q.metadata() {
+            if quillmark_core::STANDARD_METADATA_KEYS.contains(&key.as_str()) || obj.contains_key(key) {
+                continue;
+            }
+            obj.insert(key.clone(), value.as_json().clone());
         }
-        obj.insert(key.clone(), value.as_json().clone());
-    }
-    to_c_string(serde_json::Value::Object(obj).to_string())
+        to_c_string(serde_json::Value::Object(obj).to_string())
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_quill_schema_json(quill: *mut Quill) -> *mut c_char {
-    match borrow_ref(quill) {
-        Some(q) => to_c_string(q.config().schema().to_string()),
-        None => std::ptr::null_mut(),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        match borrow_ref(quill) {
+            Some(q) => to_c_string(q.config().schema().to_string()),
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_quill_blueprint(quill: *mut Quill) -> *mut c_char {
-    match borrow_ref(quill) {
-        Some(q) => to_c_string(q.config().blueprint()),
-        None => std::ptr::null_mut(),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        match borrow_ref(quill) {
+            Some(q) => to_c_string(q.config().blueprint()),
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 /// JSON array of `validation::*` diagnostics (empty when valid). Matches
@@ -539,13 +553,15 @@ pub unsafe extern "C" fn qm_document_try_from_json(json: *const c_char) -> *mut 
 /// The `schema` version tag of a raw DTO string as JSON (a string or `null`).
 #[no_mangle]
 pub unsafe extern "C" fn qm_document_schema_version_of(json: *const c_char) -> *mut c_char {
-    let Some(json) = borrow_str(json) else {
-        return to_c_string("null");
-    };
-    match quillmark_core::document::peek_schema_version(json) {
-        Some(v) => to_c_string(serde_json::Value::String(v).to_string()),
-        None => to_c_string("null"),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        let Some(json) = borrow_str(json) else {
+            return to_c_string("null");
+        };
+        match quillmark_core::document::peek_schema_version(json) {
+            Some(v) => to_c_string(serde_json::Value::String(v).to_string()),
+            None => to_c_string("null"),
+        }
+    })
 }
 
 #[no_mangle]
@@ -562,8 +578,10 @@ pub extern "C" fn qm_document_format_rules() -> *mut c_char {
 pub unsafe extern "C" fn qm_document_blueprint_instruction(
     quill_name: *const c_char,
 ) -> *mut c_char {
-    let name = borrow_str(quill_name).unwrap_or("");
-    to_c_string(quillmark_core::document::blueprint_instruction(name))
+    ffi_try!(std::ptr::null_mut(), {
+        let name = borrow_str(quill_name).unwrap_or("");
+        to_c_string(quillmark_core::document::blueprint_instruction(name))
+    })
 }
 
 #[no_mangle]
@@ -637,100 +655,120 @@ pub extern "C" fn qm_document_free(ptr: *mut DocHandle) {
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_document_clone(doc: *mut DocHandle) -> *mut DocHandle {
-    let Some(doc) = borrow_ref(doc) else {
-        return std::ptr::null_mut();
-    };
-    Box::into_raw(Box::new(DocHandle {
-        inner: doc.inner.clone(),
-        parse_warnings: doc.parse_warnings.clone(),
-    }))
+    ffi_try!(std::ptr::null_mut(), {
+        let Some(doc) = borrow_ref(doc) else {
+            return std::ptr::null_mut();
+        };
+        Box::into_raw(Box::new(DocHandle {
+            inner: doc.inner.clone(),
+            parse_warnings: doc.parse_warnings.clone(),
+        }))
+    })
 }
 
 /// Structural equality (parse warnings excluded). Returns 1 / 0; -1 on null.
 #[no_mangle]
 pub unsafe extern "C" fn qm_document_equals(a: *mut DocHandle, b: *mut DocHandle) -> i32 {
-    match (borrow_ref(a), borrow_ref(b)) {
-        (Some(a), Some(b)) => (a.inner == b.inner) as i32,
-        _ => -1,
-    }
+    ffi_try!(-1, {
+        match (borrow_ref(a), borrow_ref(b)) {
+            (Some(a), Some(b)) => (a.inner == b.inner) as i32,
+            _ => -1,
+        }
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_document_to_markdown(doc: *mut DocHandle) -> *mut c_char {
-    match borrow_ref(doc) {
-        Some(doc) => to_c_string(doc.inner.to_markdown()),
-        None => std::ptr::null_mut(),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        match borrow_ref(doc) {
+            Some(doc) => to_c_string(doc.inner.to_markdown()),
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_document_to_json(doc: *mut DocHandle) -> *mut c_char {
-    clear_error();
-    let Some(doc) = borrow_ref(doc) else {
-        set_error_message("to_json: null handle");
-        return std::ptr::null_mut();
-    };
-    // Document serialization is infallible in practice; surface the
-    // theoretical error as a QuillmarkException rather than panicking across
-    // the FFI boundary.
-    match serde_json::to_string(&doc.inner) {
-        Ok(s) => to_c_string(s),
-        Err(e) => {
-            set_error_message(format!("to_json: serialization failed: {e}"));
-            std::ptr::null_mut()
+    ffi_try!(std::ptr::null_mut(), {
+        clear_error();
+        let Some(doc) = borrow_ref(doc) else {
+            set_error_message("to_json: null handle");
+            return std::ptr::null_mut();
+        };
+        // Document serialization is infallible in practice; surface the
+        // theoretical error as a QuillmarkException rather than panicking across
+        // the FFI boundary.
+        match serde_json::to_string(&doc.inner) {
+            Ok(s) => to_c_string(s),
+            Err(e) => {
+                set_error_message(format!("to_json: serialization failed: {e}"));
+                std::ptr::null_mut()
+            }
         }
-    }
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_document_quill_ref(doc: *mut DocHandle) -> *mut c_char {
-    match borrow_ref(doc) {
-        Some(doc) => to_c_string(doc.inner.quill_reference().to_string()),
-        None => std::ptr::null_mut(),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        match borrow_ref(doc) {
+            Some(doc) => to_c_string(doc.inner.quill_reference().to_string()),
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_document_body(doc: *mut DocHandle) -> *mut c_char {
-    match borrow_ref(doc) {
-        Some(doc) => to_c_string(doc.inner.main().body()),
-        None => std::ptr::null_mut(),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        match borrow_ref(doc) {
+            Some(doc) => to_c_string(doc.inner.main().body()),
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 /// Count of composable cards. -1 on null handle.
 #[no_mangle]
 pub unsafe extern "C" fn qm_document_card_count(doc: *mut DocHandle) -> isize {
-    match borrow_ref(doc) {
-        Some(doc) => doc.inner.cards().len() as isize,
-        None => -1,
-    }
+    ffi_try!(-1, {
+        match borrow_ref(doc) {
+            Some(doc) => doc.inner.cards().len() as isize,
+            None => -1,
+        }
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_document_warnings_json(doc: *mut DocHandle) -> *mut c_char {
-    let Some(doc) = borrow_ref(doc) else {
-        return std::ptr::null_mut();
-    };
-    to_c_string(serde_json::to_string(&doc.parse_warnings).unwrap_or_else(|_| "[]".into()))
+    ffi_try!(std::ptr::null_mut(), {
+        let Some(doc) = borrow_ref(doc) else {
+            return std::ptr::null_mut();
+        };
+        to_c_string(serde_json::to_string(&doc.parse_warnings).unwrap_or_else(|_| "[]".into()))
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_document_main_json(doc: *mut DocHandle) -> *mut c_char {
-    match borrow_ref(doc) {
-        Some(doc) => card_to_json(doc.inner.main()),
-        None => std::ptr::null_mut(),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        match borrow_ref(doc) {
+            Some(doc) => card_to_json(doc.inner.main()),
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 /// JSON array of the composable cards (Card shape each).
 #[no_mangle]
 pub unsafe extern "C" fn qm_document_cards_json(doc: *mut DocHandle) -> *mut c_char {
-    let Some(doc) = borrow_ref(doc) else {
-        return std::ptr::null_mut();
-    };
-    let wires: Vec<CardWire> = doc.inner.cards().iter().map(CardWire::from).collect();
-    to_c_string(serde_json::to_string(&wires).unwrap_or_else(|_| "[]".into()))
+    ffi_try!(std::ptr::null_mut(), {
+        let Some(doc) = borrow_ref(doc) else {
+            return std::ptr::null_mut();
+        };
+        let wires: Vec<CardWire> = doc.inner.cards().iter().map(CardWire::from).collect();
+        to_c_string(serde_json::to_string(&wires).unwrap_or_else(|_| "[]".into()))
+    })
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -755,18 +793,20 @@ pub unsafe extern "C" fn qm_document_set_field(
     name: *const c_char,
     value_json: *const c_char,
 ) -> i32 {
-    clear_error();
-    let (Some(doc), Some(name)) = (borrow_mut(doc), borrow_str(name)) else {
-        return set_error_message("set_field: null handle or name");
-    };
-    let qv = match quill_value_arg(value_json) {
-        Ok(v) => v,
-        Err(()) => return -1,
-    };
-    match doc.inner.main_mut().set_field(name, qv) {
-        Ok(()) => 0,
-        Err(e) => report_edit_error(e),
-    }
+    ffi_try!(-1, {
+        clear_error();
+        let (Some(doc), Some(name)) = (borrow_mut(doc), borrow_str(name)) else {
+            return set_error_message("set_field: null handle or name");
+        };
+        let qv = match quill_value_arg(value_json) {
+            Ok(v) => v,
+            Err(()) => return -1,
+        };
+        match doc.inner.main_mut().set_field(name, qv) {
+            Ok(()) => 0,
+            Err(e) => report_edit_error(e),
+        }
+    })
 }
 
 #[no_mangle]
@@ -775,18 +815,20 @@ pub unsafe extern "C" fn qm_document_set_fill(
     name: *const c_char,
     value_json: *const c_char,
 ) -> i32 {
-    clear_error();
-    let (Some(doc), Some(name)) = (borrow_mut(doc), borrow_str(name)) else {
-        return set_error_message("set_fill: null handle or name");
-    };
-    let qv = match quill_value_arg(value_json) {
-        Ok(v) => v,
-        Err(()) => return -1,
-    };
-    match doc.inner.main_mut().set_fill(name, qv) {
-        Ok(()) => 0,
-        Err(e) => report_edit_error(e),
-    }
+    ffi_try!(-1, {
+        clear_error();
+        let (Some(doc), Some(name)) = (borrow_mut(doc), borrow_str(name)) else {
+            return set_error_message("set_fill: null handle or name");
+        };
+        let qv = match quill_value_arg(value_json) {
+            Ok(v) => v,
+            Err(()) => return -1,
+        };
+        match doc.inner.main_mut().set_fill(name, qv) {
+            Ok(()) => 0,
+            Err(e) => report_edit_error(e),
+        }
+    })
 }
 
 /// Remove a main-card field, returning the removed value as JSON (`null` when
@@ -796,19 +838,21 @@ pub unsafe extern "C" fn qm_document_remove_field(
     doc: *mut DocHandle,
     name: *const c_char,
 ) -> *mut c_char {
-    clear_error();
-    let (Some(doc), Some(name)) = (borrow_mut(doc), borrow_str(name)) else {
-        set_error_message("remove_field: null handle or name");
-        return std::ptr::null_mut();
-    };
-    match doc.inner.main_mut().remove_field(name) {
-        Ok(Some(v)) => to_c_string(v.as_json().to_string()),
-        Ok(None) => to_c_string("null"),
-        Err(e) => {
-            report_edit_error(e);
-            std::ptr::null_mut()
+    ffi_try!(std::ptr::null_mut(), {
+        clear_error();
+        let (Some(doc), Some(name)) = (borrow_mut(doc), borrow_str(name)) else {
+            set_error_message("remove_field: null handle or name");
+            return std::ptr::null_mut();
+        };
+        match doc.inner.main_mut().remove_field(name) {
+            Ok(Some(v)) => to_c_string(v.as_json().to_string()),
+            Ok(None) => to_c_string("null"),
+            Err(e) => {
+                report_edit_error(e);
+                std::ptr::null_mut()
+            }
         }
-    }
+    })
 }
 
 #[no_mangle]
@@ -816,27 +860,31 @@ pub unsafe extern "C" fn qm_document_set_quill_ref(
     doc: *mut DocHandle,
     ref_str: *const c_char,
 ) -> i32 {
-    clear_error();
-    let (Some(doc), Some(ref_str)) = (borrow_mut(doc), borrow_str(ref_str)) else {
-        return set_error_message("set_quill_ref: null handle or reference");
-    };
-    match ref_str.parse::<quillmark_core::QuillReference>() {
-        Ok(qr) => {
-            doc.inner.set_quill_ref(qr);
-            0
+    ffi_try!(-1, {
+        clear_error();
+        let (Some(doc), Some(ref_str)) = (borrow_mut(doc), borrow_str(ref_str)) else {
+            return set_error_message("set_quill_ref: null handle or reference");
+        };
+        match ref_str.parse::<quillmark_core::QuillReference>() {
+            Ok(qr) => {
+                doc.inner.set_quill_ref(qr);
+                0
+            }
+            Err(e) => set_error_message(format!("invalid QuillReference '{}': {}", ref_str, e)),
         }
-        Err(e) => set_error_message(format!("invalid QuillReference '{}': {}", ref_str, e)),
-    }
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_document_replace_body(doc: *mut DocHandle, body: *const c_char) -> i32 {
-    clear_error();
-    let (Some(doc), Some(body)) = (borrow_mut(doc), borrow_str(body)) else {
-        return set_error_message("replace_body: null handle or body");
-    };
-    doc.inner.main_mut().replace_body(body);
-    0
+    ffi_try!(-1, {
+        clear_error();
+        let (Some(doc), Some(body)) = (borrow_mut(doc), borrow_str(body)) else {
+            return set_error_message("replace_body: null handle or body");
+        };
+        doc.inner.main_mut().replace_body(body);
+        0
+    })
 }
 
 // ── $ext on the main card ───────────────────────────────────────────────────
@@ -877,31 +925,35 @@ pub unsafe extern "C" fn qm_document_set_ext(
     doc: *mut DocHandle,
     value_json: *const c_char,
 ) -> i32 {
-    clear_error();
-    let Some(doc) = borrow_mut(doc) else {
-        return set_error_message("set_ext: null handle");
-    };
-    let map = match json_object_arg(value_json, "set_ext") {
-        Ok(m) => m,
-        Err(()) => return -1,
-    };
-    match doc.inner.main_mut().set_ext(map) {
-        Ok(()) => 0,
-        Err(e) => report_edit_error(e),
-    }
+    ffi_try!(-1, {
+        clear_error();
+        let Some(doc) = borrow_mut(doc) else {
+            return set_error_message("set_ext: null handle");
+        };
+        let map = match json_object_arg(value_json, "set_ext") {
+            Ok(m) => m,
+            Err(()) => return -1,
+        };
+        match doc.inner.main_mut().set_ext(map) {
+            Ok(()) => 0,
+            Err(e) => report_edit_error(e),
+        }
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_document_remove_ext(doc: *mut DocHandle) -> *mut c_char {
-    clear_error();
-    let Some(doc) = borrow_mut(doc) else {
-        set_error_message("remove_ext: null handle");
-        return std::ptr::null_mut();
-    };
-    match doc.inner.main_mut().remove_ext() {
-        Some(map) => to_c_string(serde_json::Value::Object(map).to_string()),
-        None => to_c_string("null"),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        clear_error();
+        let Some(doc) = borrow_mut(doc) else {
+            set_error_message("remove_ext: null handle");
+            return std::ptr::null_mut();
+        };
+        match doc.inner.main_mut().remove_ext() {
+            Some(map) => to_c_string(serde_json::Value::Object(map).to_string()),
+            None => to_c_string("null"),
+        }
+    })
 }
 
 #[no_mangle]
@@ -910,18 +962,20 @@ pub unsafe extern "C" fn qm_document_set_ext_namespace(
     namespace: *const c_char,
     value_json: *const c_char,
 ) -> i32 {
-    clear_error();
-    let (Some(doc), Some(namespace)) = (borrow_mut(doc), borrow_str(namespace)) else {
-        return set_error_message("set_ext_namespace: null handle or namespace");
-    };
-    let value = match json_value_arg(value_json, "set_ext_namespace") {
-        Ok(v) => v,
-        Err(()) => return -1,
-    };
-    match doc.inner.main_mut().set_ext_namespace(namespace, value) {
-        Ok(()) => 0,
-        Err(e) => report_edit_error(e),
-    }
+    ffi_try!(-1, {
+        clear_error();
+        let (Some(doc), Some(namespace)) = (borrow_mut(doc), borrow_str(namespace)) else {
+            return set_error_message("set_ext_namespace: null handle or namespace");
+        };
+        let value = match json_value_arg(value_json, "set_ext_namespace") {
+            Ok(v) => v,
+            Err(()) => return -1,
+        };
+        match doc.inner.main_mut().set_ext_namespace(namespace, value) {
+            Ok(()) => 0,
+            Err(e) => report_edit_error(e),
+        }
+    })
 }
 
 #[no_mangle]
@@ -929,15 +983,17 @@ pub unsafe extern "C" fn qm_document_remove_ext_namespace(
     doc: *mut DocHandle,
     namespace: *const c_char,
 ) -> *mut c_char {
-    clear_error();
-    let (Some(doc), Some(namespace)) = (borrow_mut(doc), borrow_str(namespace)) else {
-        set_error_message("remove_ext_namespace: null handle or namespace");
-        return std::ptr::null_mut();
-    };
-    match doc.inner.main_mut().remove_ext_namespace(namespace) {
-        Some(v) => to_c_string(v.to_string()),
-        None => to_c_string("null"),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        clear_error();
+        let (Some(doc), Some(namespace)) = (borrow_mut(doc), borrow_str(namespace)) else {
+            set_error_message("remove_ext_namespace: null handle or namespace");
+            return std::ptr::null_mut();
+        };
+        match doc.inner.main_mut().remove_ext_namespace(namespace) {
+            Some(v) => to_c_string(v.to_string()),
+            None => to_c_string("null"),
+        }
+    })
 }
 
 /// Merge a card-kind's seed `overlay` into the main card's `$seed` map under
@@ -949,18 +1005,20 @@ pub unsafe extern "C" fn qm_document_set_seed_namespace(
     card_kind: *const c_char,
     overlay_json: *const c_char,
 ) -> i32 {
-    clear_error();
-    let (Some(doc), Some(card_kind)) = (borrow_mut(doc), borrow_str(card_kind)) else {
-        return set_error_message("set_seed_namespace: null handle or card_kind");
-    };
-    let value = match json_value_arg(overlay_json, "set_seed_namespace") {
-        Ok(v) => v,
-        Err(()) => return -1,
-    };
-    match doc.inner.main_mut().set_seed_namespace(card_kind, value) {
-        Ok(()) => 0,
-        Err(e) => report_edit_error(e),
-    }
+    ffi_try!(-1, {
+        clear_error();
+        let (Some(doc), Some(card_kind)) = (borrow_mut(doc), borrow_str(card_kind)) else {
+            return set_error_message("set_seed_namespace: null handle or card_kind");
+        };
+        let value = match json_value_arg(overlay_json, "set_seed_namespace") {
+            Ok(v) => v,
+            Err(()) => return -1,
+        };
+        match doc.inner.main_mut().set_seed_namespace(card_kind, value) {
+            Ok(()) => 0,
+            Err(e) => report_edit_error(e),
+        }
+    })
 }
 
 /// Remove `card_kind` from the main card's `$seed` map, returning the overlay
@@ -970,15 +1028,17 @@ pub unsafe extern "C" fn qm_document_remove_seed_namespace(
     doc: *mut DocHandle,
     card_kind: *const c_char,
 ) -> *mut c_char {
-    clear_error();
-    let (Some(doc), Some(card_kind)) = (borrow_mut(doc), borrow_str(card_kind)) else {
-        set_error_message("remove_seed_namespace: null handle or card_kind");
-        return std::ptr::null_mut();
-    };
-    match doc.inner.main_mut().remove_seed_namespace(card_kind) {
-        Some(v) => to_c_string(v.to_string()),
-        None => to_c_string("null"),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        clear_error();
+        let (Some(doc), Some(card_kind)) = (borrow_mut(doc), borrow_str(card_kind)) else {
+            set_error_message("remove_seed_namespace: null handle or card_kind");
+            return std::ptr::null_mut();
+        };
+        match doc.inner.main_mut().remove_seed_namespace(card_kind) {
+            Some(v) => to_c_string(v.to_string()),
+            None => to_c_string("null"),
+        }
+    })
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -990,18 +1050,20 @@ pub unsafe extern "C" fn qm_document_push_card(
     doc: *mut DocHandle,
     card_json: *const c_char,
 ) -> i32 {
-    clear_error();
-    let (Some(doc), Some(card_json)) = (borrow_mut(doc), borrow_str(card_json)) else {
-        return set_error_message("push_card: null handle or card");
-    };
-    let card = match card_from_json(card_json) {
-        Ok(c) => c,
-        Err(()) => return -1,
-    };
-    match doc.inner.push_card(card) {
-        Ok(()) => 0,
-        Err(e) => report_edit_error(e),
-    }
+    ffi_try!(-1, {
+        clear_error();
+        let (Some(doc), Some(card_json)) = (borrow_mut(doc), borrow_str(card_json)) else {
+            return set_error_message("push_card: null handle or card");
+        };
+        let card = match card_from_json(card_json) {
+            Ok(c) => c,
+            Err(()) => return -1,
+        };
+        match doc.inner.push_card(card) {
+            Ok(()) => 0,
+            Err(e) => report_edit_error(e),
+        }
+    })
 }
 
 #[no_mangle]
@@ -1010,18 +1072,20 @@ pub unsafe extern "C" fn qm_document_insert_card(
     index: usize,
     card_json: *const c_char,
 ) -> i32 {
-    clear_error();
-    let (Some(doc), Some(card_json)) = (borrow_mut(doc), borrow_str(card_json)) else {
-        return set_error_message("insert_card: null handle or card");
-    };
-    let card = match card_from_json(card_json) {
-        Ok(c) => c,
-        Err(()) => return -1,
-    };
-    match doc.inner.insert_card(index, card) {
-        Ok(()) => 0,
-        Err(e) => report_edit_error(e),
-    }
+    ffi_try!(-1, {
+        clear_error();
+        let (Some(doc), Some(card_json)) = (borrow_mut(doc), borrow_str(card_json)) else {
+            return set_error_message("insert_card: null handle or card");
+        };
+        let card = match card_from_json(card_json) {
+            Ok(c) => c,
+            Err(()) => return -1,
+        };
+        match doc.inner.insert_card(index, card) {
+            Ok(()) => 0,
+            Err(e) => report_edit_error(e),
+        }
+    })
 }
 
 /// Remove and return the card at `index` as Card JSON, or JSON `null` when out
@@ -1031,13 +1095,15 @@ pub unsafe extern "C" fn qm_document_remove_card(
     doc: *mut DocHandle,
     index: usize,
 ) -> *mut c_char {
-    let Some(doc) = borrow_mut(doc) else {
-        return std::ptr::null_mut();
-    };
-    match doc.inner.remove_card(index) {
-        Some(card) => card_to_json(&card),
-        None => to_c_string("null"),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        let Some(doc) = borrow_mut(doc) else {
+            return std::ptr::null_mut();
+        };
+        match doc.inner.remove_card(index) {
+            Some(card) => card_to_json(&card),
+            None => to_c_string("null"),
+        }
+    })
 }
 
 #[no_mangle]
@@ -1046,14 +1112,16 @@ pub unsafe extern "C" fn qm_document_move_card(
     from_idx: usize,
     to_idx: usize,
 ) -> i32 {
-    clear_error();
-    let Some(doc) = borrow_mut(doc) else {
-        return set_error_message("move_card: null handle");
-    };
-    match doc.inner.move_card(from_idx, to_idx) {
-        Ok(()) => 0,
-        Err(e) => report_edit_error(e),
-    }
+    ffi_try!(-1, {
+        clear_error();
+        let Some(doc) = borrow_mut(doc) else {
+            return set_error_message("move_card: null handle");
+        };
+        match doc.inner.move_card(from_idx, to_idx) {
+            Ok(()) => 0,
+            Err(e) => report_edit_error(e),
+        }
+    })
 }
 
 #[no_mangle]
@@ -1062,14 +1130,16 @@ pub unsafe extern "C" fn qm_document_set_card_kind(
     index: usize,
     new_kind: *const c_char,
 ) -> i32 {
-    clear_error();
-    let (Some(doc), Some(new_kind)) = (borrow_mut(doc), borrow_str(new_kind)) else {
-        return set_error_message("set_card_kind: null handle or kind");
-    };
-    match doc.inner.set_card_kind(index, new_kind) {
-        Ok(()) => 0,
-        Err(e) => report_edit_error(e),
-    }
+    ffi_try!(-1, {
+        clear_error();
+        let (Some(doc), Some(new_kind)) = (borrow_mut(doc), borrow_str(new_kind)) else {
+            return set_error_message("set_card_kind: null handle or kind");
+        };
+        match doc.inner.set_card_kind(index, new_kind) {
+            Ok(()) => 0,
+            Err(e) => report_edit_error(e),
+        }
+    })
 }
 
 /// Resolve a mutable composable card, reporting the same `IndexOutOfRange`
@@ -1091,22 +1161,24 @@ pub unsafe extern "C" fn qm_document_update_card_field(
     name: *const c_char,
     value_json: *const c_char,
 ) -> i32 {
-    clear_error();
-    let (Some(doc), Some(name)) = (borrow_mut(doc), borrow_str(name)) else {
-        return set_error_message("update_card_field: null handle or name");
-    };
-    let qv = match quill_value_arg(value_json) {
-        Ok(v) => v,
-        Err(()) => return -1,
-    };
-    let card = match card_mut_or_report(doc, index) {
-        Ok(c) => c,
-        Err(()) => return -1,
-    };
-    match card.set_field(name, qv) {
-        Ok(()) => 0,
-        Err(e) => report_edit_error(e),
-    }
+    ffi_try!(-1, {
+        clear_error();
+        let (Some(doc), Some(name)) = (borrow_mut(doc), borrow_str(name)) else {
+            return set_error_message("update_card_field: null handle or name");
+        };
+        let qv = match quill_value_arg(value_json) {
+            Ok(v) => v,
+            Err(()) => return -1,
+        };
+        let card = match card_mut_or_report(doc, index) {
+            Ok(c) => c,
+            Err(()) => return -1,
+        };
+        match card.set_field(name, qv) {
+            Ok(()) => 0,
+            Err(e) => report_edit_error(e),
+        }
+    })
 }
 
 #[no_mangle]
@@ -1115,23 +1187,25 @@ pub unsafe extern "C" fn qm_document_remove_card_field(
     index: usize,
     name: *const c_char,
 ) -> *mut c_char {
-    clear_error();
-    let (Some(doc), Some(name)) = (borrow_mut(doc), borrow_str(name)) else {
-        set_error_message("remove_card_field: null handle or name");
-        return std::ptr::null_mut();
-    };
-    let card = match card_mut_or_report(doc, index) {
-        Ok(c) => c,
-        Err(()) => return std::ptr::null_mut(),
-    };
-    match card.remove_field(name) {
-        Ok(Some(v)) => to_c_string(v.as_json().to_string()),
-        Ok(None) => to_c_string("null"),
-        Err(e) => {
-            report_edit_error(e);
-            std::ptr::null_mut()
+    ffi_try!(std::ptr::null_mut(), {
+        clear_error();
+        let (Some(doc), Some(name)) = (borrow_mut(doc), borrow_str(name)) else {
+            set_error_message("remove_card_field: null handle or name");
+            return std::ptr::null_mut();
+        };
+        let card = match card_mut_or_report(doc, index) {
+            Ok(c) => c,
+            Err(()) => return std::ptr::null_mut(),
+        };
+        match card.remove_field(name) {
+            Ok(Some(v)) => to_c_string(v.as_json().to_string()),
+            Ok(None) => to_c_string("null"),
+            Err(e) => {
+                report_edit_error(e);
+                std::ptr::null_mut()
+            }
         }
-    }
+    })
 }
 
 #[no_mangle]
@@ -1140,16 +1214,18 @@ pub unsafe extern "C" fn qm_document_update_card_body(
     index: usize,
     body: *const c_char,
 ) -> i32 {
-    clear_error();
-    let (Some(doc), Some(body)) = (borrow_mut(doc), borrow_str(body)) else {
-        return set_error_message("update_card_body: null handle or body");
-    };
-    let card = match card_mut_or_report(doc, index) {
-        Ok(c) => c,
-        Err(()) => return -1,
-    };
-    card.replace_body(body);
-    0
+    ffi_try!(-1, {
+        clear_error();
+        let (Some(doc), Some(body)) = (borrow_mut(doc), borrow_str(body)) else {
+            return set_error_message("update_card_body: null handle or body");
+        };
+        let card = match card_mut_or_report(doc, index) {
+            Ok(c) => c,
+            Err(()) => return -1,
+        };
+        card.replace_body(body);
+        0
+    })
 }
 
 // ── $ext on composable cards ────────────────────────────────────────────────
@@ -1160,22 +1236,24 @@ pub unsafe extern "C" fn qm_document_set_card_ext(
     index: usize,
     value_json: *const c_char,
 ) -> i32 {
-    clear_error();
-    let Some(doc) = borrow_mut(doc) else {
-        return set_error_message("set_card_ext: null handle");
-    };
-    let map = match json_object_arg(value_json, "set_card_ext") {
-        Ok(m) => m,
-        Err(()) => return -1,
-    };
-    let card = match card_mut_or_report(doc, index) {
-        Ok(c) => c,
-        Err(()) => return -1,
-    };
-    match card.set_ext(map) {
-        Ok(()) => 0,
-        Err(e) => report_edit_error(e),
-    }
+    ffi_try!(-1, {
+        clear_error();
+        let Some(doc) = borrow_mut(doc) else {
+            return set_error_message("set_card_ext: null handle");
+        };
+        let map = match json_object_arg(value_json, "set_card_ext") {
+            Ok(m) => m,
+            Err(()) => return -1,
+        };
+        let card = match card_mut_or_report(doc, index) {
+            Ok(c) => c,
+            Err(()) => return -1,
+        };
+        match card.set_ext(map) {
+            Ok(()) => 0,
+            Err(e) => report_edit_error(e),
+        }
+    })
 }
 
 #[no_mangle]
@@ -1183,19 +1261,21 @@ pub unsafe extern "C" fn qm_document_remove_card_ext(
     doc: *mut DocHandle,
     index: usize,
 ) -> *mut c_char {
-    clear_error();
-    let Some(doc) = borrow_mut(doc) else {
-        set_error_message("remove_card_ext: null handle");
-        return std::ptr::null_mut();
-    };
-    let card = match card_mut_or_report(doc, index) {
-        Ok(c) => c,
-        Err(()) => return std::ptr::null_mut(),
-    };
-    match card.remove_ext() {
-        Some(map) => to_c_string(serde_json::Value::Object(map).to_string()),
-        None => to_c_string("null"),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        clear_error();
+        let Some(doc) = borrow_mut(doc) else {
+            set_error_message("remove_card_ext: null handle");
+            return std::ptr::null_mut();
+        };
+        let card = match card_mut_or_report(doc, index) {
+            Ok(c) => c,
+            Err(()) => return std::ptr::null_mut(),
+        };
+        match card.remove_ext() {
+            Some(map) => to_c_string(serde_json::Value::Object(map).to_string()),
+            None => to_c_string("null"),
+        }
+    })
 }
 
 #[no_mangle]
@@ -1205,22 +1285,24 @@ pub unsafe extern "C" fn qm_document_set_card_ext_namespace(
     namespace: *const c_char,
     value_json: *const c_char,
 ) -> i32 {
-    clear_error();
-    let (Some(doc), Some(namespace)) = (borrow_mut(doc), borrow_str(namespace)) else {
-        return set_error_message("set_card_ext_namespace: null handle or namespace");
-    };
-    let value = match json_value_arg(value_json, "set_card_ext_namespace") {
-        Ok(v) => v,
-        Err(()) => return -1,
-    };
-    let card = match card_mut_or_report(doc, index) {
-        Ok(c) => c,
-        Err(()) => return -1,
-    };
-    match card.set_ext_namespace(namespace, value) {
-        Ok(()) => 0,
-        Err(e) => report_edit_error(e),
-    }
+    ffi_try!(-1, {
+        clear_error();
+        let (Some(doc), Some(namespace)) = (borrow_mut(doc), borrow_str(namespace)) else {
+            return set_error_message("set_card_ext_namespace: null handle or namespace");
+        };
+        let value = match json_value_arg(value_json, "set_card_ext_namespace") {
+            Ok(v) => v,
+            Err(()) => return -1,
+        };
+        let card = match card_mut_or_report(doc, index) {
+            Ok(c) => c,
+            Err(()) => return -1,
+        };
+        match card.set_ext_namespace(namespace, value) {
+            Ok(()) => 0,
+            Err(e) => report_edit_error(e),
+        }
+    })
 }
 
 #[no_mangle]
@@ -1229,19 +1311,21 @@ pub unsafe extern "C" fn qm_document_remove_card_ext_namespace(
     index: usize,
     namespace: *const c_char,
 ) -> *mut c_char {
-    clear_error();
-    let (Some(doc), Some(namespace)) = (borrow_mut(doc), borrow_str(namespace)) else {
-        set_error_message("remove_card_ext_namespace: null handle or namespace");
-        return std::ptr::null_mut();
-    };
-    let card = match card_mut_or_report(doc, index) {
-        Ok(c) => c,
-        Err(()) => return std::ptr::null_mut(),
-    };
-    match card.remove_ext_namespace(namespace) {
-        Some(v) => to_c_string(v.to_string()),
-        None => to_c_string("null"),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        clear_error();
+        let (Some(doc), Some(namespace)) = (borrow_mut(doc), borrow_str(namespace)) else {
+            set_error_message("remove_card_ext_namespace: null handle or namespace");
+            return std::ptr::null_mut();
+        };
+        let card = match card_mut_or_report(doc, index) {
+            Ok(c) => c,
+            Err(()) => return std::ptr::null_mut(),
+        };
+        match card.remove_ext_namespace(namespace) {
+            Some(v) => to_c_string(v.to_string()),
+            None => to_c_string("null"),
+        }
+    })
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1255,34 +1339,42 @@ pub extern "C" fn qm_render_result_free(ptr: *mut RenderResultHandle) {
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_render_result_format(result: *mut RenderResultHandle) -> *mut c_char {
-    match borrow_ref(result) {
-        Some(r) => to_c_string(format_to_str(r.inner.output_format)),
-        None => std::ptr::null_mut(),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        match borrow_ref(result) {
+            Some(r) => to_c_string(format_to_str(r.inner.output_format)),
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_render_result_render_time_ms(result: *mut RenderResultHandle) -> f64 {
-    borrow_ref(result).map(|r| r.render_time_ms).unwrap_or(-1.0)
+    ffi_try!(0.0, {
+        borrow_ref(result).map(|r| r.render_time_ms).unwrap_or(-1.0)
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn qm_render_result_warnings_json(
     result: *mut RenderResultHandle,
 ) -> *mut c_char {
-    let Some(r) = borrow_ref(result) else {
-        return std::ptr::null_mut();
-    };
-    to_c_string(serde_json::to_string(&r.inner.warnings).unwrap_or_else(|_| "[]".into()))
+    ffi_try!(std::ptr::null_mut(), {
+        let Some(r) = borrow_ref(result) else {
+            return std::ptr::null_mut();
+        };
+        to_c_string(serde_json::to_string(&r.inner.warnings).unwrap_or_else(|_| "[]".into()))
+    })
 }
 
 /// Number of artifacts; -1 on null.
 #[no_mangle]
 pub unsafe extern "C" fn qm_render_result_artifact_count(result: *mut RenderResultHandle) -> isize {
-    match borrow_ref(result) {
-        Some(r) => r.inner.artifacts.len() as isize,
-        None => -1,
-    }
+    ffi_try!(-1, {
+        match borrow_ref(result) {
+            Some(r) => r.inner.artifacts.len() as isize,
+            None => -1,
+        }
+    })
 }
 
 #[no_mangle]
@@ -1290,13 +1382,15 @@ pub unsafe extern "C" fn qm_render_result_artifact_format(
     result: *mut RenderResultHandle,
     index: usize,
 ) -> *mut c_char {
-    let Some(r) = borrow_ref(result) else {
-        return std::ptr::null_mut();
-    };
-    match r.inner.artifacts.get(index) {
-        Some(a) => to_c_string(format_to_str(a.output_format)),
-        None => std::ptr::null_mut(),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        let Some(r) = borrow_ref(result) else {
+            return std::ptr::null_mut();
+        };
+        match r.inner.artifacts.get(index) {
+            Some(a) => to_c_string(format_to_str(a.output_format)),
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 #[no_mangle]
@@ -1304,13 +1398,15 @@ pub unsafe extern "C" fn qm_render_result_artifact_mime(
     result: *mut RenderResultHandle,
     index: usize,
 ) -> *mut c_char {
-    let Some(r) = borrow_ref(result) else {
-        return std::ptr::null_mut();
-    };
-    match r.inner.artifacts.get(index) {
-        Some(a) => to_c_string(mime_for(a.output_format)),
-        None => std::ptr::null_mut(),
-    }
+    ffi_try!(std::ptr::null_mut(), {
+        let Some(r) = borrow_ref(result) else {
+            return std::ptr::null_mut();
+        };
+        match r.inner.artifacts.get(index) {
+            Some(a) => to_c_string(mime_for(a.output_format)),
+            None => std::ptr::null_mut(),
+        }
+    })
 }
 
 /// Copy of artifact `index`'s bytes. Empty buffer when out of range.
@@ -1319,11 +1415,13 @@ pub unsafe extern "C" fn qm_render_result_artifact_bytes(
     result: *mut RenderResultHandle,
     index: usize,
 ) -> QmBytes {
-    let Some(r) = borrow_ref(result) else {
-        return QmBytes::empty();
-    };
-    match r.inner.artifacts.get(index) {
-        Some(a) => QmBytes::from_vec(a.bytes.clone()),
-        None => QmBytes::empty(),
-    }
+    ffi_try!(QmBytes::empty(), {
+        let Some(r) = borrow_ref(result) else {
+            return QmBytes::empty();
+        };
+        match r.inner.artifacts.get(index) {
+            Some(a) => QmBytes::from_vec(a.bytes.clone()),
+            None => QmBytes::empty(),
+        }
+    })
 }
