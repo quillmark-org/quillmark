@@ -263,6 +263,16 @@ describe('Document JSON DTO — toJson / fromJson', () => {
     expect(restored.warnings.length).toBe(0)
   })
 
+  it('fromJson accepts a stored DTO with an uppercase field name', () => {
+    // Regression: uppercase data-field names (e.g. PRESENTATION) are valid
+    // user fields — only `$`-prefixed keys are reserved — so a stored DTO
+    // carrying one must deserialize and round-trip verbatim.
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setField('PRESENTATION', 'deck')
+    const restored = Document.fromJson(doc.toJson())
+    expect(field(restored.main, 'PRESENTATION')).toBe('deck')
+  })
+
   it('fromJson rejects an unknown schema version', () => {
     expect(() =>
       Document.fromJson('{"schema":"quillmark/document@0.99.0","main":{}}'),
@@ -447,10 +457,11 @@ describe('Document editor surface — setField / removeField', () => {
     expect(field(doc.main, 'title')).toBe('Updated')
   })
 
-  it('setField throws EditError::InvalidFieldName for uppercase field names (BODY, CARDS, QUILL, CARD)', () => {
+  it('setField accepts uppercase field names verbatim (lowercase is canonical, not enforced)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    for (const name of ['BODY', 'CARDS', 'QUILL', 'CARD']) {
-      expect(() => doc.setField(name, 'x')).toThrow(/InvalidFieldName/)
+    for (const name of ['BODY', 'CARDS', 'Title', 'MixedCase_1']) {
+      doc.setField(name, 'x')
+      expect(field(doc.main, name)).toBe('x')
     }
   })
 
@@ -461,9 +472,9 @@ describe('Document editor surface — setField / removeField', () => {
     }
   })
 
-  it('setField throws EditError::InvalidFieldName for uppercase name', () => {
+  it('setField throws EditError::InvalidFieldName for an invalid name (hyphen)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.setField('Title', 'x')).toThrow(/InvalidFieldName/)
+    expect(() => doc.setField('bad-name', 'x')).toThrow(/InvalidFieldName/)
   })
 
   it('removeField returns the removed value', () => {
@@ -478,23 +489,11 @@ describe('Document editor surface — setField / removeField', () => {
     expect(doc.removeField('nonexistent')).toBeUndefined()
   })
 
-  it('removeField throws EditError::InvalidFieldName for uppercase field names (BODY, CARDS, QUILL, CARD)', () => {
-    const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    for (const name of ['BODY', 'CARDS', 'QUILL', 'CARD']) {
-      expect(() => doc.removeField(name)).toThrow(/InvalidFieldName/)
-    }
-  })
-
   it('removeField throws EditError::InvalidFieldName for `$`-prefixed names', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     for (const name of ['$body', '$cards', '$quill', '$kind']) {
       expect(() => doc.removeField(name)).toThrow(/InvalidFieldName/)
     }
-  })
-
-  it('removeField throws EditError::InvalidFieldName for uppercase name', () => {
-    const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.removeField('Title')).toThrow(/InvalidFieldName/)
   })
 })
 
@@ -732,9 +731,10 @@ Card body.
     expect(field(doc.cards[0], 'content')).toBe('hello')
   })
 
-  it('updateCardField throws EditError::InvalidFieldName for uppercase names', () => {
+  it('updateCardField accepts uppercase names verbatim', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
-    expect(() => doc.updateCardField(0, 'BODY', 'x')).toThrow(/InvalidFieldName/)
+    doc.updateCardField(0, 'BODY', 'x')
+    expect(field(doc.cards[0], 'BODY')).toBe('x')
   })
 
   it('updateCardField throws IndexOutOfRange when card absent', () => {

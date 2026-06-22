@@ -16,12 +16,12 @@
 //!
 //! ```text
 //! path        := segment ( "." field_name | "[" index "]" )*
-//! field_name  := [a-z_][a-z0-9_]*       // same charset enforced for fields/kinds
+//! field_name  := [A-Za-z_][A-Za-z0-9_]*  // card kinds use lowercase-only [a-z_][a-z0-9_]*
 //! index       := [0-9]+
 //! ```
 //!
-//! Because field names and card kinds are validated to that charset (no `.`,
-//! `[`, `]`, or whitespace), the dotted form round-trips unambiguously.
+//! Because field names and card kinds are validated to charsets that exclude
+//! `.`, `[`, `]`, and whitespace, the dotted form round-trips unambiguously.
 //!
 //! | Anchor                     | Path                                      |
 //! |----------------------------|-------------------------------------------|

@@ -50,8 +50,10 @@ All card blocks are collected into the plate JSON's `$cards` array.
   card kind. The kind must match `[a-z_][a-z0-9_]*` and must not be `main`
   (reserved for the document root). Invalid examples: `BadCard`, `my-card`,
   `2nd_card`, `main`.
-- Field names must match `[a-z_][a-z0-9_]*`. Uppercase and `$`-prefixed
-  keys are reserved for system metadata and cannot be used as user fields.
+- Field names must match `[A-Za-z_][A-Za-z0-9_]*`. Lowercase is the canonical
+  convention, but uppercase is accepted and preserved verbatim; only
+  `$`-prefixed keys are reserved for system metadata and cannot be used as
+  user fields.
 - A blank line is required immediately above every `~~~` opener
   (unless the block is the very first line of the document). A `~~~`
   line without a blank line above it is treated as an ordinary code block.

@@ -233,10 +233,11 @@ User-defined fields sit in the same YAML payload as the `$` metadata keys
 (§3.3); after metadata extraction, the remaining mapping entries are the
 data payload.
 
-- **Field names.** Every field name matches `/^[a-z_][a-z0-9_]*$/`. The
-  pattern excludes `$` and uppercase, so a data field name can never collide
-  with any `$`-prefixed system key and is consistently lowercase across the
-  wire format.
+- **Field names.** Every field name matches `/^[A-Za-z_][A-Za-z0-9_]*$/`. The
+  pattern excludes `$`, so a data field name can never collide with any
+  `$`-prefixed system key. Lowercase is the canonical, recommended convention,
+  but uppercase ASCII letters are accepted and preserved verbatim; case is
+  significant, so `title` and `Title` are distinct fields.
 - **Whitespace-only payload.** A block whose payload (after metadata
   extraction) is only whitespace yields an empty field set.
 - **YAML comments.** Both own-line comments (`# …` on their own line) and

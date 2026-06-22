@@ -393,7 +393,7 @@ fn validate_parsed_field(key: &str, value: &serde_json::Value) -> Result<(), Par
     use crate::document::edit::{validate_field, FieldViolation};
     validate_field(key, value).map_err(|v| match v {
         FieldViolation::InvalidName => ParseError::InvalidStructure(format!(
-            "invalid data-field name `{}`: field names must match [a-z_][a-z0-9_]*",
+            "invalid data-field name `{}`: field names must match [A-Za-z_][A-Za-z0-9_]*",
             key
         )),
         FieldViolation::TooDeep => ParseError::InvalidStructure(format!(

@@ -538,7 +538,7 @@ impl TryFrom<PayloadItemV0_92_0> for PayloadItem {
                 validate_field(&key, &value).map_err(|v| {
                     StorageError::Malformed(match v {
                         FieldViolation::InvalidName => {
-                            format!("invalid field name {key:?}: must match [a-z_][a-z0-9_]*")
+                            format!("invalid field name {key:?}: must match [A-Za-z_][A-Za-z0-9_]*")
                         }
                         FieldViolation::TooDeep => format!(
                             "field {key:?} nests deeper than the maximum of {} levels",

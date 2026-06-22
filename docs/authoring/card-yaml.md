@@ -147,7 +147,9 @@ object, properties: … }` for a list of objects). Nesting beyond one level is
 not supported. See
 [Quill.yaml Reference: Field Types](../quills/quill-yaml-reference.md#field-types).
 
-Field names must match `[a-z_][a-z0-9_]*`.
+Field names must match `[A-Za-z_][A-Za-z0-9_]*`. Lowercase is the canonical,
+recommended convention, but uppercase is accepted and preserved verbatim (case
+is significant). Only `$`-prefixed keys are reserved for system metadata.
 
 ## Comments
 

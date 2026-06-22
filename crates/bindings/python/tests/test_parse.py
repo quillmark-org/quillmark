@@ -298,18 +298,6 @@ def test_remove_card_field_out_of_range():
         doc.remove_card_field(0, "foo")
 
 
-def test_remove_card_field_legacy_uppercase_rejected():
-    """remove_card_field rejects legacy uppercase names as InvalidFieldName."""
-
-    md = (
-        "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\nBody.\n\n"
-        "~~~card-yaml\n$kind: note\n~~~\n"
-    )
-    doc = Document.from_markdown(md)
-    with pytest.raises(QuillmarkError, match="InvalidFieldName"):
-        doc.remove_card_field(0, "BODY")
-
-
 def test_diagnostic_str_is_canonical_pretty_text():
     """str(diagnostic) is the canonical pretty-printed text; repr is concise."""
     warn_md = (

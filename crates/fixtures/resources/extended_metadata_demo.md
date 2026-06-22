@@ -59,5 +59,5 @@ Ideal for content-heavy sites where each item needs its own metadata (price, cat
 - **Card kind pattern**: `[a-z_][a-z0-9_]*`
 - **Blank lines**: Allowed within card-yaml blocks
 - **Card syntax**: a `~~~` block declaring `$kind: <kind>`, preceded by a blank line
-- **Field names**: must match `[a-z_][a-z0-9_]*` — uppercase and `$`-prefixed keys are rejected so user payload can never shadow the `$`-prefixed plate-JSON metadata (`$quill`, `$body`, `$cards`, `$kind`)
+- **Field names**: must match `[A-Za-z_][A-Za-z0-9_]*` — only `$`-prefixed keys are rejected, so user payload can never shadow the `$`-prefixed plate-JSON metadata (`$quill`, `$body`, `$cards`, `$kind`); lowercase is canonical but uppercase is accepted and preserved verbatim
 - **Collections**: The same card kind creates an array of objects

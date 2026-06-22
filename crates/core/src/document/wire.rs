@@ -134,7 +134,7 @@ pub enum WireError {
     /// The `quill` string is not a valid `name@version` reference.
     InvalidQuillReference { value: String, reason: String },
     /// A field violates the payload invariant: a name failing
-    /// `[a-z_][a-z0-9_]*`, or a value (including `$ext`) nesting past the
+    /// `[A-Za-z_][A-Za-z0-9_]*`, or a value (including `$ext`) nesting past the
     /// §8 depth limit.
     InvalidField { key: String, reason: String },
 }
@@ -299,7 +299,7 @@ fn validate_wire_field(key: &str, value: &JsonValue) -> Result<(), WireError> {
     validate_field(key, value).map_err(|v| WireError::InvalidField {
         key: key.to_string(),
         reason: match v {
-            FieldViolation::InvalidName => "field names must match [a-z_][a-z0-9_]*".to_string(),
+            FieldViolation::InvalidName => "field names must match [A-Za-z_][A-Za-z0-9_]*".to_string(),
             FieldViolation::TooDeep => format!(
                 "nests deeper than the maximum of {} levels",
                 crate::document::limits::MAX_YAML_DEPTH

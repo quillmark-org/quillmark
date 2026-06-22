@@ -659,7 +659,7 @@ fn emit_key(out: &mut String, key: &str) {
 }
 
 /// Emit a mapping key at `indent`. Top-level field names (indent 0) are emitted
-/// verbatim: the line-oriented prescan accepts only bare `[a-z_][a-z0-9_]*`
+/// verbatim: the line-oriented prescan accepts only bare `[A-Za-z_][A-Za-z0-9_]*`
 /// field names there, so quoting one would make it unparseable. Nested keys
 /// (indent > 0) route through [`emit_key`] for correct YAML quoting.
 fn emit_key_at(out: &mut String, key: &str, indent: usize) {

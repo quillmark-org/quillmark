@@ -534,11 +534,12 @@ Item 1 body";
 }
 
 #[test]
-fn test_uppercase_payload_keys_rejected_at_parse() {
-    // Spec §3.4/§10: data-field names must match [a-z_][a-z0-9_]*, enforced
-    // at parse time — the same invariant the mutators and DTO/wire paths
-    // enforce, so a constructed Document can never hold a non-conforming
-    // name (which would also break the bare-key emit round-trip).
+fn test_uppercase_payload_keys_accepted_at_parse() {
+    // Spec §3.4: data-field names match [A-Za-z_][A-Za-z0-9_]*. The legacy
+    // uppercase reservation is gone (only `$`-prefixed keys are system
+    // metadata since the 0.83 plate-JSON cutover), so uppercase user fields
+    // parse, are preserved verbatim (case is significant), and round-trip
+    // bare through emit.
     let markdown = "~~~card-yaml
 $quill: test_quill
 $kind: main
@@ -549,10 +550,20 @@ $kind: section
 BODY: Test
 ~~~";
 
-    let err = decompose(markdown).unwrap_err();
+    let doc = decompose(markdown).unwrap();
+    assert_eq!(
+        doc.cards()[0]
+            .payload()
+            .get("BODY")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "Test"
+    );
+    // Verbatim, no lowercasing: the uppercase key survives emit unquoted.
     assert!(
-        err.to_string().contains("BODY"),
-        "non-conforming field name is a parse error naming the key: {err}"
+        doc.to_markdown().contains("BODY: Test"),
+        "uppercase field name must round-trip bare and verbatim"
     );
 }
 
@@ -1481,7 +1492,8 @@ fn test_payload_at_eof_no_trailing_newline() {
 #[test]
 fn test_unicode_in_yaml_keys() {
     // Unicode is welcome in *values* (next test); field *names* are
-    // restricted to [a-z_][a-z0-9_]* (spec §3.4) and rejected at parse.
+    // restricted to ASCII [A-Za-z_][A-Za-z0-9_]* (spec §3.4), so a non-ASCII
+    // name is rejected at parse.
     let markdown =
         "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitre: Bonjour\nタイトル: こんにちは\n~~~\n\nBody.";
     let err = decompose(markdown).unwrap_err();

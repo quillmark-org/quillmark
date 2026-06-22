@@ -659,7 +659,7 @@ impl Document {
 
     /// Update a payload field on the main card. Clears any existing `!must_fill` marker.
     ///
-    /// Throws if `name` does not match `[a-z_][a-z0-9_]*`.
+    /// Throws if `name` does not match `[A-Za-z_][A-Za-z0-9_]*`.
     #[wasm_bindgen(js_name = setField)]
     pub fn set_field(&mut self, name: &str, value: JsValue) -> Result<(), JsValue> {
         let json: serde_json::Value = serde_wasm_bindgen::from_value(value).map_err(|e| {
@@ -686,7 +686,7 @@ impl Document {
     }
 
     /// Remove a payload field on the main card, returning the removed value or
-    /// `undefined`. Throws if `name` does not match `[a-z_][a-z0-9_]*`.
+    /// `undefined`. Throws if `name` does not match `[A-Za-z_][A-Za-z0-9_]*`.
     #[wasm_bindgen(js_name = removeField)]
     pub fn remove_field(&mut self, name: &str) -> Result<JsValue, JsValue> {
         let removed = self

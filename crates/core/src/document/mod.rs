@@ -280,8 +280,8 @@ impl Document {
     ///
     /// `$`-prefixed keys carry document-level metadata (quill ref, body
     /// text, card list, card kind). User payload fields stay flat at the
-    /// root — they cannot collide with `$` keys because field names must
-    /// match `[a-z_][a-z0-9_]*`.
+    /// root — they cannot collide with `$` keys because user field names are
+    /// never `$`-prefixed (they match `[A-Za-z_][A-Za-z0-9_]*`).
     pub fn to_plate_json(&self) -> serde_json::Value {
         let mut map = serde_json::Map::new();
 

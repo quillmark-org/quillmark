@@ -125,20 +125,13 @@ def test_set_field_updates():
     assert field(doc.main, "title") == "New Title"
 
 
-def test_set_field_legacy_uppercase_rejected_matrix():
-    """set_field raises InvalidFieldName for uppercase field names."""
-    for name in ("BODY", "CARDS", "QUILL", "CARD"):
-        doc = Document.from_markdown(SIMPLE_MD)
-        with pytest.raises(QuillmarkError, match="InvalidFieldName"):
-            doc.set_field(name, "value")
-
-
-def test_card_set_field_legacy_uppercase_rejected_matrix():
-    """Card update_card_field raises InvalidFieldName for uppercase field names."""
-    for name in ("BODY", "CARDS", "QUILL", "CARD"):
-        doc = Document.from_markdown(MD_WITH_CARDS)
-        with pytest.raises(QuillmarkError, match="InvalidFieldName"):
-            doc.update_card_field(0, name, "value")
+def test_set_field_uppercase_accepted():
+    """set_field accepts uppercase field names verbatim (lowercase is canonical
+    but not enforced); only `$`-prefixed keys stay reserved."""
+    doc = Document.from_markdown(SIMPLE_MD)
+    for name in ("BODY", "CARDS", "Title", "MixedCase_1"):
+        doc.set_field(name, "value")
+        assert field(doc.main, name) == "value"
 
 
 def test_set_field_dollar_prefix_rejected_matrix():
@@ -150,10 +143,10 @@ def test_set_field_dollar_prefix_rejected_matrix():
 
 
 def test_set_field_invalid_field_name():
-    """set_field raises EditError for an uppercase/invalid name."""
+    """set_field raises EditError for an invalid name (hyphen not allowed)."""
     doc = Document.from_markdown(SIMPLE_MD)
     with pytest.raises(QuillmarkError, match="InvalidFieldName"):
-        doc.set_field("Title", "value")
+        doc.set_field("bad-name", "value")
 
 
 def test_remove_field_existing():
@@ -168,13 +161,6 @@ def test_remove_field_absent():
     """remove_field returns None when the field doesn't exist."""
     doc = Document.from_markdown(SIMPLE_MD)
     assert doc.remove_field("nonexistent") is None
-
-
-def test_remove_field_legacy_uppercase_rejected():
-    """remove_field raises InvalidFieldName for uppercase field names."""
-    doc = Document.from_markdown(SIMPLE_MD)
-    with pytest.raises(QuillmarkError, match="InvalidFieldName"):
-        doc.remove_field("BODY")
 
 
 def test_set_quill_ref():
@@ -305,13 +291,6 @@ def test_update_card_field():
     doc = Document.from_markdown(MD_WITH_CARDS)
     doc.update_card_field(0, "content", "hello")
     assert field(doc.cards[0], "content") == "hello"
-
-
-def test_update_card_field_legacy_uppercase_rejected():
-    """update_card_field raises InvalidFieldName for uppercase field names."""
-    doc = Document.from_markdown(MD_WITH_CARDS)
-    with pytest.raises(QuillmarkError, match="InvalidFieldName"):
-        doc.update_card_field(0, "BODY", "value")
 
 
 def test_update_card_field_out_of_range():
@@ -453,7 +432,7 @@ def test_invariants_after_mutation_sequence():
     doc.remove_field("extra_author")
 
     # Assertions: every payload key passes the user-field regex.
-    field_name_re = re.compile(r"^[a-z_][a-z0-9_]*$")
+    field_name_re = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
     for key in field_keys(doc.main):
         assert field_name_re.match(key), f"invalid key '{key}' found in payload"
 

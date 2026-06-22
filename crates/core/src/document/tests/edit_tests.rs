@@ -42,17 +42,19 @@ fn test_valid_field_names() {
     assert!(is_valid_field_name("a1b2c3"));
     assert!(is_valid_field_name("x"));
     assert!(is_valid_field_name("_"));
+    // Uppercase is accepted (lowercase is canonical but not enforced); case
+    // is significant. The legacy uppercase metadata keys are ordinary fields.
+    assert!(is_valid_field_name("Title"));
+    assert!(is_valid_field_name("BODY"));
+    assert!(is_valid_field_name("MixedCase_1"));
 }
 
 #[test]
 fn test_invalid_field_names() {
     assert!(!is_valid_field_name(""));
-    assert!(!is_valid_field_name("Title")); // uppercase
     assert!(!is_valid_field_name("123abc")); // starts with digit
     assert!(!is_valid_field_name("my-field")); // hyphen not allowed
     assert!(!is_valid_field_name("my field")); // space not allowed
-    assert!(!is_valid_field_name("BODY")); // uppercase
-    assert!(!is_valid_field_name("CARDS")); // uppercase
     assert!(!is_valid_field_name("$body")); // $-prefix reserved for metadata
 }
 
@@ -82,13 +84,13 @@ fn test_edit_error_display() {
         .contains("3"));
 }
 
-// ── Uppercase/`$`-prefixed names: Document::set_field ────────────────────────
+// ── `$`-prefixed names: Document::set_field ──────────────────────────────────
 
 #[test]
-fn test_document_set_field_rejects_legacy_uppercase_names() {
-    // Uppercase and `$`-prefixed names are rejected by the field-name regex
-    // like any other invalid input.
-    for name in ["BODY", "CARDS", "QUILL", "CARD", "$body", "$cards"] {
+fn test_document_set_field_rejects_dollar_prefixed_names() {
+    // `$`-prefixed keys are reserved for system metadata — the surviving
+    // field-name reservation (uppercase is now accepted).
+    for name in ["$body", "$cards", "$quill", "$kind"] {
         let mut doc = make_doc();
         let result = doc.main_mut().set_field(name, qv("value"));
         assert_eq!(
@@ -140,15 +142,18 @@ fn test_document_remove_field_absent() {
 }
 
 #[test]
-fn test_document_remove_field_legacy_uppercase_rejected() {
-    // Symmetric with set_field: uppercase names are rejected like any other
-    // invalid field name.
+fn test_document_field_legacy_uppercase_accepted() {
+    // The legacy uppercase metadata keys are now ordinary valid field names:
+    // set them, read them back verbatim, and remove them. Only `$`-prefixed
+    // keys remain reserved.
     let mut doc = make_doc();
     for name in ["BODY", "CARDS", "QUILL", "CARD"] {
-        match doc.main_mut().remove_field(name) {
-            Err(EditError::InvalidFieldName(got)) => assert_eq!(got, name),
-            other => panic!("expected InvalidFieldName for {name}, got {other:?}"),
-        }
+        doc.main_mut()
+            .set_field(name, qv("v"))
+            .unwrap_or_else(|e| panic!("expected {name} to be accepted, got {e:?}"));
+        assert_eq!(doc.main().payload().get(name).unwrap().as_str().unwrap(), "v");
+        let removed = doc.main_mut().remove_field(name).unwrap();
+        assert_eq!(removed.unwrap().as_str().unwrap(), "v");
     }
 }
 
@@ -377,10 +382,10 @@ fn test_card_set_field_valid() {
 #[test]
 fn test_card_set_field_invalid_name() {
     let mut card = Card::new("note").unwrap();
-    let result = card.set_field("Content", qv("text"));
+    let result = card.set_field("bad-name", qv("text"));
     assert_eq!(
         result,
-        Err(EditError::InvalidFieldName("Content".to_string()))
+        Err(EditError::InvalidFieldName("bad-name".to_string()))
     );
 }
 
@@ -400,17 +405,6 @@ fn test_card_remove_field_existing() {
 fn test_card_remove_field_absent() {
     let mut card = Card::new("note").unwrap();
     assert!(card.remove_field("nonexistent").unwrap().is_none());
-}
-
-#[test]
-fn test_card_remove_field_legacy_uppercase_rejected() {
-    let mut card = Card::new("note").unwrap();
-    for name in ["BODY", "CARDS", "QUILL", "CARD"] {
-        match card.remove_field(name) {
-            Err(EditError::InvalidFieldName(got)) => assert_eq!(got, name),
-            other => panic!("expected InvalidFieldName for {name}, got {other:?}"),
-        }
-    }
 }
 
 #[test]
@@ -761,7 +755,7 @@ fn wire_card_rejects_value_past_depth_limit_and_bad_names() {
     .unwrap();
     let err = crate::document::Card::try_from(wire).unwrap_err();
     assert!(
-        err.to_string().contains("[a-z_]"),
+        err.to_string().contains("[A-Za-z_]"),
         "expected name error, got {err}"
     );
 }

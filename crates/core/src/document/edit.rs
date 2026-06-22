@@ -1,7 +1,7 @@
 //! Typed mutators for [`Document`] and [`Card`] with invariant enforcement.
 //!
 //! Every successful mutator leaves the document with every user field name
-//! matching `[a-z_][a-z0-9_]*` and every composable `$kind` passing
+//! matching `[A-Za-z_][A-Za-z0-9_]*` and every composable `$kind` passing
 //! `meta::is_valid_kind_name`, so the result is safely serializable via
 //! [`Document::to_plate_json`]. Mutators never modify `warnings` — those
 //! are immutable parse-time observations.
@@ -23,7 +23,12 @@ use crate::document::{Card, Document, Payload};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
 
-/// `true` if `name` matches `[a-z_][a-z0-9_]*` after NFC normalisation.
+/// `true` if `name` matches `[A-Za-z_][A-Za-z0-9_]*` after NFC normalisation.
+///
+/// Lowercase is the recommended (canonical) convention, but uppercase ASCII
+/// letters are accepted and preserved verbatim. Collision-safety with system
+/// metadata comes entirely from the `$`-prefix exclusion — `$`-prefixed keys
+/// are reserved, so a user field can never shadow one regardless of case.
 pub fn is_valid_field_name(name: &str) -> bool {
     let normalized: String = name.nfc().collect();
     if normalized.is_empty() {
@@ -31,11 +36,11 @@ pub fn is_valid_field_name(name: &str) -> bool {
     }
     let mut chars = normalized.chars();
     let first = chars.next().unwrap();
-    if !first.is_ascii_lowercase() && first != '_' {
+    if !first.is_ascii_alphabetic() && first != '_' {
         return false;
     }
     for ch in chars {
-        if !ch.is_ascii_lowercase() && !ch.is_ascii_digit() && ch != '_' {
+        if !ch.is_ascii_alphanumeric() && ch != '_' {
             return false;
         }
     }
@@ -45,7 +50,7 @@ pub fn is_valid_field_name(name: &str) -> bool {
 /// Errors returned by document and card mutators.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum EditError {
-    #[error("invalid field name '{0}': must match [a-z_][a-z0-9_]*")]
+    #[error("invalid field name '{0}': must match [A-Za-z_][A-Za-z0-9_]*")]
     InvalidFieldName(String),
 
     #[error("invalid card kind '{0}': must match [a-z_][a-z0-9_]*")]
@@ -80,12 +85,12 @@ impl EditError {
 ///
 /// Each boundary maps it to its own error type (`ParseError`,
 /// `StorageError`, `WireError`, `EditError`), so the invariant — every user
-/// field name matches `[a-z_][a-z0-9_]*` and no value nests past the §8
+/// field name matches `[A-Za-z_][A-Za-z0-9_]*` and no value nests past the §8
 /// depth limit — is enforced once, here, and a constructed `Document` can
 /// never violate it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FieldViolation {
-    /// The field name does not match `[a-z_][a-z0-9_]*` (spec §3.4 / §10).
+    /// The field name does not match `[A-Za-z_][A-Za-z0-9_]*` (spec §3.4 / §10).
     InvalidName,
     /// The value nests deeper than [`MAX_YAML_DEPTH`](crate::document::limits::MAX_YAML_DEPTH)
     /// (spec §8).
@@ -237,7 +242,7 @@ impl Card {
     /// Set a payload field, clearing any `!must_fill` marker on that key.
     ///
     /// Returns [`EditError::InvalidFieldName`] when `name` does not match
-    /// `[a-z_][a-z0-9_]*`.
+    /// `[A-Za-z_][A-Za-z0-9_]*`.
     pub fn set_field(&mut self, name: &str, value: QuillValue) -> Result<(), EditError> {
         check_field(name, value.as_json())?;
         self.payload_mut().insert(name.to_string(), value);
