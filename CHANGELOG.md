@@ -1,5 +1,46 @@
 # Changelog
 
+## v0.92.0 - 2026-06-22
+
+- 0.92 technical-debt sweep: correctness, $seed hardening, de-duplication (#727)
+- dotnet: add $seed namespace writers (parity with Python/WASM)
+- refactor(core): unify $ext/$seed into one out-of-band Meta concept
+- Cleanup: simplify QuillWorld::font to a single expression
+- Cleanup: de-narrate comments, sync canon binding tables with .NET
+- dotnet: fix stale schema version (CI) + review-flagged polish
+- docs(migration): cover the !fill → !must_fill rename in the 0.92 guide
+- dotnet: fix native-lib copy to test project + two correctness bugs
+- Remove Document.seed(kind) for strict ext/seed symmetry
+- dotnet: expose $seed on the Card DTO
+- refactor(dotnet): rename engine class Quillmark -> QuillmarkEngine
+- Reject !fill: treat as a noncanonical tag, not a fill alias
+- Fix binding build break + warn on unsupported fill positions
+- fix(dotnet): resolve engine type in test namespace (CS0426)
+- docs(dotnet): trim README to a dense, consumer-focused surface
+- Address review nits: loud divergence, docs, coverage
+- Add storage schema 0.92.0: persist nested !must_fill
+- docs(canon): consolidate binding overviews into BINDINGS.md
+- feat($seed): reject $seed on composable cards (root-only, like $quill)
+- docs: move dotnet binding into canon, delete DESIGN.md
+- docs: reframe QmBytes by-value return as a tested assumption, not a defect
+- Carry nested !must_fill across the live wire (CardWire)
+- Address review: trap FFI panics, fix depth-limit asymmetry, Equals contract
+- Detect nested !must_fill on sequence-item inline first key
+- docs($seed): correct two claims flagged in review
+- Fix invalid '--' inside XML comment in Quillmark.csproj
+- fix(docs): drop canon links that break mkdocs --strict
+- Promote .NET binding: CI test job, NuGet release, first-class docs
+- Spike: .NET binding symmetrical to the Python binding
+- Capture and round-trip nested !must_fill markers
+- Make QuillValue an annotated value tree (fill on nodes)
+- fix(bindings): bump currentSchemaVersion to 0.92.0; add $seed JS test
+- Rename !fill tag to !must_fill (accept !fill as deprecated alias)
+- docs($seed): document the per-kind seed-overlay key across canon and spec
+- test($seed): cover parse/emit/storage, overlay layering, advisory validation
+- feat(core): first-class $seed key for per-card-kind seed overlays
+- Remove RenderSession and canvas-preview APIs from Python binding (#722)
+
+
 ## v0.91.0 - 2026-06-17
 
 - Upgrade Typst backend to 0.15 (#720)
