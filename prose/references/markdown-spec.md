@@ -196,7 +196,8 @@ author wrote the line.
   rejected. Contents are carried verbatim through Markdown and storage
   DTO round-trips, and **never** appear in the plate JSON consumed by
   backends (§5). Bespoke consumers namespace their state inside the
-  map — e.g. `$ext.presentation.title` for an editor-side card rename.
+  map — e.g. `$ext.editor.title`, the canonical slot for a per-card
+  display name (an editor-side rename).
   An empty `$ext: {}` is preserved as a distinct, explicit declaration.
 - **`$seed: <mapping>`** — an optional **mapping keyed by composable
   card-kind**, present on the **root block only**; a composable block carrying

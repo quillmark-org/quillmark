@@ -725,7 +725,7 @@ impl Document {
 
     /// Merge `value` into the main card's `$ext` map under `namespace`, creating
     /// the map when absent and replacing any existing value at that key. Sibling
-    /// namespaces are preserved, so independent consumers (`$ext.presentation`,
+    /// namespaces are preserved, so independent consumers (`$ext.editor`,
     /// `$ext.agent`, …) don't clobber each other.
     #[wasm_bindgen(js_name = setExtNamespace)]
     pub fn set_ext_namespace(&mut self, namespace: &str, value: JsValue) -> Result<(), JsValue> {

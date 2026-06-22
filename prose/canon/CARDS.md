@@ -113,9 +113,14 @@ annotations, anything bespoke to a UI consumer — belongs in the card's
 mapping that round-trips through Markdown and the storage DTO but is
 stripped from `Document::to_plate_json()` before backends see it, so
 template renders are not affected by editor state. Consumers
-namespace inside the map (`$ext.presentation`, `$ext.agent`, …) to avoid
+namespace inside the map (`$ext.editor`, `$ext.agent`, …) to avoid
 collisions when more than one tool carries state on the same card. See
 [markdown-spec.md §3.3](../references/markdown-spec.md) for the full specification.
+
+`$ext.editor.title` is the canonical slot for a per-card display name —
+the label an editing surface shows when a user renames one card
+instance. It overrides the per-*kind* `ui.title` and, being editor
+state, never reaches the backend.
 
 ## Per-kind Seed Overlays (`$seed`)
 

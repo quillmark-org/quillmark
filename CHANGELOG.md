@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- docs(canon): canonize `$ext.editor.title` as the slot for a per-card display name
+
 ## v0.92.0 - 2026-06-22
 
 - 0.92 technical-debt sweep: correctness, $seed hardening, de-duplication (#727)

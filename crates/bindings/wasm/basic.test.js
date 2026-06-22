@@ -800,8 +800,8 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
 describe('Document editor surface — $ext mutators', () => {
   it('setExt adds an opaque map readable via card.ext', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.setExt({ presentation: { title: 'Greeting' } })
-    expect(doc.main.ext.presentation.title).toBe('Greeting')
+    doc.setExt({ editor: { title: 'Greeting' } })
+    expect(doc.main.ext.editor.title).toBe('Greeting')
   })
 
   it('setExt rejects non-object values', () => {
@@ -819,23 +819,23 @@ describe('Document editor surface — $ext mutators', () => {
 
   it('setExtNamespace preserves sibling namespaces', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.setExtNamespace('presentation', { title: 'A' })
+    doc.setExtNamespace('editor', { title: 'A' })
     doc.setExtNamespace('agent', { pinned: true })
-    doc.setExtNamespace('presentation', { title: 'B' })
-    expect(doc.main.ext.presentation.title).toBe('B')
+    doc.setExtNamespace('editor', { title: 'B' })
+    expect(doc.main.ext.editor.title).toBe('B')
     expect(doc.main.ext.agent.pinned).toBe(true)
   })
 
   it('removeExtNamespace clears one slot and drops $ext once empty', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.setExtNamespace('presentation', { title: 'A' })
+    doc.setExtNamespace('editor', { title: 'A' })
     doc.setExtNamespace('tutorial', ['step-1', 'step-2'])
     // Returns the removed value; siblings survive.
     expect(doc.removeExtNamespace('tutorial')).toEqual(['step-1', 'step-2'])
-    expect(doc.main.ext.presentation.title).toBe('A')
+    expect(doc.main.ext.editor.title).toBe('A')
     expect(doc.main.ext.tutorial).toBeUndefined()
     // Removing the last namespace clears $ext entirely.
-    doc.removeExtNamespace('presentation')
+    doc.removeExtNamespace('editor')
     expect(doc.main.ext == null).toBe(true)
     // Absent namespace is a no-op returning undefined.
     expect(doc.removeExtNamespace('nope')).toBeUndefined()
@@ -861,11 +861,11 @@ describe('Document editor surface — $ext mutators', () => {
   it('card-level namespace mutators preserve siblings and clear when empty', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.pushCard({ kind: 'note', body: 'x' })
-    doc.setCardExtNamespace(0, 'presentation', { title: 'A' })
+    doc.setCardExtNamespace(0, 'editor', { title: 'A' })
     doc.setCardExtNamespace(0, 'tutorial', ['step-1'])
     expect(doc.removeCardExtNamespace(0, 'tutorial')).toEqual(['step-1'])
-    expect(doc.cards[0].ext.presentation.title).toBe('A')
-    doc.removeCardExtNamespace(0, 'presentation')
+    expect(doc.cards[0].ext.editor.title).toBe('A')
+    doc.removeCardExtNamespace(0, 'editor')
     expect(doc.cards[0].ext == null).toBe(true)
   })
 

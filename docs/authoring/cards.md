@@ -77,15 +77,16 @@ A card may declare `$ext: <mapping>` — an opaque YAML map reserved for
 state that belongs with the card but should not reach the rendered
 output. The map round-trips through Markdown and the storage DTO but is
 stripped from the plate JSON before backends see it, so template renders
-are unaffected. Consumers namespace inside the map (`$ext.presentation`,
+are unaffected. Consumers namespace inside the map (`$ext.editor`,
 `$ext.agent`, …) to avoid collisions when more than one tool carries
-state on the same card.
+state on the same card. `$ext.editor.title` is the canonical slot for a
+per-card display name (an editor-side rename).
 
 ```
 ~~~
 $kind: indorsement
 $ext:
-  presentation:
+  editor:
     title: "Cmdr's response"
 from: ORG/SYMBOL
 ~~~
