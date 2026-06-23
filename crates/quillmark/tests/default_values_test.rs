@@ -17,6 +17,53 @@ fn create_test_quill(temp_dir: &TempDir, quill_yaml: &str) -> std::path::PathBuf
 }
 
 #[test]
+fn test_nested_null_zero_fills_in_plate() {
+    // null ≡ absent at every level: a null typed-dict property and a null
+    // array element must zero-fill in the plate projection, never leak a bare
+    // null. (Regression for the nested-null leak.)
+    let temp_dir = TempDir::new().unwrap();
+    let quill_path = create_test_quill(
+        &temp_dir,
+        r#"quill:
+  name: "test_quill"
+  version: "1.0"
+  backend: "typst"
+  plate_file: "plate.typ"
+  description: "Nested null zero-fill"
+
+main:
+  fields:
+    addr:
+      type: object
+      properties:
+        street: { type: string }
+        city: { type: string }
+    tags:
+      type: array
+      items: { type: string }
+"#,
+    );
+    let quill = quillmark::quill_from_path(&quill_path).expect("from_path failed");
+    let md = "~~~card-yaml\n$quill: test_quill\n$kind: main\n\
+              addr:\n  street: !must_fill\n  city: Pittsburgh\n\
+              tags:\n  - alpha\n  - null\n  - gamma\n~~~\n\nbody\n";
+    let parsed = Document::from_markdown(md).expect("parse failed");
+    let data = quill.compile_data(&parsed).expect("compile_data should succeed");
+
+    let addr = data.get("addr").and_then(|v| v.as_object()).expect("addr object");
+    assert_eq!(
+        addr.get("street").and_then(|v| v.as_str()),
+        Some(""),
+        "null nested property must zero-fill, not leak null: {data}"
+    );
+    let tags = data.get("tags").and_then(|v| v.as_array()).expect("tags array");
+    assert!(
+        !tags.iter().any(|v| v.is_null()),
+        "null array element must not leak into the plate: {data}"
+    );
+}
+
+#[test]
 fn test_default_values_applied_via_dry_run() {
     let temp_dir = TempDir::new().unwrap();
     let quill_path = create_test_quill(

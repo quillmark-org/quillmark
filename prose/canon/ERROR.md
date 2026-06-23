@@ -77,10 +77,13 @@ Either quote the value (`build_number: "42"`) or change the schema's
 ```
 
 ```
-Field `name` carries the `!must_fill` placeholder marker, schema declares
-`string`. Replace it with a value of type `string` (this is a warning, not
-an error — the field still renders).
+Field `name` is marked `!must_fill` — a placeholder awaiting a value.
 ```
+
+with the hint *"Replace the value and drop the `!must_fill` marker, or remove
+the marker if the current value is intended."* It is a warning, not an error:
+the field still renders (the marked cell zero-fills or uses its suggested
+value).
 
 A present-null value (`subtitle:`, `subtitle: null`, `subtitle: ~`) is
 treated exactly like an omitted field — null ≡ absent. It validates clean

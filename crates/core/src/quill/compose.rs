@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use indexmap::IndexMap;
 
-use super::{seed, CardSchema, Quill};
+use super::{seed, CardSchema, FieldSchema, FieldType, Quill};
 use crate::normalize::normalize_document;
 use crate::quill::zero_value;
 use crate::value::PathSegment;
@@ -161,9 +161,6 @@ impl Quill {
         diags.extend(self.validate_seed(doc));
         diags
     }
-
-    /// (Intentionally left as a free function below: `validate_fills` needs no
-    /// schema, only the document's own `!must_fill` markers.)
 
     /// Advisory validation of the main card's `$seed` overlays.
     ///
@@ -329,26 +326,60 @@ fn coercion_error(e: impl std::fmt::Display) -> RenderError {
 /// never persisted (see `prose/canon/SCHEMAS.md`). Non-schema fields already
 /// present are preserved untouched.
 ///
-/// Null ≡ absent: a present-null schema field carries no data, so it is
-/// resolved like an omitted one (default, else zero) rather than projecting a
-/// bare null into the plate. A `!must_fill` placeholder is a present-null (or a
-/// suggested value) on this path — its marker is render-irrelevant.
+/// Null ≡ absent **at every level**: a null or absent value — top-level field,
+/// typed-dictionary property, or typed-table cell — carries no data and resolves
+/// like an omitted one (default, else zero) rather than projecting a bare null
+/// into the plate. A `!must_fill` placeholder is a present-null (or a suggested
+/// value) on this path; its marker is render-irrelevant.
 fn resolve_fields(
     fields: &IndexMap<String, QuillValue>,
     schema: &CardSchema,
 ) -> IndexMap<String, QuillValue> {
     let mut result = fields.clone();
     for (name, field) in &schema.fields {
-        let present_non_null = result
-            .get(name)
-            .is_some_and(|v| !v.as_json().is_null());
-        if present_non_null {
-            continue;
-        }
-        let value = field.default.clone().unwrap_or_else(|| zero_value(field));
-        result.insert(name.clone(), value);
+        let resolved = resolve_value(result.get(name), field);
+        result.insert(name.clone(), resolved);
     }
     result
+}
+
+/// Resolve one (possibly absent or null) value against its field schema,
+/// applying null ≡ absent recursively so no bare null reaches the plate:
+///
+/// - A null or absent value becomes the schema `default:`, else the type-empty
+///   [`zero_value`].
+/// - A present **typed dictionary** is rebuilt from its declared properties so a
+///   null/absent property zero-fills and the projection matches the schema shape.
+/// - A present **typed array** resolves each element against the item schema, so
+///   a null element zero-fills in place.
+/// - Any other present value is returned unchanged.
+fn resolve_value(value: Option<&QuillValue>, field: &FieldSchema) -> QuillValue {
+    let present = value.filter(|v| !v.as_json().is_null());
+    let Some(v) = present else {
+        return field.default.clone().unwrap_or_else(|| zero_value(field));
+    };
+    match (&field.r#type, &field.properties, &field.items) {
+        (FieldType::Object, Some(props), _) => {
+            let obj = v.as_json().as_object();
+            let mut out = serde_json::Map::new();
+            for (pname, pschema) in props {
+                let pv = obj
+                    .and_then(|o| o.get(pname))
+                    .map(|j| QuillValue::from_json(j.clone()));
+                out.insert(pname.clone(), resolve_value(pv.as_ref(), pschema).into_json());
+            }
+            QuillValue::from_json(serde_json::Value::Object(out))
+        }
+        (FieldType::Array, _, Some(items)) => {
+            let arr = v.as_json().as_array().cloned().unwrap_or_default();
+            let out: Vec<serde_json::Value> = arr
+                .into_iter()
+                .map(|e| resolve_value(Some(&QuillValue::from_json(e)), items).into_json())
+                .collect();
+            QuillValue::from_json(serde_json::Value::Array(out))
+        }
+        _ => v.clone(),
+    }
 }
 
 /// Build a [`Payload`] from a coerced/defaulted field map, re-attaching `$quill`

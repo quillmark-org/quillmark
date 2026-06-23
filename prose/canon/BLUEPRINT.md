@@ -387,9 +387,10 @@ requires:
   meaningful output." An empty-string title is a blank title — that is
   acceptable.
 
-The contract is enforced by a fixture test that renders each bundled
-quill's empty document (zero-filled) and asserts success
-(`crates/quillmark/tests/quiver_test.rs::every_quill_in_quiver_renders`).
+The contract is enforced by fixture tests that render each bundled quill's
+empty document (`quiver_test.rs::every_quill_in_quiver_renders`) and, for the
+`blueprint()` guarantee above, parse, round-trip, and render each quill's
+generated blueprint (`quiver_test.rs::every_quill_blueprint_round_trips_and_renders`).
 
 ## The blueprint and its filled-out twin
 

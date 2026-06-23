@@ -260,6 +260,35 @@ fn write_markdown_block(out: &mut String, field: &FieldSchema, pad: &str, inline
     }
 }
 
+/// Emit the first property of a synthetic typed-table row onto the dash line,
+/// matching `to_markdown`'s canonical object-sequence-item shape: own-line
+/// comments sit at the dash indent *above* the dash, and the property's
+/// `key: value  # type` rides the dash (`  - key: …`). Without this the
+/// blueprint emits the dash on its own line, which re-emits differently and
+/// breaks the round-trip guarantee (see `prose/canon/BLUEPRINT.md` §Guarantees).
+fn write_synthetic_row_head(out: &mut String, first: &FieldSchema, indent: usize) {
+    let dash_pad = "  ".repeat(indent + 1);
+    let prop_pad = "  ".repeat(indent + 2);
+    let mut buf = String::new();
+    write_field(&mut buf, first, indent + 2);
+    let mut on_dash = false;
+    for line in buf.lines() {
+        if !on_dash && line.trim_start().starts_with('#') {
+            // Leading own-line comment (description / `# e.g.`) → dash indent.
+            out.push_str(&format!("{}{}\n", dash_pad, line.trim_start()));
+        } else if !on_dash {
+            // First non-comment line is the field line → splice in the dash.
+            let body = line.strip_prefix(prop_pad.as_str()).unwrap_or(line);
+            out.push_str(&format!("{}- {}\n", dash_pad, body));
+            on_dash = true;
+        } else {
+            // Trailing lines of a multi-line value keep their original indent.
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+}
+
 fn sort_props(props: &BTreeMap<String, Box<FieldSchema>>) -> Vec<&FieldSchema> {
     let mut v: Vec<&FieldSchema> = props.values().map(|b| b.as_ref()).collect();
     v.sort_by_key(|f| f.ui_order());
@@ -311,10 +340,16 @@ fn write_typed_table_field(
         }
         None => {
             out.push_str(&format!("{}{}:  # {}\n", pad, field.name, inline));
+            let props = sort_props(item_props);
             let dash_pad = "  ".repeat(indent + 1);
-            out.push_str(&format!("{}-\n", dash_pad));
-            for prop in sort_props(item_props) {
-                write_field(out, prop, indent + 2);
+            match props.split_first() {
+                None => out.push_str(&format!("{}-\n", dash_pad)),
+                Some((first, rest)) => {
+                    write_synthetic_row_head(out, first, indent);
+                    for prop in rest {
+                        write_field(out, prop, indent + 2);
+                    }
+                }
             }
         }
     }
@@ -865,8 +900,11 @@ main:
           year: { type: integer, default: 0, description: Publication year. }
 "#)
         .blueprint();
-        assert!(t.contains("# Cited works.\nreferences:  # array<object>\n  -\n"));
-        assert!(t.contains("    # Citing organization.\n    org: !must_fill  # string\n"));
+        // The first property rides the dash line (matching `to_markdown`), with
+        // its description lifted to the dash indent above it.
+        assert!(t.contains(
+            "# Cited works.\nreferences:  # array<object>\n  # Citing organization.\n  - org: !must_fill  # string\n"
+        ));
         assert!(t.contains("    # Publication year.\n    year: 0  # integer\n"));
     }
 
@@ -890,8 +928,7 @@ main:
 "#)
         .blueprint();
         assert!(t.contains("# e.g. [{org: ACME, year: 2020}]\n"));
-        assert!(t.contains("refs:  # array<object>\n  -\n"));
-        assert!(t.contains("    org: !must_fill  # string\n"));
+        assert!(t.contains("refs:  # array<object>\n  - org: !must_fill  # string\n"));
         assert!(t.contains("    year: 0  # integer\n"));
     }
 
@@ -1062,6 +1099,29 @@ card_kinds:
       label: { type: string }
       pages: { type: integer, default: 1 }
 "#;
+
+    #[test]
+    fn typed_table_synthetic_row_blueprint_round_trips() {
+        // Regression: an Unendorsed typed-table synthetic row emits the first
+        // property on the dash line (canonical `to_markdown` shape), so the
+        // generated blueprint round-trips idempotently.
+        let bp = cfg(r#"
+quill: { name: x, version: 1.0.0, backend: typst, description: x }
+main:
+  fields:
+    refs:
+      type: array
+      items:
+        type: object
+        properties:
+          org: { type: string, description: Citing organization. }
+          year: { type: integer, default: 0, description: Publication year. }
+"#)
+        .blueprint();
+        let doc1 = Document::from_markdown(&bp).expect("blueprint must parse");
+        let doc2 = Document::from_markdown(&doc1.to_markdown()).expect("re-emit must parse");
+        assert_eq!(doc1, doc2, "typed-table blueprint must round-trip");
+    }
 
     #[test]
     fn must_fill_markers_round_trip_and_survive_as_fill() {

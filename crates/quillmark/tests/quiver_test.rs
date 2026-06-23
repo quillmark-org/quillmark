@@ -7,8 +7,11 @@
 //! every absent field is filled with its type-empty (zero) value in the plate
 //! projection. An empty document is therefore the type-minimal valid input —
 //! the worst-case-but-renderable shape — so a plate that renders it has shown
-//! it degrades gracefully on every type-valid input. No blueprint string is
-//! generated or re-parsed.
+//! it degrades gracefully on every type-valid input.
+//!
+//! A second test (`every_quill_blueprint_round_trips_and_renders`) additionally
+//! generates each quill's `blueprint()`, round-trips it, and renders it — the
+//! BLUEPRINT.md §Guarantees contract.
 
 #![cfg(feature = "typst")]
 
@@ -71,5 +74,43 @@ fn every_quill_in_quiver_renders() {
             !rendered.artifacts.is_empty(),
             "quill '{name}': render produced no artifacts"
         );
+    }
+}
+
+/// The `blueprint()` guarantee (BLUEPRINT.md §Guarantees): every bundled quill's
+/// generated blueprint **parses**, **round-trips** idempotently, and **renders**
+/// (its `!must_fill` markers zero-fill). Covers the typed-table synthetic-row
+/// round-trip and the strengthened "blueprint renders" claim across fixtures.
+#[test]
+fn every_quill_blueprint_round_trips_and_renders() {
+    let engine = Quillmark::new();
+
+    for name in quiver_quills() {
+        let quill = quillmark::quill_from_path(quills_path(&name))
+            .unwrap_or_else(|e| panic!("quill '{name}' failed to load: {e:?}"));
+
+        let bp = quill.config().blueprint();
+        let doc1 = Document::from_markdown(&bp).unwrap_or_else(|e| {
+            panic!("quill '{name}' blueprint failed to parse: {e:?}\n---\n{bp}")
+        });
+        let doc2 = Document::from_markdown(&doc1.to_markdown())
+            .unwrap_or_else(|e| panic!("quill '{name}' blueprint re-emit failed to parse: {e:?}"));
+        assert_eq!(doc1, doc2, "quill '{name}': blueprint must round-trip");
+
+        let result = engine.render(
+            &quill,
+            &doc1,
+            &RenderOptions {
+                output_format: Some(OutputFormat::Pdf),
+                ..Default::default()
+            },
+        );
+        if let Err(RenderError::EngineCreation { diags }) = &result {
+            if diags[0].message.contains("No fonts found") {
+                continue;
+            }
+        }
+        result
+            .unwrap_or_else(|e| panic!("quill '{name}' blueprint failed to render: {e:?}\n---\n{bp}"));
     }
 }
