@@ -19,7 +19,6 @@ free.
 ~~~
 $quill: <name>@<version>
 $kind: main
-# system metadata; verbatim
 # <description>
 
 # <field description>
@@ -104,11 +103,14 @@ instead. The reader's single rule is: a `!must_fill` marker present → fill it;
 a concrete value present → shippable as-is (delete or blank the line to fall
 back to the default).
 
-The `$`-prefixed system-metadata keys (`$quill`, `$kind`, …) have no
-inline-annotation slot — they are not user-defined data fields. (The YAML
-parser accepts a trailing ` # comment` on a `$` line, but the blueprint
-emitter does not attach one, and the canonical form drops every comment
-attached to a `$` line.) The root block's `$quill` line is emitted
+The `$`-prefixed system-metadata keys (`$quill`, `$kind`, …) carry no
+inline type annotation — they are not user-defined data fields, so there
+is no `# <type>` slot to fill. (A `$` line *can* carry an ordinary YAML
+comment: both an inline trailing ` # comment` and an adjacent own-line
+comment parse and round-trip faithfully, exactly like comments on data
+fields — see [markdown-spec.md](../references/markdown-spec.md) §3.3. The
+blueprint emitter simply chooses not to attach one.) The root block's
+`$quill` line is emitted
 verbatim; its value is fixed and must not be modified. The root block
 emits **no role-annotation comment** of its own — the `$` sigil marks its
 lines as system metadata, and this document carries the "do not modify"
@@ -326,7 +328,6 @@ to prevent corrupting the blueprint's document structure.
 ~~~
 $quill: cmu_letter@0.1.0
 $kind: main
-# system metadata; verbatim
 # Typeset letters that comply with Carnegie Mellon University letterhead standards.
 
 # The recipient's name and full mailing address.
