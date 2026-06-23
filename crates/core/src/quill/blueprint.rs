@@ -1071,6 +1071,43 @@ card_kinds:
 "#;
 
     #[test]
+    fn must_fill_markers_round_trip_and_survive_as_fill() {
+        // An Unendorsed array with an example (inlined as `!must_fill [flow]`),
+        // a bare-marker scalar, and a bare-marker datetime must all round-trip
+        // through parse → emit → parse, and the `fill` flag must survive on each.
+        let bp = cfg(r#"
+quill: { name: letter, version: 1.0.0, backend: typst, description: A letter. }
+main:
+  fields:
+    recipient:
+      type: array
+      items: { type: string }
+      example: [Mr. John Doe, "Anytown, USA"]
+    subject: { type: string }
+    date: { type: datetime }
+"#)
+        .blueprint();
+
+        let doc1 = Document::from_markdown(&bp).expect("blueprint must parse");
+        // Every Unendorsed field parsed back as a `!must_fill` marker.
+        let payload = doc1.main().payload();
+        for key in ["recipient", "subject", "date"] {
+            assert!(payload.is_fill(key), "`{key}` must carry the fill marker:\n{bp}");
+        }
+        // The example rode along as the suggested value, fill-free in JSON.
+        assert_eq!(
+            payload.get("recipient").and_then(|v| v.as_json().as_array().map(|a| a.len())),
+            Some(2),
+            "recipient suggested value should survive: {bp}"
+        );
+
+        // Idempotent round-trip.
+        let md2 = doc1.to_markdown();
+        let doc2 = Document::from_markdown(&md2).expect("re-emitted markdown must parse");
+        assert_eq!(doc1, doc2, "blueprint must round-trip idempotently");
+    }
+
+    #[test]
     fn blueprint_round_trips_idempotently() {
         let bp = cfg(LETTER_QUILL).blueprint();
         let doc1 = Document::from_markdown(&bp).expect("blueprint must parse");

@@ -195,8 +195,8 @@ Use this to validate indices before calling card mutators (`removeCard`,
 Returns `Diagnostic[]` — the document validated against the quill schema,
 without invoking the backend. An empty array means the document is valid.
 Each diagnostic carries the canonical `validation::*` `code`, `path`, and
-`hint`. Includes the non-fatal `validation::field_absent` completeness
-signal that `render` demotes (an absent Unendorsed field zero-fills rather
+`hint`. Includes the non-fatal `validation::must_fill` warning for each
+`!must_fill` marker left in the document (render zero-fills these rather
 than failing), so filter by `severity`/`code` for blockers vs. hints:
 
 ```ts
@@ -319,19 +319,19 @@ canvas.style.height = `${result.layoutHeight}px`;
 
 A field's *cell* is inferred from whether its schema declares a `default:`:
 
-- **Unendorsed** (no `default:`) — `quill.blueprint` renders `<must-fill>`
-  in the value cell. An absent Unendorsed field is a non-fatal signal
-  (`validation::field_absent`) — the render path zero-fills it
-  silently. A surviving `<must-fill>` sentinel is fatal
-  (`validation::must_fill_sentinel`). Partial documents are
-  first-class; `engine.render(quill, doc)` only throws for malformed input.
+- **Unendorsed** (no `default:`) — `quill.blueprint` renders the
+  `!must_fill` marker in the value cell (carrying the field's `example` as a
+  suggested value when one exists). An absent Unendorsed field zero-fills
+  silently. A `!must_fill` marker left in the document is non-fatal: it emits
+  the `validation::must_fill` warning and still renders. Partial documents
+  are first-class; `engine.render(quill, doc)` only throws for malformed
+  input.
 - **Endorsed** (with `default:`) — `quill.blueprint` renders the
   default value followed by a `; delete-ok` annotation, and the default
   is used when the document omits the field.
 
-`QuillFieldSchema` has no `required` axis. Absent Unendorsed fields emit
-`validation::field_absent`; a surviving `<must-fill>` sentinel emits
-`validation::must_fill_sentinel`.
+`QuillFieldSchema` has no `required` axis. A `!must_fill` marker left in the
+document emits the non-fatal `validation::must_fill` warning.
 
 ### Errors
 

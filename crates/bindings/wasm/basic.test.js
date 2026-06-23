@@ -1104,7 +1104,7 @@ body: "B"
     expect(diags.some((d) => d.code === 'validation::unknown_card')).toBe(true)
   })
 
-  it('includes field_absent for absent Unendorsed fields (completeness signal)', () => {
+  it('does not emit field_absent for absent Unendorsed fields (deferred signal)', () => {
     const quill = buildQuill()
     const md = `~~~card-yaml
 $quill: validate_smoke_test
@@ -1112,11 +1112,9 @@ $kind: main
 ~~~
 `
     const diags = quill.validate(Document.fromMarkdown(md))
-    const absent = diags
-      .filter((d) => d.code === 'validation::field_absent')
-      .map((d) => d.path)
-    expect(absent).toContain('title')
-    expect(absent).toContain('count')
+    // Absent Unendorsed fields zero-fill silently; `validation::field_absent`
+    // is no longer emitted by validate.
+    expect(diags.some((d) => d.code === 'validation::field_absent')).toBe(false)
   })
 
   it('result is JSON.stringify-able', () => {
@@ -1140,19 +1138,19 @@ count: "nope"
 //
 // The schema axis is implicit: a field with a `default:` is Endorsed (the
 // rendered default is shippable as-is and the blueprint emits the value +
-// `; delete-ok` annotation); a field without a `default:` is Must Fill (the
-// blueprint emits the `<must-fill>` sentinel).
+// `; delete-ok` annotation); a field without a `default:` is Unendorsed (the
+// blueprint emits the `!must_fill` marker).
 //
 // These tests pin the JS-facing contract:
 //   - `QuillFieldSchema` carries no `required` axis.
-//   - `quill.blueprint` carries `<must-fill>` and `; delete-ok` annotations.
+//   - `quill.blueprint` carries `!must_fill` and `; delete-ok` annotations.
 //   - `quill.render(doc)` *tolerates* an absent Unendorsed field: zero-filled
 //     render fills it with its type-empty value in the plate projection
 //     (never persisted), so absence is not a render error.
-//   - `quill.render(doc)` raises `validation::must_fill_sentinel` when the
-//     `<must-fill>` sentinel is left in (malformed, always fatal).
-//   - `quill.validate(doc)` flags both situations as diagnostics independent
-//     of the render gate (it reports completeness; render demotes absence).
+//   - A `!must_fill` marker left in the document is non-fatal: `quill.render`
+//     succeeds (the field zero-fills or uses its suggested value), and
+//     `quill.validate(doc)` surfaces a non-fatal `validation::must_fill`
+//     warning per marker.
 //
 // See prose/canon/SCHEMAS.md.
 
@@ -1218,16 +1216,16 @@ main:
     expect(fields.subtitle.default).toBe('Untitled subtitle')
   })
 
-  it('blueprint carries `<must-fill>` for Unendorsed fields and `; delete-ok` for Endorsed', () => {
+  it('blueprint carries `!must_fill` for Unendorsed fields and `; delete-ok` for Endorsed', () => {
     const { quill } = buildQuill()
     const blueprint = quill.blueprint
 
     expect(typeof blueprint).toBe('string')
     expect(blueprint.length).toBeGreaterThan(0)
 
-    // Unendorsed: value cell is the literal sentinel; no `; delete-ok` tag.
-    expect(blueprint).toContain('title: <must-fill>  # string')
-    expect(blueprint).not.toMatch(/title: <must-fill>.*delete-ok/)
+    // Unendorsed: value cell is the `!must_fill` marker; no `; delete-ok` tag.
+    expect(blueprint).toContain('title: !must_fill  # string')
+    expect(blueprint).not.toMatch(/title: !must_fill.*delete-ok/)
 
     // Endorsed: rendered default + `; delete-ok` tag. The emitter does not
     // quote strings that don't need quoting (`Untitled subtitle` has no YAML
@@ -1245,8 +1243,7 @@ main:
     // Document omits `title`. Schema declares no default → Unendorsed. Under
     // zero-filled render this is merely *incomplete*, not malformed: render
     // fills `title` with its type-empty value in the plate projection and
-    // succeeds. Absence is not a hard error; `quill.validate` reports it
-    // as the non-fatal `validation::field_absent` doneness signal.
+    // succeeds. Absence is not a hard error.
     const md = `~~~card-yaml
 $quill: schema_test
 $kind: main
@@ -1263,36 +1260,25 @@ subtitle: "Just a subtitle"
     expect(result.artifacts.length).toBeGreaterThan(0)
   })
 
-  it('render throws `validation::must_fill_sentinel` when the `<must-fill>` sentinel is left in', () => {
+  it('render tolerates a `!must_fill` marker left in (non-fatal, zero-fills)', () => {
     const { engine, quill } = buildQuill()
 
-    // Document supplies the literal sentinel — the LLM forgot to fill it.
+    // Document leaves a `!must_fill` marker on `title` — the LLM didn't fill
+    // it. This is non-fatal: render zero-fills the field and succeeds.
     const md = `~~~card-yaml
 $quill: schema_test
 $kind: main
-title: <must-fill>
+title: !must_fill
 ~~~
 
 # Body
 `
     const doc = Document.fromMarkdown(md)
 
-    try {
-      engine.render(quill, doc, { format: 'svg' })
-      throw new Error('render should have thrown ValidationFailed')
-    } catch (err) {
-      expect(Array.isArray(err.diagnostics)).toBe(true)
-      const codes = err.diagnostics.map((d) => d.code)
-      expect(codes).toContain('validation::must_fill_sentinel')
-      const placeholder = err.diagnostics.find(
-        (d) => d.code === 'validation::must_fill_sentinel',
-      )
-      expect(placeholder.path).toBe('title')
-      expect(placeholder.severity).toBe('error')
-      // Hint nudges the caller toward the action they need to take.
-      expect(placeholder.hint).toBeDefined()
-      expect(placeholder.hint).toContain('<must-fill>')
-    }
+    const result = engine.render(quill, doc, { format: 'svg' })
+    expect(result).toBeDefined()
+    expect(Array.isArray(result.artifacts)).toBe(true)
+    expect(result.artifacts.length).toBeGreaterThan(0)
   })
 
   it('render succeeds when every Unendorsed field is supplied with a real value', () => {
@@ -1311,41 +1297,25 @@ title: "A Real Title"
     expect(result.artifacts.length).toBeGreaterThan(0)
   })
 
-  it('validate surfaces diagnostics for both absent and sentinel cases', () => {
+  it('validate surfaces a non-fatal `validation::must_fill` warning per marker', () => {
     const { quill } = buildQuill()
 
-    // Case 1: `title` absent. Schema declares no default → Unendorsed. `render`
-    // demotes this to a non-fatal zero-fill, but `validate` surfaces it as the
-    // `field_absent` completeness signal.
-    const mdAbsent = `~~~card-yaml
+    // A `!must_fill` marker left in surfaces a non-fatal warning from validate.
+    const mdFill = `~~~card-yaml
 $quill: schema_test
 $kind: main
-subtitle: "Just a subtitle"
+title: !must_fill
 ~~~
 `
-    const diagsAbsent = quill.validate(Document.fromMarkdown(mdAbsent))
+    const diagsFill = quill.validate(Document.fromMarkdown(mdFill))
     expect(
-      diagsAbsent.some(
-        (d) => d.code === 'validation::field_absent' && d.path === 'title',
-      ),
-    ).toBe(true)
-
-    // Case 2: sentinel left in — a hard error on every surface.
-    const mdSentinel = `~~~card-yaml
-$quill: schema_test
-$kind: main
-title: <must-fill>
-~~~
-`
-    const diagsSentinel = quill.validate(Document.fromMarkdown(mdSentinel))
-    expect(
-      diagsSentinel.some(
+      diagsFill.some(
         (d) =>
-          d.code === 'validation::must_fill_sentinel' &&
-          d.severity === 'error' &&
+          d.code === 'validation::must_fill' &&
+          d.severity === 'warning' &&
           d.path === 'title' &&
           typeof d.hint === 'string' &&
-          d.hint.includes('<must-fill>'),
+          d.hint.includes('!must_fill'),
       ),
     ).toBe(true)
   })

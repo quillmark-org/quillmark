@@ -118,11 +118,11 @@ doc.push_card(Document.make_card("note", {"x": 1}, "..."))  # or pass a Card fro
 
 A field's *cell* is inferred from whether the schema declares a `default:`:
 
-- **Unendorsed** (no `default:`) — the blueprint renders `<must-fill>`.
-  An absent Unendorsed field is a non-fatal signal
-  (`validation::field_absent`) — the render path zero-fills it
-  silently. A surviving `<must-fill>` sentinel is fatal
-  (`validation::must_fill_sentinel`). Partial documents are
+- **Unendorsed** (no `default:`) — the blueprint renders the `!must_fill`
+  marker (carrying the field's `example` as a suggested value when one
+  exists). An absent Unendorsed field zero-fills silently. A `!must_fill`
+  marker left in the document is non-fatal: it emits the
+  `validation::must_fill` warning and still renders. Partial documents are
   first-class; `engine.render(quill, doc)` only raises for malformed input.
 - **Endorsed** (with `default:`) — the blueprint renders the default
   value with a `; delete-ok` annotation, and the default is used when

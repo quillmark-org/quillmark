@@ -170,8 +170,8 @@ impl PyQuill {
     ///
     /// Forwards the canonical `validation::*` diagnostics — same `code`,
     /// `path`, and `hint` the engine emits — including the non-fatal
-    /// `validation::field_absent` completeness signal that `render`
-    /// demotes. Field values, defaults, and order are not part of this
+    /// `validation::must_fill` warning for each `!must_fill` marker left in
+    /// the document. Field values, defaults, and order are not part of this
     /// surface: read them from the `Document` payload and `Quill.schema`
     /// (fields carry `ui.order`).
     fn validate<'py>(

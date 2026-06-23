@@ -41,10 +41,9 @@ export interface QuillCardBody {
  * A field's *cell* is determined by `default`: a field with a `default`
  * is **Endorsed** (the rendered value is shippable as-is), while a field
  * without a `default` is **Unendorsed** (the blueprint carries a
- * `<must-fill>` sentinel and validation reports
- * `validation::field_absent` if the field is absent at validate
- * time — a non-fatal signal, since the render path zero-fills an absent
- * field). There is no separate `required` axis.
+ * `!must_fill` marker; a marker left in the document yields the non-fatal
+ * `validation::must_fill` warning from validate, and the render path
+ * zero-fills the field). There is no separate `required` axis.
  */
 export interface QuillFieldSchema {
     type: "string" | "number" | "integer" | "boolean" | "array" | "object" | "datetime" | "markdown";
@@ -408,10 +407,10 @@ impl Quill {
     ///
     /// Forwards the canonical `validation::*` diagnostics — same `code`,
     /// `path`, and `hint` the engine emits — including the non-fatal
-    /// `validation::field_absent` completeness signal that `render` demotes.
-    /// Field values, defaults, and order are not part of this surface: read
-    /// them from the `Document` payload and `Quill.schema` (fields carry
-    /// `ui.order`).
+    /// `validation::must_fill` warning for each `!must_fill` marker left in
+    /// the document. Field values, defaults, and order are not part of this
+    /// surface: read them from the `Document` payload and `Quill.schema`
+    /// (fields carry `ui.order`).
     #[wasm_bindgen(js_name = validate, unchecked_return_type = "Diagnostic[]")]
     pub fn validate(&self, doc: &Document) -> Result<JsValue, JsValue> {
         let diags = self.inner.validate(&doc.inner);

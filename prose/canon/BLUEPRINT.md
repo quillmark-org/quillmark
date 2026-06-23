@@ -23,8 +23,8 @@ $kind: main
 # <description>
 
 # <field description>
-# e.g. <example value>
-field: value  # <type>[<format>][; delete-ok]
+field: !must_fill <example>  # <type>
+endorsed: value  # <type>[<format>][; delete-ok]
 ~~~
 
 Write main body here.
@@ -66,9 +66,12 @@ Per field, in order:
 1. `# <description>` — `description:` from `Quill.yaml`,
    whitespace-collapsed. **Single line only**; multi-line descriptions are
    rejected at `Quill.yaml` parse time.
-2. `# e.g. <value>` — emitted whenever `example:` is configured on a
-   field. Independent of cell and type. The example never becomes the
-   rendered value.
+2. `# e.g. <value>` — emitted on an **Endorsed** field whenever `example:`
+   is configured. Independent of type. On an Endorsed field the example
+   never becomes the rendered value, so it surfaces as a hint. On an
+   **Unendorsed** field there is no `# e.g.` line: the example inlines
+   directly as the `!must_fill` marker's suggested value (see "Placeholder
+   value precedence"), so a separate hint would be redundant.
 
 That's it. There is no leading `# required`, `# enum:`, `# default:`, or
 `# type:` — those collapse into the inline.
@@ -94,8 +97,11 @@ Form: **`# <type>[<format>][; delete-ok]`**
 - **`delete-ok` tag** (optional, after `;`): the single tag `delete-ok`. Present
   on Endorsed fields (fields with a `default:` in the schema), signalling
   "the rendered value is shippable as-is — keep or override". Absent on
-  Unendorsed fields (fields without a `default:`), which carry the
-  `<must-fill>` sentinel in the value cell instead.
+  Unendorsed fields (fields without a `default:`), which carry the `!must_fill`
+  marker on the value instead. (With the marker now carrying the
+  "replace before shipping" signal directly, `; delete-ok` is somewhat
+  redundant with "no marker present" and is a candidate for a future cleanup;
+  it is retained for now.)
 
 The `$`-prefixed system-metadata keys (`$quill`, `$kind`, …) have no
 inline-annotation slot — they are not user-defined data fields. (The YAML

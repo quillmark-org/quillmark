@@ -2,10 +2,10 @@
 
 A field's *cell* is determined by whether the schema declares a `default:`.
 
-- No `default:` -> **Unendorsed**: the blueprint renders `<must-fill>` and
-  validation reports ``validation::field_absent`` if the field
-  is absent at validate time and ``validation::must_fill_sentinel`` if
-  the `<must-fill>` sentinel survives into the rendered document.
+- No `default:` -> **Unendorsed**: the blueprint renders the ``!must_fill``
+  marker. A marker left in the document is non-fatal: validate reports a
+  ``validation::must_fill`` warning and render still succeeds (the field
+  zero-fills or uses its suggested value).
 - With `default:` -> **Endorsed**: the blueprint renders the default
   value with a ``; delete-ok`` annotation; the field is optional and the
   default is used when absent.
@@ -88,17 +88,17 @@ def test_schema_default_marks_endorsed(tmp_path):
 # Blueprint surface — annotations and sentinels
 # ---------------------------------------------------------------------------
 
-def test_blueprint_must_fill_sentinel(tmp_path):
-    """Unendorsed cells render the literal `<must-fill>` sentinel."""
+def test_blueprint_must_fill_marker(tmp_path):
+    """Unendorsed cells render the `!must_fill` marker."""
     quill = make_quill(tmp_path)
     bp = quill.blueprint
 
-    # Unendorsed fields carry the sentinel
-    assert "title: <must-fill>" in bp, (
-        f"expected `title: <must-fill>` in blueprint; got:\n{bp}"
+    # Unendorsed fields carry the marker
+    assert "title: !must_fill" in bp, (
+        f"expected `title: !must_fill` in blueprint; got:\n{bp}"
     )
-    assert "count: <must-fill>" in bp, (
-        f"expected `count: <must-fill>` in blueprint; got:\n{bp}"
+    assert "count: !must_fill" in bp, (
+        f"expected `count: !must_fill` in blueprint; got:\n{bp}"
     )
 
 
