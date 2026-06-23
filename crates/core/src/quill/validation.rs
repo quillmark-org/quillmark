@@ -96,13 +96,7 @@ impl std::fmt::Display for ValidationError {
                 write!(
                     f,
                     ". {hint}",
-                    hint = type_mismatch_hint(
-                        path,
-                        expected,
-                        actual,
-                        source_token,
-                        default.as_deref()
-                    )
+                    hint = type_mismatch_hint(expected, actual, default.as_deref())
                 )
             }
             ValidationError::EnumViolation {
@@ -135,14 +129,6 @@ impl std::fmt::Display for ValidationError {
     }
 }
 
-/// Whether `actual` (a YAML-parsed type name) is a primitive scalar the
-/// author could lift to a string by quoting the source token. `null` is
-/// excluded — quoting `null` produces the literal string `"null"`, which
-/// is rarely what an LLM author intended.
-fn quotable_actual(actual: &str) -> bool {
-    matches!(actual, "integer" | "number" | "boolean")
-}
-
 /// Actionable exit clause for an absent field. Used by both `Display` and
 /// `hint()` so the recommended action lives in exactly one place.
 fn field_absent_hint(expected: &str) -> String {
@@ -152,18 +138,8 @@ fn field_absent_hint(expected: &str) -> String {
 /// Actionable exit clause for a TypeMismatch. Mirrors the (expected, actual,
 /// has_default) branching in `Display` so the structured hint and the prose
 /// message can never disagree.
-fn type_mismatch_hint(
-    path: &str,
-    expected: &str,
-    actual: &str,
-    source_token: &str,
-    default: Option<&str>,
-) -> String {
-    if expected == "string" && quotable_actual(actual) {
-        format!(
-            "Either quote the value (`{path}: \"{source_token}\"`) or change the schema's `type:` to `{actual}`."
-        )
-    } else if default.is_some() {
+fn type_mismatch_hint(expected: &str, actual: &str, default: Option<&str>) -> String {
+    if default.is_some() {
         format!(
             "Either omit the line (the default will fill in) or provide a value of type `{expected}`."
         )
@@ -217,18 +193,11 @@ impl ValidationError {
         match self {
             ValidationError::FieldAbsent { expected, .. } => Some(field_absent_hint(expected)),
             ValidationError::TypeMismatch {
-                path,
                 expected,
                 actual,
-                source_token,
                 default,
-            } => Some(type_mismatch_hint(
-                path,
-                expected,
-                actual,
-                source_token,
-                default.as_deref(),
-            )),
+                ..
+            } => Some(type_mismatch_hint(expected, actual, default.as_deref())),
             ValidationError::BodyDisabled { .. } => Some(body_disabled_hint().to_string()),
             ValidationError::EnumViolation { .. }
             | ValidationError::FormatViolation { .. }
@@ -401,7 +370,18 @@ fn validate_value(
     let mut errors = Vec::new();
 
     let type_valid = match field.r#type {
-        FieldType::String | FieldType::Markdown => value.as_str().is_some(),
+        // In a *document*, a bare boolean/integer/number is unambiguously
+        // representable as a string, so the coercion layer adopts its canonical
+        // text and the value is type-valid here too — kept in lockstep with
+        // `coerce_value_strict` via the shared `scalar_as_string` predicate.
+        // Schema literals (a quill author's own `default:`/`example:`) stay
+        // strict: they are never coerced, and the blueprint relies on ambiguous
+        // string literals being quoted at authoring time.
+        FieldType::String | FieldType::Markdown => {
+            value.as_str().is_some()
+                || (ctx == ValueContext::Document
+                    && super::config::scalar_as_string(&value.as_json()).is_some())
+        }
         FieldType::Integer => {
             let json = value.as_json();
             json.is_i64() || json.is_u64()
@@ -631,13 +611,15 @@ main:
 
     #[test]
     fn rejects_simple_string_type_mismatch() {
+        // A bare scalar now coerces into a string; an array does not, so it
+        // still raises a string TypeMismatch.
         let config = config_with("    title:\n      type: string\n      default: \"\"", "");
-        let doc = doc_from_fm(&[("title", json!(9))]);
+        let doc = doc_from_fm(&[("title", json!([1, 2, 3]))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
             e,
             ValidationError::TypeMismatch { path, expected, actual, source_token, .. }
-            if path == "title" && expected == "string" && actual == "integer" && source_token == "9"
+            if path == "title" && expected == "string" && actual == "array" && source_token == "[…]"
         )));
     }
 
@@ -792,7 +774,7 @@ main:
         );
         let doc = doc_with_typed_cards(
             &[],
-            vec![typed_card("indorsement", &[("signature_block", json!(42))])],
+            vec![typed_card("indorsement", &[("signature_block", json!([1, 2, 3]))])],
         );
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
@@ -859,11 +841,13 @@ main:
     fn type_mismatch_diagnostic_carries_hint_matching_message() {
         // The structured hint must equal the exit clause baked into the
         // prose message, so consumers never need to re-parse.
+        // An array under a `string` schema is a genuine mismatch (not a bare
+        // scalar the coercion layer can adopt), so it still raises TypeMismatch.
         let config = config_with(
             "    build_number:\n      type: string\n      default: \"\"",
             "",
         );
-        let doc = doc_from_fm(&[("build_number", json!(42))]);
+        let doc = doc_from_fm(&[("build_number", json!([1, 2, 3]))]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         let err = errors
             .iter()
@@ -878,7 +862,7 @@ main:
             "message tail must equal hint; msg={msg}, hint={hint}",
             msg = err,
         );
-        assert!(hint.contains("quote the value"));
+        assert!(hint.contains("provide a value of type"));
     }
 
     #[test]
@@ -895,33 +879,22 @@ main:
     }
 
     #[test]
-    fn type_mismatch_message_has_canonical_shape_quote_exit() {
-        // Integer source under a `string` schema → quote-the-value exit.
-        let config = config_with(
-            "    build_number:\n      type: string\n      default: \"\"",
-            "",
-        );
-        let doc = doc_from_fm(&[("build_number", json!(42))]);
-        let errors = validate_typed_document(&config, &doc).unwrap_err();
-        let msg = errors
-            .iter()
-            .find_map(|e| match e {
-                ValidationError::TypeMismatch { .. } => Some(e.to_string()),
-                _ => None,
-            })
-            .expect("expected TypeMismatch");
-        assert!(
-            msg.contains("Field `build_number` got integer `42`, schema declares `string`"),
-            "wrong head: {msg}"
-        );
-        assert!(
-            msg.contains("quote the value (`build_number: \"42\"`)"),
-            "missing quote exit: {msg}"
-        );
-        assert!(
-            msg.contains("change the schema's `type:` to `integer`"),
-            "missing schema-change exit: {msg}"
-        );
+    fn bare_scalar_into_string_field_is_valid() {
+        // Gracious scalar→string: a bare integer/boolean/number under a
+        // `string` schema is unambiguously representable as its canonical text,
+        // so it validates (the coercion layer adopts the token). No
+        // TypeMismatch — see `quill::config::scalar_as_string`.
+        for value in [json!(42), json!(true), json!(1.5)] {
+            let config = config_with(
+                "    build_number:\n      type: string\n      default: \"\"",
+                "",
+            );
+            let doc = doc_from_fm(&[("build_number", value.clone())]);
+            assert!(
+                validate_typed_document(&config, &doc).is_ok(),
+                "bare scalar {value} should validate as a string"
+            );
+        }
     }
 
     #[test]

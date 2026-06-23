@@ -1770,6 +1770,49 @@ main:
 }
 
 #[test]
+fn test_config_coerce_bare_scalar_into_string_uses_canonical_token() {
+    // Gracious scalar→string: a bare boolean/integer/number written into a
+    // `string` field is adopted as its canonical scalar text, losslessly.
+    // (verified: true → "true", build_number: 47 → "47", ratio: 1.5 → "1.5").
+    let yaml_content = r#"
+quill:
+  name: coerce_string_test
+  version: "1.0"
+  backend: typst
+  description: Coerce bare scalars into strings
+
+main:
+  fields:
+    verified:
+      type: string
+    build_number:
+      type: string
+    ratio:
+      type: string
+"#;
+
+    let config = QuillConfig::from_yaml(yaml_content).unwrap();
+    let mut payload = indexmap::IndexMap::new();
+    payload.insert(
+        "verified".to_string(),
+        QuillValue::from_json(serde_json::json!(true)),
+    );
+    payload.insert(
+        "build_number".to_string(),
+        QuillValue::from_json(serde_json::json!(47)),
+    );
+    payload.insert(
+        "ratio".to_string(),
+        QuillValue::from_json(serde_json::json!(1.5)),
+    );
+
+    let coerced = config.coerce_payload(&payload).unwrap();
+    assert_eq!(coerced.get("verified").unwrap().as_str(), Some("true"));
+    assert_eq!(coerced.get("build_number").unwrap().as_str(), Some("47"));
+    assert_eq!(coerced.get("ratio").unwrap().as_str(), Some("1.5"));
+}
+
+#[test]
 fn test_config_coerce_integer_success() {
     let yaml_content = r#"
 quill:

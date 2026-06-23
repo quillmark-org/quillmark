@@ -11,6 +11,24 @@ use crate::value::QuillValue;
 
 use super::{BodyCardSchema, CardSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
 
+/// Canonical string text for a bare scalar that is unambiguously representable
+/// as a string: a boolean (`true`/`false`) or a number (`47`, `1.0`). Returns
+/// `None` for everything else — `null` (≡ absent), strings (already a string),
+/// and collections (structurally not a scalar).
+///
+/// This is the single source of truth for the gracious scalar→string rule:
+/// [`QuillConfig::coerce_value_strict`] uses the returned text to adopt the
+/// value, and `validation::validate_value` calls it (via this same function) to
+/// decide that such a value is type-valid — so coercion and validation can
+/// never disagree about which bare scalars a `string` field accepts.
+pub(crate) fn scalar_as_string(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::Bool(b) => Some(b.to_string()),
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
 /// Top-level configuration for a Quillmark project
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct QuillConfig {
@@ -333,6 +351,16 @@ impl QuillConfig {
                             )));
                         }
                     }
+                }
+                // Gracious scalar→string: a bare boolean/integer/number written
+                // where a string is expected is unambiguous — adopt its
+                // canonical scalar text (`true`, `47`, `1.0`) as the string
+                // value rather than rejecting it. Helps authors (LLMs
+                // especially) who write `verified: true` or `build_number: 47`
+                // for a `string` field. Null (≡ absent) is handled above;
+                // collections fall through unchanged.
+                if let Some(text) = scalar_as_string(&json_value) {
+                    return Ok(QuillValue::from_json(serde_json::Value::String(text)));
                 }
                 Ok(value.clone())
             }
