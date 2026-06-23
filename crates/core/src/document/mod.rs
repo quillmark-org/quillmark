@@ -52,7 +52,7 @@ pub const FORMAT_RULES: &str = "Document format rules:
 \u{2022} The first block is the root and MUST contain `$quill: <name>@<version>` and `$kind: main`. Additional blocks declare composable cards via `$kind: <card_kind>`.
 \u{2022} Reserved `$`-keys: `$quill`, `$kind`, `$id`, `$ext`, `$seed`. User fields use lowercase snake_case.
 \u{2022} Prose body is the text after a block's closing `~~~`, up to the next opener or EOF. To include a literal fenced code block in prose, use a backtick fence (```); any column-zero `~~~` block is parsed as card metadata.
-\u{2022} `; delete-ok` fields carry a default \u{2014} keep the line, override the value, or delete it to use the default. A blank or null value (`field:`, `field: null`, `field: ~`) is treated the same as omitting the field: it falls back to the default, or to the type-empty zero value.
+\u{2022} A field that already shows a concrete value carries a default and is shippable as-is \u{2014} keep the line, override the value, or delete it to fall back to the default. A blank or null value (`field:`, `field: null`, `field: ~`) is treated the same as omitting the field: it falls back to the default, or to the type-empty zero value.
 \u{2022} `field: !must_fill <value>` marks a placeholder awaiting your input \u{2014} replace it with a real value and drop the `!must_fill` tag before shipping. A bare `field: !must_fill` is an empty placeholder. A leftover marker never blocks rendering, but it is reported as a warning until you replace it.
 \u{2022} Numbers and booleans MUST be unquoted (`year: 2025`, `pinned: true`); quoting turns them into strings and fails validation.
 \u{2022} Plain-scalar values cannot start with `*` or `&` (YAML alias/anchor markers) and cannot contain `: ` (colon-space). For markdown emphasis, embedded colons, or other special prefixes, quote the value: `field: '**bold**'` or `field: \"Name: subtitle\"`. Multi-line values use `|-`, not multi-line quoted scalars.";
@@ -60,8 +60,8 @@ pub const FORMAT_RULES: &str = "Document format rules:
 /// Authoring-ergonomics header that introduces a blueprint to an LLM/MCP
 /// consumer. The `{quill}` placeholder is substituted with the quill name.
 /// Designed to be shown above [`FORMAT_RULES`], which covers field-level
-/// semantics like `; delete-ok` — keep the wording tight here so the two
-/// strings do not duplicate guidance.
+/// semantics like the `!must_fill` marker — keep the wording tight here so the
+/// two strings do not duplicate guidance.
 const BLUEPRINT_INSTRUCTION_TEMPLATE: &str =
     "Fill in the `{quill}` blueprint below: replace each `!must_fill` placeholder with a real \
 value and edit the body prose. Submit the filled markdown as `content` to `create_document`.";
