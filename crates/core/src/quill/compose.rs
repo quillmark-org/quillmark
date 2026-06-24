@@ -135,22 +135,16 @@ impl Quill {
     /// Validate `doc` against this quill's schema, returning every diagnostic
     /// (an empty `Vec` when the document is valid).
     ///
-    /// This is the editor-facing validation surface. It forwards the canonical
-    /// `validation::*` diagnostics verbatim — same code, `path`, and `hint` the
-    /// engine emits — so consumers can route on the code and navigate by path
-    /// without parsing message text. It covers type mismatches, unknown card
-    /// kinds (`validation::unknown_card`), body-on-disabled-body, and the
-    /// non-fatal `validation::must_fill` placeholder warning.
-    ///
-    /// Field absence is not surfaced: an absent Unendorsed field zero-fills at
-    /// render and raises nothing here. The `validation::must_fill` warning is
-    /// the one non-fatal diagnostic this surface emits; the remaining
-    /// `error`-severity diagnostics are blockers.
+    /// The editor-facing validation surface. Forwards the canonical
+    /// `validation::*` diagnostics verbatim (same code, `path`, `hint`) so
+    /// consumers route on the code without parsing message text: type
+    /// mismatches, unknown card kinds, body-on-disabled-body, and the non-fatal
+    /// `validation::must_fill` warning — the only non-fatal one; the rest are
+    /// blockers. Field absence is not surfaced (it zero-fills at render).
     ///
     /// Field values, defaults, and presentation order are not part of this
-    /// surface: a consumer reads them directly from the [`Document`] payload and
-    /// the quill schema (`quill.config().schema()`), where fields carry their
-    /// `ui.order` as the presentation-ordering signal.
+    /// surface — read them from the [`Document`] payload and the quill schema
+    /// (`quill.config().schema()`, carrying each field's `ui.order`).
     pub fn validate(&self, doc: &Document) -> Vec<Diagnostic> {
         let mut diags = match self.config().validate_document(doc) {
             Ok(()) => Vec::new(),
@@ -262,14 +256,10 @@ impl Quill {
         match self.config().validate_document(doc) {
             Ok(_) => Ok(()),
             Err(errors) => {
-                // Zero-filled render: a merely *incomplete* document (Unendorsed
-                // fields absent, or `!must_fill` placeholders) renders fine —
-                // each absent/null field is zero-filled in `resolve_fields`, and
-                // the placeholder marker is render-irrelevant. Only *malformed*
-                // input is fatal: a value that won't coerce/validate.
-                //
-                // Each ValidationError gets its own Diagnostic so consumers can
-                // use `path` for UI navigation via `RenderError::diagnostics()`.
+                // Only *malformed* input is fatal (a value that won't
+                // coerce/validate). An incomplete document — absent fields or
+                // `!must_fill` placeholders — renders fine via zero-fill. Each
+                // error keeps its own `path` for UI navigation.
                 let diags: Vec<Diagnostic> = errors.iter().map(|e| e.to_diagnostic()).collect();
                 if diags.is_empty() {
                     Ok(())
@@ -393,15 +383,12 @@ fn rebuild_payload_with_meta(source: &Card, fields: IndexMap<String, QuillValue>
     payload
 }
 
-/// Surface every `!must_fill` placeholder marker as a non-fatal **warning**.
+/// Surface every `!must_fill` marker as a non-fatal **warning**, root-and-nested
+/// across the main card and every composable card.
 ///
-/// The marker is the explicit "fill me" flag a blueprint stamps (and an author
-/// may write by hand). It is orthogonal to the value layer — it fires whether
-/// the cell is empty/null or carries a suggested value (`!must_fill <value>`) —
-/// and it never gates render: a marked document still renders (the cell
-/// zero-fills, or uses its suggested value). A strict consumer (e.g. an LLM
-/// authoring loop) treats any outstanding marker as "not done". Markers are
-/// reported root-and-nested, across the main card and every composable card.
+/// The marker fires whether or not the cell carries a suggested value, and never
+/// gates render (the cell zero-fills or uses its suggested value). A strict
+/// consumer treats any outstanding marker as "not done".
 fn validate_fills(doc: &Document) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     collect_fill_diags(doc.main(), "", &mut diags);

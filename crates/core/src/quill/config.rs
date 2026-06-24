@@ -11,15 +11,12 @@ use crate::value::QuillValue;
 
 use super::{BodyCardSchema, CardSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
 
-/// Canonical string text for a bare scalar that is unambiguously representable
-/// as a string: a boolean (`true`/`false`) or a number (`47`, `1.0`). Returns
-/// `None` for everything else — `null` (≡ absent), strings (already a string),
-/// and collections (structurally not a scalar).
+/// Canonical string text for a bare scalar unambiguously representable as a
+/// string — a boolean (`true`/`false`) or number (`47`, `1.0`). `None` for
+/// `null` (≡ absent), strings (already strings), and collections.
 ///
-/// This is the single source of truth for the gracious scalar→string rule:
-/// [`QuillConfig::coerce_value_strict`] uses the returned text to adopt the
-/// value, and `validation::validate_value` calls it (via this same function) to
-/// decide that such a value is type-valid — so coercion and validation can
+/// Shared by [`QuillConfig::coerce_value_strict`] (to adopt the value) and
+/// `validation::validate_value` (to accept it), so coercion and validation
 /// never disagree about which bare scalars a `string` field accepts.
 pub(crate) fn scalar_as_string(value: &serde_json::Value) -> Option<String> {
     match value {
@@ -352,13 +349,10 @@ impl QuillConfig {
                         }
                     }
                 }
-                // Gracious scalar→string: a bare boolean/integer/number written
-                // where a string is expected is unambiguous — adopt its
-                // canonical scalar text (`true`, `47`, `1.0`) as the string
-                // value rather than rejecting it. Helps authors (LLMs
-                // especially) who write `verified: true` or `build_number: 47`
-                // for a `string` field. Null (≡ absent) is handled above;
-                // collections fall through unchanged.
+                // Gracious scalar→string: adopt a bare bool/number's canonical
+                // text rather than reject it (an author writing `verified: true`
+                // for a `string` field). Null is handled above; collections fall
+                // through.
                 if let Some(text) = scalar_as_string(json_value) {
                     return Ok(QuillValue::from_json(serde_json::Value::String(text)));
                 }

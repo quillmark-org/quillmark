@@ -237,9 +237,6 @@ fn scalar_cell(field: &FieldSchema) -> (JsonValue, bool) {
 /// Append a scalar / scalar-array / markdown field as a single payload field
 /// plus its trailing inline type annotation.
 fn append_scalar(items: &mut Vec<PayloadItem>, field: &FieldSchema) {
-    // Scalars surface `# e.g.` only when Endorsed — an Unendorsed example
-    // inlines as the marker's suggested value, so a separate hint would
-    // duplicate it.
     push_leading(items, field, field.default.is_some());
     let (json, fill) = scalar_cell(field);
     items.push(PayloadItem::Field {
@@ -279,8 +276,7 @@ fn build_property_mapping(
                 inline: false,
             });
         }
-        // A leaf surfaces `# e.g.` under the same rule as a top-level scalar:
-        // only when Endorsed (an Unendorsed example inlines as the marker).
+        // `# e.g.` only when Endorsed (see `push_leading`).
         if prop.default.is_some() {
             if let Some(eg) = prop.example.as_ref() {
                 nested.push(NestedComment {

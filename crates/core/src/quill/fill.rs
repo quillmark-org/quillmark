@@ -15,19 +15,15 @@ use serde_json::json;
 use super::{FieldSchema, FieldType};
 use crate::value::QuillValue;
 
-/// The type-empty (zero) value for `field`: the leanest value that satisfies
-/// the field's declared type.
+/// The type-empty (zero) value for `field`: the leanest value satisfying its
+/// declared type.
 ///
-/// Honestly blank for almost every type — `""` (string, markdown, datetime:
-/// the validator accepts the empty string for datetime), `0`, `false`, `[]`.
-/// The lone seam is `enum`: there is no empty enum
-/// member, so the zero value is the first declared variant (`first_enum`).
-///
-/// An `object` with `properties` is *shape-valid only when every property is
-/// present*, so its zero value is the object whose each property carries that
-/// property's zero value (recursively). A bare `{}` would omit the declared
-/// properties, leaving the projection out of shape; only a property-less object
-/// (schema-invalid in practice) degrades to `{}`.
+/// Blank for most types — `""` (string/markdown/datetime), `0`, `false`, `[]`.
+/// `enum` has no empty member, so it zeroes to the first declared variant. An
+/// `object` with `properties` is shape-valid only when every property is
+/// present, so it zeroes (recursively) to an object with every property at its
+/// own zero value, not a bare `{}` (which only a property-less object degrades
+/// to).
 pub fn zero_value(field: &FieldSchema) -> QuillValue {
     if let Some(values) = &field.enum_values {
         let first = values.first().cloned().unwrap_or_default();

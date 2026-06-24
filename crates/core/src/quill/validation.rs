@@ -159,11 +159,9 @@ impl ValidationError {
         }
     }
 
-    /// Actionable hint for this error, when one is well-defined for the
-    /// variant. The hint restates the recommended exit so consumers (LLM
-    /// agents, IDEs, MCP clients) can surface it next to the message
-    /// without re-parsing prose. The hint text is the same string the
-    /// `Display` impl bakes into the message.
+    /// Actionable hint for this error, when defined for the variant — the same
+    /// string the `Display` impl bakes in, exposed so consumers can surface it
+    /// without re-parsing prose.
     pub fn hint(&self) -> Option<String> {
         match self {
             ValidationError::TypeMismatch {
@@ -331,10 +329,9 @@ fn validate_value(
     path: &str,
     ctx: ValueContext,
 ) -> Vec<ValidationError> {
-    // Null ≡ absent: a present-null value carries no data, so in a document it
-    // is treated exactly like an omitted field — no type error. The `!must_fill`
-    // placeholder marker (when present) is surfaced separately as a non-fatal
-    // warning by `Quill::validate`; it is not a value-layer concern here.
+    // Null ≡ absent: a present-null value in a document is treated as omitted
+    // (no type error). The `!must_fill` marker is surfaced separately as a
+    // warning by `Quill::validate`, not here.
     if ctx == ValueContext::Document && value.as_json().is_null() {
         return vec![];
     }
@@ -342,13 +339,10 @@ fn validate_value(
     let mut errors = Vec::new();
 
     let type_valid = match field.r#type {
-        // In a *document*, a bare boolean/integer/number is unambiguously
-        // representable as a string, so the coercion layer adopts its canonical
-        // text and the value is type-valid here too — kept in lockstep with
-        // `coerce_value_strict` via the shared `scalar_as_string` predicate.
-        // Schema literals (a quill author's own `default:`/`example:`) stay
-        // strict: they are never coerced, and the blueprint relies on ambiguous
-        // string literals being quoted at authoring time.
+        // In a document a bare bool/number is type-valid as a string (the
+        // coercion layer adopts it) — in lockstep with `coerce_value_strict`
+        // via `scalar_as_string`. Schema literals stay strict so the blueprint
+        // keeps quoting ambiguous string literals.
         FieldType::String | FieldType::Markdown => {
             value.as_str().is_some()
                 || (ctx == ValueContext::Document
