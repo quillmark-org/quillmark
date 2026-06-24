@@ -258,8 +258,8 @@ shippable as-is; no `default:` is Unendorsed:
 - `default: []` renders inline as `[]` with `# array<object>` —
   shippable empty. Inline row shape is not surfaced under an empty
   default; use `example:` to document row shape. See
-  `prose/BOOKMARKS.md` "Typed container empty default loses inline
-  shape documentation."
+  `prose/BOOKMARKS.md` "Typed table empty default loses inline
+  row-shape documentation."
 - No `default:` is Unendorsed: one synthetic row is emitted with each
   property carrying its own description, inline annotation, and the
   `!must_fill` marker on its leaf value. The container key itself is

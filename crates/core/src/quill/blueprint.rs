@@ -870,7 +870,8 @@ main:
     fn typed_table_with_empty_default_renders_inline() {
         // `default: []` means shippable as-is — the value renders inline as `[]`
         // (no marker). Inline row shape under an empty default belongs in
-        // `example:`; see prose/BOOKMARKS.md.
+        // `example:`; see prose/BOOKMARKS.md "Typed table empty default loses
+        // inline row-shape documentation."
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:
