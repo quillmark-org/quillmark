@@ -99,8 +99,6 @@ main:
 | `markdown` | Rich text; backends convert to target format |
 | `object`   | Structured map; requires a `properties:` map |
 
-Every `array` declares its element type under `items:` — a nested field schema. Use a scalar element (`items: { type: string }`, `integer`, `markdown`, …) for a primitive list like `string[]`, and an `object` element (`items: { type: object, properties: … }`) for a **list** of structured rows (a typed table). Use `type: object` with `properties:` for a single structured mapping. Nesting beyond one level is not supported (an array element may not itself be an array).
-
 ### Enum Constraints
 
 Restrict a string field to specific values:
@@ -169,6 +167,8 @@ main:
           type: string
 ```
 
+Nesting beyond one level is not supported — an array element may not itself be an array.
+
 ---
 
 ## UI Properties
@@ -189,8 +189,6 @@ main:
       ui:
         title: To       # "Memo For" would confuse users unfamiliar with memo conventions
 ```
-
-`title` is a UI hint only — no effect on validation, backend rendering, or blueprint output.
 
 ### `group`
 
@@ -237,7 +235,7 @@ main:
 
 ### `compact`
 
-When `true`, the UI renders this field in a compact style (smaller vertical footprint). UI hint only — no effect on validation or rendering.
+When `true`, the UI renders this field in a compact style (smaller vertical footprint).
 
 ```yaml
 main:
@@ -273,7 +271,7 @@ main:
       # no multiline — single-line input that expands on demand
 ```
 
-`multiline` is a UI hint only — it has no effect on validation or backend processing. It is meaningful on `string` and `markdown` fields; ignored on other types.
+Meaningful on `string` and `markdown` fields; ignored on other types.
 
 ---
 
@@ -368,7 +366,7 @@ With the template form, a UI rendering a list of cards can title each instance (
 - If a referenced field is absent or empty, the token resolves to an empty string.
 - UI consumers are responsible for trimming degenerate separators (e.g. `" — "` with one empty side).
 
-`title` is a UI hint only — it has no effect on validation or rendering. When omitted, UI consumers fall back to the prettified map key.
+When omitted, UI consumers fall back to the prettified map key.
 
 #### `body.enabled`
 
@@ -400,41 +398,7 @@ card_kinds:
 
 ### Using Cards in Markdown
 
-Cards appear as bare `~~~` blocks (the legacy `~~~card-yaml` opener is still accepted as an alias) with a `$kind: <kind>` metadata line in the document body:
-
-```markdown
-~~~
-$quill: usaf_memo
-$kind: main
-subject: Example
-# ... other fields ...
-~~~
-
-Main memo body text here.
-
-~~~
-$kind: indorsement
-from: ORG/SYMBOL
-for: RECIPIENT/SYMBOL
-signature_block:
-  - JANE A. DOE, Colonel, USAF
-  - Commander
-~~~
-
-Body of the first endorsement.
-
-~~~
-$kind: indorsement
-from: ANOTHER/ORG
-for: FINAL/RECIPIENT
-format: informal
-signature_block:
-  - JOHN B. SMITH, Lt Col, USAF
-  - Deputy Commander
-~~~
-
-Body of the second endorsement.
-```
+Card kinds defined here are authored as `~~~` blocks (with a `$kind: <kind>` line) in the document body. See [Cards](../authoring/cards.md) for the markdown syntax.
 
 ---
 

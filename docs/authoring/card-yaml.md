@@ -199,13 +199,6 @@ collection (`addr: {street: !must_fill}`), on a bare sequence element
 flow and bare-element cases emit a `parse::fill_marker_unsupported_position`
 warning so the loss is never silent.
 
-## Field-name Rules
-
-User field names match `[a-z_][a-z0-9_]*`. Uppercase, hyphens, and the
-`$` sigil are not allowed — the `$` prefix is reserved for system
-metadata (`$quill`, `$kind`, `$id`, `$ext`, `$seed`, plus the plate-JSON keys
-`$body` and `$cards`).
-
 ## Card Blocks
 
 Every block after the root is a card — see [Cards](cards.md) for syntax and structural rules.
