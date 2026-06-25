@@ -1,0 +1,17 @@
+quill:
+  name: simple_form
+  version: 0.1.0
+  backend: pdfform
+  description: A minimal hand-authored gov-form quill (stripped background + form.json)
+
+main:
+  fields:
+    full_name:
+      description: Applicant full legal name
+      type: string
+    agree:
+      description: Whether the applicant agreed to the terms
+      type: boolean
+    favorite_color:
+      description: Favorite color
+      type: string

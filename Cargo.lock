@@ -2313,6 +2313,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "quillmark-pdfform"
+version = "0.92.1"
+dependencies = [
+ "lopdf",
+ "quillmark-core",
+ "quillmark-pdf",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "quillmark-python"
 version = "0.92.1"
 dependencies = [

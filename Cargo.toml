@@ -4,6 +4,7 @@ members = [
     "crates/quillmark",
     "crates/quillmark-pdf",
     "crates/backends/typst",
+    "crates/backends/pdfform",
     "crates/fixtures",
     "crates/bindings/wasm",
     "crates/fuzz",
@@ -17,6 +18,7 @@ default-members = [
     "crates/quillmark",
     "crates/quillmark-pdf",
     "crates/backends/typst",
+    "crates/backends/pdfform",
     "crates/bindings/cli",
 ]
 resolver = "2"

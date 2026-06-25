@@ -25,4 +25,4 @@ mod spec;
 mod stamp;
 
 pub use spec::{Appearance, ChoiceOption, FieldSpec, FieldType, RegionKind, RenderedRegion};
-pub use stamp::{default_producer, stamp, StampOptions, StampResult};
+pub use stamp::{default_producer, page_count, stamp, StampOptions, StampResult};

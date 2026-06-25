@@ -1,0 +1,20 @@
+[package]
+name = "quillmark-pdfform"
+version.workspace = true
+edition.workspace = true
+include = ["src/**", "Cargo.toml", "README*", "LICENSE*"]
+readme.workspace = true
+description = "PDF gov-form backend for Quillmark (stripped background + form.json → filled AcroForm)"
+license.workspace = true
+documentation = "https://docs.rs/quillmark-pdfform"
+homepage.workspace = true
+repository = "https://github.com/quillmark-org/quillmark"
+
+[dependencies]
+quillmark-core = { workspace = true }
+quillmark-pdf = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+lopdf = "0.36"

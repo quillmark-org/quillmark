@@ -47,6 +47,19 @@ pub fn default_producer() -> String {
     format!("Quillmark {}", env!("CARGO_PKG_VERSION"))
 }
 
+/// Count the pages of a base PDF (traditional xref, unencrypted), the same way
+/// [`stamp`] resolves them. Backends use this to report `page_count` without a
+/// second PDF parser.
+pub fn page_count(pdf: &[u8]) -> Result<usize, RenderError> {
+    let xref_offset = find_startxref(pdf)?;
+    assert_traditional_xref(pdf, xref_offset)?;
+    let trailer = find_trailer_dict(pdf, xref_offset)?;
+    let (catalog_id, _) = find_dict_value(trailer, "Root")
+        .and_then(parse_indirect_ref)
+        .ok_or_else(|| err(CODE_PARSE, "/Root missing or malformed in trailer"))?;
+    Ok(resolve_page_ids(pdf, catalog_id)?.len())
+}
+
 /// Write `fields` as a fresh AcroForm onto `pdf` and report their geometry.
 ///
 /// With no fields this still appends the `/Producer` stamp (and adds no

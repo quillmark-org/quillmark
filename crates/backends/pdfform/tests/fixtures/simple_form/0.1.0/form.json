@@ -1,0 +1,39 @@
+{
+  "fields": [
+    {
+      "name": "FullName",
+      "schema_field": "full_name",
+      "page": 0,
+      "rect": [180, 715, 520, 735],
+      "type": "text",
+      "max_len": 64,
+      "tooltip": "Full legal name of the applicant"
+    },
+    {
+      "name": "Agree",
+      "schema_field": "agree",
+      "page": 0,
+      "rect": [180, 685, 200, 705],
+      "type": "checkbox",
+      "on_state": "Yes",
+      "tooltip": "Check to agree to the terms"
+    },
+    {
+      "name": "FavoriteColor",
+      "schema_field": "favorite_color",
+      "page": 0,
+      "rect": [180, 655, 520, 675],
+      "type": "choice",
+      "options": ["red", "green", "blue"],
+      "combo": true,
+      "tooltip": "Pick a favorite color"
+    },
+    {
+      "name": "Signature",
+      "page": 0,
+      "rect": [180, 600, 520, 640],
+      "type": "signature",
+      "tooltip": "Applicant signature"
+    }
+  ]
+}
