@@ -1,14 +1,17 @@
-# Canvas Preview (WASM, Typst)
+# Canvas Preview (WASM)
 
-> **Implementation**: `crates/backends/typst/src/`, `crates/bindings/wasm/src/`
+> **Implementation**: `crates/core/src/session.rs`, `crates/backends/typst/src/`, `crates/bindings/wasm/src/`
 
 ## TL;DR
 
-A Typst-only, WASM-only path that paints rasterized pages directly into a
-`CanvasRenderingContext2d`. Sits alongside the existing byte-output verbs
-(`render` for PDF/PNG/SVG); does not replace them. Both paths share the
-cached `PagedDocument` produced by `Backend::open`, so one compile feeds
-both.
+A WASM-only path that paints rasterized pages directly into a
+`CanvasRenderingContext2d`. The raster capability — "render a page to an RGBA
+pixmap" — is a backend-generic method pair on `SessionHandle`; the painter
+dispatches through it without knowing the backend. The Typst backend is
+currently the only implementor (a second, `pdfform` via `hayro`, is planned).
+Sits alongside the existing byte-output verbs (`render` for PDF/PNG/SVG); does
+not replace them. Both paths share the cached document produced by
+`Backend::open`, so one compile feeds both.
 
 ## Why
 
@@ -49,11 +52,14 @@ scrolls.
 ### Rust
 
 ```rust
-// quillmark-core
+// quillmark-core — the raster-preview capability is part of SessionHandle and
+// dispatched generically. Non-raster backends inherit the `None` defaults.
 pub trait SessionHandle: Any + Send + Sync {
     fn render(&self, opts: &RenderOptions) -> Result<RenderResult, RenderError>;
     fn page_count(&self) -> usize;
     fn as_any(&self) -> &dyn Any;
+    fn render_rgba(&self, page: usize, scale: f32) -> Option<(u32, u32, Vec<u8>)> { None }
+    fn page_size_pt(&self, page: usize) -> Option<(f32, f32)> { None }
 }
 
 impl RenderSession {
@@ -66,13 +72,9 @@ impl RenderSession {
 ```
 
 ```rust
-// quillmark-typst
+// quillmark-typst — overrides the raster methods. The downcast accessor remains
+// for any future Typst-only typed access, but is no longer the canvas path.
 pub struct TypstSession { /* PagedDocument + page_count */ }
-
-impl TypstSession {
-    pub fn page_size_pt(&self, page: usize) -> Option<(f32, f32)>;
-    pub fn render_rgba(&self, page: usize, scale: f32) -> Option<(u32, u32, Vec<u8>)>;
-}
 
 pub fn typst_session_of(s: &RenderSession) -> Option<&TypstSession>;
 ```
@@ -132,23 +134,22 @@ if the largest backing dimension would exceed 16384 px.
 
 ## Architecture
 
-The canvas path is a typed side channel — `core` stays output-format-only,
-the typst crate owns the typed surface, the WASM binding wires it to
-`web-sys`.
+The raster capability is a default-`None` method pair on `SessionHandle`, so
+`core` stays output-format-agnostic while any backend opts in by overriding
+them. The WASM binding calls through `RenderSession::handle()` — no downcast,
+no backend knowledge.
 
 ```
-core::RenderSession            ← Box<dyn SessionHandle>
-  └─ TypstSession              ← typst-only; holds PagedDocument
-       └─ typst-render::render ← PagedDocument + scale → tiny_skia::Pixmap
+core::RenderSession                     ← Box<dyn SessionHandle>
+  └─ handle().render_rgba(page, scale)  ← default None; overridden per backend
+       └─ (Typst) typst-render::render  ← page + scale → tiny_skia::Pixmap
             └─ Pixmap.demultiply() → RGBA8 buffer
                  └─ ImageData → ctx.putImageData
 ```
 
-The seam in `core` is minimal: `SessionHandle: Any + as_any(&self)` plus a
-`#[doc(hidden)]` `RenderSession::handle()` accessor. The typst crate owns
-the downcast in one place (`typst_session_of`). Native bindings never
-link the WASM side and never call the typed accessor; their behavior is
-byte-identical.
+The seam in `core` is two trait methods with `None` defaults plus the existing
+`#[doc(hidden)]` `RenderSession::handle()` accessor. Native bindings never link
+the WASM side; their behavior is byte-identical.
 
 ## Lifecycle and consumer flow
 
@@ -187,10 +188,15 @@ reports the actual backing dimensions in the result.
 - **Coalesce at the session, not at the format.** One compile feeds
   bytes (`render`), pixels (`paint`), and metadata (`pageSize`,
   `warnings`).
-- **`Any` downcast over a generic capability registry.** Canvas is
-  Typst-only and WASM-only; pushing it through a generic core trait would
-  force every backend to implement or stub it and would drag `web-sys`
-  toward `core`. The downcast is the standard escape hatch.
+- **Raster capability is a default-`None` method on `SessionHandle`,
+  dispatched generically.** It began as a Typst-only inherent method reached
+  via an `Any` downcast (`typst_session_of`), on the premise that "canvas is
+  Typst-only." A second raster backend (`pdfform`) invalidates that premise, so
+  "render page → RGBA pixmap" is promoted to a small shared capability backends
+  implement; `paint` dispatches through it. Backends that can't raster inherit
+  the `None` default rather than stubbing, and `web-sys` still never reaches
+  `core`. The downcast accessor is retained for genuinely Typst-only typed
+  access, not for the canvas path.
 - **`layoutScale` and `densityScale` separated, both optional.** A
   single scalar conflated layout (how big on screen) with sharpness
   (how many backing pixels). The split mirrors how editor consumers
@@ -225,10 +231,13 @@ reports the actual backing dimensions in the result.
 
 ```
 crates/
-├── core/src/session.rs              extended  — Any + handle()
-├── backends/typst/src/lib.rs        extended  — TypstSession is pub;
-│                                                page_size_pt, render_rgba;
+├── core/src/session.rs              extended  — Any + handle();
+│                                                render_rgba / page_size_pt
+│                                                (default None)
+├── backends/typst/src/lib.rs        extended  — TypstSession overrides
+│                                                render_rgba / page_size_pt;
 │                                                typst_session_of accessor
+│                                                (no longer the canvas path)
 └── bindings/wasm/
     ├── Cargo.toml                   extended  — web-sys features
     │                                            (CanvasRenderingContext2d,
@@ -238,11 +247,11 @@ crates/
     │                                             OffscreenCanvasRenderingContext2d)
     └── src/engine.rs                extended  — paint, pageSize,
                                                   backendId, supportsCanvas,
-                                                  warnings; CanvasCtx enum
-                                                  dispatches OnScreen vs
-                                                  OffScreen contexts (calls
-                                                  typst_session_of directly;
-                                                  no separate adapter file)
+                                                  warnings; dispatches via
+                                                  RenderSession::handle()
+                                                  (backend-generic); CanvasCtx
+                                                  enum dispatches OnScreen vs
+                                                  OffScreen contexts
 ```
 
 ## Future work (not in V1)

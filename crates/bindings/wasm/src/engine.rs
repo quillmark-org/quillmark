@@ -1303,8 +1303,8 @@ impl RenderSession {
     /// Throws if the backend has no canvas painter or `page` is out of range.
     #[wasm_bindgen(js_name = pageSize, unchecked_return_type = "PageSize")]
     pub fn page_size(&self, page: usize) -> Result<JsValue, JsValue> {
-        let typst = self.typst_session("pageSize")?;
-        let (width_pt, height_pt) = typst
+        let handle = self.raster_handle("pageSize")?;
+        let (width_pt, height_pt) = handle
             .page_size_pt(page)
             .ok_or_else(|| self.page_oob_error("pageSize", page))?;
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
@@ -1334,10 +1334,10 @@ impl RenderSession {
         page: usize,
         #[wasm_bindgen(unchecked_param_type = "PaintOptions | undefined")] opts: JsValue,
     ) -> Result<JsValue, JsValue> {
-        let typst = self.typst_session("paint")?;
+        let handle = self.raster_handle("paint")?;
         let canvas_ctx = CanvasCtx::from_js(&ctx)?;
 
-        let (width_pt, height_pt) = typst
+        let (width_pt, height_pt) = handle
             .page_size_pt(page)
             .ok_or_else(|| self.page_oob_error("paint", page))?;
 
@@ -1390,7 +1390,7 @@ impl RenderSession {
             .to_js_value());
         }
 
-        let (pixel_w, pixel_h, mut rgba) = typst
+        let (pixel_w, pixel_h, mut rgba) = handle
             .render_rgba(page, render_scale as f32)
             .ok_or_else(|| self.page_oob_error("paint", page))?;
 
@@ -1421,14 +1421,22 @@ impl RenderSession {
 
 #[cfg(feature = "render")]
 impl RenderSession {
-    fn typst_session(&self, op: &str) -> Result<&quillmark_typst::TypstSession, JsValue> {
-        quillmark_typst::typst_session_of(&self.inner).ok_or_else(|| {
-            WasmError::from(format!(
+    /// The session handle for raster-preview operations, or a "no canvas
+    /// painter" error if this backend doesn't advertise the capability. The
+    /// caller invokes `page_size_pt` / `render_rgba` on the returned handle —
+    /// generic over the backend, no downcast.
+    fn raster_handle(
+        &self,
+        op: &str,
+    ) -> Result<&dyn quillmark_core::session::SessionHandle, JsValue> {
+        if !self.supports_canvas {
+            return Err(WasmError::from(format!(
                 "{op}: backend '{}' has no canvas painter",
                 self.backend_id
             ))
-            .to_js_value()
-        })
+            .to_js_value());
+        }
+        Ok(self.inner.handle())
     }
 
     fn page_oob_error(&self, op: &str, page: usize) -> JsValue {

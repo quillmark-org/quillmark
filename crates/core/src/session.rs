@@ -12,6 +12,27 @@ pub trait SessionHandle: Any + Send + Sync {
     fn render(&self, opts: &RenderOptions) -> Result<RenderResult, RenderError>;
     fn page_count(&self) -> usize;
     fn as_any(&self) -> &dyn Any;
+
+    /// Render `page` to a non-premultiplied RGBA8 pixmap at `scale`× the natural
+    /// 72 ppi (`scale = 1` → one device pixel per point). Returns
+    /// `(width_px, height_px, rgba)`, row-major and `width*height*4` bytes long,
+    /// or `None` if this backend has no raster-preview capability or `page` is
+    /// out of range.
+    ///
+    /// This is the shared "render page → RGBA pixmap" capability the canvas
+    /// preview dispatches through generically; it is not Typst-specific. The
+    /// default returns `None`; raster backends override it and advertise the
+    /// capability via [`Backend::supports_canvas`](crate::Backend::supports_canvas).
+    fn render_rgba(&self, _page: usize, _scale: f32) -> Option<(u32, u32, Vec<u8>)> {
+        None
+    }
+
+    /// Page size in points `(width, height)`, or `None` when the backend has no
+    /// raster-preview capability or `page` is out of range. Pairs with
+    /// [`SessionHandle::render_rgba`] to size a canvas backing store.
+    fn page_size_pt(&self, _page: usize) -> Option<(f32, f32)> {
+        None
+    }
 }
 
 /// Opaque, backend-backed iterative render session.
