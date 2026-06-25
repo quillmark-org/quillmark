@@ -150,6 +150,12 @@ impl Node {
 /// construction. The walk is iterative (explicit stack), so the check
 /// itself cannot overflow on adversarially deep input — the very condition
 /// it exists to detect.
+///
+/// A container occupies a level whether or not it has contents: reaching an
+/// empty array/object at level `max_depth + 1` still cost the recursive
+/// consumers that many frames to get there. So an over-deep *empty* container
+/// is rejected exactly like a non-empty one (this mirrors the Python
+/// binding's `py_to_json_at`, which checks depth before inspecting contents).
 pub fn json_depth_exceeds(value: &serde_json::Value, max_depth: usize) -> bool {
     use serde_json::Value;
     // (value, depth) pairs; depth counts container levels entered.
@@ -157,13 +163,13 @@ pub fn json_depth_exceeds(value: &serde_json::Value, max_depth: usize) -> bool {
     while let Some((v, depth)) = stack.pop() {
         match v {
             Value::Array(items) => {
-                if depth + 1 > max_depth && !items.is_empty() {
+                if depth + 1 > max_depth {
                     return true;
                 }
                 stack.extend(items.iter().map(|c| (c, depth + 1)));
             }
             Value::Object(map) => {
-                if depth + 1 > max_depth && !map.is_empty() {
+                if depth + 1 > max_depth {
                     return true;
                 }
                 stack.extend(map.values().map(|c| (c, depth + 1)));
@@ -506,6 +512,35 @@ mod tests {
         // A value re-lowered from the tree (not the seeded cache) also matches.
         let relowered = QuillValue::from_node(qv.node.clone()).into_json();
         assert_eq!(relowered, original);
+    }
+
+    #[test]
+    fn depth_check_counts_empty_containers() {
+        use serde_json::json;
+
+        // A container occupies a level even when empty. With `max_depth = 1`,
+        // a single empty container is at the limit (accepted); a nested empty
+        // container is one level past it (rejected) — same as if its innermost
+        // slot held a non-empty container.
+        assert!(!json_depth_exceeds(&json!([]), 1));
+        assert!(!json_depth_exceeds(&json!({}), 1));
+        assert!(json_depth_exceeds(&json!([[]]), 1));
+        assert!(json_depth_exceeds(&json!({ "a": {} }), 1));
+
+        // Regression: an empty container at the deepest level must not slip
+        // past the bound. Build `[[[…[]…]]]` nested `n` levels with the
+        // innermost array empty, iteratively so the test stays stack-safe.
+        let deep_empty = |levels: usize| {
+            let mut v = serde_json::Value::Array(Vec::new());
+            for _ in 1..levels {
+                v = serde_json::Value::Array(vec![v]);
+            }
+            v
+        };
+        // `levels == max_depth` is exactly at the limit (the empty array is the
+        // last allowed level); `levels == max_depth + 1` is one past it.
+        assert!(!json_depth_exceeds(&deep_empty(100), 100));
+        assert!(json_depth_exceeds(&deep_empty(101), 100));
     }
 
     #[test]
