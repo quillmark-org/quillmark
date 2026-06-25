@@ -4,7 +4,7 @@
 
 ## TL;DR
 
-Quillmark converts Markdown with card-yaml blocks into output artifacts (PDF, SVG, PNG, TXT). A `Quill` is portable, engine-free data (parse / validate / schema / seed / blueprint / compile); the `Quillmark` engine is a backend registry + render dispatcher; backends do the heavy compilation.
+Quillmark is a schema-driven document engine: it turns Markdown with card-yaml blocks into a fully typeset document (PDF, SVG, PNG, TXT). A `Quill` is portable, engine-free data whose schema drives validation and scaffolding (parse / validate / schema / seed / blueprint / compile); the `Quillmark` engine is the thin-but-mandatory core every render routes through — a backend registry + render dispatcher; backends do the heavy compilation.
 
 ## Data Flow
 

@@ -77,7 +77,7 @@ crates/bindings/cli/src/
 ## Dependencies
 
 - `clap` — argument parsing
-- `quillmark` — rendering engine
+- `quillmark` — the engine
 - `quillmark-typst` — Typst backend
 - `quillmark-core` — types
 - `serde_json` — JSON output

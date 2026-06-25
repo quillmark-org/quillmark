@@ -6,7 +6,8 @@
 [![CI](https://github.com/quillmark-org/quillmark/workflows/CI/badge.svg)](https://github.com/quillmark-org/quillmark/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-lightgray.svg)](LICENSE)
 
-A format-first Markdown rendering system that converts Markdown with card-yaml metadata blocks into PDF, SVG, PNG, and other output formats.
+**Quillmark: a schema-driven document engine.**  
+Turn Markdown into a fully typeset document with a Quill.
 
 Maintained by [quillmark-org](https://github.com/quillmark-org).
 
@@ -14,9 +15,9 @@ Maintained by [quillmark-org](https://github.com/quillmark-org).
 
 ## Features
 
-- **Format-driven**: Quills define structure and styling; Markdown provides content.
-- **Schema-backed validation**: typed coercion, defaults, and constraints via `QuillConfig`.
-- **Typst backend**: produces PDF, SVG, and PNG.
+- **Schema-driven**: a Quill's schema drives typed coercion, defaults, validation, and scaffolding via `QuillConfig`.
+- **Quill-packaged**: a Quill bundles structure, styling, and schema; Markdown provides the content.
+- **Typst backend**: typesets to PDF, SVG, and PNG.
 - **Structured diagnostics**: path-aware errors and warnings.
 
 ## Documentation

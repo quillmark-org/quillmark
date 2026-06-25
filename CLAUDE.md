@@ -1,6 +1,6 @@
 # Quillmark
 
-Format-first Markdown rendering: Markdown + YAML card metadata → PDF/SVG/PNG via a Typst backend. Crates: `core` (parsing/schema/traits), `quillmark` (orchestration), `backends/typst`, `bindings/{python,wasm,dotnet,cli}`, `fixtures` (test Quills).
+Schema-driven document engine: Markdown + YAML card metadata → a fully typeset PDF/SVG/PNG via a Typst backend. Crates: `core` (parsing/schema/traits), `quillmark` (orchestration), `backends/typst`, `bindings/{python,wasm,dotnet,cli}`, `fixtures` (test Quills).
 
 Design docs: [`prose/canon/INDEX.md`](prose/canon/INDEX.md)
 

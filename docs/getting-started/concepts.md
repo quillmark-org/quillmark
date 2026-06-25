@@ -1,11 +1,12 @@
 # Concepts
 
-## The Format-First Philosophy
+## The Schema-Driven Philosophy
 
-Quillmark separates content from presentation:
+Quillmark separates content, schema, and presentation:
 
-- **Quills control structure and styling** — a Quill format defines layout and produces the output artifact.
-- **Markdown provides content** — authors write plain Markdown with card-yaml blocks; the Quill renders it.
+- **A Quill's schema drives the data** — it validates the card-yaml metadata and applies coercion, defaults, and scaffolding. The schema is the contract every render consumes.
+- **A Quill's plate controls presentation** — it defines layout and typesets the output artifact.
+- **Markdown provides content** — authors write plain Markdown with card-yaml blocks; the Quill renders it into a fully typeset document.
 
 ## Core Components
 

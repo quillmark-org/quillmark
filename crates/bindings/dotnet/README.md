@@ -1,7 +1,7 @@
 # Quillmark for .NET
 
-Format-first Markdown rendering: Markdown + YAML card metadata → **PDF / SVG / PNG**
-via a Typst backend. The managed surface mirrors the Python and WASM bindings.
+Schema-driven document engine: Markdown + YAML card metadata → a fully typeset **PDF / SVG / PNG** via a Typst backend.
+The managed surface mirrors the Python and WASM bindings.
 
 ## Install
 

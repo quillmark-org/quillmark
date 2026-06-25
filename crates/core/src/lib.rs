@@ -1,6 +1,6 @@
 //! # Quillmark Core Overview
 //!
-//! Core types and functionality for the Quillmark format-first Markdown rendering system.
+//! Core types and functionality for the Quillmark schema-driven document engine.
 //!
 //! ## Features
 //!

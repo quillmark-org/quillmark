@@ -307,7 +307,7 @@ impl ParseError {
 /// exceptions); the payload is always just the diagnostics.
 #[derive(Debug)]
 pub enum RenderError {
-    /// Failed to create rendering engine.
+    /// Failed to initialize the backend's rendering engine.
     EngineCreation {
         /// Diagnostics describing the failure. Always non-empty.
         diags: Vec<Diagnostic>,

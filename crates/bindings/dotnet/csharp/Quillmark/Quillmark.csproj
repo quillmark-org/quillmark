@@ -12,7 +12,7 @@
 
     <!-- NuGet package metadata -->
     <PackageId>Quillmark</PackageId>
-    <Description>.NET bindings for Quillmark — format-first Markdown rendering (Markdown + YAML card metadata → PDF/SVG/PNG via a Typst backend).</Description>
+    <Description>.NET bindings for Quillmark — a schema-driven document engine (Markdown + YAML card metadata → a fully typeset PDF/SVG/PNG via a Typst backend).</Description>
     <Authors>Quillmark Contributors</Authors>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://quillmark-org.github.io/quillmark/</PackageProjectUrl>

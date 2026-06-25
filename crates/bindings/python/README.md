@@ -1,6 +1,6 @@
 # Quillmark — Python bindings
 
-Python bindings for Quillmark's format-first Markdown rendering engine.
+Python bindings for Quillmark, a schema-driven document engine.
 
 Maintained by [TTQ](https://tonguetoquill.com).
 

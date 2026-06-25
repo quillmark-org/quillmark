@@ -1,6 +1,6 @@
 # Quillmark CLI
 
-Command-line interface for the Quillmark Markdown rendering system.
+Command-line interface for Quillmark, a schema-driven document engine.
 
 Maintained by [TTQ](https://tonguetoquill.com).
 
