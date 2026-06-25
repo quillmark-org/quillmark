@@ -26,8 +26,8 @@ fn generate_simple_form_background() {
     );
     let pdf = build_background(content);
 
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/simple_form/0.1.0/form.pdf");
+    let path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple_form/0.1.0/form.pdf");
     std::fs::write(&path, &pdf).expect("write form.pdf");
     eprintln!("wrote {} bytes to {}", pdf.len(), path.display());
 }

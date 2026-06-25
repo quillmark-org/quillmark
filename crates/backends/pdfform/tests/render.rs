@@ -30,8 +30,7 @@ fn fixture_quill() -> Quill {
         }
         Ok(FileTreeNode::Directory { files })
     }
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/simple_form/0.1.0");
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/simple_form/0.1.0");
     Quill::from_tree(walk(&dir).expect("walk fixture")).expect("load simple_form quill")
 }
 
@@ -98,7 +97,10 @@ fn fills_form_from_document_values() {
     assert_eq!(name.get(b"FT").unwrap().as_name().unwrap(), b"Tx");
     assert_eq!(name.get(b"V").unwrap().as_str().unwrap(), b"Ada Lovelace");
     assert_eq!(name.get(b"MaxLen").unwrap().as_i64().unwrap(), 64);
-    assert_eq!(name.get(b"TU").unwrap().as_str().unwrap(), b"Full legal name of the applicant");
+    assert_eq!(
+        name.get(b"TU").unwrap().as_str().unwrap(),
+        b"Full legal name of the applicant"
+    );
 
     // Checkbox checked (agree == true) → on-state.
     let agree = widget_by_name(&doc, "Agree");
@@ -138,7 +140,12 @@ fn empty_values_still_reconstruct_fields() {
     let pdf = render(serde_json::json!({}));
     let doc = lopdf::Document::load_mem(&pdf).expect("reparse");
     assert_eq!(
-        acroform(&doc).get(b"Fields").unwrap().as_array().unwrap().len(),
+        acroform(&doc)
+            .get(b"Fields")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
         4
     );
     // A text field with no bound value carries no /V.

@@ -3,7 +3,9 @@
 //! AcroForm structure and the returned regions sidecar.
 
 use lopdf::Object;
-use quillmark_pdf::{stamp, Appearance, ChoiceOption, FieldSpec, FieldType, RegionKind, StampOptions};
+use quillmark_pdf::{
+    stamp, Appearance, ChoiceOption, FieldSpec, FieldType, RegionKind, StampOptions,
+};
 
 /// A minimal single-page PDF with a traditional xref table and no `/Info`.
 fn minimal_pdf() -> Vec<u8> {
@@ -84,7 +86,11 @@ fn acroform(doc: &lopdf::Document) -> &lopdf::Dictionary {
 fn widget_by_name<'a>(doc: &'a lopdf::Document, name: &str) -> &'a lopdf::Dictionary {
     let fields = acroform(doc).get(b"Fields").unwrap().as_array().unwrap();
     for f in fields {
-        let w = doc.get_object(f.as_reference().unwrap()).unwrap().as_dict().unwrap();
+        let w = doc
+            .get_object(f.as_reference().unwrap())
+            .unwrap()
+            .as_dict()
+            .unwrap();
         if w.get(b"T").unwrap().as_str().unwrap() == name.as_bytes() {
             return w;
         }

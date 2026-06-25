@@ -37,7 +37,12 @@ pub struct FieldSpec {
 
 impl FieldSpec {
     /// A minimally-specified field of `field_type` at `rect` on `page`.
-    pub fn new(name: impl Into<String>, page: usize, rect: [f32; 4], field_type: FieldType) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        page: usize,
+        rect: [f32; 4],
+        field_type: FieldType,
+    ) -> Self {
         Self {
             name: name.into(),
             page,

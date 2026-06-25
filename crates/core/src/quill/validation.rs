@@ -621,7 +621,10 @@ main:
     fn present_null_is_treated_as_absent() {
         // `memo_for:` (a bare/null value) carries no data, so it validates the
         // same as an omitted field — no type mismatch — for every type.
-        let config = config_with("    memo_for:\n      type: string\n    n:\n      type: integer", "");
+        let config = config_with(
+            "    memo_for:\n      type: string\n    n:\n      type: integer",
+            "",
+        );
         let doc = doc_from_fm(&[("memo_for", json!(null)), ("n", json!(null))]);
         assert!(
             validate_typed_document(&config, &doc).is_ok(),
@@ -739,7 +742,10 @@ main:
         );
         let doc = doc_with_typed_cards(
             &[],
-            vec![typed_card("indorsement", &[("signature_block", json!([1, 2, 3]))])],
+            vec![typed_card(
+                "indorsement",
+                &[("signature_block", json!([1, 2, 3]))],
+            )],
         );
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| {
@@ -790,7 +796,10 @@ main:
             .hint
             .as_deref()
             .expect("type_mismatch diagnostic should carry a hint");
-        assert!(hint.contains("string"), "hint missing expected type: {hint}");
+        assert!(
+            hint.contains("string"),
+            "hint missing expected type: {hint}"
+        );
     }
 
     #[test]

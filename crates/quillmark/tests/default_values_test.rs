@@ -48,15 +48,23 @@ main:
               addr:\n  street: !must_fill\n  city: Pittsburgh\n\
               tags:\n  - alpha\n  - null\n  - gamma\n~~~\n\nbody\n";
     let parsed = Document::from_markdown(md).expect("parse failed");
-    let data = quill.compile_data(&parsed).expect("compile_data should succeed");
+    let data = quill
+        .compile_data(&parsed)
+        .expect("compile_data should succeed");
 
-    let addr = data.get("addr").and_then(|v| v.as_object()).expect("addr object");
+    let addr = data
+        .get("addr")
+        .and_then(|v| v.as_object())
+        .expect("addr object");
     assert_eq!(
         addr.get("street").and_then(|v| v.as_str()),
         Some(""),
         "null nested property must zero-fill, not leak null: {data}"
     );
-    let tags = data.get("tags").and_then(|v| v.as_array()).expect("tags array");
+    let tags = data
+        .get("tags")
+        .and_then(|v| v.as_array())
+        .expect("tags array");
     assert!(
         !tags.iter().any(|v| v.is_null()),
         "null array element must not leak into the plate: {data}"

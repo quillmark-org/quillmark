@@ -110,7 +110,8 @@ fn every_quill_blueprint_round_trips_and_renders() {
                 continue;
             }
         }
-        result
-            .unwrap_or_else(|e| panic!("quill '{name}' blueprint failed to render: {e:?}\n---\n{bp}"));
+        result.unwrap_or_else(|e| {
+            panic!("quill '{name}' blueprint failed to render: {e:?}\n---\n{bp}")
+        });
     }
 }

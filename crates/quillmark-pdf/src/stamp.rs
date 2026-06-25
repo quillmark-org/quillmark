@@ -20,8 +20,8 @@ use quillmark_core::RenderError;
 
 use crate::scan::{
     append_incremental_update, assert_traditional_xref, err, extract_outer_dict, find_dict_value,
-    find_object_bytes, find_startxref, find_trailer_dict, parse_indirect_ref,
-    resolve_page_ids, rewrite_page_with_annots, UpdatedObject,
+    find_object_bytes, find_startxref, find_trailer_dict, parse_indirect_ref, resolve_page_ids,
+    rewrite_page_with_annots, UpdatedObject,
 };
 use crate::spec::{FieldSpec, FieldType, RenderedRegion};
 
@@ -151,10 +151,7 @@ pub fn stamp(
         let mut widgets_by_page: Vec<Vec<u32>> = vec![Vec::new(); page_count];
         for (f, &wid) in fields.iter().zip(&widget_ids) {
             widgets_by_page[f.page].push(wid);
-            objects.push(dict_object(
-                wid,
-                &build_widget_inner(f, page_ids[f.page]),
-            ));
+            objects.push(dict_object(wid, &build_widget_inner(f, page_ids[f.page])));
         }
 
         objects.push(dict_object(

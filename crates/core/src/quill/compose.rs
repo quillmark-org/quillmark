@@ -350,7 +350,10 @@ fn resolve_value(value: Option<&QuillValue>, field: &FieldSchema) -> QuillValue 
                 let pv = obj
                     .and_then(|o| o.get(pname))
                     .map(|j| QuillValue::from_json(j.clone()));
-                out.insert(pname.clone(), resolve_value(pv.as_ref(), pschema).into_json());
+                out.insert(
+                    pname.clone(),
+                    resolve_value(pv.as_ref(), pschema).into_json(),
+                );
             }
             QuillValue::from_json(serde_json::Value::Object(out))
         }

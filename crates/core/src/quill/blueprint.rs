@@ -263,7 +263,11 @@ fn sort_props(props: &BTreeMap<String, Box<FieldSchema>>) -> Vec<&FieldSchema> {
 fn build_property_mapping(
     props: &BTreeMap<String, Box<FieldSchema>>,
     prefix: &[PathSegment],
-) -> (JsonMap<String, JsonValue>, Vec<NestedComment>, Vec<Vec<PathSegment>>) {
+) -> (
+    JsonMap<String, JsonValue>,
+    Vec<NestedComment>,
+    Vec<Vec<PathSegment>>,
+) {
     let mut map = JsonMap::new();
     let mut nested = Vec::new();
     let mut fills = Vec::new();
@@ -354,8 +358,7 @@ fn append_typed_table(
         None if item_props.is_empty() => (JsonValue::Array(Vec::new()), Vec::new(), Vec::new()),
         // Unendorsed → one synthetic row, per-property markers at `[Index(0)]`.
         None => {
-            let (row, nested, fills) =
-                build_property_mapping(item_props, &[PathSegment::Index(0)]);
+            let (row, nested, fills) = build_property_mapping(item_props, &[PathSegment::Index(0)]);
             (
                 JsonValue::Array(vec![JsonValue::Object(row)]),
                 nested,
@@ -671,9 +674,7 @@ main:
         // The root `$quill` line carries the inline "keep verbatim" reminder;
         // `$kind: main` then goes straight to the description with no own-line
         // role comment (the root has no `composable` cardinality).
-        assert!(t.starts_with(
-            "~~~\n$quill: taro@0.1.0 # keep verbatim\n$kind: main\n# x\n"
-        ));
+        assert!(t.starts_with("~~~\n$quill: taro@0.1.0 # keep verbatim\n$kind: main\n# x\n"));
         assert!(t.contains("\nWrite main body here.\n"));
     }
 
@@ -1058,11 +1059,16 @@ main:
         // Every Unendorsed field parsed back as a `!must_fill` marker.
         let payload = doc1.main().payload();
         for key in ["recipient", "subject", "date"] {
-            assert!(payload.is_fill(key), "`{key}` must carry the fill marker:\n{bp}");
+            assert!(
+                payload.is_fill(key),
+                "`{key}` must carry the fill marker:\n{bp}"
+            );
         }
         // The example rode along as the suggested value, fill-free in JSON.
         assert_eq!(
-            payload.get("recipient").and_then(|v| v.as_json().as_array().map(|a| a.len())),
+            payload
+                .get("recipient")
+                .and_then(|v| v.as_json().as_array().map(|a| a.len())),
             Some(2),
             "recipient suggested value should survive: {bp}"
         );
@@ -1173,4 +1179,3 @@ main:
         }
     }
 }
-
