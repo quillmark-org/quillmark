@@ -34,7 +34,6 @@ mod error_mapping;
 
 mod helper;
 mod overlay;
-mod pdf_scan;
 mod world;
 
 /// Utilities exposed for fuzzing tests.
@@ -73,45 +72,6 @@ pub struct TypstSession {
     sig_placements: Vec<overlay::SigPlacement>,
 }
 
-impl TypstSession {
-    /// Page dimensions in Typst points (1 pt = 1/72 inch).
-    ///
-    /// Returns `None` if `page` is out of range.
-    pub fn page_size_pt(&self, page: usize) -> Option<(f32, f32)> {
-        let frame = &self.document.pages().get(page)?.frame;
-        let size = frame.size();
-        Some((size.x.to_pt() as f32, size.y.to_pt() as f32))
-    }
-
-    /// Render `page` to a non-premultiplied RGBA8 buffer at `scale`× the
-    /// natural 72 ppi (i.e. `scale = 1` → 1 device pixel per Typst pt).
-    ///
-    /// Returns `(width_px, height_px, rgba)`. The buffer is `width_px *
-    /// height_px * 4` bytes, row-major, ready to hand to `ImageData` or any
-    /// other RGBA consumer. Returns `None` if `page` is out of range.
-    pub fn render_rgba(&self, page: usize, scale: f32) -> Option<(u32, u32, Vec<u8>)> {
-        let p = self.document.pages().get(page)?;
-        let pixmap = typst_render::render(
-            p,
-            &typst_render::RenderOptions {
-                pixel_per_pt: typst::utils::Scalar::new(scale as f64),
-                ..Default::default()
-            },
-        );
-        let width = pixmap.width();
-        let height = pixmap.height();
-        let mut rgba = Vec::with_capacity((width as usize) * (height as usize) * 4);
-        for px in pixmap.pixels() {
-            let c = px.demultiply();
-            rgba.push(c.red());
-            rgba.push(c.green());
-            rgba.push(c.blue());
-            rgba.push(c.alpha());
-        }
-        Some((width, height, rgba))
-    }
-}
-
 impl SessionHandle for TypstSession {
     fn render(&self, opts: &RenderOptions) -> Result<RenderResult, RenderError> {
         let format = opts.output_format.unwrap_or(OutputFormat::Pdf);
@@ -143,6 +103,40 @@ impl SessionHandle for TypstSession {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    /// Page dimensions in Typst points (1 pt = 1/72 inch). `None` if `page` is
+    /// out of range. Overrides the default-`None` canvas seam.
+    fn page_size_pt(&self, page: usize) -> Option<(f32, f32)> {
+        let frame = &self.document.pages().get(page)?.frame;
+        let size = frame.size();
+        Some((size.x.to_pt() as f32, size.y.to_pt() as f32))
+    }
+
+    /// Render `page` to a non-premultiplied RGBA8 buffer at `scale`× the
+    /// natural 72 ppi (`scale = 1` → 1 device pixel per Typst pt). Returns
+    /// `(width_px, height_px, rgba)` (`w * h * 4` bytes, row-major), or `None`
+    /// if `page` is out of range. Overrides the default-`None` canvas seam.
+    fn render_rgba(&self, page: usize, scale: f32) -> Option<(u32, u32, Vec<u8>)> {
+        let p = self.document.pages().get(page)?;
+        let pixmap = typst_render::render(
+            p,
+            &typst_render::RenderOptions {
+                pixel_per_pt: typst::utils::Scalar::new(scale as f64),
+                ..Default::default()
+            },
+        );
+        let width = pixmap.width();
+        let height = pixmap.height();
+        let mut rgba = Vec::with_capacity((width as usize) * (height as usize) * 4);
+        for px in pixmap.pixels() {
+            let c = px.demultiply();
+            rgba.push(c.red());
+            rgba.push(c.green());
+            rgba.push(c.blue());
+            rgba.push(c.alpha());
+        }
+        Some((width, height, rgba))
     }
 }
 

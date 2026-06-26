@@ -2355,9 +2355,9 @@ version = "0.92.1"
 dependencies = [
  "js-sys",
  "lopdf",
- "pdf-writer 0.14.0",
  "pulldown-cmark",
  "quillmark-core",
+ "quillmark-pdf",
  "serde_json",
  "tempfile",
  "thiserror",
