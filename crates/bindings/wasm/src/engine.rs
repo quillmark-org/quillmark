@@ -346,9 +346,9 @@ impl Quill {
     }
 
     /// Document schema for the quill: the user-fillable fields plus their
-    /// `ui` hints (group / order / showWhen). The single field-metadata
-    /// surface — drives form editors and LLM/MCP consumers alike. Returns the
-    /// `QuillSchema` shape.
+    /// `ui` hints (title / group / order / compact / multiline). The single
+    /// field-metadata surface — drives form editors and LLM/MCP consumers
+    /// alike. Returns the `QuillSchema` shape.
     #[wasm_bindgen(getter, js_name = schema, unchecked_return_type = "QuillSchema")]
     pub fn schema(&self) -> Result<JsValue, JsValue> {
         let value = self.inner.config().schema();

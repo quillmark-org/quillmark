@@ -431,8 +431,7 @@ impl std::error::Error for RenderError {}
 impl From<ParseError> for RenderError {
     fn from(err: ParseError) -> Self {
         RenderError::InvalidPayload {
-            diags: vec![Diagnostic::new(Severity::Error, err.to_string())
-                .with_code("parse::error".to_string())],
+            diags: vec![err.to_diagnostic()],
         }
     }
 }

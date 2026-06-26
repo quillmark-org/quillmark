@@ -6,7 +6,7 @@ For the authoritative grammar, block-detection rules, normalization, and limits,
 
 ## Foundation
 
-Body content (the prose after each [card-yaml block](card-yaml.md), including any [card](cards.md)) is parsed as CommonMark 0.31.2. Headings, emphasis, links, lists, code blocks, blockquotes, thematic breaks, and inline code all behave exactly as the [CommonMark spec](https://spec.commonmark.org/0.31.2/) defines them.
+Body content (the prose after each [card-yaml block](card-yaml.md), including any [card](card-yaml.md#card-blocks)) is parsed as CommonMark 0.31.2. Headings, emphasis, links, images, lists, code blocks, blockquotes, thematic breaks, and inline code all behave exactly as the [CommonMark spec](https://spec.commonmark.org/0.31.2/) defines them. (Images render to a Typst `#image`; the `src` must resolve against the backend's file system.)
 
 For the conventional syntax of these elements, refer to:
 
@@ -49,7 +49,6 @@ Consequences:
 
 The following are recognised by the parser (so they will not corrupt surrounding content) but produce no output in the current version:
 
-- **Images** (`![alt](src)`) — reserved for the asset-resolver integration.
 - **Math** (`$…$`, `$$…$$`) — `$` is treated as a literal character.
 - **Footnotes**, **task lists**, **definition lists** — not supported.
 

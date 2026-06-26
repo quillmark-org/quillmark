@@ -18,7 +18,7 @@
 //! ## Shape
 //!
 //! The `$` system entries are hoisted to named fields (`kind`, `quill`, `id`,
-//! `ext`); `payload_items` carries only user fields and comments, in order.
+//! `ext`, `seed`); `payload_items` carries only user fields and comments, in order.
 //! Field/`$ext` *nested* comments are not represented here — they survive the
 //! Markdown and storage round-trips, not this editable projection.
 

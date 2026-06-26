@@ -38,7 +38,6 @@ nav:
   - Authoring:
       - Markdown Syntax: authoring/markdown-syntax.md
       - card-yaml Blocks: authoring/card-yaml.md
-      - Cards: authoring/cards.md
   - Quills:
       - Creating Quills: quills/creating-quills.md
       - Quill.yaml Reference: quills/quill-yaml-reference.md

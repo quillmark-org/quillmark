@@ -19,7 +19,7 @@ Published crates: `quillmark-core`, `quillmark-typst`, `quillmark`, `quillmark-c
 |-----|-------------|
 | `lint` | `cargo doc --no-deps --locked` with `RUSTDOCFLAGS=-Dwarnings` (Clippy commented out, not yet enforced) |
 | `test` | `cargo test --workspace --all-features --locked` |
-| `wasm` | builds via `./scripts/build-wasm.sh --ci`, then `npx vitest run` |
+| `wasm` | first asserts the no-default-features core graph excludes Typst (`cargo tree -i quillmark-typst` must fail), then builds via `./scripts/build-wasm.sh --ci`, then `npx vitest run` |
 | `dotnet` | builds the native cdylib, then `dotnet test` (`Quillmark.Tests`) against the Typst backend |
 
 The `wasm` job caches `target/wasm32-unknown-unknown/wasm-ci` + `pkg` under key `wasm-ci-${os}-${hashFiles('Cargo.lock','crates/**/*.rs')}`, rebuilding only when the lockfile or any crate source changes. The `wasm-ci-` namespace is deliberately disjoint from `release.yml`'s `wasm-release-` cache so a CI build (debug `wasm-ci` profile) can never be restored into a release job and published to npm.

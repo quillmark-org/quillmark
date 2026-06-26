@@ -14,7 +14,7 @@ main:         # Optional — main entry-point card: field schemas and optional u
   fields:
     ...
   ui:         # optional UI hints (e.g. title)
-  body:       # optional body-region config (e.g. enabled, description)
+  body:       # optional body-region config (e.g. enabled, example)
 
 card_kinds:   # Optional — additional composable card kinds
   ...
@@ -79,12 +79,12 @@ main:
 |---------------|-------------------|----------|-------------|
 | `type`        | string            | yes      | Data type (see [Field Types](#field-types)) |
 | `description` | string            | no       | Detailed help text |
-| `default`     | any               | no       | The value the **majority of authors want**. When the field is omitted, the default is filled in. **Declaring `default` makes the field Endorsed**: the blueprint renders the concrete default value with a type-only annotation (no marker), shippable as-is. Omitting `default` makes the field **Unendorsed**: the blueprint stamps the `!must_fill` marker (carrying the field's `example` as a suggested value when present, else bare). A surviving marker raises the non-fatal `validation::must_fill` warning — it never gates render, since an absent or present-null field zero-fills. |
-| `example`     | any               | no       | A value matching the **type and shape** of what the author wants, but **not** the value desired most of the time. Documents shape only — surfaced in the [blueprint](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/BLUEPRINT.md)'s `# e.g.` line for documentation and LLM authoring, never rendered as the value. |
+| `default`     | matches `type`    | no       | The value the **majority of authors want**. When the field is omitted, the default is filled in. **Declaring `default` makes the field Endorsed**: the blueprint renders the concrete default value with a type-only annotation (no marker), shippable as-is. Omitting `default` makes the field **Unendorsed**: the blueprint stamps the `!must_fill` marker (carrying the field's `example` as a suggested value when present, else bare). A surviving marker raises the non-fatal `validation::must_fill` warning — it never gates render, since an absent or present-null field zero-fills. |
+| `example`     | matches `type`    | no       | A value matching the **type and shape** of what the author wants, but **not** the value desired most of the time. Documents shape only — surfaced in the [blueprint](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/BLUEPRINT.md)'s `# e.g.` line for documentation and LLM authoring, never rendered as the value. |
 | `enum`        | array of strings  | no       | Restrict to specific values |
 | `ui`          | object            | no       | UI rendering hints (see [UI Properties](#ui-properties)) |
 | `items`       | object            | for `array` | Element schema for an `array` field (a nested field schema). Required on every array. |
-| `properties`  | object            | no       | Nested field schemas for an `object` typed dictionary (or an array's `object`-typed `items`) |
+| `properties`  | object            | for `object` | Nested field schemas for an `object` typed dictionary (or an array's `object`-typed `items`). Required on every `object` field. |
 
 ### Field Types
 
@@ -98,8 +98,6 @@ main:
 | `datetime` | Bare `YYYY-MM-DD` through full RFC 3339 with offset |
 | `markdown` | Rich text; backends convert to target format |
 | `object`   | Structured map; requires a `properties:` map |
-
-Every `array` declares its element type under `items:` — a nested field schema. Use a scalar element (`items: { type: string }`, `integer`, `markdown`, …) for a primitive list like `string[]`, and an `object` element (`items: { type: object, properties: … }`) for a **list** of structured rows (a typed table). Use `type: object` with `properties:` for a single structured mapping. Nesting beyond one level is not supported (an array element may not itself be an array).
 
 ### Enum Constraints
 
@@ -169,6 +167,8 @@ main:
           type: string
 ```
 
+Nesting beyond one level is not supported — an array element may not itself be an array.
+
 ---
 
 ## UI Properties
@@ -189,8 +189,6 @@ main:
       ui:
         title: To       # "Memo For" would confuse users unfamiliar with memo conventions
 ```
-
-`title` is a UI hint only — no effect on validation, backend rendering, or blueprint output.
 
 ### `group`
 
@@ -237,7 +235,7 @@ main:
 
 ### `compact`
 
-When `true`, the UI renders this field in a compact style (smaller vertical footprint). UI hint only — no effect on validation or rendering.
+When `true`, the UI renders this field in a compact style (smaller vertical footprint).
 
 ```yaml
 main:
@@ -273,7 +271,7 @@ main:
       # no multiline — single-line input that expands on demand
 ```
 
-`multiline` is a UI hint only — it has no effect on validation or backend processing. It is meaningful on `string` and `markdown` fields; ignored on other types.
+Meaningful on `string` and `markdown` fields; ignored on other types.
 
 ---
 
@@ -324,7 +322,7 @@ Invalid card-kind names include:
 | Property  | Type   | Description |
 |-----------|--------|-------------|
 | `enabled`     | bool   | Whether the body editor is enabled (default: true). When false, consumers must not accept or store body content for this card kind. |
-| `example`     | string | Example text shown in the body editor placeholder when the body is empty. |
+| `example`     | string | Default body text used when seeding a card of this kind and shown in the blueprint body region; falls back to `Write <kind> body here.` when absent. |
 
 #### `title`
 
@@ -368,7 +366,7 @@ With the template form, a UI rendering a list of cards can title each instance (
 - If a referenced field is absent or empty, the token resolves to an empty string.
 - UI consumers are responsible for trimming degenerate separators (e.g. `" — "` with one empty side).
 
-`title` is a UI hint only — it has no effect on validation or rendering. When omitted, UI consumers fall back to the prettified map key.
+When omitted, UI consumers fall back to the prettified map key.
 
 #### `body.enabled`
 
@@ -386,7 +384,7 @@ card_kinds:
 
 #### `body.example`
 
-Optional example text displayed in the body editor placeholder area when the body is empty. Has no effect when `body.enabled` is false.
+Default body text seeded into a card of this kind and shown verbatim in the blueprint body region (it falls back to `Write <kind> body here.` when absent). Has no effect when `body.enabled` is false.
 
 ```yaml
 card_kinds:
@@ -400,41 +398,7 @@ card_kinds:
 
 ### Using Cards in Markdown
 
-Cards appear as bare `~~~` blocks (the legacy `~~~card-yaml` opener is still accepted as an alias) with a `$kind: <kind>` metadata line in the document body:
-
-```markdown
-~~~
-$quill: usaf_memo
-$kind: main
-subject: Example
-# ... other fields ...
-~~~
-
-Main memo body text here.
-
-~~~
-$kind: indorsement
-from: ORG/SYMBOL
-for: RECIPIENT/SYMBOL
-signature_block:
-  - JANE A. DOE, Colonel, USAF
-  - Commander
-~~~
-
-Body of the first endorsement.
-
-~~~
-$kind: indorsement
-from: ANOTHER/ORG
-for: FINAL/RECIPIENT
-format: informal
-signature_block:
-  - JOHN B. SMITH, Lt Col, USAF
-  - Deputy Commander
-~~~
-
-Body of the second endorsement.
-```
+Card kinds defined here are authored as `~~~` blocks (with a `$kind: <kind>` line) in the document body. See [card-yaml Blocks](../authoring/card-yaml.md#card-blocks) for the markdown syntax.
 
 ---
 
