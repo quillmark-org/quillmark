@@ -151,11 +151,19 @@ impl Node {
 /// itself cannot overflow on adversarially deep input — the very condition
 /// it exists to detect.
 ///
-/// A container occupies a level whether or not it has contents: reaching an
-/// empty array/object at level `max_depth + 1` still cost the recursive
-/// consumers that many frames to get there. So an over-deep *empty* container
-/// is rejected exactly like a non-empty one (this mirrors the Python
-/// binding's `py_to_json_at`, which checks depth before inspecting contents).
+/// The unit is **container levels**, not nodes: only arrays/objects are
+/// charged a level, and the scalar leaf at the bottom of a chain is never
+/// checked. So `max_depth` nested containers are accepted whether the deepest
+/// holds a scalar, is empty, or holds another container; `max_depth + 1` is
+/// rejected in every case. A container occupies a level whether or not it has
+/// contents — reaching an empty array/object at level `max_depth + 1` still
+/// cost the recursive consumers that many frames to get there — so an
+/// over-deep *empty* container is rejected exactly like a non-empty one.
+///
+/// The Python binding's `py_to_json_at` charges levels the same way (its guard
+/// fires only on container branches, never scalar leaves), so the two paths
+/// reject the identical shape; see [`crate::document::limits::MAX_YAML_DEPTH`]
+/// for the canonical definition.
 pub fn json_depth_exceeds(value: &serde_json::Value, max_depth: usize) -> bool {
     use serde_json::Value;
     // (value, depth) pairs; depth counts container levels entered.
@@ -541,6 +549,37 @@ mod tests {
         // last allowed level); `levels == max_depth + 1` is one past it.
         assert!(!json_depth_exceeds(&deep_empty(100), 100));
         assert!(json_depth_exceeds(&deep_empty(101), 100));
+    }
+
+    #[test]
+    fn depth_check_counts_container_levels_not_the_scalar_leaf() {
+        // The cutoff is container levels: a scalar leaf at the bottom is never
+        // charged a level. `{"a":{"a":…{"a":1}}}` with exactly `max_depth`
+        // objects is at the limit; one more object is past it. The Python
+        // binding's `py_to_json_at` pins the same boundary (test
+        // `test_depth_bound_matches_core_container_levels`), so the two paths
+        // reject the identical shape.
+        let scalar_terminated = |levels: usize| {
+            let mut v = serde_json::json!(1);
+            for _ in 0..levels {
+                v = serde_json::json!({ "a": v });
+            }
+            v
+        };
+        assert!(!json_depth_exceeds(&scalar_terminated(100), 100));
+        assert!(json_depth_exceeds(&scalar_terminated(101), 100));
+
+        // A non-empty container leaf lands at the same boundary: the deepest
+        // container — not its contents — is what occupies the last level.
+        let container_terminated = |levels: usize| {
+            let mut v = serde_json::json!([1, 2, 3]);
+            for _ in 1..levels {
+                v = serde_json::json!({ "a": v });
+            }
+            v
+        };
+        assert!(!json_depth_exceeds(&container_terminated(100), 100));
+        assert!(json_depth_exceeds(&container_terminated(101), 100));
     }
 
     #[test]

@@ -978,18 +978,29 @@ fn py_to_json(value: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
 /// Recursive worker for [`py_to_json`], depth-bounded at the core §8 nesting
 /// limit. The bound serves two purposes: this function's own recursion cannot
 /// overflow the native stack on an adversarially deep Python object, and the
-/// produced value is rejected at the same nesting level the core payload
-/// boundary would reject it (`depth` is 0-based — the outermost container is
-/// visited at `depth == 0` — so the `>=` mirrors core's level-101 cutoff).
+/// produced value is rejected at the *same shape* the core payload boundary
+/// would reject it.
+///
+/// The canonical cutoff is **container levels**, matching core's
+/// [`json_depth_exceeds`](quillmark_core::json_depth_exceeds): a scalar leaf is
+/// never charged a level, so `MAX_YAML_DEPTH` nested containers are accepted
+/// whether the deepest one is empty, holds a scalar, or holds another
+/// container — and `MAX_YAML_DEPTH + 1` is rejected in every case. The guard
+/// therefore fires only on the recursing (container) branches, never the scalar
+/// leaves: `depth` is the 0-based depth of the current node, so a container at
+/// `depth` is the `(depth + 1)`-th nesting level and `depth >= MAX_YAML_DEPTH`
+/// rejects exactly the level-`MAX_YAML_DEPTH + 1` container core also rejects.
 fn py_to_json_at(value: &Bound<'_, PyAny>, depth: usize) -> PyResult<serde_json::Value> {
     use pyo3::types::{PyBool, PyFloat, PyInt, PyList, PyString};
 
-    if depth >= quillmark_core::document::limits::MAX_YAML_DEPTH {
-        return Err(PyValueError::new_err(format!(
+    // Charged only when about to recurse into a container (see doc comment):
+    // scalar leaves below fall through without consuming a level.
+    let reject_too_deep = || {
+        Err(PyValueError::new_err(format!(
             "value nests deeper than the maximum of {} levels",
             quillmark_core::document::limits::MAX_YAML_DEPTH
-        )));
-    }
+        )))
+    };
 
     if value.is_none() {
         return Ok(serde_json::Value::Null);
@@ -1028,6 +1039,9 @@ fn py_to_json_at(value: &Bound<'_, PyAny>, depth: usize) -> PyResult<serde_json:
         return Ok(serde_json::Value::String(s));
     }
     if value.is_instance_of::<PyList>() {
+        if depth >= quillmark_core::document::limits::MAX_YAML_DEPTH {
+            return reject_too_deep();
+        }
         let list = value.downcast::<PyList>()?;
         let arr: PyResult<Vec<serde_json::Value>> = list
             .iter()
@@ -1036,6 +1050,9 @@ fn py_to_json_at(value: &Bound<'_, PyAny>, depth: usize) -> PyResult<serde_json:
         return Ok(serde_json::Value::Array(arr?));
     }
     if value.is_instance_of::<PyDict>() {
+        if depth >= quillmark_core::document::limits::MAX_YAML_DEPTH {
+            return reject_too_deep();
+        }
         let dict = value.downcast::<PyDict>()?;
         let mut map = serde_json::Map::new();
         for (k, v) in dict.iter() {
