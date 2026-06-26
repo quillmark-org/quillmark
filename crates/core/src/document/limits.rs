@@ -3,10 +3,18 @@
 //! These constants govern the maximum sizes and counts accepted during parsing
 //! to prevent denial-of-service via excessively large or deeply nested input.
 
-/// Maximum YAML nesting depth (100 levels).
+/// Maximum nesting depth, counted in **container levels** (100).
 ///
-/// Prevents stack overflow from deeply nested YAML structures.
-/// Enforced at the serde-saphyr parser level via [`serde_saphyr::Budget`].
+/// The unit is container levels, not nodes: a value may nest up to this many
+/// arrays/objects deep, and the scalar leaf at the bottom is *not* charged a
+/// level. So `{"a":{"a":…{"a":1}}}` with exactly 100 objects is accepted, and
+/// 101 objects is rejected — whether the deepest container is empty, holds a
+/// scalar, or holds another container. Every ingestion boundary enforces this
+/// identical shape: the YAML parser via [`serde_saphyr::Budget`], the payload
+/// paths via [`crate::value::json_depth_exceeds`], and the bindings' own
+/// converters (e.g. Python `py_to_json_at`).
+///
+/// Prevents stack overflow from deeply nested input.
 pub const MAX_YAML_DEPTH: usize = 100;
 
 /// serde-saphyr parse options carrying the depth budget.

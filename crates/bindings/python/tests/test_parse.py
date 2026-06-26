@@ -341,6 +341,39 @@ def test_nested_fill_exposed_as_nested_fills():
     assert "street: !must_fill" in restored.to_markdown()
 
 
+def _nest(levels, leaf):
+    """Wrap `leaf` in `levels` nested {"a": …} objects, built iteratively."""
+    v = leaf
+    for _ in range(levels):
+        v = {"a": v}
+    return v
+
+
+def test_depth_bound_matches_core_container_levels():
+    """py_to_json_at and core's json_depth_exceeds reject the identical shape.
+
+    The cutoff is container levels (100), not nodes: a scalar leaf at the
+    bottom is not charged a level, so exactly 100 nested objects are accepted
+    and 101 are rejected — whether the deepest container holds a scalar or
+    another (non-empty) container. Pins the scalar-leaf boundary the core test
+    `value.rs::depth_check_counts_container_levels_not_the_scalar_leaf` also pins.
+    """
+    doc = Document.from_markdown(
+        "~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: x\n~~~\n"
+    )
+
+    # Scalar-terminated: 100 objects with a scalar leaf is at the limit.
+    doc.set_field("ok_scalar", _nest(100, 1))
+    with pytest.raises((QuillmarkError, ValueError)):
+        doc.set_field("deep_scalar", _nest(101, 1))
+
+    # Container-terminated: the deepest container, not its contents, occupies
+    # the last level, so the boundary is identical.
+    doc.set_field("ok_container", _nest(99, [1, 2, 3]))
+    with pytest.raises((QuillmarkError, ValueError)):
+        doc.set_field("deep_container", _nest(100, [1, 2, 3]))
+
+
 def test_nested_fill_push_card_round_trip():
     """A card dict carrying `nestedFills` can be pushed and the nested marker
     is reconstructed on emit (the dict -> Card serde path reads it back)."""
