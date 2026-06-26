@@ -994,8 +994,8 @@ $quill:
 
 #[test]
 fn test_card_with_unknown_meta_key_is_error() {
-    // `$`-prefixed metadata keys are a closed set `{quill, kind, id, ext}`. Any
-    // other `$key` is a parse error.
+    // `$`-prefixed metadata keys are a closed set `{quill, kind, id, ext, seed}`.
+    // Any other `$key` is a parse error.
     let markdown = "~~~card-yaml
 $quill: test_quill
 $kind: main

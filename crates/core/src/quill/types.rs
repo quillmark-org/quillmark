@@ -64,7 +64,7 @@ pub struct BodyCardSchema {
 #[serde(deny_unknown_fields)]
 pub struct UiCardSchema {
     /// Display label for the card kind — literal string or `{field_name}`
-    /// template. See `docs/format-designer/quill-yaml-reference.md`.
+    /// template. See `docs/quills/quill-yaml-reference.md`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
 }

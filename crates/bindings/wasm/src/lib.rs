@@ -29,18 +29,22 @@
 //!
 //! 1. Build a quill with `Quill.fromTree(...)` (no engine needed)
 //! 2. Parse markdown via `Document.fromMarkdown(...)`
-//! 3. Render with `engine.render(quill, doc, ...)`
+//! 3. Render with `await engine.render(quill, doc, ...)`
+//!
+//! The public `@quillmark/wasm` package exports the engine as `Engine` (the
+//! runtime wrapper around the FFI [`Quillmark`] class below); its render
+//! methods are async.
 //!
 //! ## Example
 //!
 //! ```javascript
-//! import { Document, Quill, Quillmark } from '@quillmark/wasm';
+//! import { Document, Quill, Engine } from '@quillmark/wasm';
 //!
 //! const quill = Quill.fromTree(tree);
-//! const engine = new Quillmark();
+//! const engine = new Engine();
 //!
 //! const doc = Document.fromMarkdown(markdown);
-//! const result = engine.render(quill, doc);
+//! const result = await engine.render(quill, doc);
 //! const pdfBytes = result.artifacts[0].bytes;
 //! ```
 

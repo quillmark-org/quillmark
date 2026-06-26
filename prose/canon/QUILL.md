@@ -39,7 +39,7 @@ pub struct Quill {
 }
 ```
 
-`metadata` is populated from `Quill.yaml` fields plus computed entries: `backend`, `description`, `version`, `author`, and any `typst_*` keys from the `typst:` section.
+`metadata` is populated from `Quill.yaml` fields plus computed entries: `backend`, `description`, `version`, `author`, and any `<backend>_*` keys (e.g. `typst_*`) from the top-level section named after `quill.backend`.
 
 ## In-memory Tree Contract (`Quill::from_tree`)
 

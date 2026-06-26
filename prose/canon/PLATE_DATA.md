@@ -8,7 +8,7 @@ Plates get document data through a backend-injected virtual Typst package, not a
 
 ## Overview
 
-1. `Quill::compile_data()` coerces, validates, normalizes, and **zero-fills** the root-block fields into a plain JSON object: every absent schema field resolves to its authored value, else the schema `default:`, else its type-empty zero value. An incomplete document still renders (an absent or present-null field zero-fills; a `!must_fill` marker uses its suggested value or zero-fills); only a malformed one (a value that won't coerce/validate to its type) errors.
+1. `Quill::compile_data()` coerces, validates, normalizes, and **zero-fills** the root-block fields — and each composable card's fields against its `card_kind` schema — into a plain JSON object: every absent schema field resolves to its authored value, else the schema `default:`, else its type-empty zero value. An incomplete document still renders (an absent or present-null field zero-fills; a `!must_fill` marker uses its suggested value or zero-fills); only a malformed one (a value that won't coerce/validate to its type) errors.
 2. `Backend::open()` receives that JSON and performs backend-specific field transformations (markdown strings → Typst markup, date parsing) before compilation.
 
 ### Data Shape

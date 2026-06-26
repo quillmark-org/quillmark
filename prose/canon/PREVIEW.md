@@ -85,15 +85,15 @@ build only.
 
 ```ts
 class Quill {
-  static fromTree(tree: Map<string, Uint8Array>): Quill;
+  static fromTree(tree: Map<string, Uint8Array> | Record<string, Uint8Array>): Quill;
   readonly backendId: string;          // declared intent; not a resolved capability
 }
 
-class Quillmark {
-  supportsCanvas(quill: Quill): boolean;   // probe before mounting canvas UI / open()
-  supportedFormats(quill: Quill): OutputFormat[];
-  open(quill: Quill, doc: Document): RenderSession;
-  render(quill: Quill, doc: Document, opts?: RenderOptions): RenderResult;
+class Engine {
+  supportsCanvas(quill: Quill): Promise<boolean>;        // probe before mounting canvas UI / open()
+  supportedFormats(quill: Quill): Promise<OutputFormat[]>;
+  open(quill: Quill, doc: Document): Promise<RenderSession>;
+  render(quill: Quill, doc: Document, opts?: RenderOptions): Promise<RenderResult>;
 }
 
 class RenderSession {
@@ -153,11 +153,11 @@ byte-identical.
 ## Lifecycle and consumer flow
 
 ```js
-import { Quillmark } from '@quillmark/wasm';   // single root export; canvas is a Typst-backend-only path
-const engine = new Quillmark();
+import { Engine } from '@quillmark/wasm';      // single root export; canvas is a Typst-backend-only path
+const engine = new Engine();
 
-if (!engine.supportsCanvas(quill)) return;    // non-typst backends have no painter
-const session = engine.open(quill, doc);      // compiles once, caches PagedDocument
+if (!(await engine.supportsCanvas(quill))) return;   // non-typst backends have no painter
+const session = await engine.open(quill, doc);       // compiles once, caches PagedDocument
 const densityScale = (window.devicePixelRatio || 1) * userZoom;  // userZoom is a UI control
 
 const result = session.paint(canvas.getContext('2d'), page, {
@@ -258,7 +258,7 @@ crates/
 
 ## Feature gate (implemented)
 
-The whole canvas/render surface — the `Quillmark` engine, `RenderSession`,
+The whole canvas/render surface — the `Engine`, `RenderSession`,
 `paint` / `pageSize`, `CanvasCtx`, the `web-sys` dependency, and
 `quillmark_typst` — is gated behind the wasm crate's `render` feature
 (default). The **core** build (`--no-default-features`) excludes Typst and

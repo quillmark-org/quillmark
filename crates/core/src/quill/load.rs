@@ -13,7 +13,7 @@ impl Quill {
     ///
     /// This is the authoritative method for creating a Quill from an
     /// in-memory file tree. Filesystem walking belongs upstream (see
-    /// `quillmark::Quillmark::quill_from_path`).
+    /// `quillmark::quill_from_path`).
     ///
     /// # Arguments
     ///

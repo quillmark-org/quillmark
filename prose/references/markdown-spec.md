@@ -539,7 +539,7 @@ Parse errors include:
   `$kind: main` (which is reserved for the document root).
 - A duplicate `$key` within a single block (caught by the YAML parser as a
   duplicate mapping key).
-- An unknown `$key` outside the closed set `{quill, kind, id, ext}`.
+- An unknown `$key` outside the closed set `{quill, kind, id, ext, seed}`.
 - An invalid `$quill` reference.
 - A `$` metadata key whose value type is incompatible with the key.
 - A data-field name failing `/^[a-z_][a-z0-9_]*$/`.

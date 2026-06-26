@@ -47,7 +47,7 @@ Python and WASM bindings delegate to core types:
 Typst diagnostics mapped via `map_typst_errors()`:
 - Severity levels mapped (Error/Warning)
 - Spans resolved to file/line/column
-- Error codes: `"typst::<error_type>"`
+- Error codes: `"typst::<message-prefix>"` (the diagnostic message text up to the first `:`)
 
 See `crates/backends/typst/src/error_mapping.rs`.
 
