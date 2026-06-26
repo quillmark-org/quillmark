@@ -1139,7 +1139,7 @@ checksum = "a0b3db92c4917aad24ff30d61413a9a7509ae88b27aee1ae34eff881e1d2723a"
 dependencies = [
  "flate2",
  "hayro-syntax",
- "pdf-writer 0.15.0",
+ "pdf-writer",
 ]
 
 [[package]]
@@ -1535,7 +1535,7 @@ dependencies = [
  "image-webp",
  "imagesize",
  "indexmap",
- "pdf-writer 0.15.0",
+ "pdf-writer",
  "png",
  "rayon",
  "rustc-hash",
@@ -1897,18 +1897,6 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
-
-[[package]]
-name = "pdf-writer"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92a79477295a713c2ed425aa82a8b5d20cec3fdee203706cbe6f3854880c1c81"
-dependencies = [
- "bitflags",
- "itoa",
- "memchr",
- "ryu",
-]
 
 [[package]]
 name = "pdf-writer"
@@ -2332,7 +2320,7 @@ version = "0.92.1"
 dependencies = [
  "js-sys",
  "lopdf",
- "pdf-writer 0.14.0",
+ "pdf-writer",
  "pulldown-cmark",
  "quillmark-core",
  "serde_json",
