@@ -1,0 +1,43 @@
+{
+  "schema": "quillmark/form@0.1.0",
+  "fields": [
+    {
+      "name": "FullName",
+      "schema_field": "full_name",
+      "page": 0,
+      "rect": { "x": 180, "y": 100, "w": 340, "h": 20 },
+      "type": "text",
+      "tooltip": "Full legal name of the applicant"
+    },
+    {
+      "name": "Comments",
+      "schema_field": "comments",
+      "page": 0,
+      "rect": { "x": 180, "y": 140, "w": 340, "h": 80 },
+      "type": "text",
+      "multiline": true,
+      "tooltip": "Free-form comments"
+    },
+    {
+      "name": "Agree",
+      "schema_field": "agree",
+      "page": 0,
+      "rect": { "x": 180, "y": 240, "w": 14, "h": 14 },
+      "type": "checkbox"
+    },
+    {
+      "name": "FavoriteColor",
+      "schema_field": "favorite_color",
+      "page": 0,
+      "rect": { "x": 180, "y": 280, "w": 340, "h": 20 },
+      "type": "choice",
+      "options": ["red", "green", "blue"]
+    },
+    {
+      "name": "Signature",
+      "page": 0,
+      "rect": { "x": 180, "y": 330, "w": 340, "h": 40 },
+      "type": "signature"
+    }
+  ]
+}

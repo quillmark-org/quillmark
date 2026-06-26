@@ -17,7 +17,6 @@ crate-type = ["cdylib", "rlib"]
 # would pull Typst into the core build. This crate is `publish = false`, so no
 # version pin is needed. `render` re-enables Typst via `quillmark/typst`.
 quillmark = { path = "../../quillmark", default-features = false }
-quillmark-typst = { workspace = true, optional = true }
 quillmark-core = { workspace = true }
 wasm-bindgen = "0.2"
 serde = { workspace = true }
@@ -41,8 +40,14 @@ web-sys = { version = "0.3", optional = true, features = [
 # prose/proposals/wasm-bindings-split.md).
 default = ["render"]
 # Render build: the Typst-backed engine, RenderSession, and canvas preview.
-# Strict API superset of core; ~8MB of Typst is ~96% of the artifact.
-render = ["dep:quillmark-typst", "quillmark/typst", "dep:web-sys"]
+# Strict API superset of core; ~8MB of Typst is ~96% of the artifact. The
+# canvas painter dispatches through the core `SessionHandle` seam, so the
+# binding no longer depends on `quillmark-typst` directly.
+render = ["quillmark/typst", "dep:web-sys"]
+# pdfform build: add the Typst-free PDF-form backend so the engine can render
+# `pdfform` quills → PDF. Builds on `render` (the RenderSession surface); the
+# typst-free tiny bundle is a fast-follow.
+pdfform = ["render", "quillmark/pdfform"]
 # Core build = no features: Document + Quill (parse / load / validate / schema
 # / seed / blueprint). No engine, no Typst — ~0.34MB gzipped.
 

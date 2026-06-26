@@ -1303,8 +1303,9 @@ impl RenderSession {
     /// Throws if the backend has no canvas painter or `page` is out of range.
     #[wasm_bindgen(js_name = pageSize, unchecked_return_type = "PageSize")]
     pub fn page_size(&self, page: usize) -> Result<JsValue, JsValue> {
-        let typst = self.typst_session("pageSize")?;
-        let (width_pt, height_pt) = typst
+        self.ensure_canvas("pageSize")?;
+        let (width_pt, height_pt) = self
+            .inner
             .page_size_pt(page)
             .ok_or_else(|| self.page_oob_error("pageSize", page))?;
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
@@ -1334,10 +1335,11 @@ impl RenderSession {
         page: usize,
         #[wasm_bindgen(unchecked_param_type = "PaintOptions | undefined")] opts: JsValue,
     ) -> Result<JsValue, JsValue> {
-        let typst = self.typst_session("paint")?;
+        self.ensure_canvas("paint")?;
         let canvas_ctx = CanvasCtx::from_js(&ctx)?;
 
-        let (width_pt, height_pt) = typst
+        let (width_pt, height_pt) = self
+            .inner
             .page_size_pt(page)
             .ok_or_else(|| self.page_oob_error("paint", page))?;
 
@@ -1390,7 +1392,8 @@ impl RenderSession {
             .to_js_value());
         }
 
-        let (pixel_w, pixel_h, mut rgba) = typst
+        let (pixel_w, pixel_h, mut rgba) = self
+            .inner
             .render_rgba(page, render_scale as f32)
             .ok_or_else(|| self.page_oob_error("paint", page))?;
 
@@ -1421,14 +1424,20 @@ impl RenderSession {
 
 #[cfg(feature = "render")]
 impl RenderSession {
-    fn typst_session(&self, op: &str) -> Result<&quillmark_typst::TypstSession, JsValue> {
-        quillmark_typst::typst_session_of(&self.inner).ok_or_else(|| {
-            WasmError::from(format!(
+    /// Gate a canvas operation on the backend's honest canvas capability,
+    /// captured at open time. The painter now dispatches generically through
+    /// the core `SessionHandle` seam (`page_size_pt` / `render_rgba`) rather
+    /// than downcasting to a backend-specific session type.
+    fn ensure_canvas(&self, op: &str) -> Result<(), JsValue> {
+        if self.supports_canvas {
+            Ok(())
+        } else {
+            Err(WasmError::from(format!(
                 "{op}: backend '{}' has no canvas painter",
                 self.backend_id
             ))
-            .to_js_value()
-        })
+            .to_js_value())
+        }
     }
 
     fn page_oob_error(&self, op: &str, page: usize) -> JsValue {

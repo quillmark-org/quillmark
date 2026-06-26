@@ -1139,7 +1139,7 @@ checksum = "a0b3db92c4917aad24ff30d61413a9a7509ae88b27aee1ae34eff881e1d2723a"
 dependencies = [
  "flate2",
  "hayro-syntax",
- "pdf-writer 0.15.0",
+ "pdf-writer",
 ]
 
 [[package]]
@@ -1535,7 +1535,7 @@ dependencies = [
  "image-webp",
  "imagesize",
  "indexmap",
- "pdf-writer 0.15.0",
+ "pdf-writer",
  "png",
  "rayon",
  "rustc-hash",
@@ -1900,18 +1900,6 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "pdf-writer"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92a79477295a713c2ed425aa82a8b5d20cec3fdee203706cbe6f3854880c1c81"
-dependencies = [
- "bitflags",
- "itoa",
- "memchr",
- "ryu",
-]
-
-[[package]]
-name = "pdf-writer"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5e456864a7a304047bff84977dc6fb162bd956475d40ba50b2dcecaada7f753"
@@ -2260,6 +2248,7 @@ version = "0.92.1"
 dependencies = [
  "quillmark-core",
  "quillmark-fixtures",
+ "quillmark-pdfform",
  "quillmark-typst",
  "serde_json",
  "tempfile",
@@ -2317,6 +2306,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "quillmark-pdf"
+version = "0.92.1"
+dependencies = [
+ "lopdf",
+ "pdf-writer",
+ "quillmark-core",
+ "thiserror",
+]
+
+[[package]]
+name = "quillmark-pdfform"
+version = "0.92.1"
+dependencies = [
+ "lopdf",
+ "quillmark",
+ "quillmark-core",
+ "quillmark-fixtures",
+ "quillmark-pdf",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "quillmark-python"
 version = "0.92.1"
 dependencies = [
@@ -2332,9 +2344,9 @@ version = "0.92.1"
 dependencies = [
  "js-sys",
  "lopdf",
- "pdf-writer 0.14.0",
  "pulldown-cmark",
  "quillmark-core",
+ "quillmark-pdf",
  "serde_json",
  "tempfile",
  "thiserror",
@@ -2356,7 +2368,6 @@ dependencies = [
  "js-sys",
  "quillmark",
  "quillmark-core",
- "quillmark-typst",
  "serde",
  "serde-wasm-bindgen 0.6.5",
  "serde_bytes",

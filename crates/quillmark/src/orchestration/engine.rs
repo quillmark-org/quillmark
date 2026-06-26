@@ -33,6 +33,11 @@ impl Quillmark {
             engine.register_backend(Box::new(quillmark_typst::TypstBackend));
         }
 
+        #[cfg(feature = "pdfform")]
+        {
+            engine.register_backend(Box::new(quillmark_pdfform::PdfformBackend));
+        }
+
         engine
     }
 

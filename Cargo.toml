@@ -2,7 +2,9 @@
 members = [
     "crates/core",
     "crates/quillmark",
+    "crates/quillmark-pdf",
     "crates/backends/typst",
+    "crates/backends/pdfform",
     "crates/fixtures",
     "crates/bindings/wasm",
     "crates/fuzz",
@@ -14,7 +16,9 @@ members = [
 default-members = [
     "crates/core",
     "crates/quillmark",
+    "crates/quillmark-pdf",
     "crates/backends/typst",
+    "crates/backends/pdfform",
     "crates/bindings/cli",
 ]
 resolver = "2"
@@ -49,6 +53,9 @@ unicode-normalization = "0.1"
 # Typst backend dependencies
 pulldown-cmark = "0.13.0"
 time = { version = "0.3.44", features = ["formatting", "parsing"] }
+# Pinned to the version the Typst toolchain (typst-pdf → krilla) already forces,
+# so the workspace links a single copy of the PDF writer.
+pdf-writer = "0.15.0"
 typst = "0.15.0"
 typst-layout = "0.15.0"
 typst-pdf = "0.15.0"
@@ -57,7 +64,9 @@ typst-svg = "0.15.0"
 
 # Intra-project dependencies
 quillmark-core = { version = "0.92.1", path = "crates/core" }
+quillmark-pdf = { version = "0.92.1", path = "crates/quillmark-pdf" }
 quillmark-typst = { version = "0.92.1", path = "crates/backends/typst", default-features = false }
+quillmark-pdfform = { version = "0.92.1", path = "crates/backends/pdfform", default-features = false }
 quillmark = { version = "0.92.1", path = "crates/quillmark" }
 
 # Test and dev dependencies

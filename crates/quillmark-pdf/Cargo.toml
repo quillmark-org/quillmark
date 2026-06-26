@@ -1,0 +1,20 @@
+[package]
+name = "quillmark-pdf"
+version.workspace = true
+edition.workspace = true
+include = ["src/**", "Cargo.toml", "README*", "LICENSE*"]
+readme.workspace = true
+description = "Typst-free AcroForm stamping spine for Quillmark: (base_pdf, &[FieldSpec]) -> stamped PDF + regions"
+license.workspace = true
+documentation = "https://docs.rs/quillmark-pdf"
+homepage.workspace = true
+repository = "https://github.com/quillmark-org/quillmark"
+
+[dependencies]
+quillmark-core = { workspace = true }
+pdf-writer = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# Acceptance tests reparse the stamped PDF to validate AcroForm structure.
+lopdf = "0.36"

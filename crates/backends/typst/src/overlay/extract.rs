@@ -13,9 +13,7 @@ use typst_layout::PagedDocument;
 
 use quillmark_core::{Diagnostic, RenderError, Severity};
 
-use crate::pdf_scan::err;
-
-use super::SigPlacement;
+use super::{err, SigPlacement};
 
 const SIG_LABEL: &str = "__qm_sig__";
 const CODE_INTERNAL: &str = "typst::overlay_internal";

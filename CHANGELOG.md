@@ -8,6 +8,11 @@
 
 ## Unreleased
 
+- feat(pdfform): add the Typst-free `pdfform` backend + shared `quillmark-pdf`
+  AcroForm stamping spine; rewire Typst signatures onto the spine; thread a
+  `regions` sidecar through `RenderResult` and generalize the raster-preview
+  seam (#749, #750). See `prose/proposals/PDFFORM_BACKEND.md` §9 for the V1
+  handover.
 - docs(canon): canonize `$ext.editor.title` as the slot for a per-card display name
 
 ## v0.92.0 - 2026-06-22

@@ -11,9 +11,9 @@ homepage.workspace = true
 repository = "https://github.com/quillmark-org/quillmark"
 
 [dependencies]
-pdf-writer = "0.14"
 pulldown-cmark = { workspace = true }
 quillmark-core = { workspace = true }
+quillmark-pdf = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }

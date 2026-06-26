@@ -1,23 +1,31 @@
-//! Minimal byte-level PDF scanner and incremental-update writer used to parse
-//! and append to a typst_pdf output. Not a general PDF parser. Backs the
-//! `overlay` pass (AcroForm signature widgets + `/Info` `/Producer`).
+//! Minimal byte-level PDF reader and incremental-update writer. Not a general
+//! PDF parser — a deliberately small scanner that parses just enough of a base
+//! PDF to splice a single incremental update onto it, and hard-errors on shapes
+//! a modern gov PDF can carry but this V1 reader does not handle.
+//!
+//! ## Input contract
+//!
+//! The base PDF must be **traditional-xref, unencrypted, inline-annots,
+//! flat-tree**: a classic `xref` table (not an xref *stream*), no `/Encrypt`,
+//! page `/Annots` written inline (not as an indirect reference), and a page
+//! tree shallow enough to walk. This is the precise inverse of the scanner's
+//! error branches; the qualification layer (and the V1 hand-authored fixture)
+//! guarantee it. `hayro-syntax` is read-only and exposes no byte spans, so it
+//! cannot drive a byte-splice append — hence this bespoke scanner.
 
-use quillmark_core::{Diagnostic, RenderError, Severity};
+use crate::error::PdfError;
 
-const CODE_PARSE: &str = "typst::pdf_parse";
-const CODE_XREF_STREAM: &str = "typst::pdf_xref_stream";
+const CODE_PARSE: &str = "pdf::parse";
+const CODE_XREF_STREAM: &str = "pdf::xref_stream";
 
-/// Build a single-`Diagnostic` `RenderError` with `code`. A shared helper
-/// rather than a typed error enum: every fail site here just needs a code plus
-/// a message, so a richer error type would collapse to exactly this.
-pub(crate) fn err(code: &'static str, msg: impl Into<String>) -> RenderError {
-    RenderError::CompilationFailed {
-        diags: vec![Diagnostic::new(Severity::Error, msg.into()).with_code(code.into())],
-    }
+/// Build a `PdfError` with `code`. Every fail site here just needs a code plus
+/// a message, so this is the whole error-construction surface.
+pub(crate) fn err(code: &'static str, msg: impl Into<String>) -> PdfError {
+    PdfError::new(code, msg)
 }
 
 /// The offset stored after the last `startxref` marker.
-pub(crate) fn find_startxref(pdf: &[u8]) -> Result<usize, RenderError> {
+pub(crate) fn find_startxref(pdf: &[u8]) -> Result<usize, PdfError> {
     let needle = b"startxref";
     let from = pdf.len().saturating_sub(1024);
     let tail = &pdf[from..];
@@ -30,14 +38,21 @@ pub(crate) fn find_startxref(pdf: &[u8]) -> Result<usize, RenderError> {
     while end < after.len() && after[end].is_ascii_digit() {
         end += 1;
     }
-    std::str::from_utf8(&after[..end])
+    let offset: usize = std::str::from_utf8(&after[..end])
         .ok()
         .and_then(|s| s.parse().ok())
-        .ok_or_else(|| err(CODE_PARSE, "startxref offset is not a valid integer"))
+        .ok_or_else(|| err(CODE_PARSE, "startxref offset is not a valid integer"))?;
+    // Bound the offset so every downstream `pdf[offset..]` / `offset + N` slice
+    // is in range — an out-of-range value (e.g. a ~20-digit near-usize::MAX
+    // offset) becomes a clean parse error rather than an overflow/panic.
+    if offset >= pdf.len() {
+        return Err(err(CODE_PARSE, "startxref offset is past end of file"));
+    }
+    Ok(offset)
 }
 
-/// Bail if typst-pdf emitted an xref stream instead of a traditional table.
-pub(crate) fn assert_traditional_xref(pdf: &[u8], xref_offset: usize) -> Result<(), RenderError> {
+/// Bail if the base PDF stores an xref stream instead of a traditional table.
+pub(crate) fn assert_traditional_xref(pdf: &[u8], xref_offset: usize) -> Result<(), PdfError> {
     if pdf.get(xref_offset..xref_offset + 4) != Some(b"xref") {
         return Err(err(
             CODE_XREF_STREAM,
@@ -50,7 +65,7 @@ pub(crate) fn assert_traditional_xref(pdf: &[u8], xref_offset: usize) -> Result<
 /// Return the trailer dictionary bytes for the xref section at `xref_offset`.
 /// The slice is the inner dict (between `<<` and `>>`) and may be queried with
 /// [`find_dict_value`].
-pub(crate) fn find_trailer_dict(pdf: &[u8], xref_offset: usize) -> Result<&[u8], RenderError> {
+pub(crate) fn find_trailer_dict(pdf: &[u8], xref_offset: usize) -> Result<&[u8], PdfError> {
     let needle = b"trailer";
     let pos = pdf[xref_offset..]
         .windows(needle.len())
@@ -98,7 +113,7 @@ pub(crate) fn append_incremental_update(
     new_size: u32,
     extra_info_ref: Option<u32>,
     objects: &[UpdatedObject],
-) -> Result<Vec<u8>, RenderError> {
+) -> Result<Vec<u8>, PdfError> {
     // Built while the prior trailer (still intact at `prev_xref`) is borrowed,
     // before we append anything.
     let mut trailer_tail = Vec::new();
@@ -432,16 +447,10 @@ fn skip_ws(s: &[u8]) -> &[u8] {
 }
 
 /// Resolve the catalog's `/Pages` tree into a flat list of page object IDs,
-/// in document order. typst-pdf emits a flat tree today; the recursion is
-/// defensive and capped to prevent runaway on a pathological PDF.
-pub(crate) fn resolve_page_ids(pdf: &[u8], catalog_id: u32) -> Result<Vec<u32>, RenderError> {
-    let (cs, ce) =
-        find_object_bytes(pdf, catalog_id).ok_or_else(|| err(CODE_PARSE, "catalog not found"))?;
-    let cat_dict = extract_outer_dict(&pdf[cs..ce])
-        .ok_or_else(|| err(CODE_PARSE, "catalog dict not parseable"))?;
-    let (root_pages_id, _) = find_dict_value(cat_dict, "Pages")
-        .and_then(parse_indirect_ref)
-        .ok_or_else(|| err(CODE_PARSE, "catalog /Pages reference not found"))?;
+/// in document order. The recursion is defensive and capped to prevent runaway
+/// on a pathological PDF.
+pub(crate) fn resolve_page_ids(pdf: &[u8], catalog_id: u32) -> Result<Vec<u32>, PdfError> {
+    let root_pages_id = root_pages_id(pdf, catalog_id)?;
 
     const MAX_NODES: usize = 100_000;
     let mut out = Vec::new();
@@ -479,6 +488,18 @@ pub(crate) fn resolve_page_ids(pdf: &[u8], catalog_id: u32) -> Result<Vec<u32>, 
     Ok(out)
 }
 
+/// The catalog's root `/Pages` node id.
+fn root_pages_id(pdf: &[u8], catalog_id: u32) -> Result<u32, PdfError> {
+    let (cs, ce) =
+        find_object_bytes(pdf, catalog_id).ok_or_else(|| err(CODE_PARSE, "catalog not found"))?;
+    let cat_dict = extract_outer_dict(&pdf[cs..ce])
+        .ok_or_else(|| err(CODE_PARSE, "catalog dict not parseable"))?;
+    find_dict_value(cat_dict, "Pages")
+        .and_then(parse_indirect_ref)
+        .map(|(id, _)| id)
+        .ok_or_else(|| err(CODE_PARSE, "catalog /Pages reference not found"))
+}
+
 pub(crate) fn parse_ref_array(bytes: &[u8]) -> Vec<(u32, u16)> {
     let mut s = bytes;
     if let Some(l) = s.iter().position(|&b| b == b'[') {
@@ -510,23 +531,82 @@ pub(crate) fn parse_ref_array(bytes: &[u8]) -> Vec<(u32, u16)> {
     out
 }
 
+/// Parse a 4-number array (`[x0 y0 x1 y1]`) such as `/MediaBox`.
+fn parse_rect_array(bytes: &[u8]) -> Option<[f32; 4]> {
+    let trimmed = bytes.trim_ascii();
+    let inner = trimmed.strip_prefix(b"[")?.strip_suffix(b"]")?;
+    let mut nums = [0.0f32; 4];
+    let mut count = 0;
+    for tok in String::from_utf8_lossy(inner).split_whitespace() {
+        if count >= 4 {
+            return None;
+        }
+        nums[count] = tok.parse().ok()?;
+        count += 1;
+    }
+    (count == 4).then_some(nums)
+}
+
+/// Normalize a `/MediaBox` to `[x0, y0, x1, y1]` with `x0 <= x1` and
+/// `y0 <= y1`, so `(x0, y0)` is the page's lower-left and `(x1, y1)` its
+/// upper-right regardless of which corners the array listed.
+fn normalize_rect(mb: [f32; 4]) -> [f32; 4] {
+    [
+        mb[0].min(mb[2]),
+        mb[1].min(mb[3]),
+        mb[0].max(mb[2]),
+        mb[1].max(mb[3]),
+    ]
+}
+
+/// The `/MediaBox` of every page, normalized to `[x0, y0, x1, y1]`, in document
+/// order.
+///
+/// Reads each page's `/MediaBox`, falling back to the root `/Pages` node's
+/// `/MediaBox` (the common inheritance case) when a page declares none. The
+/// full rect — not just width/height — is returned so a caller that owns
+/// page-relative top-left geometry can honour a non-zero page origin when
+/// flipping to bottom-left PDF user space.
+pub(crate) fn page_media_boxes(pdf: &[u8]) -> Result<Vec<[f32; 4]>, PdfError> {
+    let xref_offset = find_startxref(pdf)?;
+    assert_traditional_xref(pdf, xref_offset)?;
+    let trailer = find_trailer_dict(pdf, xref_offset)?;
+    let (catalog_id, _) = find_dict_value(trailer, "Root")
+        .and_then(parse_indirect_ref)
+        .ok_or_else(|| err(CODE_PARSE, "/Root missing or malformed in trailer"))?;
+
+    let inherited = root_pages_media_box(pdf, catalog_id);
+    let page_ids = resolve_page_ids(pdf, catalog_id)?;
+    let mut out = Vec::with_capacity(page_ids.len());
+    for id in page_ids {
+        let (s, e) = find_object_bytes(pdf, id)
+            .ok_or_else(|| err(CODE_PARSE, format!("page node {id} not found")))?;
+        let dict = extract_outer_dict(&pdf[s..e])
+            .ok_or_else(|| err(CODE_PARSE, format!("page node {id} dict not parseable")))?;
+        let mb = find_dict_value(dict, "MediaBox")
+            .and_then(parse_rect_array)
+            .or(inherited)
+            .ok_or_else(|| err(CODE_PARSE, format!("page {id} has no resolvable /MediaBox")))?;
+        out.push(normalize_rect(mb));
+    }
+    Ok(out)
+}
+
+/// The root `/Pages` node's `/MediaBox`, if present — the value pages inherit.
+fn root_pages_media_box(pdf: &[u8], catalog_id: u32) -> Option<[f32; 4]> {
+    let pages_id = root_pages_id(pdf, catalog_id).ok()?;
+    let (s, e) = find_object_bytes(pdf, pages_id)?;
+    let dict = extract_outer_dict(&pdf[s..e])?;
+    find_dict_value(dict, "MediaBox").and_then(parse_rect_array)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn dict_value_handles_nested_dict() {
-        // Key we want appears AFTER a nested dict — shallow scan would
-        // mis-fire on the inner /Color.
         let dict = b" /Resources << /ColorSpace << /Color /DeviceGray >> >> /Pages 7 0 R ";
-        let v = find_dict_value(dict, "Pages").expect("found /Pages");
-        let s = std::str::from_utf8(v).unwrap().trim();
-        assert_eq!(s, "7 0 R");
-    }
-
-    #[test]
-    fn dict_value_handles_nested_array() {
-        let dict = b" /MediaBox [0 0 612 792] /Pages 7 0 R ";
         let v = find_dict_value(dict, "Pages").expect("found /Pages");
         let s = std::str::from_utf8(v).unwrap().trim();
         assert_eq!(s, "7 0 R");
@@ -536,8 +616,7 @@ mod tests {
     fn dict_value_finds_array_value() {
         let dict = b" /MediaBox [0 0 612 792] /Other 1 ";
         let v = find_dict_value(dict, "MediaBox").expect("found");
-        let s = std::str::from_utf8(v).unwrap().trim();
-        assert_eq!(s, "[0 0 612 792]");
+        assert_eq!(parse_rect_array(v), Some([0.0, 0.0, 612.0, 792.0]));
     }
 
     #[test]
@@ -552,5 +631,26 @@ mod tests {
         assert!(parse_indirect_ref(b"5 0 R").is_some());
         assert!(parse_indirect_ref(b"5 0 G").is_none());
         assert!(parse_indirect_ref(b"abc").is_none());
+    }
+
+    #[test]
+    fn rect_array_rejects_wrong_arity() {
+        assert_eq!(parse_rect_array(b"[0 0 612]"), None);
+        assert_eq!(parse_rect_array(b"[0 0 612 792 1]"), None);
+        assert_eq!(parse_rect_array(b"0 0 612 792"), None);
+    }
+
+    #[test]
+    fn normalize_rect_orders_corners() {
+        // Already lower-left/upper-right: unchanged.
+        assert_eq!(
+            normalize_rect([10.0, 20.0, 622.0, 812.0]),
+            [10.0, 20.0, 622.0, 812.0]
+        );
+        // Swapped corners normalize so (x0,y0) is lower-left.
+        assert_eq!(
+            normalize_rect([622.0, 812.0, 10.0, 20.0]),
+            [10.0, 20.0, 622.0, 812.0]
+        );
     }
 }

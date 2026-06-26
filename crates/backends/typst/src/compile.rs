@@ -26,6 +26,15 @@ use crate::world::QuillWorld;
 use quillmark_core::{
     Artifact, Diagnostic, OutputFormat, Quill, RenderError, RenderResult, Severity,
 };
+use quillmark_pdf::{stamp, PdfError, StampOptions};
+
+/// Map a stamp-spine [`PdfError`] to the backend's `RenderError`. The spine owns
+/// its own error type; this is the boundary translation.
+fn map_pdf_err(e: PdfError) -> RenderError {
+    RenderError::CompilationFailed {
+        diags: vec![Diagnostic::new(Severity::Error, e.message).with_code(e.code.to_string())],
+    }
+}
 
 /// Build raster render options for a given pixels-per-point scale factor.
 fn render_options(pixel_per_pt: f32) -> RenderOptions {
@@ -76,8 +85,9 @@ const DEFAULT_PPI: f32 = 144.0;
 
 /// Render selected pages from an already-compiled Typst document.
 ///
-/// `sig_placements` is consumed only when emitting PDF. Pass an empty slice
-/// for SVG/PNG callers or documents with no `signature-field` calls.
+/// `sig_placements` become spine `FieldSpec`s; only PDF stamps them as AcroForm
+/// widgets, but every format carries the resulting field regions. Pass an empty
+/// slice for documents with no `signature-field` calls.
 ///
 /// `producer` overrides the PDF `/Info` `/Producer` string (PDF output only);
 /// `None` uses [`overlay::default_producer`] (`Quillmark <version>`).
@@ -122,6 +132,12 @@ pub(crate) fn render_document_pages(
         None => (0..page_count).collect(),
     };
 
+    // Signature placements → spine field specs (Typst top-left → PDF
+    // bottom-left). Regions ride on every render regardless of format, so the
+    // GUI overlay has the geometry whether it shows the PDF or a raster.
+    let field_specs = overlay::build_field_specs(document, sig_placements)?;
+    let regions = quillmark_pdf::regions_of(&field_specs);
+
     match format {
         OutputFormat::Svg => {
             let artifacts = selected_indices
@@ -132,7 +148,7 @@ pub(crate) fn render_document_pages(
                     output_format: OutputFormat::Svg,
                 })
                 .collect();
-            Ok(RenderResult::new(artifacts, OutputFormat::Svg))
+            Ok(RenderResult::new(artifacts, OutputFormat::Svg).with_regions(regions))
         }
         OutputFormat::Png => {
             let scale = ppi.unwrap_or(DEFAULT_PPI) / 72.0;
@@ -154,7 +170,7 @@ pub(crate) fn render_document_pages(
                     output_format: OutputFormat::Png,
                 });
             }
-            Ok(RenderResult::new(artifacts, OutputFormat::Png))
+            Ok(RenderResult::new(artifacts, OutputFormat::Png).with_regions(regions))
         }
         OutputFormat::Pdf => {
             let pdf = typst_pdf::pdf(document, &PdfOptions::default()).map_err(|e| {
@@ -166,20 +182,23 @@ pub(crate) fn render_document_pages(
                     .with_code("typst::pdf_generation".to_string())],
                 }
             })?;
-            let default_producer = overlay::default_producer();
-            let pdf = overlay::inject(
-                pdf,
-                document,
-                sig_placements,
-                producer.unwrap_or(&default_producer),
-            )?;
+            // The producer is always stamped (the always-on `/Info` pass); the
+            // override threads from the product layer, else the backend default.
+            let producer = Some(
+                producer
+                    .map(str::to_string)
+                    .unwrap_or_else(overlay::default_producer),
+            );
+            let stamped =
+                stamp(pdf, &field_specs, &StampOptions { producer }).map_err(map_pdf_err)?;
             Ok(RenderResult::new(
                 vec![Artifact {
-                    bytes: pdf,
+                    bytes: stamped.pdf,
                     output_format: OutputFormat::Pdf,
                 }],
                 OutputFormat::Pdf,
-            ))
+            )
+            .with_regions(stamped.regions))
         }
         OutputFormat::Txt => Err(RenderError::FormatNotSupported {
             diags: vec![Diagnostic::new(

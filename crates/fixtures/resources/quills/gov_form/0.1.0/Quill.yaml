@@ -1,0 +1,41 @@
+quill:
+  name: gov_form
+  version: 0.1.0
+  backend: pdfform
+  description: "Demo government PDF form filled by the Typst-free pdfform backend."
+
+main:
+  body:
+    enabled: false
+  fields:
+    full_name:
+      type: string
+      default: ""
+      example: Ada Lovelace
+      description: Full legal name of the applicant. Binds the FullName text field.
+
+    comments:
+      type: array
+      items:
+        type: string
+      default: []
+      example:
+        - First comment line.
+        - Second comment line.
+      ui:
+        multiline: true
+      description: "Free-form comments; each element becomes one line of the Comments field."
+
+    agree:
+      type: boolean
+      default: false
+      description: Whether the applicant agrees to the terms. Binds the Agree checkbox.
+
+    favorite_color:
+      type: string
+      enum:
+        - red
+        - green
+        - blue
+      default: red
+      description: Favorite color. Binds the FavoriteColor dropdown.
