@@ -58,6 +58,9 @@ pub use error::{Diagnostic, Location, ParseError, RenderError, RenderResult, Sev
 pub mod types;
 pub use types::{Artifact, OutputFormat, RenderOptions};
 
+pub mod region;
+pub use region::{RegionKind, RenderedRegion};
+
 pub mod session;
 pub use session::RenderSession;
 

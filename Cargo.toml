@@ -2,7 +2,9 @@
 members = [
     "crates/core",
     "crates/quillmark",
+    "crates/quillmark-pdf",
     "crates/backends/typst",
+    "crates/backends/pdfform",
     "crates/fixtures",
     "crates/bindings/wasm",
     "crates/fuzz",
@@ -14,7 +16,9 @@ members = [
 default-members = [
     "crates/core",
     "crates/quillmark",
+    "crates/quillmark-pdf",
     "crates/backends/typst",
+    "crates/backends/pdfform",
     "crates/bindings/cli",
 ]
 resolver = "2"
@@ -57,7 +61,9 @@ typst-svg = "0.15.0"
 
 # Intra-project dependencies
 quillmark-core = { version = "0.92.1", path = "crates/core" }
+quillmark-pdf = { version = "0.92.1", path = "crates/quillmark-pdf" }
 quillmark-typst = { version = "0.92.1", path = "crates/backends/typst", default-features = false }
+quillmark-pdfform = { version = "0.92.1", path = "crates/backends/pdfform", default-features = false }
 quillmark = { version = "0.92.1", path = "crates/quillmark" }
 
 # Test and dev dependencies

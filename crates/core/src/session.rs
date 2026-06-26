@@ -12,6 +12,25 @@ pub trait SessionHandle: Any + Send + Sync {
     fn render(&self, opts: &RenderOptions) -> Result<RenderResult, RenderError>;
     fn page_count(&self) -> usize;
     fn as_any(&self) -> &dyn Any;
+
+    /// Page dimensions in points (1 pt = 1/72"), or `None` if `page` is out of
+    /// range. The canvas-preview seam: a backend that can rasterize pages
+    /// overrides this and [`render_rgba`](Self::render_rgba). Default `None`
+    /// marks the session as having no canvas painter — the painter dispatches
+    /// generically through these two methods rather than downcasting to a
+    /// backend-specific session type.
+    fn page_size_pt(&self, _page: usize) -> Option<(f32, f32)> {
+        None
+    }
+
+    /// Render `page` to a non-premultiplied RGBA8 buffer at `scale`× the natural
+    /// 72-ppi size, returning `(width_px, height_px, rgba)` (row-major, `w*h*4`
+    /// bytes), or `None` if `page` is out of range or the backend has no canvas
+    /// painter. The other half of the seam paired with
+    /// [`page_size_pt`](Self::page_size_pt).
+    fn render_rgba(&self, _page: usize, _scale: f32) -> Option<(u32, u32, Vec<u8>)> {
+        None
+    }
 }
 
 /// Opaque, backend-backed iterative render session.
@@ -53,6 +72,20 @@ impl RenderSession {
 
     pub fn page_count(&self) -> usize {
         self.inner.page_count()
+    }
+
+    /// Page dimensions in points, or `None` if `page` is out of range or the
+    /// backend has no canvas painter. Generalized canvas-preview seam — see
+    /// [`SessionHandle::page_size_pt`].
+    pub fn page_size_pt(&self, page: usize) -> Option<(f32, f32)> {
+        self.inner.page_size_pt(page)
+    }
+
+    /// Rasterize `page` to non-premultiplied RGBA8 at `scale`× 72 ppi, or `None`
+    /// if `page` is out of range or the backend has no canvas painter. See
+    /// [`SessionHandle::render_rgba`].
+    pub fn render_rgba(&self, page: usize, scale: f32) -> Option<(u32, u32, Vec<u8>)> {
+        self.inner.render_rgba(page, scale)
     }
 
     /// Session-level warnings attached at `Backend::open` time, also appended

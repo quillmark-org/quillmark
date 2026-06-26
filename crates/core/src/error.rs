@@ -441,6 +441,10 @@ pub struct RenderResult {
     pub artifacts: Vec<crate::Artifact>,
     pub warnings: Vec<Diagnostic>,
     pub output_format: OutputFormat,
+    /// Field placements on the rendered pages (geometry + bound values),
+    /// defaulted empty. Populated by backends that stamp form fields; the only
+    /// path to field values in non-interactive output. See [`crate::region`].
+    pub regions: Vec<crate::RenderedRegion>,
 }
 
 impl RenderResult {
@@ -449,11 +453,18 @@ impl RenderResult {
             artifacts,
             warnings: Vec::new(),
             output_format,
+            regions: Vec::new(),
         }
     }
 
     pub fn with_warning(mut self, warning: Diagnostic) -> Self {
         self.warnings.push(warning);
+        self
+    }
+
+    /// Attach the rendered-region sidecar (replacing any prior value).
+    pub fn with_regions(mut self, regions: Vec<crate::RenderedRegion>) -> Self {
+        self.regions = regions;
         self
     }
 }

@@ -1,0 +1,29 @@
+[package]
+name = "quillmark-pdfform"
+version.workspace = true
+edition.workspace = true
+include = ["src/**", "Cargo.toml", "README*", "LICENSE*"]
+readme.workspace = true
+description = "Typst-free PDF-form backend for Quillmark: fills government PDF forms via the quillmark-pdf stamping spine"
+license.workspace = true
+documentation = "https://docs.rs/quillmark-pdfform"
+homepage.workspace = true
+repository = "https://github.com/quillmark-org/quillmark"
+
+[dependencies]
+quillmark-core = { workspace = true }
+quillmark-pdf = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+default = []
+# Background-only preview (Svg / canvas raster via hayro). Off by default so the
+# form-filling-only build stays free of the raster tree. Deferred for V1.
+preview = []
+
+[dev-dependencies]
+quillmark-fixtures = { workspace = true }
+quillmark = { workspace = true }
+lopdf = "0.36"
+serde_json = { workspace = true }
