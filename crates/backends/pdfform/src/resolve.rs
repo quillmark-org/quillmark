@@ -143,18 +143,18 @@ mod tests {
     }
 
     fn text(field: &str) -> Option<String> {
-        resolve_value(
-            &FieldKind::Text { multiline: false },
-            Some(field),
-            &data(),
-        )
+        resolve_value(&FieldKind::Text { multiline: false }, Some(field), &data())
     }
 
     #[test]
     fn text_binds_scalar_and_joins_arrays() {
         assert_eq!(text("full_name"), Some("Ada Lovelace".into()));
         assert_eq!(
-            resolve_value(&FieldKind::Text { multiline: true }, Some("comments"), &data()),
+            resolve_value(
+                &FieldKind::Text { multiline: true },
+                Some("comments"),
+                &data()
+            ),
             Some("line one\nline two".into())
         );
         assert_eq!(text("score"), Some("42".into()));
@@ -218,6 +218,9 @@ mod tests {
             w: 14.0,
             h: 14.0,
         };
-        assert_eq!(flip_rect(r, 800.0), [180.0, 800.0 - 104.0, 194.0, 800.0 - 90.0]);
+        assert_eq!(
+            flip_rect(r, 800.0),
+            [180.0, 800.0 - 104.0, 194.0, 800.0 - 90.0]
+        );
     }
 }

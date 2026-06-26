@@ -141,7 +141,10 @@ fn stamps_all_four_field_types_into_valid_acroform() {
     assert_eq!(full.get(b"FT").unwrap().as_name().unwrap(), b"Tx");
     assert_eq!(full.get(b"V").unwrap().as_str().unwrap(), b"Ada Lovelace");
     assert!(full.get(b"DA").is_ok(), "text field carries /DA");
-    assert_eq!(full.get(b"TU").unwrap().as_str().unwrap(), b"Full legal name");
+    assert_eq!(
+        full.get(b"TU").unwrap().as_str().unwrap(),
+        b"Full legal name"
+    );
     assert_eq!(full.get(b"Subtype").unwrap().as_name().unwrap(), b"Widget");
 
     let comments = by_name.get("Comments").unwrap();
@@ -217,8 +220,15 @@ fn signature_field_sets_sigflags() {
     assert_eq!(w.get(b"FT").unwrap().as_name().unwrap(), b"Sig");
     // Widget is attached to the second page's /Annots.
     let pages = doc.get_pages();
-    let page2 = doc.get_object(*pages.get(&2).unwrap()).unwrap().as_dict().unwrap();
-    assert!(page2.has(b"Annots"), "signature widget added to page 2 /Annots");
+    let page2 = doc
+        .get_object(*pages.get(&2).unwrap())
+        .unwrap()
+        .as_dict()
+        .unwrap();
+    assert!(
+        page2.has(b"Annots"),
+        "signature widget added to page 2 /Annots"
+    );
 }
 
 #[test]

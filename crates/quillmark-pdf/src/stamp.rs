@@ -228,8 +228,14 @@ pub fn stamp(
     }
 
     let new_size = next_id;
-    let stamped =
-        append_incremental_update(pdf, xref_offset, catalog_id, new_size, extra_info_ref, &objects)?;
+    let stamped = append_incremental_update(
+        pdf,
+        xref_offset,
+        catalog_id,
+        new_size,
+        extra_info_ref,
+        &objects,
+    )?;
     Ok(StampResult {
         pdf: stamped,
         regions,
@@ -286,7 +292,11 @@ fn write_widget_object(spec: &FieldSpec, wid: Ref, page_ref: Ref) -> Vec<u8> {
                 // /V is the on-state name when checked, else /Off.
                 field.pair(
                     Name(b"V"),
-                    if on { Name(on_name.as_bytes()) } else { Name(b"Off") },
+                    if on {
+                        Name(on_name.as_bytes())
+                    } else {
+                        Name(b"Off")
+                    },
                 );
                 // /MK << /CA (4) >> — the ZapfDingbats check glyph the viewer
                 // synthesizes under NeedAppearances.
@@ -327,7 +337,11 @@ fn write_widget_object(spec: &FieldSpec, wid: Ref, page_ref: Ref) -> Vec<u8> {
         .page(page_ref)
         .flags(AnnotationFlags::PRINT);
         if let Some(on) = checkbox_on {
-            ann.appearance_state(if on { Name(CHECKBOX_ON_STATE.as_bytes()) } else { Name(b"Off") });
+            ann.appearance_state(if on {
+                Name(CHECKBOX_ON_STATE.as_bytes())
+            } else {
+                Name(b"Off")
+            });
         }
         ann.finish();
     }

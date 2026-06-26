@@ -184,9 +184,13 @@ pub(crate) fn render_document_pages(
             })?;
             // The producer is always stamped (the always-on `/Info` pass); the
             // override threads from the product layer, else the backend default.
-            let producer =
-                Some(producer.map(str::to_string).unwrap_or_else(overlay::default_producer));
-            let stamped = stamp(pdf, &field_specs, &StampOptions { producer }).map_err(map_pdf_err)?;
+            let producer = Some(
+                producer
+                    .map(str::to_string)
+                    .unwrap_or_else(overlay::default_producer),
+            );
+            let stamped =
+                stamp(pdf, &field_specs, &StampOptions { producer }).map_err(map_pdf_err)?;
             Ok(RenderResult::new(
                 vec![Artifact {
                     bytes: stamped.pdf,
