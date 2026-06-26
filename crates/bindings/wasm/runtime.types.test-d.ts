@@ -18,7 +18,9 @@ import type {
 	OutputFormat as CanonicalOutputFormat,
 	PageSize as CanonicalPageSize,
 	PaintOptions as CanonicalPaintOptions,
-	PaintResult as CanonicalPaintResult
+	PaintResult as CanonicalPaintResult,
+	FieldRegion as CanonicalFieldRegion,
+	FieldRegionKind as CanonicalFieldRegionKind
   // The BUILT copy (synced from `runtime/runtime.d.ts` by build-wasm.sh / the
   // cp step), because only there does the d.ts's own `../core/wasm.js` import
   // resolve to the generated `pkg/core` build. The two copies are byte-identical.
@@ -31,7 +33,9 @@ import type {
 	OutputFormat as TypstOutputFormat,
 	PageSize as TypstPageSize,
 	PaintOptions as TypstPaintOptions,
-	PaintResult as TypstPaintResult
+	PaintResult as TypstPaintResult,
+	FieldRegion as TypstFieldRegion,
+	FieldRegionKind as TypstFieldRegionKind
 } from '../../../pkg/backends/typst/wasm';
 
 // One mutual-assignability pair per hoisted type: typst → canonical and
@@ -72,3 +76,13 @@ const paintResultA: CanonicalPaintResult = {} as TypstPaintResult;
 const paintResultB: TypstPaintResult = {} as CanonicalPaintResult;
 void paintResultA;
 void paintResultB;
+
+const fieldRegionA: CanonicalFieldRegion = {} as TypstFieldRegion;
+const fieldRegionB: TypstFieldRegion = {} as CanonicalFieldRegion;
+void fieldRegionA;
+void fieldRegionB;
+
+const fieldRegionKindA: CanonicalFieldRegionKind = {} as TypstFieldRegionKind;
+const fieldRegionKindB: TypstFieldRegionKind = {} as CanonicalFieldRegionKind;
+void fieldRegionKindA;
+void fieldRegionKindB;

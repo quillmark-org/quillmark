@@ -134,6 +134,17 @@ describe('@quillmark/wasm/runtime — Engine (hidden core→backend crossing)', 
     expect(typeof (await engine.supportsCanvas(quill))).toBe('boolean')
   })
 
+  it('regions is always a non-null array on the Engine render path', async () => {
+    // Typst renders without AcroForm stamps → regions is empty, never undefined.
+    const engine = new Engine()
+    const quill = makeRuntimeQuill()
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+
+    const result = await engine.render(quill, doc, { format: 'pdf' })
+    expect(Array.isArray(result.regions)).toBe(true)
+    expect(result.regions.length).toBe(0)
+  })
+
   it('manifest-backed capability probes do NOT load the backend', async () => {
     // A descriptor-form counting loader: it carries the same manifest the
     // default registry uses, so probes answer from the manifest (no load),

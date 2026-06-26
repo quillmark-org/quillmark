@@ -416,6 +416,21 @@ describe('Quillmark.quill', () => {
     expect(svg.artifacts[0].mimeType).toBe('image/svg+xml')
   })
 
+  it('regions is always a non-null array on every render result', () => {
+    // Typst renders without AcroForm stamps → regions is empty, never undefined.
+    const engine = new Quillmark()
+    const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+
+    const pdf = engine.render(quill, doc, { format: 'pdf' })
+    expect(Array.isArray(pdf.regions)).toBe(true)
+    expect(pdf.regions.length).toBe(0)
+
+    const svg = engine.render(quill, doc, { format: 'svg' })
+    expect(Array.isArray(svg.regions)).toBe(true)
+    expect(svg.regions.length).toBe(0)
+  })
+
   it('should throw a quill::name_mismatch error when the document quill ref differs from the quill name', () => {
     const engine = new Quillmark()
     const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))

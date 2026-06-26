@@ -265,6 +265,7 @@ impl Quillmark {
             warnings,
             output_format: result.output_format.into(),
             render_time_ms: now_ms() - start,
+            regions: result.regions.into_iter().map(Into::into).collect(),
         })
     }
 
@@ -1296,6 +1297,7 @@ impl RenderSession {
             warnings: result.warnings.into_iter().map(Into::into).collect(),
             output_format: result.output_format.into(),
             render_time_ms: now_ms() - start,
+            regions: result.regions.into_iter().map(Into::into).collect(),
         })
     }
 

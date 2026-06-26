@@ -86,12 +86,38 @@ export interface RenderOptions {
 	producer?: string;
 }
 
+/** The kind and payload of a {@link FieldRegion}. Discriminated on `type`. */
+export type FieldRegionKind =
+	| { type: 'field'; fieldType: string; value?: string };
+
+/**
+ * A form-field region: geometry and bound value from a stamped AcroForm.
+ * Emitted by backends that stamp form fields (`pdfform`; Typst signature
+ * overlay). Consumers use `rect` for layout and `kind.value` to composite
+ * field values onto flat (non-interactive) render targets.
+ */
+export interface FieldRegion {
+	/** Fully-qualified field name (matches the AcroForm widget `/T`). */
+	name: string;
+	/** 0-based page index. */
+	page: number;
+	/** `[x0, y0, x1, y1]` in PDF points (1/72″), bottom-left origin. */
+	rect: [number, number, number, number];
+	kind: FieldRegionKind;
+}
+
 /** Canonical contract every backend build must satisfy. Result of one render. */
 export interface RenderResult {
 	artifacts: Artifact[];
 	warnings: Diagnostic[];
 	outputFormat: OutputFormat;
 	renderTimeMs: number;
+	/**
+	 * Form-field regions from stamped AcroForm backends. Always an array —
+	 * empty for backends / formats that produce no field geometry. The only
+	 * path to field values in non-interactive flat output.
+	 */
+	regions: FieldRegion[];
 }
 
 /** Canonical contract every backend build must satisfy. The emittable formats. */
