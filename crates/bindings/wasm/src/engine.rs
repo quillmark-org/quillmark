@@ -2,7 +2,7 @@
 
 use crate::error::WasmError;
 use crate::types::Diagnostic;
-#[cfg(feature = "render")]
+#[cfg(any(feature = "render", feature = "pdfform"))]
 use crate::types::{RenderOptions, RenderResult};
 use js_sys::{Array, Uint8Array};
 #[cfg(feature = "render")]
@@ -156,7 +156,7 @@ export interface Card {
 #[cfg(feature = "render")]
 const MAX_BACKING_DIMENSION: u32 = 16384;
 
-#[cfg(feature = "render")]
+#[cfg(any(feature = "render", feature = "pdfform"))]
 fn now_ms() -> f64 {
     #[cfg(target_arch = "wasm32")]
     {
@@ -175,7 +175,7 @@ fn now_ms() -> f64 {
 
 /// Render engine: a backend registry and render dispatcher. Render build only —
 /// the core build constructs and validates quills without it.
-#[cfg(feature = "render")]
+#[cfg(any(feature = "render", feature = "pdfform"))]
 #[wasm_bindgen]
 pub struct Quillmark {
     inner: quillmark::Quillmark,
@@ -192,7 +192,7 @@ pub struct Quill {
 /// (`pageCount === 0`); `paint(ctx, 0)` or `pageSize(0)` throws with
 /// `"page index 0 out of range (pageCount=0)"`. Branch on `pageCount === 0`
 /// rather than catching the error.
-#[cfg(feature = "render")]
+#[cfg(any(feature = "render", feature = "pdfform"))]
 #[wasm_bindgen]
 pub struct RenderSession {
     inner: quillmark_core::RenderSession,
@@ -210,14 +210,14 @@ pub struct Document {
     parse_warnings: Vec<quillmark_core::Diagnostic>,
 }
 
-#[cfg(feature = "render")]
+#[cfg(any(feature = "render", feature = "pdfform"))]
 impl Default for Quillmark {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(any(feature = "render", feature = "pdfform"))]
 #[wasm_bindgen]
 impl Quillmark {
     #[wasm_bindgen(constructor)]
@@ -1247,7 +1247,7 @@ export interface PaintResult {
 }
 "#;
 
-#[cfg(feature = "render")]
+#[cfg(any(feature = "render", feature = "pdfform"))]
 #[wasm_bindgen]
 impl RenderSession {
     #[wasm_bindgen(getter, js_name = pageCount)]
@@ -1300,7 +1300,11 @@ impl RenderSession {
             regions: result.regions.into_iter().map(Into::into).collect(),
         })
     }
+}
 
+#[cfg(feature = "render")]
+#[wasm_bindgen]
+impl RenderSession {
     /// Page dimensions in Typst points (1 pt = 1/72 inch).
     /// Throws if the backend has no canvas painter or `page` is out of range.
     #[wasm_bindgen(js_name = pageSize, unchecked_return_type = "PageSize")]

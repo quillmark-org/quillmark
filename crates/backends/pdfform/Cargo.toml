@@ -15,12 +15,14 @@ quillmark-core = { workspace = true }
 quillmark-pdf = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+hayro = { version = "0.7.1", optional = true }
+hayro-svg = { version = "0.7.0", optional = true }
 
 [features]
 default = []
-# Background-only preview (Svg / canvas raster via hayro). Off by default so the
-# form-filling-only build stays free of the raster tree. Deferred for V1.
-preview = []
+# PDF-flatten → hayro raster / SVG preview. Off by default so the
+# form-filling-only build stays free of the raster tree.
+preview = ["dep:hayro", "dep:hayro-svg"]
 
 [dev-dependencies]
 quillmark-fixtures = { workspace = true }

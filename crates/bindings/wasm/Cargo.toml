@@ -45,9 +45,10 @@ default = ["render"]
 # binding no longer depends on `quillmark-typst` directly.
 render = ["quillmark/typst", "dep:web-sys"]
 # pdfform build: add the Typst-free PDF-form backend so the engine can render
-# `pdfform` quills → PDF. Builds on `render` (the RenderSession surface); the
-# typst-free tiny bundle is a fast-follow.
-pdfform = ["render", "quillmark/pdfform"]
+# `pdfform` quills → PDF. Does NOT require `render` (Typst) — the engine /
+# RenderSession surface is available with `pdfform` alone, giving a tiny
+# Typst-free WASM bundle (core + quillmark-pdf only).
+pdfform = ["quillmark/pdfform"]
 # Core build = no features: Document + Quill (parse / load / validate / schema
 # / seed / blueprint). No engine, no Typst — ~0.34MB gzipped.
 
