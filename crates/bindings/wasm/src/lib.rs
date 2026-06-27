@@ -55,7 +55,7 @@ mod error;
 mod types;
 
 pub use engine::{Document, Quill};
-#[cfg(feature = "render")]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 pub use engine::{Quillmark, RenderSession};
 pub use error::WasmError;
 pub use types::*;

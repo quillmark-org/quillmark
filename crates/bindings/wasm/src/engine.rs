@@ -2,10 +2,10 @@
 
 use crate::error::WasmError;
 use crate::types::Diagnostic;
-#[cfg(any(feature = "render", feature = "pdfform"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 use crate::types::{RenderOptions, RenderResult};
 use js_sys::{Array, Uint8Array};
-#[cfg(feature = "render")]
+#[cfg(feature = "typst")]
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -153,10 +153,10 @@ export interface Card {
 /// `densityScale` proportionally and surfaces the actual backing
 /// dimensions in the returned `PaintResult` so consumers can detect the
 /// clamp.
-#[cfg(feature = "render")]
+#[cfg(feature = "typst")]
 const MAX_BACKING_DIMENSION: u32 = 16384;
 
-#[cfg(any(feature = "render", feature = "pdfform"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 fn now_ms() -> f64 {
     #[cfg(target_arch = "wasm32")]
     {
@@ -175,7 +175,7 @@ fn now_ms() -> f64 {
 
 /// Render engine: a backend registry and render dispatcher. Render build only —
 /// the core build constructs and validates quills without it.
-#[cfg(any(feature = "render", feature = "pdfform"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 #[wasm_bindgen]
 pub struct Quillmark {
     inner: quillmark::Quillmark,
@@ -192,7 +192,7 @@ pub struct Quill {
 /// (`pageCount === 0`); `paint(ctx, 0)` or `pageSize(0)` throws with
 /// `"page index 0 out of range (pageCount=0)"`. Branch on `pageCount === 0`
 /// rather than catching the error.
-#[cfg(any(feature = "render", feature = "pdfform"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 #[wasm_bindgen]
 pub struct RenderSession {
     inner: quillmark_core::RenderSession,
@@ -210,14 +210,14 @@ pub struct Document {
     parse_warnings: Vec<quillmark_core::Diagnostic>,
 }
 
-#[cfg(any(feature = "render", feature = "pdfform"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 impl Default for Quillmark {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[cfg(any(feature = "render", feature = "pdfform"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 #[wasm_bindgen]
 impl Quillmark {
     #[wasm_bindgen(constructor)]
@@ -1174,7 +1174,7 @@ fn js_bytes_for_tree_entry(path: &str, value: JsValue) -> Result<Vec<u8>, JsValu
 }
 
 /// TypeScript declarations for the canvas-preview surface.
-#[cfg(feature = "render")]
+#[cfg(feature = "typst")]
 #[wasm_bindgen(typescript_custom_section)]
 const CANVAS_PREVIEW_TS: &'static str = r#"
 /**
@@ -1247,7 +1247,7 @@ export interface PaintResult {
 }
 "#;
 
-#[cfg(any(feature = "render", feature = "pdfform"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 #[wasm_bindgen]
 impl RenderSession {
     #[wasm_bindgen(getter, js_name = pageCount)]
@@ -1302,7 +1302,7 @@ impl RenderSession {
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "typst")]
 #[wasm_bindgen]
 impl RenderSession {
     /// Page dimensions in Typst points (1 pt = 1/72 inch).
@@ -1428,7 +1428,7 @@ impl RenderSession {
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "typst")]
 impl RenderSession {
     /// Gate a canvas operation on the backend's honest canvas capability,
     /// captured at open time. The painter now dispatches generically through
@@ -1455,13 +1455,13 @@ impl RenderSession {
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "typst")]
 enum CanvasCtx<'a> {
     OnScreen(&'a web_sys::CanvasRenderingContext2d),
     OffScreen(&'a web_sys::OffscreenCanvasRenderingContext2d),
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "typst")]
 impl<'a> CanvasCtx<'a> {
     fn from_js(ctx: &'a JsValue) -> Result<Self, JsValue> {
         if let Some(c) = ctx.dyn_ref::<web_sys::CanvasRenderingContext2d>() {
@@ -1503,7 +1503,7 @@ impl<'a> CanvasCtx<'a> {
     }
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "typst")]
 #[derive(Serialize)]
 struct PageSize {
     #[serde(rename = "widthPt")]
@@ -1512,7 +1512,7 @@ struct PageSize {
     height_pt: f32,
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "typst")]
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PaintOptions {
@@ -1522,7 +1522,7 @@ struct PaintOptions {
     density_scale: Option<f32>,
 }
 
-#[cfg(feature = "render")]
+#[cfg(feature = "typst")]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PaintResult {
