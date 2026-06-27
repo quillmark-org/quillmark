@@ -3,6 +3,7 @@ members = [
     "crates/core",
     "crates/quillmark",
     "crates/quillmark-pdf",
+    "crates/quillmark-qualify",
     "crates/backends/typst",
     "crates/backends/pdfform",
     "crates/fixtures",
@@ -17,6 +18,7 @@ default-members = [
     "crates/core",
     "crates/quillmark",
     "crates/quillmark-pdf",
+    "crates/quillmark-qualify",
     "crates/backends/typst",
     "crates/backends/pdfform",
     "crates/bindings/cli",
@@ -65,9 +67,16 @@ typst-svg = "0.15.0"
 # Intra-project dependencies
 quillmark-core = { version = "0.92.1", path = "crates/core" }
 quillmark-pdf = { version = "0.92.1", path = "crates/quillmark-pdf" }
+quillmark-qualify = { version = "0.92.1", path = "crates/quillmark-qualify" }
 quillmark-typst = { version = "0.92.1", path = "crates/backends/typst", default-features = false }
 quillmark-pdfform = { version = "0.92.1", path = "crates/backends/pdfform", default-features = false }
 quillmark = { version = "0.92.1", path = "crates/quillmark" }
+
+# PDF manipulation for the qualification layer (decrypt/strip/re-serialize).
+# default-features = false drops lopdf's `rayon`/`chrono`/`jiff`/`time` (all
+# properly feature-gated with non-rayon fallbacks); only decrypt+parse+save are
+# needed and `rand`/`aes`/`flate2` are non-optional, so encryption still works.
+lopdf = { version = "0.36", default-features = false }
 
 # Test and dev dependencies
 tempfile = "~3.23"

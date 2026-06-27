@@ -26,5 +26,6 @@ clap = { version = "~4.5", features = ["derive"] }
 quillmark = { workspace = true }
 quillmark-core = { workspace = true }
 quillmark-pdfform = { workspace = true, default-features = false }
+quillmark-qualify = { workspace = true }
 serde_json = { workspace = true }
 

@@ -2299,6 +2299,7 @@ dependencies = [
  "quillmark",
  "quillmark-core",
  "quillmark-pdfform",
+ "quillmark-qualify",
  "serde_json",
 ]
 
@@ -2375,6 +2376,17 @@ dependencies = [
  "pyo3",
  "quillmark",
  "quillmark-core",
+ "serde_json",
+]
+
+[[package]]
+name = "quillmark-qualify"
+version = "0.92.1"
+dependencies = [
+ "lopdf",
+ "quillmark-fixtures",
+ "quillmark-pdf",
+ "quillmark-pdfform",
  "serde_json",
 ]
 
