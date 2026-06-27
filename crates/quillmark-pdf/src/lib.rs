@@ -20,10 +20,14 @@
 //! See [`stamp`] for the operation, [`FieldSpec`] for the currency, and
 //! `crate::reader`'s docs for the input contract the base PDF must satisfy.
 
+#[cfg(feature = "compose")]
+mod compose;
 mod error;
 pub mod reader;
 mod stamp;
 
+#[cfg(feature = "compose")]
+pub use compose::concat_pdf_pages;
 pub use error::PdfError;
 pub use stamp::{regions_of, stamp, StampOptions, StampResult, CHECKBOX_ON_STATE};
 

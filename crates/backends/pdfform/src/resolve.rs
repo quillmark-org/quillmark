@@ -331,6 +331,54 @@ mod tests {
         assert_eq!(card_text("$cards.0.missing"), None);
     }
 
+    /// Fixed-capacity overflow, end-to-end through `field_spec` (no new engine
+    /// code): a form with card slots laid out across pages binds each card
+    /// INSTANCE to its own page via card-instance addressing. Two cards of one
+    /// kind, two slots on two different pages — instance 0's value must land on
+    /// page 0 and instance 1's on page 1, each as a full `FieldSpec`. This is the
+    /// validated proof that fixed-capacity overflow already works today.
+    #[test]
+    fn fixed_capacity_overflow_binds_instances_to_their_pages() {
+        // ≥2 cards of one kind in `$cards` (the same array the Typst plate reads).
+        let data = json!({
+            "$cards": [
+                { "$kind": "indorsement", "from": "Alice" },
+                { "$kind": "indorsement", "from": "Bob" }
+            ]
+        });
+
+        // Two card slots, one per page, each bound to a distinct instance index.
+        let mb = [0.0, 0.0, 612.0, 792.0];
+        let slot = |name: &str, page: usize, schema_field: &str| FormField {
+            name: name.into(),
+            schema_field: Some(schema_field.into()),
+            page,
+            rect: Rect {
+                x: 100.0,
+                y: 100.0,
+                w: 200.0,
+                h: 20.0,
+            },
+            tooltip: None,
+            kind: FieldKind::Text { multiline: false },
+        };
+        let slot0 = slot("Indorsement0From", 0, "$cards.indorsement.0.from");
+        let slot1 = slot("Indorsement1From", 1, "$cards.indorsement.1.from");
+
+        let spec0 = field_spec(&slot0, mb, &data);
+        let spec1 = field_spec(&slot1, mb, &data);
+
+        // Instance 0's value on page 0; instance 1's value on page 1.
+        assert_eq!(spec0.page, 0, "first slot is on page 0");
+        assert_eq!(spec0.value.as_deref(), Some("Alice"), "instance 0 value");
+        assert_eq!(spec1.page, 1, "second slot is on page 1");
+        assert_eq!(spec1.value.as_deref(), Some("Bob"), "instance 1 value");
+
+        // The names carry through unchanged (the spine writes them to /T).
+        assert_eq!(spec0.name, "Indorsement0From");
+        assert_eq!(spec1.name, "Indorsement1From");
+    }
+
     #[test]
     fn rect_flip_is_bottom_left() {
         // A 14×14 box at top-left (180, 90) on an 800-tall, zero-origin page.
