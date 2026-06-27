@@ -5,7 +5,7 @@ use crate::types::Diagnostic;
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 use crate::types::{RenderOptions, RenderResult};
 use js_sys::{Array, Uint8Array};
-#[cfg(feature = "typst")]
+#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -153,7 +153,7 @@ export interface Card {
 /// `densityScale` proportionally and surfaces the actual backing
 /// dimensions in the returned `PaintResult` so consumers can detect the
 /// clamp.
-#[cfg(feature = "typst")]
+#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
 const MAX_BACKING_DIMENSION: u32 = 16384;
 
 #[cfg(any(feature = "typst", feature = "pdfform"))]
@@ -1174,11 +1174,12 @@ fn js_bytes_for_tree_entry(path: &str, value: JsValue) -> Result<Vec<u8>, JsValu
 }
 
 /// TypeScript declarations for the canvas-preview surface.
-#[cfg(feature = "typst")]
+#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
 #[wasm_bindgen(typescript_custom_section)]
 const CANVAS_PREVIEW_TS: &'static str = r#"
 /**
- * Page dimensions in Typst points (1 pt = 1/72 inch).
+ * Page dimensions in points (1 pt = 1/72 inch). Typst measures in Typst
+ * points; pdfform measures in PDF points — the same unit.
  *
  * Report-only: the painter sizes the canvas itself based on
  * `PaintOptions`. `pageSize` is exposed for callers that need page
@@ -1194,7 +1195,8 @@ export interface PageSize {
  * Inputs to `RenderSession.paint`. Both fields are optional and default
  * to `1`.
  *
- * - `layoutScale` — layout-space pixels per Typst point. For on-screen
+ * - `layoutScale` — layout-space pixels per point (Typst point / PDF
+ *   point — the same 1/72″ unit). For on-screen
  *   canvases this is CSS pixels per pt; the page's layout-pixel size is
  *   `widthPt * layoutScale × heightPt * layoutScale`. The painter
  *   surfaces these dimensions as `layoutWidth` / `layoutHeight` so
@@ -1302,10 +1304,10 @@ impl RenderSession {
     }
 }
 
-#[cfg(feature = "typst")]
+#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
 #[wasm_bindgen]
 impl RenderSession {
-    /// Page dimensions in Typst points (1 pt = 1/72 inch).
+    /// Page dimensions in points (1 pt = 1/72 inch).
     /// Throws if the backend has no canvas painter or `page` is out of range.
     #[wasm_bindgen(js_name = pageSize, unchecked_return_type = "PageSize")]
     pub fn page_size(&self, page: usize) -> Result<JsValue, JsValue> {
@@ -1428,7 +1430,7 @@ impl RenderSession {
     }
 }
 
-#[cfg(feature = "typst")]
+#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
 impl RenderSession {
     /// Gate a canvas operation on the backend's honest canvas capability,
     /// captured at open time. The painter now dispatches generically through
@@ -1455,13 +1457,13 @@ impl RenderSession {
     }
 }
 
-#[cfg(feature = "typst")]
+#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
 enum CanvasCtx<'a> {
     OnScreen(&'a web_sys::CanvasRenderingContext2d),
     OffScreen(&'a web_sys::OffscreenCanvasRenderingContext2d),
 }
 
-#[cfg(feature = "typst")]
+#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
 impl<'a> CanvasCtx<'a> {
     fn from_js(ctx: &'a JsValue) -> Result<Self, JsValue> {
         if let Some(c) = ctx.dyn_ref::<web_sys::CanvasRenderingContext2d>() {
@@ -1503,7 +1505,7 @@ impl<'a> CanvasCtx<'a> {
     }
 }
 
-#[cfg(feature = "typst")]
+#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
 #[derive(Serialize)]
 struct PageSize {
     #[serde(rename = "widthPt")]
@@ -1512,7 +1514,7 @@ struct PageSize {
     height_pt: f32,
 }
 
-#[cfg(feature = "typst")]
+#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PaintOptions {
@@ -1522,7 +1524,7 @@ struct PaintOptions {
     density_scale: Option<f32>,
 }
 
-#[cfg(feature = "typst")]
+#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PaintResult {

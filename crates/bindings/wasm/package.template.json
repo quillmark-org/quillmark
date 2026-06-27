@@ -30,6 +30,7 @@
   "sideEffects": [
     "./core/wasm.js",
     "./backends/typst/wasm.js",
+    "./backends/pdfform/wasm.js",
     "./runtime/runtime.js"
   ]
 }

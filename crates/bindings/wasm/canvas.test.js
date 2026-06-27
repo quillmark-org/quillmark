@@ -72,7 +72,16 @@ beforeAll(() => {
 })
 
 const { Quillmark, Quill, Document } = await import('@quillmark-wasm')
-const { makeQuill } = await import('./test-helpers.js')
+// The pdfform-preview backend bundle: same engine + RenderSession + canvas
+// surface as the typst bundle, but a Typst-free PDF-form backend that paints by
+// rasterizing its pre-flattened page. SEPARATE WASM memory from the typst
+// bundle — its handles never mix with the typst ones.
+const {
+  Quillmark: PdfformQuillmark,
+  Quill: PdfformQuill,
+  Document: PdfformDocument,
+} = await import('@quillmark-wasm/pdfform')
+const { makeQuill, makeGovFormQuill, GOV_FORM_MARKDOWN } = await import('./test-helpers.js')
 
 const TEST_MARKDOWN = `~~~card-yaml
 $quill: test_quill
@@ -222,5 +231,93 @@ describe('RenderSession canvas preview', () => {
     expect(() => session.paint(ctx, session.pageCount + 5)).toThrow(
       /out of range.*pageCount=/,
     )
+  })
+})
+
+describe('RenderSession canvas preview (pdfform backend)', () => {
+  function openPdfformQuill() {
+    const engine = new PdfformQuillmark()
+    const quill = PdfformQuill.fromTree(makeGovFormQuill())
+    return { engine, quill }
+  }
+
+  function openPdfformSession() {
+    const { engine, quill } = openPdfformQuill()
+    return engine.open(quill, PdfformDocument.fromMarkdown(GOV_FORM_MARKDOWN))
+  }
+
+  it('reports canvas support and page geometry for a pdfform quill', () => {
+    const { engine, quill } = openPdfformQuill()
+    // The pdfform-preview backend rasterizes pre-flattened pages.
+    expect(engine.supportsCanvas(quill)).toBe(true)
+
+    const session = engine.open(quill, PdfformDocument.fromMarkdown(GOV_FORM_MARKDOWN))
+    expect(session.pageCount).toBeGreaterThan(0)
+    expect(session.backendId).toBe('pdfform')
+    expect(session.supportsCanvas).toBe(true)
+
+    const size = session.pageSize(0)
+    expect(size.widthPt).toBeGreaterThan(0)
+    expect(size.heightPt).toBeGreaterThan(0)
+  })
+
+  it('paint sizes the canvas per the DPR math and bakes field-value ink into the raster', () => {
+    const session = openPdfformSession()
+    const { widthPt, heightPt } = session.pageSize(0)
+    const layoutScale = 1
+    const densityScale = 1.5
+
+    const ctx = new FakeCanvasRenderingContext2D()
+    const result = session.paint(ctx, 0, { layoutScale, densityScale })
+
+    // Layout dimensions reflect layoutScale only — independent of density.
+    expect(result.layoutWidth).toBeCloseTo(widthPt * layoutScale, 4)
+    expect(result.layoutHeight).toBeCloseTo(heightPt * layoutScale, 4)
+
+    // Pixel dimensions reflect layoutScale * densityScale, rounded (±1 px for
+    // the rasterizer's per-axis rounding).
+    expect(result.pixelWidth).toBeCloseTo(Math.round(widthPt * layoutScale * densityScale), -1)
+    expect(result.pixelHeight).toBeCloseTo(Math.round(heightPt * layoutScale * densityScale), -1)
+
+    // Painter owns canvas.width/height — they equal the reported pixel dims.
+    expect(ctx.canvas.width).toBe(result.pixelWidth)
+    expect(ctx.canvas.height).toBe(result.pixelHeight)
+
+    expect(ctx.calls).toHaveLength(1)
+    const call = ctx.calls[0]
+    expect(call.width).toBe(result.pixelWidth)
+    expect(call.height).toBe(result.pixelHeight)
+    expect(call.data.length).toBe(call.width * call.height * 4)
+
+    // COMPLETE-RASTER contract: the pre-flattened "Ada Lovelace" et al. are
+    // baked into the page, so the buffer must carry non-white opaque ink
+    // (field values + form lines) AND opaque page background. A backend that
+    // returned only a blank background (no values) would fail the ink check.
+    let inkPixels = 0
+    let opaquePixels = 0
+    for (let i = 0; i < call.data.length; i += 4) {
+      const [r, g, b, a] = [call.data[i], call.data[i + 1], call.data[i + 2], call.data[i + 3]]
+      if (a > 0 && (r < 250 || g < 250 || b < 250)) inkPixels++
+      if (a === 255) opaquePixels++
+    }
+    expect(inkPixels).toBeGreaterThan(0)
+    expect(opaquePixels).toBeGreaterThan(0)
+  })
+
+  it('paint clamps backing-store dimensions to the safe maximum (pdfform)', () => {
+    const session = openPdfformSession()
+    const { widthPt, heightPt } = session.pageSize(0)
+    const longest = Math.max(widthPt, heightPt)
+    // Drive the longest backing dimension well past the 16384-px clamp.
+    const densityScale = (16384 / longest) * 4
+
+    const ctx = new FakeCanvasRenderingContext2D()
+    const result = session.paint(ctx, 0, { densityScale })
+
+    expect(Math.max(result.pixelWidth, result.pixelHeight)).toBeLessThanOrEqual(16384)
+    expect(result.layoutWidth).toBeCloseTo(widthPt, 4)
+    expect(result.layoutHeight).toBeCloseTo(heightPt, 4)
+    // Detect-clamp contract: pixelWidth < round(layoutWidth * densityScale).
+    expect(result.pixelWidth).toBeLessThan(Math.round(result.layoutWidth * densityScale))
   })
 })

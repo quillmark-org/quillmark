@@ -26,3 +26,7 @@ serde_json = { workspace = true }
 default = ["typst", "pdfform"]
 typst = ["dep:quillmark-typst"]
 pdfform = ["dep:quillmark-pdfform"]
+# pdfform + its raster/SVG preview seam (hayro): the pdfform session reports
+# `supports_canvas() == true` and rasterizes pages, so a canvas binding can
+# paint pdfform quills. Strict superset of `pdfform`.
+pdfform-preview = ["pdfform", "quillmark-pdfform/preview"]

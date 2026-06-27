@@ -95,8 +95,25 @@ export type FieldRegionKind =
 /**
  * A form-field region: geometry and bound value from a stamped AcroForm.
  * Emitted by backends that stamp form fields (`pdfform`; Typst signature
- * overlay). Consumers use `rect` for layout and `kind.value` to composite
- * field values onto flat (non-interactive) render targets.
+ * overlay). Consumers use `rect` for *overlay* layout (e.g. positioning an
+ * input box over a canvas) and `kind.value` to read the bound value.
+ *
+ * Regions are NOT needed to make a canvas paint complete: `RenderSession.paint`
+ * already bakes every field value into the raster (see {@link RenderSession}).
+ * They exist for interactive overlays drawn on top of that raster.
+ *
+ * COORDINATE TRANSFORM. `rect` is in PDF points with a **bottom-left** origin;
+ * a canvas is **top-left** origin in device pixels. To place an overlay from a
+ * region onto a canvas painted at `renderScale` (= `layoutScale × densityScale`)
+ * for a page `pageHeightPt` tall (from {@link PageSize}.heightPt):
+ *
+ * ```js
+ * const [x0, y0, x1, y1] = region.rect;       // PDF pt, bottom-left origin
+ * const left   = x0 * renderScale;
+ * const right  = x1 * renderScale;
+ * const top    = (pageHeightPt - y1) * renderScale;  // flip Y
+ * const bottom = (pageHeightPt - y0) * renderScale;  // y_canvas = (pageHeightPt - y_pdf) × renderScale
+ * ```
  */
 export interface FieldRegion {
 	/** Fully-qualified field name (matches the AcroForm widget `/T`). */
@@ -210,7 +227,9 @@ export declare class Engine {
 	/**
 	 * Whether `quill`'s backend can paint sessions to a canvas. Same always-free
 	 * probe as `supportedFormats`: answered from the descriptor's required
-	 * `canvas` manifest, no binary load and no quill clone.
+	 * `canvas` manifest, no binary load and no quill clone. Both the Typst and
+	 * pdfform backends report `true`; each paints a complete page raster (see
+	 * {@link RenderSession.paint}).
 	 * @experimental Probes the experimental session/canvas surface — see {@link RenderSession}.
 	 */
 	supportsCanvas(quill: Quill): Promise<boolean>;
@@ -218,6 +237,16 @@ export declare class Engine {
 
 /**
  * Iterative render session over a compiled snapshot. `free()` when done.
+ *
+ * CANVAS PAINT IS COMPLETE. {@link RenderSession.paint} writes a complete page
+ * raster — every piece of page content is already visible in the painted
+ * pixels, with NO compositing required by the caller. Both backends that
+ * support canvas satisfy this: Typst rasterizes its laid-out page natively;
+ * pdfform pre-flattens bound field values into the page content and rasterizes
+ * that, so field values appear in the raster on their own. The
+ * {@link FieldRegion} sidecar carries field geometry for interactive overlays
+ * drawn on top of the raster; it is never needed to complete the picture.
+ *
  * @experimental The whole session/canvas-paint surface (`Engine.open`,
  * `RenderSession`, `PaintOptions`, `PaintResult`, `PageSize`) ships ahead of
  * its first production consumer and may change shape in any 0.x release.
@@ -230,7 +259,17 @@ export declare class RenderSession {
 	readonly supportsCanvas: boolean;
 	readonly warnings: Diagnostic[];
 	render(options?: RenderOptions): RenderResult;
+	/** Page geometry in points (1/72″). Report-only; the painter sizes the canvas. */
 	pageSize(page: number): PageSize;
+	/**
+	 * Paint `page` into a 2D canvas context, sizing the backing store itself
+	 * (it owns `canvas.width`/`height`; the caller owns `canvas.style.*`). The
+	 * painted raster is COMPLETE — all page content visible, no caller-side
+	 * compositing (Typst rasterizes natively; pdfform rasterizes its
+	 * pre-flattened page). Effective rasterization scale is
+	 * `layoutScale × densityScale`, clamped so neither backing dimension exceeds
+	 * 16384 px — detect a clamp via {@link PaintResult.pixelWidth}.
+	 */
 	paint(
 		ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
 		page: number,

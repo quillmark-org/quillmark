@@ -28,6 +28,26 @@ pub trait SessionHandle: Any + Send + Sync {
     /// bytes), or `None` if `page` is out of range or the backend has no canvas
     /// painter. The other half of the seam paired with
     /// [`page_size_pt`](Self::page_size_pt).
+    ///
+    /// # Per-backend contract
+    ///
+    /// A backend that returns `Some` here guarantees a **complete** raster of
+    /// the page: every piece of page content is already visible in the returned
+    /// pixels. The caller paints them straight to a canvas with **no
+    /// compositing** of its own. Backends satisfy this differently:
+    ///
+    /// - **Typst** rasterizes its laid-out page natively.
+    /// - **pdfform** pre-flattens the bound field values into the page content
+    ///   streams at session-open, then rasterizes that flat PDF — so field
+    ///   values appear in the raster without the caller drawing them.
+    ///
+    /// The `regions` sidecar on [`RenderResult`](crate::RenderResult) carries
+    /// per-field geometry (and bound value) for *overlay* UIs regardless; it is
+    /// never required to make the raster complete.
+    ///
+    /// A backend with no painter returns `None` (the default) and reports
+    /// [`Backend::supports_canvas`](crate::Backend::supports_canvas)` == false`;
+    /// the two answers always agree by construction.
     fn render_rgba(&self, _page: usize, _scale: f32) -> Option<(u32, u32, Vec<u8>)> {
         None
     }
@@ -82,7 +102,9 @@ impl RenderSession {
     }
 
     /// Rasterize `page` to non-premultiplied RGBA8 at `scale`× 72 ppi, or `None`
-    /// if `page` is out of range or the backend has no canvas painter. See
+    /// if `page` is out of range or the backend has no canvas painter. A `Some`
+    /// result is a **complete** raster of the page — all content visible, no
+    /// caller-side compositing — per the per-backend contract on
     /// [`SessionHandle::render_rgba`].
     pub fn render_rgba(&self, page: usize, scale: f32) -> Option<(u32, u32, Vec<u8>)> {
         self.inner.render_rgba(page, scale)

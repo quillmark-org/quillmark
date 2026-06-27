@@ -6,18 +6,21 @@ set -e
 # one guard rail that catches a Typst leak into the no-features core build.
 set -o pipefail
 
-# Builds TWO wasm artifacts from the one crate (the as-built design is
+# Builds THREE wasm artifacts from the one crate (the as-built design is
 # documented in docs/migrations/0.89-to-0.90.md):
 #
-#   pkg/core/           — no Typst: parse / load / validate / schema / seed / blueprint
-#   pkg/backends/typst/ — Typst-backed engine + RenderSession + canvas (a private
-#                         backend binary, NOT a public export)
+#   pkg/core/             — no Typst: parse / load / validate / schema / seed / blueprint
+#   pkg/backends/typst/   — Typst-backed engine + RenderSession + canvas (a private
+#                           backend binary, NOT a public export)
+#   pkg/backends/pdfform/ — Typst-free PDF-form backend (engine + RenderSession +
+#                           canvas via the pdfform-preview raster seam; private
+#                           backend binary, NOT a public export)
 #
-# These two generated artifacts plus the hand-written canonical layer ship as
-# one npm package. Public surface: the root `.` export (`@quillmark/wasm`) is the
+# These generated artifacts plus the hand-written canonical layer ship as one
+# npm package. Public surface: the root `.` export (`@quillmark/wasm`) is the
 # canonical `Quill`/`Document`/`Engine` API (see pkg/runtime/), and `./core` is
-# the render-free escape hatch. The Typst backend is reached only internally, by
-# the canonical layer's lazy `import("../backends/typst/wasm.js")`.
+# the render-free escape hatch. The backends are reached only internally, by the
+# canonical layer's lazy `import("../backends/<id>/wasm.js")`.
 #
 # Profile selection. Default is the size-optimized release build used for
 # npm publish. `--ci` switches to a fast-compiling profile for PR validation
@@ -84,8 +87,15 @@ build_variant() {
         --weak-refs
 }
 
-# backends/typst = default features (Typst). core = no features (Typst excluded).
+# backends/typst   = default features (Typst).
+# backends/pdfform = the Typst-free PDF-form backend with its canvas preview
+#                    seam (pdfform-preview). Built like the typst variant: the
+#                    same cargo build + wasm-bindgen pass, sequentially (every
+#                    variant emits the same quillmark_wasm.wasm to the same
+#                    target path, so they must not run concurrently).
+# core             = no features (Typst excluded).
 build_variant backends/typst
+build_variant backends/pdfform --no-default-features --features pdfform-preview
 build_variant core --no-default-features
 
 # runtime = the canonical consumer API: a hand-written JS layer (NOT generated
@@ -136,7 +146,7 @@ EOF
 
 echo ""
 echo "WASM build complete!"
-echo "Output directory: pkg/  (core/ + backends/typst/ + runtime/)"
+echo "Output directory: pkg/  (core/ + backends/typst/ + backends/pdfform/ + runtime/)"
 echo "Package version: $VERSION"
 
 # Show sizes — transport size (gzip/brotli) is what matters for delivery.
@@ -153,8 +163,9 @@ report_size() {
         echo "WASM size ($label): raw=$raw gzip=$gz"
     fi
 }
-report_size "core"          pkg/core/wasm_bg.wasm
-report_size "typst backend"  pkg/backends/typst/wasm_bg.wasm
+report_size "core"            pkg/core/wasm_bg.wasm
+report_size "typst backend"   pkg/backends/typst/wasm_bg.wasm
+report_size "pdfform backend" pkg/backends/pdfform/wasm_bg.wasm
 
 # Size budget on the core artifact: the split only pays off if core stays
 # Typst-free. Typst is megabytes, so a leak back into the no-features build

@@ -61,8 +61,9 @@ backend's memory as serialized data and frees the clones. See the
 [as-built 0.90 design](../../docs/migrations/0.89-to-0.90.md).
 
 Beyond the byte-output verbs (`engine.render`, `RenderSession.render`), the
-Typst backend build exposes a Typst-only **canvas preview** path on
-`RenderSession` (`pageCount`, `pageSize`, `paint`, …). See [PREVIEW.md](PREVIEW.md).
+canvas-capable backend builds (Typst, and pdfform under its preview seam)
+expose a **canvas preview** path on `RenderSession` (`pageCount`, `pageSize`,
+`paint`, …). See [PREVIEW.md](PREVIEW.md).
 
 ## .NET — `bindings/quillmark-dotnet`
 
@@ -88,6 +89,6 @@ Standalone `quillmark` binary. See [CLI.md](CLI.md).
 ## Links
 
 - [CLI.md](CLI.md) — command-line surface
-- [PREVIEW.md](PREVIEW.md) — WASM-only Typst canvas preview
+- [PREVIEW.md](PREVIEW.md) — WASM multi-backend canvas preview (Typst, pdfform)
 - [ERROR.md](ERROR.md) — the diagnostic model that crosses every boundary
 - Per-binding API detail: the respective `crates/bindings/*/` rustdoc and READMEs

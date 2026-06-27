@@ -17,7 +17,7 @@ import { Quill, Document, Engine, isQuillmarkError } from '@quillmark-wasm/runti
 // `pkg/core` is NOT a public package subpath, it is the build the root
 // re-exports.
 import { Quill as CoreQuill, Document as CoreDocument } from '../../../pkg/core/wasm.js'
-import { makeQuill } from './test-helpers.js'
+import { makeQuill, makeGovFormQuill, GOV_FORM_MARKDOWN } from './test-helpers.js'
 
 const TEST_PLATE = `#import "@local/quillmark-helper:0.1.0": data
 #let title = data.title
@@ -194,6 +194,36 @@ describe('@quillmark/wasm/runtime — Engine (hidden core→backend crossing)', 
       const realFormats = backendEngine.supportedFormats(backendQuill)
       const realCanvas = backendEngine.supportsCanvas(backendQuill)
       // The manifest must match what the binary reports, both directions.
+      expect([...manifestFormats].sort()).toEqual([...realFormats].sort())
+      expect(manifestCanvas).toBe(realCanvas)
+    } finally {
+      backendQuill.free()
+    }
+  })
+
+  it('pdfform manifest cannot drift from the loaded backend (drift guard)', async () => {
+    // Same drift guard as typst, but for the pdfform backend: the static
+    // `{ formats, canvas }` manifest in DEFAULT_BACKENDS must match what the
+    // loaded pdfform-preview binary actually reports.
+    const engine = new Engine()
+    const quill = Quill.fromTree(makeGovFormQuill())
+    expect(quill.backendId).toBe('pdfform')
+    const doc = Document.fromMarkdown(GOV_FORM_MARKDOWN)
+
+    // What the static manifest reports (no load).
+    const manifestFormats = await engine.supportedFormats(quill)
+    const manifestCanvas = await engine.supportsCanvas(quill)
+    expect([...manifestFormats].sort()).toEqual(['pdf', 'svg'])
+    expect(manifestCanvas).toBe(true)
+
+    // Force the pdfform backend to load, then ask the real engine directly.
+    await engine.render(quill, doc, { format: 'pdf' })
+    const mod = await import('../../../pkg/backends/pdfform/wasm.js')
+    const backendEngine = new mod.Quillmark()
+    const backendQuill = mod.Quill.fromTree(quill.toTree())
+    try {
+      const realFormats = backendEngine.supportedFormats(backendQuill)
+      const realCanvas = backendEngine.supportsCanvas(backendQuill)
       expect([...manifestFormats].sort()).toEqual([...realFormats].sort())
       expect(manifestCanvas).toBe(realCanvas)
     } finally {
