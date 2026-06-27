@@ -17,27 +17,29 @@
 mod flatten;
 mod form;
 mod resolve;
+pub mod scaffold;
 
 pub use form::{FieldKind, FormField, FormParseError, FormSpec, Rect};
+pub use scaffold::scaffold_quill_yaml;
 
 use std::any::Any;
 
+use flatten::flatten as flatten_to_pdf;
 use quillmark_core::session::SessionHandle;
 use quillmark_core::{
     Artifact, Backend, Diagnostic, OutputFormat, Quill, RenderError, RenderOptions, RenderResult,
     RenderSession, Severity,
 };
-use quillmark_pdf::{stamp, FieldSpec, PdfError, StampOptions};
 #[cfg(feature = "preview")]
 use quillmark_pdf::regions_of;
-use flatten::flatten as flatten_to_pdf;
+use quillmark_pdf::{stamp, FieldSpec, PdfError, StampOptions};
 
 #[cfg(feature = "preview")]
 use {
-    hayro::hayro_interpret::{InterpreterSettings, font::FontQuery},
+    hayro::hayro_interpret::{font::FontQuery, InterpreterSettings},
     hayro::hayro_syntax::Pdf as HayroPdf,
-    hayro::{RenderCache, RenderSettings, render as hayro_render},
-    hayro_svg::{RenderCache as SvgCache, SvgRenderSettings, convert as hayro_svg_convert},
+    hayro::{render as hayro_render, RenderCache, RenderSettings},
+    hayro_svg::{convert as hayro_svg_convert, RenderCache as SvgCache, SvgRenderSettings},
     std::sync::Arc,
 };
 

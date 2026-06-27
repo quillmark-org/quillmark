@@ -1,6 +1,7 @@
 pub mod blueprint;
 pub mod info;
 pub mod render;
+pub mod scaffold;
 pub mod schema;
 pub mod validate;
 

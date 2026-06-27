@@ -64,9 +64,8 @@ pub fn flatten(
         let literal = pdf_text_string(producer);
         match info_ref {
             Some((info_id, _)) => {
-                let (s, e) = find_object_bytes(&pdf, info_id).ok_or_else(|| {
-                    err(CODE_PARSE, format!("/Info object {info_id} not found"))
-                })?;
+                let (s, e) = find_object_bytes(&pdf, info_id)
+                    .ok_or_else(|| err(CODE_PARSE, format!("/Info object {info_id} not found")))?;
                 let info_dict = extract_outer_dict(&pdf[s..e])
                     .ok_or_else(|| err(CODE_PARSE, "/Info dict not parseable"))?;
                 objects.push(dict_object(info_id, &upsert_producer(info_dict, &literal)));
@@ -134,7 +133,10 @@ pub fn flatten(
         }
 
         let stream_id = alloc_id(&mut next_id)?;
-        objects.push(content_stream_object(stream_id, &build_content_stream(&drawable)));
+        objects.push(content_stream_object(
+            stream_id,
+            &build_content_stream(&drawable),
+        ));
 
         let page_obj_id = page_ids[page_idx];
         let (s, e) = find_object_bytes(&pdf, page_obj_id)
@@ -318,9 +320,7 @@ fn add_font_resource(pg_dict: &[u8], name: &str, font_id: u32) -> Result<Vec<u8>
     match find_dict_value(pg_dict, "Resources") {
         None => {
             let mut out = pg_dict.to_vec();
-            out.extend_from_slice(
-                format!(" /Resources << /Font << {helv_entry} >> >>").as_bytes(),
-            );
+            out.extend_from_slice(format!(" /Resources << /Font << {helv_entry} >> >>").as_bytes());
             Ok(out)
         }
         Some(res_val) => {
@@ -396,8 +396,7 @@ fn type1_font_object(id: u32, base_font: &str) -> UpdatedObject {
 }
 
 fn content_stream_object(id: u32, content: &[u8]) -> UpdatedObject {
-    let mut bytes =
-        format!("{id} 0 obj\n<< /Length {} >>\nstream\n", content.len()).into_bytes();
+    let mut bytes = format!("{id} 0 obj\n<< /Length {} >>\nstream\n", content.len()).into_bytes();
     bytes.extend_from_slice(content);
     bytes.extend_from_slice(b"\nendstream\nendobj\n");
     UpdatedObject { id, bytes }
