@@ -21,11 +21,10 @@ use quillmark_core::{RegionKind, RenderedRegion};
 
 use crate::error::PdfError;
 use crate::reader::{
-    append_incremental_update, assert_traditional_xref, err, extract_outer_dict, find_dict_value,
-    find_object_bytes, find_startxref, find_trailer_dict, parse_indirect_ref, resolve_page_ids,
-    UpdatedObject,
+    err, extract_outer_dict, find_dict_value, find_object_bytes, parse_indirect_ref, UpdatedObject,
 };
-use crate::writer::{alloc_id, apply_producer_stamp, dict_object};
+use crate::update::PdfUpdate;
+use crate::writer::{alloc_id, dict_object};
 use crate::{FieldSpec, FieldType};
 
 const CODE_PARSE: &str = "pdf::stamp_parse";
@@ -77,70 +76,28 @@ pub fn stamp(
     }
 
     let pdf = base;
-    let xref_offset = find_startxref(&pdf)?;
-    assert_traditional_xref(&pdf, xref_offset)?;
-
-    let trailer = find_trailer_dict(&pdf, xref_offset)?;
-    if find_dict_value(trailer, "Encrypt").is_some() {
-        return Err(err(
-            "pdf::encrypted",
-            "PDF is encrypted; the stamp spine does not handle encrypted PDFs",
-        ));
-    }
-    let (catalog_id, _) = find_dict_value(trailer, "Root")
-        .and_then(parse_indirect_ref)
-        .ok_or_else(|| err(CODE_PARSE, "/Root missing or malformed in trailer"))?;
-    let size = find_dict_value(trailer, "Size")
-        .and_then(|v| std::str::from_utf8(v.trim_ascii()).ok())
-        .and_then(|s| s.parse::<u32>().ok())
-        .ok_or_else(|| err(CODE_PARSE, "/Size missing or malformed in trailer"))?;
-    let info_ref = find_dict_value(trailer, "Info").and_then(parse_indirect_ref);
-
-    // Object ids are handed out from a single counter (seeded at the trailer
-    // `/Size`) so created objects never collide with the base's, nor with each
-    // other. Allocation is checked (`alloc_id`): a malformed near-`u32::MAX`
-    // `/Size` yields a clean error rather than an overflow panic (debug) or a
-    // silently-wrapped, colliding id (release) — matching the reader's
-    // hard-error contract.
-    let mut next_id = size;
-    let mut objects: Vec<UpdatedObject> = Vec::new();
-    let mut extra_info_ref = None;
-
-    // ─── /Info /Producer (when requested) ────────────────────────────────────
-    if let Some(producer) = opts.producer.as_deref() {
-        extra_info_ref =
-            apply_producer_stamp(&pdf, info_ref, producer, &mut next_id, &mut objects)?;
-    }
+    // Shared envelope: validate the input contract, read the trailer, seed the
+    // id counter, apply the optional `/Info` `/Producer` stamp.
+    let mut up = PdfUpdate::begin(&pdf, opts.producer.as_deref())?;
 
     // ─── AcroForm + widgets (when there are fields) ──────────────────────────
     if !fields.is_empty() {
-        let page_ids = resolve_page_ids(&pdf, catalog_id)?;
+        let page_ids = up.resolve_pages(&pdf, fields)?;
         let page_count = page_ids.len();
-        for spec in fields {
-            if spec.page >= page_count {
-                return Err(err(
-                    CODE_PARSE,
-                    format!(
-                        "field {:?} targets page {} but the PDF has {page_count} page(s)",
-                        spec.name, spec.page
-                    ),
-                ));
-            }
-        }
 
-        let font_id = alloc_id(&mut next_id)?;
+        let font_id = alloc_id(&mut up.next_id)?;
         let widget_ids: Vec<u32> = fields
             .iter()
-            .map(|_| alloc_id(&mut next_id))
+            .map(|_| alloc_id(&mut up.next_id))
             .collect::<Result<_, _>>()?;
-        let acroform_id = alloc_id(&mut next_id)?;
+        let acroform_id = alloc_id(&mut up.next_id)?;
 
         // Widgets, grouped by page for the page-side `/Annots`.
         let mut widgets_by_page: Vec<Vec<u32>> = vec![Vec::new(); page_count];
         for (spec, &wid) in fields.iter().zip(&widget_ids) {
             widgets_by_page[spec.page].push(wid);
             let page_ref = Ref::new(page_ids[spec.page] as i32);
-            objects.push(UpdatedObject {
+            up.objects.push(UpdatedObject {
                 id: wid,
                 bytes: write_widget_object(spec, Ref::new(wid as i32), page_ref),
             });
@@ -151,7 +108,7 @@ pub fn stamp(
         fchunk
             .type1_font(Ref::new(font_id as i32))
             .base_font(Name(b"Helvetica"));
-        objects.push(UpdatedObject {
+        up.objects.push(UpdatedObject {
             id: font_id,
             bytes: fchunk.as_bytes().to_vec(),
         });
@@ -179,20 +136,20 @@ pub fn stamp(
             }
             form.finish();
         }
-        objects.push(UpdatedObject {
+        up.objects.push(UpdatedObject {
             id: acroform_id,
             bytes: achunk.as_bytes().to_vec(),
         });
 
         // A widget is fillable only if reachable both ways: the catalog's
         // `/AcroForm /Fields` (added here) and the page's `/Annots` (below).
-        let (cs, ce) = find_object_bytes(&pdf, catalog_id)
+        let (cs, ce) = find_object_bytes(&pdf, up.catalog_id)
             .ok_or_else(|| err(CODE_PARSE, "catalog not found"))?;
         let cat_dict = extract_outer_dict(&pdf[cs..ce])
             .ok_or_else(|| err(CODE_PARSE, "catalog dict not parseable"))?;
         let mut cat_inner = cat_dict.to_vec();
         cat_inner.extend_from_slice(format!(" /AcroForm {acroform_id} 0 R").as_bytes());
-        objects.push(dict_object(catalog_id, &cat_inner));
+        up.objects.push(dict_object(up.catalog_id, &cat_inner));
 
         for (page_idx, widget_refs) in widgets_by_page.iter().enumerate() {
             if widget_refs.is_empty() {
@@ -203,22 +160,14 @@ pub fn stamp(
                 .ok_or_else(|| err(CODE_PARSE, format!("page node {page_obj_id} not found")))?;
             let pg_dict = extract_outer_dict(&pdf[s..e])
                 .ok_or_else(|| err(CODE_PARSE, format!("page node {page_obj_id} not parseable")))?;
-            objects.push(dict_object(
+            up.objects.push(dict_object(
                 page_obj_id,
                 &rewrite_page_with_annots(pg_dict, widget_refs)?,
             ));
         }
     }
 
-    let new_size = next_id;
-    let stamped = append_incremental_update(
-        pdf,
-        xref_offset,
-        catalog_id,
-        new_size,
-        extra_info_ref,
-        &objects,
-    )?;
+    let stamped = up.finish(pdf)?;
     Ok(StampResult {
         pdf: stamped,
         regions,

@@ -14,7 +14,7 @@ use crate::form::{FieldKind, FormSpec};
 /// by the signer, not the data layer — are silently skipped.
 ///
 /// The returned string is a complete, parse-valid `Quill.yaml` ready to be
-/// written to disk and loaded by [`quillmark_core::QuillConfig::from_yaml`].
+/// written to disk and loaded by [`quillmark_core::quill::QuillConfig::from_yaml`].
 pub fn scaffold_quill_yaml(spec: &FormSpec, quill_name: &str) -> String {
     let mut out = String::new();
 

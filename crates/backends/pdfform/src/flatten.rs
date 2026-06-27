@@ -14,14 +14,10 @@
 //! Entry point: [`flatten`].
 
 use quillmark_pdf::{
-    reader::{
-        append_incremental_update, assert_traditional_xref, err, extract_outer_dict,
-        find_dict_value, find_object_bytes, find_startxref, find_trailer_dict, parse_indirect_ref,
-        resolve_page_ids, UpdatedObject,
-    },
+    reader::{err, extract_outer_dict, find_dict_value, find_object_bytes, UpdatedObject},
     regions_of,
-    writer::{alloc_id, apply_producer_stamp, dict_object, pdf_escape, winansi_encode},
-    FieldSpec, FieldType, PdfError, StampOptions, StampResult, CHECKBOX_ON_STATE,
+    writer::{alloc_id, dict_object, pdf_escape, winansi_encode},
+    FieldSpec, FieldType, PdfError, PdfUpdate, StampOptions, StampResult, CHECKBOX_ON_STATE,
 };
 
 use crate::typography;
@@ -44,117 +40,62 @@ pub fn flatten(
     }
 
     let pdf = base;
-    let xref_offset = find_startxref(&pdf)?;
-    assert_traditional_xref(&pdf, xref_offset)?;
-    let trailer = find_trailer_dict(&pdf, xref_offset)?;
+    // Shared envelope: validate the input contract, read the trailer, seed the
+    // id counter, apply the optional `/Info` `/Producer` stamp.
+    let mut up = PdfUpdate::begin(&pdf, opts.producer.as_deref())?;
 
-    if find_dict_value(trailer, "Encrypt").is_some() {
-        return Err(err(
-            "pdf::encrypted",
-            "PDF is encrypted; the flatten path does not handle encrypted PDFs",
+    if !fields.is_empty() {
+        let page_ids = up.resolve_pages(&pdf, fields)?;
+        let page_count = page_ids.len();
+
+        // Standard Type1 fonts: Helvetica for text/choice, ZapfDingbats for
+        // checkboxes. Both are among the 14 standard PDF fonts every conforming
+        // reader provides.
+        let helv_id = alloc_id(&mut up.next_id)?;
+        let zadb_id = alloc_id(&mut up.next_id)?;
+        up.objects.push(type1_font_object(
+            helv_id,
+            typography::TEXT_FONT,
+            Some("WinAnsiEncoding"),
         ));
-    }
+        up.objects
+            .push(type1_font_object(zadb_id, typography::CHECK_FONT, None));
 
-    let (catalog_id, _) = find_dict_value(trailer, "Root")
-        .and_then(parse_indirect_ref)
-        .ok_or_else(|| err(CODE_PARSE, "/Root missing or malformed in trailer"))?;
-    let size = find_dict_value(trailer, "Size")
-        .and_then(|v| std::str::from_utf8(v.trim_ascii()).ok())
-        .and_then(|s| s.parse::<u32>().ok())
-        .ok_or_else(|| err(CODE_PARSE, "/Size missing or malformed in trailer"))?;
-    let info_ref = find_dict_value(trailer, "Info").and_then(parse_indirect_ref);
+        // Group fields by page.
+        let mut fields_by_page: Vec<Vec<&FieldSpec>> = vec![Vec::new(); page_count];
+        for spec in fields {
+            fields_by_page[spec.page].push(spec);
+        }
 
-    let mut next_id = size;
-    let mut objects: Vec<UpdatedObject> = Vec::new();
-    let mut extra_info_ref: Option<u32> = None;
+        // For each page with drawable fields: emit a content stream and rewrite the page dict.
+        for (page_idx, page_fields) in fields_by_page.iter().enumerate() {
+            let drawable: Vec<&FieldSpec> = page_fields
+                .iter()
+                .copied()
+                .filter(|s| has_drawable_value(s))
+                .collect();
+            if drawable.is_empty() {
+                continue;
+            }
 
-    // ─── /Info /Producer (when requested) ────────────────────────────────────
-    if let Some(producer) = opts.producer.as_deref() {
-        extra_info_ref =
-            apply_producer_stamp(&pdf, info_ref, producer, &mut next_id, &mut objects)?;
-    }
-
-    if fields.is_empty() {
-        let new_size = next_id;
-        let flat = append_incremental_update(
-            pdf,
-            xref_offset,
-            catalog_id,
-            new_size,
-            extra_info_ref,
-            &objects,
-        )?;
-        return Ok(StampResult { pdf: flat, regions });
-    }
-
-    let page_ids = resolve_page_ids(&pdf, catalog_id)?;
-    let page_count = page_ids.len();
-
-    for spec in fields {
-        if spec.page >= page_count {
-            return Err(err(
-                CODE_PARSE,
-                format!(
-                    "field {:?} targets page {} but the PDF has {page_count} page(s)",
-                    spec.name, spec.page
-                ),
+            let stream_id = alloc_id(&mut up.next_id)?;
+            up.objects.push(content_stream_object(
+                stream_id,
+                &build_content_stream(&drawable),
             ));
+
+            let page_obj_id = page_ids[page_idx];
+            let (s, e) = find_object_bytes(&pdf, page_obj_id)
+                .ok_or_else(|| err(CODE_PARSE, format!("page object {page_obj_id} not found")))?;
+            let pg_dict = extract_outer_dict(&pdf[s..e])
+                .ok_or_else(|| err(CODE_PARSE, "page dict not parseable"))?;
+
+            let new_pg = rewrite_page_for_flatten(pg_dict, helv_id, zadb_id, stream_id)?;
+            up.objects.push(dict_object(page_obj_id, &new_pg));
         }
     }
 
-    // Standard Type1 fonts: Helvetica for text/choice, ZapfDingbats for checkboxes.
-    // Both are among the 14 standard PDF fonts every conforming reader provides.
-    let helv_id = alloc_id(&mut next_id)?;
-    let zadb_id = alloc_id(&mut next_id)?;
-    objects.push(type1_font_object(
-        helv_id,
-        typography::TEXT_FONT,
-        Some("WinAnsiEncoding"),
-    ));
-    objects.push(type1_font_object(zadb_id, typography::CHECK_FONT, None));
-
-    // Group fields by page.
-    let mut fields_by_page: Vec<Vec<&FieldSpec>> = vec![Vec::new(); page_count];
-    for spec in fields {
-        fields_by_page[spec.page].push(spec);
-    }
-
-    // For each page with drawable fields: emit a content stream and rewrite the page dict.
-    for (page_idx, page_fields) in fields_by_page.iter().enumerate() {
-        let drawable: Vec<&FieldSpec> = page_fields
-            .iter()
-            .copied()
-            .filter(|s| has_drawable_value(s))
-            .collect();
-        if drawable.is_empty() {
-            continue;
-        }
-
-        let stream_id = alloc_id(&mut next_id)?;
-        objects.push(content_stream_object(
-            stream_id,
-            &build_content_stream(&drawable),
-        ));
-
-        let page_obj_id = page_ids[page_idx];
-        let (s, e) = find_object_bytes(&pdf, page_obj_id)
-            .ok_or_else(|| err(CODE_PARSE, format!("page object {page_obj_id} not found")))?;
-        let pg_dict = extract_outer_dict(&pdf[s..e])
-            .ok_or_else(|| err(CODE_PARSE, "page dict not parseable"))?;
-
-        let new_pg = rewrite_page_for_flatten(pg_dict, helv_id, zadb_id, stream_id)?;
-        objects.push(dict_object(page_obj_id, &new_pg));
-    }
-
-    let new_size = next_id;
-    let flat = append_incremental_update(
-        pdf,
-        xref_offset,
-        catalog_id,
-        new_size,
-        extra_info_ref,
-        &objects,
-    )?;
+    let flat = up.finish(pdf)?;
     Ok(StampResult { pdf: flat, regions })
 }
 
