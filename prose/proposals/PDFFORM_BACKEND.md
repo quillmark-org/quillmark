@@ -468,21 +468,15 @@ supports every field type, exercised through `pdfform`.
   `tooltip`→`description`, geometry→field order. A one-time scaffold (then
   hand-owned), guaranteeing `schema_field`↔schema consistency by construction.
   Natural home for a future `quillmark` CLI subcommand.
-- **Continuation/overflow pages** — compose *content* first (gov background +
-  Typst-typeset continuation), **stamp last** over the combined page set with
-  mixed geometry sources (`form.json` + introspection) in one `stamp()` call.
-  Kept *above* both backends so `pdfform` never gains a Typst dep. The page-merge
-  primitive this needs is now delivered as `quillmark-pdf`'s `compose` feature
-  (`concat_pdf_pages`), built on **lopdf** — superseding the original
-  `hayro-write::extract` plan (see §9's dated note). Two layers:
-  - **Fixed-capacity overflow** (a bounded number of card slots laid out across
-    pages, bound by card-instance addressing) **works today** — no new engine
-    code, validated through the resolver.
-  - **Unbounded continuation** (more cards than slots → render the overflow as
-    continuation pages and merge them in) is the remaining layer.
 - **Card-instance value addressing** (`$cards.<i>.<field>`, `$cards.<kind>.<i>.<field>`)
-  — landed; it is what makes fixed-capacity overflow work and the first real
-  consumer of continuation.
+  — landed in `resolve.rs`. Binds one card instance per form field, so a *static*
+  multi-page form can lay out a bounded number of card slots across its existing
+  pages and place each instance's value on its page.
+- **Continuation/overflow pages, page composition, and PDF merging are out of
+  scope.** `pdfform` fills *static* forms only: it stamps over a fixed,
+  pre-existing page set and never composes content, appends continuation pages,
+  or merges PDFs. A document carrying more card instances than the form has slots
+  is the author's concern, not the engine's.
 
 ## 8. Decisions ratified & deferred
 
@@ -602,51 +596,37 @@ The full backlog is §7; each item below is filed as a tracking issue.
 4. **Surface `regions` in the bindings + the `@quillmark/wasm` canvas contract**
    (value compositing + golden-image fixtures). → **#755**
 5. **`form.json` → `Quill.yaml` scaffold** (CLI subcommand). → **#756**
-6. **Continuation/overflow pages + card-instance addressing** (land together).
-   → **#757** — *foundation landed; see the dated note below.*
+6. **Card-instance addressing** (`$cards.<i>` / `$cards.<kind>.<i>`) → **#757** —
+   *landed; see the dated note below.* Continuation/overflow pages, page
+   composition, and PDF merging are **out of scope** (§7): `pdfform` fills static
+   forms only.
 7. **General `form-field(...)` in the Typst plate API.** → **#758**
 
 Longer-term, acknowledged-but-unscheduled items stay in §8 (508/PDF-UA
 accessibility, `form.json` ↔ Quill.yaml normalization, radio groups, comb
 fields).
 
-### Continuation/overflow foundation (2026-06-27, #757)
+### Card-instance addressing (2026-06-27, #757)
 
-The prerequisites for continuation/overflow landed; the unbounded layer remains.
+**Card-instance addressing landed; page composition / continuation is out of
+scope.** `pdfform` fills *static* forms only.
 
 - **Card-instance addressing** is in `resolve.rs`: a `schema_field` rooted at
   `$cards` binds one card instance, by absolute index (`$cards.<i>.<field>`) or
-  by kind + index (`$cards.<kind>.<i>.<field>`).
-- **Fixed-capacity overflow works today, validated.** A form whose `form.json`
-  lays out a bounded number of card slots across pages — each slot bound to a
-  distinct instance, with its own `page` — places each instance's value on its
-  page. No new engine code: per-field `page` + card-instance addressing already
-  carry it. Proven through `field_spec` (instance 0's value → page 0, instance
-  1's → page 1) in `resolve.rs`'s tests.
-- **The page-merge primitive is `quillmark-pdf`'s `compose` feature, built on
-  lopdf** — `concat_pdf_pages(pdfs: &[&[u8]]) -> Result<Vec<u8>, PdfError>`
-  concatenates the inputs' pages into one traditional-xref, unencrypted base the
-  stamp spine consumes (drops `/AcroForm`/`/Annots`, resolves inherited
-  `/MediaBox` down per page, forces `XrefType::CrossReferenceTable` exactly as
-  the qualification layer does). It is opt-in behind `compose` so the default
-  stamp build stays lopdf-free. **This supersedes the proposal's
-  `hayro-write::extract` plan**: `hayro-write` is internal / not-for-external-use
-  and not a workspace dep, whereas lopdf is already vendored (for
-  `quillmark-qualify`) and load → mutate → re-serialize yields the traditional
-  xref the spine's byte reader requires. The "compose content first, stamp last
-  over a combined page set" mechanism is proven headless: a widget stamped on an
-  offset page that exists only because of the merge lands on the correct page
-  (`tests/compose.rs`).
-
-The remaining **unbounded-continuation layer** (not built here) composes as:
-detect overflow (more cards than slots) → render the overflow cards as
-Typst-typeset continuation pages (via the Typst backend) →
-`concat_pdf_pages(gov_background, continuation)` → build a combined `&[FieldSpec]`
-(form.json fields on the background pages + introspected fields on the
-continuation pages, at offset page indices) → ONE `stamp()` call. This
-composition layer lives **above** both backends (in `quillmark` orchestration)
-so `pdfform` stays Typst-free, and needs a hybrid quill model that declares both
-a gov background and a continuation plate.
+  by kind + index (`$cards.<kind>.<i>.<field>`). It binds against the same
+  `$cards` array the Typst plate iterates, so it inherits zero-fill, validation,
+  and coercion.
+- A **static multi-page form** can therefore lay out a bounded number of card
+  slots across its existing pages — each slot a `form.json` field with its own
+  `page`, bound to a distinct instance — and each instance's value lands on its
+  page. No new engine code: per-field `page` + card-instance addressing carry it
+  (proven through `field_spec` in `resolve.rs`'s tests).
+- **Continuation/overflow pages, page composition, and PDF merging are out of
+  scope and not implemented.** The engine stamps over a fixed, pre-existing page
+  set; it never composes content, appends continuation pages, or merges PDFs. A
+  document with more card instances than the form has slots is the author's
+  concern, not the engine's. (`pdfform` consequently has **no** `lopdf` / page-
+  merge dependency — it is `pdf-writer`-only for stamping.)
 
 ### Open verification (not possible headless)
 

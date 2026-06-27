@@ -1,6 +1,5 @@
 pub mod blueprint;
 pub mod info;
-pub mod qualify;
 pub mod render;
 pub mod scaffold;
 pub mod schema;

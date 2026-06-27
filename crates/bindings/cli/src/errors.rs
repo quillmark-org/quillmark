@@ -9,8 +9,6 @@ pub enum CliError {
     Render(RenderError),
     Parse(quillmark_core::ParseError),
     InvalidArgument(String),
-    /// A failure in the qualification layer (decrypt/strip/extract).
-    Qualify(quillmark_qualify::QualifyError),
 }
 
 impl fmt::Display for CliError {
@@ -20,7 +18,6 @@ impl fmt::Display for CliError {
             CliError::Render(e) => write!(f, "{}", e),
             CliError::Parse(e) => write!(f, "Parse error: {}", e),
             CliError::InvalidArgument(msg) => write!(f, "Invalid argument: {}", msg),
-            CliError::Qualify(e) => write!(f, "Qualification error: {}", e),
         }
     }
 }
@@ -45,12 +42,6 @@ impl From<quillmark_core::ParseError> for CliError {
     }
 }
 
-impl From<quillmark_qualify::QualifyError> for CliError {
-    fn from(err: quillmark_qualify::QualifyError) -> Self {
-        CliError::Qualify(err)
-    }
-}
-
 pub type Result<T> = std::result::Result<T, CliError>;
 
 /// Print detailed diagnostics for CLI errors
@@ -68,9 +59,6 @@ pub fn print_cli_error(err: &CliError) {
         }
         CliError::InvalidArgument(msg) => {
             eprintln!("[ERROR] Invalid argument: {}", msg);
-        }
-        CliError::Qualify(qualify_err) => {
-            eprintln!("[ERROR] Qualification error: {}", qualify_err);
         }
     }
 }

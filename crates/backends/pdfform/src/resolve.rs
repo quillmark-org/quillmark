@@ -331,14 +331,14 @@ mod tests {
         assert_eq!(card_text("$cards.0.missing"), None);
     }
 
-    /// Fixed-capacity overflow, end-to-end through `field_spec` (no new engine
-    /// code): a form with card slots laid out across pages binds each card
-    /// INSTANCE to its own page via card-instance addressing. Two cards of one
-    /// kind, two slots on two different pages — instance 0's value must land on
-    /// page 0 and instance 1's on page 1, each as a full `FieldSpec`. This is the
-    /// validated proof that fixed-capacity overflow already works today.
+    /// Card slots on a STATIC multi-page form, end-to-end through `field_spec`:
+    /// a form with one card slot per page binds each card INSTANCE to its own
+    /// page via card-instance addressing. Two cards of one kind, two slots on two
+    /// different pages — instance 0's value must land on page 0 and instance 1's
+    /// on page 1, each as a full `FieldSpec`. (The form's page set is fixed;
+    /// page composition / continuation is out of scope.)
     #[test]
-    fn fixed_capacity_overflow_binds_instances_to_their_pages() {
+    fn card_instances_bind_to_their_static_form_pages() {
         // ≥2 cards of one kind in `$cards` (the same array the Typst plate reads).
         let data = json!({
             "$cards": [
