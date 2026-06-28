@@ -1,6 +1,6 @@
 # PDF Form Backend
 
-The `pdfform` backend fills existing government PDF forms — something the Typst backend fundamentally cannot do (Typst cannot embed a PDF page, so a Typst path would rasterize the form and lose fidelity). Instead of generating a page from a plate, `pdfform` stamps a fresh AcroForm onto a pre-existing background and binds your document's values into the widgets.
+The `pdfform` backend fills existing PDF forms — something the Typst backend fundamentally cannot do (Typst cannot embed a PDF page, so a Typst path would rasterize the form and lose fidelity). Instead of generating a page from a plate, `pdfform` stamps a fresh AcroForm onto a pre-existing background and binds your document's values into the widgets.
 
 It is Typst-free: a `pdfform` quill never compiles Typst code and a form-only build never links the Typst compiler.
 
@@ -15,13 +15,13 @@ my-form/
 └── form.json    # the value-free field reconstruction spec
 ```
 
-- **`form.pdf`** — the *stripped background*: the normalized gov form with its `/AcroForm`, widget annotations, and page `/Annots` removed (pure pages, rules, boxes, and labels).
+- **`form.pdf`** — the *stripped background*: the normalized form with its `/AcroForm`, widget annotations, and page `/Annots` removed (pure pages, rules, boxes, and labels).
 - **`form.json`** — the complete, value-free description of every field: name, page, geometry, type.
 
 At render time the backend writes the AcroForm **fresh** from `form.json` onto the background, then binds each field's value from your document data. It never reads or reconciles a form already in `form.pdf`.
 
 !!! note "Where the assets come from"
-    Producing a clean `form.pdf` + `form.json` from a raw gov PDF (decrypt, strip, extract, verify) is the job of a separate *qualification* layer and is out of scope for the engine. V1 quills hand-author both assets; the `gov_form` fixture in `crates/fixtures/resources/quills/gov_form/` is a worked example.
+    Producing a clean `form.pdf` + `form.json` from a raw source PDF (decrypt, strip, extract, verify) is the job of a separate *qualification* layer and is out of scope for the engine. V1 quills hand-author both assets; the `sample_form` fixture in `crates/fixtures/resources/quills/sample_form/` is a worked example.
 
 ## `Quill.yaml`
 
@@ -29,10 +29,10 @@ A `pdfform` quill declares `backend: pdfform` and has **no plate file**. The doc
 
 ```yaml
 quill:
-  name: gov_form
+  name: sample_form
   version: 0.1.0
   backend: pdfform
-  description: "Demo government PDF form filled by the Typst-free pdfform backend."
+  description: "Demo PDF form filled by the Typst-free pdfform backend."
 
 main:
   body:
@@ -200,7 +200,7 @@ pub struct RenderedRegion { pub name: String, pub page: usize, pub rect: [f32; 4
 pub enum RegionKind { Field { field_type: String, value: Option<String> } }
 ```
 
-Regions ride on **every** render regardless of format, so a GUI can overlay or composite field values onto whatever surface it shows. The `pdfform_preview` example (`crates/quillmark/examples/`) renders the `gov_form` fixture and prints its regions for cross-checking against a viewer.
+Regions ride on **every** render regardless of format, so a GUI can overlay or composite field values onto whatever surface it shows. The `pdfform_preview` example (`crates/quillmark/examples/`) renders the `sample_form` fixture and prints its regions for cross-checking against a viewer.
 
 ## Resources
 

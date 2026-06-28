@@ -81,7 +81,7 @@ const {
   Quill: PdfformQuill,
   Document: PdfformDocument,
 } = await import('@quillmark-wasm/pdfform')
-const { makeQuill, makeGovFormQuill, GOV_FORM_MARKDOWN } = await import('./test-helpers.js')
+const { makeQuill, makeSampleFormQuill, SAMPLE_FORM_MARKDOWN } = await import('./test-helpers.js')
 
 const TEST_MARKDOWN = `~~~card-yaml
 $quill: test_quill
@@ -237,13 +237,13 @@ describe('RenderSession canvas preview', () => {
 describe('RenderSession canvas preview (pdfform backend)', () => {
   function openPdfformQuill() {
     const engine = new PdfformQuillmark()
-    const quill = PdfformQuill.fromTree(makeGovFormQuill())
+    const quill = PdfformQuill.fromTree(makeSampleFormQuill())
     return { engine, quill }
   }
 
   function openPdfformSession() {
     const { engine, quill } = openPdfformQuill()
-    return engine.open(quill, PdfformDocument.fromMarkdown(GOV_FORM_MARKDOWN))
+    return engine.open(quill, PdfformDocument.fromMarkdown(SAMPLE_FORM_MARKDOWN))
   }
 
   it('reports canvas support and page geometry for a pdfform quill', () => {
@@ -251,7 +251,7 @@ describe('RenderSession canvas preview (pdfform backend)', () => {
     // The pdfform-preview backend rasterizes pre-flattened pages.
     expect(engine.supportsCanvas(quill)).toBe(true)
 
-    const session = engine.open(quill, PdfformDocument.fromMarkdown(GOV_FORM_MARKDOWN))
+    const session = engine.open(quill, PdfformDocument.fromMarkdown(SAMPLE_FORM_MARKDOWN))
     expect(session.pageCount).toBeGreaterThan(0)
     expect(session.backendId).toBe('pdfform')
     expect(session.supportsCanvas).toBe(true)

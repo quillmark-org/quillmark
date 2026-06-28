@@ -1,4 +1,4 @@
-//! End-to-end acceptance test for the `gov_form` fixture: render the
+//! End-to-end acceptance test for the `sample_form` fixture: render the
 //! hand-authored stripped background + form.json through the full engine
 //! (pdfform backend registered), then reparse with lopdf and assert the filled
 //! AcroForm. Technique A means values land in `/V`; appearance synthesis is the
@@ -9,7 +9,7 @@ use quillmark::{Document, OutputFormat, Quillmark, RenderOptions};
 use quillmark_core::RegionKind;
 
 const FILLED: &str = "~~~\n\
-$quill: gov_form\n\
+$quill: sample_form\n\
 $kind: main\n\
 full_name: Ada Lovelace\n\
 comments:\n\
@@ -24,8 +24,8 @@ fn render(markdown: &str) -> quillmark::RenderResult {
 }
 
 fn render_with(markdown: &str, flatten: bool) -> quillmark::RenderResult {
-    let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("gov_form"))
-        .expect("load gov_form quill");
+    let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("sample_form"))
+        .expect("load sample_form quill");
     let engine = Quillmark::new();
     let doc = Document::from_markdown(markdown).expect("parse markdown");
     engine
@@ -159,7 +159,7 @@ fn fixture_renders_structurally_valid_filled_pdf() {
 #[test]
 fn unchecked_and_unmatched_choice_render_blank() {
     let md = "~~~\n\
-$quill: gov_form\n\
+$quill: sample_form\n\
 $kind: main\n\
 full_name: Bob\n\
 agree: false\n\
@@ -262,7 +262,7 @@ fn flatten_transcodes_non_ascii_to_winansi() {
     // flat content stream as their WinAnsi bytes (not raw UTF-8), so a flat
     // rasterizer renders them with the WinAnsi-encoded Helvetica.
     let markdown = "~~~\n\
-        $quill: gov_form\n\
+        $quill: sample_form\n\
         $kind: main\n\
         full_name: \"Caf\u{e9} \u{2014} Se\u{f1}or \u{2019}A\u{2019}\"\n\
         comments: []\n\

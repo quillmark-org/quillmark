@@ -17,7 +17,7 @@ import { Quill, Document, Engine, isQuillmarkError } from '@quillmark-wasm/runti
 // `pkg/core` is NOT a public package subpath, it is the build the root
 // re-exports.
 import { Quill as CoreQuill, Document as CoreDocument } from '../../../pkg/core/wasm.js'
-import { makeQuill, makeGovFormQuill, GOV_FORM_MARKDOWN } from './test-helpers.js'
+import { makeQuill, makeSampleFormQuill, SAMPLE_FORM_MARKDOWN } from './test-helpers.js'
 
 const TEST_PLATE = `#import "@local/quillmark-helper:0.1.0": data
 #let title = data.title
@@ -206,9 +206,9 @@ describe('@quillmark/wasm/runtime — Engine (hidden core→backend crossing)', 
     // `{ formats, canvas }` manifest in DEFAULT_BACKENDS must match what the
     // loaded pdfform-preview binary actually reports.
     const engine = new Engine()
-    const quill = Quill.fromTree(makeGovFormQuill())
+    const quill = Quill.fromTree(makeSampleFormQuill())
     expect(quill.backendId).toBe('pdfform')
-    const doc = Document.fromMarkdown(GOV_FORM_MARKDOWN)
+    const doc = Document.fromMarkdown(SAMPLE_FORM_MARKDOWN)
 
     // What the static manifest reports (no load).
     const manifestFormats = await engine.supportedFormats(quill)

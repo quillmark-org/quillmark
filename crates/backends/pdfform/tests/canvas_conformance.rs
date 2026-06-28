@@ -7,7 +7,7 @@
 //! pre-flattening the field values into the page content streams at
 //! session-open, then rasterizing that flat PDF via hayro.
 //!
-//! This test (behind the `preview` feature) renders the `gov_form` fixture's
+//! This test (behind the `preview` feature) renders the `sample_form` fixture's
 //! session and asserts:
 //!   1. `render_rgba(0, scale)` returns a raster whose dimensions match
 //!      `page_size_pt × scale` (within rounding), and
@@ -25,7 +25,7 @@ use quillmark::{Document, OutputFormat, Quillmark, RenderOptions};
 use quillmark_core::RegionKind;
 
 const FILLED: &str = "~~~\n\
-$quill: gov_form\n\
+$quill: sample_form\n\
 $kind: main\n\
 full_name: Ada Lovelace\n\
 comments:\n\
@@ -37,8 +37,8 @@ favorite_color: green\n\
 
 #[test]
 fn pdfform_canvas_raster_is_complete() {
-    let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("gov_form"))
-        .expect("load gov_form quill");
+    let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("sample_form"))
+        .expect("load sample_form quill");
     let engine = Quillmark::new();
     let doc = Document::from_markdown(FILLED).expect("parse markdown");
 

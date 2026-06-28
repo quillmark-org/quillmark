@@ -35,24 +35,24 @@ export function makeQuill({
   ])
 }
 
-// The hand-authored `gov_form` fixture: a `pdfform`-backend quill shipping a
+// The hand-authored `sample_form` fixture: a `pdfform`-backend quill shipping a
 // stripped background (`form.pdf`) and a value-free field spec (`form.json`).
 // Loaded as a tree so the canvas tests can drive the pdfform-preview backend
 // (which rasterizes the pre-flattened page) exactly like a typst quill.
-const GOV_FORM_DIR = join(__dirname, '../../fixtures/resources/quills/gov_form/0.1.0')
+const SAMPLE_FORM_DIR = join(__dirname, '../../fixtures/resources/quills/sample_form/0.1.0')
 
-export function makeGovFormQuill() {
+export function makeSampleFormQuill() {
   return new Map([
-    ['Quill.yaml', new Uint8Array(readFileSync(join(GOV_FORM_DIR, 'Quill.yaml')))],
-    ['form.pdf', new Uint8Array(readFileSync(join(GOV_FORM_DIR, 'form.pdf')))],
-    ['form.json', new Uint8Array(readFileSync(join(GOV_FORM_DIR, 'form.json')))],
+    ['Quill.yaml', new Uint8Array(readFileSync(join(SAMPLE_FORM_DIR, 'Quill.yaml')))],
+    ['form.pdf', new Uint8Array(readFileSync(join(SAMPLE_FORM_DIR, 'form.pdf')))],
+    ['form.json', new Uint8Array(readFileSync(join(SAMPLE_FORM_DIR, 'form.json')))],
   ])
 }
 
-// A filled gov_form document: binds the FullName text field (among others), so
+// A filled sample_form document: binds the FullName text field (among others), so
 // the pre-flattened raster carries visible field-value ink.
-export const GOV_FORM_MARKDOWN = `~~~
-$quill: gov_form
+export const SAMPLE_FORM_MARKDOWN = `~~~
+$quill: sample_form
 $kind: main
 full_name: Ada Lovelace
 comments:

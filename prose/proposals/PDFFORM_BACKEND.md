@@ -10,7 +10,7 @@
 
 ## 1. Thesis & scope
 
-Quillmark gains a second backend, `pdfform`, dedicated to filling government PDF
+Quillmark gains a second backend, `pdfform`, dedicated to filling existing PDF
 forms — something the Typst backend fundamentally cannot do (Typst 0.15's
 `image()` cannot embed a PDF page, so any Typst path would rasterize the form
 and lose fidelity).
@@ -34,14 +34,14 @@ base PDF + a list of field specs*; the shared spine stamps. They differ in
 | **Typst** | introspection (dynamic, reflow) | the plate *template* (Typst code) | typst-pdf output |
 | **`pdfform`** | `form.json` (fixed, page-relative) | a declarative *resolver* | the stripped background |
 
-We do **not** route gov forms through Typst, and we do **not** make `pdfform` a
+We do **not** route forms through Typst, and we do **not** make `pdfform` a
 Typst "mode." The unification is *exactly at the seam*, not above it.
 
 ### The two-asset model (strip-and-rebuild)
 
 A `pdfform` quill ships two assets the qualification layer produced upstream:
 
-- **`form.pdf`** — the *stripped background*: the normalized gov form with its
+- **`form.pdf`** — the *stripped background*: the normalized form with its
   `/AcroForm`, widget annotations, and page `/Annots` removed (pure pages +
   content streams).
 - **`form.json`** — the complete, value-free field reconstruction spec.
@@ -57,7 +57,7 @@ operation.
 - `quillmark-pdf` spine: `&[FieldSpec]` → stamped PDF + regions, all field types.
 - `quillmark-pdfform` backend (Typst-free), with the `form.json` resolver.
 - Typst **rewired** onto the spine — signatures only; `usaf_memo` stays green.
-- One hand-authored gov-form quill fixture (`form.pdf` + `Quill.yaml` + `form.json`).
+- One hand-authored form quill fixture (`form.pdf` + `Quill.yaml` + `form.json`).
 - `regions` threaded through `RenderResult`.
 - The generalized raster-preview seam in core.
 - Per-backend feature-gated engine registration.
@@ -322,7 +322,7 @@ brings back `max_len`).
 The reader/appender is a deliberately-minimal byte scanner (lifted from the
 Typst crate's `pdf_scan.rs`, not `hayro-syntax` — which is read-only and exposes
 no byte spans, so it cannot drive a byte-splice append). It **hard-errors** on
-shapes a modern gov PDF can have: xref *streams*, encryption, indirect
+shapes a modern PDF can have: xref *streams*, encryption, indirect
 `/Annots`, deeply nested page trees. The V1 contract is therefore that the
 background is **traditional-xref, unencrypted, inline-annots, flat-tree**. The
 qualification layer guarantees this (its mandatory `qpdf --decrypt` already
@@ -435,7 +435,7 @@ supports every field type, exercised through `pdfform`.
 1. `quillmark-pdf` spine (`stamp`, all field types, `PdfError`, `pdf-writer`).
 2. Typst rewired onto it; legacy deleted; `usaf_memo` green.
 3. `quillmark-pdfform` backend + `form.json` resolver.
-4. One hand-authored gov-form quill fixture (`form.pdf` + `Quill.yaml` + `form.json`).
+4. One hand-authored form quill fixture (`form.pdf` + `Quill.yaml` + `form.json`).
 5. `regions` threaded through `RenderResult` (types in core).
 6. Generalized raster-preview seam; `supports_canvas` reconciled with the impl.
 7. Per-backend feature-gated engine registration; wasm can render `pdfform`→PDF
@@ -524,7 +524,7 @@ supports every field type, exercised through `pdfform`.
   `usaf_memo` signatures green (the regression proof).
 - `regions` threaded through `RenderResult` (`RenderedRegion`/`RegionKind` in
   core); the generalized raster-preview seam; per-backend feature-gated
-  registration; the `gov_form` fixture.
+  registration; the `sample_form` fixture.
 - Gates: `cargo test --workspace --all-features --locked` green; `cargo doc
   -Dwarnings` clean; new crates clippy-clean; all four bindings compile.
 
@@ -582,7 +582,7 @@ since shipped on this branch; kept here for the historical trail.
   seam), `backend.rs` (`supports_canvas` static/dynamic contract).
 - Registration: `crates/quillmark/src/orchestration/engine.rs`
   (`#[cfg(feature = "pdfform")]`); features in `quillmark` + `wasm` Cargo.toml.
-- Fixture: `crates/fixtures/resources/quills/gov_form/0.1.0/`
+- Fixture: `crates/fixtures/resources/quills/sample_form/0.1.0/`
   (`form.pdf` + `Quill.yaml` + `form.json`, all four field types).
 
 ### Way forward (priority order)
@@ -594,7 +594,7 @@ The full backlog is §7; each item below is filed as a tracking issue.
    enrichment and the `pdfform` `preview` raster. Lives in `pdfform`'s render
    feature, never the spine. → **#752**
 2. **The qualification layer** (decrypt/strip/extract/verify → `form.pdf` +
-   `form.json`) — the upstream dependency for *real* gov-form quills; today's
+   `form.json`) — the upstream dependency for *real* PDF-form quills; today's
    fixture is hand-authored. → **#753**
 3. **`pdfform` preview raster** (hayro background, the `preview` stub) **+
    typst-free WASM bundle.** → **#754**
@@ -638,7 +638,7 @@ scope.** `pdfform` fills *static* forms only.
 ### Open verification (not possible headless)
 
 Field styling and `0 Tf` auto-size must be eyeballed in appearance-synthesizing
-viewers — render the `gov_form` fixture and confirm in **Acrobat, Chrome
+viewers — render the `sample_form` fixture and confirm in **Acrobat, Chrome
 (pdfium), and Preview.app**: the text/choice values are visible and auto-sized
 inside their boxes, the checkbox shows a check, and every widget lands on its
 printed box. Flat/non-interactive renderers show the fields blank by design

@@ -1,6 +1,6 @@
 //! Visual preview harness for the `pdfform` backend.
 //!
-//! Renders `gov_form` → `gov_form_filled.pdf` and `taro` → `taro_preview.svg`,
+//! Renders `sample_form` → `sample_form_filled.pdf` and `taro` → `taro_preview.svg`,
 //! writes both to the fixtures output directory, and prints the regions sidecar
 //! for the filled form so field geometry can be cross-checked against a viewer.
 //!
@@ -10,9 +10,9 @@
 use quillmark::{Document, OutputFormat, Quillmark, RenderOptions};
 use quillmark_fixtures::{example_output_dir, quills_path, write_example_output};
 
-const GOV_FORM_MD: &str = "\
+const SAMPLE_FORM_MD: &str = "\
 ~~~
-$quill: gov_form
+$quill: sample_form
 $kind: main
 full_name: Ada Lovelace
 comments:
@@ -39,11 +39,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = Quillmark::new();
     let out_dir = example_output_dir();
 
-    // --- pdfform: gov_form → PDF ---
-    println!("=== pdfform backend: gov_form → PDF ===");
+    // --- pdfform: sample_form → PDF ---
+    println!("=== pdfform backend: sample_form → PDF ===");
     let gf_quill =
-        quillmark::quill_from_path(quills_path("gov_form")).expect("load gov_form quill");
-    let gf_doc = Document::from_markdown(GOV_FORM_MD).expect("parse gov_form markdown");
+        quillmark::quill_from_path(quills_path("sample_form")).expect("load sample_form quill");
+    let gf_doc = Document::from_markdown(SAMPLE_FORM_MD).expect("parse sample_form markdown");
     let gf_result = engine
         .render(
             &gf_quill,
@@ -53,10 +53,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ..Default::default()
             },
         )
-        .expect("gov_form render");
+        .expect("sample_form render");
 
-    write_example_output("gov_form_filled.pdf", &gf_result.artifacts[0].bytes)?;
-    println!("Written: {}", out_dir.join("gov_form_filled.pdf").display());
+    write_example_output("sample_form_filled.pdf", &gf_result.artifacts[0].bytes)?;
+    println!("Written: {}", out_dir.join("sample_form_filled.pdf").display());
 
     println!(
         "\nField regions sidecar ({} fields):",
@@ -98,7 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("SVG size: {} bytes", taro_result.artifacts[0].bytes.len());
 
     println!("\nDone. Open the files in the output directory to review:");
-    println!("  PDF: {}", out_dir.join("gov_form_filled.pdf").display());
+    println!("  PDF: {}", out_dir.join("sample_form_filled.pdf").display());
     println!("  SVG: {}", out_dir.join("taro_preview.svg").display());
 
     Ok(())

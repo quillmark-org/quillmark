@@ -1,7 +1,7 @@
 //! Minimal byte-level PDF reader and incremental-update writer. Not a general
 //! PDF parser — a deliberately small scanner that parses just enough of a base
 //! PDF to splice a single incremental update onto it, and hard-errors on shapes
-//! a modern gov PDF can carry but this V1 reader does not handle.
+//! a modern PDF can carry but this V1 reader does not handle.
 //!
 //! ## Input contract
 //!

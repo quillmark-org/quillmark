@@ -1,10 +1,10 @@
 //! # quillmark-pdfform — the PDF-form backend
 //!
-//! A Typst-free Quillmark backend dedicated to filling government PDF forms —
+//! A Typst-free Quillmark backend dedicated to filling existing PDF forms —
 //! something the Typst backend fundamentally cannot do. A `pdfform` quill ships
 //! two assets the (out-of-scope) qualification layer produced upstream:
 //!
-//! - **`form.pdf`** — the *stripped background*: the normalized gov form with
+//! - **`form.pdf`** — the *stripped background*: the normalized form with
 //!   its `/AcroForm`, widget annotations, and page `/Annots` removed.
 //! - **`form.json`** — the complete, value-free field reconstruction spec.
 //!
