@@ -2358,7 +2358,6 @@ name = "quillmark-pdfform"
 version = "0.92.1"
 dependencies = [
  "hayro",
- "hayro-svg",
  "lopdf",
  "quillmark",
  "quillmark-core",

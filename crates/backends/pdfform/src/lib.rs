@@ -31,8 +31,6 @@ use quillmark_core::{
     Artifact, Backend, Diagnostic, OutputFormat, Quill, RenderError, RenderOptions, RenderResult,
     RenderSession, Severity,
 };
-#[cfg(feature = "preview")]
-use quillmark_pdf::regions_of;
 use quillmark_pdf::{stamp, FieldSpec, PdfError, StampOptions};
 
 #[cfg(feature = "preview")]
@@ -40,7 +38,6 @@ use {
     hayro::hayro_interpret::{font::FontQuery, InterpreterSettings},
     hayro::hayro_syntax::Pdf as HayroPdf,
     hayro::{render as hayro_render, RenderCache, RenderSettings},
-    hayro_svg::{convert as hayro_svg_convert, RenderCache as SvgCache, SvgRenderSettings},
     std::sync::Arc,
 };
 
@@ -48,10 +45,7 @@ use {
 const FORM_PDF: &str = "form.pdf";
 const FORM_JSON: &str = "form.json";
 
-#[cfg(not(feature = "preview"))]
 const SUPPORTED_FORMATS: &[OutputFormat] = &[OutputFormat::Pdf];
-#[cfg(feature = "preview")]
-const SUPPORTED_FORMATS: &[OutputFormat] = &[OutputFormat::Pdf, OutputFormat::Svg];
 
 /// The PDF-form backend.
 #[derive(Debug, Default)]
@@ -173,12 +167,6 @@ impl SessionHandle for PdfformSession {
             });
         }
 
-        // SVG output: convert the pre-flattened PDF to SVG via hayro-svg.
-        #[cfg(feature = "preview")]
-        if format == OutputFormat::Svg {
-            return self.render_svg();
-        }
-
         // The producer threads from the product layer, else the backend default.
         let producer = Some(opts.producer.clone().unwrap_or_else(default_producer));
         let stamp_opts = StampOptions { producer };
@@ -245,37 +233,6 @@ impl SessionHandle for PdfformSession {
     }
 }
 
-#[cfg(feature = "preview")]
-impl PdfformSession {
-    /// Render all pages as SVG via hayro-svg, using the pre-flattened PDF.
-    fn render_svg(&self) -> Result<RenderResult, RenderError> {
-        let pdf = HayroPdf::new(self.flat_pdf.clone()).map_err(|_| {
-            engine_err(
-                "pdfform::svg_parse_failed",
-                "failed to parse pre-flattened PDF for SVG render",
-            )
-        })?;
-        let interp = standard_font_settings();
-        let svg_settings = SvgRenderSettings {
-            bg_color: [255, 255, 255, 255],
-        };
-        let artifacts: Vec<Artifact> = pdf
-            .pages()
-            .iter()
-            .map(|page| {
-                let cache = SvgCache::new();
-                let svg = hayro_svg_convert(page, &cache, &interp, &svg_settings);
-                Artifact {
-                    bytes: svg.into_bytes(),
-                    output_format: OutputFormat::Svg,
-                }
-            })
-            .collect();
-
-        let regions = regions_of(&self.field_specs);
-        Ok(RenderResult::new(artifacts, OutputFormat::Svg).with_regions(regions))
-    }
-}
 
 /// Build an `InterpreterSettings` that satisfies standard Type1 font queries
 /// (Helvetica, ZapfDingbats, etc.) using hayro's embedded font data.
