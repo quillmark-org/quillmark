@@ -242,7 +242,11 @@ pub enum FieldRegionKind {
         #[serde(rename = "fieldType")]
         field_type: String,
         /// The bound value, or `undefined` for a blank / unbound field.
-        #[serde(skip_serializing_if = "Option::is_none")]
+        /// `default` pairs with `skip_serializing_if` so the declared
+        /// `from_wasm_abi` round-trip is total: a blank field omits the key on
+        /// the way out and deserializes back to `None` rather than erroring with
+        /// `missing field 'value'`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         value: Option<String>,
     },
 }
@@ -525,6 +529,41 @@ mod tests {
         // value:None → absent from JSON (skip_serializing_if)
         assert!(!json.contains("\"value\""));
         assert!(json.contains("\"fieldType\":\"signature\""));
+    }
+
+    #[test]
+    #[cfg(any(feature = "typst", feature = "pdfform"))]
+    fn field_region_blank_value_round_trips() {
+        // The `from_wasm_abi` (JS→Rust) path uses the same serde derive. A blank
+        // value omits the key on the way out, so deserializing that JSON back
+        // must default to `None` rather than error with `missing field 'value'`.
+        // (Regression guard for the `#[serde(default)]` on `value`.)
+        let region = FieldRegion {
+            name: "Signature".to_string(),
+            page: 0,
+            rect: [180.0, 422.0, 520.0, 462.0],
+            kind: FieldRegionKind::Field {
+                field_type: "signature".to_string(),
+                value: None,
+            },
+        };
+        let json = serde_json::to_string(&region).unwrap();
+        let back: FieldRegion = serde_json::from_str(&json).expect("blank value round-trips");
+        #[allow(irrefutable_let_patterns)]
+        let FieldRegionKind::Field { value, .. } = back.kind else {
+            panic!("expected a Field region kind");
+        };
+        assert_eq!(value, None);
+
+        // Also accept JSON that omits `value` outright (the shape a JS caller
+        // would hand back for an unbound field).
+        let bare = r#"{"name":"Sig","page":0,"rect":[0.0,0.0,1.0,1.0],"kind":{"type":"field","fieldType":"signature"}}"#;
+        let parsed: FieldRegion = serde_json::from_str(bare).expect("missing value defaults");
+        #[allow(irrefutable_let_patterns)]
+        let FieldRegionKind::Field { value, .. } = parsed.kind else {
+            panic!("expected a Field region kind");
+        };
+        assert_eq!(value, None);
     }
 
     #[test]
