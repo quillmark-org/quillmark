@@ -47,7 +47,6 @@ pub const STANDARD_METADATA_KEYS: &[&str] =
 #[derive(Clone)]
 pub struct Quill {
     pub(crate) metadata: HashMap<String, QuillValue>,
-    pub(crate) plate: Option<String>,
     pub(crate) config: QuillConfig,
     pub(crate) files: FileTreeNode,
 }
@@ -66,11 +65,6 @@ impl Quill {
     /// Quill-specific metadata parsed from Quill.yaml.
     pub fn metadata(&self) -> &HashMap<String, QuillValue> {
         &self.metadata
-    }
-
-    /// The plate template content, if the quill declares one.
-    pub fn plate(&self) -> Option<&str> {
-        self.plate.as_deref()
     }
 
     /// The parsed schema configuration.
@@ -98,10 +92,6 @@ impl std::fmt::Debug for Quill {
         f.debug_struct("Quill")
             .field("name", &self.config.name)
             .field("backend_id", &self.config.backend)
-            .field(
-                "plate",
-                &self.plate.as_ref().map(|s| format!("<{} bytes>", s.len())),
-            )
             .field("files", &"<FileTreeNode>")
             .finish()
     }

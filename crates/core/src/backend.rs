@@ -12,10 +12,15 @@ pub trait Backend: Send + Sync + std::fmt::Debug {
     /// Get supported output formats.
     fn supported_formats(&self) -> &'static [OutputFormat];
 
-    /// Open an iterative render session from plate + compiled JSON data.
+    /// Open an iterative render session from a quill and compiled JSON data.
+    ///
+    /// The backend pulls whatever static inputs it needs straight from
+    /// `source` ([`Quill::files`] for assets, [`Quill::config`] for
+    /// backend-specific config). There is no universal "template" input: a
+    /// template/plate is one backend's private notion, read by that backend
+    /// from its own files, not a parameter every backend must accept.
     fn open(
         &self,
-        plate_content: &str,
         source: &Quill,
         json_data: &serde_json::Value,
     ) -> Result<RenderSession, RenderError>;

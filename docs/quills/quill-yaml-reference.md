@@ -42,8 +42,11 @@ Every Quill.yaml must have a `quill` section with format metadata.
 | `description`    | string | yes      | Human-readable description of the quill itself (non-empty). Independent of `main.description`, which is the optional schema description authored under `main:`. |
 | `version`        | string | yes      | Semantic version (`MAJOR.MINOR` or `MAJOR.MINOR.PATCH`) |
 | `author`         | string | no       | Creator of the Quill (defaults to `"Unknown"`) |
-| `plate_file`     | string | no       | Path to the plate file |
 | `ui`             | object | no       | Document-level UI metadata |
+
+A backend's own settings live under its backend-named section, not in `quill:`.
+The Typst template, for example, is declared as `typst.plate_file` (see the
+[`typst` Section](#typst-section) below).
 
 ```yaml
 quill:
@@ -52,6 +55,8 @@ quill:
   backend: typst
   description: Typesetted USAF Official Memorandum
   author: TongueToQuill
+
+typst:
   plate_file: plate.typ
 ```
 
@@ -406,8 +411,14 @@ Card kinds defined here are authored as `~~~` blocks (with a `$kind: <kind>` lin
 
 Backend-specific configuration for the Typst renderer.
 
+| Key          | Type   | Required | Description |
+|--------------|--------|----------|-------------|
+| `plate_file` | string | no       | Path (relative to the quill root) to the Typst template the backend compiles |
+| `packages`   | array  | no       | Typst packages the template depends on |
+
 ```yaml
 typst:
+  plate_file: plate.typ
   packages:
     - "@preview/appreciated-letter:0.1.0"
 ```
@@ -438,6 +449,8 @@ quill:
   backend: typst
   description: Monthly project status report
   author: Engineering Team
+
+typst:
   plate_file: plate.typ
 
 main:

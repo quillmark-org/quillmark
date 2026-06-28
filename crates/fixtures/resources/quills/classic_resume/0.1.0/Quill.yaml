@@ -2,8 +2,10 @@ quill:
   name: classic_resume
   version: 0.1.0
   backend: typst
-  plate_file: plate.typ
   description: A clean and modern classic resume template.
+
+typst:
+  plate_file: plate.typ
 
 main:
   fields:

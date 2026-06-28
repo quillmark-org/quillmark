@@ -18,8 +18,10 @@ QUILL_YAML_CONTENT = """quill:
   name: py_schema_smoke
   version: "1.0"
   backend: typst
-  plate_file: plate.typ
   description: Python schema/blueprint smoke test
+
+typst:
+  plate_file: plate.typ
 
 main:
   fields:

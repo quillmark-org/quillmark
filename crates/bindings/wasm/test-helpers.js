@@ -25,8 +25,10 @@ export function makeQuill({
   name: ${name}
   version: "${version}"
   backend: typst
-  plate_file: plate.typ
   description: Test quill for smoke tests
+
+typst:
+  plate_file: plate.typ
 `
   return new Map([
     ['Quill.yaml', enc.encode(yaml)],

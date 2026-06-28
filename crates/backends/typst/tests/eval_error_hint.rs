@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use quillmark_core::{Backend, FileTreeNode, OutputFormat, Quill, RenderOptions};
 use quillmark_typst::TypstBackend;
 
-fn host_source() -> Quill {
+fn host_tree() -> FileTreeNode {
     fn walk(dir: &Path) -> std::io::Result<FileTreeNode> {
         let mut files = HashMap::new();
         for entry in fs::read_dir(dir)? {
@@ -38,7 +38,22 @@ fn host_source() -> Quill {
         .join("quills")
         .join("usaf_memo")
         .join("0.2.0");
-    Quill::from_tree(walk(&quill_path).expect("walk fixture")).expect("load source")
+    walk(&quill_path).expect("walk fixture")
+}
+
+/// Build the host quill with its `plate.typ` replaced by `plate`; the fixture's
+/// `typst.plate_file: plate.typ` makes the backend read this override.
+fn source_with_plate(plate: &str) -> Quill {
+    let mut tree = host_tree();
+    if let FileTreeNode::Directory { files } = &mut tree {
+        files.insert(
+            "plate.typ".to_string(),
+            FileTreeNode::File {
+                contents: plate.as_bytes().to_vec(),
+            },
+        );
+    }
+    Quill::from_tree(tree).expect("load source")
 }
 
 /// `eval`s an unknown variable; the error resolves to the call site in
@@ -49,7 +64,7 @@ const EVAL_ERROR_PLATE: &str =
 /// Compilation happens during `open`, so the error may surface from either
 /// `open` or `render`.
 fn diagnostics_for(plate: &str) -> Vec<quillmark_core::Diagnostic> {
-    match TypstBackend.open(plate, &host_source(), &serde_json::json!({})) {
+    match TypstBackend.open(&source_with_plate(plate), &serde_json::json!({})) {
         Ok(session) => session
             .render(&RenderOptions {
                 output_format: Some(OutputFormat::Pdf),

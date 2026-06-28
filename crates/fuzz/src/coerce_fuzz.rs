@@ -130,7 +130,6 @@ fn config_with_one_field(schema: FieldSchema) -> QuillConfig {
         backend: "typst".to_string(),
         version: "1.0".to_string(),
         author: String::new(),
-        plate_file: None,
         backend_config: HashMap::new(),
     }
 }

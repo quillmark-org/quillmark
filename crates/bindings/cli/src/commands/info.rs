@@ -67,11 +67,6 @@ fn print_json(quill: &quillmark::Quill) -> Result<()> {
             serde_json::Value::Number(card_count.into()),
         );
     }
-    info.insert(
-        "has_plate".to_string(),
-        serde_json::Value::Bool(quill.plate().is_some()),
-    );
-
     // Add any additional metadata (excluding the standard fields already included)
     let mut extra_metadata = serde_json::Map::new();
     for (key, value) in metadata {
@@ -135,12 +130,6 @@ fn print_human_readable(quill: &quillmark::Quill) {
     if defaults_count > 0 {
         println!("  Defaults:    {}", defaults_count);
     }
-
-    // Plate
-    println!(
-        "  Has plate:   {}",
-        if quill.plate().is_some() { "yes" } else { "no" }
-    );
 
     // Additional metadata
     let extra_keys: Vec<&String> = metadata

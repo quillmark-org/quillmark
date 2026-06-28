@@ -23,8 +23,8 @@ impl Quill {
     ///
     /// Returns a non-empty `Vec<Diagnostic>` describing every problem found.
     /// When `Quill.yaml` itself contains multiple errors they are all
-    /// reported together; subsequent failures (missing plate) surface as
-    /// single-element vectors.
+    /// reported together. Backend-specific assets (e.g. a Typst plate) are
+    /// not read here — a backend resolves its own inputs at render time.
     pub fn from_tree(root: FileTreeNode) -> Result<Self, Vec<Diagnostic>> {
         let quill_yaml_bytes = root.get_file("Quill.yaml").ok_or_else(|| {
             vec![diag(
@@ -77,29 +77,8 @@ impl Quill {
             metadata.insert(format!("{}_{}", config.backend, key), value.clone());
         }
 
-        // Read the plate content from plate file (if specified)
-        let plate_content: Option<String> = if let Some(ref plate_file_name) = config.plate_file {
-            let plate_bytes = root.get_file(plate_file_name).ok_or_else(|| {
-                vec![diag(
-                    format!("Plate file '{}' not found in file tree", plate_file_name),
-                    "quill::plate_missing",
-                )]
-            })?;
-
-            let content = String::from_utf8(plate_bytes.to_vec()).map_err(|e| {
-                vec![diag(
-                    format!("Plate file '{}' is not valid UTF-8: {}", plate_file_name, e),
-                    "quill::invalid_utf8",
-                )]
-            })?;
-            Some(content)
-        } else {
-            None
-        };
-
         let source = Quill {
             metadata,
-            plate: plate_content,
             config,
             files: root,
         };

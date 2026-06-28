@@ -2,8 +2,10 @@ quill:
   name: usaf_memo
   version: 0.2.0
   backend: typst
-  plate_file: plate.typ
   description: U.S. Air Force and Space Force Official Memorandum
+
+typst:
+  plate_file: plate.typ
 
 main:
   body:

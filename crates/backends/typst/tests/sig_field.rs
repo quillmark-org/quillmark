@@ -16,7 +16,11 @@ use quillmark_typst::TypstBackend;
 /// — `signature-field` doesn't depend on any quill-specific config so we
 /// just need a valid quill skeleton, and `usaf_memo` is the fixture the
 /// spikes validated.
-fn host_source() -> Quill {
+/// Walk the `usaf_memo@0.2.0` fixture into an in-memory tree. Reused as a host
+/// — `signature-field` doesn't depend on any quill-specific config, so we just
+/// need a valid quill skeleton (fonts, packages), and `usaf_memo` is the
+/// fixture the spikes validated.
+fn host_tree() -> FileTreeNode {
     fn walk(dir: &Path) -> std::io::Result<FileTreeNode> {
         let mut files = HashMap::new();
         for entry in fs::read_dir(dir)? {
@@ -46,7 +50,21 @@ fn host_source() -> Quill {
         .join("quills")
         .join("usaf_memo")
         .join("0.2.0");
-    let tree = walk(&quill_path).expect("walk fixture");
+    walk(&quill_path).expect("walk fixture")
+}
+
+/// Build the host quill with its `plate.typ` replaced by `plate`. The fixture
+/// declares `typst.plate_file: plate.typ`, so the backend reads this override.
+fn source_with_plate(plate: &str) -> Quill {
+    let mut tree = host_tree();
+    if let FileTreeNode::Directory { files } = &mut tree {
+        files.insert(
+            "plate.typ".to_string(),
+            FileTreeNode::File {
+                contents: plate.as_bytes().to_vec(),
+            },
+        );
+    }
     Quill::from_tree(tree).expect("load source")
 }
 
@@ -58,8 +76,8 @@ fn compile(plate: &str) -> Result<Vec<u8>, RenderError> {
 /// Like [`compile`] but threads `json_data` to the plate's `data` binding, so a
 /// plate can exercise value binding via `data.*`.
 fn compile_with_data(plate: &str, json_data: &serde_json::Value) -> Result<Vec<u8>, RenderError> {
-    let source = host_source();
-    let session = TypstBackend.open(plate, &source, json_data)?;
+    let source = source_with_plate(plate);
+    let session = TypstBackend.open(&source, json_data)?;
     let result = session.render(&RenderOptions {
         output_format: Some(OutputFormat::Pdf),
         ..Default::default()
@@ -552,9 +570,9 @@ fn form_field_regions_carry_type_and_value() {
 #form-field("cho", type: "choice", options: ("A", "B"), value: "B")
 #form-field("sig", type: "signature")
 "#;
-    let source = host_source();
+    let source = source_with_plate(plate);
     let session = TypstBackend
-        .open(plate, &source, &serde_json::json!({}))
+        .open(&source, &serde_json::json!({}))
         .expect("open");
     let result = session
         .render(&RenderOptions {

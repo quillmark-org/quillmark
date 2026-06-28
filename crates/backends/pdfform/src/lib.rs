@@ -69,7 +69,6 @@ impl Backend for PdfformBackend {
 
     fn open(
         &self,
-        _plate_content: &str,
         source: &Quill,
         json_data: &serde_json::Value,
     ) -> Result<RenderSession, RenderError> {

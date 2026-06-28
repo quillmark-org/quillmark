@@ -78,12 +78,7 @@ impl Quillmark {
         let backend = self.resolve_backend(quill)?;
         quill.check_quill_reference(doc)?;
         let json_data = quill.compile_data(doc)?;
-        let plate_content = quill
-            .plate()
-            .filter(|s| !s.is_empty())
-            .unwrap_or("")
-            .to_string();
-        backend.open(&plate_content, quill, &json_data)
+        backend.open(quill, &json_data)
     }
 
     /// Render `doc` against `quill` in one shot. Convenience over

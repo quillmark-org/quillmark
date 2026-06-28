@@ -11,8 +11,8 @@ fn make_quill_dir(temp_dir: &TempDir, name: &str, backend: &str) -> std::path::P
     fs::write(
         quill_path.join("Quill.yaml"),
         format!(
-            "quill:\n  name: \"{}\"\n  version: \"1.0\"\n  backend: \"{}\"\n  plate_file: \"plate.typ\"\n  description: \"Test\"\n",
-            name, backend
+            "quill:\n  name: \"{}\"\n  version: \"1.0\"\n  backend: \"{}\"\n  description: \"Test\"\n\n{}:\n  plate_file: plate.typ\n",
+            name, backend, backend
         ),
     )
     .unwrap();
@@ -74,7 +74,7 @@ fn test_quill_engine_end_to_end() {
     fs::create_dir_all(&quill_path).unwrap();
     fs::write(
         quill_path.join("Quill.yaml"),
-        "quill:\n  name: \"my_test_quill\"\n  version: \"1.0\"\n  backend: \"typst\"\n  plate_file: \"plate.typ\"\n  description: \"Test\"\n",
+        "quill:\n  name: \"my_test_quill\"\n  version: \"1.0\"\n  backend: \"typst\"\n  description: \"Test\"\n\ntypst:\n  plate_file: plate.typ\n",
     ).unwrap();
     fs::write(
         quill_path.join("plate.typ"),

@@ -13,7 +13,7 @@ use lopdf::Object;
 use quillmark_core::{Backend, FileTreeNode, OutputFormat, Quill, RenderOptions};
 use quillmark_typst::TypstBackend;
 
-fn host_source() -> Quill {
+fn host_tree() -> FileTreeNode {
     fn walk(dir: &Path) -> std::io::Result<FileTreeNode> {
         let mut files = HashMap::new();
         for entry in fs::read_dir(dir)? {
@@ -43,15 +43,31 @@ fn host_source() -> Quill {
         .join("quills")
         .join("usaf_memo")
         .join("0.2.0");
-    Quill::from_tree(walk(&quill_path).expect("walk fixture")).expect("load source")
+    walk(&quill_path).expect("walk fixture")
+}
+
+/// Build the host quill with its `plate.typ` replaced by `plate`; the fixture's
+/// `typst.plate_file: plate.typ` makes the backend read this override.
+fn source_with_plate(plate: &str) -> Quill {
+    let mut tree = host_tree();
+    if let FileTreeNode::Directory { files } = &mut tree {
+        files.insert(
+            "plate.typ".to_string(),
+            FileTreeNode::File {
+                contents: plate.as_bytes().to_vec(),
+            },
+        );
+    }
+    Quill::from_tree(tree).expect("load source")
 }
 
 const PLATE: &str = "#set page(width: 400pt, height: 300pt)\n= Hello\n";
 
 /// Render a plate to PDF bytes via the public `Backend`/`RenderSession` path.
-fn render_pdf(source: &Quill, plate: &str) -> Vec<u8> {
+fn render_pdf(plate: &str) -> Vec<u8> {
+    let source = source_with_plate(plate);
     let session = TypstBackend
-        .open(plate, source, &serde_json::json!({}))
+        .open(&source, &serde_json::json!({}))
         .expect("open session");
     let result = session
         .render(&RenderOptions {
@@ -84,14 +100,14 @@ fn info_string(pdf: &[u8], key: &[u8]) -> Vec<u8> {
 
 #[test]
 fn default_producer_is_quillmark_version() {
-    let pdf = render_pdf(&host_source(), PLATE);
+    let pdf = render_pdf(PLATE);
     let expected = format!("Quillmark {}", env!("CARGO_PKG_VERSION"));
     assert_eq!(producer_of(&pdf), expected.as_bytes());
 }
 
 #[test]
 fn default_pass_preserves_typst_creator() {
-    let pdf = render_pdf(&host_source(), PLATE);
+    let pdf = render_pdf(PLATE);
     let creator = info_string(&pdf, b"Creator");
     assert!(
         creator.starts_with(b"Typst"),
@@ -102,10 +118,10 @@ fn default_pass_preserves_typst_creator() {
 
 #[test]
 fn producer_override_via_render_options() {
-    let source = host_source();
+    let source = source_with_plate(PLATE);
     let backend = TypstBackend;
     let session = backend
-        .open(PLATE, &source, &serde_json::json!({}))
+        .open(&source, &serde_json::json!({}))
         .expect("open session");
     // Includes (), and \\ to exercise PDF literal-string escaping.
     let override_str = r"ACME (PDF) \ Tool 2.0";
@@ -124,10 +140,10 @@ fn producer_override_via_render_options() {
 fn producer_override_non_ascii_roundtrips() {
     // A non-ASCII override takes the UTF-16BE+BOM hex-string branch of
     // pdf_text_string; assert it decodes back to the original.
-    let source = host_source();
+    let source = source_with_plate(PLATE);
     let backend = TypstBackend;
     let session = backend
-        .open(PLATE, &source, &serde_json::json!({}))
+        .open(&source, &serde_json::json!({}))
         .expect("open session");
     let override_str = "Quillmark 日本語 ✒";
     let result = session
@@ -156,7 +172,7 @@ fn producer_composes_with_signature_field() {
 #set page(width: 600pt, height: 400pt, margin: 50pt)
 #signature-field("a")
 "#;
-    let pdf = render_pdf(&host_source(), plate);
+    let pdf = render_pdf(plate);
 
     // /Producer present.
     let expected = format!("Quillmark {}", env!("CARGO_PKG_VERSION"));
