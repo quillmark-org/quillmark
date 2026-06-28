@@ -135,6 +135,13 @@ fn fixture_renders_structurally_valid_filled_pdf() {
             assert_eq!(value.as_deref(), Some("Ada Lovelace"));
         }
     }
+    // Geometry rides the sidecar too: a real page and a non-degenerate rect.
+    assert!(r_full.page < doc.get_pages().len().max(1));
+    assert!(
+        r_full.rect[2] > r_full.rect[0] && r_full.rect[3] > r_full.rect[1],
+        "region rect is a proper box: {:?}",
+        r_full.rect
+    );
 
     // Producer stamped with the backend default.
     let info = doc

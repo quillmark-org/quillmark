@@ -68,11 +68,17 @@ impl RenderSession {
         }
     }
 
-    /// Borrow the underlying [`SessionHandle`] for typed-side-channel access.
+    /// Borrow the underlying [`SessionHandle`].
     ///
-    /// Bindings call this and downcast via [`SessionHandle::as_any`] to reach
-    /// backend-specific surfaces. Intentionally `#[doc(hidden)]` — the shape
-    /// of this accessor is not part of the stable public API.
+    /// The canonical canvas-preview path does **not** go through here: it
+    /// dispatches generically through [`page_size_pt`](RenderSession::page_size_pt)
+    /// / [`render_rgba`](RenderSession::render_rgba) on the session, with no
+    /// downcast. This accessor exists only as a last-resort escape hatch for a
+    /// backend that exposes a richer *typed* surface — reach it by downcasting
+    /// via [`SessionHandle::as_any`]. (No in-tree caller currently does;
+    /// `typst_session_of` is callerless and a candidate for removal.)
+    /// Intentionally `#[doc(hidden)]` — the shape of this accessor is not part
+    /// of the stable public API.
     #[doc(hidden)]
     pub fn handle(&self) -> &dyn SessionHandle {
         &*self.inner

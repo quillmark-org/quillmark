@@ -184,8 +184,16 @@ The widget is unsigned: Quillmark performs no cryptography. To produce a signed 
 | Format | Support |
 |---|---|
 | **PDF** | Always — the deliverable; always an interactive AcroForm (Technique A). |
-| **SVG** | Under the `preview` feature only. |
-| **PNG / canvas** | Under the `preview` feature only. |
+| **SVG** | A `render()` output format, under the `preview` feature only. |
+
+`OutputFormat::Png` is **not** supported: under `preview` the backend's formats
+are `[Pdf, Svg]`, so `render` with `output_format: Some(Png)` returns
+`FormatNotSupported`.
+
+**Canvas** is a separate surface from the `render()` output formats above: it is
+the WASM `paint()` raster path (`render_rgba`), not an `OutputFormat`. It is
+likewise available only under `preview` (which the WASM build enables via
+`pdfform-preview`). See [PREVIEW.md](../../prose/canon/PREVIEW.md).
 
 The PDF is the real deliverable. By design (Technique A — real fields plus `NeedAppearances`, no baked appearance streams), **values appear only in viewers that synthesize appearances** — Acrobat, Chrome/pdfium, Preview.app, pdf.js's forms layer. A flat, non-interactive rasterizer renders the fields blank.
 

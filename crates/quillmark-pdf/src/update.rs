@@ -10,8 +10,9 @@
 
 use crate::error::PdfError;
 use crate::reader::{
-    append_incremental_update, assert_traditional_xref, err, find_dict_value, find_startxref,
-    find_trailer_dict, parse_indirect_ref, resolve_page_ids, UpdatedObject,
+    append_incremental_update, assert_overwrite_gen_zero, assert_traditional_xref, err,
+    find_dict_value, find_startxref, find_trailer_dict, parse_indirect_ref, resolve_page_ids,
+    UpdatedObject,
 };
 use crate::writer::apply_producer_stamp;
 use crate::FieldSpec;
@@ -55,6 +56,10 @@ impl PdfUpdate {
         let (catalog_id, _) = find_dict_value(trailer, "Root")
             .and_then(parse_indirect_ref)
             .ok_or_else(|| err(CODE_PARSE, "/Root missing or malformed in trailer"))?;
+        // The new trailer re-references the catalog as `/Root <id> 0 R`, so a
+        // non-zero-generation catalog would be silently corrupted even when only
+        // the producer is stamped (catalog not itself overwritten).
+        assert_overwrite_gen_zero(pdf, catalog_id, "catalog (/Root)")?;
         let size = find_dict_value(trailer, "Size")
             .and_then(|v| std::str::from_utf8(v.trim_ascii()).ok())
             .and_then(|s| s.parse::<u32>().ok())
@@ -100,6 +105,10 @@ impl PdfUpdate {
                     ),
                 ));
             }
+            // A targeted page node is overwritten (its `/Annots`) and referenced
+            // by every widget on it as gen 0, so a non-zero-generation page would
+            // be silently corrupted.
+            assert_overwrite_gen_zero(pdf, page_ids[spec.page], "page")?;
         }
         Ok(page_ids)
     }

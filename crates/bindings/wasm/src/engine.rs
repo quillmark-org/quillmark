@@ -1400,10 +1400,22 @@ impl RenderSession {
             .to_js_value());
         }
 
+        // `page_size_pt(page)` already succeeded above, so `page` is in range;
+        // a `None` here therefore means the backend reported a canvas
+        // (`ensure_canvas` passed) but produced no raster — a capability/impl
+        // disagreement, not a bad page index. Label it as such instead of
+        // mislabelling it page-out-of-range.
         let (pixel_w, pixel_h, mut rgba) = self
             .inner
             .render_rgba(page, render_scale as f32)
-            .ok_or_else(|| self.page_oob_error("paint", page))?;
+            .ok_or_else(|| {
+                WasmError::from(format!(
+                    "paint: backend '{}' reported a canvas painter but produced no raster \
+                     for page {page} (render_rgba returned None on an in-range page)",
+                    self.backend_id
+                ))
+                .to_js_value()
+            })?;
 
         canvas_ctx.set_canvas_dims(pixel_w, pixel_h)?;
 

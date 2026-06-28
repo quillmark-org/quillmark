@@ -102,6 +102,10 @@ fn lookup<'a>(data: &'a Value, path: &str) -> Option<&'a Value> {
 /// Resolve a `$cards`-rooted path: select one card from the `$cards` array
 /// either by absolute index (`$cards.<i>...`) or by kind + index
 /// (`$cards.<kind>.<i>...`), then descend the remaining segments into it.
+///
+/// The first segment is tried as an absolute index *before* being treated as a
+/// kind, so **card kinds are expected to be non-numeric**: a `$kind` that is a
+/// numeric string can only be reached by its absolute index, never by kind.
 fn lookup_card<'a, 'p, I>(data: &'a Value, mut parts: I) -> Option<&'a Value>
 where
     I: Iterator<Item = &'p str>,
@@ -329,6 +333,60 @@ mod tests {
         assert_eq!(card_text("$cards.indorsement"), None);
         assert_eq!(card_text("$cards"), None);
         assert_eq!(card_text("$cards.0.missing"), None);
+    }
+
+    #[test]
+    fn is_truthy_string_and_number_variants() {
+        // Beyond the common JSON-bool path: the defensive string forms (any
+        // case, surrounding whitespace) and non-zero numbers read as truthy.
+        for s in ["true", "Yes", " ON ", "1", "y", "Checked"] {
+            assert!(is_truthy(&json!(s)), "{s:?} should be truthy");
+        }
+        for s in ["false", "no", "0", "", "maybe", "off"] {
+            assert!(!is_truthy(&json!(s)), "{s:?} should be falsy");
+        }
+        assert!(is_truthy(&json!(42)));
+        assert!(is_truthy(&json!(-1)));
+        assert!(!is_truthy(&json!(0)));
+        // Non-scalars are never truthy.
+        assert!(!is_truthy(&json!(null)));
+        assert!(!is_truthy(&json!([true])));
+        assert!(!is_truthy(&json!({"a": 1})));
+    }
+
+    #[test]
+    fn coerce_text_array_filters_non_string_elements() {
+        // Mixed array: nulls and objects are dropped; scalars join with newlines.
+        assert_eq!(
+            coerce_text(&json!([null, "a", { "x": 1 }, 2, true])),
+            Some("a\n2\ntrue".into())
+        );
+        // An all-null (or otherwise empty-after-filter) array → None, so the
+        // widget carries no `/V`.
+        assert_eq!(coerce_text(&json!([null, { "x": 1 }])), None);
+        assert_eq!(coerce_text(&json!([])), None);
+    }
+
+    #[test]
+    fn numeric_card_kind_cannot_be_addressed_by_kind() {
+        // KNOWN LIMITATION: `lookup_card` tries `parse::<usize>()` on the first
+        // segment first, so a `$kind` that is a numeric string is unreachable by
+        // kind — `$cards.<n>...` is always read as an absolute index. Card kinds
+        // are therefore expected to be non-numeric.
+        let data = json!({
+            "$cards": [
+                { "$kind": "note", "from": "first" },
+                { "$kind": "2",    "from": "numeric-kind" }
+            ]
+        });
+        let by = |path| {
+            resolve_value(&FieldKind::Text { multiline: false }, Some(path), &data)
+        };
+        // `$cards.2.from` is read as absolute index 2 (out of range) — NOT as
+        // "kind \"2\", index <next>".
+        assert_eq!(by("$cards.2.from"), None);
+        // The numeric-kind card is only reachable by its absolute index.
+        assert_eq!(by("$cards.1.from"), Some("numeric-kind".into()));
     }
 
     /// Card slots on a STATIC multi-page form, end-to-end through `field_spec`:

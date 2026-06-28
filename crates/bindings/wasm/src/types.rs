@@ -545,7 +545,13 @@ mod tests {
         assert_eq!(wasm_region.name, "Agree");
         assert_eq!(wasm_region.page, 0);
         assert_eq!(wasm_region.rect, [180.0, 538.0, 194.0, 552.0]);
-        let FieldRegionKind::Field { field_type, value } = wasm_region.kind;
+        // Refutable form so adding a `FieldRegionKind` variant is non-breaking
+        // here; the `allow` covers the single-variant-today warning and lapses
+        // once a second variant exists.
+        #[allow(irrefutable_let_patterns)]
+        let FieldRegionKind::Field { field_type, value } = wasm_region.kind else {
+            panic!("expected a Field region kind");
+        };
         assert_eq!(field_type, "checkbox");
         assert_eq!(value.as_deref(), Some("Yes"));
     }

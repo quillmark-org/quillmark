@@ -28,6 +28,14 @@ High-level API: `Quillmark` (the engine — a backend registry + render dispatch
 
 Implements `Backend` for PDF, SVG, and PNG. Converts Markdown fields to Typst markup inside `open()`. Resolves fonts and assets. See [PLATE_DATA.md](PLATE_DATA.md).
 
+### `backends/quillmark-pdfform`
+
+The second backend: fills an existing AcroForm PDF rather than typesetting from scratch. Resolves card values against the quill's `form.json` spec and stamps them onto the base `form.pdf` as real interactive fields (Technique A — `NeedAppearances`, no baked appearance streams). Output is always an interactive AcroForm PDF; under the `preview` feature it also emits SVG and a WASM canvas raster by pre-flattening values into the page content streams (hayro raster). Every render returns a `regions` sidecar (per-field geometry + bound value). See [docs/quills/pdfform-backend.md](../../docs/quills/pdfform-backend.md) and [PREVIEW.md](PREVIEW.md).
+
+### `quillmark-pdf`
+
+The shared PDF stamp spine: Typst-free, `pdf-writer`-only leaf infrastructure consumed by `quillmark-pdfform`. A minimal byte-level reader plus a single incremental-update appender that splices a fresh `/AcroForm` (and `/Info` `/Producer` stamp) onto a base PDF. Deliberately small — it hard-errors on out-of-contract input (xref streams, encryption, indirect `/Annots`, non-zero-generation base objects) rather than parsing the full format.
+
 ### `bindings/*`
 
 Language surfaces over the one core engine: `quillmark-python` (PyO3, PyPI),

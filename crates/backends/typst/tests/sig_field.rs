@@ -566,8 +566,13 @@ fn form_field_regions_carry_type_and_value() {
     let mut got: std::collections::HashMap<String, (String, Option<String>)> =
         std::collections::HashMap::new();
     for r in &result.regions {
-        let RegionKind::Field { field_type, value } = &r.kind;
-        got.insert(r.name.clone(), (field_type.clone(), value.clone()));
+        // Refutable `if let` (not an irrefutable `let`) so a future `RegionKind`
+        // variant stays non-breaking here; the `allow` covers the
+        // single-variant-today warning and lapses once a second variant exists.
+        #[allow(irrefutable_let_patterns)]
+        if let RegionKind::Field { field_type, value } = &r.kind {
+            got.insert(r.name.clone(), (field_type.clone(), value.clone()));
+        }
     }
 
     assert_eq!(

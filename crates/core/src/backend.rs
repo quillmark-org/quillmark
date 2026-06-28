@@ -19,11 +19,17 @@ pub trait Backend: Send + Sync + std::fmt::Debug {
     ///
     /// This is the static, pre-session half of the raster-preview seam; the
     /// dynamic half is `SessionHandle::page_size_pt` / `render_rgba`, which
-    /// default to `None`. The two must agree by construction: a backend that
-    /// returns `true` here **must** override both session methods, and one that
-    /// leaves them `None` must return `false` here. The painter dispatches
-    /// generically through the session seam, so a mismatch surfaces as a canvas
-    /// that reports itself available yet paints nothing.
+    /// default to `None`. The two are **expected to agree by convention** — a
+    /// backend that returns `true` here should override both session methods,
+    /// and one that leaves them `None` should return `false` here — but nothing
+    /// in the type system enforces it: they are three separately-defaultable
+    /// methods on two traits. The in-tree backends uphold the convention; an
+    /// out-of-tree backend that returns `true` here while leaving `render_rgba`
+    /// at its `None` default reproduces the paint-nothing failure the seam is
+    /// meant to avoid. The painter dispatches generically through the session
+    /// seam, so such a backend reports a canvas as available yet produces no
+    /// raster (surfaced as a distinct "reported canvas but produced no raster"
+    /// error, not a page-out-of-range one).
     fn supports_canvas(&self) -> bool {
         false
     }

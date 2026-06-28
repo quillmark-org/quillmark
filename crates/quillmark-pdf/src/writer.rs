@@ -6,7 +6,10 @@
 //! so the two can never drift.
 
 use crate::error::PdfError;
-use crate::reader::{err, extract_outer_dict, find_dict_value, find_object_bytes, UpdatedObject};
+use crate::reader::{
+    assert_overwrite_gen_zero, err, extract_outer_dict, find_dict_value, find_object_bytes,
+    UpdatedObject,
+};
 
 const CODE_PARSE: &str = "pdf::write";
 
@@ -108,6 +111,9 @@ pub fn apply_producer_stamp(
     let literal = pdf_text_string(producer);
     match info_ref {
         Some((info_id, _)) => {
+            // The existing `/Info` object is overwritten in place at gen 0; a
+            // non-zero-generation `/Info` would be silently corrupted.
+            assert_overwrite_gen_zero(pdf, info_id, "/Info")?;
             let (s, e) = find_object_bytes(pdf, info_id)
                 .ok_or_else(|| err(CODE_PARSE, format!("/Info object {info_id} not found")))?;
             let info_dict = extract_outer_dict(&pdf[s..e])
@@ -206,5 +212,22 @@ mod tests {
     #[test]
     fn pdf_text_string_escapes_ascii_literals() {
         assert_eq!(pdf_text_string("a(b)c\\d"), b"(a\\(b\\)c\\\\d)");
+    }
+
+    #[test]
+    fn pdf_text_string_non_ascii_uses_utf16be_hex_with_bom() {
+        // Any non-ASCII char tips the whole string into the UTF-16BE hex form:
+        // `<FEFF` BOM then one 4-hex-digit code unit per UTF-16 unit.
+        // "é" = U+00E9 → 00E9.
+        assert_eq!(pdf_text_string("é"), b"<FEFF00E9>");
+        // ASCII before/after a non-ASCII char are still emitted as their
+        // UTF-16BE units (not as a literal string).
+        assert_eq!(pdf_text_string("A€"), b"<FEFF004120AC>");
+    }
+
+    #[test]
+    fn pdf_text_string_non_bmp_uses_surrogate_pair() {
+        // U+1F600 (😀) is outside the BMP → a UTF-16 surrogate pair D83D DE00.
+        assert_eq!(pdf_text_string("😀"), b"<FEFFD83DDE00>");
     }
 }

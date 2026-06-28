@@ -13,13 +13,13 @@ review time was `d2ff1cb`, plus the follow-up simplification `458064f`
 
 | # | Item | Severity | Category | Status |
 |---|------|----------|----------|--------|
-| 01 | [Spine re-emits overwritten objects at generation 0](01-spine-nonzero-generation.md) | major | correctness | Open |
-| 02 | [Canvas capability contract not closed by construction](02-canvas-capability-contract.md) | major | architecture | Open — design proposed |
+| 01 | [Spine re-emits overwritten objects at generation 0](01-spine-nonzero-generation.md) | major | correctness | Resolved — hard-error guard (option 1) |
+| 02 | [Canvas capability contract not closed by construction](02-canvas-capability-contract.md) | major | architecture | Partially resolved — cheap fallback landed; shared-path refactor deferred |
 | 03 | [WASM region type: `skip_serializing_if` without `serde(default)`](03-wasm-region-serde-roundtrip.md) | minor | correctness | Open |
-| 04 | [Irrefutable `let` on the extensible `RegionKind`](04-region-kind-irrefutable-let.md) | minor | smelly | Open |
-| 05 | [Stale `as_any`/downcast doc on the canvas seam](05-stale-canvas-downcast-doc.md) | nit | smelly | Open |
-| 06 | [Docs & canon drift](06-docs-and-canon-drift.md) | low | docs | Open |
-| 07 | [Test coverage gaps](07-test-coverage-gaps.md) | low–medium | coverage | Open |
+| 04 | [Irrefutable `let` on the extensible `RegionKind`](04-region-kind-irrefutable-let.md) | minor | smelly | Resolved |
+| 05 | [Stale `as_any`/downcast doc on the canvas seam](05-stale-canvas-downcast-doc.md) | nit | smelly | Resolved |
+| 06 | [Docs & canon drift](06-docs-and-canon-drift.md) | low | docs | Resolved |
+| 07 | [Test coverage gaps](07-test-coverage-gaps.md) | low–medium | coverage | Mostly resolved — tractable Rust gaps closed |
 
 ## Already resolved during review (not tracked here)
 

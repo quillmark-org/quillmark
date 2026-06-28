@@ -21,6 +21,7 @@
 
 - **[CONVERT.md](CONVERT.md)** - How the Typst backend renders markdown body content to Typst markup
 - Typst backend internals: see `crates/backends/typst/` rustdoc
+- **[../../docs/quills/pdfform-backend.md](../../docs/quills/pdfform-backend.md)** - The `pdfform` backend: fill an existing AcroForm PDF (real interactive fields, Technique A), built on the `quillmark-pdf` stamp spine
 
 ## Bindings
 

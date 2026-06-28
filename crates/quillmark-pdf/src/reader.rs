@@ -198,6 +198,43 @@ pub fn find_object_bytes(pdf: &[u8], id: u32) -> Option<(usize, usize)> {
     Some((start, from + end_rel + needle.len()))
 }
 
+/// The generation number in object `id`'s header (`<id> <gen> obj`), or `None`
+/// when the object is absent or its header is malformed. Reads the *live* copy
+/// (the last serialized revision), matching [`find_object_bytes`].
+pub fn object_generation(pdf: &[u8], id: u32) -> Option<u16> {
+    let (start, _) = find_object_bytes(pdf, id)?;
+    let after_id = start + format!("{id} ").len();
+    let rest = &pdf[after_id..];
+    let n = rest.iter().take_while(|b| b.is_ascii_digit()).count();
+    std::str::from_utf8(&rest[..n]).ok()?.parse().ok()
+}
+
+/// Reject overwriting a base object that lives at a **non-zero generation**.
+///
+/// The incremental-update writer always re-emits an overwritten object at
+/// generation 0 ([`dict_object`](crate::writer::dict_object)) and references it
+/// as gen 0 (the trailer's `/Root … 0 R`, page/widget refs). The reader, by
+/// contrast, accepts an object header at *any* generation. So a base whose
+/// catalog / page / `/Info` lives at a non-zero generation parses fine yet would
+/// produce a malformed update — the new xref/`/Root` would point at gen 0 while
+/// the prior xref still resolves the object at its true generation. This guard
+/// closes that one gap in the spine's "reject out-of-contract input cleanly"
+/// posture, consistent with the xref-stream / `/Encrypt` rejections.
+///
+/// `None` (object absent) is left for the caller's own not-found error path.
+pub fn assert_overwrite_gen_zero(pdf: &[u8], id: u32, what: &str) -> Result<(), PdfError> {
+    match object_generation(pdf, id) {
+        Some(0) | None => Ok(()),
+        Some(gen) => Err(err(
+            "pdf::nonzero_generation",
+            format!(
+                "{what} object {id} is at generation {gen}; the stamp spine re-emits \
+                 overwritten objects at generation 0 and cannot preserve a non-zero generation"
+            ),
+        )),
+    }
+}
+
 /// After the `<id> ` prefix, confirm an object header continues as `<gen> obj`:
 /// one or more digits, whitespace, then the `obj` keyword as a whole token.
 fn is_obj_header_tail(rest: &[u8]) -> bool {
@@ -702,6 +739,26 @@ mod tests {
         let pdf = b"%PDF\n7 2 obj\n<< /C 3 >>\nendobj\n";
         let (s, e) = find_object_bytes(pdf, 7).expect("found object 7 gen 2");
         assert_eq!(&pdf[s..e], b"7 2 obj\n<< /C 3 >>\nendobj");
+    }
+
+    #[test]
+    fn object_generation_reads_header_gen() {
+        let pdf = b"%PDF\n7 2 obj\n<< /C 3 >>\nendobj\n4 0 obj\n<< /D 1 >>\nendobj\n";
+        assert_eq!(object_generation(pdf, 7), Some(2));
+        assert_eq!(object_generation(pdf, 4), Some(0));
+        assert_eq!(object_generation(pdf, 99), None);
+    }
+
+    #[test]
+    fn assert_overwrite_gen_zero_rejects_nonzero() {
+        let pdf = b"%PDF\n7 2 obj\n<< /C 3 >>\nendobj\n4 0 obj\n<< /D 1 >>\nendobj\n";
+        // gen 0 and absent are accepted; the caller owns the not-found path.
+        assert!(assert_overwrite_gen_zero(pdf, 4, "x").is_ok());
+        assert!(assert_overwrite_gen_zero(pdf, 99, "x").is_ok());
+        // gen != 0 is a clean error tagged with the dedicated code.
+        let e = assert_overwrite_gen_zero(pdf, 7, "catalog").expect_err("gen 2 rejected");
+        assert_eq!(e.code, "pdf::nonzero_generation");
+        assert!(e.message.contains("generation 2"), "{}", e.message);
     }
 
     #[test]

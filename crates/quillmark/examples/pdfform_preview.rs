@@ -63,19 +63,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         gf_result.regions.len()
     );
     for region in &gf_result.regions {
-        let quillmark_core::RegionKind::Field { field_type, value } = &region.kind;
-        let val_display = value.as_deref().unwrap_or("<blank>");
-        println!(
-            "  {:20}  page={:<2}  rect=[{:.1},{:.1},{:.1},{:.1}]  type={:<10}  value={:?}",
-            region.name,
-            region.page,
-            region.rect[0],
-            region.rect[1],
-            region.rect[2],
-            region.rect[3],
-            field_type,
-            val_display,
-        );
+        // `RegionKind` is an enum so new kinds can be added later; use a
+        // refutable `if let` (not an irrefutable `let`) so a future variant is
+        // non-breaking at this site. The `allow` silences the
+        // single-variant-today warning; it lapses on its own once a second
+        // variant exists.
+        #[allow(irrefutable_let_patterns)]
+        if let quillmark_core::RegionKind::Field { field_type, value } = &region.kind {
+            let val_display = value.as_deref().unwrap_or("<blank>");
+            println!(
+                "  {:20}  page={:<2}  rect=[{:.1},{:.1},{:.1},{:.1}]  type={:<10}  value={:?}",
+                region.name,
+                region.page,
+                region.rect[0],
+                region.rect[1],
+                region.rect[2],
+                region.rect[3],
+                field_type,
+                val_display,
+            );
+        }
     }
 
     // --- Typst backend: taro → SVG ---
