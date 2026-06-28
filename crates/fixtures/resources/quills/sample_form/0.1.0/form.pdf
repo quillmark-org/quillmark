@@ -41,13 +41,13 @@ endobj
 
 4 0 obj
 <<
-  /Length 396
+  /Length 420
 >>
 stream
 BT
 /F1 16 Tf
 72 728 Td
-(Quillmark Demo Form) Tj
+(Quillmark Sample Form) Tj
 ET
 0.75 w
 180 672 340 20 re
@@ -55,7 +55,7 @@ S
 BT
 /F1 11 Tf
 72 676 Td
-(Full name:) Tj
+(Full legal name:) Tj
 ET
 0.75 w
 180 572 340 80 re
@@ -63,7 +63,7 @@ S
 BT
 /F1 11 Tf
 72 576 Td
-(Comments:) Tj
+(Additional notes:) Tj
 ET
 0.75 w
 180 538 14 14 re
@@ -71,7 +71,7 @@ S
 BT
 /F1 11 Tf
 72 542 Td
-(I agree:) Tj
+(Agree to terms:) Tj
 ET
 0.75 w
 180 492 340 20 re
@@ -79,7 +79,7 @@ S
 BT
 /F1 11 Tf
 72 496 Td
-(Favorite color:) Tj
+(Preferred color:) Tj
 ET
 0.75 w
 180 422 340 40 re
@@ -87,7 +87,7 @@ S
 BT
 /F1 11 Tf
 72 426 Td
-(Signature:) Tj
+(Signatory:) Tj
 ET
 endstream
 endobj
@@ -106,5 +106,5 @@ trailer
   /Root 1 0 R
 >>
 startxref
-840
+864
 %%EOF
