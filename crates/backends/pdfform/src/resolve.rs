@@ -141,12 +141,30 @@ where
     Some(cur)
 }
 
+/// Stringify a JSON number the same way the Typst producer does, so the two
+/// backends agree on the text they bind for the same value. `serde_json`'s own
+/// `Number::to_string` preserves the JSON literal form (`42.0` → `"42.0"`,
+/// `1e10` → `"10000000000.0"`), but the Typst side decodes the same JSON to a
+/// Typst `Int`/`Float` and prints via Rust's integer/`f64` `Display`, so an
+/// integral float renders without the trailing `.0`. Mirror that: float-backed
+/// numbers go through `f64` `Display`; integer-backed ones are already aligned.
+fn number_to_string(n: &serde_json::Number) -> String {
+    if n.is_f64() {
+        match n.as_f64() {
+            Some(f) => f.to_string(),
+            None => n.to_string(),
+        }
+    } else {
+        n.to_string()
+    }
+}
+
 /// Coerce a JSON value to display text. Empty results (empty string, all-null
 /// array) become `None` so the widget carries no `/V`.
 fn coerce_text(v: &Value) -> Option<String> {
     let s = match v {
         Value::String(s) => s.clone(),
-        Value::Number(n) => n.to_string(),
+        Value::Number(n) => number_to_string(n),
         Value::Bool(b) => b.to_string(),
         // An array (e.g. a `markdown[]` or `string[]` field) joins its string
         // elements with newlines — the multiline text fill.
@@ -154,7 +172,7 @@ fn coerce_text(v: &Value) -> Option<String> {
             .iter()
             .filter_map(|e| match e {
                 Value::String(s) => Some(s.clone()),
-                Value::Number(n) => Some(n.to_string()),
+                Value::Number(n) => Some(number_to_string(n)),
                 Value::Bool(b) => Some(b.to_string()),
                 _ => None,
             })
@@ -183,7 +201,7 @@ fn is_truthy(v: &Value) -> bool {
 fn coerce_choice(v: &Value, options: &[String]) -> Option<String> {
     let s = match v {
         Value::String(s) => s.clone(),
-        Value::Number(n) => n.to_string(),
+        Value::Number(n) => number_to_string(n),
         Value::Bool(b) => b.to_string(),
         _ => return None,
     };
@@ -224,6 +242,21 @@ mod tests {
             Some("line one\nline two".into())
         );
         assert_eq!(text("score"), Some("42".into()));
+    }
+
+    #[test]
+    fn number_stringification_matches_typst_producer() {
+        // Integral float literals drop the trailing `.0` (matching the Typst
+        // side's f64 Display), so the two backends bind identical text and a
+        // choice option like "42" matches a 42.0 value on both.
+        assert_eq!(coerce_text(&json!(42.0)), Some("42".into()));
+        assert_eq!(coerce_text(&json!(1e10)), Some("10000000000".into()));
+        // Integers and genuinely-fractional floats are unchanged.
+        assert_eq!(coerce_text(&json!(42)), Some("42".into()));
+        assert_eq!(coerce_text(&json!(42.5)), Some("42.5".into()));
+        // Choice matching uses the same rule.
+        let opts = vec!["42".to_string()];
+        assert_eq!(coerce_choice(&json!(42.0), &opts), Some("42".into()));
     }
 
     #[test]

@@ -6,8 +6,9 @@
 //! `prose/proposals/wasm-bindings-split.md`): a Typst-less **core**
 //! (`@quillmark/wasm/core`) for load / validate / schema / seed / blueprint, and
 //! a Typst-backed **backend** binary (`pkg/backends/typst/`) that adds the
-//! engine and canvas preview. The `render` cargo feature (default) gates the
-//! engine half.
+//! engine and canvas preview. The `typst` / `pdfform` cargo features gate the
+//! engine half (the default `typst` feature enables it; a no-feature build is
+//! the core).
 //!
 //! The Typst backend is a PRIVATE binary — it is not a public npm export. The
 //! package's public root (`@quillmark/wasm`) is a hand-written canonical layer

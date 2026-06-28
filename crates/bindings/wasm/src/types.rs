@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 
 /// Output formats supported by backends.
 ///
-/// Gated behind the engine surface (`render` or `pdfform`) so tsify omits
+/// Gated behind the engine surface (`typst` or `pdfform`) so tsify omits
 /// its `.d.ts` interface from the core bundle (`pkg/core/wasm.d.ts`), which
 /// has no rendering surface.
 #[cfg(any(feature = "typst", feature = "pdfform"))]

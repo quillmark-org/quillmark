@@ -40,9 +40,15 @@ assertion, or a binding surface) and is left open.
   `pdfform-preview` would go undetected. Add a `cargo check`/`test` matrix entry
   (and ideally a wasm size-budget check for the pdfform artifact, analogous to
   the `core` budget guard).
-- **Python `regions` accessibility unverified.** `PyRenderResult` wraps core's
-  `RenderResult`, but no `@property` exposing `regions` was observed. Confirm
-  and either expose or document as pending.
+- **Python `regions` not exposed (confirmed).** `PyRenderResult` exposes only
+  `artifacts` / `warnings` / `format` / `render_time_ms` — there is no `regions`
+  getter (`crates/bindings/python/src/types.rs`). Intentionally pending until
+  `pdfform` ships in the Python binding; expose it then.
+- **No non-ASCII value end-to-end through the `pdfform` backend.** The WinAnsi
+  transcode and the UTF-16BE `/V` encoding are unit-tested (`writer.rs`,
+  `flatten.rs`), but the integration tests (`sample_form.rs`,
+  `canvas_conformance.rs`) only use ASCII values, so no test drives an accented
+  value through the full backend render to the AcroForm `/V` (UTF-16BE decode).
 
 ## Closed (landed on `claude/prose-review-items-6svv5p`)
 
@@ -59,3 +65,14 @@ assertion, or a binding surface) and is left open.
   limitation (tested + documented on `lookup_card`).
 - **Flatten byte-level coverage** — restored at the `flatten()` unit level as
   the finalization of the flatten collapse.
+
+## Closed (landed on `claude/code-review-main-a3rokh`)
+
+- **Spine (`quillmark-pdf`)** — `endobj`-inside-a-string no longer truncates an
+  object (string-aware `find_object_bytes`); cyclic / shared-node `/Pages` trees
+  are rejected (visited-set, closing the O(nodes × file) amplification); a
+  non-zero page `/Rotate` is rejected rather than mis-stamped; and the
+  producer-only (no-fields) `/Info` `/Producer` success path is asserted.
+- **pdfform** — duplicate `form.json` field names are rejected at parse; JSON
+  number stringification matches the Typst producer (integral floats drop the
+  trailing `.0`), so the two backends bind identical text and choice options.

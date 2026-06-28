@@ -10,9 +10,9 @@
 
 use crate::error::PdfError;
 use crate::reader::{
-    append_incremental_update, assert_overwrite_gen_zero, assert_traditional_xref, err,
-    find_dict_value, find_startxref, find_trailer_dict, parse_indirect_ref, resolve_page_ids,
-    UpdatedObject,
+    append_incremental_update, assert_overwrite_gen_zero, assert_traditional_xref,
+    assert_unrotated_page, err, find_dict_value, find_startxref, find_trailer_dict,
+    parse_indirect_ref, resolve_page_ids, UpdatedObject,
 };
 use crate::writer::apply_producer_stamp;
 use crate::FieldSpec;
@@ -109,6 +109,9 @@ impl PdfUpdate {
             // by every widget on it as gen 0, so a non-zero-generation page would
             // be silently corrupted.
             assert_overwrite_gen_zero(pdf, page_ids[spec.page], "page")?;
+            // Widget/content geometry is written in unrotated user space; a
+            // rotated target page would mis-place every field. Reject cleanly.
+            assert_unrotated_page(pdf, self.catalog_id, page_ids[spec.page])?;
         }
         Ok(page_ids)
     }

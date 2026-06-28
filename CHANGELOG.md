@@ -34,6 +34,11 @@
   (pre-session hint, from output formats) replace it, so the capability can no
   longer disagree with what `paint` does. The engine and WASM `supportsCanvas`
   surfaces are unchanged in shape. See `docs/migrations/0.92-to-0.93.md`
+- build(wasm)!: rename the WASM engine feature `render` → `typst` (now the
+  default) and add `pdfform` / `pdfform-preview` build variants, so a Typst-free
+  PDF-form bundle can ship without Typst. From-source builders pass
+  `--features typst` where they used `--features render`; the published JS API is
+  unchanged. See `docs/migrations/0.92-to-0.93.md`
 
 ## v0.92.0 - 2026-06-22
 

@@ -192,8 +192,9 @@ build with a `{ formats, canvas }` manifest, drift-guarded by
 - **One generic painter over the `SessionHandle` seam, not a per-backend
   downcast.** `paint` calls `page_size_pt` / `render_rgba` on the opaque
   session; every canvas backend implements the same two methods. Adding a
-  canvas backend is overriding the seam + flipping `supports_canvas`, not
-  touching the binding.
+  canvas backend is overriding the two seam methods (`page_size_pt` /
+  `render_rgba`) — capability is then derived from the seam, with no separate
+  flag to flip and no binding to touch.
 - **Complete raster, never compose-from-regions.** Both backends hand back a
   finished page (Typst natively, pdfform by pre-flattening values into content
   streams before rasterizing). Regions are an overlay sidecar, not a

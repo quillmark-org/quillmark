@@ -13,6 +13,8 @@
 //! guarantee it. `hayro-syntax` is read-only and exposes no byte spans, so it
 //! cannot drive a byte-splice append — hence this bespoke scanner.
 
+use std::collections::HashSet;
+
 use crate::error::PdfError;
 
 const CODE_PARSE: &str = "pdf::parse";
@@ -178,7 +180,6 @@ pub fn append_incremental_update(
 pub fn find_object_bytes(pdf: &[u8], id: u32) -> Option<(usize, usize)> {
     let prefix = format!("{id} ");
     let p = prefix.as_bytes();
-    let needle = b"endobj";
     let mut last_start = None;
     let mut i = 0;
     while i + p.len() <= pdf.len() {
@@ -191,11 +192,28 @@ pub fn find_object_bytes(pdf: &[u8], id: u32) -> Option<(usize, usize)> {
         i += 1;
     }
     let start = last_start?;
-    let from = start + p.len();
-    let end_rel = pdf[from..]
-        .windows(needle.len())
-        .position(|w| w == needle)?;
-    Some((start, from + end_rel + needle.len()))
+    let end = find_endobj_end(pdf, start + p.len())?;
+    Some((start, end))
+}
+
+/// Find the `endobj` keyword that closes the object body starting at `from`,
+/// returning the index just past it. Literal `( … )` strings are skipped so a
+/// string value containing the bytes `endobj` (e.g. an `/Info` `/Title`) cannot
+/// truncate the object mid-string — the same string-aware skip
+/// [`extract_outer_dict`] already relies on.
+fn find_endobj_end(pdf: &[u8], from: usize) -> Option<usize> {
+    let needle = b"endobj";
+    let mut i = from;
+    while i < pdf.len() {
+        if pdf[i] == b'(' {
+            i = skip_pdf_string(pdf, i);
+        } else if pdf[i..].starts_with(needle) {
+            return Some(i + needle.len());
+        } else {
+            i += 1;
+        }
+    }
+    None
 }
 
 /// The generation number in object `id`'s header (`<id> <gen> obj`), or `None`
@@ -521,10 +539,20 @@ pub fn resolve_page_ids(pdf: &[u8], catalog_id: u32) -> Result<Vec<u32>, PdfErro
     const MAX_NODES: usize = 100_000;
     let mut out = Vec::new();
     let mut stack = vec![root_pages_id];
-    let mut visited = 0usize;
+    // A node id reached twice means the `/Pages` tree is cyclic or shares a node
+    // across parents — malformed, and an amplification vector without this
+    // guard: every visit re-scans the whole file via `find_object_bytes`, so a
+    // tiny `/Kids` self-cycle would otherwise drive up to MAX_NODES full-file
+    // scans before the count cap trips.
+    let mut seen: HashSet<u32> = HashSet::new();
     while let Some(node_id) = stack.pop() {
-        visited += 1;
-        if visited > MAX_NODES {
+        if !seen.insert(node_id) {
+            return Err(err(
+                CODE_PARSE,
+                format!("page tree revisits node {node_id} (cycle or shared node)"),
+            ));
+        }
+        if seen.len() > MAX_NODES {
             return Err(err(CODE_PARSE, "page tree exceeds 100 000 nodes"));
         }
         let (s, e) = find_object_bytes(pdf, node_id)
@@ -564,6 +592,42 @@ fn root_pages_id(pdf: &[u8], catalog_id: u32) -> Result<u32, PdfError> {
         .and_then(parse_indirect_ref)
         .map(|(id, _)| id)
         .ok_or_else(|| err(CODE_PARSE, "catalog /Pages reference not found"))
+}
+
+/// Reject a page with a non-zero `/Rotate` (its own value, else the inherited
+/// root `/Pages` value).
+///
+/// The stamp/flatten paths write widget and content geometry in *unrotated*
+/// user space and do not compensate for page rotation, so a rotated base page
+/// would display every widget rotated away from its intended box. `/Rotate` is
+/// not part of the Typst producer's output (its pages are always unrotated);
+/// this guard turns a rotated `pdfform` base into a clean rejection rather than
+/// silently mis-placed output, consistent with the reader's other hard
+/// rejections.
+pub fn assert_unrotated_page(pdf: &[u8], catalog_id: u32, page_id: u32) -> Result<(), PdfError> {
+    let read_rotate = |id: u32| -> Option<i64> {
+        let (s, e) = find_object_bytes(pdf, id)?;
+        let dict = extract_outer_dict(&pdf[s..e])?;
+        let raw = find_dict_value(dict, "Rotate")?;
+        std::str::from_utf8(raw.trim_ascii())
+            .ok()?
+            .trim()
+            .parse::<i64>()
+            .ok()
+    };
+    let rotate = read_rotate(page_id)
+        .or_else(|| root_pages_id(pdf, catalog_id).ok().and_then(read_rotate))
+        .unwrap_or(0);
+    if rotate.rem_euclid(360) != 0 {
+        return Err(err(
+            "pdf::rotated_page",
+            format!(
+                "page object {page_id} has /Rotate {rotate}; the stamp spine only \
+                 handles unrotated pages"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 pub(crate) fn parse_ref_array(bytes: &[u8]) -> Vec<(u32, u16)> {
@@ -768,5 +832,47 @@ mod tests {
         let pdf = b"%PDF\n4 0 obj\n<< /V (old) >>\nendobj\n4 0 obj\n<< /V (new) >>\nendobj\n";
         let (s, e) = find_object_bytes(pdf, 4).expect("found object 4");
         assert_eq!(&pdf[s..e], b"4 0 obj\n<< /V (new) >>\nendobj");
+    }
+
+    #[test]
+    fn endobj_inside_string_does_not_truncate_object() {
+        // A literal string value containing the bytes "endobj" (e.g. an /Info
+        // /Title) must not end the object at the in-string occurrence.
+        let pdf = b"%PDF\n3 0 obj\n<< /Title (My endobj report) /Author (X) >>\nendobj\n";
+        let (s, e) = find_object_bytes(pdf, 3).expect("found object 3");
+        assert_eq!(
+            &pdf[s..e],
+            b"3 0 obj\n<< /Title (My endobj report) /Author (X) >>\nendobj"
+        );
+        // …and the dict still extracts cleanly with the full /Title value.
+        let dict = extract_outer_dict(&pdf[s..e]).expect("dict parses");
+        let title = find_dict_value(dict, "Title").expect("/Title");
+        assert_eq!(title.trim_ascii(), b"(My endobj report)");
+    }
+
+    #[test]
+    fn page_tree_cycle_is_rejected() {
+        // A /Pages node whose /Kids references itself must error cleanly, not
+        // loop to the node cap re-scanning the whole file each visit.
+        let pdf = b"%PDF\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n\
+                    2 0 obj\n<< /Type /Pages /Kids [2 0 R] /Count 1 >>\nendobj\n";
+        let e = resolve_page_ids(pdf, 1).expect_err("cycle rejected");
+        assert_eq!(e.code, CODE_PARSE);
+        assert!(e.message.contains("revisits"), "{}", e.message);
+    }
+
+    #[test]
+    fn rotated_page_is_rejected() {
+        // /Rotate inherited from the root /Pages node is honoured.
+        let pdf = b"%PDF\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n\
+                    2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 /Rotate 90 >>\nendobj\n\
+                    3 0 obj\n<< /Type /Page /Parent 2 0 R >>\nendobj\n";
+        let e = assert_unrotated_page(pdf, 1, 3).expect_err("rotated page rejected");
+        assert_eq!(e.code, "pdf::rotated_page");
+        // A page with no rotation (own or inherited) is accepted.
+        let flat = b"%PDF\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n\
+                     2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n\
+                     3 0 obj\n<< /Type /Page /Parent 2 0 R >>\nendobj\n";
+        assert!(assert_unrotated_page(flat, 1, 3).is_ok());
     }
 }

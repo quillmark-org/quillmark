@@ -241,6 +241,83 @@ fn no_producer_no_fields_is_identity() {
 }
 
 #[test]
+fn producer_only_no_fields_stamps_info_producer() {
+    // producer=Some + no fields is NOT the identity short-circuit: it runs a
+    // minimal `/Info`-only incremental append (no AcroForm). Assert the success
+    // envelope reparses with the new /Producer and adds no /AcroForm.
+    let base = build_base_pdf(1);
+    let result = stamp(
+        base,
+        &[],
+        &StampOptions {
+            producer: Some("Quillmark test".into()),
+        },
+    )
+    .expect("stamp ok");
+    assert!(result.regions.is_empty());
+
+    let doc = lopdf::Document::load_mem(&result.pdf).expect("lopdf reparse");
+    assert!(
+        doc.catalog().unwrap().get(b"AcroForm").is_err(),
+        "producer-only stamp must not add an /AcroForm"
+    );
+    let info_ref = doc
+        .trailer
+        .get(b"Info")
+        .expect("trailer /Info")
+        .as_reference()
+        .expect("/Info indirect");
+    let info = doc.get_object(info_ref).unwrap().as_dict().unwrap();
+    assert_eq!(
+        info.get(b"Producer").unwrap().as_str().unwrap(),
+        b"Quillmark test"
+    );
+}
+
+#[test]
+fn rotated_page_rejected_cleanly() {
+    // A base whose target page carries a non-zero /Rotate is rejected rather
+    // than mis-stamped (widget geometry is written in unrotated user space).
+    let mut pdf = Pdf::new();
+    let catalog_id = Ref::new(1);
+    let page_tree_id = Ref::new(2);
+    let page_id = Ref::new(3);
+    let content_id = Ref::new(4);
+    pdf.catalog(catalog_id).pages(page_tree_id);
+    {
+        let mut pages = pdf.pages(page_tree_id);
+        pages
+            .kids([page_id])
+            .count(1)
+            .media_box(Rect::new(0.0, 0.0, 612.0, 792.0));
+    }
+    {
+        let mut page = pdf.page(page_id);
+        page.parent(page_tree_id)
+            .media_box(Rect::new(0.0, 0.0, 612.0, 792.0))
+            .rotate(90)
+            .contents(content_id);
+    }
+    let mut content = Content::new();
+    content.set_line_width(1.0);
+    content.rect(72.0, 700.0, 200.0, 20.0);
+    content.stroke();
+    pdf.stream(content_id, &content.finish());
+    let base = pdf.finish();
+
+    let fields = vec![FieldSpec {
+        name: "FullName".into(),
+        page: 0,
+        rect: [180.0, 700.0, 520.0, 720.0],
+        field_type: FieldType::Text { multiline: false },
+        value: Some("Ada".into()),
+        tooltip: None,
+    }];
+    let err = stamp(base, &fields, &StampOptions::default()).expect_err("rotated page rejected");
+    assert_eq!(err.code, "pdf::rotated_page");
+}
+
+#[test]
 fn implausible_size_errors_cleanly_without_panic() {
     // A base PDF whose trailer declares a near-u32::MAX /Size must yield a clean
     // PdfError (id space exhausted) rather than panic on overflow (debug) or

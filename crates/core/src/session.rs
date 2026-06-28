@@ -48,8 +48,9 @@ pub trait SessionHandle: Any + Send + Sync {
     /// A backend with no painter overrides neither this nor
     /// [`page_size_pt`](Self::page_size_pt); the defaults mark the session as
     /// non-canvas, which is exactly what [`RenderSession::supports_canvas`]
-    /// reports. Capability is derived from this seam, not declared separately,
-    /// so the two cannot disagree.
+    /// reports. Capability is derived from the `page_size_pt` half of this seam,
+    /// not declared as a separate flag — a canvas backend is contractually
+    /// expected to pair this method with `page_size_pt` over the same page set.
     fn render_rgba(&self, _page: usize, _scale: f32) -> Option<(u32, u32, Vec<u8>)> {
         None
     }
@@ -105,10 +106,10 @@ impl RenderSession {
     /// Whether this session can paint pages to a canvas — the authoritative,
     /// session-level capability. Derived directly from the canvas seam (a
     /// painter exposes [`page_size_pt`](SessionHandle::page_size_pt) for its
-    /// pages), so it cannot disagree with what [`render_rgba`](Self::render_rgba)
-    /// will do: there is no separate capability flag to keep in sync. A
-    /// canvas-capable backend with zero pages reports `false` (nothing to
-    /// paint).
+    /// pages), so there is no separate capability flag to keep in sync: a
+    /// canvas backend pairs [`render_rgba`](Self::render_rgba) with
+    /// `page_size_pt`, so this reflects what `paint` will do. A canvas-capable
+    /// backend with zero pages reports `false` (nothing to paint).
     ///
     /// For a pre-session estimate (no open session yet), see
     /// [`formats_support_canvas`](crate::formats_support_canvas).

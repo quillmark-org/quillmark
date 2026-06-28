@@ -158,6 +158,46 @@ fn fixture_renders_structurally_valid_filled_pdf() {
 }
 
 #[test]
+fn non_ascii_value_round_trips_through_acroform_v() {
+    // A non-ASCII (accented / Latin-1 + smart-punctuation) text value must reach
+    // the AcroForm `/V` intact end-to-end: pdf-writer encodes it UTF-16BE, so
+    // the value decodes back to exactly what was authored.
+    let md = "~~~\n\
+$quill: sample_form\n\
+$kind: main\n\
+full_name: \"Café — Señor 'Ünïcøde'\"\n\
+agree: true\n\
+favorite_color: green\n\
+~~~\n";
+    let result = render(md);
+    let pdf = &result.artifacts[0].bytes;
+    let doc = PdfDoc::load_mem(pdf).expect("lopdf reparse");
+    let cat = doc.catalog().unwrap();
+    let af = doc
+        .get_object(cat.get(b"AcroForm").unwrap().as_reference().unwrap())
+        .unwrap()
+        .as_dict()
+        .unwrap();
+
+    let full = widget(&doc, af, "FullName");
+    assert_eq!(
+        decode_pdf_text(full.get(b"V").unwrap().as_str().unwrap()),
+        "Café — Señor 'Ünïcøde'"
+    );
+    // The regions sidecar carries the same value verbatim.
+    let r_full = result
+        .regions
+        .iter()
+        .find(|r| r.name == "FullName")
+        .unwrap();
+    match &r_full.kind {
+        quillmark_core::RegionKind::Field { value, .. } => {
+            assert_eq!(value.as_deref(), Some("Café — Señor 'Ünïcøde'"));
+        }
+    }
+}
+
+#[test]
 fn unchecked_and_unmatched_choice_render_blank() {
     let md = "~~~\n\
 $quill: sample_form\n\

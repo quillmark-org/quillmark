@@ -35,8 +35,8 @@ pub trait Backend: Send + Sync + std::fmt::Debug {
 /// [`RenderSession::supports_canvas`](crate::RenderSession::supports_canvas),
 /// which is derived from the session's actual canvas seam
 /// ([`SessionHandle::page_size_pt`](crate::session::SessionHandle::page_size_pt))
-/// and so cannot disagree with what `paint` will do — there is no separately
-/// maintained capability flag to drift from the implementation.
+/// — there is no separately maintained capability flag to drift from the
+/// implementation (a canvas backend pairs `render_rgba` with `page_size_pt`).
 pub fn formats_support_canvas(formats: &[OutputFormat]) -> bool {
     formats
         .iter()

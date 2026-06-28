@@ -11,6 +11,14 @@
 //! ([`winansi_encode`](quillmark_pdf::writer::winansi_encode)) and shown with a
 //! `WinAnsiEncoding` Helvetica, and each value is clipped to its field box.
 //!
+//! The drawing stream is appended last to the page `/Contents` and positions
+//! text with absolute `Td` coordinates, i.e. it assumes the **identity CTM** of
+//! the page default user space. A well-formed background restores its graphics
+//! state (balanced `q`/`Q`, no dangling `cm`), which the qualifier-produced and
+//! Typst-rendered bases this consumes always do; a base that left a non-identity
+//! CTM in effect would shift the flattened values. This path is preview-only, so
+//! the impact is confined to the raster preview, never a shipped deliverable.
+//!
 //! Entry point: [`flatten`].
 
 use quillmark_pdf::{
@@ -265,9 +273,13 @@ fn add_content_stream(pg_dict: &[u8], stream_id: u32) -> Result<Vec<u8>, PdfErro
 /// Inject `/<name> <font_id> 0 R` into the page's `/Resources /Font` dict,
 /// creating intermediate dicts as needed.
 ///
-/// When `/Resources` is an indirect reference (uncommon in our fixture
-/// contract), font injection is skipped — the 14 standard PDF Type1 fonts
-/// are available to conforming readers without explicit resource declaration.
+/// An indirect `/Resources` (or `/Font`) reference is a clean error: the flatten
+/// content stream selects `/Helv` and `/ZaDb` by *resource name*, and a `Tf`
+/// name must resolve through the page's `/Font` subdictionary — even the
+/// standard-14 fonts need a `/Font` entry mapping the name, so skipping
+/// injection would leave the value text unresolvable (blank). The reader's input
+/// contract produces inline resources, so this only rejects out-of-contract
+/// input rather than silently dropping it.
 fn add_font_resource(pg_dict: &[u8], name: &str, font_id: u32) -> Result<Vec<u8>, PdfError> {
     let helv_entry = format!("/{name} {font_id} 0 R");
 
@@ -279,8 +291,12 @@ fn add_font_resource(pg_dict: &[u8], name: &str, font_id: u32) -> Result<Vec<u8>
         }
         Some(res_val) => {
             if !res_val.trim_ascii().starts_with(b"<<") {
-                // Indirect resources ref — skip injection, rely on standard fonts.
-                return Ok(pg_dict.to_vec());
+                // Indirect /Resources ref: cannot inject the named font, and the
+                // emitted `/Helv`/`/ZaDb` Tf operators would not resolve.
+                return Err(err(
+                    CODE_PARSE,
+                    "page /Resources is an indirect reference; flatten requires inline resources",
+                ));
             }
             let res_inner = extract_outer_dict(res_val)
                 .ok_or_else(|| err(CODE_PARSE, "page /Resources dict not parseable"))?;
@@ -294,8 +310,12 @@ fn add_font_resource(pg_dict: &[u8], name: &str, font_id: u32) -> Result<Vec<u8>
                 }
                 Some(font_val) => {
                     if !font_val.trim_ascii().starts_with(b"<<") {
-                        // Indirect font resources ref — rely on standard fonts.
-                        return Ok(pg_dict.to_vec());
+                        // Indirect /Font ref: same unresolvable-name problem.
+                        return Err(err(
+                            CODE_PARSE,
+                            "page /Resources /Font is an indirect reference; flatten requires \
+                             an inline /Font dict",
+                        ));
                     }
                     let font_inner = extract_outer_dict(font_val).ok_or_else(|| {
                         err(CODE_PARSE, "page /Resources /Font dict not parseable")

@@ -72,6 +72,11 @@ pub enum FormParseError {
     Json(serde_json::Error),
     /// The `schema` tag is not a recognized `quillmark/form@…` string.
     BadSchema(String),
+    /// Two fields share the same `name`. AcroForm top-level field names must be
+    /// unique — duplicates would stamp two `/T`-colliding fields and render as a
+    /// single malformed field, so reject them at parse time (mirroring the
+    /// Typst producer, which rejects duplicate `form-field` names).
+    DuplicateField(String),
 }
 
 impl std::fmt::Display for FormParseError {
@@ -81,6 +86,10 @@ impl std::fmt::Display for FormParseError {
             FormParseError::BadSchema(s) => write!(
                 f,
                 "form.json `schema` is {s:?}, expected a \"{SCHEMA_PREFIX}<version>\" tag"
+            ),
+            FormParseError::DuplicateField(name) => write!(
+                f,
+                "form.json declares field name {name:?} more than once; field names must be unique"
             ),
         }
     }
@@ -92,6 +101,12 @@ impl FormSpec {
         let spec: FormSpec = serde_json::from_slice(bytes).map_err(FormParseError::Json)?;
         if !spec.schema.starts_with(SCHEMA_PREFIX) {
             return Err(FormParseError::BadSchema(spec.schema));
+        }
+        let mut seen = std::collections::HashSet::new();
+        for field in &spec.fields {
+            if !seen.insert(field.name.as_str()) {
+                return Err(FormParseError::DuplicateField(field.name.clone()));
+            }
         }
         Ok(spec)
     }
@@ -144,5 +159,20 @@ mod tests {
             FormSpec::parse(json),
             Err(FormParseError::BadSchema(_))
         ));
+    }
+
+    #[test]
+    fn rejects_duplicate_field_names() {
+        let json = br#"{
+          "schema": "quillmark/form@0.1.0",
+          "fields": [
+            { "name": "Dup", "page": 0, "rect": { "x": 0, "y": 0, "w": 1, "h": 1 }, "type": "text" },
+            { "name": "Dup", "page": 0, "rect": { "x": 0, "y": 2, "w": 1, "h": 1 }, "type": "text" }
+          ]
+        }"#;
+        match FormSpec::parse(json) {
+            Err(FormParseError::DuplicateField(name)) => assert_eq!(name, "Dup"),
+            other => panic!("expected DuplicateField, got {other:?}"),
+        }
     }
 }
