@@ -13,11 +13,16 @@
   `regions` sidecar through `RenderResult` and generalize the raster-preview
   seam (#749, #750). See `prose/proposals/PDFFORM_BACKEND.md` §9 for the V1
   handover.
-- feat(core): add `RenderOptions.flatten` to drive the pdfform value-flattening
-  render path
-- fix(pdfform): flatten path transcodes values to WinAnsi (with a
-  `WinAnsiEncoding` font) so accented/Latin-1 text renders correctly in flat
-  output, and clips each value to its field box so long values can't overflow
+- refactor(pdfform): PDF output is always an interactive AcroForm (Technique A).
+  Value-flattening is now internal preview-only machinery (gated under the
+  `preview` feature) backing the SVG/PNG raster previews, never a PDF
+  deliverable. The public `RenderOptions.flatten` knob is removed across core and
+  all four bindings (it was wired only in wasm, hardcoded `false` in Python, and
+  ignored in .NET)
+- fix(pdfform): the preview flatten path transcodes values to WinAnsi (with a
+  `WinAnsiEncoding` font) so accented/Latin-1 text renders correctly in the
+  raster preview, and clips each value to its field box so long values can't
+  overflow
 - refactor(quillmark-pdf): hoist the shared PDF byte-serialization (object/text
   writers, `/Info /Producer` stamp) into `quillmark_pdf::writer`, consumed by
   both the stamp and flatten paths; `find_object_bytes` now matches any object

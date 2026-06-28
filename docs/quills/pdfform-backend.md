@@ -183,7 +183,7 @@ The widget is unsigned: Quillmark performs no cryptography. To produce a signed 
 
 | Format | Support |
 |---|---|
-| **PDF** | Always — the deliverable. |
+| **PDF** | Always — the deliverable; always an interactive AcroForm (Technique A). |
 | **SVG** | Under the `preview` feature only. |
 | **PNG / canvas** | Under the `preview` feature only. |
 

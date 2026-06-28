@@ -295,11 +295,6 @@ pub struct RenderOptions {
     /// the default (`Quillmark <version>`). Applies to PDF output only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub producer: Option<String>,
-    /// Draw field values as PDF content streams (visible in all viewers,
-    /// including non-interactive rasterizers) instead of AcroForm widgets.
-    /// Only the `pdfform` backend uses this; other backends ignore it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub flatten: Option<bool>,
 }
 
 #[cfg(any(feature = "typst", feature = "pdfform"))]
@@ -310,7 +305,6 @@ impl Default for RenderOptions {
             ppi: None,
             pages: None,
             producer: None,
-            flatten: None,
         }
     }
 }
@@ -323,7 +317,6 @@ impl From<RenderOptions> for quillmark_core::RenderOptions {
             ppi: opts.ppi,
             pages: opts.pages,
             producer: opts.producer,
-            flatten: opts.flatten.unwrap_or(false),
         }
     }
 }
@@ -444,7 +437,6 @@ mod tests {
             ppi: None,
             pages: None,
             producer: None,
-            flatten: None,
         };
         let json = serde_json::to_string(&options).unwrap();
         assert!(json.contains("\"format\":\"pdf\""));

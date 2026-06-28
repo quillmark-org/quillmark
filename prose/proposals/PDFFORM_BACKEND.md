@@ -451,11 +451,13 @@ supports every field type, exercised through `pdfform`.
 
 ### Fast-follow / tooling backlog (deferred, not V1)
 
-- **Value flattening** for PNG/SVG-with-values (and an optional flattened-PDF):
-  draw values into page content via `pdf-writer` over the background, then
-  hayro/hayro-svg render them. This is the appearance-synthesis the issue
-  punted on (text layout, `0 Tf` auto-size emulation) — the single biggest *new*
-  piece of work. Lives in `pdfform`'s render feature, **never** in the spine.
+- **Value flattening** for PNG/SVG-with-values: draw values into page content
+  via `pdf-writer` over the background, then hayro/hayro-svg render them. This is
+  the appearance-synthesis the issue punted on (text layout, `0 Tf` auto-size
+  emulation) — the single biggest *new* piece of work. It is **internal
+  preview-only machinery, not a PDF-output deliverable**: PDF output is always an
+  interactive AcroForm (Technique A). Lives in `pdfform`'s `preview` feature,
+  **never** in the spine.
 - **Regions presentation enrichment** (font/size/align) — rides with flattening.
 - **Surface `regions` in the WASM typed API** (then Python/.NET) — opt-in,
   additive; wasm first as the GUI consumer.

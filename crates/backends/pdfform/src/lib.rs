@@ -14,15 +14,18 @@
 //! backends collapse to the same `&[FieldSpec]` seam; they differ only in where
 //! geometry and values come from.
 
+#[cfg(feature = "preview")]
 mod flatten;
 mod form;
 mod resolve;
+#[cfg(feature = "preview")]
 mod typography;
 
 pub use form::{FieldKind, FormField, FormParseError, FormSpec, Rect};
 
 use std::any::Any;
 
+#[cfg(feature = "preview")]
 use flatten::flatten as flatten_to_pdf;
 use quillmark_core::session::SessionHandle;
 use quillmark_core::{
@@ -178,14 +181,13 @@ impl SessionHandle for PdfformSession {
         }
 
         // The producer threads from the product layer, else the backend default.
+        // PDF output is always an interactive AcroForm (Technique A / `stamp`);
+        // value-flattening is internal preview-only machinery, never a PDF
+        // deliverable.
         let producer = Some(opts.producer.clone().unwrap_or_else(default_producer));
         let stamp_opts = StampOptions { producer };
-        let stamped = if opts.flatten {
-            flatten_to_pdf(self.base_pdf.clone(), &self.field_specs, &stamp_opts)
-        } else {
-            stamp(self.base_pdf.clone(), &self.field_specs, &stamp_opts)
-        }
-        .map_err(map_pdf_err)?;
+        let stamped =
+            stamp(self.base_pdf.clone(), &self.field_specs, &stamp_opts).map_err(map_pdf_err)?;
 
         Ok(RenderResult::new(
             vec![Artifact {

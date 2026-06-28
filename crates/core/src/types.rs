@@ -155,8 +155,4 @@ pub struct RenderOptions {
     /// the backend default (`Quillmark <version>` for the Typst backend).
     /// Applies to PDF output only; ignored by SVG/PNG/TXT.
     pub producer: Option<String>,
-    /// Draw field values as PDF content stream operators instead of AcroForm
-    /// widgets. Only the `pdfform` backend uses this; other backends ignore it.
-    /// When `false` (the default) the AcroForm / Technique A path is used.
-    pub flatten: bool,
 }

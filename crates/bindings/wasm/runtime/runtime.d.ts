@@ -84,8 +84,6 @@ export interface RenderOptions {
 	ppi?: number;
 	pages?: number[];
 	producer?: string;
-	/** Draw field values as content streams (visible in all rasterizers) instead of AcroForm widgets. Only the `pdfform` backend uses this; other backends ignore it. */
-	flatten?: boolean;
 }
 
 /** The kind and payload of a {@link FieldRegion}. Discriminated on `type`. */
