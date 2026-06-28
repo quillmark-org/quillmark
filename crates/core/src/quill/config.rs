@@ -46,8 +46,6 @@ pub struct QuillConfig {
     pub version: String,
     /// Author of the project
     pub author: String,
-    /// Plate file (template)
-    pub plate_file: Option<String>,
     /// Backend-specific configuration parsed from the top-level YAML section
     /// whose key matches `backend` (e.g. `[typst]`, `[html]`).
     #[serde(default)]
@@ -978,15 +976,8 @@ impl QuillConfig {
         };
 
         // Validate that no unknown keys appear in the [quill] section.
-        const KNOWN_QUILL_KEYS: &[&str] = &[
-            "name",
-            "backend",
-            "description",
-            "version",
-            "author",
-            "plate_file",
-            "ui",
-        ];
+        const KNOWN_QUILL_KEYS: &[&str] =
+            &["name", "backend", "description", "version", "author", "ui"];
         if let Some(quill_obj) = quill_section.as_object() {
             for key in quill_obj.keys() {
                 if !KNOWN_QUILL_KEYS.contains(&key.as_str()) {
@@ -1135,11 +1126,6 @@ impl QuillConfig {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .unwrap_or_else(|| "Unknown".to_string());
-
-        let plate_file = quill_section
-            .get("plate_file")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
 
         let ui_section: Option<UiCardSchema> = match quill_section.get("ui").cloned() {
             None => None,
@@ -1456,7 +1442,6 @@ impl QuillConfig {
                 backend,
                 version,
                 author,
-                plate_file,
                 backend_config,
             },
             warnings,

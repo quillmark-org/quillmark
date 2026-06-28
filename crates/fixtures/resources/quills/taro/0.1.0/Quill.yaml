@@ -2,8 +2,10 @@ quill:
   name: taro
   version: 0.1.0
   backend: typst
-  plate_file: plate.typ
   description: A simple document template for testing
+
+typst:
+  plate_file: plate.typ
 
 main:
   fields:

@@ -18,7 +18,7 @@ fn make_quill(temp_dir: &TempDir, version: &str) -> std::path::PathBuf {
     fs::write(
         quill_path.join("Quill.yaml"),
         format!(
-            "quill:\n  name: \"test_quill\"\n  version: \"{}\"\n  backend: \"typst\"\n  plate_file: \"plate.typ\"\n  description: \"Test\"\n",
+            "quill:\n  name: \"test_quill\"\n  version: \"{}\"\n  backend: \"typst\"\n  description: \"Test\"\n\ntypst:\n  plate_file: plate.typ\n",
             version
         ),
     )

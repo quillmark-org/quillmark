@@ -28,7 +28,6 @@ fn test_nested_null_zero_fills_in_plate() {
   name: "test_quill"
   version: "1.0"
   backend: "typst"
-  plate_file: "plate.typ"
   description: "Nested null zero-fill"
 
 main:
@@ -84,7 +83,6 @@ fn test_defaults_applied_when_absent() {
   name: "test_quill"
   version: "1.0"
   backend: "typst"
-  plate_file: "plate.typ"
   description: "Test quill with defaults"
 
 main:
@@ -145,7 +143,6 @@ fn test_absent_must_fill_is_zero_filled() {
   name: "test_quill"
   version: "1.0"
   backend: "typst"
-  plate_file: "plate.typ"
   description: "Test quill with an Unendorsed field"
 
 main:

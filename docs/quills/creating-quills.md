@@ -22,6 +22,8 @@ quill:
   backend: typst
   version: "1.0.0"
   description: A simple letter format
+
+typst:
   plate_file: plate.typ
 
 main:

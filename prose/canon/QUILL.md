@@ -57,8 +57,12 @@ at the boundary.
 Validation rules:
 1. Root MUST be a directory node
 2. `Quill.yaml` MUST exist and be valid YAML
-3. The `plate_file` referenced in `Quill.yaml`, if specified, MUST exist
-4. File paths use `/` separators and are resolved relative to root
+3. File paths use `/` separators and are resolved relative to root
+
+Core reads no backend-specific assets at load time. A backend resolves its own
+inputs from the file bundle when it opens a session (the Typst backend reads its
+`typst.plate_file`; the pdfform backend reads `form.pdf` / `form.json`), so a
+missing or malformed template surfaces as a render-time error, not a load error.
 
 ## `Quill.yaml` Structure
 
@@ -71,7 +75,6 @@ quill:
   version: "1.0.0"        # required; semver (MAJOR.MINOR.PATCH or MAJOR.MINOR)
   description: A beautiful format  # required; non-empty
   author: Jane Doe        # optional; defaults to "Unknown"
-  plate_file: plate.typ   # optional; path to Typst template
   ui:                     # optional; fallback for main.ui when absent
     title: My Quill
 
@@ -97,6 +100,7 @@ card_kinds:
         description: Quote author
 
 typst:
+  plate_file: plate.typ   # optional; path to the Typst template, read by the backend
   packages:
     - "@preview/some-package:1.0.0"
 ```
@@ -105,7 +109,7 @@ Field names must be `snake_case` (match `[a-z][a-z0-9_]*`). Capitalized or `$`-p
 
 Metadata resolution:
 - `name`, `description`, `backend`, `version`, `author` are direct struct fields on `QuillConfig`. `description` (required, non-empty in the `quill:` section) describes the quill itself; it is independent of `QuillConfig.main.description`, which is the optional schema description authored under `main:` like any other card kind.
-- `metadata` on `Quill` stores `backend`, `description`, `version`, `author`, and `typst_*` keys from the `typst:` section. (Note: this identity `metadata` is pure config — the backend's `supportedFormats` is a resolved-backend capability read from the engine, not part of it.) The `quill:` section accepts only `name`, `backend`, `description`, `version`, `author`, `plate_file`, and `ui`; unknown keys produce a `quill::unknown_key` error rather than landing in `metadata`.
+- `metadata` on `Quill` stores `backend`, `description`, `version`, `author`, and `typst_*` keys from the `typst:` section (so a declared `typst.plate_file` surfaces as `typst_plate_file`). (Note: this identity `metadata` is pure config — the backend's `supportedFormats` is a resolved-backend capability read from the engine, not part of it.) The `quill:` section accepts only `name`, `backend`, `description`, `version`, `author`, and `ui`; unknown keys produce a `quill::unknown_key` error rather than landing in `metadata`. A backend's own settings (e.g. the Typst plate) live under the backend-named section, never in `quill:`.
 - `quill.ui` (a `UiCardSchema`, same shape as `card_kinds.<name>.ui`) is a fallback for `main.ui`: the `main` card uses `main.ui` when present, otherwise `quill.ui`.
 
 ## Strict Parsing

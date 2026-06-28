@@ -54,7 +54,7 @@ Property-based fuzz tests (proptest): `parse_fuzz` (YAML/Markdown parsing), `con
 
 - **`Quillmark`** — Engine: a backend registry + render dispatcher. Auto-registers `TypstBackend` when the `typst` feature is enabled. Resolves a quill's declared backend at render time (erroring `UnsupportedBackend` on no match) and owns the backend-dependent surface — `render`, `open`, `supported_formats(&quill)`, `supports_canvas(&quill)`. It no longer constructs quills
 - **`Quill`** — The single quill type in `quillmark-core`: portable, declarative data (file bundle + config + metadata, tagged with a declared backend id). Held by value. Exposes the pure config-read operations: `dry_run`, `compile_data`, `backend_id`, plus `validate` (editor-facing: returns every schema diagnostic, including the non-fatal `validation::must_fill` warning raised for each `!must_fill` marker) and the `seed_document` / `seed_main` / `seed_card` starters that emit committed example documents and cards. Construct with `Quill::from_tree` or `quillmark::quill_from_path`
-- **`Backend`** — Trait for output formats (`Send + Sync`): `id()`, `supported_formats()`, `open(plate, &Quill, json)`. No canvas-capability method — capability is derived (`RenderSession::supports_canvas()` from the session seam; `formats_support_canvas()` as a pre-session hint)
+- **`Backend`** — Trait for output formats (`Send + Sync`): `id()`, `supported_formats()`, `open(&Quill, json)`. There is no universal template input: a backend reads whatever static inputs it needs (a Typst plate, a `form.pdf`) from the quill's own files. No canvas-capability method — capability is derived (`RenderSession::supports_canvas()` from the session seam; `formats_support_canvas()` as a pre-session hint)
 - **`RenderSession`** — Opaque handle returned by `Backend::open()`; call `render(opts)` to produce artifacts. Exposes `page_count()` and `warnings()` for consumers (e.g. canvas previews) that don't go through `render()`. The canvas-preview seam lives on `SessionHandle` itself (`page_size_pt`/`render_rgba`, default `None`); a canvas backend overrides both, and the WASM painter dispatches generically through them — no per-backend downcast (Typst and pdfform both ride this seam — see [PREVIEW.md](PREVIEW.md)). A backend with a different richer typed surface can still downcast via `RenderSession::handle()` + `SessionHandle::as_any`.
 - **`Document`** — Typed in-memory representation of a Quillmark Markdown file (root block, body, cards). Serializes via `serde` to a versioned JSON envelope (`StoredDocument`) for database persistence, decoupled from the evolving Markdown syntax — see [DOCUMENT_STORAGE.md](DOCUMENT_STORAGE.md)
 - **`Diagnostic`** — Structured error with severity, code, message, location, hint, source chain
@@ -63,8 +63,7 @@ Property-based fuzz tests (proptest): `parse_fuzz` (YAML/Markdown parsing), `con
 ## Data Injection
 
 `Backend::open()` receives:
-- `plate_content` — raw plate string from `Quill.plate` (empty string for plate-less backends)
-- `source` — `&Quill` with static assets/packages, config, metadata
+- `source` — `&Quill` with static assets/packages, config, metadata. A backend reads its own inputs from here: the Typst backend reads the template named by `typst.plate_file` from `source.files()`; pdfform reads `form.pdf` / `form.json`
 - `json_data` — JSON object after coercion, defaults, normalization
 
 See [PLATE_DATA.md](PLATE_DATA.md) for the Typst helper package.

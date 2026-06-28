@@ -10,7 +10,7 @@ fn small_quill_tree() -> wasm_bindgen::JsValue {
     common::tree(&[
         (
             "Quill.yaml",
-            b"quill:\n  name: test_quill\n  backend: typst\n  plate_file: plate.typ\n  description: Test quill for WASM bindings\n",
+            b"quill:\n  name: test_quill\n  backend: typst\n  description: Test quill for WASM bindings\n\ntypst:\n  plate_file: plate.typ\n",
         ),
         ("plate.typ", b"= Title\n\nThis is a test."),
     ])
@@ -220,7 +220,7 @@ fn test_quill_from_object_tree() {
     let entries: &[(&str, &[u8])] = &[
         (
             "Quill.yaml",
-            b"quill:\n  name: test_quill\n  backend: typst\n  plate_file: plate.typ\n  description: Test quill for WASM bindings\n",
+            b"quill:\n  name: test_quill\n  backend: typst\n  description: Test quill for WASM bindings\n\ntypst:\n  plate_file: plate.typ\n",
         ),
         ("plate.typ", b"= Title\n\nThis is a test."),
     ];
@@ -256,7 +256,7 @@ fn test_quill_metadata_and_schemas() {
     let quill = Quill::from_tree(common::tree(&[
         (
             "Quill.yaml",
-            b"quill:\n  name: meta_quill\n  backend: typst\n  version: \"0.2.1\"\n  plate_file: plate.typ\n  description: Metadata quill\nmain:\n  fields:\n    title:\n      type: string\n      ui:\n        group: Header\ncard_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n",
+            b"quill:\n  name: meta_quill\n  backend: typst\n  version: \"0.2.1\"\n  description: Metadata quill\nmain:\n  fields:\n    title:\n      type: string\n      ui:\n        group: Header\ncard_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string\n",
         ),
         ("plate.typ", b"= Title"),
     ]))
@@ -293,7 +293,7 @@ fn test_quill_seed_document() {
     let quill = Quill::from_tree(common::tree(&[
         (
             "Quill.yaml",
-            b"quill:\n  name: seed_quill\n  backend: typst\n  version: \"1.0\"\n  plate_file: plate.typ\n  description: Seed quill\nmain:\n  fields:\n    byline:\n      type: string\n      example: FIRST LAST\n    title:\n      type: string\n      default: Untitled\n",
+            b"quill:\n  name: seed_quill\n  backend: typst\n  version: \"1.0\"\n  description: Seed quill\nmain:\n  fields:\n    byline:\n      type: string\n      example: FIRST LAST\n    title:\n      type: string\n      default: Untitled\n",
         ),
         ("plate.typ", b"= Title"),
     ]))
@@ -324,7 +324,7 @@ fn test_quill_seed_main_and_card() {
     let quill = Quill::from_tree(common::tree(&[
         (
             "Quill.yaml",
-            b"quill:\n  name: seed_quill\n  backend: typst\n  version: \"1.0\"\n  plate_file: plate.typ\n  description: Seed quill\nmain:\n  fields:\n    byline:\n      type: string\n      example: FIRST LAST\ncard_kinds:\n  note:\n    fields:\n      text:\n        type: string\n        example: NOTE EXAMPLE\n",
+            b"quill:\n  name: seed_quill\n  backend: typst\n  version: \"1.0\"\n  description: Seed quill\nmain:\n  fields:\n    byline:\n      type: string\n      example: FIRST LAST\ncard_kinds:\n  note:\n    fields:\n      text:\n        type: string\n        example: NOTE EXAMPLE\n",
         ),
         ("plate.typ", b"= Title"),
     ]))
@@ -381,7 +381,7 @@ fn test_seed_overlay_round_trip() {
     let quill = Quill::from_tree(common::tree(&[
         (
             "Quill.yaml",
-            b"quill:\n  name: seed_quill\n  backend: typst\n  version: \"1.0\"\n  plate_file: plate.typ\n  description: Seed quill\nmain:\n  fields:\n    byline:\n      type: string\n      example: FIRST LAST\ncard_kinds:\n  note:\n    fields:\n      text:\n        type: string\n        example: NOTE EXAMPLE\n",
+            b"quill:\n  name: seed_quill\n  backend: typst\n  version: \"1.0\"\n  description: Seed quill\nmain:\n  fields:\n    byline:\n      type: string\n      example: FIRST LAST\ncard_kinds:\n  note:\n    fields:\n      text:\n        type: string\n        example: NOTE EXAMPLE\n",
         ),
         ("plate.typ", b"= Title"),
     ]))

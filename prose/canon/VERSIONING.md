@@ -44,11 +44,13 @@ quill:
   backend: typst
   description: "Short description of this format"
   author: "..."          # optional
-  plate_file: "plate.typ" # optional; conventional name
   ui: { ... }            # optional
+
+typst:
+  plate_file: "plate.typ" # optional; the Typst template, read by the backend
 ```
 
-`name`, `backend`, `version`, and `description` are required. `author`, `plate_file`, and `ui` are optional. Unknown keys under `quill:` are a hard error. `version` must parse as `MAJOR.MINOR.PATCH` (or `MAJOR.MINOR`); an invalid or missing value fails at load.
+`name`, `backend`, `version`, and `description` are required. `author` and `ui` are optional. Unknown keys under `quill:` are a hard error. A backend's own settings (e.g. the Typst `plate_file`) live under the backend-named section, not in `quill:`. `version` must parse as `MAJOR.MINOR.PATCH` (or `MAJOR.MINOR`); an invalid or missing value fails at load.
 
 ## Error Handling
 

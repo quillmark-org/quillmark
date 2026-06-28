@@ -21,12 +21,18 @@ impl Backend for MockBackend {
 
     fn open(
         &self,
-        plated: &str,
-        _source: &Quill,
+        source: &Quill,
         _json_data: &serde_json::Value,
     ) -> Result<quillmark::RenderSession, RenderError> {
+        // Like the real backends, the mock reads its own input from the quill's
+        // files — here a `plate.txt` it echoes back as the rendered bytes.
+        let plated = source
+            .files()
+            .get_file("plate.txt")
+            .map(|b| b.to_vec())
+            .unwrap_or_default();
         Ok(quillmark::RenderSession::new(Box::new(MockSession {
-            bytes: plated.as_bytes().to_vec(),
+            bytes: plated,
         })))
     }
 }
@@ -91,7 +97,7 @@ fn test_render_with_custom_backend() {
     fs::create_dir_all(&quill_path).unwrap();
     fs::write(
         quill_path.join("Quill.yaml"),
-        "quill:\n  name: \"custom_backend_quill\"\n  version: \"1.0\"\n  backend: \"mock-txt\"\n  plate_file: \"plate.txt\"\n  description: \"Test\"\n",
+        "quill:\n  name: \"custom_backend_quill\"\n  version: \"1.0\"\n  backend: \"mock-txt\"\n  description: \"Test\"\n",
     ).unwrap();
     fs::write(quill_path.join("plate.txt"), "Test template: {{ title }}").unwrap();
 

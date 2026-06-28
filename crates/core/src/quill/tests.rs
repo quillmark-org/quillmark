@@ -125,7 +125,7 @@ fn test_in_memory_file_system() {
     // Create test files
     fs::write(
             quill_dir.join("Quill.yaml"),
-            "quill:\n  name: \"test\"\n  version: \"1.0\"\n  backend: \"typst\"\n  plate_file: \"plate.typ\"\n  description: \"Test quill\"",
+            "quill:\n  name: \"test\"\n  version: \"1.0\"\n  backend: \"typst\"\n  description: \"Test quill\"",
         )
         .unwrap();
     fs::write(quill_dir.join("plate.typ"), "test plate").unwrap();
@@ -168,7 +168,7 @@ fn test_quillignore_integration() {
     // Create test files
     fs::write(
             quill_dir.join("Quill.yaml"),
-            "quill:\n  name: \"test\"\n  version: \"1.0\"\n  backend: \"typst\"\n  plate_file: \"plate.typ\"\n  description: \"Test quill\"",
+            "quill:\n  name: \"test\"\n  version: \"1.0\"\n  backend: \"typst\"\n  description: \"Test quill\"",
         )
         .unwrap();
     fs::write(quill_dir.join("plate.typ"), "test template").unwrap();
@@ -195,7 +195,7 @@ fn test_find_files_pattern() {
     // Create test directory structure
     fs::write(
             quill_dir.join("Quill.yaml"),
-            "quill:\n  name: \"test\"\n  version: \"1.0\"\n  backend: \"typst\"\n  plate_file: \"plate.typ\"\n  description: \"Test quill\"",
+            "quill:\n  name: \"test\"\n  version: \"1.0\"\n  backend: \"typst\"\n  description: \"Test quill\"",
         )
         .unwrap();
     fs::write(quill_dir.join("plate.typ"), "template").unwrap();
@@ -232,7 +232,6 @@ quill:
   name: my_custom_quill
   version: "1.0"
   backend: typst
-  plate_file: custom_plate.typ
   description: Test quill with new format
   author: Test Author
 "#;
@@ -268,9 +267,6 @@ quill:
             assert_eq!(version_str, "1.0");
         }
     }
-
-    // Test that plate template content is loaded correctly
-    assert!(quill.plate.unwrap().contains("Custom Template"));
 }
 
 #[test]
@@ -283,7 +279,6 @@ fn test_from_tree() {
   name: "test_from_tree"
   version: "1.0"
   backend: "typst"
-  plate_file: "plate.typ"
   description: "A test quill from tree"
 "#;
     root_files.insert(
@@ -309,7 +304,12 @@ fn test_from_tree() {
 
     // Validate the quill
     assert_eq!(quill.name(), "test_from_tree");
-    assert_eq!(quill.plate.unwrap(), plate_content);
+    // Non-manifest files (e.g. a backend's template) round-trip into the file
+    // tree verbatim; core no longer reads any of them at load time.
+    assert_eq!(
+        quill.files().get_file("plate.typ"),
+        Some(plate_content.as_bytes())
+    );
     assert!(quill.metadata.contains_key("backend"));
     assert!(quill.metadata.contains_key("description"));
 }
@@ -317,7 +317,7 @@ fn test_from_tree() {
 #[test]
 fn test_to_tree_round_trips_from_tree() {
     // Build a tree with a nested directory to exercise the recursive flatten.
-    let quill_yaml = b"quill:\n  name: roundtrip\n  version: \"1.0\"\n  backend: typst\n  plate_file: plate.typ\n  description: Round-trip test\n".to_vec();
+    let quill_yaml = b"quill:\n  name: roundtrip\n  version: \"1.0\"\n  backend: typst\n  description: Round-trip test\n".to_vec();
     let plate = b"= Plate".to_vec();
     let asset = b"\x00\x01\x02 binary asset".to_vec();
 
@@ -393,7 +393,7 @@ fn test_from_tree_structure_direct() {
             "Quill.yaml".to_string(),
             FileTreeNode::File {
                 contents:
-                    b"quill:\n  name: direct_tree\n  version: \"1.0\"\n  backend: typst\n  plate_file: plate.typ\n  description: Direct tree test\n"
+                    b"quill:\n  name: direct_tree\n  version: \"1.0\"\n  backend: typst\n  description: Direct tree test\n"
                         .to_vec(),
             },
         );
@@ -436,7 +436,7 @@ fn test_dir_exists_and_list_apis() {
     root_files.insert(
             "Quill.yaml".to_string(),
             FileTreeNode::File {
-                contents: b"quill:\n  name: test\n  version: \"1.0\"\n  backend: typst\n  plate_file: plate.typ\n  description: Test quill\n"
+                contents: b"quill:\n  name: test\n  version: \"1.0\"\n  backend: typst\n  description: Test quill\n"
                     .to_vec(),
             },
         );
@@ -542,7 +542,6 @@ fn test_field_schemas_parsing() {
   name: "taro"
   version: "1.0"
   backend: "typst"
-  plate_file: "plate.typ"
   description: "Test template for field schemas"
 
 main:
@@ -672,10 +671,11 @@ ui:
 
 #[test]
 fn test_quill_without_plate_file() {
-    // Test creating a Quill without specifying a plate file
+    // A quill that declares no backend template loads fine — plate selection is
+    // a backend's private concern, not a load-time requirement of core.
     let mut root_files = HashMap::new();
 
-    // Add Quill.yaml without plate field
+    // Add Quill.yaml with no backend section at all
     let quill_yaml = r#"quill:
   name: "test_no_plate"
   version: "1.0"
@@ -694,8 +694,8 @@ fn test_quill_without_plate_file() {
     // Create Quill from tree
     let quill = Quill::from_tree(root).unwrap();
 
-    // Validate that plate is null (will use auto plate)
-    assert!(quill.plate.clone().is_none());
+    // No `typst:` section means no `typst_plate_file` metadata surfaces.
+    assert!(!quill.metadata.contains_key("typst_plate_file"));
     assert_eq!(quill.name(), "test_no_plate");
 }
 
@@ -709,10 +709,10 @@ quill:
   backend: typst
   description: Test configuration parsing
   author: Test Author
-  plate_file: plate.typ
 
 typst:
-  packages: 
+  plate_file: plate.typ
+  packages:
     - "@preview/bubble:0.2.2"
 
 main:
@@ -739,9 +739,13 @@ main:
     // Verify optional fields
     assert_eq!(config.version, "1.0");
     assert_eq!(config.author, "Test Author");
-    assert_eq!(config.plate_file, Some("plate.typ".to_string()));
 
-    // Verify backend-specific config (parsed from the [typst] section).
+    // Verify backend-specific config (parsed from the [typst] section). The
+    // Typst plate now lives here alongside `packages`, not as a top-level key.
+    assert_eq!(
+        config.backend_config.get("plate_file").and_then(|v| v.as_str()),
+        Some("plate.typ")
+    );
     assert!(config.backend_config.contains_key("packages"));
 
     // Verify field schemas
@@ -2359,22 +2363,22 @@ main:
 
 #[test]
 fn test_unknown_key_in_quill_section_errors() {
-    // Typos like 'platefile' should fail loudly, not silently land in metadata.
+    // Typos like 'auther' should fail loudly, not silently land in metadata.
     let yaml_content = r#"
 quill:
   name: unk_key
   version: "1.0"
   backend: typst
   description: Unknown key test
-  platefile: foo.typ
+  auther: Jane Doe
 "#;
 
     let err = QuillConfig::from_yaml_with_warnings(yaml_content).unwrap_err();
 
     assert_eq!(err.len(), 1);
     assert_eq!(err[0].code.as_deref(), Some("quill::unknown_key"));
-    assert!(err[0].message.contains("platefile"));
-    assert!(err[0].hint.as_deref().unwrap_or("").contains("plate_file"));
+    assert!(err[0].message.contains("auther"));
+    assert!(err[0].hint.as_deref().unwrap_or("").contains("author"));
 }
 
 #[test]

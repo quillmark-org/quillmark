@@ -163,10 +163,11 @@ impl Backend for TypstBackend {
 
     fn open(
         &self,
-        plate_content: &str,
         source: &Quill,
         json_data: &serde_json::Value,
     ) -> Result<RenderSession, RenderError> {
+        let plate_content = read_plate(source)?;
+
         let fields = json_data.as_object().map_or_else(HashMap::new, |obj| {
             obj.iter()
                 .map(|(key, value)| (key.clone(), QuillValue::from_json(value.clone())))
@@ -193,7 +194,7 @@ impl Backend for TypstBackend {
                 )
                 .with_code("backend::data_serialization_failed".to_string())],
             })?;
-        let document = compile::compile_to_document(source, plate_content, &json_str)?;
+        let document = compile::compile_to_document(source, &plate_content, &json_str)?;
         let page_count = document.pages().len();
         let field_placements = overlay::extract(&document)?;
         let session = TypstSession {
@@ -209,6 +210,47 @@ impl Default for TypstBackend {
     /// Creates a new [`TypstBackend`] instance.
     fn default() -> Self {
         Self
+    }
+}
+
+/// Read the Typst plate (template) this quill renders through.
+///
+/// The plate is a Typst-only notion, not a universal backend input: its
+/// filename is declared under the `typst:` backend-config section as
+/// `plate_file`, and the source lives in the quill's file bundle. The backend
+/// resolves it here, the same way `pdfform` resolves its own `form.pdf` /
+/// `form.json`. A quill that declares no `plate_file` renders through an empty
+/// plate (`""`).
+fn read_plate(source: &Quill) -> Result<String, RenderError> {
+    let plate_file = source
+        .config()
+        .backend_config
+        .get("plate_file")
+        .and_then(|v| v.as_str());
+
+    let Some(plate_file) = plate_file else {
+        return Ok(String::new());
+    };
+
+    let bytes = source.files().get_file(plate_file).ok_or_else(|| {
+        engine_err(
+            "typst::plate_missing",
+            format!("plate file '{plate_file}' not found in the quill's file tree"),
+        )
+    })?;
+
+    String::from_utf8(bytes.to_vec()).map_err(|e| {
+        engine_err(
+            "typst::invalid_utf8",
+            format!("plate file '{plate_file}' is not valid UTF-8: {e}"),
+        )
+    })
+}
+
+/// A single-diagnostic [`RenderError::EngineCreation`] carrying `code`.
+fn engine_err(code: &str, message: impl Into<String>) -> RenderError {
+    RenderError::EngineCreation {
+        diags: vec![Diagnostic::new(Severity::Error, message.into()).with_code(code.to_string())],
     }
 }
 

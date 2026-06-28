@@ -949,8 +949,10 @@ describe('quill.metadata', () => {
   name: meta_test_quill
   version: "0.2.1"
   backend: typst
-  plate_file: plate.typ
   description: Metadata test
+
+typst:
+  plate_file: plate.typ
 
 main:
   description: The main card schema
@@ -1178,8 +1180,10 @@ describe('Unendorsed / Endorsed schema model', () => {
   name: schema_test
   version: "1.0"
   backend: typst
-  plate_file: plate.typ
   description: Unendorsed / Endorsed coverage
+
+typst:
+  plate_file: plate.typ
 
 main:
   fields:
