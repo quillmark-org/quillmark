@@ -42,6 +42,7 @@ nav:
       - Creating Quills: quills/creating-quills.md
       - Quill.yaml Reference: quills/quill-yaml-reference.md
       - Typst Backend: quills/typst-backend.md
+      - PDF Form Backend: quills/pdfform-backend.md
       - Versioning: quills/versioning.md
   - CLI:
       - Reference: cli/reference.md
