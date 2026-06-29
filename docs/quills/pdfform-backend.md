@@ -183,21 +183,20 @@ The widget is unsigned: Quillmark performs no cryptography. To produce a signed 
 
 | Format | Support |
 |---|---|
-| **PDF** | Always — the deliverable; always an interactive AcroForm (Technique A). |
-| **SVG** | A `render()` output format, under the `preview` feature only. |
+| **PDF** | The deliverable; always an interactive AcroForm (Technique A). |
+| **SVG** | A `render()` output format — one SVG document per page. |
+| **PNG** | A `render()` output format — one raster per page at `RenderOptions::ppi` (default 144). |
 
-`OutputFormat::Png` is **not** supported: under `preview` the backend's formats
-are `[Pdf, Svg]`, so `render` with `output_format: Some(Png)` returns
-`FormatNotSupported`.
+The backend's formats are `[Pdf, Svg, Png]`; `render` with any other
+`output_format` returns `FormatNotSupported`.
 
 **Canvas** is a separate surface from the `render()` output formats above: it is
-the WASM `paint()` raster path (`render_rgba`), not an `OutputFormat`. It is
-likewise available only under `preview` (which the WASM build enables via
-`pdfform-preview`). See [PREVIEW.md](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/PREVIEW.md).
+the WASM `paint()` raster path (`render_rgba`), not an `OutputFormat`. See
+[PREVIEW.md](https://github.com/quillmark-org/quillmark/blob/main/prose/canon/PREVIEW.md).
 
 The PDF is the real deliverable. By design (Technique A — real fields plus `NeedAppearances`, no baked appearance streams), **values appear only in viewers that synthesize appearances** — Acrobat, Chrome/pdfium, Preview.app, pdf.js's forms layer. A flat, non-interactive rasterizer renders the fields blank.
 
-To get values into flat output, the `preview` feature pre-flattens them: it bakes each value into the page content stream so the SVG/PNG raster is complete rather than background-only. The `preview` build links a raster tree (hayro) and is off by default, keeping form-only and Typst builds lean.
+To get values into the SVG/PNG/canvas output, the backend pre-flattens them: it bakes each value into the page content stream (via a raster tree, hayro) so the raster is complete rather than background-only. This flattening backs the SVG/PNG/canvas surfaces only — never the AcroForm PDF deliverable, which is always stamped.
 
 ### Regions sidecar
 

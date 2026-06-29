@@ -30,7 +30,7 @@ Implements `Backend` for PDF, SVG, and PNG. Converts Markdown fields to Typst ma
 
 ### `backends/quillmark-pdfform`
 
-The second backend: fills an existing AcroForm PDF rather than typesetting from scratch. Resolves card values against the quill's `form.json` spec and stamps them onto the base `form.pdf` as real interactive fields (Technique A — `NeedAppearances`, no baked appearance streams). Output is always an interactive AcroForm PDF; under the `preview` feature it also emits SVG and a WASM canvas raster by pre-flattening values into the page content streams (hayro raster). Every render returns a `regions` sidecar (per-field geometry + bound value). See [docs/quills/pdfform-backend.md](../../docs/quills/pdfform-backend.md) and [PREVIEW.md](PREVIEW.md).
+The second backend: fills an existing AcroForm PDF rather than typesetting from scratch. Resolves card values against the quill's `form.json` spec and stamps them onto the base `form.pdf` as real interactive fields (Technique A — `NeedAppearances`, no baked appearance streams). The PDF deliverable is always an interactive AcroForm; the backend also emits SVG and PNG (and a WASM canvas raster) by pre-flattening values into the page content streams (hayro raster). Every render returns a `regions` sidecar (per-field geometry + bound value). See [docs/quills/pdfform-backend.md](../../docs/quills/pdfform-backend.md) and [PREVIEW.md](PREVIEW.md).
 
 ### `quillmark-pdf`
 

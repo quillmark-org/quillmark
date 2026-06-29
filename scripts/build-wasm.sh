@@ -13,8 +13,9 @@ set -o pipefail
 #   pkg/backends/typst/   — Typst-backed engine + RenderSession + canvas (a private
 #                           backend binary, NOT a public export)
 #   pkg/backends/pdfform/ — Typst-free PDF-form backend (engine + RenderSession +
-#                           canvas via the pdfform-preview raster seam; private
-#                           backend binary, NOT a public export)
+#                           canvas; the pdfform-preview feature adds the web-sys
+#                           canvas painter over the always-linked hayro raster;
+#                           private backend binary, NOT a public export)
 #
 # These generated artifacts plus the hand-written canonical layer ship as one
 # npm package. Public surface: the root `.` export (`@quillmark/wasm`) is the

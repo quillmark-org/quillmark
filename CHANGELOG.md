@@ -8,6 +8,13 @@
 
 ## Unreleased
 
+- feat(pdfform)!: the `pdfform` backend now exports PNG and SVG as first-class
+  `render()` output formats (`SUPPORTED_FORMATS == [Pdf, Svg, Png]`); PNG
+  rasters at `RenderOptions::ppi` (default 144). The `preview` cargo feature is
+  removed — the hayro raster/SVG/PNG seam is always linked, so SVG/PNG/canvas
+  work out of the box rather than behind a flag. The `quillmark` crate's
+  `pdfform-preview` feature is dropped (folded into `pdfform`); the wasm
+  `pdfform-preview` feature now gates only the `web-sys` canvas painter
 - fix(quillmark-pdf): `find_dict_value` now walks the dict as strict
   key→value pairs, so a Name in *value* position (e.g. `/Subtype /Producer`)
   is no longer mis-matched as a key; the object/dict scanners also skip
@@ -19,14 +26,13 @@
   seam (#749, #750). See `prose/proposals/PDFFORM_BACKEND.md` §9 for the V1
   handover.
 - refactor(pdfform): PDF output is always an interactive AcroForm (Technique A).
-  Value-flattening is now internal preview-only machinery (gated under the
-  `preview` feature) backing the SVG/PNG raster previews, never a PDF
-  deliverable. The public `RenderOptions.flatten` knob is removed across core and
-  all four bindings (it was wired only in wasm, hardcoded `false` in Python, and
-  ignored in .NET)
-- fix(pdfform): the preview flatten path transcodes values to WinAnsi (with a
+  Value-flattening is internal machinery backing the SVG/PNG/canvas raster
+  outputs, never a PDF deliverable. The public `RenderOptions.flatten` knob is
+  removed across core and all four bindings (it was wired only in wasm, hardcoded
+  `false` in Python, and ignored in .NET)
+- fix(pdfform): the flatten path transcodes values to WinAnsi (with a
   `WinAnsiEncoding` font) so accented/Latin-1 text renders correctly in the
-  raster preview, and clips each value to its field box so long values can't
+  raster output, and clips each value to its field box so long values can't
   overflow
 - refactor(quillmark-pdf): hoist the shared PDF byte-serialization (object/text
   writers, `/Info /Producer` stamp) into `quillmark_pdf::writer`, consumed by

@@ -14,29 +14,24 @@
 //! backends collapse to the same `&[FieldSpec]` seam; they differ only in where
 //! geometry and values come from.
 
-#[cfg(feature = "preview")]
 mod flatten;
 mod form;
 mod resolve;
-#[cfg(feature = "preview")]
 mod typography;
 
 pub use form::{FieldKind, FormField, FormParseError, FormSpec, Rect};
 
 use std::any::Any;
 
-#[cfg(feature = "preview")]
 use flatten::flatten as flatten_to_pdf;
 use quillmark_core::session::SessionHandle;
 use quillmark_core::{
     Artifact, Backend, Diagnostic, OutputFormat, Quill, RenderError, RenderOptions, RenderResult,
     RenderSession, Severity,
 };
-#[cfg(feature = "preview")]
 use quillmark_pdf::regions_of;
 use quillmark_pdf::{stamp, FieldSpec, PdfError, StampOptions};
 
-#[cfg(feature = "preview")]
 use {
     hayro::hayro_interpret::{font::FontQuery, InterpreterSettings},
     hayro::hayro_syntax::Pdf as HayroPdf,
@@ -49,10 +44,12 @@ use {
 const FORM_PDF: &str = "form.pdf";
 const FORM_JSON: &str = "form.json";
 
-#[cfg(not(feature = "preview"))]
-const SUPPORTED_FORMATS: &[OutputFormat] = &[OutputFormat::Pdf];
-#[cfg(feature = "preview")]
-const SUPPORTED_FORMATS: &[OutputFormat] = &[OutputFormat::Pdf, OutputFormat::Svg];
+/// Default raster resolution for PNG output (2× at 72 pt/in), matching the
+/// core `RenderOptions::ppi` default and the Typst backend.
+const DEFAULT_PPI: f32 = 144.0;
+
+const SUPPORTED_FORMATS: &[OutputFormat] =
+    &[OutputFormat::Pdf, OutputFormat::Svg, OutputFormat::Png];
 
 /// The PDF-form backend.
 #[derive(Debug, Default)]
@@ -112,11 +109,10 @@ impl Backend for PdfformBackend {
             field_specs.push(resolve::field_spec(field, media_box, json_data));
         }
 
-        // Under `preview`, pre-flatten once so render_rgba / SVG renders have
-        // a ready-to-rasterize flat PDF without re-running flatten on every
+        // Pre-flatten once so render_rgba / SVG / PNG renders have a
+        // ready-to-rasterize flat PDF without re-running flatten on every
         // paint call. The producer string only goes in the PDF Info dict and
         // doesn't affect rasterisation, so None is fine here.
-        #[cfg(feature = "preview")]
         let flat_pdf = flatten_to_pdf(
             base_pdf.clone(),
             &field_specs,
@@ -129,9 +125,7 @@ impl Backend for PdfformBackend {
             base_pdf,
             field_specs,
             page_count,
-            #[cfg(feature = "preview")]
             page_boxes,
-            #[cfg(feature = "preview")]
             flat_pdf,
         })))
     }
@@ -144,13 +138,11 @@ struct PdfformSession {
     base_pdf: Vec<u8>,
     field_specs: Vec<FieldSpec>,
     page_count: usize,
-    /// Page media-boxes from the background; used by `page_size_pt` under
-    /// `preview` without reparsing the PDF on every canvas-paint call.
-    #[cfg(feature = "preview")]
+    /// Page media-boxes from the background; used by `page_size_pt` without
+    /// reparsing the PDF on every canvas-paint call.
     page_boxes: Vec<[f32; 4]>,
     /// Pre-flattened PDF (values baked as content-stream operators) ready for
     /// hayro rasterisation. Produced once at session-open time.
-    #[cfg(feature = "preview")]
     flat_pdf: Vec<u8>,
 }
 
@@ -168,16 +160,21 @@ impl SessionHandle for PdfformSession {
             });
         }
 
-        // SVG output: convert the pre-flattened PDF to SVG via hayro-svg.
-        #[cfg(feature = "preview")]
+        // Raster/vector output: rasterise the pre-flattened PDF via hayro.
+        // SVG is vector (hayro-svg); PNG is raster at `opts.ppi`. Both bake the
+        // values in, so they render in any viewer (no appearance synthesis).
         if format == OutputFormat::Svg {
             return self.render_svg();
+        }
+        if format == OutputFormat::Png {
+            let scale = opts.ppi.unwrap_or(DEFAULT_PPI) / 72.0;
+            return self.render_png(scale);
         }
 
         // The producer threads from the product layer, else the backend default.
         // PDF output is always an interactive AcroForm (Technique A / `stamp`);
-        // value-flattening is internal preview-only machinery, never a PDF
-        // deliverable.
+        // value-flattening is internal raster machinery (SVG/PNG/canvas),
+        // never a PDF deliverable.
         let producer = Some(opts.producer.clone().unwrap_or_else(default_producer));
         let stamp_opts = StampOptions { producer };
         let stamped =
@@ -202,9 +199,6 @@ impl SessionHandle for PdfformSession {
     }
 
     /// Page dimensions in PDF points derived from the background's `/MediaBox`.
-    /// Available only under the `preview` feature; the default `None` satisfies
-    /// the canvas-capability contract when `preview` is off.
-    #[cfg(feature = "preview")]
     fn page_size_pt(&self, page: usize) -> Option<(f32, f32)> {
         let [x0, y0, x1, y1] = *self.page_boxes.get(page)?;
         Some((x1 - x0, y1 - y0))
@@ -213,7 +207,6 @@ impl SessionHandle for PdfformSession {
     /// Rasterise `page` of the pre-flattened PDF via hayro. Field values are
     /// baked into the flat PDF as content-stream operators, so they appear in
     /// the raster without any regions-compositing by the caller.
-    #[cfg(feature = "preview")]
     fn render_rgba(&self, page: usize, scale: f32) -> Option<(u32, u32, Vec<u8>)> {
         use hayro::vello_cpu::color::palette::css::WHITE;
 
@@ -239,7 +232,6 @@ impl SessionHandle for PdfformSession {
     }
 }
 
-#[cfg(feature = "preview")]
 impl PdfformSession {
     /// Render all pages as SVG via hayro-svg, using the pre-flattened PDF.
     fn render_svg(&self) -> Result<RenderResult, RenderError> {
@@ -269,12 +261,51 @@ impl PdfformSession {
         let regions = regions_of(&self.field_specs);
         Ok(RenderResult::new(artifacts, OutputFormat::Svg).with_regions(regions))
     }
+
+    /// Render all pages as PNG via hayro, using the pre-flattened PDF. `scale`
+    /// is device pixels per PDF point (`ppi / 72`), so the values baked into
+    /// the flat PDF rasterise at the requested resolution.
+    fn render_png(&self, scale: f32) -> Result<RenderResult, RenderError> {
+        use hayro::vello_cpu::color::palette::css::WHITE;
+
+        let pdf = HayroPdf::new(self.flat_pdf.clone()).map_err(|_| {
+            engine_err(
+                "pdfform::png_parse_failed",
+                "failed to parse pre-flattened PDF for PNG render",
+            )
+        })?;
+        let interp = standard_font_settings();
+        let render_settings = RenderSettings {
+            x_scale: scale,
+            y_scale: scale,
+            bg_color: WHITE,
+            ..Default::default()
+        };
+
+        let mut artifacts = Vec::with_capacity(pdf.pages().len());
+        for page in pdf.pages().iter() {
+            let cache = RenderCache::new();
+            let pixmap = hayro_render(page, &cache, &interp, &render_settings);
+            let png = pixmap.into_png().map_err(|e| {
+                engine_err(
+                    "pdfform::png_encoding",
+                    format!("failed to encode page as PNG: {e}"),
+                )
+            })?;
+            artifacts.push(Artifact {
+                bytes: png,
+                output_format: OutputFormat::Png,
+            });
+        }
+
+        let regions = regions_of(&self.field_specs);
+        Ok(RenderResult::new(artifacts, OutputFormat::Png).with_regions(regions))
+    }
 }
 
 /// Build an `InterpreterSettings` that satisfies standard Type1 font queries
 /// (Helvetica, ZapfDingbats, etc.) using hayro's embedded font data.
 /// Required for rendering the flat PDF's Helv and ZaDb content streams.
-#[cfg(feature = "preview")]
 fn standard_font_settings() -> InterpreterSettings {
     InterpreterSettings {
         font_resolver: Arc::new(|query| match query {

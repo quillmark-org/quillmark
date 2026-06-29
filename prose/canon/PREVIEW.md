@@ -166,17 +166,17 @@ painter cannot disagree:
 | ----------------------------------------- | -------- | ------ | -------------------------------------------------------- |
 | `pkg/core/` (no features)                 | —        | no     | `Document` + `Quill` only; no engine, no Typst           |
 | `pkg/backends/typst/` (`typst`)           | typst    | yes    | native page raster                                       |
-| `pkg/backends/pdfform/` (`pdfform-preview`) | pdfform | yes    | pre-flatten + hayro raster; ships hayro/vello_cpu (wasm) |
-| (`pdfform`, tiny)                         | pdfform  | no     | form-fill → PDF only; no `web-sys`, no painter           |
+| `pkg/backends/pdfform/` (`pdfform-preview`) | pdfform | yes    | pre-flatten + hayro raster/SVG/PNG; adds the `web-sys` painter |
+| (`pdfform`, no `web-sys`)                 | pdfform  | no     | renders PDF + SVG + PNG, but no canvas painter           |
 
-`pdfform-preview` is a strict superset of `pdfform`: it adds
-`quillmark-pdfform/preview` (the hayro raster + SVG seam) and the `web-sys`
-canvas surface. The pdfform backend reports `supports_canvas() == true` only
-under `preview`, which `pdfform-preview` enables — so the tiny `pdfform` build
-is honestly canvas-free. `build-wasm.sh` builds all three artifacts (core,
-typst, pdfform) sequentially; `runtime/runtime.js` maps each backend id to its
-build with a `{ formats, canvas }` manifest, drift-guarded by
-`runtime.test.js`.
+The pdfform backend always links its hayro raster seam, so it renders PDF, SVG,
+and PNG out of the box (`supports_canvas() == true`). The wasm `pdfform-preview`
+feature is a strict superset of `pdfform` that only adds the `web-sys` canvas
+*painter*, so the in-browser `paint()` surface ships; a `pdfform` build without
+`web-sys` still renders SVG/PNG but carries no painter. `build-wasm.sh` builds
+the three artifacts (core, typst, pdfform — the last with `pdfform-preview`)
+sequentially; `runtime/runtime.js` maps each backend id to its build with a
+`{ formats, canvas }` manifest, drift-guarded by `runtime.test.js`.
 
 ## Non-goals
 
