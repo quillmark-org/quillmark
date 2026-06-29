@@ -14,7 +14,7 @@ Where things live:
 - API docs: standard in-line Rust doc comments (`///`).
 - Canonical design docs: [`prose/canon/INDEX.md`](prose/canon/INDEX.md).
 - User guide: `docs/` (rendered by mkdocs).
-- Full style rubric and review pass: the `dense-prose` skill (`.claude/skills/dense-prose/`), alongside `prune-evolutionary-info` (history) and `maintain-canon` (canon structure).
+- Full style rubric and review pass: the `dense-prose` skill (`.claude/skills/dense-prose/`); `maintain-canon` covers canon structure.
 
 ## Binding tests
 

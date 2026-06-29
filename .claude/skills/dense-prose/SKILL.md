@@ -1,22 +1,17 @@
 ---
 name: dense-prose
-description: Write comments and docs at high semantic density — terse, present-tense, unsold, mostly self-documenting. Use when writing or reviewing code comments, prose/canon/, or docs/ for density and a consistent voice.
+description: Write comments and docs at high semantic density — terse, present-tense, unsold, mostly self-documenting. Use when writing or reviewing code comments, prose/canon/, or docs/ for density and a consistent voice, or when comments narrate change ("used to", "no longer", "renamed", "as of 0.x") instead of stating what is.
 ---
 
 ## Purpose
 
 Comments and docs earn their bytes. Each should state a fact a reader cannot get
 faster from the code itself, in the fewest words that stay correct. This skill
-is the house voice: dense, present-tense, declarative, unsold. It composes with
-two siblings and does not repeat them:
+is the house voice: dense, present-tense, declarative, unsold.
 
-- **`prune-evolutionary-info`** owns present-tense rewriting — cutting "used to
-  / no longer / as of 0.x" history. Invoke it for history.
-- **`maintain-canon`** owns the `prose/canon/` doc spine (Title → Implementation
-  anchor → TL;DR) and one-concept-per-page. Invoke it for canon structure.
-
-This skill owns what they do not: marketing, over-explanation, and deliberation
-narration.
+It covers comment and doc *content*. For canon *structure* — the `prose/canon/`
+doc spine (Title → Implementation anchor → TL;DR), one concept per page — use
+**`maintain-canon`**.
 
 ## Prime directive: correctness over brevity
 
@@ -58,7 +53,37 @@ The code is the primary documentation. A comment that restates it is noise.
   and the hand-list rots. Describe the module's job instead.
 - One good example beats three; drop "see X for comprehensive coverage" filler.
 
-### 3. State the design, not the deliberation
+### 3. Present tense — describe what is, not how it got here
+
+Evolutionary narration ("we used to X, now Y") adds words, ages badly, and makes
+the reader reconstruct history to understand the present. State the current
+invariant. But not every mention of the past is cruft — triage into three:
+
+1. **Pure narration → delete or restate.** "the heuristics that used to live
+   here couldn't keep pace" / "removed in 0.87.0" / "we switched to X". No
+   present-state value beyond what the current description already carries.
+2. **Current behavior in a historical costume → keep the fact, drop the
+   framing.** A backward-compat alias that is *still accepted* is current
+   behavior: "the legacy `~~~card-yaml` opener is still accepted but no longer
+   canonical" → "`~~~card-yaml` is also accepted as a non-canonical alias."
+3. **Legacy load-bearing for the present → keep.** When the old pattern is
+   *required* to understand the current one, the history is the documentation —
+   e.g. a versioned-storage envelope whose job is to read old formats: the
+   legacy schema *is* current reader behavior (`core/src/document/dto.rs`).
+
+Reframing moves:
+
+- "used to X, now Y" → assert Y in present tense.
+- "no longer / previously / formerly Z" → "is not Z" / "does not Z", or drop.
+- "as of 0.x / removed in 0.x" → state the current rule, no version.
+- Regression-test comment → state the invariant guarded, not the bug's history:
+  "X must not happen (would cause Y)" not "X used to happen."
+
+Caution: `used to` often means "used **in order to**" — not history; read before
+cutting. In consumer `docs/`, keep history a reader needs to *use* the feature
+(an accepted alias, a tolerated input) — reframe it, don't delete it.
+
+### 4. State the design, not the deliberation
 
 Describe what is, not what was considered. Cut spike/deferred/rejected
 narration; keep the resulting fact and, when it explains a present choice, the
@@ -91,12 +116,14 @@ Technique A*). Match the density of the best existing comments —
 
 ## Workflow
 
-1. **Sweep** — grep comments/docs for the marketing word-list above and for
+1. **Sweep** — grep comments/docs for: the marketing word-list above; history
+   markers (`used to`, `no longer`, `previously`, `formerly`, `as of`,
+   `removed in`, `renamed`, `we switched`, `legacy`, `deprecated`); and
    deliberation markers (`spike`, `deferred`, `considered`, `for now`,
-   `eventually`, `we tried`). For history markers, use `prune-evolutionary-info`.
+   `eventually`, `we tried`).
 2. **Triage** — each hit: violation, or load-bearing fact in costume?
-3. **Rewrite** in place — present tense, minimal, fact preserved. Fix any
-   comment that contradicts the code rather than deleting it.
+3. **Rewrite** in place — present tense, minimal, fact preserved. Fix a comment
+   that contradicts the code rather than deleting it. Leave identifiers alone.
 4. **Verify** — build and tests pass; no doctest broken; no test asserted the
    old wording.
 
@@ -104,5 +131,5 @@ Technique A*). Match the density of the best existing comments —
 
 Comments and docs state what is, in the house voice: dense, present-tense,
 unsold. No comment restates code; no header enumerates rotting lists; no prose
-narrates deliberation. Backward-compat facts survive as current-state
+narrates history or deliberation. Backward-compat facts survive as current-state
 statements.
