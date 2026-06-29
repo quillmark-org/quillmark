@@ -279,7 +279,7 @@ fn is_obj_header_tail(rest: &[u8]) -> bool {
 /// `dict_bytes` is the *inner* content of one dict (between its `<<` / `>>`),
 /// where entries strictly alternate `key value key value …` and every key is a
 /// Name. The scan walks that key→value rhythm: at each step it reads the key
-/// Name, then consumes its value wholesale via [`read_value_end`] (which steps
+/// Name, then consumes its value wholesale via `read_value_end` (which steps
 /// over nested `<<>>` / `[]` / `()` / `<>` as a unit). Because every value is
 /// consumed as a value, a Name that appears in *value* position (e.g.
 /// `/Subtype /Producer`) is never mistaken for a key — only keys are tested
