@@ -1,6 +1,6 @@
 # Concepts
 
-## The Schema-Driven Philosophy
+## How Quillmark separates concerns
 
 Quillmark separates content, schema, and presentation:
 
@@ -23,7 +23,7 @@ A **Quill** is a format bundle that defines how Markdown content should be rende
 Quillmark documents use **card-yaml blocks** to provide structured metadata. A
 card-yaml block is delimited by bare `~~~` / `~~~` fences and may begin
 with a run of `$`-prefixed system metadata lines followed by a YAML payload.
-(The legacy `~~~card-yaml` opener is still accepted as an alias, but the
+(`~~~card-yaml` is also accepted as a non-canonical alias; the
 canonical opener is a bare `~~~`. To write a literal fenced *code* block in
 prose, use a backtick fence or a `~~~` fence with a language info string —
 adding more tildes does not escape, as a `~~~~` block is still a card.)

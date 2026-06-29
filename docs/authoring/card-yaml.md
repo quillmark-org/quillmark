@@ -23,8 +23,8 @@ tags: ["important", "draft"]
 A card-yaml block has three parts, in order:
 
 1. **Opening fence** — a bare `~~~` (three tildes, no info string). No leading
-   indentation. The legacy `~~~card-yaml` info string is still accepted on
-   input but is non-canonical; it parses identically and re-emits as a bare
+   indentation. The `~~~card-yaml` info string is also accepted on
+   input as a non-canonical alias; it parses identically and re-emits as a bare
    `~~~`.
 2. **YAML payload** — a standard YAML mapping. The reserved keys `$quill`,
    `$kind`, `$id`, `$ext`, and `$seed` carry system metadata (see below); every
@@ -44,7 +44,7 @@ fenced code block in prose requires the escape hatch: use a **backtick fence**
 (or a `~~~` fence carrying a language info string, e.g. `~~~rust`). Adding more
 tildes does not escape — a `~~~~` block is still a card (its closer must just
 be at least as long). A `~~~` fence whose info string is anything other than
-the legacy `card-yaml` stays an ordinary code block.
+`card-yaml` stays an ordinary code block.
 
 ## System Metadata (`$`)
 
@@ -193,7 +193,7 @@ recipients:
 both at the top level and on leaves nested inside objects and array elements.
 It is rejected on mappings (tag the leaves, not the container). `!must_fill`
 is the only placeholder tag; every other custom YAML tag (`!include`, `!env`,
-and the former `!fill` spelling) is dropped with a warning and the value kept.
+`!fill`) is dropped with a warning and the value kept.
 
 Use **block style** for placeholders. A marker written inside a flow
 collection (`addr: {street: !must_fill}`), on a bare sequence element

@@ -72,7 +72,7 @@ Browse the full catalog at [Typst Universe](https://typst.app/universe/).
 
 ## Fonts
 
-System-installed fonts work out of the box (`#set text(font: "Arial")`). To bundle fonts with the Quill, drop them in `assets/fonts/`:
+System-installed fonts are available directly (`#set text(font: "Arial")`). To bundle fonts with the Quill, drop them in `assets/fonts/`:
 
 ```
 my-quill/
