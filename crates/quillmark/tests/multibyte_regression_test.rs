@@ -1,24 +1,15 @@
 //! Regression coverage for the "string index N is not a character boundary"
 //! panic class (BACKLOG.md B1).
 //!
-//! Historical context: claude-haiku-4-5 generations of the `usaf_intel_brief`
-//! quill consistently triggered `"string index 2 is not a character boundary"`
-//! at render time. The common input shape is a `markdown`-typed field
-//! containing a mix of:
+//! `Document::from_markdown` must not panic on multibyte-character inputs.
+//! The vulnerable input shape is a `markdown`-typed field containing a mix of:
 //!
 //! - en-dashes (`–`, U+2013, 3 bytes in UTF-8) used as bullet markers
 //! - em-dashes (`—`, U+2014) in adjacent prose
 //! - mixed bullet marker styles (`-`, `*`, `–`) inside a block scalar
 //!
-//! The primary slice site was patched in commit `118402e6` (Harden prescan
-//! byte-slicing against multibyte chars). Residual panic events (~1 per 168
-//! eval runs) have no captured-input repro yet; this suite locks down the
-//! known-bad inputs to prevent regression on the fixed site and serves as
-//! the staging ground for any future repro that does surface.
-//!
-//! When a fresh repro lands, add it here. Each test should panic loudly
-//! (via the implicit `cargo test` panic catcher) on the unfixed code path
-//! and pass on the fixed one.
+//! Each test must not panic on the fixed code path; add new repros here as
+//! they surface.
 
 use quillmark::Document;
 
@@ -31,10 +22,9 @@ fn assert_parses(input: &str) {
 
 #[test]
 fn em_and_en_dashes_in_block_scalar_bullets_parse_without_panic() {
-    // Lifted from claude-haiku-4-5 / intel_brief trial 1 (eval debug log
-    // 2026-05-22T23-40-48-227Z). The trigger pattern is a `bullets: |`
-    // block scalar whose body mixes ASCII `-`, `*`, and en-dash `–` as
-    // bullet markers and contains an em-dash in the prose.
+    // The trigger pattern: a `bullets: |` block scalar whose body mixes
+    // ASCII `-`, `*`, and en-dash `–` as bullet markers and contains an
+    // em-dash in the prose.
     let md = "~~~card-yaml\n\
               $quill: q@0.1\n\
               $kind: main\n\

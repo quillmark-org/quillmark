@@ -77,9 +77,8 @@ fn validate_forwards_type_mismatch_with_path_and_hint() {
 #[test]
 fn validate_reports_unknown_card_kind() {
     let quill = quill_from_yaml(SIMPLE);
-    // A card whose `$kind` is not declared in the schema. (The form view used
-    // to drop the card and emit `form::unknown_card_kind`; validation already
-    // reports the identical condition under `validation::unknown_card`.)
+    // A card whose `$kind` is not declared in the schema emits
+    // `validation::unknown_card`.
     let md = "~~~card-yaml\n$quill: validate_test\n$kind: main\ntitle: \"T\"\ncount: 1\n~~~\n\n\
               ~~~card-yaml\n$kind: ghost\nbody: \"B\"\n~~~\n";
     let doc = Document::from_markdown(md).unwrap();

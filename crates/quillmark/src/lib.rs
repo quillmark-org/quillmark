@@ -26,7 +26,6 @@ pub use quillmark_core::{
     Quill, RenderError, RenderOptions, RenderResult, RenderSession, Severity,
 };
 
-// Declare modules
 mod load;
 pub mod orchestration;
 

@@ -86,8 +86,8 @@ pub fn execute(args: RenderArgs) -> Result<()> {
         } else {
             // No input file: render the seeded document — the committed
             // "filled-out one" (each field's `example:`, with `default:`/zero
-            // interpolated at the render floor), so the quill renders out of
-            // the box.
+            // interpolated at the render floor), which renders without
+            // field-filling.
             if args.verbose {
                 println!("Using seeded document from quill");
             }

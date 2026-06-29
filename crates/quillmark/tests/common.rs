@@ -7,7 +7,7 @@ use std::error::Error;
 /// result to the demo output directory.
 ///
 /// Uses the `example` reference document (example › default › zero) so cells
-/// carry illustrative values and the document renders out of the box; the
+/// carry illustrative values and the document renders without field-filling; the
 /// plain `blueprint()` carries `!must_fill` placeholders (which render via the
 /// zero-fill floor but warn until replaced).
 pub fn demo(quill_dir: &str, render_output: &str) -> Result<(), Box<dyn Error>> {
