@@ -92,9 +92,9 @@ const DEFAULT_BACKENDS = {
 	},
 	pdfform: {
 		load: () => import('../backends/pdfform/wasm.js'),
-		// crates/backends/pdfform/src/lib.rs SUPPORTED_FORMATS (preview feature) == [Pdf, Svg]
-		formats: ['pdf', 'svg'],
-		canvas: true // has svg → formats_support_canvas == true (preview feature)
+		// crates/backends/pdfform/src/lib.rs SUPPORTED_FORMATS == [Pdf, Svg, Png]
+		formats: ['pdf', 'svg', 'png'],
+		canvas: true // has svg/png → formats_support_canvas == true
 	}
 };
 

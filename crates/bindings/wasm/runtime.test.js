@@ -204,7 +204,7 @@ describe('@quillmark/wasm/runtime — Engine (hidden core→backend crossing)', 
   it('pdfform manifest cannot drift from the loaded backend (drift guard)', async () => {
     // Same drift guard as typst, but for the pdfform backend: the static
     // `{ formats, canvas }` manifest in DEFAULT_BACKENDS must match what the
-    // loaded pdfform-preview binary actually reports.
+    // loaded pdfform binary actually reports.
     const engine = new Engine()
     const quill = Quill.fromTree(makeSampleFormQuill())
     expect(quill.backendId).toBe('pdfform')
@@ -213,7 +213,7 @@ describe('@quillmark/wasm/runtime — Engine (hidden core→backend crossing)', 
     // What the static manifest reports (no load).
     const manifestFormats = await engine.supportedFormats(quill)
     const manifestCanvas = await engine.supportsCanvas(quill)
-    expect([...manifestFormats].sort()).toEqual(['pdf', 'svg'])
+    expect([...manifestFormats].sort()).toEqual(['pdf', 'png', 'svg'])
     expect(manifestCanvas).toBe(true)
 
     // Force the pdfform backend to load, then ask the real engine directly.

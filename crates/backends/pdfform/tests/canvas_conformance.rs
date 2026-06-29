@@ -7,8 +7,7 @@
 //! pre-flattening the field values into the page content streams at
 //! session-open, then rasterizing that flat PDF via hayro.
 //!
-//! This test (behind the `preview` feature) renders the `sample_form` fixture's
-//! session and asserts:
+//! This test renders the `sample_form` fixture's session and asserts:
 //!   1. `render_rgba(0, scale)` returns a raster whose dimensions match
 //!      `page_size_pt × scale` (within rounding), and
 //!   2. that raster contains NON-WHITE, opaque pixels inside at least one
@@ -18,8 +17,6 @@
 //! The region geometry is in PDF points (bottom-left origin); the raster is
 //! top-left origin in device pixels, so the test applies the canonical
 //! `y_canvas = (pageHeightPt - y_pdf) × scale` flip to locate a field box.
-
-#![cfg(feature = "preview")]
 
 use quillmark::{Document, OutputFormat, Quillmark, RenderOptions};
 use quillmark_core::RegionKind;
@@ -44,10 +41,10 @@ fn pdfform_canvas_raster_is_complete() {
 
     let session = engine.open(&quill, &doc).expect("open session");
 
-    // The pdfform backend reports canvas support under `preview`.
+    // The pdfform backend reports canvas support (it rasterizes via hayro).
     assert!(
         session.page_size_pt(0).is_some(),
-        "pdfform preview session must expose page geometry"
+        "pdfform session must expose page geometry"
     );
 
     // 1. Dimensions: render_rgba(0, scale) matches page_size_pt × scale.
@@ -55,7 +52,7 @@ fn pdfform_canvas_raster_is_complete() {
     let (width_pt, height_pt) = session.page_size_pt(0).expect("page 0 size");
     let (px_w, px_h, rgba) = session
         .render_rgba(0, scale)
-        .expect("pdfform preview session must rasterize page 0");
+        .expect("pdfform session must rasterize page 0");
 
     let expect_w = (width_pt * scale).round() as i64;
     let expect_h = (height_pt * scale).round() as i64;

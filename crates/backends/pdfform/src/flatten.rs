@@ -16,8 +16,8 @@
 //! the page default user space. A well-formed background restores its graphics
 //! state (balanced `q`/`Q`, no dangling `cm`), which the qualifier-produced and
 //! Typst-rendered bases this consumes always do; a base that left a non-identity
-//! CTM in effect would shift the flattened values. This path is preview-only, so
-//! the impact is confined to the raster preview, never a shipped deliverable.
+//! CTM in effect would shift the flattened values. This path backs the SVG/PNG
+//! raster outputs only — never the AcroForm PDF deliverable, which is stamped.
 //!
 //! Entry point: [`flatten`].
 
@@ -395,10 +395,7 @@ fn push_f32(out: &mut Vec<u8>, v: f32) {
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 //
-// This module inherits the whole file's `#[cfg(feature = "preview")]` gate, so
-// it only compiles/runs under `--features preview`. It restores the byte-level
-// coverage of the flatten output that the (now-removed) public `flatten: true`
-// integration tests used to provide, exercised here at the `flatten()` unit
+// Byte-level coverage of the flatten output, exercised at the `flatten()` unit
 // level (plus the internal `build_content_stream` for the focused
 // transcoding/clipping byte windows) — no public render-option knob involved.
 #[cfg(test)]
