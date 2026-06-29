@@ -26,17 +26,11 @@
 //! - [`engine::Document`] - typed parsed document (`fromMarkdown`/`fromJson` static
 //!   constructors, `toMarkdown`/`toJson` emitters). Present in both builds.
 //!
-//! ## Usage (render build)
-//!
-//! 1. Build a quill with `Quill.fromTree(...)` (no engine needed)
-//! 2. Parse markdown via `Document.fromMarkdown(...)`
-//! 3. Render with `await engine.render(quill, doc, ...)`
+//! ## Example
 //!
 //! The public `@quillmark/wasm` package exports the engine as `Engine` (the
 //! runtime wrapper around the FFI [`Quillmark`] class below); its render
 //! methods are async.
-//!
-//! ## Example
 //!
 //! ```javascript
 //! import { Document, Quill, Engine } from '@quillmark/wasm';

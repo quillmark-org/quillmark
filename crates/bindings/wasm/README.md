@@ -324,7 +324,7 @@ A field's *cell* is inferred from whether its schema declares a `default:`:
   suggested value when one exists). An absent Unendorsed field zero-fills
   silently. A `!must_fill` marker left in the document is non-fatal: it emits
   the `validation::must_fill` warning and still renders. Partial documents
-  are first-class; `engine.render(quill, doc)` only throws for malformed
+  are accepted; `engine.render(quill, doc)` only throws for malformed
   input.
 - **Endorsed** (with `default:`) — `quill.blueprint` renders the
   default value with a type-only `# <type>` annotation (shippable as-is),
@@ -405,7 +405,7 @@ try {
 ## Notes
 
 - Parsed markdown requires a root `~~~` block (a bare three-tilde fence;
-  the legacy `~~~card-yaml` opener is still accepted but non-canonical)
+  `~~~card-yaml` is also accepted as a non-canonical alias)
   with a `$quill` system-metadata line. Empty input surfaces a dedicated
   "Empty markdown input cannot be parsed" message.
 - A `$quill` mismatch during `engine.render(quill, parsed)` is a thrown error, not a warning: rendering with a quill whose *name* differs (`quill::name_mismatch`) or whose *version* falls outside the selector (`quill::version_mismatch`) is rejected.

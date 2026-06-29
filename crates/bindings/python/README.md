@@ -123,7 +123,7 @@ A field's *cell* is inferred from whether the schema declares a `default:`:
   exists). An absent Unendorsed field zero-fills silently. A `!must_fill`
   marker left in the document is non-fatal: it emits the
   `validation::must_fill` warning and still renders. Partial documents are
-  first-class; `engine.render(quill, doc)` only raises for malformed input.
+  accepted; `engine.render(quill, doc)` only raises for malformed input.
 - **Endorsed** (with `default:`) — the blueprint renders the default
   value with a type-only `# <type>` annotation (shippable as-is), and the
   default is used when the document omits the field.

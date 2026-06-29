@@ -1129,8 +1129,8 @@ $kind: main
 ~~~
 `
     const diags = quill.validate(Document.fromMarkdown(md))
-    // Absent Unendorsed fields zero-fill silently; `validation::field_absent`
-    // is no longer emitted by validate.
+    // Absent Unendorsed fields zero-fill silently; validate does not emit
+    // `validation::field_absent`.
     expect(diags.some((d) => d.code === 'validation::field_absent')).toBe(false)
   })
 

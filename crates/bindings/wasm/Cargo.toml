@@ -42,7 +42,7 @@ default = ["typst"]
 # Typst build: the Typst-backed engine, RenderSession, and canvas preview.
 # Strict API superset of core; ~8MB of Typst is ~96% of the artifact. The
 # canvas painter dispatches through the core `SessionHandle` seam, so the
-# binding no longer depends on `quillmark-typst` directly.
+# binding depends on `quillmark-typst` only transitively.
 typst = ["quillmark/typst", "dep:web-sys"]
 # pdfform build: add the Typst-free PDF-form backend so the engine can render
 # `pdfform` quills → PDF (and SVG/PNG). Does NOT require `typst` — the engine /
