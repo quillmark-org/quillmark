@@ -8,6 +8,15 @@
 
 ## Unreleased
 
+- refactor(core)!: `RenderResult.regions` is keyed on the quill schema field
+  path, not the backend widget. `RenderedRegion` (and the WASM `FieldRegion`)
+  drop `name`/`kind`/`fieldType`/`value` for a single `field` carrying the
+  schema address (e.g. `signature_block`); the pdfform AcroForm widget name no
+  longer leaks. A region is emitted only for a field with a schema address — an
+  unbound widget produces none. `RegionKind` is removed; `quillmark-pdf`'s
+  `FieldSpec` gains `schema_field`. Regions are geometry for overlays and
+  canvas↔editor cross-navigation, never a compositing input (#773). See
+  `docs/migrations/0.92-to-0.93.md`
 - feat(pdfform)!: the `pdfform` backend now exports PNG and SVG as first-class
   `render()` output formats (`SUPPORTED_FORMATS == [Pdf, Svg, Png]`); PNG
   rasters at `RenderOptions::ppi` (default 144). The `preview` cargo feature is

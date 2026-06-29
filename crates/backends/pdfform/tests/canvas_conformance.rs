@@ -19,7 +19,6 @@
 //! `y_canvas = (pageHeightPt - y_pdf) × scale` flip to locate a field box.
 
 use quillmark::{Document, OutputFormat, Quillmark, RenderOptions};
-use quillmark_core::RegionKind;
 
 const FILLED: &str = "~~~\n\
 $quill: sample_form\n\
@@ -80,19 +79,13 @@ fn pdfform_canvas_raster_is_complete() {
         })
         .expect("render to obtain regions geometry");
 
-    // Pick a bound text field (FullName = "Ada Lovelace") on page 0.
+    // Pick the bound text field (schema path `full_name` = "Ada Lovelace") on
+    // page 0 via the regions sidecar, keyed on the schema path.
     let region = result
         .regions
         .iter()
-        .find(|r| {
-            r.page == 0
-                && matches!(
-                    &r.kind,
-                    RegionKind::Field { field_type, value }
-                        if field_type == "text" && value.is_some()
-                )
-        })
-        .expect("a bound text field region on page 0");
+        .find(|r| r.page == 0 && r.field == "full_name")
+        .expect("a region for the bound text field on page 0");
 
     // PDF points (bottom-left origin) → canvas pixels (top-left origin), the
     // canonical transform from PREVIEW.md: y_canvas = (pageHeightPt - y_pdf) × scale.

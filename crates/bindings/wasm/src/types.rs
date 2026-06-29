@@ -202,74 +202,43 @@ pub struct RenderResult {
     pub warnings: Vec<Diagnostic>,
     pub output_format: OutputFormat,
     pub render_time_ms: f64,
-    /// Form-field regions from stamped AcroForm backends (`pdfform`;
-    /// Typst signature overlay). Ordered by page then field-spec order.
-    /// Always an array — empty for backends / formats that produce no
-    /// field geometry. Geometry for interactive overlays drawn on top of
-    /// the complete raster; consumers never need them to composite a value
-    /// (the canvas backends pre-flatten values into the page).
+    /// Schema-field regions (`pdfform` AcroForm widgets; Typst form-fields),
+    /// each keyed on the quill schema field path. Ordered by page then
+    /// field-spec order. Always an array — empty for backends / formats that
+    /// produce no field geometry, and for fields with no schema address.
+    /// Geometry for interactive overlays / cross-navigation drawn on top of the
+    /// complete raster; never a compositing input.
     #[serde(default)]
     pub regions: Vec<FieldRegion>,
 }
 
-/// A form-field region: geometry and bound value from a stamped AcroForm.
-/// Emitted by backends that stamp form fields. Consumers use this geometry
-/// to position interactive overlays on top of an already-complete raster.
+/// A rendered field region: the quill schema field address plus its geometry on
+/// the page. Emitted by backends that place schema fields (pdfform AcroForm
+/// widgets, Typst form-fields). Consumers use it to map between a place on the
+/// page and a field in the editor — click a rendered field to focus it, or
+/// highlight the page rectangle for the focused field. Geometry only: the
+/// raster is already complete, so a region is never a compositing input.
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
 pub struct FieldRegion {
-    /// Fully-qualified field name (matches the AcroForm widget `/T`).
-    pub name: String,
+    /// Quill schema field path (e.g. `"signature_block"`), not any backend
+    /// widget name. The address the editor uses for this field.
+    pub field: String,
     /// 0-based page index.
     pub page: usize,
     /// `[x0, y0, x1, y1]` in PDF points (1/72″), bottom-left origin.
     pub rect: [f32; 4],
-    pub kind: FieldRegionKind,
-}
-
-/// The kind and payload of a [`FieldRegion`]. An open enum — future region
-/// types extend here without breaking existing consumers.
-#[cfg(any(feature = "typst", feature = "pdfform"))]
-#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
-#[tsify(into_wasm_abi, from_wasm_abi)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum FieldRegionKind {
-    /// An interactive form field stamped onto the page.
-    Field {
-        /// Lowercase type id: `"text"`, `"checkbox"`, `"choice"`, or `"signature"`.
-        #[serde(rename = "fieldType")]
-        field_type: String,
-        /// The bound value, or `undefined` for a blank / unbound field.
-        /// `default` pairs with `skip_serializing_if` so the declared
-        /// `from_wasm_abi` round-trip is total: a blank field omits the key on
-        /// the way out and deserializes back to `None` rather than erroring with
-        /// `missing field 'value'`.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        value: Option<String>,
-    },
 }
 
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 impl From<quillmark_core::RenderedRegion> for FieldRegion {
     fn from(r: quillmark_core::RenderedRegion) -> Self {
         FieldRegion {
-            name: r.name,
+            field: r.field,
             page: r.page,
             rect: r.rect,
-            kind: r.kind.into(),
-        }
-    }
-}
-
-#[cfg(any(feature = "typst", feature = "pdfform"))]
-impl From<quillmark_core::RegionKind> for FieldRegionKind {
-    fn from(k: quillmark_core::RegionKind) -> Self {
-        match k {
-            quillmark_core::RegionKind::Field { field_type, value } => {
-                FieldRegionKind::Field { field_type, value }
-            }
         }
     }
 }
@@ -490,108 +459,53 @@ mod tests {
         assert!(!js_value.is_null());
     }
 
-    // ── FieldRegion / FieldRegionKind ─────────────────────────────────────────
+    // ── FieldRegion ───────────────────────────────────────────────────────────
 
     #[test]
     #[cfg(any(feature = "typst", feature = "pdfform"))]
     fn field_region_serializes_to_expected_shape() {
         let region = FieldRegion {
-            name: "FullName".to_string(),
+            field: "full_name".to_string(),
             page: 0,
             rect: [180.0, 672.0, 520.0, 692.0],
-            kind: FieldRegionKind::Field {
-                field_type: "text".to_string(),
-                value: Some("Ada Lovelace".to_string()),
-            },
         };
         let json = serde_json::to_string(&region).unwrap();
-        assert!(json.contains("\"name\":\"FullName\""));
+        assert!(json.contains("\"field\":\"full_name\""));
         assert!(json.contains("\"page\":0"));
         assert!(json.contains("\"rect\":[180.0,672.0,520.0,692.0]"));
-        assert!(json.contains("\"type\":\"field\""));
-        assert!(json.contains("\"fieldType\":\"text\""));
-        assert!(json.contains("\"value\":\"Ada Lovelace\""));
+        // No backend widget name or kind/value leaks into the wire shape.
+        assert!(!json.contains("\"name\""));
+        assert!(!json.contains("\"kind\""));
     }
 
     #[test]
     #[cfg(any(feature = "typst", feature = "pdfform"))]
-    fn field_region_blank_value_omitted() {
+    fn field_region_round_trips() {
+        // The `from_wasm_abi` (JS→Rust) path uses the same serde derive.
         let region = FieldRegion {
-            name: "Signature".to_string(),
+            field: "signature_block".to_string(),
             page: 0,
             rect: [180.0, 422.0, 520.0, 462.0],
-            kind: FieldRegionKind::Field {
-                field_type: "signature".to_string(),
-                value: None,
-            },
         };
         let json = serde_json::to_string(&region).unwrap();
-        // value:None → absent from JSON (skip_serializing_if)
-        assert!(!json.contains("\"value\""));
-        assert!(json.contains("\"fieldType\":\"signature\""));
-    }
-
-    #[test]
-    #[cfg(any(feature = "typst", feature = "pdfform"))]
-    fn field_region_blank_value_round_trips() {
-        // The `from_wasm_abi` (JS→Rust) path uses the same serde derive. A blank
-        // value omits the key on the way out, so deserializing that JSON back
-        // must default to `None` rather than error with `missing field 'value'`.
-        // (Regression guard for the `#[serde(default)]` on `value`.)
-        let region = FieldRegion {
-            name: "Signature".to_string(),
-            page: 0,
-            rect: [180.0, 422.0, 520.0, 462.0],
-            kind: FieldRegionKind::Field {
-                field_type: "signature".to_string(),
-                value: None,
-            },
-        };
-        let json = serde_json::to_string(&region).unwrap();
-        let back: FieldRegion = serde_json::from_str(&json).expect("blank value round-trips");
-        #[allow(irrefutable_let_patterns)]
-        let FieldRegionKind::Field { value, .. } = back.kind else {
-            panic!("expected a Field region kind");
-        };
-        assert_eq!(value, None);
-
-        // Also accept JSON that omits `value` outright (the shape a JS caller
-        // would hand back for an unbound field).
-        let bare = r#"{"name":"Sig","page":0,"rect":[0.0,0.0,1.0,1.0],"kind":{"type":"field","fieldType":"signature"}}"#;
-        let parsed: FieldRegion = serde_json::from_str(bare).expect("missing value defaults");
-        #[allow(irrefutable_let_patterns)]
-        let FieldRegionKind::Field { value, .. } = parsed.kind else {
-            panic!("expected a Field region kind");
-        };
-        assert_eq!(value, None);
+        let back: FieldRegion = serde_json::from_str(&json).expect("round-trips");
+        assert_eq!(back.field, "signature_block");
+        assert_eq!(back.rect, [180.0, 422.0, 520.0, 462.0]);
     }
 
     #[test]
     #[cfg(any(feature = "typst", feature = "pdfform"))]
     fn field_region_from_core_conversion() {
-        use quillmark_core::{RegionKind, RenderedRegion};
+        use quillmark_core::RenderedRegion;
 
         let core_region = RenderedRegion {
-            name: "Agree".to_string(),
+            field: "agree".to_string(),
             page: 0,
             rect: [180.0, 538.0, 194.0, 552.0],
-            kind: RegionKind::Field {
-                field_type: "checkbox".to_string(),
-                value: Some("Yes".to_string()),
-            },
         };
         let wasm_region: FieldRegion = core_region.into();
-        assert_eq!(wasm_region.name, "Agree");
+        assert_eq!(wasm_region.field, "agree");
         assert_eq!(wasm_region.page, 0);
         assert_eq!(wasm_region.rect, [180.0, 538.0, 194.0, 552.0]);
-        // Refutable form so adding a `FieldRegionKind` variant is non-breaking
-        // here; the `allow` covers the single-variant-today warning and lapses
-        // once a second variant exists.
-        #[allow(irrefutable_let_patterns)]
-        let FieldRegionKind::Field { field_type, value } = wasm_region.kind else {
-            panic!("expected a Field region kind");
-        };
-        assert_eq!(field_type, "checkbox");
-        assert_eq!(value.as_deref(), Some("Yes"));
     }
 }

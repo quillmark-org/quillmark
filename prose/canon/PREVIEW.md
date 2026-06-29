@@ -73,9 +73,12 @@ compositing of its own. Backends satisfy it differently:
   caller.
 
 The `regions` sidecar (on `RenderResult`, see [SCHEMAS.md](SCHEMAS.md) and the
-region type in `crates/core/src/region.rs`) carries per-field geometry and
-bound value for interactive **overlays** drawn on top of the raster. It is
-never needed to complete the picture.
+region type in `crates/core/src/region.rs`) carries per-field geometry keyed on
+the **quill schema field path** — the address the editor uses — for interactive
+**overlays** and **cross-navigation** (click a rendered field → focus it in the
+editor, or highlight the page rectangle for the focused field). It carries
+geometry only, never a value or a backend widget name, and is never needed to
+complete the picture.
 
 ## TypeScript surface
 
@@ -157,6 +160,20 @@ width_canvas  = (rect[2] − rect[0]) × renderScale
 height_canvas = (rect[3] − rect[1]) × renderScale
 ```
 
+For an **HTML/CSS overlay** on a `width:100%` canvas, prefer percentages of the
+page over device pixels — they track the displayed size across DPI and
+pane-resize for free, with no `renderScale` to thread; only the Y axis flips:
+
+```
+left%   = rect[0] / pageWidthPt  × 100
+top%    = (pageHeightPt − rect[3]) / pageHeightPt × 100
+width%  = (rect[2] − rect[0]) / pageWidthPt  × 100
+height% = (rect[3] − rect[1]) / pageHeightPt × 100
+```
+
+The device-pixel form above is still the right one for painting an overlay
+*into* a raster.
+
 ## Feature / build mapping
 
 Canvas ships per-backend, compile-time aligned so the capability flag and the
@@ -183,8 +200,10 @@ sequentially; `runtime/runtime.js` maps each backend id to its build with a
 - Native (CLI / Python) exposure. Capability is WASM-only.
 - Text selection, find-in-page, accessibility. Canvas has none of these by
   design — if you need them, keep an SVG/PDF export path alongside.
-- Click-to-jump or cursor-to-region mapping. Not supported; the preview does
-  not require it.
+- Built-in click→region hit-testing in the painter. The painter is a dumb
+  blit; it maps no clicks itself. A consumer builds field cross-navigation on
+  top, hit-testing a click against the `regions` sidecar (keyed on the schema
+  field path) — see [SCHEMAS.md](SCHEMAS.md).
 
 ## Decisions and rationale
 

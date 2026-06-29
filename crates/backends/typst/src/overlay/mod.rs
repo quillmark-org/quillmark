@@ -131,6 +131,10 @@ pub(crate) fn build_field_specs(
             };
             Ok(FieldSpec {
                 name: p.name.clone(),
+                // A Typst form-field has no separate widget-vs-schema split: the
+                // plate-authored name is the author's field address, so it is
+                // both the `/T` and the region key.
+                schema_field: Some(p.name.clone()),
                 page: p.page,
                 // Typst top-left → PDF bottom-left.
                 rect: [x0, page_h - y1, x1, page_h - y0],

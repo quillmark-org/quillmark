@@ -412,6 +412,7 @@ mod tests {
     fn text_field(name: &str, value: &str) -> FieldSpec {
         FieldSpec {
             name: name.to_string(),
+            schema_field: Some(name.to_string()),
             page: 0,
             rect: [72.0, 700.0, 300.0, 720.0],
             field_type: FieldType::Text { multiline: false },
@@ -423,6 +424,7 @@ mod tests {
     fn checkbox_field(name: &str, checked: bool) -> FieldSpec {
         FieldSpec {
             name: name.to_string(),
+            schema_field: Some(name.to_string()),
             page: 0,
             rect: [72.0, 660.0, 90.0, 678.0],
             field_type: FieldType::Checkbox,

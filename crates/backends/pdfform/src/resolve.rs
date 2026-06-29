@@ -37,6 +37,7 @@ use crate::form::{FieldKind, FormField, Rect};
 pub fn field_spec(field: &FormField, media_box: [f32; 4], data: &Value) -> FieldSpec {
     FieldSpec {
         name: field.name.clone(),
+        schema_field: field.schema_field.clone(),
         page: field.page,
         rect: flip_rect(field.rect, media_box),
         field_type: field_type(&field.kind),

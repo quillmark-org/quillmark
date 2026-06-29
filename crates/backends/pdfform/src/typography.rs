@@ -11,16 +11,16 @@
 //!
 //! ## On regions presentation enrichment (#752)
 //!
-//! Surfacing this typography on [`RegionKind::Field`](quillmark_core::RegionKind)
-//! (resolved font/size/align) was the deferred half of value flattening. It is
-//! deliberately **not** done: the unified flatten technique makes *both* canvas
-//! backends produce a **complete** raster (the pdfform session pre-flattens
-//! values into the page content, then rasterizes), so no consumer ever
-//! composites a value from a region — the trigger the enrichment was waiting on
-//! ("font-accurate client-side compositing") never occurs. Were such a consumer
-//! to materialize, it reads sizes from *this* module and adding the optional
-//! `RegionKind` fields is a clean, additive change. Until then, surfacing it
-//! would be public API (carried across all four bindings) with no caller.
+//! Surfacing this typography on the region sidecar (resolved font/size/align)
+//! was the deferred half of value flattening. It is deliberately **not** done:
+//! the unified flatten technique makes *both* canvas backends produce a
+//! **complete** raster (the pdfform session pre-flattens values into the page
+//! content, then rasterizes), so no consumer ever composites a value from a
+//! region — the trigger the enrichment was waiting on ("font-accurate
+//! client-side compositing") never occurs. The region carries only geometry +
+//! the schema field address for cross-navigation; it intentionally carries no
+//! value or typography. Were a font-accurate-compositing consumer to
+//! materialize, it reads sizes from *this* module.
 
 /// House text font — PDF base-14 Helvetica, registered as `/Helv`. Used for
 /// text and choice values.

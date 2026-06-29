@@ -40,7 +40,7 @@ pub mod types;
 pub use types::{Artifact, OutputFormat, RenderOptions};
 
 pub mod region;
-pub use region::{RegionKind, RenderedRegion};
+pub use region::RenderedRegion;
 
 pub mod session;
 pub use session::RenderSession;

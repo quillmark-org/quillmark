@@ -57,6 +57,7 @@ fn all_four_fields() -> Vec<FieldSpec> {
     vec![
         FieldSpec {
             name: "FullName".into(),
+            schema_field: Some("full_name".into()),
             page: 0,
             rect: [180.0, 700.0, 520.0, 720.0],
             field_type: FieldType::Text { multiline: false },
@@ -65,6 +66,7 @@ fn all_four_fields() -> Vec<FieldSpec> {
         },
         FieldSpec {
             name: "Comments".into(),
+            schema_field: Some("comments".into()),
             page: 0,
             rect: [180.0, 600.0, 520.0, 680.0],
             field_type: FieldType::Text { multiline: true },
@@ -73,6 +75,7 @@ fn all_four_fields() -> Vec<FieldSpec> {
         },
         FieldSpec {
             name: "Agree".into(),
+            schema_field: Some("agree".into()),
             page: 0,
             rect: [180.0, 560.0, 194.0, 574.0],
             field_type: FieldType::Checkbox,
@@ -81,6 +84,7 @@ fn all_four_fields() -> Vec<FieldSpec> {
         },
         FieldSpec {
             name: "FavoriteColor".into(),
+            schema_field: Some("favorite_color".into()),
             page: 0,
             rect: [180.0, 520.0, 520.0, 540.0],
             field_type: FieldType::Choice {
@@ -181,9 +185,9 @@ fn stamps_all_four_field_types_into_valid_acroform() {
         assert_eq!(count, 1, "exactly one /Subtype in widget {}", r.0);
     }
 
-    // Regions sidecar: one per field, geometry matches.
+    // Regions sidecar: one per field, keyed on the schema path, geometry matches.
     assert_eq!(result.regions.len(), 4);
-    let agree_region = result.regions.iter().find(|r| r.name == "Agree").unwrap();
+    let agree_region = result.regions.iter().find(|r| r.field == "agree").unwrap();
     assert_eq!(agree_region.rect, [180.0, 560.0, 194.0, 574.0]);
 }
 
@@ -192,6 +196,7 @@ fn signature_field_sets_sigflags() {
     let base = build_base_pdf(2);
     let fields = vec![FieldSpec {
         name: "Signature".into(),
+        schema_field: Some("signature".into()),
         page: 1,
         rect: [180.0, 100.0, 520.0, 140.0],
         field_type: FieldType::Signature,
@@ -307,6 +312,7 @@ fn rotated_page_rejected_cleanly() {
 
     let fields = vec![FieldSpec {
         name: "FullName".into(),
+        schema_field: Some("full_name".into()),
         page: 0,
         rect: [180.0, 700.0, 520.0, 720.0],
         field_type: FieldType::Text { multiline: false },
@@ -348,6 +354,7 @@ fn field_targeting_missing_page_errors() {
     let base = build_base_pdf(1);
     let fields = vec![FieldSpec {
         name: "X".into(),
+        schema_field: Some("x".into()),
         page: 5,
         rect: [0.0, 0.0, 10.0, 10.0],
         field_type: FieldType::Signature,
@@ -493,6 +500,7 @@ fn nonzero_generation_page_rejected_cleanly() {
     replace_first(&mut base, b"3 0 obj", b"3 4 obj");
     let fields = vec![FieldSpec {
         name: "X".into(),
+        schema_field: Some("x".into()),
         page: 0,
         rect: [10.0, 10.0, 100.0, 30.0],
         field_type: FieldType::Text { multiline: false },
@@ -556,6 +564,7 @@ fn inline_annots_are_merged_not_replaced() {
     let (base, existing) = build_base_with_inline_annot();
     let fields = vec![FieldSpec {
         name: "X".into(),
+        schema_field: Some("x".into()),
         page: 0,
         rect: [10.0, 10.0, 100.0, 30.0],
         field_type: FieldType::Text { multiline: false },
@@ -618,6 +627,7 @@ fn indirect_annots_rejected_cleanly() {
     }
     let fields = vec![FieldSpec {
         name: "X".into(),
+        schema_field: Some("x".into()),
         page: 0,
         rect: [10.0, 10.0, 100.0, 30.0],
         field_type: FieldType::Text { multiline: false },

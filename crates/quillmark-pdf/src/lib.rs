@@ -32,7 +32,7 @@ pub use update::PdfUpdate;
 
 // The region sidecar lives in core (it rides on `RenderResult`); re-export so
 // spine consumers reach it without a second `quillmark-core` import.
-pub use quillmark_core::{RegionKind, RenderedRegion};
+pub use quillmark_core::RenderedRegion;
 
 /// The `/MediaBox` of every page of `base`, normalized to `[x0, y0, x1, y1]`
 /// (lower-left, upper-right), in document order.
@@ -53,8 +53,14 @@ pub fn page_media_boxes(base: &[u8]) -> Result<Vec<[f32; 4]>, PdfError> {
 /// whoever owns the geometry source converts before constructing the spec.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldSpec {
-    /// Fully-qualified field name, written to `/T`.
+    /// Fully-qualified field name, written to `/T`. A spine-internal AcroForm
+    /// identifier — never surfaced to a region consumer.
     pub name: String,
+    /// The quill schema field address this widget maps to, if any. Opaque to
+    /// the spine (it never interprets it), carried solely to key the region
+    /// sidecar: a field with `Some(path)` emits a [`RenderedRegion`], an unbound
+    /// widget (`None`) emits none.
+    pub schema_field: Option<String>,
     /// 0-based page index.
     pub page: usize,
     /// `[x0, y0, x1, y1]` in PDF points, bottom-left origin.

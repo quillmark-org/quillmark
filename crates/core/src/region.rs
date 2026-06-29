@@ -1,60 +1,42 @@
 //! Rendered-region sidecar carried on every [`RenderResult`](crate::RenderResult).
 //!
-//! A region records *where a named field landed* on the rendered page —
-//! geometry plus the kind of field and its bound value. It is the only path to
-//! field values in non-interactive output: under the stamping engine's
-//! Technique A (real AcroForm fields + `/NeedAppearances`, no baked appearance
-//! streams), a flat rasterizer renders the widgets blank, so a consumer that
-//! must composite values (a canvas preview, a server-side flattener) reads them
-//! from here.
+//! A region ties a rectangle on the rendered page to the **quill schema field**
+//! that produced it — the address the document author already uses to refer to
+//! that field (the same address the Typst plate reads as `data.*` and the
+//! pdfform binder resolves against `compile_data`). It exists so a consumer can
+//! map between a place on the page and a field in the editor: click a rendered
+//! field → focus it in the editor, or highlight the page rectangle for the
+//! focused field.
+//!
+//! Backend-internal identifiers never appear here. A pdfform AcroForm widget
+//! name (`/T`) is an implementation detail of the stamp spine; the region
+//! carries the schema path it maps to (`signature_block`), not the widget name
+//! (`Signature`). A region is emitted only for a field with a schema address —
+//! an unbound decorative widget produces none.
 //!
 //! Regions ride on *every* render regardless of output format — a GUI overlay
 //! needs the geometry whether it shows the PDF or a rastered background — and
-//! default to empty for backends that produce none.
+//! default to empty for backends that produce none. They are an overlay
+//! sidecar, never a compositing input: both canvas backends hand back a
+//! complete page raster, so nothing about the picture depends on reading a
+//! region.
 
-/// One field's placement on a rendered page.
+/// One schema field's placement on a rendered page.
 ///
 /// `rect` is `[x0, y0, x1, y1]` in PDF points with a **bottom-left** origin —
 /// the same final geometry the stamp spine writes to the widget `/Rect`, so the
-/// region and the stamped widget describe the identical box.
+/// region and the rendered field describe the identical box.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderedRegion {
-    /// Fully-qualified field name (matches the widget `/T`).
-    pub name: String,
+    /// Quill schema field path, e.g. `"signature_block"` or
+    /// `"$cards.indorsement.1.from"` — the author-facing field address, not any
+    /// backend widget name.
+    pub field: String,
     /// 0-based page index.
     pub page: usize,
     /// `[x0, y0, x1, y1]`, PDF points, bottom-left origin.
     pub rect: [f32; 4],
-    /// What kind of region this is, plus its kind-specific payload.
-    pub kind: RegionKind,
-}
-
-/// The kind of a [`RenderedRegion`] and its payload.
-///
-/// An enum from day one (rather than a bare string) so future region kinds —
-/// e.g. a flattened-value glyph run carrying resolved typography — extend it
-/// additively without reshaping the sidecar.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum RegionKind {
-    /// An interactive form field. `field_type` is the lowercase field-type id
-    /// (`"text"`, `"checkbox"`, `"choice"`, `"signature"`); `value` is the bound
-    /// value, `None` for a blank/unbound field.
-    ///
-    /// Carries geometry + value but **not** resolved typography (font/size/
-    /// align), by design: both canvas backends produce a *complete* raster (the
-    /// pdfform session pre-flattens values into the page before rasterizing), so
-    /// no consumer composites a value from a region — there is nothing to
-    /// typeset client-side. The one place that decides a flattened value's
-    /// font/size is `quillmark-pdfform`'s `typography` module; a
-    /// font-accurate-compositing consumer would read sizes from there, and these
-    /// fields would become an additive extension.
-    Field {
-        #[serde(rename = "fieldType")]
-        field_type: String,
-        value: Option<String>,
-    },
 }
 
 #[cfg(test)]
@@ -64,34 +46,13 @@ mod tests {
     #[test]
     fn region_round_trips_through_json() {
         let region = RenderedRegion {
-            name: "FullName".to_string(),
+            field: "full_name".to_string(),
             page: 0,
             rect: [180.0, 715.0, 520.0, 735.0],
-            kind: RegionKind::Field {
-                field_type: "text".to_string(),
-                value: Some("Ada Lovelace".to_string()),
-            },
         };
         let json = serde_json::to_string(&region).unwrap();
-        // camelCase field names and the internally-tagged kind.
-        assert!(json.contains("\"fieldType\":\"text\""), "{json}");
-        assert!(json.contains("\"type\":\"field\""), "{json}");
+        assert!(json.contains("\"field\":\"full_name\""), "{json}");
         let back: RenderedRegion = serde_json::from_str(&json).unwrap();
         assert_eq!(back, region);
-    }
-
-    #[test]
-    fn blank_field_value_is_null() {
-        let region = RenderedRegion {
-            name: "Signature".to_string(),
-            page: 0,
-            rect: [0.0, 0.0, 10.0, 10.0],
-            kind: RegionKind::Field {
-                field_type: "signature".to_string(),
-                value: None,
-            },
-        };
-        let json = serde_json::to_string(&region).unwrap();
-        assert!(json.contains("\"value\":null"), "{json}");
     }
 }

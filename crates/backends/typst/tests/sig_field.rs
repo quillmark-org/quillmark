@@ -557,11 +557,11 @@ fn form_field_value_binding_from_data() {
 }
 
 /// case: the `RenderResult.regions` sidecar carries the right `field_type` and
-/// `value` per field, for every type.
+/// case: the `RenderResult.regions` sidecar is keyed on the plate-authored field
+/// address (a Typst form-field's name is its schema address — no widget/schema
+/// split), one region per field of any type, each carrying page+geometry.
 #[test]
-fn form_field_regions_carry_type_and_value() {
-    use quillmark_core::RegionKind;
-
+fn form_field_regions_key_on_field_address() {
     let plate = r#"
 #import "@local/quillmark-helper:0.1.0": form-field
 #set page(width: 600pt, height: 400pt, margin: 50pt)
@@ -581,29 +581,18 @@ fn form_field_regions_carry_type_and_value() {
         })
         .expect("render");
 
-    let mut got: std::collections::HashMap<String, (String, Option<String>)> =
-        std::collections::HashMap::new();
-    for r in &result.regions {
-        // Refutable `if let` (not an irrefutable `let`) so a future `RegionKind`
-        // variant stays non-breaking here; the `allow` covers the
-        // single-variant-today warning and lapses once a second variant exists.
-        #[allow(irrefutable_let_patterns)]
-        if let RegionKind::Field { field_type, value } = &r.kind {
-            got.insert(r.name.clone(), (field_type.clone(), value.clone()));
-        }
-    }
+    let fields: std::collections::HashMap<&str, &quillmark_core::RenderedRegion> =
+        result.regions.iter().map(|r| (r.field.as_str(), r)).collect();
 
-    assert_eq!(
-        got.get("txt"),
-        Some(&("text".to_string(), Some("hi".to_string())))
-    );
-    assert_eq!(
-        got.get("chk"),
-        Some(&("checkbox".to_string(), Some("Yes".to_string())))
-    );
-    assert_eq!(
-        got.get("cho"),
-        Some(&("choice".to_string(), Some("B".to_string())))
-    );
-    assert_eq!(got.get("sig"), Some(&("signature".to_string(), None)));
+    for name in ["txt", "chk", "cho", "sig"] {
+        let r = fields
+            .get(name)
+            .unwrap_or_else(|| panic!("region keyed on field address {name:?}"));
+        assert_eq!(r.page, 0);
+        assert!(
+            r.rect[2] > r.rect[0] && r.rect[3] > r.rect[1],
+            "region {name:?} rect is a proper box: {:?}",
+            r.rect
+        );
+    }
 }

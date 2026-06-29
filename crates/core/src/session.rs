@@ -42,8 +42,9 @@ pub trait SessionHandle: Any + Send + Sync {
     ///   values appear in the raster without the caller drawing them.
     ///
     /// The `regions` sidecar on [`RenderResult`](crate::RenderResult) carries
-    /// per-field geometry (and bound value) for *overlay* UIs regardless; it is
-    /// never required to make the raster complete.
+    /// per-field geometry keyed on the quill schema field path, for *overlay* /
+    /// cross-navigation UIs regardless; it is never required to make the raster
+    /// complete.
     ///
     /// A backend with no painter overrides neither this nor
     /// [`page_size_pt`](Self::page_size_pt); the defaults mark the session as

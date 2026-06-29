@@ -122,20 +122,20 @@ fn fixture_renders_structurally_valid_filled_pdf() {
     assert_eq!(sig.get(b"FT").unwrap().as_name().unwrap(), b"Sig");
     assert!(sig.get(b"V").is_err());
 
-    // Regions sidecar: one per field, carrying bound values.
-    assert_eq!(result.regions.len(), 5);
+    // Regions sidecar: one per *schema-bound* field, keyed on the schema path.
+    // The fixture's Signature widget carries no `schema_field`, so it is a
+    // backend-only artifact and emits no region — four regions, not five.
+    assert_eq!(result.regions.len(), 4);
+    assert!(
+        result.regions.iter().all(|r| r.field != "Signature"),
+        "the unbound signature widget produces no region"
+    );
     let r_full = result
         .regions
         .iter()
-        .find(|r| r.name == "FullName")
+        .find(|r| r.field == "full_name")
         .unwrap();
-    match &r_full.kind {
-        quillmark_core::RegionKind::Field { field_type, value } => {
-            assert_eq!(field_type, "text");
-            assert_eq!(value.as_deref(), Some("Ada Lovelace"));
-        }
-    }
-    // Geometry rides the sidecar too: a real page and a non-degenerate rect.
+    // Geometry rides the sidecar: a real page and a non-degenerate rect.
     assert!(r_full.page < doc.get_pages().len().max(1));
     assert!(
         r_full.rect[2] > r_full.rect[0] && r_full.rect[3] > r_full.rect[1],
@@ -184,17 +184,12 @@ favorite_color: green\n\
         decode_pdf_text(full.get(b"V").unwrap().as_str().unwrap()),
         "Café — Señor 'Ünïcøde'"
     );
-    // The regions sidecar carries the same value verbatim.
-    let r_full = result
-        .regions
-        .iter()
-        .find(|r| r.name == "FullName")
-        .unwrap();
-    match &r_full.kind {
-        quillmark_core::RegionKind::Field { value, .. } => {
-            assert_eq!(value.as_deref(), Some("Café — Señor 'Ünïcøde'"));
-        }
-    }
+    // The regions sidecar carries geometry keyed on the schema path, not the
+    // bound value (the value lives in the AcroForm `/V`, asserted above).
+    assert!(
+        result.regions.iter().any(|r| r.field == "full_name"),
+        "a region is keyed on the schema path"
+    );
 }
 
 #[test]

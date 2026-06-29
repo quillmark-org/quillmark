@@ -86,41 +86,48 @@ export interface RenderOptions {
 	producer?: string;
 }
 
-/** The kind and payload of a {@link FieldRegion}. Discriminated on `type`. */
-export type FieldRegionKind =
-	| { type: 'field'; fieldType: string; value?: string };
-
 /**
- * A form-field region: geometry and bound value from a stamped AcroForm.
- * Emitted by backends that stamp form fields (`pdfform`; Typst signature
- * overlay). Consumers use `rect` for *overlay* layout (e.g. positioning an
- * input box over a canvas) and `kind.value` to read the bound value.
+ * A rendered field region: the quill schema field address (`field`) plus its
+ * geometry (`rect`) on the page. Emitted by backends that place schema fields
+ * (`pdfform` AcroForm widgets; Typst form-fields). Only fields with a schema
+ * address produce a region — a backend-only widget produces none, and the
+ * backend widget name never appears.
  *
- * Regions are NOT needed to make a canvas paint complete: `RenderSession.paint`
- * already bakes every field value into the raster (see {@link RenderSession}).
- * They exist for interactive overlays drawn on top of that raster.
+ * Use it to map between a place on the page and a field in the editor: click a
+ * rendered field → focus `field` in the editor, or highlight the rect for the
+ * focused field. Geometry only — `RenderSession.paint` already bakes every
+ * value into the raster (see {@link RenderSession}), so a region is never a
+ * compositing input.
  *
- * COORDINATE TRANSFORM. `rect` is in PDF points with a **bottom-left** origin;
- * a canvas is **top-left** origin in device pixels. To place an overlay from a
- * region onto a canvas painted at `renderScale` (= `layoutScale × densityScale`)
- * for a page `pageHeightPt` tall (from {@link PageSize}.heightPt):
+ * COORDINATE TRANSFORM. `rect` is in PDF points with a **bottom-left** origin.
+ *
+ * For an **HTML/CSS overlay** on a `width:100%` canvas, position hotspots as
+ * percentages of the page — they track the displayed size across DPI and pane
+ * resize for free, and only the Y axis flips:
  *
  * ```js
- * const [x0, y0, x1, y1] = region.rect;       // PDF pt, bottom-left origin
+ * const [x0, y0, x1, y1] = region.rect;            // PDF pt, bottom-left origin
+ * const left   = (x0 / pageWidthPt) * 100;         // % of page (from PageSize.widthPt)
+ * const top    = (1 - y1 / pageHeightPt) * 100;    // % — flip Y (from PageSize.heightPt)
+ * const width  = ((x1 - x0) / pageWidthPt) * 100;
+ * const height = ((y1 - y0) / pageHeightPt) * 100;
+ * ```
+ *
+ * For painting **into a raster** at `renderScale` (= `layoutScale × densityScale`),
+ * use the device-pixel form instead:
+ *
+ * ```js
  * const left   = x0 * renderScale;
- * const right  = x1 * renderScale;
  * const top    = (pageHeightPt - y1) * renderScale;  // flip Y
- * const bottom = (pageHeightPt - y0) * renderScale;  // y_canvas = (pageHeightPt - y_pdf) × renderScale
  * ```
  */
 export interface FieldRegion {
-	/** Fully-qualified field name (matches the AcroForm widget `/T`). */
-	name: string;
+	/** Quill schema field path (e.g. `"signature_block"`), not a backend widget name. */
+	field: string;
 	/** 0-based page index. */
 	page: number;
 	/** `[x0, y0, x1, y1]` in PDF points (1/72″), bottom-left origin. */
 	rect: [number, number, number, number];
-	kind: FieldRegionKind;
 }
 
 /** Canonical contract every backend build must satisfy. Result of one render. */
@@ -130,9 +137,10 @@ export interface RenderResult {
 	outputFormat: OutputFormat;
 	renderTimeMs: number;
 	/**
-	 * Form-field regions from stamped AcroForm backends. Always an array —
-	 * empty for backends / formats that produce no field geometry. The only
-	 * path to field values in non-interactive flat output.
+	 * Schema-field regions, each keyed on the quill schema field path. Always
+	 * an array — empty for backends / formats that produce no field geometry,
+	 * and for fields with no schema address. Geometry for overlays /
+	 * cross-navigation, never a compositing input.
 	 */
 	regions: FieldRegion[];
 }

@@ -17,7 +17,7 @@ use pdf_writer::types::{AnnotationFlags, FieldFlags, FieldType as PwFieldType, S
 use pdf_writer::writers::Form;
 use pdf_writer::{Chunk, Finish, Name, Rect, Ref, Str, TextStr};
 
-use quillmark_core::{RegionKind, RenderedRegion};
+use quillmark_core::RenderedRegion;
 
 use crate::error::PdfError;
 use crate::reader::{
@@ -174,20 +174,20 @@ pub fn stamp(
     })
 }
 
-/// Build a [`RenderedRegion`] per field — the geometry+value sidecar that is the
-/// only path to values in non-interactive output. Shared by `stamp` and any
-/// no-stamp render path so the region geometry always matches the widget.
+/// Build the [`RenderedRegion`] geometry sidecar — one region per field that
+/// carries a schema address, keyed on that address. A widget with no schema
+/// field (`schema_field: None`) is a backend-only artifact and emits nothing.
+/// Shared by `stamp` and any no-stamp render path so the region geometry always
+/// matches the widget.
 pub fn regions_of(fields: &[FieldSpec]) -> Vec<RenderedRegion> {
     fields
         .iter()
-        .map(|f| RenderedRegion {
-            name: f.name.clone(),
-            page: f.page,
-            rect: f.rect,
-            kind: RegionKind::Field {
-                field_type: f.field_type.type_id().to_string(),
-                value: f.value.clone(),
-            },
+        .filter_map(|f| {
+            Some(RenderedRegion {
+                field: f.schema_field.clone()?,
+                page: f.page,
+                rect: f.rect,
+            })
         })
         .collect()
 }
