@@ -186,6 +186,44 @@ height% = (rect[3] − rect[1]) / pageHeightPt × 100
 The device-pixel form above is still the right one for painting an overlay
 *into* a raster.
 
+### Region geometry (`RegionMap`)
+
+The transform above has exactly one right answer, and every interactive consumer
+needs it, so the runtime layer ships it as a pure value object rather than
+leaving each consumer to re-derive the Y-flip. `RegionMap` is a **per-page**
+projection of `regions()` into draw-ready overlay boxes and a click hit-test —
+no WASM, no DOM, no session reference, so a `render()`-only consumer never pulls
+it in and it stays framework-neutral (it returns numbers; the consumer owns the
+DOM):
+
+```ts
+class RegionMap {
+  static from(regions: FieldRegion[], pageSize: PageSize, page: number): RegionMap;
+  readonly page: number;
+  readonly pageSize: PageSize;
+  readonly fields: string[];                       // field paths on this page
+  region(field: string): FieldRegion | undefined;  // raw region
+  at(xPercent: number, yPercent: number): FieldRegion | undefined;  // hit-test, page %
+  overlayPercent(field: string): OverlayBox | undefined;            // CSS-overlay box
+  overlayDevice(field: string, renderScale: number): OverlayBox | undefined;  // raster box
+  overlaysPercent(): FieldOverlay[];               // every field at once
+  overlaysDevice(renderScale: number): FieldOverlay[];
+}
+
+interface OverlayBox { left: number; top: number; width: number; height: number; }
+interface FieldOverlay { field: string; box: OverlayBox; }
+```
+
+`overlayPercent` emits the percent-of-page form (for a CSS overlay on a
+`width:100%` canvas); `overlayDevice` emits the device-pixel form at
+`renderScale` (= `layoutScale × densityScale`, for painting into a raster). Both
+put the origin at the page's top-left with the Y axis already flipped, so a box
+drops straight into `position:absolute` or `fillRect`. `at` takes the same
+page-percent coordinates `overlayPercent` emits — the natural unit of a click on
+a `width:100%` canvas — and returns the **smallest** region containing the
+point, so the most specific field wins when boxes nest. Build one map per page;
+it is a filter plus arithmetic.
+
 ## Feature / build mapping
 
 Canvas ships per-backend, compile-time aligned so the capability flag and the
@@ -212,10 +250,15 @@ sequentially; `runtime/runtime.js` maps each backend id to its build with a
 - Native (CLI / Python) exposure. Capability is WASM-only.
 - Text selection, find-in-page, accessibility. Canvas has none of these by
   design — if you need them, keep an SVG/PDF export path alongside.
-- Built-in click→region hit-testing in the painter. The painter is a dumb
-  blit; it maps no clicks itself. A consumer builds field cross-navigation on
-  top, hit-testing a click against the `regions` sidecar (keyed on the schema
-  field path) — see [SCHEMAS.md](SCHEMAS.md).
+- Click→region hit-testing *in the painter*. The painter is a dumb blit; it maps
+  no clicks itself. Hit-testing is a pure helper over the `regions` sidecar
+  (`RegionMap.at`, keyed on the schema field path) that a consumer calls itself —
+  see the `RegionMap` section above and [SCHEMAS.md](SCHEMAS.md).
+- A stateful preview *controller* — an object owning the canvas, viewport,
+  repaint scheduling, page virtualization, and click→field dispatch. Deferred,
+  not declined (see Decisions): its state shape can't be settled without a real
+  consumer. `paint`, `regions`, and `RegionMap` are the stateless primitives such
+  a controller is assembled from.
 
 ## Decisions and rationale
 
@@ -261,6 +304,24 @@ sequentially; `runtime/runtime.js` maps each backend id to its build with a
   byte render just to harvest the sidecar. A session method computes it from
   already-resolved placements with no rasterization, serving both the canvas and
   SVG-overlay previews from the one handle they already hold.
+- **Region geometry is a pure value object (`RegionMap`), not a session method or
+  a painter feature.** The region transform (Y-flip, bottom-left→top-left,
+  pt↔device-px) has one right answer and every interactive consumer needs it, so
+  leaving it as prose invites each one to re-derive it and get the flip wrong.
+  `RegionMap` encodes it once as data — no WASM, no DOM, no session reference — so
+  it stays tree-shakeable (a `render()`-only consumer never loads it) and
+  framework-neutral (it returns numbers; the consumer owns the DOM). Hanging it
+  off `RenderSession` would drag geometry into the WASM-backed handle for no gain;
+  baking it into the painter would break the dumb-blit contract.
+- **The stateful preview controller is deferred, not declined.** An object owning
+  the canvas, the viewport, repaint scheduling, and click→field dispatch is the
+  `Preview` sub-handle this doc otherwise rejects as ceremony — justified only
+  once paint ships with shared interactive state. That state's shape (how a
+  viewport drives which pages repaint, how a document edit invalidates the
+  compiled snapshot) can't be settled without a real consumer, and the session
+  surface is `@experimental` precisely to admit that. Ship the stateless
+  primitives (`paint`, `regions`, `RegionMap`) now; assemble the controller from
+  them once the editor live-preview path makes its shape concrete.
 
 ## Lifecycle and consumer flow
 

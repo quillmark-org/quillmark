@@ -130,6 +130,29 @@ export interface FieldRegion {
 	rect: [number, number, number, number];
 }
 
+/**
+ * A positioned overlay box for one field. `left`/`top` are measured from the
+ * page's LEFT/TOP edges — the Y axis is already flipped from the region's
+ * bottom-left PDF origin — so the box drops straight into a CSS
+ * `position:absolute` element or a `fillRect` with no further transform. Units
+ * depend on the projection that produced it: {@link RegionMap.overlayPercent}
+ * emits percentages of the page (for a CSS overlay on a `width:100%` canvas);
+ * {@link RegionMap.overlayDevice} emits device pixels at a `renderScale` (for
+ * painting into a raster).
+ */
+export interface OverlayBox {
+	left: number;
+	top: number;
+	width: number;
+	height: number;
+}
+
+/** A field path paired with its {@link OverlayBox} — one hotspot to draw. */
+export interface FieldOverlay {
+	field: string;
+	box: OverlayBox;
+}
+
 /** Canonical contract every backend build must satisfy. Result of one render. */
 export interface RenderResult {
 	artifacts: Artifact[];
@@ -284,4 +307,70 @@ export declare class RenderSession {
 		options?: PaintOptions
 	): PaintResult;
 	free(): void;
+}
+
+/**
+ * Per-page projection of {@link RenderSession.regions} into draw-ready overlay
+ * geometry and a click hit-test — the canonical answer to the region coordinate
+ * transform (Y-flip, bottom-left→top-left origin, pt↔device-px), so a consumer
+ * never re-derives it and gets the flip wrong. Pure data: no WASM, no DOM, no
+ * session reference, so a `render()`-only consumer never pulls it in. Build one
+ * per page; it is cheap (a filter plus arithmetic).
+ *
+ * ```js
+ * const map = RegionMap.from(session.regions(), session.pageSize(page), page);
+ *
+ * for (const { field, box } of map.overlaysPercent()) {        // CSS overlay,
+ *   const el = document.createElement('div');                  // width:100% canvas
+ *   el.style.cssText =
+ *     `position:absolute;left:${box.left}%;top:${box.top}%;` +
+ *     `width:${box.width}%;height:${box.height}%`;
+ *   el.dataset.field = field;                                  // click → focus editor field
+ * }
+ *
+ * const r = canvas.getBoundingClientRect();                    // hit-test a click
+ * const hit = map.at(((e.clientX - r.left) / r.width) * 100,
+ *                    ((e.clientY - r.top) / r.height) * 100);
+ * if (hit) focusEditorField(hit.field);
+ * ```
+ *
+ * @experimental Part of the experimental session/canvas surface — see
+ * {@link RenderSession}. May change shape in any 0.x release.
+ */
+export declare class RegionMap {
+	private constructor();
+	/**
+	 * Build the map for `page` from a session's full {@link RenderSession.regions}
+	 * list and that page's {@link RenderSession.pageSize}. Regions not on `page`
+	 * are dropped. Throws if `pageSize` is not positive and finite on both axes.
+	 */
+	static from(regions: FieldRegion[], pageSize: PageSize, page: number): RegionMap;
+	/** The 0-based page this map projects. */
+	readonly page: number;
+	/** The page size every projection divides by, as passed to {@link from}. */
+	readonly pageSize: PageSize;
+	/** Field paths on this page, in {@link RenderSession.regions} order. */
+	readonly fields: string[];
+	/** The raw region for `field`, or `undefined` if it is not on this page. */
+	region(field: string): FieldRegion | undefined;
+	/**
+	 * The field at a point given in page percent (0–100, top-left origin) — the
+	 * unit {@link overlayPercent} emits and the natural unit of a click on a
+	 * `width:100%` canvas. Returns the SMALLEST region containing the point (the
+	 * most specific field when boxes nest), or `undefined` if none do. A
+	 * non-finite coordinate matches nothing.
+	 */
+	at(xPercent: number, yPercent: number): FieldRegion | undefined;
+	/** {@link OverlayBox} for `field` in page percent, or `undefined` if absent. */
+	overlayPercent(field: string): OverlayBox | undefined;
+	/**
+	 * {@link OverlayBox} for `field` in device pixels at `renderScale`
+	 * (= `layoutScale × densityScale` from the matching {@link RenderSession.paint}),
+	 * or `undefined` if absent. Throws if `renderScale` is not positive and finite.
+	 */
+	overlayDevice(field: string, renderScale: number): OverlayBox | undefined;
+	/** Every field's percent overlay — for drawing all hotspots at once. */
+	overlaysPercent(): FieldOverlay[];
+	/** Every field's device-pixel overlay at `renderScale`. */
+	overlaysDevice(renderScale: number): FieldOverlay[];
 }

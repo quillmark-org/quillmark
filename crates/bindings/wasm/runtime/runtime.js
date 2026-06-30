@@ -402,3 +402,167 @@ export class RenderSession {
 		this.#inner.free();
 	}
 }
+
+/**
+ * Throw unless `s` is a positive, finite scale. Mirrors `paint`'s scale
+ * validation so device-pixel overlay geometry can't be computed against a bad
+ * `renderScale` (NaN/0/∞ would yield nonsense boxes).
+ * @param {number} s
+ */
+function assertRenderScale(s) {
+	if (!(Number.isFinite(s) && s > 0)) {
+		throw new Error('RegionMap: renderScale must be a positive, finite number.');
+	}
+}
+
+/**
+ * Per-page projection of `RenderSession.regions()` into draw-ready overlay
+ * geometry and a click hit-test — the canonical region coordinate transform
+ * (Y-flip, bottom-left→top-left origin, pt↔device-px), encoded once so consumers
+ * don't re-derive it. Pure data: no WASM, no DOM, no session reference. See
+ * `runtime.d.ts` for the consumer recipe and the coordinate contract.
+ */
+export class RegionMap {
+	/** @type {number} */ #page;
+	/** @type {import('./runtime.d.ts').PageSize} */ #pageSize;
+	/** @type {import('./runtime.d.ts').FieldRegion[]} this page's regions, in order */ #regions;
+	/** @type {Map<string, import('./runtime.d.ts').FieldRegion>} field path → region; first wins on a dup path */ #byField;
+
+	/**
+	 * Internal. Use {@link RegionMap.from}. `regions` is already filtered to `page`.
+	 * @param {number} page
+	 * @param {import('./runtime.d.ts').PageSize} pageSize
+	 * @param {import('./runtime.d.ts').FieldRegion[]} regions
+	 */
+	constructor(page, pageSize, regions) {
+		this.#page = page;
+		this.#pageSize = pageSize;
+		this.#regions = regions;
+		this.#byField = new Map();
+		for (const r of regions) if (!this.#byField.has(r.field)) this.#byField.set(r.field, r);
+	}
+
+	/**
+	 * Build the map for `page` from a session's full region list and that page's
+	 * size. Regions not on `page` are dropped.
+	 * @param {import('./runtime.d.ts').FieldRegion[]} regions
+	 * @param {import('./runtime.d.ts').PageSize} pageSize
+	 * @param {number} page
+	 * @returns {RegionMap}
+	 */
+	static from(regions, pageSize, page) {
+		const w = pageSize?.widthPt;
+		const h = pageSize?.heightPt;
+		if (!(Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0)) {
+			throw new Error('RegionMap: pageSize must have positive, finite widthPt and heightPt.');
+		}
+		return new RegionMap(
+			page,
+			pageSize,
+			regions.filter((r) => r.page === page)
+		);
+	}
+
+	get page() {
+		return this.#page;
+	}
+	get pageSize() {
+		return this.#pageSize;
+	}
+	get fields() {
+		return this.#regions.map((r) => r.field);
+	}
+
+	/**
+	 * Percent-of-page overlay box for one region — top-left origin, Y flipped.
+	 * @param {import('./runtime.d.ts').FieldRegion} region
+	 * @returns {import('./runtime.d.ts').OverlayBox}
+	 */
+	#percent({ rect: [x0, y0, x1, y1] }) {
+		const { widthPt: w, heightPt: h } = this.#pageSize;
+		return {
+			left: (x0 / w) * 100,
+			top: ((h - y1) / h) * 100, // flip Y: bottom-left PDF origin → top-left page origin
+			width: ((x1 - x0) / w) * 100,
+			height: ((y1 - y0) / h) * 100
+		};
+	}
+
+	/**
+	 * Device-pixel overlay box for one region at `s` — top-left origin, Y flipped.
+	 * @param {import('./runtime.d.ts').FieldRegion} region
+	 * @param {number} s renderScale
+	 * @returns {import('./runtime.d.ts').OverlayBox}
+	 */
+	#device({ rect: [x0, y0, x1, y1] }, s) {
+		const h = this.#pageSize.heightPt;
+		return {
+			left: x0 * s,
+			top: (h - y1) * s, // flip Y
+			width: (x1 - x0) * s,
+			height: (y1 - y0) * s
+		};
+	}
+
+	/** @param {string} field */
+	region(field) {
+		return this.#byField.get(field);
+	}
+
+	/**
+	 * @param {number} xPercent
+	 * @param {number} yPercent
+	 * @returns {import('./runtime.d.ts').FieldRegion | undefined}
+	 */
+	at(xPercent, yPercent) {
+		let best;
+		let bestArea = Infinity;
+		for (const r of this.#regions) {
+			const b = this.#percent(r);
+			// Inclusive on all edges; a non-finite coord fails every comparison → no match.
+			if (
+				xPercent >= b.left &&
+				xPercent <= b.left + b.width &&
+				yPercent >= b.top &&
+				yPercent <= b.top + b.height
+			) {
+				const area = b.width * b.height;
+				if (area < bestArea) {
+					best = r;
+					bestArea = area;
+				}
+			}
+		}
+		return best;
+	}
+
+	/** @param {string} field */
+	overlayPercent(field) {
+		const r = this.#byField.get(field);
+		return r ? this.#percent(r) : undefined;
+	}
+
+	/**
+	 * @param {string} field
+	 * @param {number} renderScale
+	 */
+	overlayDevice(field, renderScale) {
+		assertRenderScale(renderScale);
+		const r = this.#byField.get(field);
+		return r ? this.#device(r, renderScale) : undefined;
+	}
+
+	/** @returns {import('./runtime.d.ts').FieldOverlay[]} */
+	overlaysPercent() {
+		return this.#regions.map((r) => ({ field: r.field, box: this.#percent(r) }));
+	}
+
+	/**
+	 * @param {number} renderScale
+	 * @returns {import('./runtime.d.ts').FieldOverlay[]}
+	 */
+	overlaysDevice(renderScale) {
+		assertRenderScale(renderScale);
+		return this.#regions.map((r) => ({ field: r.field, box: this.#device(r, renderScale) }));
+	}
+}

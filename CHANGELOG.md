@@ -8,6 +8,16 @@
 
 ## Unreleased
 
+- feat(wasm): add `RegionMap`, a pure per-page projection of
+  `session.regions()` into draw-ready overlay geometry and a click hit-test.
+  `RegionMap.from(regions, pageSize, page)` encodes the region coordinate
+  transform once (Y-flip from PDF bottom-left to page top-left, pt↔device-px):
+  `overlayPercent`/`overlayDevice` emit top-left overlay boxes for a CSS overlay
+  or a raster, and `at(xPercent, yPercent)` hit-tests a click to the smallest
+  containing field. No WASM, no DOM, no session reference — a `render()`-only
+  consumer never pulls it in. The stateful preview *controller* (canvas/viewport
+  ownership, repaint scheduling) stays deferred until a real consumer; see
+  `prose/canon/PREVIEW.md`.
 - refactor(core)!: field regions move from `RenderResult` to a session-level
   query, `RenderSession::regions()` (WASM `session.regions()`), and are keyed on
   the quill schema field path, not the backend widget. Only the interactive
