@@ -13,6 +13,13 @@ use quillmark_pdf::{FieldSpec, FieldType, CHECKBOX_ON_STATE};
 use typst_layout::PagedDocument;
 
 mod extract;
+mod region_scan;
+
+/// Regions for auto-tagged content fields (markdown bodies), read from the
+/// laid-out frame tree and keyed on the schema path. See [`region_scan`].
+pub(crate) fn scan_content_regions(doc: &PagedDocument) -> Vec<quillmark_core::RenderedRegion> {
+    region_scan::scan(doc)
+}
 
 /// The kind of form field a placement declares, plus its per-kind payload.
 /// Mirrors the spine's [`FieldType`] but carries the *resolved* Typst value so
@@ -43,6 +50,10 @@ pub(crate) enum FieldKind {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct FieldPlacement {
     pub name: String,
+    /// Schema-field path the region keys on (the `field:` argument). `None`
+    /// when the plate omits it — the widget then exposes no region (its `/T`
+    /// `name` is not a schema address).
+    pub schema_field: Option<String>,
     pub page: usize,
     pub rect_typst_pt: [f32; 4],
     pub kind: FieldKind,
@@ -131,10 +142,11 @@ pub(crate) fn build_field_specs(
             };
             Ok(FieldSpec {
                 name: p.name.clone(),
-                // A Typst form-field has no separate widget-vs-schema split: the
-                // plate-authored name is the author's field address, so it is
-                // both the `/T` and the region key.
-                schema_field: Some(p.name.clone()),
+                // The region keys on the explicit `field:` schema path. A widget
+                // that binds none is not a schema-addressable field — its `/T`
+                // name is a backend identifier, never a schema address — so it
+                // carries no `schema_field` and `regions_of` exposes no region.
+                schema_field: p.schema_field.clone(),
                 page: p.page,
                 // Typst top-left → PDF bottom-left.
                 rect: [x0, page_h - y1, x1, page_h - y0],

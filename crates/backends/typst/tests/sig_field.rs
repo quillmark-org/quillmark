@@ -556,19 +556,20 @@ fn form_field_value_binding_from_data() {
     );
 }
 
-/// case: `session.regions()` is keyed on the plate-authored field address (a
-/// Typst form-field's name is its schema address — no widget/schema split), one
-/// region per field of any type, each carrying page+geometry. A session-level
-/// query, not a render output.
+/// case: `session.regions()` exposes a region only for a `field:`-bound widget,
+/// keyed on that schema path (of any field type), each carrying page+geometry. A
+/// widget that binds no schema field has only a `/T` name — not a schema
+/// address — and surfaces nothing. A session-level query, not a render output.
 #[test]
-fn form_field_regions_key_on_field_address() {
+fn form_field_regions_key_on_bound_schema_field() {
     let plate = r#"
 #import "@local/quillmark-helper:0.1.0": form-field
 #set page(width: 600pt, height: 400pt, margin: 50pt)
-#form-field("txt", type: "text", value: "hi")
-#form-field("chk", type: "checkbox", value: true)
-#form-field("cho", type: "choice", options: ("A", "B"), value: "B")
-#form-field("sig", type: "signature")
+#form-field("txt", type: "text", value: "hi", field: "f_txt")
+#form-field("chk", type: "checkbox", value: true, field: "f_chk")
+#form-field("cho", type: "choice", options: ("A", "B"), value: "B", field: "f_cho")
+#form-field("sig", type: "signature", field: "f_sig")
+#form-field("unbound", type: "text", value: "x")
 "#;
     let source = source_with_plate(plate);
     let session = TypstBackend
@@ -579,15 +580,22 @@ fn form_field_regions_key_on_field_address() {
     let fields: std::collections::HashMap<&str, &quillmark_core::RenderedRegion> =
         regions.iter().map(|r| (r.field.as_str(), r)).collect();
 
-    for name in ["txt", "chk", "cho", "sig"] {
+    for field in ["f_txt", "f_chk", "f_cho", "f_sig"] {
         let r = fields
-            .get(name)
-            .unwrap_or_else(|| panic!("region keyed on field address {name:?}"));
+            .get(field)
+            .unwrap_or_else(|| panic!("region keyed on bound schema field {field:?}"));
         assert_eq!(r.page, 0);
         assert!(
             r.rect[2] > r.rect[0] && r.rect[3] > r.rect[1],
-            "region {name:?} rect is a proper box: {:?}",
+            "region {field:?} rect is a proper box: {:?}",
             r.rect
         );
     }
+    // The unbound widget (no `field:`) is not schema-addressable: no region, and
+    // its `/T` name never leaks as a region key.
+    assert!(
+        !fields.contains_key("unbound"),
+        "an unbound widget exposes no region: {:?}",
+        fields.keys().collect::<Vec<_>>()
+    );
 }

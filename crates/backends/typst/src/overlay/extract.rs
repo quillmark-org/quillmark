@@ -51,6 +51,7 @@ pub(crate) fn extract(doc: &PagedDocument) -> Result<Vec<FieldPlacement>, Render
             continue;
         }
         let name = read_str(&dict, "name")?;
+        let schema_field = read_opt_str(&dict, "field")?;
         let field_type = read_str(&dict, "field-type")?;
         let width = read_f64(&dict, "width")?;
         let height = read_f64(&dict, "height")?;
@@ -69,6 +70,7 @@ pub(crate) fn extract(doc: &PagedDocument) -> Result<Vec<FieldPlacement>, Render
             .ok_or_else(|| err(CODE_INTERNAL, "form-field metadata has no position"))?;
         placements.push(FieldPlacement {
             name,
+            schema_field,
             page: pos.page.get().saturating_sub(1),
             rect_typst_pt: [
                 pos.point.x.to_pt() as f32,
@@ -145,6 +147,23 @@ fn read_bool(d: &typst::foundations::Dict, key: &str) -> Result<Option<bool>, Re
         Ok(other) => Err(err(
             CODE_INTERNAL,
             format!("expected metadata.{key} to be bool, got {}", other.ty()),
+        )),
+        Err(_) => Ok(None),
+    }
+}
+
+/// Read an optional string key (`None` for a missing or `none` key, an error
+/// for a present-but-wrong-type key). Used for the `field:` schema-path binding.
+fn read_opt_str(d: &typst::foundations::Dict, key: &str) -> Result<Option<String>, RenderError> {
+    match d.get(key) {
+        Ok(Value::Str(s)) => Ok(Some(s.to_string())),
+        Ok(Value::None) => Ok(None),
+        Ok(other) => Err(err(
+            CODE_INTERNAL,
+            format!(
+                "expected metadata.{key} to be str or none, got {}",
+                other.ty()
+            ),
         )),
         Err(_) => Ok(None),
     }

@@ -55,8 +55,8 @@ pub trait SessionHandle: Any + Send + Sync {
         None
     }
 
-    /// Schema-field geometry for the compiled session — one [`RenderedRegion`]
-    /// per field that carries a quill schema address, keyed on that address.
+    /// Schema-field geometry for the compiled session — [`RenderedRegion`]s
+    /// keyed on the quill schema address each field carries.
     ///
     /// A session-level query, not a render output: the geometry is a property of
     /// the compiled snapshot, computed from already-resolved field placements
@@ -64,6 +64,11 @@ pub trait SessionHandle: Any + Send + Sync {
     /// it to lay out overlays / field cross-navigation over a `paint`-ed canvas;
     /// a one-shot byte render never needs it. Default empty — a backend that
     /// places schema fields overrides this.
+    ///
+    /// A backend may return a field more than once (several page-fragments, or a
+    /// content tag plus a bound widget); emit them in precedence order, as
+    /// [`RenderSession::regions`] keeps the first per `field` to present one
+    /// region per logical field.
     fn regions(&self) -> Vec<RenderedRegion> {
         Vec::new()
     }
@@ -146,14 +151,24 @@ impl RenderSession {
         self.inner.render_rgba(page, scale)
     }
 
-    /// Schema-field geometry for the compiled session — one [`RenderedRegion`]
-    /// per schema-bound field, keyed on its quill schema field path. A
-    /// session-level query computed without rendering bytes; an interactive
-    /// preview reads it to place overlays / field cross-navigation over a
-    /// `paint`-ed canvas. Empty for backends that place no schema fields. See
-    /// [`SessionHandle::regions`].
+    /// Schema-field geometry for the compiled session — **one
+    /// [`RenderedRegion`] per logical schema field**, keyed on its quill schema
+    /// field path. A session-level query computed without rendering bytes; an
+    /// interactive preview reads it to place overlays / field cross-navigation
+    /// over a `paint`-ed canvas. Empty for backends that place no schema fields.
+    ///
+    /// The backend ([`SessionHandle::regions`]) may surface a field from more
+    /// than one source (a content auto-tag and a bound widget) or as several
+    /// page-fragments; this keeps the first per `field` in the backend's order
+    /// — the backend orders its output to set that precedence — so a consumer
+    /// looks a field up and gets exactly one rectangle.
     pub fn regions(&self) -> Vec<RenderedRegion> {
-        self.inner.regions()
+        let mut seen = std::collections::HashSet::new();
+        self.inner
+            .regions()
+            .into_iter()
+            .filter(|r| seen.insert(r.field.clone()))
+            .collect()
     }
 
     /// Session-level warnings attached at `Backend::open` time, also appended

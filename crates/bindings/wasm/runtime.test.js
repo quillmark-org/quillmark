@@ -135,8 +135,9 @@ describe('@quillmark/wasm/runtime — Engine (hidden core→backend crossing)', 
   })
 
   it('session.regions() is always a non-null array', async () => {
-    // Regions are a session-level query, not on the render result. A Typst plate
-    // with no form-fields has no schema-field regions → empty, never undefined.
+    // Regions are a session-level query, not on the render result. The document
+    // body is a markdown content field, so it auto-tags one schema-field region
+    // keyed `$body`; the result is always an array, never undefined.
     const engine = new Engine()
     const quill = makeRuntimeQuill()
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
@@ -144,7 +145,7 @@ describe('@quillmark/wasm/runtime — Engine (hidden core→backend crossing)', 
     const session = await engine.open(quill, doc)
     const regions = session.regions()
     expect(Array.isArray(regions)).toBe(true)
-    expect(regions.length).toBe(0)
+    expect(regions.some((r) => r.field === '$body')).toBe(true)
     session.free()
   })
 

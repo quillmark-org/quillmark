@@ -205,18 +205,26 @@ pub struct RenderResult {
 }
 
 /// A rendered field region: the quill schema field address plus its geometry on
-/// the page. Emitted by backends that place schema fields (pdfform AcroForm
-/// widgets, Typst form-fields). Consumers use it to map between a place on the
-/// page and a field in the editor — click a rendered field to focus it, or
-/// highlight the page rectangle for the focused field. Geometry only: the
-/// raster is already complete, so a region is never a compositing input.
+/// the page. Emitted for schema-bound fields — auto-tagged content (markdown
+/// bodies) and form-field widgets (pdfform AcroForm, Typst `form-field`).
+/// Consumers use it to map between a place on the page and a field in the editor
+/// — click a rendered field to focus it, or highlight the page rectangle for the
+/// focused field. Geometry only: the raster is already complete, so a region is
+/// never a compositing input.
+///
+/// `field` is unique: `regions()` returns one entry per logical schema field. A
+/// field that would otherwise arise from several page-fragments, or from both a
+/// content auto-tag and a `field:`-bound widget, is collapsed to a single region
+/// by the session (the bound widget wins; a page-spanning body anchors to its
+/// first page).
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
 pub struct FieldRegion {
-    /// Quill schema field path (e.g. `"signature_block"`), not any backend
-    /// widget name. The address the editor uses for this field.
+    /// Quill schema field path (e.g. `"signature_block"`,
+    /// `"$cards.indorsement.1.from"`), not any backend widget name. The address
+    /// the editor uses for this field.
     pub field: String,
     /// 0-based page index.
     pub page: usize,

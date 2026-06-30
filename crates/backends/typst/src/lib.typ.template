@@ -20,6 +20,13 @@
 /// `options` is an array of display strings for `type: "choice"`. `multiline`
 /// toggles the multi-line flag for `type: "text"`.
 ///
+/// `field` is the schema-field path the region sidecar keys this widget on
+/// (`session.regions()`), e.g. `signature-field("Signature", field:
+/// "signature_block")` so a click routes to the schema field rather than the
+/// AcroForm `/T`. It is region-only: the `/T` widget name stays `name`. Omitted
+/// (`none`), the widget exposes **no** region — its `/T` name is not a schema
+/// address, so there is nothing for a consumer to route to.
+///
 /// `<__qm_field__>` and `kind: "__qm_field__"` are reserved for this hand-off.
 /// Note: this emits a `metadata` element, so plates/packages that read their
 /// own config via an unfiltered `query(metadata)` (e.g. `.last()`) must query
@@ -33,6 +40,7 @@
   multiline: false,
   width: 200pt,
   height: 20pt,
+  field: none,
 ) = {
   assert(std.type(name) == str,
     message: "form-field: name must be a string, got " + repr(std.type(name)))
@@ -40,6 +48,8 @@
     message: "form-field: name must match [A-Za-z0-9_.]+, got " + repr(name))
   assert(type in ("text", "checkbox", "choice", "signature"),
     message: "form-field: type must be one of text/checkbox/choice/signature, got " + repr(type))
+  assert(field == none or std.type(field) == str,
+    message: "form-field: field must be a string or none, got " + repr(std.type(field)))
   let abs-pt(field, l) = {
     let r = repr(l)
     assert(not (r.contains("em") or r.ends-with("%")),
@@ -55,17 +65,20 @@
     multiline: multiline,
     width: abs-pt("width", width),
     height: abs-pt("height", height),
+    field: field,
   )) <__qm_field__>]
   box(width: width, height: height, stroke: none, fill: none)
 }
 
 /// Emit an unsigned signature field. A thin wrapper over `form-field` with
-/// `type: "signature"` (value-free). Retained so existing plates keep working.
-#let signature-field(name, width: 200pt, height: 50pt) = form-field(
+/// `type: "signature"` (value-free). `field` forwards the region schema-field
+/// binding (see `form-field`). Retained so existing plates keep working.
+#let signature-field(name, width: 200pt, height: 50pt, field: none) = form-field(
   name,
   type: "signature",
   width: width,
   height: height,
+  field: field,
 )
 
 /// Parse an ISO 8601 date string (YYYY-MM-DD) to a Typst datetime
@@ -104,17 +117,33 @@
     card_date_fields: (:),
   ))
 
+  // Auto-region tagging: wrap content between two zero-size `<__qm_region__>`
+  // metadata markers carrying its schema-field `path`; the backend reads their
+  // frame positions back into a region rect (`session.regions()`). Zero-size is
+  // layout-neutral — the same property the form-field metadata relies on — so a
+  // content field tags its own page geometry with no plate-author effort. Like
+  // `form-field`, this emits `metadata`; a plate/package reading its own config
+  // via an unfiltered `query(metadata)` must filter by label or an owned key.
+  let qm-region(path, body) = {
+    [#metadata((kind: "qm-region", role: "start", field: path)) <__qm_region__>]
+    body
+    [#metadata((kind: "qm-region", role: "end", field: path)) <__qm_region__>]
+  }
+
   // Eval the named content fields of `dict` into Typst content. A markdown
   // field is a string; a `markdown[]` field is an array whose string elements
   // are each eval'd. Used uniformly for the top-level data and for each card.
-  let eval-content(dict, keys) = {
+  // `prefix` is the schema-path prefix for region tags ("" at the top level,
+  // "$cards.<kind>.<n>." for a card), so each content field auto-tags with its
+  // address; a `markdown[]` element appends its index (`<key>.<i>`).
+  let eval-content(dict, keys, prefix) = {
     for key in keys {
       if key in dict {
         let val = dict.at(key)
         if type(val) == str and val != "" {
-          dict.insert(key, eval(val, mode: "markup"))
+          dict.insert(key, qm-region(prefix + key, eval(val, mode: "markup")))
         } else if type(val) == array {
-          dict.insert(key, val.map(v => if type(v) == str and v != "" { eval(v, mode: "markup") } else { v }))
+          dict.insert(key, val.enumerate().map(((i, v)) => if type(v) == str and v != "" { qm-region(prefix + key + "." + str(i), eval(v, mode: "markup")) } else { v }))
         }
       }
     }
@@ -134,15 +163,27 @@
     dict
   }
 
-  d = eval-content(d, meta.content_fields)
+  d = eval-content(d, meta.content_fields, "")
   d = parse-dates(d, meta.date_fields)
 
-  // Apply the same passes to each card under `$cards`, keyed by `$kind`.
+  // Apply the same passes to each card under `$cards`, keyed by `$kind`. The
+  // region prefix is the canonical card address `$cards.<kind>.<n>.` — `<n>` is
+  // the 0-based ordinal *within that kind* in document order (the kind+index
+  // form the pdfform resolver binds and the editor keys on), so it survives
+  // reordering and intervening cards of other kinds. Tracked per kind here, not
+  // by absolute position.
   if "$cards" in d {
     let cards = ()
+    let kind-ordinals = (:)
     for card in d.at("$cards") {
       let card-type = card.at("$kind", default: none)
-      card = eval-content(card, meta.card_content_fields.at(card-type, default: ()))
+      let prefix = ""
+      if type(card-type) == str {
+        let n = kind-ordinals.at(card-type, default: 0)
+        kind-ordinals.insert(card-type, n + 1)
+        prefix = "$cards." + card-type + "." + str(n) + "."
+      }
+      card = eval-content(card, meta.card_content_fields.at(card-type, default: ()), prefix)
       card = parse-dates(card, meta.card_date_fields.at(card-type, default: ()))
       cards.push(card)
     }
