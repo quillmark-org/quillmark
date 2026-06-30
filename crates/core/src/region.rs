@@ -28,7 +28,7 @@
 //!
 //! **One region per logical field.** A field can arise from more than one
 //! source — a content auto-tag *and* a `field:`-bound widget — or as several
-//! page-fragments of a body that breaks across pages. [`RenderSession::regions`]
+//! page-fragments of a body that breaks across pages. [`RenderSession::regions`](crate::RenderSession::regions)
 //! collapses these to one entry per `field`: a bound widget wins over a content
 //! tag (the explicit binding is the author's deliberate mapping), and a
 //! page-spanning body keeps the first page it occupies as its anchor. A consumer
@@ -49,10 +49,11 @@
 /// the same final geometry the stamp spine writes to the widget `/Rect`, so the
 /// region and the rendered field describe the identical box.
 ///
-/// `field` is unique within the `Vec` that [`RenderSession::regions`] returns —
-/// one region per logical schema field. (A backend's [`SessionHandle::regions`]
-/// may emit a field more than once in precedence order; the session wrapper
-/// keeps the first.)
+/// `field` is unique within the `Vec` that [`RenderSession::regions`](crate::RenderSession::regions) returns —
+/// one region per logical schema field. (A backend's
+/// [`SessionHandle::regions`](crate::session::SessionHandle::regions) may emit a
+/// field more than once in precedence order; the session wrapper keeps the
+/// first.)
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderedRegion {
