@@ -20,12 +20,12 @@
 //!   3. Flip each page-space (top-left) union to the PDF bottom-left origin the
 //!      region model uses.
 //!
-//! A field that crosses a page boundary yields one region per page it touches —
-//! the multi-rect-per-field shape Typst's own PDF link annotations use for the
-//! same reason (`typst_pdf::link`: a single bbox over a line-broken span "would
-//! span the entire paragraph, which is undesirable"). The open-field set
-//! persists across pages: a field opened on one page stays open until its `end`
-//! marker, which may live on a later page.
+//! A field that crosses a page boundary yields one box per page it touches, in
+//! page order (the open-field set persists across pages: a field opened on one
+//! page stays open until its `end` marker, which may live on a later page). The
+//! session keeps only the first — the field's lowest-page anchor — so callers
+//! see one region per logical field; the per-page boxes are produced here so the
+//! anchor is the page where the field actually starts.
 
 use std::collections::{HashMap, HashSet};
 

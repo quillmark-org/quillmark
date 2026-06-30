@@ -70,9 +70,17 @@ main:
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
     let regions = session.regions();
 
-    // intro: one region on one page, keyed on the schema path (not a widget name).
+    // One region per logical field — `field` is unique across the result.
+    let mut seen = std::collections::HashSet::new();
+    assert!(
+        regions.iter().all(|r| seen.insert(r.field.clone())),
+        "each field appears at most once: {:?}",
+        regions.iter().map(|r| &r.field).collect::<Vec<_>>()
+    );
+
+    // intro: one region, keyed on the schema path (not a widget name).
     let intro: Vec<_> = regions.iter().filter(|r| r.field == "intro").collect();
-    assert_eq!(intro.len(), 1, "intro is one region on one page");
+    assert_eq!(intro.len(), 1, "intro is one region");
     let [x0, y0, x1, y1] = intro[0].rect;
     assert!(
         x1 > x0 && y1 > y0,
@@ -80,25 +88,16 @@ main:
         intro[0].rect
     );
 
-    // body: spans pages → multiple regions sharing the field, on distinct pages.
+    // body spans four pages but collapses to a single region anchored to the
+    // first page it occupies (page 0).
     let body: Vec<_> = regions.iter().filter(|r| r.field == "body").collect();
+    assert_eq!(body.len(), 1, "page-spanning body collapses to one region");
+    assert_eq!(body[0].page, 0, "anchored to the first page it occupies");
     assert!(
-        body.len() >= 2,
-        "page-spanning body breaks into >=2 regions, got {}",
-        body.len()
+        body[0].rect[2] - body[0].rect[0] > 200.0,
+        "body anchor spans most of the text column: {:?}",
+        body[0].rect
     );
-    let pages: std::collections::HashSet<usize> = body.iter().map(|r| r.page).collect();
-    assert!(
-        pages.len() >= 2,
-        "body regions span >=2 distinct pages, got {pages:?}"
-    );
-    for r in &body {
-        assert!(
-            r.rect[2] - r.rect[0] > 200.0,
-            "each body fragment spans most of the text column: {:?}",
-            r.rect
-        );
-    }
 }
 
 #[test]

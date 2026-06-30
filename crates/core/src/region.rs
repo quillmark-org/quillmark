@@ -26,12 +26,13 @@
 //!   nothing for a consumer to route to. Only schema-addressable fields surface
 //!   a region.
 //!
-//! **A field may produce more than one region.** Content that breaks across
-//! pages emits one region per page-fragment, all sharing the same `field` (the
-//! shape Typst's own PDF link annotations use, for the same reason — a single
-//! bbox over a line-broken span would span the whole paragraph). Consumers
-//! group by `field`. A form-field widget is one fixed box, so it stays a single
-//! entry; both kinds coexist in one `Vec`.
+//! **One region per logical field.** A field can arise from more than one
+//! source — a content auto-tag *and* a `field:`-bound widget — or as several
+//! page-fragments of a body that breaks across pages. [`RenderSession::regions`]
+//! collapses these to one entry per `field`: a bound widget wins over a content
+//! tag (the explicit binding is the author's deliberate mapping), and a
+//! page-spanning body keeps the first page it occupies as its anchor. A consumer
+//! looks a field up and gets exactly one rectangle.
 //!
 //! Regions are a session-level query, not a render output: the geometry is a
 //! property of the compiled snapshot, read once from the session without
@@ -42,20 +43,16 @@
 //! about the picture depends on reading a region. Empty for backends that place
 //! no schema fields.
 
-/// One schema field's placement on one rendered page.
+/// One schema field's placement on a rendered page.
 ///
 /// `rect` is `[x0, y0, x1, y1]` in PDF points with a **bottom-left** origin —
 /// the same final geometry the stamp spine writes to the widget `/Rect`, so the
 /// region and the rendered field describe the identical box.
 ///
-/// `field` is not unique across a `Vec<RenderedRegion>`. **Group by `field`** to
-/// collect a field's placements; treat each entry as one rectangle and **do not
-/// union them** — that is the point of the per-fragment shape (a single bbox over
-/// a line-broken span would cover the whole paragraph). A field repeats when its
-/// content breaks across pages (one rect per page), and can repeat *on the same
-/// page* when more than one placement shares its address — e.g. a content field
-/// and a `field:`-bound widget both keyed `signature_block`, or the same field
-/// placed twice. So `(field, page)` is **not** a unique key.
+/// `field` is unique within the `Vec` that [`RenderSession::regions`] returns —
+/// one region per logical schema field. (A backend's [`SessionHandle::regions`]
+/// may emit a field more than once in precedence order; the session wrapper
+/// keeps the first.)
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderedRegion {
