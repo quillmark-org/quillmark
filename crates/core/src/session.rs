@@ -159,9 +159,9 @@ impl RenderSession {
     ///
     /// The backend ([`SessionHandle::regions`]) may surface a field from more
     /// than one source (a content auto-tag and a bound widget) or as several
-    /// page-fragments; this collapses them to the first per `field` in the
-    /// backend's order, so a consumer looks a field up and gets exactly one
-    /// rectangle. The backend orders its output to set that precedence.
+    /// page-fragments; this keeps the first per `field` in the backend's order
+    /// — the backend orders its output to set that precedence — so a consumer
+    /// looks a field up and gets exactly one rectangle.
     pub fn regions(&self) -> Vec<RenderedRegion> {
         let mut seen = std::collections::HashSet::new();
         self.inner
