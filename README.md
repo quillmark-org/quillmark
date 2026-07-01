@@ -13,13 +13,6 @@ Maintained by [quillmark-org](https://github.com/quillmark-org).
 
 **UNDER DEVELOPMENT** — APIs may change.
 
-## Features
-
-- **Schema-driven**: a Quill's schema drives typed coercion, defaults, validation, and scaffolding via `QuillConfig`.
-- **Quill-packaged**: a Quill bundles structure, styling, and schema; Markdown provides the content.
-- **Typst backend**: typesets to PDF, SVG, and PNG.
-- **Structured diagnostics**: path-aware errors and warnings.
-
 ## Documentation
 
 - **[User Guide](https://quillmark-org.github.io/quillmark/)** - Tutorials, concepts, and bindings
