@@ -6,7 +6,7 @@
 [![CI](https://github.com/quillmark-org/quillmark/workflows/CI/badge.svg)](https://github.com/quillmark-org/quillmark/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-lightgray.svg)](LICENSE)
  
-In nutshell: Quills define document presentation and schema. Use them to transform markdown into fully formatted documents.
+In a nutshell: Quills define document presentation and schema. Use them to transform markdown into fully formatted documents.
 
 Maintained by [quillmark-org](https://github.com/quillmark-org).
 
