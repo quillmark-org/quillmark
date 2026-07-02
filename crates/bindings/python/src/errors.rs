@@ -19,6 +19,23 @@ pub fn convert_edit_error(err: EditError) -> PyErr {
     )
 }
 
+/// Batched-mutator twin of [`convert_edit_error`]: one diagnostic per
+/// offending field, each with `path` set to the field name.
+pub fn convert_edit_errors(errors: Vec<(String, EditError)>) -> PyErr {
+    let diags: Vec<Diagnostic> = errors
+        .into_iter()
+        .map(|(name, err)| {
+            Diagnostic::new(
+                Severity::Error,
+                format!("[EditError::{}] {}", err.variant_name(), err),
+            )
+            .with_path(name)
+        })
+        .collect();
+    let message = summary_message("Field batch has", &diags);
+    raise_with_diagnostics(diags, message)
+}
+
 pub fn convert_render_error(err: RenderError) -> PyErr {
     let diags = err.diagnostics();
     debug_assert!(

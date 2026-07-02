@@ -74,6 +74,7 @@ internal static class NativeMethods
 
     // ── Document: main-card mutators ────────────────────────────────────────
     [DllImport(Lib)] internal static extern int qm_document_set_field(IntPtr doc, byte[] name, byte[] valueJson);
+    [DllImport(Lib)] internal static extern int qm_document_set_fields(IntPtr doc, byte[] fieldsJson);
     [DllImport(Lib)] internal static extern int qm_document_set_fill(IntPtr doc, byte[] name, byte[] valueJson);
     [DllImport(Lib)] internal static extern IntPtr qm_document_remove_field(IntPtr doc, byte[] name);
     [DllImport(Lib)] internal static extern int qm_document_set_quill_ref(IntPtr doc, byte[] refStr);
@@ -92,6 +93,7 @@ internal static class NativeMethods
     [DllImport(Lib)] internal static extern int qm_document_move_card(IntPtr doc, UIntPtr fromIdx, UIntPtr toIdx);
     [DllImport(Lib)] internal static extern int qm_document_set_card_kind(IntPtr doc, UIntPtr index, byte[] newKind);
     [DllImport(Lib)] internal static extern int qm_document_update_card_field(IntPtr doc, UIntPtr index, byte[] name, byte[] valueJson);
+    [DllImport(Lib)] internal static extern int qm_document_update_card_fields(IntPtr doc, UIntPtr index, byte[] fieldsJson);
     [DllImport(Lib)] internal static extern IntPtr qm_document_remove_card_field(IntPtr doc, UIntPtr index, byte[] name);
     [DllImport(Lib)] internal static extern int qm_document_update_card_body(IntPtr doc, UIntPtr index, byte[] body);
     [DllImport(Lib)] internal static extern int qm_document_set_card_ext(IntPtr doc, UIntPtr index, byte[] valueJson);

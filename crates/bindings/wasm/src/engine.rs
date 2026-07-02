@@ -682,6 +682,24 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
+    /// Set several main-card payload fields atomically from a plain object,
+    /// clearing any `!must_fill` marker on each key. Nothing is applied on
+    /// error; the thrown error's `diagnostics` array carries one entry per
+    /// offending field (`path` = field name), so externally-sourced names
+    /// (database columns, form keys) surface every violation in one pass.
+    /// Mirrors Python `set_fields`.
+    #[wasm_bindgen(js_name = setFields)]
+    pub fn set_fields(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: JsValue,
+    ) -> Result<(), JsValue> {
+        let batch = js_value_to_field_batch(&fields, "setFields")?;
+        self.inner
+            .main_mut()
+            .set_fields(batch)
+            .map_err(edit_errors_to_js)
+    }
+
     /// Remove a payload field on the main card, returning the removed value or
     /// `undefined`. Throws if `name` does not match `[A-Za-z_][A-Za-z0-9_]*`.
     #[wasm_bindgen(js_name = removeField)]
@@ -959,6 +977,22 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
+    /// Batched twin of [`updateCardField`](Document::update_card_field): set
+    /// several fields on the card at `index` atomically. Same all-or-nothing,
+    /// one-diagnostic-per-field contract as [`setFields`](Document::set_fields).
+    /// Throws if `index` is out of range.
+    #[wasm_bindgen(js_name = updateCardFields)]
+    pub fn update_card_fields(
+        &mut self,
+        index: usize,
+        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: JsValue,
+    ) -> Result<(), JsValue> {
+        let batch = js_value_to_field_batch(&fields, "updateCardFields")?;
+        self.card_mut_or_throw(index)?
+            .set_fields(batch)
+            .map_err(edit_errors_to_js)
+    }
+
     /// Remove a field on the card at `index`. Returns the removed value or
     /// `undefined`. Throws if `index` is out of range or `name` is invalid.
     #[wasm_bindgen(js_name = removeCardField)]
@@ -999,6 +1033,40 @@ impl Document {
 /// Maps `EditError` to a JS `Error` with the variant name and details in the message.
 fn edit_error_to_js(err: &quillmark_core::EditError) -> JsValue {
     WasmError::from(format!("[EditError::{}] {}", err.variant_name(), err)).to_js_value()
+}
+
+/// Batched-mutator twin of [`edit_error_to_js`]: one diagnostic per offending
+/// field, each with `path` set to the field name.
+fn edit_errors_to_js(errors: Vec<(String, quillmark_core::EditError)>) -> JsValue {
+    let diagnostics: Vec<quillmark_core::Diagnostic> = errors
+        .into_iter()
+        .map(|(name, err)| {
+            quillmark_core::Diagnostic::new(
+                quillmark_core::Severity::Error,
+                format!("[EditError::{}] {}", err.variant_name(), err),
+            )
+            .with_path(name)
+        })
+        .collect();
+    WasmError { diagnostics }.to_js_value()
+}
+
+/// Deserialize a plain JS object into the `(name, value)` batch
+/// `Card::set_fields` consumes. Key order is preserved (`preserve_order`
+/// is on workspace-wide) so field insertion order follows the object.
+fn js_value_to_field_batch(
+    value: &JsValue,
+    ctx: &str,
+) -> Result<Vec<(String, quillmark_core::QuillValue)>, JsValue> {
+    match js_value_to_json(value.clone(), ctx)? {
+        serde_json::Value::Object(map) => Ok(map
+            .into_iter()
+            .map(|(name, v)| (name, quillmark_core::QuillValue::from_json(v)))
+            .collect()),
+        _ => {
+            Err(WasmError::from(format!("{}: fields must be a plain object", ctx)).to_js_value())
+        }
+    }
 }
 
 /// Deserialize a JS value into an arbitrary JSON value. The namespaced `$ext`

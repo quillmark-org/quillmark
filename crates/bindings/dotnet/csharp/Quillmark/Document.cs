@@ -171,6 +171,17 @@ public sealed class Document : NativeObject, IEquatable<Document>
             NativeMethods.qm_document_set_field(Handle, Interop.ToUtf8(name), ValueJson(value)),
             "set_field");
 
+    /// <summary>Set several main-card payload fields atomically, clearing any
+    /// <c>!must_fill</c> marker on each key. Nothing is applied on error; the
+    /// thrown <see cref="QuillmarkException"/> carries one diagnostic per
+    /// offending field (<c>Path</c> = field name), so externally-sourced names
+    /// (database columns, form keys) surface every violation in one pass.
+    /// Mirrors the Python <c>set_fields</c>.</summary>
+    public void SetFields(IReadOnlyDictionary<string, object?> fields) =>
+        Interop.CallStatus(
+            NativeMethods.qm_document_set_fields(Handle, ObjectJson(fields, "set_fields")),
+            "set_fields");
+
     public void SetFill(string name, object? value) =>
         Interop.CallStatus(
             NativeMethods.qm_document_set_fill(Handle, Interop.ToUtf8(name), ValueJson(value)),
@@ -262,6 +273,16 @@ public sealed class Document : NativeObject, IEquatable<Document>
             NativeMethods.qm_document_update_card_field(
                 Handle, (UIntPtr)index, Interop.ToUtf8(name), ValueJson(value)),
             "update_card_field");
+
+    /// <summary>Batched twin of <see cref="UpdateCardField"/>: set several
+    /// fields on the card at <paramref name="index"/> atomically. Same
+    /// all-or-nothing, one-diagnostic-per-field contract as
+    /// <see cref="SetFields"/>.</summary>
+    public void UpdateCardFields(int index, IReadOnlyDictionary<string, object?> fields) =>
+        Interop.CallStatus(
+            NativeMethods.qm_document_update_card_fields(
+                Handle, (UIntPtr)index, ObjectJson(fields, "update_card_fields")),
+            "update_card_fields");
 
     public JsonNode? RemoveCardField(int index, string name)
     {

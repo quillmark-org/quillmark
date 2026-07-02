@@ -82,6 +82,38 @@ public class BindingTests
     }
 
     [Fact]
+    public void Document_SetFields_AppliesBatch()
+    {
+        using var doc = Document.FromMarkdown(Fixtures.SampleMarkdown);
+        doc.SetFields(new Dictionary<string, object?> { ["subtitle"] = "Sub", ["pages"] = 3 });
+        string markdown = doc.ToMarkdown();
+        Assert.Contains("Sub", markdown);
+        Assert.Contains("pages", markdown);
+    }
+
+    [Fact]
+    public void Document_SetFields_ReportsEveryViolation_AppliesNothing()
+    {
+        using var doc = Document.FromMarkdown(Fixtures.SampleMarkdown);
+        var ex = Assert.Throws<QuillmarkException>(() => doc.SetFields(
+            new Dictionary<string, object?> { ["ok_field"] = "v", ["bad-name"] = "v", ["also bad"] = "v" }));
+        Assert.Equal(new[] { "bad-name", "also bad" },
+            ex.Diagnostics.Select(d => d.Path).ToArray());
+        Assert.DoesNotContain("ok_field", doc.ToMarkdown());
+    }
+
+    [Fact]
+    public void Document_UpdateCardFields_IsCardIndexedTwin()
+    {
+        using var doc = Document.FromMarkdown(Fixtures.SampleMarkdown);
+        doc.PushCard(Document.MakeCard("note", new Dictionary<string, object?> { ["x"] = 1 }));
+        doc.UpdateCardFields(0, new Dictionary<string, object?> { ["x"] = 2, ["y"] = "z" });
+        Assert.Contains("y", doc.ToMarkdown());
+        Assert.Throws<QuillmarkException>(() =>
+            doc.UpdateCardFields(99, new Dictionary<string, object?> { ["x"] = 1 }));
+    }
+
+    [Fact]
     public void Document_MakeAndPushCard_IncrementsCount()
     {
         using var doc = Document.FromMarkdown(Fixtures.SampleMarkdown);

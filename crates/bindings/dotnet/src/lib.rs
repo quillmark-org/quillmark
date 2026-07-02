@@ -118,6 +118,23 @@ fn report_edit_error(err: EditError) -> i32 {
     set_error_message(format!("[EditError::{}] {}", err.variant_name(), err))
 }
 
+/// Batched-mutator twin of [`report_edit_error`]: one diagnostic per
+/// offending field, each with `path` set to the field name.
+fn report_edit_errors(errors: Vec<(String, EditError)>) -> i32 {
+    let diags: Vec<Diagnostic> = errors
+        .into_iter()
+        .map(|(name, err)| {
+            Diagnostic::new(
+                quillmark_core::Severity::Error,
+                format!("[EditError::{}] {}", err.variant_name(), err),
+            )
+            .with_path(name)
+        })
+        .collect();
+    let message = summary("Field batch has", &diags);
+    set_error(diags, message)
+}
+
 fn report_render_error(err: RenderError) -> i32 {
     let message = match &err {
         RenderError::CompilationFailed { diags } => {
@@ -811,6 +828,54 @@ pub unsafe extern "C" fn qm_document_set_field(
     })
 }
 
+/// Shared parse of a JSON-object argument into the `(name, value)` batch
+/// `Card::set_fields` consumes. Key order is preserved (`preserve_order`
+/// is on workspace-wide) so field insertion order follows the object.
+unsafe fn field_batch_arg(
+    fields_json: *const c_char,
+) -> Result<Vec<(String, quillmark_core::QuillValue)>, ()> {
+    let Some(s) = borrow_str(fields_json) else {
+        set_error_message("fields: null or non-UTF-8 JSON");
+        return Err(());
+    };
+    let json: serde_json::Value = serde_json::from_str(s).map_err(|e| {
+        set_error_message(format!("fields: invalid JSON: {e}"));
+    })?;
+    let serde_json::Value::Object(map) = json else {
+        set_error_message("fields: must be a JSON object");
+        return Err(());
+    };
+    Ok(map
+        .into_iter()
+        .map(|(name, v)| (name, quillmark_core::QuillValue::from_json(v)))
+        .collect())
+}
+
+/// Batched twin of [`qm_document_set_field`]: `fields_json` is a JSON object
+/// applied to the main card atomically. On violation nothing is applied and
+/// the parked error carries one diagnostic per offending field (`path` =
+/// field name).
+#[no_mangle]
+pub unsafe extern "C" fn qm_document_set_fields(
+    doc: *mut DocHandle,
+    fields_json: *const c_char,
+) -> i32 {
+    ffi_try!(-1, {
+        clear_error();
+        let Some(doc) = borrow_mut(doc) else {
+            return set_error_message("set_fields: null handle");
+        };
+        let batch = match field_batch_arg(fields_json) {
+            Ok(b) => b,
+            Err(()) => return -1,
+        };
+        match doc.inner.main_mut().set_fields(batch) {
+            Ok(()) => 0,
+            Err(errors) => report_edit_errors(errors),
+        }
+    })
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn qm_document_set_fill(
     doc: *mut DocHandle,
@@ -1173,6 +1238,34 @@ pub unsafe extern "C" fn qm_document_update_card_field(
         match card.set_field(name, qv) {
             Ok(()) => 0,
             Err(e) => report_edit_error(e),
+        }
+    })
+}
+
+/// Batched twin of [`qm_document_update_card_field`]: same contract as
+/// [`qm_document_set_fields`], applied to the card at `index`.
+#[no_mangle]
+pub unsafe extern "C" fn qm_document_update_card_fields(
+    doc: *mut DocHandle,
+    index: usize,
+    fields_json: *const c_char,
+) -> i32 {
+    ffi_try!(-1, {
+        clear_error();
+        let Some(doc) = borrow_mut(doc) else {
+            return set_error_message("update_card_fields: null handle");
+        };
+        let batch = match field_batch_arg(fields_json) {
+            Ok(b) => b,
+            Err(()) => return -1,
+        };
+        let card = match card_mut_or_report(doc, index) {
+            Ok(c) => c,
+            Err(()) => return -1,
+        };
+        match card.set_fields(batch) {
+            Ok(()) => 0,
+            Err(errors) => report_edit_errors(errors),
         }
     })
 }
