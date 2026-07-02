@@ -8,6 +8,21 @@
 
 ## Unreleased
 
+- refactor(core)!: `RenderSession` collapses into `LiveSession` — a persistent,
+  incremental compiler that owns preview (#778). Reads (`render`, the canvas
+  seam, `regions`) serve the session's current compile; the new transactional
+  `apply(json_data)` recompiles in place (on `Err` every read keeps serving the
+  last-good compile) and returns `ChangeSet { page_count, dirty_pages }` so a
+  preview repaints `dirty ∩ visible`. Typst applies incrementally: the session
+  persists its `QuillWorld` (fonts/packages/assets parsed once), swaps document
+  data via `Source::replace`, and fingerprints visible page content for the
+  dirty set; pdfform re-resolves + re-flattens (cheap by construction). New
+  `RenderError::ApplyUnsupported` is the seam default. The callerless
+  `typst_session_of` is removed. WASM: the `RenderSession` class is renamed
+  `LiveSession` and gains `apply(doc): ChangeSet`; don't re-open per edit. The
+  Typst backend now evicts `comemo`'s process-global cache after every compile,
+  bounding memory over long editing sessions. See
+  `docs/migrations/0.92-to-0.93.md`
 - refactor(core)!: field regions move from `RenderResult` to a session-level
   query, `RenderSession::regions()` (WASM `session.regions()`), and are keyed on
   the quill schema field path, not the backend widget. Only the interactive

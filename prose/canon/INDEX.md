@@ -27,7 +27,7 @@
 
 - **[BINDINGS.md](BINDINGS.md)** - Language surfaces (Python, WASM, .NET, CLI) over the one core engine
 - **[CLI.md](CLI.md)** - Command-line interface
-- **[PREVIEW.md](PREVIEW.md)** - WASM multi-backend canvas preview path (Typst, pdfform)
+- **[PREVIEW.md](PREVIEW.md)** - WASM live preview: LiveSession (apply/ChangeSet) + multi-backend canvas paint (Typst, pdfform)
 
 ## Infrastructure
 

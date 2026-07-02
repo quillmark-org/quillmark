@@ -60,10 +60,10 @@ never escape the `Engine`: it clones the quill tree + `doc.toJson()` into the
 backend's memory as serialized data and frees the clones. See the
 [as-built 0.90 design](../../docs/migrations/0.89-to-0.90.md).
 
-Beyond the byte-output verbs (`engine.render`, `RenderSession.render`), the
+Beyond the byte-output verbs (`engine.render`, `LiveSession.render`), the
 canvas-capable backend builds (Typst, and pdfform under its preview seam)
-expose a **canvas preview** path on `RenderSession` (`pageCount`, `pageSize`,
-`paint`, …). See [PREVIEW.md](PREVIEW.md).
+expose a **live preview** path on `LiveSession` (`apply`, `pageCount`,
+`pageSize`, `paint`, …). See [PREVIEW.md](PREVIEW.md).
 
 ## .NET — `bindings/quillmark-dotnet`
 
