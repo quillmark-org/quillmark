@@ -258,6 +258,37 @@ impl Card {
         Ok(())
     }
 
+    /// Set several payload fields atomically, clearing any `!must_fill`
+    /// marker on each key. The whole batch is validated first — on any
+    /// violation nothing is applied and every offending field is reported
+    /// as a `(name, error)` pair, so a caller feeding externally-sourced
+    /// names (database columns, form keys) sees all violations in one
+    /// pass instead of fix-rerun-repeat. Per-field rules are those of
+    /// [`Card::set_field`]; insertion order follows the iterator, and a
+    /// repeated name behaves like repeated `set_field` calls (last value
+    /// wins, first position kept).
+    pub fn set_fields<I>(&mut self, fields: I) -> Result<(), Vec<(String, EditError)>>
+    where
+        I: IntoIterator<Item = (String, QuillValue)>,
+    {
+        let fields: Vec<(String, QuillValue)> = fields.into_iter().collect();
+        let errors: Vec<(String, EditError)> = fields
+            .iter()
+            .filter_map(|(name, value)| {
+                check_field(name, value.as_json())
+                    .err()
+                    .map(|e| (name.clone(), e))
+            })
+            .collect();
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        for (name, value) in fields {
+            self.payload_mut().insert(name, value);
+        }
+        Ok(())
+    }
+
     /// Remove a payload field; returns `Ok(None)` if the name is absent.
     /// Same validation as [`Card::set_field`].
     pub fn remove_field(&mut self, name: &str) -> Result<Option<QuillValue>, EditError> {

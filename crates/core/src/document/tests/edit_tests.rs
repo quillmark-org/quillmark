@@ -392,6 +392,76 @@ fn test_card_set_field_invalid_name() {
     );
 }
 
+// ── Card::set_fields ─────────────────────────────────────────────────────────
+
+#[test]
+fn test_card_set_fields_inserts_in_iterator_order() {
+    let mut card = Card::new("note").unwrap();
+    card.set_fields([
+        ("b".to_string(), qv("two")),
+        ("a".to_string(), qv("one")),
+    ])
+    .unwrap();
+    let keys: Vec<&String> = card.payload().iter().map(|(k, _)| k).collect();
+    assert_eq!(keys, ["b", "a"]);
+    assert_eq!(card.payload().get("a").unwrap().as_str(), Some("one"));
+}
+
+#[test]
+fn test_card_set_fields_collects_every_violation() {
+    let mut card = Card::new("note").unwrap();
+    let errors = card
+        .set_fields([
+            ("ok".to_string(), qv("fine")),
+            ("bad-name".to_string(), qv("v")),
+            ("also bad".to_string(), qv("v")),
+        ])
+        .unwrap_err();
+    assert_eq!(errors.len(), 2);
+    assert_eq!(
+        errors[0],
+        (
+            "bad-name".to_string(),
+            EditError::InvalidFieldName("bad-name".to_string())
+        )
+    );
+    assert_eq!(
+        errors[1],
+        (
+            "also bad".to_string(),
+            EditError::InvalidFieldName("also bad".to_string())
+        )
+    );
+}
+
+#[test]
+fn test_card_set_fields_atomic_on_error() {
+    let mut card = Card::new("note").unwrap();
+    card.set_field("existing", qv("old")).unwrap();
+    let result = card.set_fields([
+        ("existing".to_string(), qv("new")),
+        ("bad-name".to_string(), qv("v")),
+    ]);
+    assert!(result.is_err());
+    // Nothing from the failed batch is applied — not even the valid entries.
+    assert_eq!(card.payload().get("existing").unwrap().as_str(), Some("old"));
+    assert!(card.payload().get("bad-name").is_none());
+}
+
+#[test]
+fn test_card_set_fields_clears_fill_and_repeated_name_last_wins() {
+    let mut card = Card::new("note").unwrap();
+    card.set_fill("title", qv("draft")).unwrap();
+    card.set_fields([
+        ("title".to_string(), qv("first")),
+        ("title".to_string(), qv("final")),
+    ])
+    .unwrap();
+    let value = card.payload().get("title").unwrap();
+    assert!(!value.fill());
+    assert_eq!(value.as_str(), Some("final"));
+}
+
 // ── Card::remove_field ───────────────────────────────────────────────────────
 
 #[test]
