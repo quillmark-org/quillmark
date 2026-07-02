@@ -35,9 +35,8 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
-      # TODO: formalize Clippy later
-      # - name: Clippy check
-      #   run: cargo clippy --all-features --all-targets --locked -- -D warnings
+      - name: Clippy check
+        run: cargo clippy --all-features --all-targets --locked -- -D warnings
 
       - name: Build docs
         env:

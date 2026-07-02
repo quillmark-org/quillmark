@@ -417,11 +417,8 @@ fn test_document_new_blank_canvas() {
 #[test]
 fn test_card_set_fields_inserts_in_iterator_order() {
     let mut card = Card::new("note").unwrap();
-    card.set_fields([
-        ("b".to_string(), qv("two")),
-        ("a".to_string(), qv("one")),
-    ])
-    .unwrap();
+    card.set_fields([("b".to_string(), qv("two")), ("a".to_string(), qv("one"))])
+        .unwrap();
     let keys: Vec<&String> = card.payload().iter().map(|(k, _)| k).collect();
     assert_eq!(keys, ["b", "a"]);
     assert_eq!(card.payload().get("a").unwrap().as_str(), Some("one"));
@@ -464,7 +461,10 @@ fn test_card_set_fields_atomic_on_error() {
     ]);
     assert!(result.is_err());
     // Nothing from the failed batch is applied — not even the valid entries.
-    assert_eq!(card.payload().get("existing").unwrap().as_str(), Some("old"));
+    assert_eq!(
+        card.payload().get("existing").unwrap().as_str(),
+        Some("old")
+    );
     assert!(card.payload().get("bad-name").is_none());
 }
 
@@ -490,7 +490,8 @@ fn test_set_field_scalar_conversions() {
     card.set_field("qty", 3).unwrap();
     card.set_field("price", 2.5).unwrap();
     card.set_field("active", true).unwrap();
-    card.set_field("tags", serde_json::json!(["a", "b"])).unwrap();
+    card.set_field("tags", serde_json::json!(["a", "b"]))
+        .unwrap();
     card.set_fields([("count", 1), ("total", 2)]).unwrap();
     assert_eq!(card.payload().get("name").unwrap().as_str(), Some("Alice"));
     assert_eq!(card.payload().get("qty").unwrap().as_i64(), Some(3));
@@ -618,7 +619,7 @@ fn test_set_ext_adds_map_and_strips_from_plate() {
         "presentation".to_string(),
         serde_json::json!({ "title": "Greeting" }),
     );
-    doc.main_mut().set_ext(ext);
+    doc.main_mut().set_ext(ext).expect("set_ext");
 
     // Surfaced through the typed accessor.
     assert_eq!(
@@ -637,7 +638,7 @@ fn test_set_ext_round_trips_through_markdown() {
     let mut doc = make_doc();
     let mut ext = serde_json::Map::new();
     ext.insert("agent".to_string(), serde_json::json!({ "pinned": true }));
-    doc.main_mut().set_ext(ext);
+    doc.main_mut().set_ext(ext).expect("set_ext");
 
     let md = doc.to_markdown();
     let reparsed = Document::from_markdown(&md).unwrap();
@@ -652,7 +653,7 @@ fn test_remove_ext_returns_previous_and_clears() {
     let mut doc = make_doc();
     let mut ext = serde_json::Map::new();
     ext.insert("agent".to_string(), serde_json::json!(1));
-    doc.main_mut().set_ext(ext);
+    doc.main_mut().set_ext(ext).expect("set_ext");
 
     let removed = doc.main_mut().remove_ext().unwrap();
     assert_eq!(removed["agent"].as_i64(), Some(1));
@@ -665,9 +666,11 @@ fn test_remove_ext_returns_previous_and_clears() {
 fn test_set_ext_namespace_preserves_siblings() {
     let mut doc = make_doc();
     doc.main_mut()
-        .set_ext_namespace("presentation", serde_json::json!({ "title": "A" }));
+        .set_ext_namespace("presentation", serde_json::json!({ "title": "A" }))
+        .expect("set_ext_namespace");
     doc.main_mut()
-        .set_ext_namespace("agent", serde_json::json!({ "pinned": true }));
+        .set_ext_namespace("agent", serde_json::json!({ "pinned": true }))
+        .expect("set_ext_namespace");
 
     let ext = doc.main().ext().unwrap();
     assert_eq!(ext["presentation"]["title"].as_str(), Some("A"));
@@ -675,7 +678,8 @@ fn test_set_ext_namespace_preserves_siblings() {
 
     // Replacing one namespace leaves the other intact.
     doc.main_mut()
-        .set_ext_namespace("presentation", serde_json::json!({ "title": "B" }));
+        .set_ext_namespace("presentation", serde_json::json!({ "title": "B" }))
+        .expect("set_ext_namespace");
     let ext = doc.main().ext().unwrap();
     assert_eq!(ext["presentation"]["title"].as_str(), Some("B"));
     assert_eq!(ext["agent"]["pinned"].as_bool(), Some(true));
@@ -685,9 +689,11 @@ fn test_set_ext_namespace_preserves_siblings() {
 fn test_remove_ext_namespace_preserves_siblings() {
     let mut doc = make_doc();
     doc.main_mut()
-        .set_ext_namespace("presentation", serde_json::json!({ "title": "A" }));
+        .set_ext_namespace("presentation", serde_json::json!({ "title": "A" }))
+        .expect("set_ext_namespace");
     doc.main_mut()
-        .set_ext_namespace("tutorial", serde_json::json!(["step-1", "step-2"]));
+        .set_ext_namespace("tutorial", serde_json::json!(["step-1", "step-2"]))
+        .expect("set_ext_namespace");
 
     // Dropping one namespace returns its value and leaves the rest intact.
     let removed = doc.main_mut().remove_ext_namespace("tutorial").unwrap();
@@ -701,7 +707,8 @@ fn test_remove_ext_namespace_preserves_siblings() {
 fn test_remove_ext_namespace_drops_ext_when_empty() {
     let mut doc = make_doc();
     doc.main_mut()
-        .set_ext_namespace("tutorial", serde_json::json!(["step-1"]));
+        .set_ext_namespace("tutorial", serde_json::json!(["step-1"]))
+        .expect("set_ext_namespace");
 
     // Removing the last namespace clears `$ext` entirely — set/remove of a
     // single namespace is a clean inverse for a card that had no `$ext`.
@@ -718,7 +725,8 @@ fn test_remove_ext_namespace_is_noop_when_absent() {
 
     // `$ext` present but without the requested key.
     doc.main_mut()
-        .set_ext_namespace("presentation", serde_json::json!({ "title": "A" }));
+        .set_ext_namespace("presentation", serde_json::json!({ "title": "A" }))
+        .expect("set_ext_namespace");
     assert!(doc.main_mut().remove_ext_namespace("tutorial").is_none());
     // The unrelated namespace is untouched.
     assert_eq!(
@@ -730,7 +738,9 @@ fn test_remove_ext_namespace_is_noop_when_absent() {
 #[test]
 fn test_set_empty_ext_is_preserved() {
     let mut doc = make_doc();
-    doc.main_mut().set_ext(serde_json::Map::new());
+    doc.main_mut()
+        .set_ext(serde_json::Map::new())
+        .expect("set_ext");
     assert!(doc.main().ext().is_some());
     let md = doc.to_markdown();
     assert!(md.contains("$ext: {}"), "got: {md}");
@@ -741,7 +751,8 @@ fn test_ext_mutators_work_on_composable_cards() {
     let mut doc = make_doc_with_cards();
     doc.card_mut(0)
         .unwrap()
-        .set_ext_namespace("agent", serde_json::json!({ "note": "x" }));
+        .set_ext_namespace("agent", serde_json::json!({ "note": "x" }))
+        .expect("set_ext_namespace");
     assert_eq!(
         doc.cards()[0].ext().unwrap()["agent"]["note"].as_str(),
         Some("x")

@@ -46,7 +46,7 @@ const SUPPORTED_FORMATS: &[OutputFormat] =
 
 /// Typst-specific render session.
 ///
-/// Holds the compiled `PagedDocument` *and* the [`QuillWorld`] it was compiled
+/// Holds the compiled `PagedDocument` *and* the `QuillWorld` it was compiled
 /// through. Persisting the world keeps fonts, packages, and assets parsed once
 /// per session rather than once per compile — the substrate for incremental
 /// recompiles. Exposes Typst-only operations (page geometry, raster rendering)

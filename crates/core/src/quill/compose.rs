@@ -279,7 +279,6 @@ impl Quill {
     pub fn seed_card(&self, card_kind: &str, overlay: Option<&SeedOverlay>) -> Option<Card> {
         seed::seed_card_for_kind(self, card_kind, overlay)
     }
-
 }
 
 /// A single-diagnostic [`RenderError::QuillMismatch`]. `path` is unset — the

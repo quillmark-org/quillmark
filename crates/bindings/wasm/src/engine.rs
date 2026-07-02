@@ -1087,9 +1087,7 @@ fn js_value_to_field_batch(
             .into_iter()
             .map(|(name, v)| (name, quillmark_core::QuillValue::from_json(v)))
             .collect()),
-        _ => {
-            Err(WasmError::from(format!("{}: fields must be a plain object", ctx)).to_js_value())
-        }
+        _ => Err(WasmError::from(format!("{}: fields must be a plain object", ctx)).to_js_value()),
     }
 }
 
