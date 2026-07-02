@@ -250,7 +250,6 @@ fn validate_field_schemas(
 }
 
 fn validate_card_schema(card_name: &str, card_schema: &CardSchema, result: &mut ValidationResult) {
-    // Warn about missing description
     if card_schema
         .description
         .as_deref()
@@ -264,7 +263,6 @@ fn validate_card_schema(card_name: &str, card_schema: &CardSchema, result: &mut 
         ));
     }
 
-    // Validate card fields
     let context = format!("card '{}' field", card_name);
     validate_field_schemas(&card_schema.fields, result, &context);
 }

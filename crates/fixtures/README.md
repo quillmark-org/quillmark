@@ -22,11 +22,12 @@ let usaf_memo = quillmark_fixtures::quills_path("usaf_memo");
 
 The package includes:
 
-- **Quill Templates**: Sample Quill templates under `resources/quills/`, each with `plate.typ`, `Quill.yaml`, and assets (versioned subdirectories, e.g. `0.1.0/`)
+- **Quill Templates**: Sample Quill templates under `resources/quills/` (versioned subdirectories, e.g. `0.1.0/`), each with a `Quill.yaml` and either a Typst `plate.typ` or a PDF-form template
   - `quills/usaf_memo/` - US Air Force memo template
   - `quills/taro/` - Custom template example
   - `quills/classic_resume/` - Classic resume template
   - `quills/cmu_letter/` - CMU letter template
+  - `quills/sample_form/` - PDF-form (AcroForm) template
 
 - **Sample Markdown Files**: Example markdown files for testing
   - `sample.md` - Basic markdown example
@@ -36,4 +37,4 @@ The package includes:
 
 ## License
 
-Licensed under the MIT License. See LICENSE for details.
+Licensed under the Apache License, Version 2.0. See [LICENSE](../../LICENSE) for details.

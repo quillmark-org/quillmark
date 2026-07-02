@@ -223,8 +223,8 @@ impl LiveSession {
     /// data compiled by the same schema pipeline as `Backend::open`'s
     /// `json_data` (`Quill::compile_data`) — and from the *same quill*: the
     /// `$quill` reference check lives at the layer that still holds a
-    /// `Document` (`Quillmark::open`, the WASM `apply`); compiled data no
-    /// longer carries the reference, so this seam cannot re-check it.
+    /// `Document` (`Quillmark::open`, the WASM `apply`); compiled data does
+    /// not carry the reference, so this seam cannot re-check it.
     pub fn apply(&mut self, json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
         self.inner.apply(json_data)
     }

@@ -58,9 +58,10 @@ impl QuillConfig {
     /// carrying the `!must_fill` marker. See module docs for the annotation
     /// grammar; the function is total over any valid `QuillConfig`.
     ///
-    /// The "filled-out" twin of the blueprint is **seeding** (`seed_document`
-    /// in the `quillmark` crate) — a committed [`Document`] rather than an
-    /// annotated string. See `prose/canon/BLUEPRINT.md`.
+    /// The "filled-out" twin of the blueprint is **seeding**
+    /// ([`Quill::seed_document`](crate::Quill::seed_document)) — a committed
+    /// [`Document`] rather than an annotated string. See
+    /// `prose/canon/BLUEPRINT.md`.
     ///
     /// The result is guaranteed schema-valid and parseable (every key
     /// present, every value type-correct). It is *not* guaranteed to render
@@ -863,7 +864,7 @@ main:
     fn typed_table_with_empty_default_renders_inline() {
         // `default: []` means shippable as-is — the value renders inline as `[]`
         // (no marker). Inline row shape under an empty default belongs in
-        // `example:` (deferred cleanup: quillmark-org/quillmark#736).
+        // `example:` (quillmark-org/quillmark#736).
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
 main:

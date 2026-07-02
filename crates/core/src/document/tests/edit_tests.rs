@@ -527,7 +527,7 @@ fn test_card_remove_field_invalid_name_throws() {
     }
 }
 
-// ── Card::set_body ───────────────────────────────────────────────────────────
+// ── Card::replace_body ───────────────────────────────────────────────────────
 
 #[test]
 fn test_card_set_body() {

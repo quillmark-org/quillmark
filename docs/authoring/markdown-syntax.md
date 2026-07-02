@@ -47,7 +47,7 @@ Consequences:
 
 ## Out of scope
 
-The following are recognised by the parser (so they will not corrupt surrounding content) but produce no output in the current version:
+The following are recognised by the parser (so they will not corrupt surrounding content) but produce no output:
 
 - **Math** (`$…$`, `$$…$$`) — `$` is treated as a literal character.
 - **Footnotes**, **task lists**, **definition lists** — not supported.

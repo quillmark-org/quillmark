@@ -67,6 +67,8 @@ cargo run --example taro
 - **crates/core** - Core parsing, schema, and backend traits
 - **crates/quillmark** - Rust orchestration API
 - **crates/backends/typst** - Typst backend
+- **crates/quillmark-pdf** - Typst-free AcroForm PDF-stamping spine
+- **crates/backends/pdfform** - Typst-free PDF-form backend (built on quillmark-pdf)
 - **crates/bindings/python** - Python bindings
 - **crates/bindings/wasm** - WebAssembly bindings
 - **crates/bindings/cli** - Command-line interface

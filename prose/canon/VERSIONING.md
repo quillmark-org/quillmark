@@ -1,6 +1,6 @@
 # Quill Versioning System
 
-> **Implementation**: `crates/core/src/version.rs`
+> **Implementation**: `crates/core/src/`
 
 ## TL;DR
 

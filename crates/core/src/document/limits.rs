@@ -1,7 +1,9 @@
-//! Size and depth budget constants for document parsing.
+//! Nesting-depth budget for document parsing.
 //!
-//! These constants govern the maximum sizes and counts accepted during parsing
-//! to prevent denial-of-service via excessively large or deeply nested input.
+//! [`MAX_YAML_DEPTH`] governs the maximum container nesting accepted during
+//! parsing, preventing denial-of-service via deeply nested input. Sibling
+//! size/count limits (input bytes, YAML bytes, card count, field count) live
+//! in [`crate::error`].
 
 /// Maximum nesting depth, counted in **container levels** (100).
 ///

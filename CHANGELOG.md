@@ -56,8 +56,8 @@
 - feat(pdfform): add the Typst-free `pdfform` backend + shared `quillmark-pdf`
   AcroForm stamping spine; rewire Typst signatures onto the spine; thread a
   `regions` sidecar through `RenderResult` and generalize the raster-preview
-  seam (#749, #750). See `prose/proposals/PDFFORM_BACKEND.md` §9 for the V1
-  handover.
+  seam (#749, #750). See `prose/canon/ARCHITECTURE.md` and
+  `docs/quills/pdfform-backend.md` for the shipped design.
 - refactor(pdfform): PDF output is always an interactive AcroForm (Technique A).
   Value-flattening is internal machinery backing the SVG/PNG/canvas raster
   outputs, never a PDF deliverable. The public `RenderOptions.flatten` knob is

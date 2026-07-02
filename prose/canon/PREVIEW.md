@@ -1,6 +1,6 @@
 # Live Preview (WASM)
 
-> **Implementation**: `crates/core/src/session.rs`, `crates/backends/typst/src/`, `crates/backends/pdfform/src/`, `crates/bindings/wasm/src/`
+> **Implementation**: `crates/core/src/`, `crates/backends/typst/src/`, `crates/backends/pdfform/src/`, `crates/bindings/wasm/src/`
 
 ## TL;DR
 

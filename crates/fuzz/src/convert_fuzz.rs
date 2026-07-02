@@ -683,7 +683,7 @@ fn test_underline_with_bold_inside() {
 
 #[test]
 fn test_all_four_adjacent_no_space() {
-    // __ now produces #strong[…], same as **.
+    // __ produces #strong[…], same as **.
     let input = "**A**<u>B</u>*C*~~D~~";
     let result = mark_to_typst(input).unwrap();
     assert!(result.contains("#strong[A]"));

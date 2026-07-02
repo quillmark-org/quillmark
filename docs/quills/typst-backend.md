@@ -142,17 +142,17 @@ Inside `#box`, `#table`, `#figure`, `#footnote`, `#move`, `#pad` — `signature-
 
 | Name | Type | Default | Notes |
 |---|---|---|---|
-| `name` | `str` | required (positional) | Field name — must be unique within the document and match `[A-Za-z0-9_]+`. Surfaces as the widget's `/T` entry. |
+| `name` | `str` | required (positional) | Field name — must be unique within the document and match `[A-Za-z0-9_.]+` (`.` allowed for fully-qualified names). Surfaces as the widget's `/T` entry. |
 | `width` | `length` | `200pt` | Must be an absolute length (`pt`, `mm`, `cm`, `in`) — relative lengths like `2em` or `50%` are rejected. |
 | `height` | `length` | `50pt` | Same constraint as `width`. |
 
 ### Errors
 
-- Two calls with the same `name` raise a compilation error (`typst::duplicate_signature_field`).
-- A non-absolute `width` or `height` raises a Typst assert pointing at `signature-field`.
-- Names violating `[A-Za-z0-9_]+` raise a Typst assert.
+- Two calls with the same `name` raise a compilation error (`typst::duplicate_form_field`). `signature-field` is a thin wrapper over the same `form-field` primitive that backs text/checkbox/choice widgets, so its names share one uniqueness domain with theirs.
+- A non-absolute `width` or `height` raises a Typst assert pointing at `form-field`.
+- Names violating `[A-Za-z0-9_.]+` raise a Typst assert.
 
-The label `<__qm_sig__>` and metadata `kind: "__qm_sig__"` are reserved for this hand-off — don't use them for unrelated metadata in your plate.
+The label `<__qm_field__>` and metadata `kind: "__qm_field__"` are reserved for this hand-off — don't use them for unrelated metadata in your plate.
 
 > `signature-field` emits a document-global `metadata` element (standard Typst
 > introspection). If your plate or its packages read config via

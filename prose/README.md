@@ -1,6 +1,6 @@
 # prose/
 
-Long-form project documentation, in two tiers by maturity:
+Long-form project documentation, in three tiers by maturity:
 
 - **`canon/`** — canonical documentation: high-level, stable captures of the
   codebase's systems, specifications, and intent. The settled truth. Start at

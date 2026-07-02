@@ -783,15 +783,10 @@ impl QuillConfig {
         }
     }
 
-    /// Parse fields from a JSON Value map, assigning ui.order based on key_order.
-    ///
-    /// This helper ensures consistent field ordering logic for both top-level
-    /// fields and card fields.
-    ///
-    /// # Arguments
-    /// * `fields_map` - The JSON map containing field definitions
-    /// * `key_order` - Vector of field names in their definition order
-    /// * `context` - Context string for error messages (e.g., "field" or "card 'indorsement' field")
+    /// Parse fields from a JSON map into `FieldSchema`s (both `main.fields` and
+    /// a card kind's `fields`), assigning each field's `ui.order` from its
+    /// position in `key_order` (definition order). `context` labels error
+    /// messages (e.g. `"field schema"`, `"card_kind 'note' field"`).
     fn parse_fields_with_order(
         fields_map: &serde_json::Map<String, serde_json::Value>,
         key_order: &[String],

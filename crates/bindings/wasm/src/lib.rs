@@ -2,29 +2,32 @@
 //!
 //! WebAssembly bindings for Quillmark.
 //!
-//! Two artifacts ship from this one crate (see
-//! `prose/proposals/wasm-bindings-split.md`): a Typst-less **core**
-//! (`@quillmark/wasm/core`) for load / validate / schema / seed / blueprint, and
-//! a Typst-backed **backend** binary (`pkg/backends/typst/`) that adds the
-//! engine and canvas preview. The `typst` / `pdfform` cargo features gate the
-//! engine half (the default `typst` feature enables it; a no-feature build is
-//! the core).
+//! Three build variants ship from this one crate (see
+//! `docs/migrations/0.89-to-0.90.md`): a Typst-less **core** build
+//! (`pkg/core/`) for load / validate / schema / seed / blueprint, and two
+//! engine-carrying **backend** binaries — `pkg/backends/typst/` (Typst) and
+//! `pkg/backends/pdfform/` (Typst-free PDF-form) — each adding the engine and
+//! canvas preview. The `typst` / `pdfform` / `pdfform-preview` cargo features
+//! gate the engine half (the default `typst` feature enables it; a
+//! no-feature build is the core).
 //!
-//! The Typst backend is a PRIVATE binary — it is not a public npm export. The
-//! package's public root (`@quillmark/wasm`) is a hand-written canonical layer
-//! (`pkg/runtime/`) exposing `Quill` / `Document` (re-exported from core) and an
-//! `Engine` that lazily loads a backend and renders through it; `/core` is the
-//! render-free escape hatch. The FFI types below (`Quillmark`, `LiveSession`)
-//! are the backend binding the canonical `Engine` wraps.
+//! Both backend builds are PRIVATE binaries — neither is a public npm
+//! export. The package's public root (`@quillmark/wasm`) is a hand-written
+//! canonical layer (`pkg/runtime/`) exposing `Quill` / `Document`
+//! (re-exported from the core build) and an `Engine` that lazily loads a
+//! backend and renders through it. `pkg/core` is likewise not a public
+//! subpath — it is the internal build the canonical layer re-exports from.
+//! The FFI types below (`Quillmark`, `LiveSession`) are the backend binding
+//! the canonical `Engine` wraps.
 //!
 //! ## API
 //!
 //! - [`Quill`] - portable, declarative quill data (`fromTree` constructor;
-//!   validate / schema / metadata / seed / blueprint). Present in both builds.
+//!   validate / schema / metadata / seed / blueprint). Present in every build.
 //! - [`Quillmark`] - render engine: `open` / `render` / `supportedFormats` /
-//!   `supportsCanvas`. Render build only.
+//!   `supportsCanvas`. Render builds only (`typst` or `pdfform`).
 //! - [`engine::Document`] - typed parsed document (`fromMarkdown`/`fromJson` static
-//!   constructors, `toMarkdown`/`toJson` emitters). Present in both builds.
+//!   constructors, `toMarkdown`/`toJson` emitters). Present in every build.
 //!
 //! ## Example
 //!

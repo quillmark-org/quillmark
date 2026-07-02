@@ -14,9 +14,9 @@
 //! The drawing stream is appended last to the page `/Contents` and positions
 //! text with absolute `Td` coordinates, i.e. it assumes the **identity CTM** of
 //! the page default user space. A well-formed background restores its graphics
-//! state (balanced `q`/`Q`, no dangling `cm`), which the qualifier-produced and
-//! Typst-rendered bases this consumes always do; a base that left a non-identity
-//! CTM in effect would shift the flattened values. This path backs the SVG/PNG
+//! state (balanced `q`/`Q`, no dangling `cm`), which the qualifier-produced
+//! background this consumes always does; a base that left a non-identity CTM
+//! in effect would shift the flattened values. This path backs the SVG/PNG
 //! raster outputs only — never the AcroForm PDF deliverable, which is stamped.
 //!
 //! Entry point: [`flatten`].

@@ -32,8 +32,8 @@
 //! map-keyed access (`get`, `iter`, `insert`, `remove`). The map-style
 //! accessors filter to [`PayloadItem::Field`] only — they intentionally
 //! don't expose `$` entries because typed `$` access has dedicated methods
-//! (`quill`, `kind`, `id`, `ext`, `set_quill`, `set_kind`, `set_id`,
-//! `set_ext`).
+//! (`quill`, `kind`, `id`, `ext`, `seed`, `set_quill`, `set_kind`, `set_id`,
+//! `set_ext`, `set_seed`).
 //!
 //! The map-style accessors present the payload as a key/value map of user
 //! data, while comment preservation and `$` access ride on the same

@@ -50,7 +50,7 @@ by the engine, against a quill; they raise `QuillmarkError`
 
 ```python
 engine = Quillmark()
-engine.registered_backends()              # ['typst']
+engine.registered_backends()              # ['typst', 'pdfform'] (order not guaranteed)
 engine.render(quill, parsed, OutputFormat.PDF)   # ppi=, pages=, producer= optional
 engine.supported_formats(quill)           # [OutputFormat.PDF, ...] (raises if backend unregistered)
 ```

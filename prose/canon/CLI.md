@@ -1,7 +1,11 @@
 # CLI
 
 > **Package**: `quillmark-cli` → binary `quillmark`
-> **Implementation**: `crates/bindings/cli/src/`
+> **Implementation**: `crates/bindings/cli/`
+
+## TL;DR
+
+`quillmark-cli` wraps the core engine in a standalone `quillmark` binary: `render` turns a quill + markdown into PDF/SVG/PNG/txt, and `schema`/`blueprint`/`validate`/`info` introspect a quill without rendering it.
 
 ## Commands
 
@@ -56,7 +60,7 @@ Options:
 quillmark info <QUILL_PATH> [--json]
 ```
 
-Displays quill metadata: name, version, author, description, backend, field/card counts, defaults count, has-plate status, and any non-standard metadata keys. `--json` emits the same fields plus `has_plate` and a `metadata` object for non-standard keys. Standard keys (`backend`, `version`, `author`, `description`) are excluded from the metadata section.
+Displays quill metadata: name, description, version, author, backend, field count, card count (when nonzero), and any non-standard metadata keys; the text output also shows a defaults count (when nonzero). `--json` emits name, backend, version, author, description, `field_count`, `card_count` (when nonzero), and a `metadata` object for non-standard keys — it has no defaults count. Standard keys (`backend`, `version`, `author`, `description`) are excluded from the metadata section.
 
 ## Project Structure
 
@@ -77,7 +81,6 @@ crates/bindings/cli/src/
 ## Dependencies
 
 - `clap` — argument parsing
-- `quillmark` — the engine
-- `quillmark-typst` — Typst backend
+- `quillmark` — the engine, with its default `typst`/`pdfform` backend features enabled
 - `quillmark-core` — types
 - `serde_json` — JSON output

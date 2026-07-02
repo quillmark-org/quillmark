@@ -1,15 +1,9 @@
 //! Parsing and typed in-memory model for Quillmark card-yaml documents.
 //!
-//! ## Key types
-//!
-//! - [`Document`]: Root card plus ordered composable cards.
-//! - [`Card`]: A single card block carrying a [`Payload`] and a Markdown body.
-//! - [`Payload`]: Source-ordered items — `$quill`/`$kind`/`$id` metadata, user
-//!   fields, and comments — from a block's YAML content.
-//! - [`PayloadItem`]: The item variant — `Quill`/`Kind`/`Id`/`Field`/`Comment`.
-//!
-//! ## Errors
-//!
+//! A [`Document`] holds a root [`Card`] plus ordered composable cards; each
+//! card carries a [`Payload`] — source-ordered items ([`PayloadItem`]:
+//! `$quill`/`$kind`/`$id` metadata, user fields, and comments, in the order
+//! they appear in the block's YAML content) — and a Markdown body.
 //! [`Document::from_markdown`] returns errors for malformed YAML, unclosed
 //! fences, a missing root `$quill`, or unknown `$`-prefixed system keys.
 //!
@@ -49,7 +43,7 @@ pub use wire::{CardWire, PayloadItemWire, WireError};
 pub const FORMAT_RULES: &str = "Document format rules:
 \u{2022} Block opener and closer are EXACTLY `~~~` (three tildes, no info string). The `~~~card-yaml` opener is also accepted as a non-canonical alias.
 \u{2022} A blank line must precede every `~~~` block opener (unless it is line 1), and the opener must be at column zero (no leading spaces). An indented `~~~` is an ordinary code block, not a card.
-\u{2022} The first block is the root and MUST contain `$quill: <name>@<version>` and `$kind: main`. Additional blocks declare composable cards via `$kind: <card_kind>`.
+\u{2022} The first block is the root and MUST contain `$quill: <name>@<version>`. Its `$kind` is `main` by position \u{2014} an explicit `$kind: main` is accepted but not required. Additional blocks declare composable cards via `$kind: <card_kind>`.
 \u{2022} Reserved `$`-keys: `$quill`, `$kind`, `$id`, `$ext`, `$seed`. User fields use lowercase snake_case.
 \u{2022} Prose body is the text after a block's closing `~~~`, up to the next opener or EOF. To include a literal fenced code block in prose, use a backtick fence (```); any column-zero `~~~` block is parsed as card metadata.
 \u{2022} A field that already shows a concrete value carries a default and is shippable as-is \u{2014} keep the line, override the value, or delete it to fall back to the default. A blank or null value (`field:`, `field: null`, `field: ~`) is treated the same as omitting the field: it falls back to the default, or to the type-empty zero value.
@@ -277,7 +271,9 @@ impl Document {
         &mut self.cards
     }
 
-    /// Non-fatal warnings from the parse; empty for programmatically built documents.
+    /// Non-fatal warnings from the parse; empty for a [`Document::new`] blank
+    /// canvas. [`Document::from_main_and_cards`] carries whatever `warnings`
+    /// the caller passes.
     pub fn warnings(&self) -> &[Diagnostic] {
         &self.warnings
     }

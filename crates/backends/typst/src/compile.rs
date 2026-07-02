@@ -1,13 +1,5 @@
-//! # Typst Compilation
-//!
 //! Compiles a plate plus injected JSON data into a Typst paged document, then
 //! renders selected pages to output bytes (PDF, SVG, or PNG).
-//!
-//! ## Process
-//!
-//! 1. Create a `QuillWorld` with the quill's assets and packages.
-//! 2. Compile the Typst document with the Typst compiler.
-//! 3. Render the requested pages to the target format.
 //!
 //! Crate-internal entry points: [`compile_document`] (world → paged document)
 //! and [`render_document_pages`] (paged document → artifacts). The public

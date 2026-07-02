@@ -6,14 +6,10 @@
 //! fields and comments in source order, which is what makes inline-comment
 //! preservation symmetric across the `$`/non-`$` boundary.
 //!
-//! This module retains only the validation primitives shared between the
-//! parser, the editor surface, and the storage DTO:
-//!
-//! - `extract_meta_items` (private) — strip `$` keys from a parsed YAML
-//!   mapping and validate each into a typed system-metadata
-//!   [`super::PayloadItem`].
-//! - [`is_valid_kind_name`] / [`validate_composable_kind`] — name checks
-//!   for `$kind`.
+//! This module holds the validation primitives shared between the parser,
+//! the editor surface, and the storage DTO: stripping `$` keys out of a
+//! parsed YAML mapping into typed [`super::PayloadItem`]s, and checking
+//! `$kind` name conformance.
 
 use std::str::FromStr;
 

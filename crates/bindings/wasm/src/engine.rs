@@ -92,10 +92,9 @@ export interface QuillMetadata {
 }
 "#;
 
-/// TypeScript declaration for `pushCard`/`insertCard` input shape.
-/// Referenced by name via `unchecked_param_type` on those methods.
 /// TypeScript for the canonical `Card` wire shape (mirrors
-/// `quillmark_core::CardWire`). The single shape both *returned* by
+/// `quillmark_core::CardWire`), referenced by name via `unchecked_param_type`
+/// on `pushCard` / `insertCard`. The single shape both *returned* by
 /// `Document.main` / `cards` / `removeCard` / `quill.seedCard` and *accepted*
 /// by `pushCard` / `insertCard` / `Document.makeCard`.
 #[wasm_bindgen(typescript_custom_section)]

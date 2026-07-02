@@ -456,7 +456,7 @@ impl World for QuillWorld {
     }
 }
 
-/// Simplified package info structure with entrypoint support
+/// Package info parsed from a typst.toml `[package]` section.
 #[derive(Debug, Clone)]
 struct PackageInfo {
     namespace: String,
@@ -465,7 +465,7 @@ struct PackageInfo {
     entrypoint: String,
 }
 
-/// Parse a typst.toml for package information with better error handling
+/// Parse a typst.toml `[package]` section into [`PackageInfo`].
 fn parse_package_toml(
     content: &str,
 ) -> Result<PackageInfo, Box<dyn std::error::Error + Send + Sync>> {

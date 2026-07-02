@@ -206,7 +206,7 @@ fn verbatim_yaml_scalar(value: &serde_json::Value) -> String {
 }
 
 /// YAML-parsed type name for a JSON value. Distinguishes `integer` from
-/// `number` (the proposal's example messages need that split).
+/// `number` so diagnostic messages can report the two separately.
 fn yaml_scalar_type(value: &serde_json::Value) -> &'static str {
     match value {
         serde_json::Value::Null => "null",

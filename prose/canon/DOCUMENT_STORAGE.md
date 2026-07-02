@@ -34,7 +34,7 @@ bindings) and never a storage option.
 3. **Decoupled from the live model** — internal refactors of `Document` and
    its components only touch conversion code, never the wire format.
 4. **Transparent API** — `Document` serializes through the envelope via
-   `#[serde(into / try_from)]`; callers just use `serde_json`.
+   `#[serde(into / try_from)]`; callers use `serde_json` directly.
 
 ## The Format
 

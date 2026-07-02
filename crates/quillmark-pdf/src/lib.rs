@@ -30,8 +30,9 @@ pub use error::PdfError;
 pub use stamp::{regions_of, stamp, StampOptions, CHECKBOX_ON_STATE};
 pub use update::PdfUpdate;
 
-// The region sidecar lives in core (it rides on `RenderResult`); re-export so
-// spine consumers reach it without a second `quillmark-core` import.
+// The region sidecar lives in core, surfaced via `LiveSession::regions` (a
+// session-level query, not part of `RenderResult`); re-export so spine
+// consumers reach it without a second `quillmark-core` import.
 pub use quillmark_core::RenderedRegion;
 
 /// The `/MediaBox` of every page of `base`, normalized to `[x0, y0, x1, y1]`

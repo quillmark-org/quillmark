@@ -170,7 +170,6 @@ mod tests {
 
     #[test]
     fn test_severity_mapping() {
-        // Ensure Typst severity maps correctly
         assert_eq!(
             match typst::diag::Severity::Error {
                 typst::diag::Severity::Error => Severity::Error,

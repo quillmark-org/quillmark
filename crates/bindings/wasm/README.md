@@ -16,11 +16,11 @@ The package exposes **one import surface**:
 `Quill` and `Document` are re-exported verbatim from the internal Typst-less
 core build, so editor/validation code (`Quill.fromTree`,
 `Document.fromMarkdown`) loads only that small core binary — no backend is
-loaded until you render. The `Engine` hides everything else: each backend (Typst
-today) is a separate, private WASM binary with its own linear memory, lazily
-loaded on the first render. The Engine clones a `Quill` / `Document` into the
-backend's memory as data and frees the clones — you never hold a backend object
-or cross a memory boundary yourself.
+loaded until you render. The `Engine` hides everything else: each backend
+(`typst`, `pdfform`) is a separate, private WASM binary with its own linear
+memory, lazily loaded on the first render. The Engine clones a `Quill` /
+`Document` into the backend's memory as data and frees the clones — you never
+hold a backend object or cross a memory boundary yourself.
 
 ## Build
 
@@ -28,9 +28,10 @@ or cross a memory boundary yourself.
 bash scripts/build-wasm.sh
 ```
 
-The script builds two feature variants — the core (no Typst) and the default
-(Typst backend) — both with `--target bundler` and `--weak-refs` enabled
-(see [Lifecycle](#lifecycle)).
+The script builds three variants — the core (no backend), the Typst backend
+(default features), and the Typst-free pdfform backend (`pdfform-preview`
+feature) — each with `--target bundler` and `--weak-refs` enabled (see
+[Lifecycle](#lifecycle)).
 
 ## Test
 
@@ -153,9 +154,9 @@ genuinely malformed Markdown.
 
 ### Storage compatibility across versions
 
-The `schema` value (`quillmark/document@0.82.0`) is the **model version**,
+The `schema` value (`quillmark/document@0.92.0`) is the **model version**,
 not the running crate version. It is a hand-set constant, bumped only when
-the `Document` model itself changes — so every `0.82.x` patch release reads
+the `Document` model itself changes — so every `0.92.x` patch release reads
 and writes that same value.
 
 - **Upgrading is safe.** A newer build always reads documents written by an
@@ -283,7 +284,7 @@ A document that compiles to zero pages still produces a valid session
 `page index 0 out of range (pageCount=0)`. Branch on `pageCount === 0` to
 render a "no pages to preview" UI without relying on the throw.
 
-### Canvas Preview (Typst only)
+### Canvas Preview
 
 `session.paint(ctx, page, opts?)` rasterizes a page directly into a
 `CanvasRenderingContext2D` (main thread) or
@@ -297,7 +298,7 @@ sets them) and read `layoutWidth` / `layoutHeight` from the returned
 
 ```ts
 const result = session.paint(canvas.getContext("2d"), 0, {
-  layoutScale: 1,                            // layout px per Typst pt
+  layoutScale: 1,                            // layout px per pt (page geometry unit)
   densityScale: window.devicePixelRatio,     // backing-store density
 });
 
@@ -307,7 +308,7 @@ canvas.style.height = `${result.layoutHeight}px`;
 
 - `layoutScale` (default 1) sets the canvas's display-box size:
   `layoutWidth = widthPt * layoutScale`. For on-screen canvases this is
-  CSS pixels per Typst point. Defaults to 1 (one CSS pixel per pt).
+  CSS pixels per point. Defaults to 1 (one CSS pixel per pt).
 - `densityScale` (default 1) is the backing-store density multiplier.
   Fold `window.devicePixelRatio`, in-app zoom, and `visualViewport.scale`
   (pinch-zoom) into a single value here. Pass `devicePixelRatio` for
@@ -385,8 +386,8 @@ compilation failures. The same shape applies to every throw site:
   errors, `parse::input_too_large` for inputs > 10 MB).
 - `Document` mutators (`setField`, `updateCardField`, etc.) — `EditError`
   variants (`InvalidFieldName`, `InvalidKindName`, `ReservedKind`,
-  `IndexOutOfRange`) appear in `diagnostics[0].message` with the
-  `[EditError::<Variant>]` prefix.
+  `IndexOutOfRange`, `ValueTooDeep`) appear in `diagnostics[0].message` with
+  the `[EditError::<Variant>]` prefix.
 - `engine.render` / `session.render` — backend compilation failures and
   validation errors.
 

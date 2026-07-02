@@ -1989,7 +1989,8 @@ Body content.";
     assert_eq!(doc.main().body(), "\nBody content.");
 }
 
-/// Test the exact example from markdown-spec.md
+/// A multi-card document (root + two composable cards, prose thematic break
+/// in the root body) exercising the shapes described in markdown-spec.md.
 #[test]
 fn test_spec_example() {
     let markdown = "~~~card-yaml

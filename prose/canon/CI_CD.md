@@ -6,7 +6,7 @@
 
 Four workflows. `ci.yml` runs lint/test/wasm on every PR and non-tag push. `release-prepare.yml` computes the next version, bumps the workspace, and opens a release PR. `release.yml` tags and publishes to crates.io, npm, and PyPI when that PR merges. `docs.yml` builds MkDocs and deploys to GitHub Pages on stable releases.
 
-Published crates: `quillmark-core`, `quillmark-typst`, `quillmark`, `quillmark-cli`. Not published: `quillmark-fixtures`, `quillmark-fuzz`, `quillmark-python`, `quillmark-wasm`.
+Published crates: `quillmark-core`, `quillmark`, `quillmark-pdf`, `quillmark-typst`, `quillmark-pdfform`, `quillmark-cli`. Not published: `quillmark-fixtures`, `quillmark-fuzz`, `quillmark-python`, `quillmark-wasm`.
 
 ---
 
@@ -17,7 +17,7 @@ Published crates: `quillmark-core`, `quillmark-typst`, `quillmark`, `quillmark-c
 
 | Job | What it does |
 |-----|-------------|
-| `lint` | `cargo doc --no-deps --locked` with `RUSTDOCFLAGS=-Dwarnings` (Clippy commented out, not yet enforced) |
+| `lint` | `cargo clippy --all-features --all-targets --locked -- -D warnings`, then `cargo doc --no-deps --locked` with `RUSTDOCFLAGS=-Dwarnings` |
 | `test` | `cargo test --workspace --all-features --locked` |
 | `wasm` | first asserts the no-default-features core graph excludes Typst (`cargo tree -i quillmark-typst` must fail), then builds via `./scripts/build-wasm.sh --ci`, then `npx vitest run` |
 

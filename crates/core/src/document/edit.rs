@@ -6,9 +6,8 @@
 //! [`Document::to_plate_json`]. Mutators never modify `warnings` — those
 //! are immutable parse-time observations.
 //!
-//! Payload/body mutators live on [`Card`] (`set_field`, `set_fill`,
-//! `remove_field`, `set_ext`, `remove_ext`, `set_ext_namespace`,
-//! `remove_ext_namespace`, `replace_body`); [`Document`] keeps
+//! Payload/body mutators (field set/fill/remove, `$ext` and `$seed`
+//! namespace writers, body replacement) live on [`Card`]; [`Document`] keeps
 //! document-level ops (quill-ref, push/insert/remove/move card).
 //!
 //! The `$ext` mutators carry no field-name invariant ($ext is an opaque
@@ -67,9 +66,10 @@ pub enum EditError {
 }
 
 impl EditError {
-    /// The bare variant name (e.g. `"InvalidFieldName"`). Each binding surfaces
-    /// it as the `[EditError::<Variant>]` message prefix; defined once here so a
-    /// new variant cannot drift across the three binding error mappers.
+    /// The bare variant name (e.g. `"InvalidFieldName"`). The wasm and Python
+    /// bindings each surface it as the `[EditError::<Variant>]` message prefix;
+    /// defined once here so a new variant cannot drift between the two
+    /// binding error mappers.
     pub fn variant_name(&self) -> &'static str {
         match self {
             EditError::InvalidFieldName(_) => "InvalidFieldName",

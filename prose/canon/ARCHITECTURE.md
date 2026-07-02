@@ -10,7 +10,7 @@ Quillmark is a schema-driven document engine: it turns Markdown with card-yaml b
 
 1. **Parse** — card-yaml block extraction, bidi stripping, HTML fence normalization
 2. **Normalize** — Type coercion, schema defaults, field validation
-3. **Compile** — Backend's `open()` receives plate + JSON data and returns a `LiveSession`; `LiveSession::render()` produces artifacts
+3. **Compile** — Backend's `open()` receives the quill + JSON data and returns a `LiveSession`; `LiveSession::render()` produces artifacts
 
 ## Crate Structure
 
@@ -30,7 +30,7 @@ Implements `Backend` for PDF, SVG, and PNG. Converts Markdown fields to Typst ma
 
 ### `backends/quillmark-pdfform`
 
-The second backend: fills an existing AcroForm PDF rather than typesetting from scratch. Resolves card values against the quill's `form.json` spec and stamps them onto the base `form.pdf` as real interactive fields (Technique A — `NeedAppearances`, no baked appearance streams). The PDF deliverable is always an interactive AcroForm; the backend also emits SVG and PNG (and a WASM canvas raster) by pre-flattening values into the page content streams (hayro raster). Every render returns a `regions` sidecar (per-field geometry + bound value). See [docs/quills/pdfform-backend.md](../../docs/quills/pdfform-backend.md) and [PREVIEW.md](PREVIEW.md).
+The second backend: fills an existing AcroForm PDF rather than typesetting from scratch. Resolves card values against the quill's `form.json` spec and stamps them onto the base `form.pdf` as real interactive fields (Technique A — `NeedAppearances`, no baked appearance streams). The PDF deliverable is always an interactive AcroForm; the backend also emits SVG and PNG (and a WASM canvas raster) by pre-flattening values into the page content streams (hayro raster). Field geometry is a session-level query (`LiveSession::regions()`) — per-field geometry keyed on the schema field path, no bound value. See [docs/quills/pdfform-backend.md](../../docs/quills/pdfform-backend.md) and [PREVIEW.md](PREVIEW.md).
 
 ### `quillmark-pdf`
 

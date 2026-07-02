@@ -32,7 +32,7 @@ cargo install --git https://github.com/quillmark-org/quillmark --branch main qui
 
 ```bash
 # From workspace root
-cargo install --path bindings/quillmark-cli
+cargo install --path crates/bindings/cli
 
 # Or build without installing
 cargo build --release -p quillmark-cli
@@ -175,7 +175,7 @@ cargo run -- render path/to/quill document.md
 ## Design Documentation
 
 For architectural details and design decisions, see:
-- [CLI Design Document](../../prose/canon/CLI.md)
+- [CLI Design Document](../../../prose/canon/CLI.md)
 
 ## Changelog
 
@@ -185,4 +185,4 @@ release notes and version history.
 
 ## License
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](../../LICENSE) for details.
+Licensed under the Apache License, Version 2.0. See [LICENSE](../../../LICENSE) for details.

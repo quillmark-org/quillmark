@@ -196,12 +196,12 @@ path's "`default:` wins" rule applies to authored and blank documents, where no
   fills the body when bodies are enabled.
 - **The main card** carries `$quill` and `$kind: main`, so a seed round-trips
   through Markdown like an authored document.
-- **Provenance is deferred.** A seeded `example` is committed as ordinary
+- **Provenance is untracked.** A seeded `example` is committed as ordinary
   authored content, indistinguishable from hand-authored input. Carrying no
   `!must_fill` marker, it reads as done — an Unendorsed field seeded with an
-  `example` raises no `validation::must_fill` warning. Distinguishing an
-  untouched seed from authored input is a future addition; correctness and
-  renderability do not depend on it.
+  `example` raises no `validation::must_fill` warning. Whether a field's
+  value came from seeding or later authoring is not recorded; correctness
+  and renderability do not depend on the distinction.
 
 Seeding is the **filled-out twin of the blueprint**
 ([BLUEPRINT.md](BLUEPRINT.md) § "The blueprint and its filled-out twin"): the
@@ -283,7 +283,7 @@ There is no separate `required:` axis; the presence or absence of
 `default:` is the sole author choice per field. See
 [BLUEPRINT.md](BLUEPRINT.md) for how the two cells render.
 
-Identity fields (`name`, `version`, `backend`, `author`, `description`) live on the parent metadata object (Wasm: `Quill.metadata`; Python: `Quill.metadata` plus dedicated getters).
+Identity fields (`name`, `version`, `backend`, `author`, `description`) live on the parent metadata object (Wasm: `Quill.metadata` getter; Python: `Quill.metadata`). Both bindings also expose `backend_id`/`backendId` directly; Python additionally exposes `quill_ref`, a derived `name@version` string.
 
 ### Bindings surface
 

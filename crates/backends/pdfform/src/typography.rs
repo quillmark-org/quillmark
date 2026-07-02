@@ -9,18 +9,15 @@
 //! "preview and flattening agree exactly" invariant: there is exactly one place
 //! that answers "what font and size does this value render at."
 //!
-//! ## On regions presentation enrichment (#752)
+//! ## Regions carry no typography (#752)
 //!
-//! Surfacing this typography on the region sidecar (resolved font/size/align)
-//! was the deferred half of value flattening. It is deliberately **not** done:
-//! the unified flatten technique makes *both* canvas backends produce a
-//! **complete** raster (the pdfform session pre-flattens values into the page
-//! content, then rasterizes), so no consumer ever composites a value from a
-//! region — the trigger the enrichment was waiting on ("font-accurate
-//! client-side compositing") never occurs. The region carries only geometry +
-//! the schema field address for cross-navigation; it intentionally carries no
-//! value or typography. Were a font-accurate-compositing consumer to
-//! materialize, it reads sizes from *this* module.
+//! The region sidecar carries only geometry and the schema-field address for
+//! cross-navigation — no resolved font/size/align. No consumer composites a
+//! value onto a region: the flatten technique already gives both canvas
+//! backends a **complete** raster (the pdfform session pre-flattens values
+//! into the page content, then rasterizes), so there is nothing left for a
+//! region-based compositor to draw. A font-accurate-compositing consumer, if
+//! one is added, reads sizes from *this* module, not from the region.
 
 /// House text font — PDF base-14 Helvetica, registered as `/Helv`. Used for
 /// text and choice values.

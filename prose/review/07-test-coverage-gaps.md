@@ -2,9 +2,10 @@
 
 **Severity:** low–medium **Category:** coverage **Status:** Partially resolved
 
-The tractable Rust-level gaps are closed (see "Closed" below). What remains
-needs a non-Rust harness (a stricter PDF validator, a CI matrix entry, a JS
-assertion, or a binding surface) and is left open.
+Most tractable Rust-level gaps are closed (see "Closed" below). Most of what
+remains needs a non-Rust harness (a stricter PDF validator, a CI matrix entry,
+a JS assertion, or a binding surface); one item (the `usaf_memo`
+multi-signature plate) is a same-language Rust test still to be written.
 
 ## Still open
 
@@ -12,10 +13,11 @@ assertion, or a binding surface) and is left open.
 
 - **No stricter validator over multi-type output.** Widgets are validated by a
   tolerant `lopdf` reparse (which "silently tolerates" malformed dicts) plus a
-  byte-level duplicate-`/Subtype` check. The new text/checkbox/choice widgets
-  get no byte-level duplicate-key check, and no qpdf / MuPDF / pdfium lint runs
-  over multi-field-type output. A qpdf/MuPDF lint would harden the fence across
-  all four field types.
+  byte-level duplicate-`/Subtype` check (`quillmark-pdf/tests/stamp.rs`,
+  covering the text/checkbox/choice widgets too). No qpdf / MuPDF / pdfium
+  lint runs over multi-field-type output. A qpdf/MuPDF lint would harden the
+  fence beyond the one property (`/Subtype` uniqueness) the byte-level check
+  targets.
 - **`usaf_memo` multi-signature plate not exercised end-to-end** in
   `sig_field.rs` — the real regression target uses several `Ind_<i>_Signature`
   widgets on a page; the current tests cover one field per page.
@@ -26,7 +28,7 @@ assertion, or a binding surface) and is left open.
   `BT`/`Tj`/`re W n`/WinAnsi bytes but not the multiline line-advance
   (`0 -line_h Td`) or the `0 Tf` auto-size clamp; a regression collapsing all
   lines onto one baseline would pass.
-- **Canvas "complete raster" heuristic is too weak.** `canvas.test.js:284`
+- **Canvas "complete raster" heuristic is too weak.** `canvas.test.js:303`
   asserts `inkPixels > 0`, which the background's own borders/labels satisfy
   even if no field value is painted. Sample a known field coordinate (from
   `FieldRegion.rect` → device space) and assert non-white, or floor `inkPixels`
@@ -40,15 +42,21 @@ assertion, or a binding surface) and is left open.
   `pdfform-preview` would go undetected. Add a `cargo check`/`test` matrix entry
   (and ideally a wasm size-budget check for the pdfform artifact, analogous to
   the `core` budget guard).
-- **Python `regions` not exposed (confirmed).** `PyRenderResult` exposes only
-  `artifacts` / `warnings` / `format` / `render_time_ms` — there is no `regions`
-  getter (`crates/bindings/python/src/types.rs`). Intentionally pending until
-  `pdfform` ships in the Python binding; expose it then.
-- **No non-ASCII value end-to-end through the `pdfform` backend.** The WinAnsi
-  transcode and the UTF-16BE `/V` encoding are unit-tested (`writer.rs`,
-  `flatten.rs`), but the integration tests (`sample_form.rs`,
-  `canvas_conformance.rs`) only use ASCII values, so no test drives an accented
-  value through the full backend render to the AcroForm `/V` (UTF-16BE decode).
+- **Python `regions` not exposed (confirmed).** `regions` is a
+  `LiveSession`-level query (`LiveSession::regions()`, see
+  [PREVIEW.md](../canon/PREVIEW.md)), not a `RenderResult` field, and Python
+  has no session/live-preview surface at all (one-shot `render` only) —
+  `crates/bindings/python/src/types.rs` has no session type to hang a
+  `regions` method on. Intentionally pending until Python gets a session
+  surface; expose it then.
+
+## Closed (verified against current code)
+
+- **Non-ASCII value end-to-end through the `pdfform` backend.**
+  `sample_form.rs::non_ascii_value_round_trips_through_acroform_v` drives an
+  accented value (`"Café — Señor 'Ünïcøde'"`) through the full backend render
+  to the AcroForm `/V` and decodes it back, exercising the UTF-16BE path
+  end-to-end.
 
 ## Closed (landed on `claude/prose-review-items-6svv5p`)
 
@@ -58,8 +66,10 @@ assertion, or a binding surface) and is left open.
   and indirect-`/Annots` hard error, and the `pdf_text_string` UTF-16BE /
   surrogate-pair branch.
 - **Regions sidecar** — the pdfform `sample_form` integration test asserts a
-  non-empty `regions` list with name / field-type / value, now extended with
-  page + non-degenerate-rect geometry.
+  non-empty `session.regions()` list keyed on schema field, with page +
+  non-degenerate-rect geometry. (Regions are a session-level query —
+  `LiveSession::regions()` — carrying only geometry, not the field-type/value
+  payload described above; see [PREVIEW.md](../canon/PREVIEW.md).)
 - **Coercion / resolver (`pdfform`)** — `is_truthy` string/number variants,
   `coerce_text` mixed/all-null arrays, and the numeric-`$kind` card-addressing
   limitation (tested + documented on `lookup_card`).
@@ -68,7 +78,7 @@ assertion, or a binding surface) and is left open.
 
 ## Closed (landed on `claude/code-review-main-a3rokh`)
 
-- **Spine (`quillmark-pdf`)** — `endobj`-inside-a-string no longer truncates an
+- **Spine (`quillmark-pdf`)** — `endobj`-inside-a-string does not truncate an
   object (string-aware `find_object_bytes`); cyclic / shared-node `/Pages` trees
   are rejected (visited-set, closing the O(nodes × file) amplification); a
   non-zero page `/Rotate` is rejected rather than mis-stamped; and the

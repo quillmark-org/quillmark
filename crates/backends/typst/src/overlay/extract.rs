@@ -1,9 +1,9 @@
 //! Walk a compiled Typst document and return one `FieldPlacement` per
 //! `form-field` call. The helper emits a `<__qm_field__>`-labelled `metadata`
 //! whose value carries `(kind, name, field-type, value, options, multiline,
-//! width, height)`, followed by an invisible same-sized box. Metadata has zero
-//! size, so its `introspector.position()` equals the box's top-left — no frame
-//! walk.
+//! width, height, field)`, followed by an invisible same-sized box. Metadata
+//! has zero size, so its `introspector.position()` equals the box's top-left —
+//! no frame walk.
 
 use std::collections::HashMap;
 

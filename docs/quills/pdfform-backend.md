@@ -200,14 +200,13 @@ To get values into the SVG/PNG/canvas output, the backend pre-flattens them: it 
 
 ### Regions sidecar
 
-Every render returns a `regions` list on the `RenderResult` — one entry per field, carrying its name, page, geometry, and resolved value:
+Field geometry is a session-level query, not part of `RenderResult`: open a session and call `regions()` to get one entry per schema-bound field, keyed on its schema field path:
 
 ```rust
-pub struct RenderedRegion { pub name: String, pub page: usize, pub rect: [f32; 4], pub kind: RegionKind }
-pub enum RegionKind { Field { field_type: String, value: Option<String> } }
+pub struct RenderedRegion { pub field: String, pub page: usize, pub rect: [f32; 4] }
 ```
 
-Regions ride on **every** render regardless of format, so a GUI can overlay or composite field values onto whatever surface it shows. The `pdfform_preview` example (`crates/quillmark/examples/`) renders the `sample_form` fixture and prints its regions for cross-checking against a viewer.
+`regions()` reads off the compiled session without producing another byte artifact, so a GUI can fetch geometry once and overlay it on whatever surface it shows (a `paint`-ed canvas or a rendered page), independent of which format it goes on to render. A field with no `schema_field` never surfaces a region. The `pdfform_preview` example (`crates/quillmark/examples/`) opens a session for the `sample_form` fixture and prints its regions for cross-checking against a viewer.
 
 ## Resources
 

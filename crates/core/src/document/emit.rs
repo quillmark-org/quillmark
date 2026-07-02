@@ -46,7 +46,7 @@ impl Document {
     ///
     /// Byte-equality with the *original source* is **not** guaranteed.
     ///
-    /// # Emission rules (§5.2)
+    /// # Emission rules (§9)
     ///
     /// - Line endings: `\n` only.  CRLF normalization happens on import.
     /// - Every block is emitted as a `~~~` card-yaml fence: a bare `~~~`
@@ -67,7 +67,7 @@ impl Document {
     /// - Multi-line strings: emitted as inline double-quoted scalars with
     ///   `\n` escapes; no `|` / `>` block forms.
     ///
-    /// # Open decisions (resolved)
+    /// # Design notes
     ///
     /// - **Nested-map order.** `QuillValue` is backed by `serde_json::Value`
     ///   whose object type (`serde_json::Map`) preserves insertion order when the

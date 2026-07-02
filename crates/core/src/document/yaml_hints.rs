@@ -1,6 +1,6 @@
 //! Actionable-hint enrichment for YAML parse errors.
 //!
-//! The underlying YAML parser (`serde_saphyr` / its yaml-rust2 backend)
+//! The underlying YAML parser (`serde_saphyr` / its `saphyr-parser-bw` backend)
 //! surfaces messages in YAML jargon ("alias references unknown anchor",
 //! "mapping values are not allowed in this context", "multiple YAML documents
 //! detected; use from_multiple or from_multiple_with_options") that LLM
@@ -168,10 +168,9 @@ fn derive_hint(message: &str, content: &str) -> Option<String> {
         );
     }
 
-    // S2-3: anchor-scan failure — same root cause as the alias case (unquoted
-    // value starts with `&`). The sprint 1 alias hint already matched on the
-    // word "anchor"; this matches the new wording that mentions only "scanning
-    // an anchor or alias".
+    // S2-3: anchor-scan failure — same root cause as the alias case above
+    // (unquoted value starts with `&`), matched via different message wording:
+    // "scanning an anchor or alias" rather than "anchor" + "not found".
     if m.contains("scanning an anchor") || m.contains("scanning an alias") {
         if let Some(field) = first_field_with_unquoted_prefix(content, &['*', '&']) {
             return Some(format!(

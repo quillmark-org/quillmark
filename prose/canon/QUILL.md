@@ -33,7 +33,6 @@ pub enum FileTreeNode {
 
 pub struct Quill {
     pub(crate) metadata: HashMap<String, QuillValue>,
-    pub(crate) plate: Option<String>,
     pub(crate) config: QuillConfig,
     pub(crate) files: FileTreeNode,
 }

@@ -1,6 +1,6 @@
 # Error Handling System
 
-> **Implementation**: `crates/core/src/error.rs`
+> **Implementation**: `crates/core/src/`
 
 ## Types
 
@@ -25,6 +25,7 @@ only the *kind* of failure; `diagnostics()` borrows the vector and
 - `ValidationFailed` — field coercion/schema validation failure
 - `QuillConfig` — Quill.yaml configuration error
 - `QuillMismatch` — the document was rendered with a quill that does not satisfy its `$quill` reference (wrong name, or version outside the selector). Distinct from `ValidationFailed`: the document is well-formed, but paired with the wrong quill. See [VERSIONING.md](VERSIONING.md).
+- `ApplyUnsupported` — the backend's session does not support incremental `apply` (code `backend::apply_unsupported`). The default for a backend that does not override the session seam; both built-in backends override it.
 
 `ValidationFailed`, `QuillConfig`, and `CompilationFailed` routinely carry
 several diagnostics so every problem reaches the caller in one pass; the

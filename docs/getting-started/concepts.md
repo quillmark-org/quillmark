@@ -44,7 +44,7 @@ This metadata is accessible in formats and is validated against native schema ru
 
 ### Backends
 
-A backend compiles the plate plus injected JSON data into the final artifact. The Typst backend is currently the only one — it produces PDF, SVG, and PNG, and converts fields declared `type: markdown` to Typst markup during compilation.
+A backend compiles a quill's backend-specific inputs plus injected JSON data into the final artifact. Quillmark ships two backends: Typst reads a plate, produces PDF, SVG, and PNG, and converts fields declared `type: markdown` to Typst markup during compilation; pdfform reads a stripped PDF background and field spec instead of a plate, and fills an existing PDF form's fields directly.
 
 ### Required `$quill` Metadata
 

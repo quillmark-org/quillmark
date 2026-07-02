@@ -99,7 +99,7 @@ fn seeded_document_round_trips_through_markdown() {
     let reparsed = crate::Document::from_markdown(&markdown)
         .expect("seeded document must re-parse from its own markdown");
 
-    // Main metadata survives — this is what the `$kind: main` fix guarantees.
+    // Main metadata, including `$kind: main`, survives the round trip.
     assert_eq!(
         reparsed.main().quill().map(|r| r.name.as_str()),
         Some("seed_test")

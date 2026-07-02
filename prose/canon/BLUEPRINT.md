@@ -257,7 +257,7 @@ shippable as-is; no `default:` is Unendorsed:
   annotations on each row). The outer key carries `# array<object>`.
 - `default: []` renders inline as `[]` with `# array<object>` —
   shippable empty. Inline row shape is not surfaced under an empty
-  default; use `example:` to document row shape (deferred cleanup:
+  default; use `example:` to document row shape (tracked in
   [#736](https://github.com/quillmark-org/quillmark/issues/736)).
 - No `default:` is Unendorsed: one synthetic row is emitted with each
   property carrying its own description, inline annotation, and the

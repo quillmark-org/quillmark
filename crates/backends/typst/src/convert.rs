@@ -129,7 +129,6 @@ fn is_u_close_tag(html: &str) -> bool {
 /// which are the characters commonly found in language identifiers (e.g., "c++",
 /// "objective-c", "file.typ"). Characters like `#`, newlines, backticks, and other
 /// Typst-special characters are treated as the end of the valid identifier.
-/// This prevents injection via newlines or Typst-special characters in the info string.
 fn sanitize_lang_tag(lang: &str) -> String {
     lang.chars()
         .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '+'))
@@ -199,7 +198,6 @@ where
         }
         match event {
             Event::Start(tag) => {
-                // Track nesting depth
                 depth += 1;
                 if depth > MAX_NESTING_DEPTH {
                     return Err(ConversionError::NestingTooDeep {
@@ -395,7 +393,6 @@ where
                 }
             }
             Event::End(tag) => {
-                // Decrement depth
                 depth = depth.saturating_sub(1);
 
                 match tag {

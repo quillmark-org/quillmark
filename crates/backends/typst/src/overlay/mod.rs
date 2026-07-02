@@ -1,12 +1,13 @@
 //! The form-field adapter: a thin introspection→[`FieldSpec`] bridge onto the
 //! shared `quillmark-pdf` stamping spine.
 //!
-//! Public entry points called from `compile.rs`: [`extract`] walks the Typst
-//! document for `form-field` placements; [`build_field_specs`] converts those
-//! (Typst top-left origin) into spine [`FieldSpec`]s (PDF bottom-left origin) —
-//! coordinate ownership lives here, in the backend, so the spine never imports
-//! `typst_layout`. [`default_producer`] supplies the default `/Info`
-//! `/Producer` string the product layer threads down.
+//! Public entry points: [`extract`] (called from `lib.rs`, once per compile)
+//! walks the Typst document for `form-field` placements; [`build_field_specs`]
+//! (called from `lib.rs` and `compile.rs`) converts those (Typst top-left
+//! origin) into spine [`FieldSpec`]s (PDF bottom-left origin) — coordinate
+//! ownership lives here, in the backend, so the spine never imports
+//! `typst_layout`. [`default_producer`] (called from `compile.rs`) supplies
+//! the default `/Info` `/Producer` string the product layer threads down.
 
 use quillmark_core::{Diagnostic, RenderError, Severity};
 use quillmark_pdf::{FieldSpec, FieldType, CHECKBOX_ON_STATE};

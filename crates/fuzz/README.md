@@ -1,6 +1,6 @@
 # Quillmark Fuzzing Tests
 
-This crate contains comprehensive property-based fuzzing tests for Quillmark using the `proptest` framework. These tests validate the security of Quillmark's escaping functions, markdown parser, and filter inputs.
+This crate contains property-based fuzzing tests for Quillmark using the `proptest` framework. These tests validate the security of Quillmark's escaping functions, markdown parser, and filter inputs.
 
 **Note:** This crate is not published to crates.io and is only used for internal testing.
 
@@ -68,19 +68,6 @@ card-yaml payload security:
 - Validates composable card-kind parsing with random inputs
 - Tests nested YAML structures for stability
 - Unicode and special character handling
-
-## Running Tests
-
-```bash
-# Run all fuzzing tests
-cargo test --package quillmark-fuzz --all-features
-
-# Run specific test module
-cargo test --package quillmark-fuzz convert_fuzz
-cargo test --package quillmark-fuzz filter_fuzz
-cargo test --package quillmark-fuzz parse_fuzz
-cargo test --package quillmark-fuzz emit_roundtrip_fuzz
-```
 
 ## Security Properties Validated
 

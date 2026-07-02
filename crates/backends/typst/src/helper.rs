@@ -18,7 +18,7 @@ pub const HELPER_NAME: &str = "quillmark-helper";
 const LIB_TYP_TEMPLATE: &str = include_str!("lib.typ.template");
 
 /// Generate `lib.typ` for the quillmark-helper package from JSON data.
-/// Embeds JSON (including `__meta__` injected by `transform_fields`) so
+/// Embeds JSON (including `__meta__` injected by `transform_markdown_fields`) so
 /// markdown and date fields are auto-normalized by the Typst template.
 pub fn generate_lib_typ(json_data: &str) -> String {
     let escaped_json = escape_string(json_data);

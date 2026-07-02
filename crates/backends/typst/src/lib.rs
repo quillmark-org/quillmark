@@ -357,10 +357,8 @@ fn engine_err(code: &str, message: impl Into<String>) -> RenderError {
     }
 }
 
-/// Check if a field schema indicates markdown content.
-///
-/// A field is considered markdown if it has:
-/// - `contentMediaType = "text/markdown"`
+/// Check if a field schema indicates markdown content: `contentMediaType =
+/// "text/markdown"`.
 fn is_markdown_field(field_schema: &serde_json::Value) -> bool {
     field_schema
         .get("contentMediaType")

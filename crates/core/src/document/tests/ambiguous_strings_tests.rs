@@ -5,7 +5,7 @@
 //! silently coerced to booleans, integers, or dates by a YAML 1.1 parser, or
 //! misread as anchors/aliases/tags by any YAML parser.
 //!
-//! The canonical emitter (§5.2) double-quotes every string scalar with
+//! The canonical emitter (§9) double-quotes every string scalar with
 //! JSON-style escaping, which is what buys the round-trip guarantee tested
 //! here.
 //!

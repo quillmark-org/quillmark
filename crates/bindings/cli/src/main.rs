@@ -19,7 +19,7 @@ enum Commands {
     /// Render markdown file to output format
     Render(commands::render::RenderArgs),
 
-    /// Output the JSON schema for a quill
+    /// Output the YAML schema for a quill
     Schema(commands::schema::SchemaArgs),
 
     /// Output the annotated Markdown blueprint for a quill

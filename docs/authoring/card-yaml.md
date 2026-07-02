@@ -248,8 +248,9 @@ Card kinds and their field schemas are declared in `Quill.yaml` under
 `toMarkdown` always emits the canonical block form — a bare `~~~`
 opener, the `$` metadata lines in the canonical order `$quill`, `$kind`,
 `$id`, `$ext`, `$seed`, the remaining data fields, and a `~~~` closer. The root
-block emits both `$quill` and `$kind: main` (plus `$seed` when declared);
-composable cards emit `$kind: <kind>` plus any `$id` / `$ext` they declared. Fence markers,
+block emits `$quill` and `$kind: main` plus any `$id` / `$ext` / `$seed` it
+declared (`$seed` is root-only); composable cards emit `$kind: <kind>` plus
+any `$id` / `$ext` they declared. Fence markers,
 key ordering, and YAML quoting are normalised; `!must_fill` tags and YAML
 comments (own-line and inline trailing, including those adjacent to `$`
 lines) survive the round-trip.

@@ -165,7 +165,8 @@ set after parsing; they are not part of the data model's field map (§3.4).
 
 In the typed model, the `$` entries live as typed variants of the
 unified payload-item list (`PayloadItem::Quill`, `PayloadItem::Kind`,
-`PayloadItem::Id`, `PayloadItem::Ext`, `PayloadItem::Seed`), interleaved in
+`PayloadItem::Id`, and `PayloadItem::Meta` keyed by `MetaKey::Ext` /
+`MetaKey::Seed`), interleaved in
 source order with user fields and YAML comments. They are surfaced through typed
 accessors — `card.quill()`, `card.kind()`, `card.id()`, `card.ext()`,
 `card.seed()` — which return `Option<…>`. On a successfully parsed document the root
@@ -542,7 +543,7 @@ Parse errors include:
 - An unknown `$key` outside the closed set `{quill, kind, id, ext, seed}`.
 - An invalid `$quill` reference.
 - A `$` metadata key whose value type is incompatible with the key.
-- A data-field name failing `/^[a-z_][a-z0-9_]*$/`.
+- A data-field name failing `/^[A-Za-z_][A-Za-z0-9_]*$/`.
 - Invalid YAML inside any block payload.
 - Any §8 limit exceeded.
 

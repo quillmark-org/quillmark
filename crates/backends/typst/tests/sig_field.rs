@@ -12,14 +12,9 @@ use std::path::{Path, PathBuf};
 use quillmark_core::{Backend, FileTreeNode, OutputFormat, Quill, RenderError, RenderOptions};
 use quillmark_typst::TypstBackend;
 
-/// Load a fixture quill from disk. Reuses `usaf_memo@0.2.0` as the host
-/// — `signature-field` doesn't depend on any quill-specific config so we
-/// just need a valid quill skeleton, and `usaf_memo` is the fixture the
-/// spikes validated.
 /// Walk the `usaf_memo@0.2.0` fixture into an in-memory tree. Reused as a host
-/// — `signature-field` doesn't depend on any quill-specific config, so we just
-/// need a valid quill skeleton (fonts, packages), and `usaf_memo` is the
-/// fixture the spikes validated.
+/// because `signature-field` doesn't depend on any quill-specific config —
+/// any valid quill skeleton (fonts, packages) works.
 fn host_tree() -> FileTreeNode {
     fn walk(dir: &Path) -> std::io::Result<FileTreeNode> {
         let mut files = HashMap::new();

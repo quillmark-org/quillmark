@@ -5,9 +5,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::value::QuillValue;
 
-/// Semantic constants for field schema keys used in parsing and JSON Schema generation.
-/// Using constants provides IDE support (find references, autocomplete) and ensures
-/// consistency between parsing and output.
+/// Semantic constants for field schema key names (`type`, `description`, …).
+/// Neither parsing (`FieldSchemaDef`) nor JSON Schema generation
+/// ([`build_transform_schema`](super::build_transform_schema)) consumes these constants —
+/// both use literal strings — but they're kept for downstream consumers that want the
+/// key names without stringly-typed literals, with the IDE support (find references,
+/// autocomplete) constants provide over bare literals.
 pub mod field_key {
     pub const TYPE: &str = "type";
     pub const DESCRIPTION: &str = "description";

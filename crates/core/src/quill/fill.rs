@@ -6,9 +6,10 @@
 //! - **blueprint/example emission** ([`super::blueprint`]) — the `example`
 //!   document's fallback, when a field carries neither an `example:` nor a
 //!   `default:`.
-//! - **zero-filled render** (the render path in `quillmark::orchestration`) —
-//!   each absent field is filled with its zero value in the plate-JSON
-//!   projection only, never in the persisted document.
+//! - **zero-filled render** ([`QuillConfig::compile_data`](super::QuillConfig::compile_data),
+//!   invoked from `quillmark::orchestration`) — each absent field is filled
+//!   with its zero value in the plate-JSON projection only, never in the
+//!   persisted document.
 
 use serde_json::json;
 
