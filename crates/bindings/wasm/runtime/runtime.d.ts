@@ -171,6 +171,18 @@ export interface PaintResult {
 }
 
 /**
+ * Canonical contract every backend build must satisfy. Output of
+ * {@link LiveSession.apply}: `dirtyPages` lists the pages whose rendered
+ * content differs from the previous compile, including added pages; removed
+ * pages are implied by `pageCount`. Repaint `dirty ∩ visible`.
+ * @experimental Part of the live-session/canvas surface — see {@link LiveSession}.
+ */
+export interface ChangeSet {
+	pageCount: number;
+	dirtyPages: number[];
+}
+
+/**
  * A backend registry entry. `load` is the lazy thunk returning the dynamically-
  * imported backend build module; `formats`/`canvas` are the REQUIRED static
  * capability manifest. That manifest is what makes
@@ -209,7 +221,7 @@ export declare class Engine {
 	render(quill: Quill, doc: Document, options?: RenderOptions): Promise<RenderResult>;
 
 	/**
-	 * Open an iterative render session (canvas preview / per-page paint).
+	 * Open a live render session (canvas preview / per-page paint / `apply`).
 	 * @experimental Ships ahead of its first production consumer (the designed
 	 * canvas live-preview path — see `prose/canon/PREVIEW.md`). The session/paint
 	 * surface may change in any 0.x release; `render()` is the stable path.
@@ -258,6 +270,14 @@ export declare class LiveSession {
 	readonly backendId: string;
 	readonly supportsCanvas: boolean;
 	readonly warnings: Diagnostic[];
+	/**
+	 * Recompile the session against `doc` — the edit verb of a live preview.
+	 * Transactional: on throw every read (`render`, `paint`, `pageSize`,
+	 * `regions`) keeps serving the last-good compile, and the session recovers
+	 * on the next successful `apply`. On success reads serve the new compile;
+	 * repaint `dirtyPages ∩ visible`.
+	 */
+	apply(doc: Document): ChangeSet;
 	render(options?: RenderOptions): RenderResult;
 	/**
 	 * Schema-field geometry for this compiled session — one {@link FieldRegion}

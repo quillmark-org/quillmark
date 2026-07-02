@@ -289,10 +289,10 @@ export class Engine {
 	}
 
 	/**
-	 * Open an iterative render session (for canvas preview / per-page paint).
-	 * The session is a self-contained compiled snapshot, so the transient quill
-	 * and document clones are freed before this returns; the caller owns the
-	 * returned session and must `.free()` it.
+	 * Open a live render session (canvas preview / per-page paint / `apply`).
+	 * The session is self-contained (it retains what it needs for `apply`), so
+	 * the transient quill and document clones are freed before this returns;
+	 * the caller owns the returned session and must `.free()` it.
 	 * @experimental Ships ahead of its first production consumer (the designed
 	 * canvas live-preview path); the session/paint surface may change in any
 	 * 0.x release. `render()` is the stable path.
@@ -305,7 +305,7 @@ export class Engine {
 			quill.backendId,
 			quill,
 			doc,
-			({ engine, quill: q, doc: d }) => new LiveSession(engine.open(q, d))
+			({ mod, engine, quill: q, doc: d }) => new LiveSession(engine.open(q, d), mod)
 		);
 	}
 
@@ -337,19 +337,44 @@ export class Engine {
 }
 
 /**
- * Thin wrapper over a backend's iterative render session. Holds the compiled
- * snapshot; the quill/document it was opened from have already been freed.
+ * Thin wrapper over a backend's live render session. Reads serve the current
+ * compile; `apply(doc)` recompiles in place (transactional: on throw, reads
+ * keep serving the last-good compile). The quill/document clones it was
+ * opened from have already been freed — the session retains what `apply`
+ * needs.
  *
  * `paint` writes a COMPLETE page raster — all content visible, no caller-side
  * compositing — for every backend that supports canvas (Typst rasterizes
  * natively; pdfform rasterizes its pre-flattened page). See `runtime.d.ts`.
  */
 export class LiveSession {
-	/** @param {{ pageCount: number, backendId: string, supportsCanvas: boolean, warnings: any[], render: Function, regions: Function, pageSize: Function, paint: Function, free: Function }} inner backend-build LiveSession (typst or pdfform) */
-	constructor(inner) {
+	/**
+	 * @param {{ pageCount: number, backendId: string, supportsCanvas: boolean, warnings: any[], apply: Function, render: Function, regions: Function, pageSize: Function, paint: Function, free: Function }} inner backend-build LiveSession (typst or pdfform)
+	 * @param {{ Document: { fromJson(json: string): any } }} mod the session's backend build, used to materialize `apply` documents in its linear memory
+	 */
+	constructor(inner, mod) {
 		this.#inner = inner;
+		this.#mod = mod;
 	}
 	#inner;
+	#mod;
+
+	/**
+	 * Recompile the session against `doc` — the edit verb of a live preview.
+	 * Transactional: on throw every read keeps serving the last-good compile.
+	 * On success reads serve the new compile; repaint `dirtyPages ∩ visible`.
+	 * @param {Document} doc
+	 * @returns {import('./runtime.d.ts').ChangeSet}
+	 */
+	apply(doc) {
+		let backendDoc = null;
+		try {
+			backendDoc = this.#mod.Document.fromJson(doc.toJson());
+			return this.#inner.apply(backendDoc);
+		} finally {
+			backendDoc?.free();
+		}
+	}
 
 	get pageCount() {
 		return this.#inner.pageCount;

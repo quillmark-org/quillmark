@@ -3,7 +3,7 @@
 use crate::error::WasmError;
 use crate::types::Diagnostic;
 #[cfg(any(feature = "typst", feature = "pdfform"))]
-use crate::types::{FieldRegion, RenderOptions, RenderResult};
+use crate::types::{ChangeSet, FieldRegion, RenderOptions, RenderResult};
 use js_sys::{Array, Uint8Array};
 #[cfg(any(feature = "typst", feature = "pdfform-preview"))]
 use serde::Deserialize;
@@ -199,6 +199,9 @@ pub struct Quill {
 pub struct LiveSession {
     inner: quillmark_core::LiveSession,
     backend_id: String,
+    /// Retained for `apply`: recompiles `doc` → data through the same schema
+    /// pipeline as `open`.
+    quill: quillmark::Quill,
 }
 
 /// Typed in-memory Quillmark document.
@@ -236,6 +239,7 @@ impl Quillmark {
         Ok(LiveSession {
             inner: session,
             backend_id: quill.inner.backend_id().to_string(),
+            quill: quill.inner.clone(),
         })
     }
 
@@ -1282,6 +1286,31 @@ impl LiveSession {
             .map(Into::into)
             .collect();
         serialize_or_throw(&diags, "warnings")
+    }
+
+    /// Recompile the session against `doc` — the edit verb of a live preview.
+    /// The document is compiled through the same schema pipeline as `open`
+    /// (same quill), then applied transactionally: on throw every read
+    /// (`render`, `paint`, `pageSize`, `regions`) keeps serving the last-good
+    /// compile, and the session recovers on the next successful `apply`. On
+    /// success reads serve the new compile; repaint `dirtyPages ∩ visible`.
+    #[wasm_bindgen(js_name = apply)]
+    pub fn apply(&mut self, doc: &Document) -> Result<ChangeSet, JsValue> {
+        self.quill
+            .check_quill_reference(&doc.inner)
+            .map_err(|e| WasmError::from(e).to_js_value())?;
+        let json_data = self
+            .quill
+            .compile_data(&doc.inner)
+            .map_err(|e| WasmError::from(e).to_js_value())?;
+        let cs = self
+            .inner
+            .apply(&json_data)
+            .map_err(|e| WasmError::from(e).to_js_value())?;
+        Ok(ChangeSet {
+            page_count: cs.page_count,
+            dirty_pages: cs.dirty_pages,
+        })
     }
 
     #[wasm_bindgen(js_name = render)]

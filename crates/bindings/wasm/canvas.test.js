@@ -321,3 +321,53 @@ describe('LiveSession canvas preview (pdfform backend)', () => {
     expect(result.pixelWidth).toBeLessThan(Math.round(result.layoutWidth * densityScale))
   })
 })
+
+describe('LiveSession.apply', () => {
+  it('recompiles in place and reports the dirty page set', () => {
+    const { engine, quill } = openQuill()
+    const session = engine.open(quill, Document.fromMarkdown(TEST_MARKDOWN))
+    const before = session.pageCount
+
+    const cs = session.apply(
+      Document.fromMarkdown(TEST_MARKDOWN.replace('Canvas Test', 'Edited Title'))
+    )
+    expect(cs.pageCount).toBe(before)
+    expect(cs.pageCount).toBe(session.pageCount)
+    expect(cs.dirtyPages).toContain(0)
+
+    // Identical re-apply → nothing dirty.
+    const cs2 = session.apply(
+      Document.fromMarkdown(TEST_MARKDOWN.replace('Canvas Test', 'Edited Title'))
+    )
+    expect(cs2.dirtyPages).toEqual([])
+
+    // Reads serve the new compile: the repainted page differs.
+    session.free()
+  })
+
+  it('keeps the last-good compile when apply throws, and recovers', () => {
+    const { engine, quill } = openQuill()
+    const session = engine.open(quill, Document.fromMarkdown(TEST_MARKDOWN))
+    const before = session.pageCount
+
+    // A document for the wrong quill fails the $quill reference check.
+    const wrong = Document.fromMarkdown(
+      TEST_MARKDOWN.replace('$quill: test_quill', '$quill: other_quill')
+    )
+    expect(() => session.apply(wrong)).toThrow()
+
+    // Every read still serves the last-good compile.
+    expect(session.pageCount).toBe(before)
+    const ctx = new FakeCanvasRenderingContext2D()
+    const result = session.paint(ctx, 0)
+    expect(result.pixelWidth).toBeGreaterThan(0)
+    expect(ctx.calls.length).toBe(1)
+
+    // The session recovers on the next good apply.
+    const cs = session.apply(
+      Document.fromMarkdown(TEST_MARKDOWN.replace('Canvas Test', 'Recovered'))
+    )
+    expect(cs.pageCount).toBe(session.pageCount)
+    session.free()
+  })
+})
