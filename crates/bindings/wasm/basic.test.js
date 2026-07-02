@@ -512,6 +512,56 @@ describe('Document editor surface — setField / removeField', () => {
   })
 })
 
+describe('Document blank-canvas constructor', () => {
+  it('new Document(quillRef) starts blank and builds up', () => {
+    const doc = new Document('test_quill')
+    expect(doc.quillRef).toBe('test_quill')
+    expect(doc.cards.length).toBe(0)
+    expect(doc.main.body).toBe('')
+    doc.setFields({ title: 'Hello' })
+    expect(field(doc.main, 'title')).toBe('Hello')
+  })
+
+  it('throws on an invalid quill reference', () => {
+    expect(() => new Document('not a valid ref!!')).toThrow(/QuillReference/)
+  })
+})
+
+describe('Document editor surface — setFields / updateCardFields', () => {
+  it('setFields applies every entry, in object order', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setFields({ subtitle: 'A subtitle', pages: 3 })
+    expect(field(doc.main, 'subtitle')).toBe('A subtitle')
+    expect(field(doc.main, 'pages')).toBe(3)
+  })
+
+  it('a failed batch throws one diagnostic per bad field and applies nothing', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    try {
+      doc.setFields({ ok_field: 'v', 'bad-name': 'v', 'also bad': 'v' })
+      throw new Error('setFields should have thrown')
+    } catch (err) {
+      expect(err.diagnostics.map((d) => d.path)).toEqual(['bad-name', 'also bad'])
+      expect(err.message).toMatch(/InvalidFieldName/)
+    }
+    expect(hasField(doc.main, 'ok_field')).toBe(false)
+  })
+
+  it('setFields rejects a non-object argument', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    expect(() => doc.setFields('not an object')).toThrow(/plain object/)
+  })
+
+  it('updateCardFields is the card-indexed twin of setFields', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.pushCard(Document.makeCard('note', { foo: 'bar' }))
+    doc.updateCardFields(0, { foo: 'baz', extra: 1 })
+    expect(field(doc.cards[0], 'foo')).toBe('baz')
+    expect(field(doc.cards[0], 'extra')).toBe(1)
+    expect(() => doc.updateCardFields(99, { foo: 'v' })).toThrow(/IndexOutOfRange/)
+  })
+})
+
 describe('Document editor surface — setQuillRef / replaceBody', () => {
   it('setQuillRef changes the quillRef', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)

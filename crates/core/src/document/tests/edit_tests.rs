@@ -392,6 +392,113 @@ fn test_card_set_field_invalid_name() {
     );
 }
 
+// ── Document::new (blank canvas) ─────────────────────────────────────────────
+
+#[test]
+fn test_document_new_blank_canvas() {
+    let mut doc = Document::new(QuillReference::from_str("test_quill").unwrap());
+    assert_eq!(doc.quill_reference().to_string(), "test_quill");
+    assert!(doc.cards().is_empty());
+    assert_eq!(doc.main().body(), "");
+    assert!(doc.warnings().is_empty());
+
+    doc.main_mut().set_fields([("title", "Hello")]).unwrap();
+    let mut card = Card::new("note").unwrap();
+    card.set_field("qty", 3).unwrap();
+    doc.push_card(card).unwrap();
+
+    // A built-from-blank document round-trips the canonical emitter.
+    let reparsed = Document::from_markdown(&doc.to_markdown()).unwrap();
+    assert_eq!(doc, reparsed);
+}
+
+// ── Card::set_fields ─────────────────────────────────────────────────────────
+
+#[test]
+fn test_card_set_fields_inserts_in_iterator_order() {
+    let mut card = Card::new("note").unwrap();
+    card.set_fields([
+        ("b".to_string(), qv("two")),
+        ("a".to_string(), qv("one")),
+    ])
+    .unwrap();
+    let keys: Vec<&String> = card.payload().iter().map(|(k, _)| k).collect();
+    assert_eq!(keys, ["b", "a"]);
+    assert_eq!(card.payload().get("a").unwrap().as_str(), Some("one"));
+}
+
+#[test]
+fn test_card_set_fields_collects_every_violation() {
+    let mut card = Card::new("note").unwrap();
+    let errors = card
+        .set_fields([
+            ("ok".to_string(), qv("fine")),
+            ("bad-name".to_string(), qv("v")),
+            ("also bad".to_string(), qv("v")),
+        ])
+        .unwrap_err();
+    assert_eq!(errors.len(), 2);
+    assert_eq!(
+        errors[0],
+        (
+            "bad-name".to_string(),
+            EditError::InvalidFieldName("bad-name".to_string())
+        )
+    );
+    assert_eq!(
+        errors[1],
+        (
+            "also bad".to_string(),
+            EditError::InvalidFieldName("also bad".to_string())
+        )
+    );
+}
+
+#[test]
+fn test_card_set_fields_atomic_on_error() {
+    let mut card = Card::new("note").unwrap();
+    card.set_field("existing", qv("old")).unwrap();
+    let result = card.set_fields([
+        ("existing".to_string(), qv("new")),
+        ("bad-name".to_string(), qv("v")),
+    ]);
+    assert!(result.is_err());
+    // Nothing from the failed batch is applied — not even the valid entries.
+    assert_eq!(card.payload().get("existing").unwrap().as_str(), Some("old"));
+    assert!(card.payload().get("bad-name").is_none());
+}
+
+#[test]
+fn test_card_set_fields_clears_fill_and_repeated_name_last_wins() {
+    let mut card = Card::new("note").unwrap();
+    card.set_fill("title", qv("draft")).unwrap();
+    card.set_fields([
+        ("title".to_string(), qv("first")),
+        ("title".to_string(), qv("final")),
+    ])
+    .unwrap();
+    let value = card.payload().get("title").unwrap();
+    assert!(!value.fill());
+    assert_eq!(value.as_str(), Some("final"));
+}
+
+#[test]
+fn test_set_field_scalar_conversions() {
+    // The `From` impls let scalars pass straight through `impl Into<QuillValue>`.
+    let mut card = Card::new("note").unwrap();
+    card.set_field("name", "Alice").unwrap();
+    card.set_field("qty", 3).unwrap();
+    card.set_field("price", 2.5).unwrap();
+    card.set_field("active", true).unwrap();
+    card.set_field("tags", serde_json::json!(["a", "b"])).unwrap();
+    card.set_fields([("count", 1), ("total", 2)]).unwrap();
+    assert_eq!(card.payload().get("name").unwrap().as_str(), Some("Alice"));
+    assert_eq!(card.payload().get("qty").unwrap().as_i64(), Some(3));
+    assert_eq!(card.payload().get("price").unwrap().as_f64(), Some(2.5));
+    assert_eq!(card.payload().get("active").unwrap().as_bool(), Some(true));
+    assert_eq!(card.payload().get("total").unwrap().as_i64(), Some(2));
+}
+
 // ── Card::remove_field ───────────────────────────────────────────────────────
 
 #[test]

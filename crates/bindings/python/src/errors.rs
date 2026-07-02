@@ -19,6 +19,29 @@ pub fn convert_edit_error(err: EditError) -> PyErr {
     )
 }
 
+/// Batched-mutator twin of [`convert_edit_error`]: one diagnostic per
+/// offending field, each with `path` set to the field name. The exception
+/// message embeds the first diagnostic (same shape as WASM's
+/// `WasmError::message`), so the `[EditError::<Variant>]` prefix contract
+/// holds for batches too.
+pub fn convert_edit_errors(errors: Vec<(String, EditError)>) -> PyErr {
+    let diags: Vec<Diagnostic> = errors
+        .into_iter()
+        .map(|(name, err)| {
+            Diagnostic::new(
+                Severity::Error,
+                format!("[EditError::{}] {}", err.variant_name(), err),
+            )
+            .with_path(name)
+        })
+        .collect();
+    let message = match diags.as_slice() {
+        [only] => only.message.clone(),
+        _ => format!("{} error(s): {}", diags.len(), diags[0].message),
+    };
+    raise_with_diagnostics(diags, message)
+}
+
 pub fn convert_render_error(err: RenderError) -> PyErr {
     let diags = err.diagnostics();
     debug_assert!(

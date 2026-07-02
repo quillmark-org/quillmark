@@ -89,6 +89,7 @@ artifact.save("out.pdf")
 ### `Document`
 
 ```python
+doc = Document("my_quill")                       # blank canvas: $quill only, no fields, no cards
 doc = Document.from_markdown(markdown)
 emitted = doc.to_markdown()
 
@@ -109,9 +110,10 @@ doc.card_count
 doc.main; doc.cards; doc.body; doc.warnings
 
 doc.set_field("title", "New")
+doc.set_fields({"title": "New", "author": "A"})  # atomic batch; one diagnostic per bad field
 doc.push_card(Document.make_card("note", {"x": 1}, "..."))  # or pass a Card from cards/remove_card/seed_card
 # insert_card, remove_card, move_card, set_card_kind,
-# update_card_field, remove_card_field, update_card_body, ...
+# update_card_field, update_card_fields, remove_card_field, update_card_body, ...
 ```
 
 ## Schema model

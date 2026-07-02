@@ -308,6 +308,27 @@ impl QuillValue {
     }
 }
 
+/// Scalar conversions mirror [`serde_json::Value`]'s and produce `fill =
+/// false` nodes (like [`QuillValue::from_json`]); a non-finite `f64` maps to
+/// null, matching serde_json. These back the `impl Into<QuillValue>` mutator
+/// parameters, so `card.set_field("qty", 3)` reads as written.
+macro_rules! impl_from_scalar {
+    ($($ty:ty),* $(,)?) => {$(
+        impl From<$ty> for QuillValue {
+            fn from(v: $ty) -> Self {
+                QuillValue::from_json(serde_json::Value::from(v))
+            }
+        }
+    )*};
+}
+impl_from_scalar!(&str, String, bool, i32, i64, u32, u64, f64);
+
+impl From<serde_json::Value> for QuillValue {
+    fn from(v: serde_json::Value) -> Self {
+        QuillValue::from_json(v)
+    }
+}
+
 impl Deref for QuillValue {
     type Target = serde_json::Value;
 

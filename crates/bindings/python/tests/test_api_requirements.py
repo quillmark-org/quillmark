@@ -81,6 +81,33 @@ def test_full_workflow(engine):
     assert len(result.artifacts[0].bytes) > 0
 
 
+def test_blank_document_constructor():
+    """Document(quill_ref) starts blank: main card only, no fields, no cards."""
+    doc = Document("test_quill")
+    assert doc.quill_ref == "test_quill"
+    assert doc.card_count == 0
+    assert doc.body == ""
+    assert field_keys(doc.main) == []
+    doc.set_fields({"title": "Hello"})
+    assert field(doc.main, "title") == "Hello"
+    with pytest.raises(ValueError, match="QuillReference"):
+        Document("not a valid ref!!")
+
+
+def test_blank_document_renders(engine):
+    """The programmatic flow end-to-end: blank canvas → set_fields → render."""
+    taro_dir = QUILLS_PATH / "taro"
+    quill = Quill.from_path(str(_latest_version(taro_dir)))
+
+    doc = Document("taro")
+    doc.set_fields({"title": "Test", "author": "Test Author", "ice_cream": "Chocolate"})
+    doc.replace_body("Content.")
+
+    result = engine.render(quill, doc, OutputFormat.PDF)
+    assert len(result.artifacts) > 0
+    assert len(result.artifacts[0].bytes) > 0
+
+
 # ---------------------------------------------------------------------------
 # Editor surface tests
 # ---------------------------------------------------------------------------
@@ -147,6 +174,36 @@ def test_set_field_invalid_field_name():
     doc = Document.from_markdown(SIMPLE_MD)
     with pytest.raises(QuillmarkError, match="InvalidFieldName"):
         doc.set_field("bad-name", "value")
+
+
+def test_set_fields_inserts_batch_in_order():
+    """set_fields applies every entry, in dict order."""
+    doc = Document.from_markdown(SIMPLE_MD)
+    doc.set_fields({"subtitle": "A subtitle", "pages": 3})
+    assert field(doc.main, "subtitle") == "A subtitle"
+    assert field(doc.main, "pages") == 3
+    assert field_keys(doc.main) == ["title", "author", "subtitle", "pages"]
+
+
+def test_set_fields_reports_every_violation_and_applies_nothing():
+    """A failed batch raises one diagnostic per bad field (path = name) and
+    leaves the document untouched — including the batch's valid entries."""
+    doc = Document.from_markdown(SIMPLE_MD)
+    with pytest.raises(QuillmarkError, match="InvalidFieldName") as exc_info:
+        doc.set_fields({"ok_field": "v", "bad-name": "v", "also bad": "v"})
+    diags = exc_info.value.diagnostics
+    assert [d.path for d in diags] == ["bad-name", "also bad"]
+    assert not has_field(doc.main, "ok_field")
+
+
+def test_update_card_fields_batch():
+    """update_card_fields is the card-indexed twin of set_fields."""
+    doc = Document.from_markdown(MD_WITH_CARDS)
+    doc.update_card_fields(0, {"foo": "baz", "extra": 1})
+    assert field(doc.cards[0], "foo") == "baz"
+    assert field(doc.cards[0], "extra") == 1
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+        doc.update_card_fields(99, {"foo": "v"})
 
 
 def test_remove_field_existing():

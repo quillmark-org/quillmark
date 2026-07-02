@@ -71,6 +71,7 @@ Standalone `quillmark` binary. See [CLI.md](CLI.md).
 
 ## Links
 
+- [PROGRAMMATIC.md](PROGRAMMATIC.md) — building documents in memory through each surface's mutators
 - [CLI.md](CLI.md) — command-line surface
 - [PREVIEW.md](PREVIEW.md) — WASM multi-backend canvas preview (Typst, pdfform)
 - [ERROR.md](ERROR.md) — the diagnostic model that crosses every boundary

@@ -240,10 +240,13 @@ impl Card {
     }
 
     /// Set a payload field, clearing any `!must_fill` marker on that key.
+    /// Scalars convert in place (`set_field("qty", 3)`); see the `From`
+    /// impls on [`QuillValue`].
     ///
     /// Returns [`EditError::InvalidFieldName`] when `name` does not match
     /// `[A-Za-z_][A-Za-z0-9_]*`.
-    pub fn set_field(&mut self, name: &str, value: QuillValue) -> Result<(), EditError> {
+    pub fn set_field(&mut self, name: &str, value: impl Into<QuillValue>) -> Result<(), EditError> {
+        let value = value.into();
         check_field(name, value.as_json())?;
         self.payload_mut().insert(name.to_string(), value);
         Ok(())
@@ -252,9 +255,46 @@ impl Card {
     /// Set a payload field and mark it as a `!must_fill` placeholder.
     /// `Null` emits as `key: !must_fill`; scalars/sequences as `key: !must_fill <value>`.
     /// Same validation as [`Card::set_field`].
-    pub fn set_fill(&mut self, name: &str, value: QuillValue) -> Result<(), EditError> {
+    pub fn set_fill(&mut self, name: &str, value: impl Into<QuillValue>) -> Result<(), EditError> {
+        let value = value.into();
         check_field(name, value.as_json())?;
         self.payload_mut().insert_fill(name.to_string(), value);
+        Ok(())
+    }
+
+    /// Set several payload fields atomically, clearing any `!must_fill`
+    /// marker on each key. The whole batch is validated first — on any
+    /// violation nothing is applied and every offending field is reported
+    /// as a `(name, error)` pair, so a caller feeding externally-sourced
+    /// names (database columns, form keys) sees all violations in one
+    /// pass instead of fix-rerun-repeat. Per-field rules are those of
+    /// [`Card::set_field`]; insertion order follows the iterator, and a
+    /// repeated name behaves like repeated `set_field` calls (last value
+    /// wins, first position kept).
+    pub fn set_fields<K, V, I>(&mut self, fields: I) -> Result<(), Vec<(String, EditError)>>
+    where
+        K: Into<String>,
+        V: Into<QuillValue>,
+        I: IntoIterator<Item = (K, V)>,
+    {
+        let fields: Vec<(String, QuillValue)> = fields
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        let errors: Vec<(String, EditError)> = fields
+            .iter()
+            .filter_map(|(name, value)| {
+                check_field(name, value.as_json())
+                    .err()
+                    .map(|e| (name.clone(), e))
+            })
+            .collect();
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        for (name, value) in fields {
+            self.payload_mut().insert(name, value);
+        }
         Ok(())
     }
 

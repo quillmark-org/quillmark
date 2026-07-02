@@ -84,6 +84,14 @@ never cloning the quill. Use them as non-failing pre-render probes.
 Build + validate a `Quill` from an in-memory tree. Pure — the declared backend
 is resolved at render time, not here. Loads no backend binary.
 
+### `new Document(quillRef)`
+A blank document: a main card carrying only `$quill`, an empty body, and no
+composable cards — the programmatic blank canvas. Absent fields resolve at
+render time (schema `default`, else type-empty zero), so nothing the caller
+did not set reaches the output. Build it up with `setFields` / `pushCard`.
+For an example-filled starter use `quill.seedDocument()`. Throws on an
+invalid quill reference.
+
 ### `Document.fromMarkdown(markdown)`
 Parse markdown to a parsed document. Throws a JS `Error` (with `.diagnostics`
 attached, see [Errors](#errors)) on any parse failure, including a missing
@@ -235,6 +243,11 @@ doc.pushCard(Document.makeCard("note", { x: 1 }));    // build from a flat map
 There is one `Card` shape in both directions — `pushCard` / `insertCard` take
 exactly what `cards` / `removeCard` / `seedCard` return. Build a fresh card
 from a flat field map with `Document.makeCard(kind, fields?, body?)`.
+
+Batch mutation: `doc.setFields({...})` / `doc.updateCardFields(index, {...})`
+apply a whole object atomically — on any invalid field nothing is applied and
+the thrown error carries one diagnostic per offending field (`path` = field
+name).
 
 ### `engine.render(quill, parsed, opts?)` vs. `engine.open(quill, parsed)`
 

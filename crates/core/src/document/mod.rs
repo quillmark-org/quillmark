@@ -206,6 +206,25 @@ impl PartialEq for Document {
 }
 
 impl Document {
+    /// Create a blank document: a main card carrying only `$quill`, an empty
+    /// body, and no composable cards. The programmatic blank canvas — every
+    /// schema field is absent and resolves at render time (`default`, else
+    /// type-empty zero), so nothing the caller did not set reaches the
+    /// output. For an example-filled starter shaped like the blueprint, use
+    /// `Quill::seed_document`.
+    pub fn new(quill: QuillReference) -> Self {
+        let mut payload = Payload::new();
+        payload.set_quill(quill);
+        // Parsed main cards always carry `$kind: main` (the parser normalizes
+        // it in); match that shape so a blank document round-trips equal.
+        payload.set_kind("main");
+        Self {
+            main: Card::from_parts(payload, String::new()),
+            cards: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+
     /// Create a `Document` from a pre-built main card and composable cards.
     /// `main` must carry `$quill`; composable cards must not.
     pub fn from_main_and_cards(main: Card, cards: Vec<Card>, warnings: Vec<Diagnostic>) -> Self {

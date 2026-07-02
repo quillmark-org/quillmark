@@ -12,7 +12,9 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use crate::enums::{PyOutputFormat, PySeverity};
-use crate::errors::{convert_edit_error, convert_render_error, raise_with_diagnostics};
+use crate::errors::{
+    convert_edit_error, convert_edit_errors, convert_render_error, raise_with_diagnostics,
+};
 
 #[pyclass(name = "Quillmark")]
 pub struct PyQuillmark {
@@ -241,6 +243,24 @@ pub struct PyDocument {
 
 #[pymethods]
 impl PyDocument {
+    /// `Document(quill_ref)` — a blank document: a main card carrying only
+    /// `$quill`, an empty body, and no composable cards. The programmatic
+    /// blank canvas: absent fields resolve at render time (`default`, else
+    /// type-empty zero), so nothing the caller did not set reaches the
+    /// output. For an example-filled starter use `Quill.seed_document()`.
+    /// Raises `ValueError` on an invalid quill reference. Mirrors WASM
+    /// `new Document(quillRef)`.
+    #[new]
+    fn new(quill_ref: &str) -> PyResult<Self> {
+        let qr: quillmark_core::QuillReference = quill_ref.parse().map_err(|e| {
+            PyValueError::new_err(format!("invalid QuillReference '{}': {}", quill_ref, e))
+        })?;
+        Ok(PyDocument {
+            inner: Document::new(qr),
+            parse_warnings: Vec::new(),
+        })
+    }
+
     #[staticmethod]
     fn from_markdown(markdown: &str) -> PyResult<Self> {
         let output = Document::from_markdown_with_warnings(markdown).map_err(|e| {
@@ -419,6 +439,20 @@ impl PyDocument {
             .main_mut()
             .set_fill(name, qv)
             .map_err(convert_edit_error)
+    }
+
+    /// Set several main-card payload fields atomically from a mapping,
+    /// clearing any `!must_fill` marker on each key. Nothing is applied on
+    /// error; the raised `QuillmarkError` carries one diagnostic per
+    /// offending field (`path` = field name), so externally-sourced names
+    /// (database columns, form keys) surface every violation in one pass.
+    /// Mirrors WASM `setFields`.
+    fn set_fields(&mut self, fields: Bound<'_, PyDict>) -> PyResult<()> {
+        let batch = pydict_to_field_batch(&fields)?;
+        self.inner
+            .main_mut()
+            .set_fields(batch)
+            .map_err(convert_edit_errors)
     }
 
     fn remove_field<'py>(&mut self, py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
@@ -651,6 +685,16 @@ impl PyDocument {
         self.card_mut_or_raise(index)?
             .set_field(name, qv)
             .map_err(convert_edit_error)
+    }
+
+    /// Batched twin of `update_card_field`: set several fields on the
+    /// composable card at `index` atomically. Same all-or-nothing,
+    /// one-diagnostic-per-field contract as `set_fields`.
+    fn update_card_fields(&mut self, index: usize, fields: Bound<'_, PyDict>) -> PyResult<()> {
+        let batch = pydict_to_field_batch(&fields)?;
+        self.card_mut_or_raise(index)?
+            .set_fields(batch)
+            .map_err(convert_edit_errors)
     }
 
     fn remove_card_field<'py>(
@@ -969,6 +1013,41 @@ fn json_to_py<'py>(py: Python<'py>, value: &serde_json::Value) -> PyResult<Bound
 fn py_to_quillvalue(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::QuillValue> {
     let json = py_to_json(value)?;
     Ok(quillmark_core::QuillValue::from_json(json))
+}
+
+/// Convert a Python mapping to the `(name, value)` batch `Card::set_fields`
+/// consumes. Value-conversion failures (depth bound, unsupported type) are
+/// collected — not fail-fast — into one `QuillmarkError` with a per-field
+/// `path`, matching the batch contract of the mutator itself. Non-string
+/// keys are a caller bug and raise `ValueError` directly.
+fn pydict_to_field_batch(
+    fields: &Bound<'_, PyDict>,
+) -> PyResult<Vec<(String, quillmark_core::QuillValue)>> {
+    let mut batch = Vec::new();
+    let mut diags = Vec::new();
+    for (key, value) in fields.iter() {
+        let name: String = key
+            .extract()
+            .map_err(|_| PyValueError::new_err("field names must be strings"))?;
+        match py_to_quillvalue(&value) {
+            Ok(qv) => batch.push((name, qv)),
+            Err(e) => diags.push(
+                quillmark_core::Diagnostic::new(
+                    quillmark_core::Severity::Error,
+                    format!("invalid value: {e}"),
+                )
+                .with_path(name),
+            ),
+        }
+    }
+    if !diags.is_empty() {
+        let message = match diags.as_slice() {
+            [only] => only.message.clone(),
+            _ => format!("{} error(s): {}", diags.len(), diags[0].message),
+        };
+        return Err(raise_with_diagnostics(diags, message));
+    }
+    Ok(batch)
 }
 
 fn py_to_json(value: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
