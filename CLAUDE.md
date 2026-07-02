@@ -1,6 +1,6 @@
 # Quillmark
 
-Schema-driven document engine: Markdown + YAML card metadata → a fully typeset PDF/SVG/PNG via a Typst backend. Crates: `core` (parsing/schema/traits), `quillmark` (orchestration), `backends/typst`, `bindings/{python,wasm,dotnet,cli}`, `fixtures` (test Quills).
+Schema-driven document engine: Markdown + YAML card metadata → a fully typeset PDF/SVG/PNG via a Typst backend. Crates: `core` (parsing/schema/traits), `quillmark` (orchestration), `backends/typst`, `bindings/{python,wasm,cli}`, `fixtures` (test Quills).
 
 Design docs: [`prose/canon/INDEX.md`](prose/canon/INDEX.md)
 
@@ -20,6 +20,5 @@ cargo test --workspace
 
 WASM: `./scripts/build-wasm.sh` → `cd crates/bindings/wasm && npm test`. in Cloud environment.
 Python: `cd crates/bindings/python && uv run maturin develop && uv run pytest`
-.NET: `./scripts/build-dotnet.sh` (native cdylib + `dotnet test`).
 
 In Claude Cloud environment, run bindings tests on CI/CD instead of locally.

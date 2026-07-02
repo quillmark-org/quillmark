@@ -119,30 +119,3 @@ jobs:
         working-directory: crates/bindings/wasm
         run: npx vitest run
 
-  dotnet:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Build native cdylib
-        # Produces target/debug/libquillmark_dotnet.so, which the managed
-        # Quillmark.csproj copies next to its output for P/Invoke.
-        run: cargo build -p quillmark-dotnet --locked
-
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Test .NET binding
-        run: >-
-          dotnet test
-          crates/bindings/dotnet/csharp/Quillmark.Tests/Quillmark.Tests.csproj
-          -c Debug -p:CargoProfile=debug
-

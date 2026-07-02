@@ -459,7 +459,7 @@ supports every field type, exercised through `pdfform`.
   interactive AcroForm (Technique A). Lives in `pdfform`'s `preview` feature,
   **never** in the spine.
 - **Regions presentation enrichment** (font/size/align) — rides with flattening.
-- **Surface `regions` in the WASM typed API** (then Python/.NET) — opt-in,
+- **Surface `regions` in the WASM typed API** (then Python) — opt-in,
   additive; wasm first as the GUI consumer.
 - **Canvas contract in `@quillmark/wasm`** — background paint + value
   compositing from regions + DPR/clamp math + the per-backend "complete vs
@@ -568,7 +568,7 @@ since shipped on this branch; kept here for the historical trail.
   registers it.
 - **`regions` surfaced in a binding's typed API.** *Landed (wasm).* `wasm`
   exposes `FieldRegion`/`FieldRegionKind` (`From<RenderedRegion>`), populated on
-  `RenderResult.regions` in both render paths. python/.NET still pending.
+  `RenderResult.regions` in both render paths. python still pending.
 
 ### Extension-point / file map
 

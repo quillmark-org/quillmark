@@ -292,7 +292,6 @@ Identity fields (`name`, `version`, `backend`, `author`, `description`) live on 
 | Rust | `QuillConfig::schema()` (JSON) / `schema_yaml()` (YAML) |
 | Wasm | `Quill.schema` getter (JSON) |
 | Python | `Quill.schema` getter (dict) |
-| .NET | `Quill.Schema` property (`JsonElement`) |
 | CLI | `quillmark schema <path>` |
 
 ### Where the discriminators come from

@@ -9,7 +9,6 @@ members = [
     "crates/bindings/wasm",
     "crates/fuzz",
     "crates/bindings/python",
-    "crates/bindings/dotnet",
     "crates/bindings/cli",
 ]
 # The default members to include when running `cargo build` or `cargo test` in the workspace root.

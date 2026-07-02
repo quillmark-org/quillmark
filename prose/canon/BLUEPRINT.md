@@ -471,7 +471,6 @@ prose.
 | Rust | `QuillConfig::blueprint() -> String`; the filled-out twin is `Quill::seed_document() -> Document` |
 | Wasm | `Quill.blueprint` getter; `Quill.seedDocument()` |
 | Python | `Quill.blueprint` property; `Quill.seed_document()` |
-| .NET | `Quill.Blueprint` property; `Quill.SeedDocument()` |
 | CLI | `quillmark blueprint <QUILL_PATH> [-o <FILE>]`; `render` with no input file renders the **seeded** document |
 
 The Rust example `cargo run -p quillmark-core --example print_blueprint

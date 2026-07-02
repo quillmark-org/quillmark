@@ -39,8 +39,8 @@ The shared PDF stamp spine: Typst-free, `pdf-writer`-only leaf infrastructure co
 ### `bindings/*`
 
 Language surfaces over the one core engine: `quillmark-python` (PyO3, PyPI),
-`quillmark-wasm` (wasm-bindgen, npm), `quillmark-dotnet` (P/Invoke, NuGet), and
-`quillmark-cli` (the `quillmark` binary). See [BINDINGS.md](BINDINGS.md).
+`quillmark-wasm` (wasm-bindgen, npm), and `quillmark-cli` (the `quillmark`
+binary). See [BINDINGS.md](BINDINGS.md).
 
 ### `quillmark-fixtures`
 

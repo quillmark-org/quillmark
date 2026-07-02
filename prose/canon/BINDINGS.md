@@ -5,8 +5,8 @@
 ## TL;DR
 
 Quillmark exposes one core engine through several language surfaces — Python
-(PyO3), WebAssembly (wasm-bindgen), .NET (P/Invoke over a C ABI), and a CLI
-binary. Every surface drives the same `quillmark` core: the same
+(PyO3), WebAssembly (wasm-bindgen), and a CLI binary. Every surface drives the
+same `quillmark` core: the same
 `Document`/`Quill`/`Card` model, the same `serde` diagnostics, and the same
 capability principle. Surfaces differ only in language idiom, packaging, and
 which extras they expose (canvas preview is WASM-only).
@@ -26,11 +26,11 @@ which extras they expose (canvas preview is WASM-only).
   [ERROR.md](ERROR.md).
 - **Uniform errors.** Each binding raises a single error type that always
   carries a non-empty diagnostic list (`QuillmarkError.diagnostics` /
-  thrown `Error.diagnostics` / `QuillmarkException.Diagnostics`).
+  thrown `Error.diagnostics`).
 
-The WASM binding is the reference surface; Python and .NET mirror it and catch
-up on a best-effort basis (see their status notes below). New contract work
-lands in WASM first.
+The WASM binding is the reference surface; Python mirrors it and catches up
+on a best-effort basis (see its status notes below). New contract work lands
+in WASM first.
 
 ## Python — `bindings/quillmark-python`
 
@@ -64,23 +64,6 @@ Beyond the byte-output verbs (`engine.render`, `LiveSession.render`), the
 canvas-capable backend builds (Typst, and pdfform under its preview seam)
 expose a **live preview** path on `LiveSession` (`apply`, `pageCount`,
 `pageSize`, `paint`, …). See [PREVIEW.md](PREVIEW.md).
-
-## .NET — `bindings/quillmark-dotnet`
-
-C-ABI `cdylib` consumed from C# via P/Invoke, published as `Quillmark` on
-NuGet — the .NET analogue of the PyO3 module. A flat `qm_*` C ABI over
-`quillmark` plus a hand-written managed layer (`csharp/`) that reassembles the
-typed surface, deliberately **symmetrical with the Python binding**
-method-for-method. Structured data (cards, schema, metadata, diagnostics, field
-values) crosses as `serde` JSON from the same core types; stateful objects
-cross as opaque handles; panics are trapped at the boundary (the analogue of
-PyO3's trapping / the WASM panic hook) and surface as the single
-`QuillmarkException`. The NuGet package carries the native library per RID under
-`runtimes/<rid>/native/`.
-
-> **Status: experimental, second-class binding.** Mirrors the Python surface and
-> shares its footing — render-only (no canvas preview), best-effort parity, not
-> a release gate.
 
 ## CLI — `bindings/quillmark-cli`
 
