@@ -26,8 +26,8 @@ use std::any::Any;
 use flatten::flatten as flatten_to_pdf;
 use quillmark_core::session::SessionHandle;
 use quillmark_core::{
-    Artifact, Backend, Diagnostic, OutputFormat, Quill, RenderError, RenderOptions, RenderResult,
-    RenderSession, RenderedRegion, Severity,
+    Artifact, Backend, ChangeSet, Diagnostic, OutputFormat, Quill, RenderError, RenderOptions,
+    RenderResult, RenderSession, RenderedRegion, Severity,
 };
 use quillmark_pdf::regions_of;
 use quillmark_pdf::{stamp, FieldSpec, PdfError, StampOptions};
@@ -93,21 +93,8 @@ impl Backend for PdfformBackend {
         // non-zero page origin); reading them from the background also surfaces
         // a malformed/out-of-contract base early.
         let page_boxes = quillmark_pdf::page_media_boxes(&base_pdf).map_err(map_pdf_err)?;
-        let page_count = page_boxes.len();
 
-        let mut field_specs: Vec<FieldSpec> = Vec::with_capacity(spec.fields.len());
-        for field in &spec.fields {
-            let media_box = page_boxes.get(field.page).copied().ok_or_else(|| {
-                engine_err(
-                    "pdfform::field_page_out_of_range",
-                    format!(
-                        "field {:?} targets page {} but `{FORM_PDF}` has {page_count} page(s)",
-                        field.name, field.page
-                    ),
-                )
-            })?;
-            field_specs.push(resolve::field_spec(field, media_box, json_data));
-        }
+        let field_specs = resolve_field_specs(&spec, &page_boxes, json_data)?;
 
         // Pre-flatten once so render_rgba / SVG / PNG renders have a
         // ready-to-rasterize flat PDF without re-running flatten on every
@@ -118,12 +105,37 @@ impl Backend for PdfformBackend {
 
         Ok(RenderSession::new(Box::new(PdfformSession {
             base_pdf,
+            spec,
             field_specs,
-            page_count,
+            page_count: page_boxes.len(),
             page_boxes,
             flat_pdf,
         })))
     }
+}
+
+/// Resolve the form spec's fields against document data — the per-document
+/// half of `open`, re-run by each `apply`.
+fn resolve_field_specs(
+    spec: &FormSpec,
+    page_boxes: &[[f32; 4]],
+    json_data: &serde_json::Value,
+) -> Result<Vec<FieldSpec>, RenderError> {
+    let page_count = page_boxes.len();
+    let mut field_specs: Vec<FieldSpec> = Vec::with_capacity(spec.fields.len());
+    for field in &spec.fields {
+        let media_box = page_boxes.get(field.page).copied().ok_or_else(|| {
+            engine_err(
+                "pdfform::field_page_out_of_range",
+                format!(
+                    "field {:?} targets page {} but `{FORM_PDF}` has {page_count} page(s)",
+                    field.name, field.page
+                ),
+            )
+        })?;
+        field_specs.push(resolve::field_spec(field, media_box, json_data));
+    }
+    Ok(field_specs)
 }
 
 /// A `pdfform` render session: the stripped background plus the resolved field
@@ -131,6 +143,9 @@ impl Backend for PdfformBackend {
 #[derive(Debug)]
 struct PdfformSession {
     base_pdf: Vec<u8>,
+    /// The parsed `form.json` field definitions; re-resolved against new
+    /// document data by each `apply`.
+    spec: FormSpec,
     field_specs: Vec<FieldSpec>,
     page_count: usize,
     /// Page media-boxes from the background; used by `page_size_pt` without
@@ -229,6 +244,40 @@ impl SessionHandle for PdfformSession {
     /// skipping unbound widgets. Computed from cached state, no rasterization.
     fn regions(&self) -> Vec<RenderedRegion> {
         regions_of(&self.field_specs)
+    }
+
+    /// Full re-resolve + re-flatten against new document data — this backend's
+    /// compile is cheap, so `apply` recomputes rather than incrementally
+    /// recompiling. Transactional: specs and flat PDF swap together only after
+    /// both succeed. Dirty pages are those carrying a field whose resolved spec
+    /// changed; the background never changes, so field deltas are the only
+    /// visible delta.
+    fn apply(&mut self, json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
+        let field_specs = resolve_field_specs(&self.spec, &self.page_boxes, json_data)?;
+        let flat_pdf = flatten_to_pdf(
+            self.base_pdf.clone(),
+            &field_specs,
+            &StampOptions { producer: None },
+        )
+        .map_err(map_pdf_err)?;
+
+        let mut dirty_pages: Vec<usize> = self
+            .field_specs
+            .iter()
+            .zip(&field_specs)
+            .filter(|(old, new)| old != new)
+            .map(|(_, new)| new.page)
+            .collect();
+        dirty_pages.sort_unstable();
+        dirty_pages.dedup();
+
+        self.field_specs = field_specs;
+        self.flat_pdf = flat_pdf;
+
+        Ok(ChangeSet {
+            page_count: self.page_count,
+            dirty_pages,
+        })
     }
 }
 

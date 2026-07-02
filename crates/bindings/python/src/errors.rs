@@ -36,7 +36,8 @@ pub fn convert_render_error(err: RenderError) -> PyErr {
         | RenderError::EngineCreation { diags }
         | RenderError::FormatNotSupported { diags }
         | RenderError::UnsupportedBackend { diags }
-        | RenderError::QuillMismatch { diags } => primary_message(diags),
+        | RenderError::QuillMismatch { diags }
+        | RenderError::ApplyUnsupported { diags } => primary_message(diags),
     };
 
     raise_with_diagnostics(err.into_diagnostics(), message)

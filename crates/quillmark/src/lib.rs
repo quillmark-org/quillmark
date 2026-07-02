@@ -22,8 +22,8 @@
 // (portable, declarative data); construct it from an in-memory tree with
 // `Quill::from_tree`, or from disk with the `quill_from_path` helper below.
 pub use quillmark_core::{
-    Artifact, Backend, Card, Diagnostic, Document, Location, OutputFormat, ParseError, ParseOutput,
-    Quill, RenderError, RenderOptions, RenderResult, RenderSession, Severity,
+    Artifact, Backend, Card, ChangeSet, Diagnostic, Document, Location, OutputFormat, ParseError,
+    ParseOutput, Quill, RenderError, RenderOptions, RenderResult, RenderSession, Severity,
 };
 
 mod load;

@@ -129,7 +129,8 @@ fn report_render_error(err: RenderError) -> i32 {
         | RenderError::EngineCreation { diags }
         | RenderError::FormatNotSupported { diags }
         | RenderError::UnsupportedBackend { diags }
-        | RenderError::QuillMismatch { diags } => diags
+        | RenderError::QuillMismatch { diags }
+        | RenderError::ApplyUnsupported { diags } => diags
             .first()
             .map(|d| d.message.clone())
             .unwrap_or_else(|| "render error".to_string()),

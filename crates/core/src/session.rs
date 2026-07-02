@@ -1,6 +1,17 @@
 use std::any::Any;
 
-use crate::{Diagnostic, RenderError, RenderOptions, RenderResult, RenderedRegion};
+use crate::{Diagnostic, RenderError, RenderOptions, RenderResult, RenderedRegion, Severity};
+
+/// What a committed [`RenderSession::apply`] changed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangeSet {
+    /// Page count after the edit.
+    pub page_count: usize,
+    /// Pages whose rendered content differs from the previous compile,
+    /// including pages the edit added. Pages the edit removed are implied by
+    /// `page_count`. A preview repaints `dirty ∩ visible` and nothing else.
+    pub dirty_pages: Vec<usize>,
+}
 
 /// Backend-specific session implementation.
 ///
@@ -12,6 +23,24 @@ pub trait SessionHandle: Any + Send + Sync {
     fn render(&self, opts: &RenderOptions) -> Result<RenderResult, RenderError>;
     fn page_count(&self) -> usize;
     fn as_any(&self) -> &dyn Any;
+
+    /// Recompile the session against new document data.
+    ///
+    /// Transactional: on `Err` the previous compile stays live — every read
+    /// (`render`, `render_rgba`, `page_size_pt`, `regions`) keeps serving it.
+    /// A backend with a persistent compilation environment recompiles
+    /// incrementally; one whose compile is cheap recompiles fully. Either way
+    /// the returned [`ChangeSet`] reports the pages the edit visibly changed.
+    /// Default: apply is unsupported.
+    fn apply(&mut self, _json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
+        Err(RenderError::ApplyUnsupported {
+            diags: vec![Diagnostic::new(
+                Severity::Error,
+                "this backend's session does not support apply".to_string(),
+            )
+            .with_code("backend::apply_unsupported".to_string())],
+        })
+    }
 
     /// Page dimensions in points (1 pt = 1/72"), or `None` if `page` is out of
     /// range. The canvas-preview seam: a backend that can rasterize pages
@@ -182,6 +211,16 @@ impl RenderSession {
         let mut result = self.inner.render(opts)?;
         result.warnings.extend(self.warnings.iter().cloned());
         Ok(result)
+    }
+
+    /// Recompile the session against new document data — the edit verb of a
+    /// live preview. Transactional: on `Err` the previous compile stays live,
+    /// so every read keeps serving the last-good document; on `Ok` the session
+    /// serves the new compile and the [`ChangeSet`] reports what changed. Pass
+    /// data compiled by the same schema pipeline as `Backend::open`'s
+    /// `json_data` (`Quill::compile_data`).
+    pub fn apply(&mut self, json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
+        self.inner.apply(json_data)
     }
 }
 

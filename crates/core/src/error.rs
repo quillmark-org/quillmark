@@ -362,6 +362,14 @@ pub enum RenderError {
         /// The mismatch diagnostic. Always non-empty.
         diags: Vec<Diagnostic>,
     },
+
+    /// The backend's session does not support incremental
+    /// [`apply`](crate::RenderSession::apply). Both built-in backends support
+    /// it; this is the default for a backend that does not override the seam.
+    ApplyUnsupported {
+        /// Diagnostics describing the failure. Always non-empty.
+        diags: Vec<Diagnostic>,
+    },
 }
 
 impl RenderError {
@@ -375,7 +383,8 @@ impl RenderError {
             | RenderError::UnsupportedBackend { diags }
             | RenderError::ValidationFailed { diags }
             | RenderError::QuillConfig { diags }
-            | RenderError::QuillMismatch { diags } => diags,
+            | RenderError::QuillMismatch { diags }
+            | RenderError::ApplyUnsupported { diags } => diags,
         }
     }
 
@@ -389,7 +398,8 @@ impl RenderError {
             | RenderError::UnsupportedBackend { diags }
             | RenderError::ValidationFailed { diags }
             | RenderError::QuillConfig { diags }
-            | RenderError::QuillMismatch { diags } => diags,
+            | RenderError::QuillMismatch { diags }
+            | RenderError::ApplyUnsupported { diags } => diags,
         }
     }
 }
@@ -418,7 +428,8 @@ impl std::fmt::Display for RenderError {
             | RenderError::InvalidPayload { .. }
             | RenderError::FormatNotSupported { .. }
             | RenderError::UnsupportedBackend { .. }
-            | RenderError::QuillMismatch { .. } => match self.diagnostics().first() {
+            | RenderError::QuillMismatch { .. }
+            | RenderError::ApplyUnsupported { .. } => match self.diagnostics().first() {
                 Some(d) => write!(f, "{}", d.message),
                 None => write!(f, "render error"),
             },

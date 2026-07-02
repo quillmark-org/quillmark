@@ -30,8 +30,9 @@ pub mod fuzz_utils {
 
 use convert::mark_to_typst;
 use quillmark_core::{
-    quill::build_transform_schema, session::SessionHandle, Backend, Diagnostic, OutputFormat,
-    Quill, QuillValue, RenderError, RenderOptions, RenderResult, RenderSession, Severity,
+    quill::build_transform_schema, session::SessionHandle, Backend, ChangeSet, Diagnostic,
+    OutputFormat, Quill, QuillValue, RenderError, RenderOptions, RenderResult, RenderSession,
+    Severity,
 };
 use std::any::Any;
 use std::collections::HashMap;
@@ -54,10 +55,95 @@ pub struct TypstSession {
     world: world::QuillWorld,
     document: typst_layout::PagedDocument,
     page_count: usize,
-    /// Extracted at `open`. Converted to spine `FieldSpec`s on every
-    /// render; PDF stamps them as AcroForm widgets, and every format carries
-    /// the resulting regions.
+    /// Extracted from each committed compile. Converted to spine `FieldSpec`s
+    /// on every render; PDF stamps them as AcroForm widgets, and every format
+    /// carries the resulting regions.
     field_placements: Vec<overlay::FieldPlacement>,
+    /// The quill schema's markdown/date transform, applied to the raw document
+    /// data on `open` and every `apply`.
+    transform_schema: QuillValue,
+    /// Per-page content fingerprints of the live compile; diffed against the
+    /// next compile's to produce `ChangeSet::dirty_pages`.
+    page_hashes: Vec<u128>,
+}
+
+/// Per-page fingerprints of *visible* content, diffed across compiles for
+/// `ChangeSet::dirty_pages`. Walks each page frame hashing text, shapes,
+/// images, links, and group geometry — skipping introspection `Tag` items and
+/// group parent locations, which carry element hashes spanning content on
+/// *other* pages (a page-spanning paragraph's tag sits on its first page and
+/// covers the whole text, so hashing it dirties page 0 on an end-of-document
+/// edit the page never shows).
+fn page_hashes(document: &typst_layout::PagedDocument) -> Vec<u128> {
+    use std::hash::{Hash, Hasher};
+    use typst::layout::FrameItem;
+
+    fn walk<H: Hasher>(frame: &typst::layout::Frame, state: &mut H) {
+        frame.size().hash(state);
+        for (pos, item) in frame.items() {
+            match item {
+                FrameItem::Tag(_) => {}
+                FrameItem::Group(g) => {
+                    pos.hash(state);
+                    g.transform.hash(state);
+                    g.clip.hash(state);
+                    walk(&g.frame, state);
+                }
+                other => {
+                    pos.hash(state);
+                    other.hash(state);
+                }
+            }
+        }
+    }
+
+    struct VisiblePage<'a>(&'a typst_layout::Page);
+    impl Hash for VisiblePage<'_> {
+        fn hash<H: Hasher>(&self, state: &mut H) {
+            self.0.fill.hash(state);
+            self.0.numbering.hash(state);
+            self.0.number.hash(state);
+            walk(&self.0.frame, state);
+        }
+    }
+
+    document
+        .pages()
+        .iter()
+        .map(|page| typst::utils::hash128(&VisiblePage(page)))
+        .collect()
+}
+
+/// Run the schema's markdown/date transform over raw document data and
+/// serialize it for helper-package injection.
+fn transformed_json_str(
+    schema: &QuillValue,
+    json_data: &serde_json::Value,
+) -> Result<String, RenderError> {
+    let fields = json_data.as_object().map_or_else(HashMap::new, |obj| {
+        obj.iter()
+            .map(|(key, value)| (key.clone(), QuillValue::from_json(value.clone())))
+            .collect::<HashMap<_, _>>()
+    });
+
+    let transformed_fields = transform_markdown_fields(&fields, schema);
+    let transformed_json = serde_json::Value::Object(
+        transformed_fields
+            .into_iter()
+            .map(|(key, value)| (key, value.into_json()))
+            .collect(),
+    );
+
+    serde_json::to_string(&transformed_json).map_err(|e| RenderError::EngineCreation {
+        diags: vec![Diagnostic::new(
+            Severity::Error,
+            format!(
+                "failed to serialize document data for the typst backend: {}",
+                e
+            ),
+        )
+        .with_code("backend::data_serialization_failed".to_string())],
+    })
 }
 
 impl SessionHandle for TypstSession {
@@ -91,6 +177,37 @@ impl SessionHandle for TypstSession {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    /// Incremental recompile against new document data. The persistent world
+    /// keeps fonts/packages/assets parsed; the helper `lib.typ` is swapped via
+    /// `Source::replace` (incremental reparse), and `comemo` reuses every
+    /// memoized result the edit did not reach. Transactional: the live
+    /// document, placements, and hashes swap together only after the compile
+    /// *and* placement extraction succeed — on `Err` every read keeps serving
+    /// the last-good compile (the world may hold the failed source; the next
+    /// `apply` overwrites it).
+    fn apply(&mut self, json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
+        let json_str = transformed_json_str(&self.transform_schema, json_data)?;
+        self.world.inject_helper_package(&json_str);
+
+        let document = compile::compile_document(&self.world)?;
+        let field_placements = overlay::extract(&document)?;
+        let new_hashes = page_hashes(&document);
+
+        let dirty_pages = (0..new_hashes.len())
+            .filter(|&i| self.page_hashes.get(i) != Some(&new_hashes[i]))
+            .collect();
+
+        self.document = document;
+        self.field_placements = field_placements;
+        self.page_count = new_hashes.len();
+        self.page_hashes = new_hashes;
+
+        Ok(ChangeSet {
+            page_count: self.page_count,
+            dirty_pages,
+        })
     }
 
     /// Page dimensions in Typst points (1 pt = 1/72 inch). `None` if `page` is
@@ -173,32 +290,8 @@ impl Backend for TypstBackend {
     ) -> Result<RenderSession, RenderError> {
         let plate_content = read_plate(source)?;
 
-        let fields = json_data.as_object().map_or_else(HashMap::new, |obj| {
-            obj.iter()
-                .map(|(key, value)| (key.clone(), QuillValue::from_json(value.clone())))
-                .collect::<HashMap<_, _>>()
-        });
-
-        let transformed_fields =
-            transform_markdown_fields(&fields, &build_transform_schema(source.config()));
-        let transformed_json = serde_json::Value::Object(
-            transformed_fields
-                .into_iter()
-                .map(|(key, value)| (key, value.into_json()))
-                .collect(),
-        );
-
-        let json_str =
-            serde_json::to_string(&transformed_json).map_err(|e| RenderError::EngineCreation {
-                diags: vec![Diagnostic::new(
-                    Severity::Error,
-                    format!(
-                        "failed to serialize document data for the typst backend: {}",
-                        e
-                    ),
-                )
-                .with_code("backend::data_serialization_failed".to_string())],
-            })?;
+        let transform_schema = build_transform_schema(source.config());
+        let json_str = transformed_json_str(&transform_schema, json_data)?;
         let world = world::QuillWorld::new_with_data(source, &plate_content, &json_str)
             .map_err(|e| RenderError::EngineCreation {
                 diags: vec![Diagnostic::new(
@@ -211,11 +304,14 @@ impl Backend for TypstBackend {
         let document = compile::compile_document(&world)?;
         let page_count = document.pages().len();
         let field_placements = overlay::extract(&document)?;
+        let hashes = page_hashes(&document);
         let session = TypstSession {
             world,
             document,
             page_count,
             field_placements,
+            transform_schema,
+            page_hashes: hashes,
         };
         Ok(RenderSession::new(Box::new(session)))
     }

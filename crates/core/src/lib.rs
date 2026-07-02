@@ -43,7 +43,7 @@ pub mod region;
 pub use region::RenderedRegion;
 
 pub mod session;
-pub use session::RenderSession;
+pub use session::{ChangeSet, RenderSession};
 
 pub mod quill;
 pub use quill::{zero_value, FileTreeNode, Quill, QuillIgnore, STANDARD_METADATA_KEYS};

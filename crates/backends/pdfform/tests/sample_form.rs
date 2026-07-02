@@ -228,3 +228,46 @@ favorite_color: red\n\
     let comments = widget(&doc, af, "Comments");
     assert!(comments.get(b"V").is_err(), "absent array → no /V");
 }
+
+#[test]
+fn apply_rebinds_values_and_reports_dirty_pages() {
+    let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("sample_form"))
+        .expect("load sample_form quill");
+    let engine = Quillmark::new();
+    let doc = Document::from_markdown(FILLED).expect("parse markdown");
+    let mut session = engine.open(&quill, &doc).expect("open ok");
+
+    // Identical data → nothing dirty.
+    let cs = session
+        .apply(&quill.compile_data(&doc).expect("compile data"))
+        .expect("apply");
+    assert_eq!(cs.page_count, session.page_count());
+    assert!(cs.dirty_pages.is_empty(), "dirty: {:?}", cs.dirty_pages);
+
+    // A changed field dirties its page and rebinds the stamped value.
+    let doc2 = Document::from_markdown(&FILLED.replace("Ada Lovelace", "Grace Hopper"))
+        .expect("parse markdown");
+    let cs = session
+        .apply(&quill.compile_data(&doc2).expect("compile data"))
+        .expect("apply");
+    assert_eq!(cs.dirty_pages, vec![0]);
+
+    let result = session
+        .render(&RenderOptions {
+            output_format: Some(OutputFormat::Pdf),
+            ..Default::default()
+        })
+        .expect("render ok");
+    let pdf = PdfDoc::load_mem(&result.artifacts[0].bytes).unwrap();
+    let cat = pdf.catalog().unwrap();
+    let af = pdf
+        .get_object(cat.get(b"AcroForm").unwrap().as_reference().unwrap())
+        .unwrap()
+        .as_dict()
+        .unwrap();
+    let name = widget(&pdf, af, "FullName");
+    assert_eq!(
+        decode_pdf_text(name.get(b"V").unwrap().as_str().unwrap()),
+        "Grace Hopper"
+    );
+}
