@@ -11,6 +11,8 @@ homepage.workspace = true
 repository = "https://github.com/quillmark-org/quillmark"
 
 [dependencies]
+# Typst's process-global memo cache; evicted after each compile (compile.rs).
+comemo = "0.5"
 pulldown-cmark = { workspace = true }
 quillmark-core = { workspace = true }
 quillmark-pdf = { workspace = true }

@@ -45,15 +45,16 @@ const SUPPORTED_FORMATS: &[OutputFormat] =
 
 /// Typst-specific render session.
 ///
-/// Holds the cached `PagedDocument` produced by [`Backend::open`] and exposes
-/// Typst-only operations (page geometry, raster rendering) used by the WASM
-/// canvas painter. Reach this from a [`RenderSession`] via
-/// [`typst_session_of`].
-#[derive(Debug)]
+/// Holds the compiled `PagedDocument` *and* the [`QuillWorld`] it was compiled
+/// through. Persisting the world keeps fonts, packages, and assets parsed once
+/// per session rather than once per compile — the substrate for incremental
+/// recompiles. Exposes Typst-only operations (page geometry, raster rendering)
+/// used by the WASM canvas painter.
 pub struct TypstSession {
+    world: world::QuillWorld,
     document: typst_layout::PagedDocument,
     page_count: usize,
-    /// Extracted once at `open`. Converted to spine `FieldSpec`s on every
+    /// Extracted at `open`. Converted to spine `FieldSpec`s on every
     /// render; PDF stamps them as AcroForm widgets, and every format carries
     /// the resulting regions.
     field_placements: Vec<overlay::FieldPlacement>,
@@ -198,10 +199,20 @@ impl Backend for TypstBackend {
                 )
                 .with_code("backend::data_serialization_failed".to_string())],
             })?;
-        let document = compile::compile_to_document(source, &plate_content, &json_str)?;
+        let world = world::QuillWorld::new_with_data(source, &plate_content, &json_str)
+            .map_err(|e| RenderError::EngineCreation {
+                diags: vec![Diagnostic::new(
+                    Severity::Error,
+                    format!("Failed to create Typst compilation environment: {}", e),
+                )
+                .with_code("typst::world_creation".to_string())
+                .with_source(e.as_ref())],
+            })?;
+        let document = compile::compile_document(&world)?;
         let page_count = document.pages().len();
         let field_placements = overlay::extract(&document)?;
         let session = TypstSession {
+            world,
             document,
             page_count,
             field_placements,

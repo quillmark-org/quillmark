@@ -112,31 +112,57 @@ impl QuillWorld {
         Ok(world)
     }
 
-    /// Inject the quillmark-helper package with JSON data.
-    fn inject_helper_package(&mut self, json_data: &str) {
-        // Create the package spec
-        let spec = PackageSpec {
+    /// The virtual `@local/quillmark-helper` package spec.
+    pub(crate) fn helper_spec() -> PackageSpec {
+        PackageSpec {
             namespace: helper::HELPER_NAMESPACE.into(),
             name: helper::HELPER_NAME.into(),
             version: helper::HELPER_VERSION
                 .parse()
                 .expect("Invalid helper version"),
-        };
+        }
+    }
 
-        // Generate and inject lib.typ
-        let lib_content = helper::generate_lib_typ(json_data);
-        let lib_path = VirtualPath::new("lib.typ").expect("\"lib.typ\" is a valid virtual path");
-        let lib_id = file_id(Some(spec.clone()), lib_path);
-        self.sources
-            .insert(lib_id, Source::new(lib_id, lib_content));
+    /// A [`FileId`] for `rel` inside the helper package (e.g. `lib.typ`).
+    pub(crate) fn helper_fid(rel: &str) -> FileId {
+        file_id(
+            Some(Self::helper_spec()),
+            VirtualPath::new(rel).expect("valid helper vpath"),
+        )
+    }
 
-        // Generate and inject typst.toml (as binary)
-        let toml_content = helper::generate_typst_toml();
-        let toml_path =
-            VirtualPath::new("typst.toml").expect("\"typst.toml\" is a valid virtual path");
-        let toml_id = file_id(Some(spec), toml_path);
-        self.binaries
-            .insert(toml_id, Bytes::new(toml_content.into_bytes()));
+    /// Replace-or-insert a source. An existing source is edited via
+    /// [`Source::replace`] — a prefix/suffix diff reparses only the changed
+    /// span, preserving spans on the untouched regions so `comemo` constraints
+    /// keep matching across an edit. A new source is inserted whole. Returns
+    /// the byte length of the reparsed range (0 on insert).
+    pub(crate) fn set_source(&mut self, id: FileId, text: &str) -> usize {
+        match self.sources.get_mut(&id) {
+            Some(s) => s.replace(text).len(),
+            None => {
+                self.sources.insert(id, Source::new(id, text.to_string()));
+                0
+            }
+        }
+    }
+
+    /// Set a binary file (e.g. the helper `typst.toml`).
+    pub(crate) fn set_binary(&mut self, id: FileId, bytes: Vec<u8>) {
+        self.binaries.insert(id, Bytes::new(bytes));
+    }
+
+    /// Inject the quillmark-helper package with JSON data. `set_source` on the
+    /// helper `lib.typ` makes a repeat injection (a session edit) an
+    /// incremental reparse rather than a fresh parse.
+    pub(crate) fn inject_helper_package(&mut self, json_data: &str) {
+        self.set_source(
+            Self::helper_fid("lib.typ"),
+            &helper::generate_lib_typ(json_data),
+        );
+        self.set_binary(
+            Self::helper_fid("typst.toml"),
+            helper::generate_typst_toml().into_bytes(),
+        );
     }
 
     /// Loads fonts from quill's in-memory file system.

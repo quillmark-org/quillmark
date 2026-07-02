@@ -9,9 +9,9 @@
 //! 2. Compile the Typst document with the Typst compiler.
 //! 3. Render the requested pages to the target format.
 //!
-//! Crate-internal entry points: [`compile_to_document`] (source → paged
-//! document) and [`render_document_pages`] (paged document → artifacts). The
-//! public surface is the [`crate::TypstBackend`] `Backend` implementation.
+//! Crate-internal entry points: [`compile_document`] (world → paged document)
+//! and [`render_document_pages`] (paged document → artifacts). The public
+//! surface is the [`crate::TypstBackend`] `Backend` implementation.
 
 use typst::diag::Warned;
 use typst::utils::Scalar;
@@ -24,7 +24,7 @@ use crate::error_mapping::map_typst_errors;
 use crate::overlay;
 use crate::world::QuillWorld;
 use quillmark_core::{
-    Artifact, Diagnostic, OutputFormat, Quill, RenderError, RenderResult, Severity,
+    Artifact, Diagnostic, OutputFormat, RenderError, RenderResult, Severity,
 };
 use quillmark_pdf::{stamp, PdfError, StampOptions};
 
@@ -44,8 +44,16 @@ fn render_options(pixel_per_pt: f32) -> RenderOptions {
     }
 }
 
-fn compile_document(world: &QuillWorld) -> Result<PagedDocument, RenderError> {
+/// `comemo` memo entries older than this many compiles are evicted after each
+/// compile. The cache is process-global and grows unboundedly without
+/// eviction — an editing loop (one compile per keystroke) leaks otherwise.
+/// 10 matches typst-cli's watch-loop policy: deep enough to keep everything a
+/// live document's recompile reuses, shallow enough to bound a long session.
+const COMEMO_EVICT_MAX_AGE: usize = 10;
+
+pub(crate) fn compile_document(world: &QuillWorld) -> Result<PagedDocument, RenderError> {
     let Warned { output, warnings } = typst::compile::<PagedDocument>(world);
+    comemo::evict(COMEMO_EVICT_MAX_AGE);
 
     for warning in warnings {
         eprintln!("Warning: {}", warning.message);
@@ -58,26 +66,6 @@ fn compile_document(world: &QuillWorld) -> Result<PagedDocument, RenderError> {
             Err(RenderError::CompilationFailed { diags: diagnostics })
         }
     }
-}
-
-/// Compile Typst source into a paged document with injected JSON data.
-pub(crate) fn compile_to_document(
-    source: &Quill,
-    plated_content: &str,
-    json_data: &str,
-) -> Result<PagedDocument, RenderError> {
-    let world = QuillWorld::new_with_data(source, plated_content, json_data).map_err(|e| {
-        RenderError::EngineCreation {
-            diags: vec![Diagnostic::new(
-                Severity::Error,
-                format!("Failed to create Typst compilation environment: {}", e),
-            )
-            .with_code("typst::world_creation".to_string())
-            .with_source(e.as_ref())],
-        }
-    })?;
-
-    compile_document(&world)
 }
 
 /// Default pixels per inch for PNG rendering (2x at 72pt/inch).
