@@ -164,7 +164,20 @@ jobs:
 
       - name: Build WASM packages
         if: steps.wasm-cache.outputs.cache-hit != 'true'
-        run: ./scripts/build-wasm.sh
+        # --release-stamp: stamp the workspace version verbatim. This checkout
+        # is the bumped release tag, so the number is truthful here — and only
+        # here; every other build gets the script's default -dev.<sha> stamp.
+        run: ./scripts/build-wasm.sh --release-stamp
+
+      # A dev-stamped or stale-cached pkg/ must never reach npm: the stamp has
+      # to equal the tag being released.
+      - name: Assert pkg version matches the release tag
+        run: |
+          PKG_VERSION=$(jq -r .version pkg/package.json)
+          if [ "$PKG_VERSION" != "${{ needs.prepare.outputs.version }}" ]; then
+            echo "pkg/package.json is $PKG_VERSION, expected ${{ needs.prepare.outputs.version }} — refusing to publish." >&2
+            exit 1
+          fi
 
       - name: Install npm test dependencies
         working-directory: crates/bindings/wasm

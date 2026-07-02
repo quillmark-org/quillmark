@@ -29,15 +29,19 @@ set -o pipefail
 # cache namespacing in .github/workflows/{ci,release}.yml.
 PROFILE="wasm-release"
 MODE_LABEL="release (size-optimized)"
+RELEASE_STAMP=0
 for arg in "$@"; do
     case "$arg" in
         --ci)
             PROFILE="wasm-ci"
             MODE_LABEL="ci (fast compile, unoptimized)"
             ;;
+        --release-stamp)
+            RELEASE_STAMP=1
+            ;;
         *)
             echo "Unknown argument: $arg" >&2
-            echo "Usage: $0 [--ci]" >&2
+            echo "Usage: $0 [--ci] [--release-stamp]" >&2
             exit 2
             ;;
     esac
@@ -47,10 +51,19 @@ echo "Building WASM modules for @quillmark/wasm... [profile: $MODE_LABEL]"
 
 cd "$(dirname "$0")/.."
 
-# Check for required tools
+# Check for required tools. The CLI's version must match the wasm-bindgen
+# crate in Cargo.lock; wasm-bindgen itself only detects a mismatch when it
+# runs — after the multi-minute cargo build — so check it up front.
+LOCKED_WBG=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')
 if ! command -v wasm-bindgen &> /dev/null; then
-    echo "wasm-bindgen not found. Install it with:"
-    echo "  cargo install wasm-bindgen-cli --version 0.2.118"
+    echo "wasm-bindgen not found. Install it with:" >&2
+    echo "  cargo install wasm-bindgen-cli --version $LOCKED_WBG" >&2
+    exit 1
+fi
+CLI_WBG=$(wasm-bindgen --version | awk '{print $2}')
+if [ "$CLI_WBG" != "$LOCKED_WBG" ]; then
+    echo "ERROR: wasm-bindgen-cli $CLI_WBG does not match Cargo.lock's wasm-bindgen $LOCKED_WBG." >&2
+    echo "  cargo install wasm-bindgen-cli --version $LOCKED_WBG" >&2
     exit 1
 fi
 if ! command -v jq &> /dev/null; then
@@ -113,11 +126,23 @@ cp crates/bindings/wasm/runtime/runtime.d.ts pkg/runtime/runtime.d.ts
 # panic=abort, strip=true) it saves only ~15 KB raw / ~10 KB gzipped
 # (<0.1%) — not worth the build dependency or the extra build time.
 
-# Extract version and create package.json from template
+# Extract version and create package.json from template. Cargo.toml carries
+# the LAST RELEASED version, so a from-source build is ahead of the number it
+# would stamp. Default: mark it — next patch plus `-dev.<short-sha>` — so a
+# dev pkg/ can never pass for a published release (npm dedupe, peer ranges,
+# humans debugging read an honest number). `--release-stamp` stamps the
+# version verbatim; only release.yml passes it, from the bumped release tag,
+# and asserts the stamp equals the tag before `npm publish`.
 VERSION=$(cargo metadata --format-version=1 --no-deps | jq -r '.packages[] | select(.name == "quillmark-wasm") | .version')
 if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
     echo "ERROR: could not determine quillmark-wasm version from cargo metadata." >&2
     exit 1
+fi
+if [ "$RELEASE_STAMP" -ne 1 ]; then
+    BASE=${VERSION%%-*}
+    IFS=. read -r MAJOR MINOR PATCH <<< "$BASE"
+    SHA=$(git rev-parse --short HEAD 2>/dev/null || echo local)
+    VERSION="$MAJOR.$MINOR.$((PATCH + 1))-dev.$SHA"
 fi
 echo ""
 echo "Creating package.json..."

@@ -424,6 +424,36 @@ main:
     expect(loaded()).toBe(1)
   })
 
+  it('caller may free() its handles as soon as render/open returns (pre-await snapshot)', async () => {
+    // Both caller handles are snapshotted before the first await inside
+    // render/open (the backend load — a real suspension point on first call),
+    // so a synchronous free() right after the call cannot race the clone.
+    // Regression pin for the "null pointer passed to rust" panic (#782 §3):
+    // each engine below is fresh, so its first call has the load pending when
+    // free() runs.
+    const renderEngine = new Engine()
+    const renderQuill = makeRuntimeQuill()
+    const renderDoc = Document.fromMarkdown(TEST_MARKDOWN)
+    const pendingRender = renderEngine.render(renderQuill, renderDoc, { format: 'svg' })
+    renderDoc.free()
+    renderQuill.free()
+    const result = await pendingRender
+    expect(result.artifacts.length).toBeGreaterThan(0)
+
+    const openEngine = new Engine()
+    const openQuill = makeRuntimeQuill()
+    const openDoc = Document.fromMarkdown(TEST_MARKDOWN)
+    const pendingOpen = openEngine.open(openQuill, openDoc)
+    openDoc.free()
+    openQuill.free()
+    const session = await pendingOpen
+    try {
+      expect(session.pageCount).toBeGreaterThan(0)
+    } finally {
+      session.free()
+    }
+  })
+
   it('propagates a clone-construction failure (doc clone), leaving the quill clone cached', async () => {
     // Exercises the teardown path when the doc clone (Document.fromJson) throws:
     // the quill clone is already materialized and cached (NOT freed here — that
