@@ -1043,7 +1043,7 @@ fn pydict_to_field_batch(
     if !diags.is_empty() {
         let message = match diags.as_slice() {
             [only] => only.message.clone(),
-            _ => format!("Field batch has {} error(s)", diags.len()),
+            _ => format!("{} error(s): {}", diags.len(), diags[0].message),
         };
         return Err(raise_with_diagnostics(diags, message));
     }

@@ -20,7 +20,10 @@ pub fn convert_edit_error(err: EditError) -> PyErr {
 }
 
 /// Batched-mutator twin of [`convert_edit_error`]: one diagnostic per
-/// offending field, each with `path` set to the field name.
+/// offending field, each with `path` set to the field name. The exception
+/// message embeds the first diagnostic (same shape as WASM's
+/// `WasmError::message`), so the `[EditError::<Variant>]` prefix contract
+/// holds for batches too.
 pub fn convert_edit_errors(errors: Vec<(String, EditError)>) -> PyErr {
     let diags: Vec<Diagnostic> = errors
         .into_iter()
@@ -32,7 +35,10 @@ pub fn convert_edit_errors(errors: Vec<(String, EditError)>) -> PyErr {
             .with_path(name)
         })
         .collect();
-    let message = summary_message("Field batch has", &diags);
+    let message = match diags.as_slice() {
+        [only] => only.message.clone(),
+        _ => format!("{} error(s): {}", diags.len(), diags[0].message),
+    };
     raise_with_diagnostics(diags, message)
 }
 
