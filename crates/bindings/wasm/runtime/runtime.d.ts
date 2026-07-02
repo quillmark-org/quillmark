@@ -217,11 +217,18 @@ export interface EngineOptions {
 export declare class Engine {
 	constructor(options?: EngineOptions);
 
-	/** Render `doc` against `quill` in one shot. */
+	/**
+	 * Render `doc` against `quill` in one shot. Both handles are read
+	 * synchronously before the first await, so the caller may `free()` them as
+	 * soon as this call returns.
+	 */
 	render(quill: Quill, doc: Document, options?: RenderOptions): Promise<RenderResult>;
 
 	/**
 	 * Open a live render session (canvas preview / per-page paint / `apply`).
+	 * The `quill` and `doc` handles are read synchronously before the first
+	 * await, so the caller may `free()` them as soon as this call returns; the
+	 * caller owns the returned session and must `.free()` it.
 	 * @experimental Ships ahead of its first production consumer (the designed
 	 * canvas live-preview path — see `prose/canon/PREVIEW.md`). The session/paint
 	 * surface may change in any 0.x release; `render()` is the stable path.

@@ -217,16 +217,18 @@ export class Engine {
 
 	/**
 	 * Get (or materialize-and-cache) the backend-memory `Quill` clone for
-	 * `quill` under `backendId`. On a cache miss the clone is built via
-	 * `toTree`→`fromTree` and stored in the per-backend `WeakMap` keyed on the
+	 * `quill` under `backendId`. On a cache miss the clone is built from `tree`
+	 * — the caller's pre-await `toTree()` snapshot; the canonical handle may be
+	 * freed by now — and stored in the per-backend `WeakMap` keyed on the
 	 * canonical `Quill` instance, so a later call with the same instance reuses
 	 * it (the hot-path fix: no re-serialize / re-copy / re-validate per call).
 	 * @param {any} mod the backend build module
 	 * @param {string} backendId
-	 * @param {{ toTree(): Map<string, Uint8Array> }} quill
+	 * @param {object} quill the canonical instance (cache key only)
+	 * @param {Map<string, Uint8Array> | null} tree pre-await snapshot; `null` on a cache hit
 	 * @returns {any} the backend-memory quill clone
 	 */
-	#cachedQuillClone(mod, backendId, quill) {
+	#cachedQuillClone(mod, backendId, quill, tree) {
 		let perQuill = this.#quillClones.get(backendId);
 		if (!perQuill) {
 			perQuill = new WeakMap();
@@ -234,7 +236,7 @@ export class Engine {
 		}
 		let backendQuill = perQuill.get(quill);
 		if (!backendQuill) {
-			backendQuill = mod.Quill.fromTree(quill.toTree());
+			backendQuill = mod.Quill.fromTree(tree);
 			perQuill.set(quill, backendQuill);
 		}
 		return backendQuill;
@@ -244,6 +246,13 @@ export class Engine {
 	 * Materialize the backend-memory clones for `quill` + `doc` in `backendId`'s
 	 * memory and run `fn` against the backend engine. Only `render`/`open` call
 	 * this, so `doc` is always present.
+	 *
+	 * OWNERSHIP WINDOW: both caller handles are snapshotted (`doc.toJson()`, and
+	 * `quill.toTree()` on a clone-cache miss) BEFORE the first await. The backend
+	 * load below is a real suspension point — a multi-MB `import()` on first
+	 * render — so reading the handles after it would race a caller that
+	 * `free()`s them as soon as this call returns its promise ("null pointer
+	 * passed to rust"). The snapshot makes that natural calling pattern correct.
 	 *
 	 * Clone lifetimes differ by design: the `doc` clone is TRANSIENT — freed in
 	 * the `finally` of every call. The `quill` clone is CACHED per (engine,
@@ -258,6 +267,8 @@ export class Engine {
 	 * @param {(ctx: { mod: any, engine: any, quill: any, doc: any }) => any} fn
 	 */
 	async #withClones(backendId, quill, doc, fn) {
+		const docJson = doc.toJson();
+		const quillTree = this.#quillClones.get(backendId)?.has(quill) ? null : quill.toTree();
 		const { mod, engine } = await this.#resolveBackend(backendId);
 		// The quill clone is cached (see #cachedQuillClone); only the per-call doc
 		// clone is transient. Bring the doc clone + `fn` under one try so the doc
@@ -265,10 +276,10 @@ export class Engine {
 		// rejecting a cross-version DTO). The cached quill clone is intentionally
 		// NOT freed here. `fn` MUST be synchronous — the doc clone is freed as soon
 		// as it returns, so an async `fn` would have it freed mid-flight.
-		const backendQuill = this.#cachedQuillClone(mod, backendId, quill);
+		const backendQuill = this.#cachedQuillClone(mod, backendId, quill, quillTree);
 		let backendDoc = null;
 		try {
-			backendDoc = mod.Document.fromJson(doc.toJson());
+			backendDoc = mod.Document.fromJson(docJson);
 			return fn({ mod, engine, quill: backendQuill, doc: backendDoc });
 		} finally {
 			backendDoc?.free();
@@ -277,6 +288,8 @@ export class Engine {
 
 	/**
 	 * Render `doc` against `quill` in one shot, returning a `RenderResult`.
+	 * Both handles are read synchronously before the first await, so the caller
+	 * may `free()` them as soon as this call returns.
 	 * @param {Quill} quill
 	 * @param {Document} doc
 	 * @param {object} [options] render options (`{ format, ppi, pages, producer }`)
@@ -292,7 +305,9 @@ export class Engine {
 	 * Open a live render session (canvas preview / per-page paint / `apply`).
 	 * The session is self-contained (it retains what it needs for `apply`), so
 	 * the transient quill and document clones are freed before this returns;
-	 * the caller owns the returned session and must `.free()` it.
+	 * the caller owns the returned session and must `.free()` it. The `quill`
+	 * and `doc` handles are read synchronously before the first await, so the
+	 * caller may `free()` them as soon as this call returns.
 	 * @experimental Ships ahead of its first production consumer (the designed
 	 * canvas live-preview path); the session/paint surface may change in any
 	 * 0.x release. `render()` is the stable path.

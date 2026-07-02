@@ -397,6 +397,12 @@ The wasm bindings are built with `--weak-refs`, so dropped `Document`,
 without manual `.free()` discipline. `.free()` is still emitted as an eager
 teardown hook for callers that want deterministic release.
 
+`engine.render` and `engine.open` read the `quill` and `doc` handles
+synchronously, before their first await, so freeing a handle as soon as the
+call returns — `try { return engine.render(quill, doc); } finally
+{ doc.free(); }` — is safe even on the first render, while the backend
+binary is still loading.
+
 The package floor is Node 22+ (`engines: { node: ">=22" }`) and current
 evergreen browsers; `--weak-refs` itself only needs Node 14.6+. The `using`
 sugar shown below ([explicit resource management][erm]) needs Node 24, but is
@@ -406,7 +412,7 @@ For environments where `using` (the [explicit resource management][erm]
 proposal) hasn't landed, use an explicit `try` / `finally`:
 
 ```ts
-const session = engine.open(quill, doc);
+const session = await engine.open(quill, doc);
 try {
   for (let p = 0; p < session.pageCount; p++) {
     session.paint(ctx, p);
