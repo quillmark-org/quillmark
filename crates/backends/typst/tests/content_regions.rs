@@ -210,7 +210,7 @@ typst:
 #set page(width: 612pt, height: 792pt, margin: 72pt)
 
 #tagged("signature_block")[#data.signature_block]
-#signature-field("Signature", field: "signature_block")
+#signature-field("Signature", field: "signature_block", width: 137pt)
 "#;
     let data = serde_json::json!({ "signature_block": "FIRST M. LAST, Rank, USAF" });
 
@@ -226,13 +226,13 @@ typst:
         "a widget-bound field with tagged content surfaces both: {regions:?}"
     );
 
-    // The widget is a fixed-size box (200pt wide by default); the tagged
-    // content region is the ink of the placed string, distinguishing which
-    // entry is which without relying on a `source` field the type doesn't
-    // carry.
+    // The widget is a fixed-size box at the test-owned 137pt width; the
+    // tagged content region is the ink of the placed string, distinguishing
+    // which entry is which without relying on a `source` field the type
+    // doesn't carry.
     assert_eq!(
         matches[0].rect[2] - matches[0].rect[0],
-        200.0,
+        137.0,
         "the widget region sorts first: {regions:?}"
     );
 }

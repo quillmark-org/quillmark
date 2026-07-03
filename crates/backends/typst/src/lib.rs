@@ -516,6 +516,15 @@ impl SchemaMeta {
         let mut card_date_fields = serde_json::Map::new();
         let mut card_field_names = serde_json::Map::new();
         let mut card_array_fields = serde_json::Map::new();
+        fn insert_names(
+            table: &mut serde_json::Map<String, serde_json::Value>,
+            kind: &str,
+            names: Vec<String>,
+        ) {
+            if !names.is_empty() {
+                table.insert(kind.to_string(), names.into());
+            }
+        }
         if let Some(defs) = schema_json.get("$defs").and_then(|v| v.as_object()) {
             for (def_name, def_schema) in defs {
                 if let Some(card_kind) = def_name.strip_suffix("_card") {
@@ -523,45 +532,24 @@ impl SchemaMeta {
                     if let Some(props) = card_props {
                         card_field_names.insert(
                             card_kind.to_string(),
-                            serde_json::Value::Array(
-                                props
-                                    .keys()
-                                    .map(|k| serde_json::Value::String(k.clone()))
-                                    .collect(),
-                            ),
+                            props.keys().cloned().collect::<Vec<String>>().into(),
                         );
                     }
-                    let fields = card_props.map(content_field_names).unwrap_or_default();
-                    if !fields.is_empty() {
-                        card_content_fields.insert(
-                            card_kind.to_string(),
-                            serde_json::Value::Array(
-                                fields.into_iter().map(serde_json::Value::String).collect(),
-                            ),
-                        );
-                    }
-
-                    let dates = card_props.map(date_field_names).unwrap_or_default();
-                    if !dates.is_empty() {
-                        card_date_fields.insert(
-                            card_kind.to_string(),
-                            serde_json::Value::Array(
-                                dates.into_iter().map(serde_json::Value::String).collect(),
-                            ),
-                        );
-                    }
-
-                    let arrays = card_props
-                        .map(markdown_array_field_names)
-                        .unwrap_or_default();
-                    if !arrays.is_empty() {
-                        card_array_fields.insert(
-                            card_kind.to_string(),
-                            serde_json::Value::Array(
-                                arrays.into_iter().map(serde_json::Value::String).collect(),
-                            ),
-                        );
-                    }
+                    insert_names(
+                        &mut card_content_fields,
+                        card_kind,
+                        card_props.map(content_field_names).unwrap_or_default(),
+                    );
+                    insert_names(
+                        &mut card_date_fields,
+                        card_kind,
+                        card_props.map(date_field_names).unwrap_or_default(),
+                    );
+                    insert_names(
+                        &mut card_array_fields,
+                        card_kind,
+                        card_props.map(markdown_array_field_names).unwrap_or_default(),
+                    );
                 }
             }
         }
