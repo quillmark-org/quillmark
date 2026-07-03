@@ -514,7 +514,7 @@ fn data_access<'a>(
             ast::Arg::Pos(ast::Expr::Str(s)) => Some(s.get().to_string()),
             _ => None,
         })?;
-        if fields.iter().any(|f| *f == first) {
+        if fields.contains(&first) {
             return Some((first, parent.clone()));
         }
     }
