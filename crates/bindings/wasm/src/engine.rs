@@ -1357,7 +1357,9 @@ impl LiveSession {
         self.inner.supports_canvas()
     }
 
-    /// Non-fatal diagnostics emitted when opening the session. Also appended
+    /// Non-fatal diagnostics of the session's **current compile** (e.g. Typst
+    /// font fallback) — set at open and refreshed by each committed `apply`;
+    /// a failed apply keeps the last-good compile's warnings. Also appended
     /// to `RenderResult.warnings` on each `render()` call.
     #[wasm_bindgen(getter, js_name = warnings, unchecked_return_type = "Diagnostic[]")]
     pub fn warnings(&self) -> Result<JsValue, JsValue> {
