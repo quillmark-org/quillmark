@@ -13,6 +13,13 @@ use crate::value::QuillValue;
 ///
 /// The descriptor marks markdown fields with `contentMediaType: "text/markdown"`
 /// and date/date-time fields with the corresponding JSON Schema `format`.
+///
+/// `$body` is injected into a kind's `properties` only when that kind's
+/// `body.enabled` is not `false`. A body-disabled kind's `$body` is absent,
+/// not present-and-empty: absence cascades through the `__meta__` address
+/// tables so `tagged()`/`form-field(field:)` reject `$body` addresses on that
+/// kind at compile time, matching `Quill::validate`'s hard error on authored
+/// body content for the same kind.
 pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
     fn field_to_schema(field: &FieldSchema) -> serde_json::Value {
         let mut schema = serde_json::Map::new();
@@ -95,10 +102,12 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
     for (name, field) in &config.main.fields {
         properties.insert(name.clone(), field_to_schema(field));
     }
-    properties.insert(
-        "$body".to_string(),
-        serde_json::json!({ "type": "string", "contentMediaType": "text/markdown" }),
-    );
+    if config.main.body_enabled() {
+        properties.insert(
+            "$body".to_string(),
+            serde_json::json!({ "type": "string", "contentMediaType": "text/markdown" }),
+        );
+    }
 
     let mut defs = serde_json::Map::new();
     for card in &config.card_kinds {
@@ -106,10 +115,12 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
         for (name, field) in &card.fields {
             card_properties.insert(name.clone(), field_to_schema(field));
         }
-        card_properties.insert(
-            "$body".to_string(),
-            serde_json::json!({ "type": "string", "contentMediaType": "text/markdown" }),
-        );
+        if card.body_enabled() {
+            card_properties.insert(
+                "$body".to_string(),
+                serde_json::json!({ "type": "string", "contentMediaType": "text/markdown" }),
+            );
+        }
         defs.insert(
             format!("{}_card", card.name),
             serde_json::json!({
@@ -272,5 +283,55 @@ card_kinds:
                 "{def_name} $body should be markdown"
             );
         }
+    }
+
+    #[test]
+    fn body_disabled_kind_omits_body_from_schema() {
+        let yaml = r#"
+quill:
+  name: example
+  version: 0.1.0
+  backend: typst
+  description: example
+
+main:
+  body:
+    enabled: false
+  fields:
+    title:
+      type: string
+
+card_kinds:
+  indorsement:
+    body:
+      enabled: false
+    fields:
+      signature_block:
+        type: string
+  note:
+    fields:
+      author:
+        type: string
+"#;
+
+        let schema = build_from_yaml(yaml);
+        let json = schema.as_json();
+
+        assert!(
+            json["properties"].get("$body").is_none(),
+            "body-disabled main should not carry $body"
+        );
+        assert!(
+            json["$defs"]["indorsement_card"]["properties"]
+                .get("$body")
+                .is_none(),
+            "body-disabled card kind should not carry $body"
+        );
+        assert!(
+            json["$defs"]["note_card"]["properties"]
+                .get("$body")
+                .is_some(),
+            "body-enabled card kind should still carry $body"
+        );
     }
 }

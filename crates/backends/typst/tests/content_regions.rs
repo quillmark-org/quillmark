@@ -308,6 +308,80 @@ main:
 }
 
 #[test]
+fn tagged_body_on_body_disabled_kind_fails_the_compile() {
+    // `body.enabled: false` drops `$body` from the transform schema, so it's
+    // absent from the `__meta__` address tables and `tagged("$body")` must be
+    // rejected the same as any other unknown path.
+    const YAML: &str = r#"
+quill:
+  name: body_disabled_tagged
+  version: 0.1.0
+  backend: typst
+  description: tagged $body-on-disabled-kind validation test
+typst:
+  plate_file: plate.typ
+main:
+  body:
+    enabled: false
+  fields:
+    title:
+      type: string
+      description: the only schema field
+"#;
+    const PLATE: &str = r#"
+#import "@local/quillmark-helper:0.1.0": data, tagged
+#tagged("$body")[#data.title]
+"#;
+    let data = serde_json::json!({ "title": "a title" });
+
+    let err = TypstBackend
+        .open(&quill(YAML, PLATE), &data)
+        .err()
+        .expect("tagging $body on a body-disabled kind must fail the compile");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("$body"),
+        "the compile error names the bad path: {msg}"
+    );
+}
+
+#[test]
+fn tagged_unknown_path_rejected_when_body_disabled_main_has_no_other_fields() {
+    // A body-disabled main with no other fields and no cards yields
+    // `__meta__` address tables that are present but empty (`fields: ()`,
+    // `card_fields: (:)`) — distinct from `__meta__` being absent entirely.
+    // The former must still validate (and reject every address); only the
+    // latter is permissive.
+    const YAML: &str = r#"
+quill:
+  name: body_disabled_empty_main
+  version: 0.1.0
+  backend: typst
+  description: known-path permissive-vs-empty guard test
+typst:
+  plate_file: plate.typ
+main:
+  body:
+    enabled: false
+"#;
+    const PLATE: &str = r#"
+#import "@local/quillmark-helper:0.1.0": tagged
+#tagged("subject")[nothing here]
+"#;
+    let data = serde_json::json!({});
+
+    let err = TypstBackend
+        .open(&quill(YAML, PLATE), &data)
+        .err()
+        .expect("an unknown path must still fail when the address tables are empty, not absent");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("subject"),
+        "the compile error names the bad path: {msg}"
+    );
+}
+
+#[test]
 fn tagged_scalar_index_path_fails_the_compile() {
     // `field.N` is only a real address for an array-typed field — a scalar
     // has no element for the address to resolve to — so an index suffix on a
