@@ -11,11 +11,14 @@ meet:
 - **Errors** are fully plumbed. Every `RenderError` variant carries a non-empty
   `Vec<Diagnostic>`; Typst compile errors map through `map_typst_errors` with
   resolved spans; both bindings flatten to one exception shape.
-- **Warnings** have designed channels and no producers. `RenderResult.warnings`
-  and `LiveSession.warnings` (plus the WASM getter) exist end-to-end, but the
-  `with_warning`/`with_warnings` builders have zero in-tree callers. Typst's
-  compile warnings — handed over in exactly the right shape as
-  `Warned { output, warnings }` — are `eprintln!`'d and discarded at
+- **Warnings** are plumbed for two families and dropped for the third. Parse
+  warnings (`Document::from_markdown_with_warnings`) and `validation::must_fill`
+  are live producers, spliced into `RenderResult.warnings` by the CLI
+  (`render.rs:148`) and the WASM one-shot render (`engine.rs:262-264`). But the
+  session-side channels are dry — the `RenderResult::with_warning` and
+  `LiveSession::with_warnings` builders have zero non-test callers — and
+  Typst's compile warnings, handed over in exactly the right shape as
+  `Warned { output, warnings }`, are `eprintln!`'d and discarded at
   `compile.rs:48-50` (#784). The drop affects `open`, `apply`, and one-shot
   `render`.
 
@@ -62,6 +65,12 @@ code does not. `Display` derives from the diagnostics alone: the primary
 message for one diagnostic, an `"N error(s): <first>"` aggregate for more —
 the rule `WasmError::message` already applies.
 
+The tradeoff, accepted deliberately: external Rust consumers lose typed,
+exhaustive matching over failure kinds and route on string codes with no
+compile-time existence guarantee. Pre-1.0, with the bindings as the dominant
+consumer surface and the only in-tree variant matches being tests plus
+Python's message-prefix picker, the taxonomy costs more than it informs.
+
 `ParseError` stays as the parser's leaf error type (its structured fields feed
 the YAML-hint enrichment pass); the `From<ParseError> for RenderError`
 conversion retargets to the struct. Leaf error types with boundary translation
@@ -85,8 +94,16 @@ pub(crate) fn compile_document(world: &QuillWorld)
 
 Warnings map through the same span-resolution as errors (`error_mapping.rs`
 already maps `typst::diag::Severity` both ways); the `eprintln!` drop is
-retired. The rule this instantiates: a boundary return is at least as wide as
-what its dependency hands it. Typst hands `Warned`; the seam carries it.
+retired. The `typst::{message-prefix}` code heuristic applies to warnings as
+it does to errors. The rule this instantiates: a boundary return is at least
+as wide as what its dependency hands it. Typst hands `Warned`; the seam
+carries it.
+
+Compile warnings join the existing parse warnings in `RenderResult.warnings`.
+Ordering is deliberate and pipeline-ordered: parse warnings first (the CLI and
+WASM one-shot paths already prepend them), then compile warnings. No dedup —
+the two families cannot overlap (parse warnings anchor `location` in the
+markdown source, compile warnings in Typst sources).
 
 Validation needs no change — `Quill::validate` already returns
 `Vec<Diagnostic>` mixing severities and stays the editor-facing surface for
@@ -98,11 +115,12 @@ than warn on incomplete documents.
 `LiveSession.warnings` is redefined from "open-time snapshot" to **warnings of
 the current compile**, swapped transactionally with it:
 
-- `SessionHandle` gains `fn warnings(&self) -> Vec<Diagnostic> { Vec::new() }`.
-  `TypstSession` stores the compile's warnings beside `document` /
-  `page_hashes` and swaps all three together in `apply` — a failed apply keeps
-  the last-good compile *and* its last-good warnings, by the same invariant
-  that protects reads.
+- `SessionHandle` gains `fn warnings(&self) -> &[Diagnostic] { &[] }` — a
+  slice, so `LiveSession::warnings() -> &[Diagnostic]` keeps its signature and
+  the WASM getter is untouched. `TypstSession` stores the compile's warnings
+  beside `document` / `page_hashes` and swaps all three together in `apply` —
+  a failed apply keeps the last-good compile *and* its last-good warnings, by
+  the same invariant that protects reads. pdfform keeps the empty default.
 - `LiveSession` drops its `warnings` field and the `with_warnings` builder;
   `LiveSession::warnings()` delegates to the handle. `render()` keeps appending
   session warnings to `RenderResult.warnings`, which makes the one-shot path
@@ -125,64 +143,72 @@ the current compile**, swapped transactionally with it:
 
 ## Stages
 
-Each stage compiles and passes `cargo test --workspace` on its own; commit per
-stage.
+Each stage passes `cargo test --workspace` **and** the CI clippy gate
+(`cargo clippy --all-features --all-targets -- -D warnings`) on its own;
+commit per stage. The compile and session seams land as one stage — splitting
+them leaves `TypstSession.compile_warnings` written but unread, which
+`-D warnings` denies as dead code.
 
 ### 1. Core types (`crates/core/src/error.rs`)
 
 - Collapse `RenderError` to the struct; delete the 9-arm matches; port
-  `Display`.
-- Remove `Severity::Note`.
-- Audit every construction site for a `code` (known-present:
+  `Display` to the count-based rule (updates the aggregate-message assertion
+  at `error.rs:548`).
+- Remove `Severity::Note`; update the serde round-trip tests
+  (`wasm/types.rs:355,368`).
+- Every construction site already sets a namespaced `code` (audited:
   `engine::backend_not_found`, `backend::apply_unsupported`,
-  `quill::{name,version}_mismatch`, `typst::*`, `validation::*`, `parse::*`);
-  add codes where missing.
+  `quill::{name,version}_mismatch`, `typst::*`, `validation::*`, `parse::*`,
+  pdfform via `engine_err`/`map_pdf_err`); re-verify as sites move.
 - Rewrite variant-matching consumers to codes: Python's summary-prefix match
-  (`bindings/python/src/errors.rs:53-63`) becomes the count-based message rule;
+  (`bindings/python/src/errors.rs:53-63`) becomes the count-based message rule
+  (aligning `str(exc)` with the WASM rule canon already documents);
   tests (`sig_field.rs:265`, `version_mismatch_test.rs:54`,
   `quill_engine_test.rs:64,114`, `quiver_test.rs:64,108`,
   `usaf_memo_signature_test.rs:77`) assert on `code`.
 
-### 2. Compile seam (`crates/backends/typst/src`)
+### 2. Compile and session seams (`backends/typst`, `core/src/session.rs`)
 
-- `compile_document` → `Result<(PagedDocument, Vec<Diagnostic>), RenderError>`;
-  extend `error_mapping.rs` to map warning diagnostics with spans; delete the
-  `eprintln!` loop.
+- `compile_document` → `Result<(PagedDocument, Vec<Diagnostic>), RenderError>`
+  (`pub(crate)`, two callers, both in the typst crate); map warnings through
+  `error_mapping.rs` with spans; delete the `eprintln!` loop.
 - `TypstSession` stores `compile_warnings`; `open` (`lib.rs:296`) and `apply`
   (`lib.rs:194`) thread them; `apply` swaps them transactionally with the
   document.
-
-### 3. Session seam (`crates/core/src/session.rs`)
-
-- Add `SessionHandle::warnings` (default empty; pdfform keeps the default).
+- Add `SessionHandle::warnings(&self) -> &[Diagnostic]` (default `&[]`;
+  pdfform keeps the default); `TypstSession` returns the stored slice.
 - Delete `LiveSession::{warnings field, with_warnings}`; delegate
   `warnings()` to the handle; update the doc contract on `warnings()`,
   `apply()`, and `render()`.
 
-### 4. Bindings and CLI
+### 3. Bindings and CLI
 
 - WASM: drop `Note` from `types.rs` `Severity` and the TS enum; update the
   `warnings` getter doc (`engine.rs:1360-1372`) to the current-compile
   contract.
-- Python: drop `PySeverity::NOTE`; single exception shape is otherwise
-  unchanged.
+- Python: drop `PySeverity::NOTE`; exception shape (`.diagnostics`, codes) is
+  unchanged; message text changes per stage 1.
 - CLI: `validate.rs` local severity, `errors.rs` printing — mechanical.
 
-### 5. Prose and migration
+### 4. Prose and migration
 
 - Rewrite `prose/canon/ERROR.md` (types, one failure shape, warning flow);
   update `prose/canon/PREVIEW.md` (`warnings` accessor bullet, lifecycle
   example).
 - Working migration guide (`docs/migrations/0.92-to-0.93.md`): `severity:
   "note"` removed from the wire; `RenderError` variants removed (route on
-  `diagnostics[*].code`); `LiveSession.warnings` now refreshes per committed
-  apply.
+  `diagnostics[*].code`); multi-error `Display`/`str(exc)` text now
+  count-based in Rust and Python; `LiveSession.warnings` now refreshes per
+  committed apply. **Reconcile, don't append**: the guide already names
+  `RenderError::ApplyUnsupported` as a variant (line 358) — that section must
+  be rewritten to the code, not contradicted later in the same guide.
 - Close #784; delete this proposal.
 
 ## Binding-surface impact
 
 Small, because both bindings already flatten errors to one shape. Visible
-changes: the `"note"` severity value disappears; warnings start arriving in
-`RenderResult.warnings` and `LiveSession.warnings` where the arrays were
-previously always empty; Rust callers matching `RenderError` variants switch
-to codes.
+changes: the `"note"` severity value disappears from the wire enums;
+Typst compile warnings start arriving in `RenderResult.warnings` (after parse
+warnings) and in `LiveSession.warnings`, which previously held only open-time
+state; multi-error exception/`Display` messages become count-based; Rust
+callers matching `RenderError` variants switch to codes.
