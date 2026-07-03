@@ -309,10 +309,9 @@ main:
 
 #[test]
 fn tagged_scalar_index_path_fails_the_compile() {
-    // `field.N` is only ever a real address for a markdown[] field — the
-    // auto-tagger index-suffixes array elements and never a scalar — so an
-    // index suffix on a known scalar field must fail validation too, not just
-    // an unknown name.
+    // `field.N` is only a real address for an array-typed field — a scalar
+    // has no element for the address to resolve to — so an index suffix on a
+    // known scalar field must fail validation too, not just an unknown name.
     const YAML: &str = r#"
 quill:
   name: tagged_scalar_index
@@ -323,7 +322,7 @@ main:
   fields:
     subject:
       type: string
-      description: a scalar field, not markdown[]
+      description: a scalar field, not an array
 typst:
   plate_file: plate.typ
 "#;
@@ -376,6 +375,45 @@ typst:
         regions.iter().any(|r| r.field == "refs.0"),
         "a tagged markdown[] index path compiles and surfaces a region: {regions:?}"
     );
+}
+
+#[test]
+fn plain_array_index_paths_validate_for_tagged_and_widgets() {
+    // Any array is element-addressable, not just markdown[] — the same
+    // shallow-path grammar the pdfform resolver binds (`field.0` into a plain
+    // string array). Both binding surfaces accept it: an explicit `tagged`
+    // placement and a `form-field` `field:` binding.
+    const YAML: &str = r#"
+quill:
+  name: plain_array_index
+  version: 0.1.0
+  backend: typst
+  description: plain-array element address test
+main:
+  fields:
+    signature_block:
+      type: array
+      items:
+        type: string
+      description: a plain string array, no markdown
+typst:
+  plate_file: plate.typ
+"#;
+    const PLATE: &str = r#"
+#import "@local/quillmark-helper:0.1.0": data, tagged, form-field
+#tagged("signature_block.0")[#data.signature_block.at(0)]
+#form-field("sig1", type: "text", value: "x", field: "signature_block.1")
+"#;
+    let data = serde_json::json!({ "signature_block": ["FIRST M. LAST", "Duty Title"] });
+
+    let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
+    let regions = session.regions();
+    for expected in ["signature_block.0", "signature_block.1"] {
+        assert!(
+            regions.iter().any(|r| r.field == expected),
+            "plain-array element address {expected:?} validates and surfaces a region: {regions:?}"
+        );
+    }
 }
 
 #[test]

@@ -22,7 +22,9 @@ use quillmark_pdf::{stamp, PdfError, StampOptions};
 /// Map a stamp-spine [`PdfError`] to the backend's `RenderError`. The spine owns
 /// its own error type; this is the boundary translation.
 fn map_pdf_err(e: PdfError) -> RenderError {
-    RenderError::from_diag(Diagnostic::new(Severity::Error, e.message).with_code(e.code.to_string()))
+    RenderError::from_diag(
+        Diagnostic::new(Severity::Error, e.message).with_code(e.code.to_string()),
+    )
 }
 
 /// Build raster render options for a given pixels-per-point scale factor.
@@ -144,11 +146,8 @@ pub(crate) fn render_document_pages(
         OutputFormat::Pdf => {
             let pdf = typst_pdf::pdf(document, &PdfOptions::default()).map_err(|e| {
                 RenderError::from_diag(
-                    Diagnostic::new(
-                        Severity::Error,
-                        format!("PDF generation failed: {:?}", e),
-                    )
-                    .with_code("typst::pdf_generation".to_string()),
+                    Diagnostic::new(Severity::Error, format!("PDF generation failed: {:?}", e))
+                        .with_code("typst::pdf_generation".to_string()),
                 )
             })?;
             // Form-field placements → spine field specs (Typst top-left → PDF

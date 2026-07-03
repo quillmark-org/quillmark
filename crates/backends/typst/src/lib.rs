@@ -63,10 +63,9 @@ pub struct TypstSession {
     /// data on `open` and every `apply`.
     transform_schema: QuillValue,
     /// `transform_schema`'s address/auto-eval tables, built once at `open`
-    /// (`None` only when the schema has no top-level `properties`) and reused
-    /// on every `apply` rather than rebuilt from `transform_schema`'s `$defs`
-    /// each time.
-    schema_meta: Option<SchemaMeta>,
+    /// and reused on every `apply` rather than rebuilt from
+    /// `transform_schema`'s `$defs` each time.
+    schema_meta: SchemaMeta,
     /// Per-page content fingerprints of the live compile; diffed against the
     /// next compile's to produce `ChangeSet::dirty_pages`.
     page_hashes: Vec<u128>,
@@ -124,11 +123,10 @@ fn page_hashes(document: &typst_layout::PagedDocument) -> Vec<u128> {
 
 /// Run the schema's markdown/date transform over raw document data and
 /// serialize it for helper-package injection. `meta` is the session's cached
-/// [`SchemaMeta`] (`None` only when the schema has no top-level `properties`
-/// — nothing to transform or validate against).
+/// [`SchemaMeta`].
 fn transformed_json_str(
     schema: &QuillValue,
-    meta: Option<&SchemaMeta>,
+    meta: &SchemaMeta,
     json_data: &serde_json::Value,
 ) -> Result<String, RenderError> {
     let fields = json_data.as_object().map_or_else(HashMap::new, |obj| {
@@ -137,10 +135,7 @@ fn transformed_json_str(
             .collect::<HashMap<_, _>>()
     });
 
-    let transformed_fields = match meta {
-        Some(meta) => transform_markdown_fields_with(&fields, schema, meta),
-        None => fields,
-    };
+    let transformed_fields = transform_markdown_fields(&fields, schema, meta);
     let transformed_json = serde_json::Value::Object(
         transformed_fields
             .into_iter()
@@ -204,8 +199,7 @@ impl SessionHandle for TypstSession {
     /// read keeps serving the last-good compile and its warnings (the world
     /// may hold the failed source; the next `apply` overwrites it).
     fn apply(&mut self, json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
-        let json_str =
-            transformed_json_str(&self.transform_schema, self.schema_meta.as_ref(), json_data)?;
+        let json_str = transformed_json_str(&self.transform_schema, &self.schema_meta, json_data)?;
         self.world.inject_helper_package(&json_str);
 
         let (document, compile_warnings) = compile::compile_document(&self.world)?;
@@ -306,7 +300,7 @@ impl Backend for TypstBackend {
 
         let transform_schema = build_transform_schema(source.config());
         let schema_meta = SchemaMeta::from_schema_json(transform_schema.as_json());
-        let json_str = transformed_json_str(&transform_schema, schema_meta.as_ref(), json_data)?;
+        let json_str = transformed_json_str(&transform_schema, &schema_meta, json_data)?;
         let world =
             world::QuillWorld::new_with_data(source, &plate_content, &json_str).map_err(|e| {
                 RenderError::from_diag(
@@ -439,16 +433,18 @@ fn date_field_names(properties: &serde_json::Map<String, serde_json::Value>) -> 
         .collect()
 }
 
-/// Names of the `markdown[]` fields in a schema `properties` map — the subset
-/// of content fields the auto-tagger index-suffixes per element (`field.0`,
-/// `field.1`, ...). `tagged`'s path validator uses this to reject an index
-/// suffix on a scalar content field, which the auto-tagger never produces.
-fn markdown_array_field_names(
-    properties: &serde_json::Map<String, serde_json::Value>,
-) -> Vec<String> {
+/// Names of the array-typed fields in a schema `properties` map — the fields
+/// whose elements are addressable by index suffix (`field.0`, `field.1`, ...).
+/// `tagged`/`form-field`'s path validator uses this to reject an index suffix
+/// on a scalar field, where no element exists for the address to resolve to.
+/// Any array qualifies, matching the pdfform resolver's shallow-path grammar:
+/// the auto-tagger only *produces* indexed markers for `markdown[]` elements,
+/// but an explicit `tagged()` placement or widget binding of a plain array
+/// element is a real, routable address.
+fn array_field_names(properties: &serde_json::Map<String, serde_json::Value>) -> Vec<String> {
     properties
         .iter()
-        .filter(|(_, fs)| is_markdown_array_field(fs))
+        .filter(|(_, fs)| fs.get("type").and_then(|v| v.as_str()) == Some("array"))
         .map(|(name, _)| name.clone())
         .collect()
 }
@@ -480,12 +476,17 @@ fn convert_content_value(value: &QuillValue) -> Option<QuillValue> {
 }
 
 /// Schema-derived tables backing `tagged`/`form-field` path validation and
-/// the helper's content/date auto-eval — pure functions of a transform
+/// the helper's content/date auto-eval — a pure function of a transform
 /// schema. `TypstSession` builds this once from `transform_schema` at `open`
 /// and reuses it on every `apply`, since the schema never changes for the
 /// session's lifetime; the recursive per-card pass in
 /// [`transform_cards_array`] still builds one fresh per call (each card's own
 /// schema is a different, and already cheap, computation).
+///
+/// A schema with no top-level `properties` yields the default (all tables
+/// empty) — `build_transform_schema` always emits `properties`, so that case
+/// only arises for hand-built schemas in tests. The template treats an empty
+/// `__meta__` the same as an absent one.
 #[derive(Default)]
 struct SchemaMeta {
     content_fields: Vec<String>,
@@ -499,14 +500,14 @@ struct SchemaMeta {
 }
 
 impl SchemaMeta {
-    /// `None` when `schema_json` has no top-level `properties` — nothing to
-    /// validate or auto-eval against.
-    fn from_schema_json(schema_json: &serde_json::Value) -> Option<Self> {
-        let properties_obj = schema_json.get("properties").and_then(|v| v.as_object())?;
+    fn from_schema_json(schema_json: &serde_json::Value) -> Self {
+        let Some(properties_obj) = schema_json.get("properties").and_then(|v| v.as_object()) else {
+            return Self::default();
+        };
 
         let content_fields = content_field_names(properties_obj);
         let date_fields = date_field_names(properties_obj);
-        let array_fields = markdown_array_field_names(properties_obj);
+        let array_fields = array_field_names(properties_obj);
         let fields = properties_obj.keys().cloned().collect();
 
         // Collect per-card-kind content/date/array field names from schema
@@ -548,13 +549,13 @@ impl SchemaMeta {
                     insert_names(
                         &mut card_array_fields,
                         card_kind,
-                        card_props.map(markdown_array_field_names).unwrap_or_default(),
+                        card_props.map(array_field_names).unwrap_or_default(),
                     );
                 }
             }
         }
 
-        Some(Self {
+        Self {
             content_fields,
             date_fields,
             array_fields,
@@ -563,7 +564,7 @@ impl SchemaMeta {
             card_field_names,
             card_array_fields,
             fields,
-        })
+        }
     }
 
     /// The `__meta__` object injected into document data for the helper
@@ -592,24 +593,10 @@ impl SchemaMeta {
 ///
 /// Also injects a `__meta__` key into the result containing the names of
 /// converted fields, which the quillmark-helper package uses to auto-evaluate
-/// markup strings into Typst content objects. Builds a fresh [`SchemaMeta`]
-/// from `schema` on every call — used for the recursive per-card pass; the
-/// top-level document pass uses [`transform_markdown_fields_with`] against a
-/// meta computed once at session open.
+/// markup strings into Typst content objects. `meta` is `schema`'s
+/// [`SchemaMeta`] — the session passes its per-open cache; the recursive
+/// per-card pass builds one fresh per card.
 fn transform_markdown_fields(
-    fields: &HashMap<String, QuillValue>,
-    schema: &QuillValue,
-) -> HashMap<String, QuillValue> {
-    match SchemaMeta::from_schema_json(schema.as_json()) {
-        Some(meta) => transform_markdown_fields_with(fields, schema, &meta),
-        None => fields.clone(),
-    }
-}
-
-/// Like [`transform_markdown_fields`], against a [`SchemaMeta`] already
-/// computed from `schema` rather than rebuilding it from the schema's
-/// `$defs` on every call.
-fn transform_markdown_fields_with(
     fields: &HashMap<String, QuillValue>,
     schema: &QuillValue,
     meta: &SchemaMeta,
@@ -677,10 +664,10 @@ fn transform_cards_array(
                     // drives card processing from the top-level `meta.card_*` maps and
                     // iterates each card directly, so strip the per-card `__meta__` rather
                     // than leak the sentinel into every card object plate authors see.
-                    let mut transformed_card_fields = transform_markdown_fields(
-                        &card_fields,
-                        &QuillValue::from_json(card_schema_json.clone()),
-                    );
+                    let card_schema = QuillValue::from_json(card_schema_json.clone());
+                    let card_meta = SchemaMeta::from_schema_json(card_schema.as_json());
+                    let mut transformed_card_fields =
+                        transform_markdown_fields(&card_fields, &card_schema, &card_meta);
                     transformed_card_fields.remove("__meta__");
 
                     // Convert back to JSON Value
@@ -706,6 +693,19 @@ fn transform_cards_array(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// [`transform_markdown_fields`] with `schema`'s meta built inline — the
+    /// session's cache is irrelevant to these unit cases.
+    fn transform(
+        fields: &HashMap<String, QuillValue>,
+        schema: &QuillValue,
+    ) -> HashMap<String, QuillValue> {
+        transform_markdown_fields(
+            fields,
+            schema,
+            &SchemaMeta::from_schema_json(schema.as_json()),
+        )
+    }
 
     #[test]
     fn test_backend_info() {
@@ -772,7 +772,7 @@ mod tests {
             QuillValue::from_json(json!(["This is **bold** text.", "Plain line."])),
         );
 
-        let result = transform_markdown_fields(&fields, &schema);
+        let result = transform(&fields, &schema);
 
         // Each element is converted to Typst markup.
         let sections = result.get("sections").unwrap().as_array().unwrap();
@@ -786,7 +786,10 @@ mod tests {
     }
 
     #[test]
-    fn schema_meta_array_fields_distinguish_scalar_from_markdown_array() {
+    fn schema_meta_array_fields_distinguish_scalar_from_array() {
+        // Any array is element-addressable (`field.N`) — markdown[] and plain
+        // string arrays alike, matching the pdfform resolver's grammar. Only
+        // scalars are excluded: no element exists for the address to resolve to.
         let schema = QuillValue::from_json(json!({
             "type": "object",
             "properties": {
@@ -794,6 +797,10 @@ mod tests {
                 "sections": {
                     "type": "array",
                     "items": { "type": "string", "contentMediaType": "text/markdown" }
+                },
+                "signature_block": {
+                    "type": "array",
+                    "items": { "type": "string" }
                 }
             },
             "$defs": {
@@ -803,16 +810,17 @@ mod tests {
                         "$body": { "type": "string", "contentMediaType": "text/markdown" },
                         "refs": {
                             "type": "array",
-                            "items": { "type": "string", "contentMediaType": "text/markdown" }
+                            "items": { "type": "string" }
                         }
                     }
                 }
             }
         }));
 
-        let meta = SchemaMeta::from_schema_json(schema.as_json()).expect("schema has properties");
+        let meta = SchemaMeta::from_schema_json(schema.as_json());
 
-        assert_eq!(meta.array_fields, vec!["sections".to_string()]);
+        assert!(meta.array_fields.contains(&"sections".to_string()));
+        assert!(meta.array_fields.contains(&"signature_block".to_string()));
         assert!(!meta.array_fields.contains(&"subject".to_string()));
 
         let card_arrays = meta.card_array_fields.get("indorsement").unwrap();
@@ -851,7 +859,7 @@ mod tests {
             QuillValue::from_json(json!("This is **bold** text.")),
         );
 
-        let result = transform_markdown_fields(&fields, &schema);
+        let result = transform(&fields, &schema);
 
         // title should be unchanged
         assert_eq!(result.get("title").unwrap().as_str(), Some("My Title"));
@@ -878,7 +886,7 @@ mod tests {
         );
         fields.insert("count".to_string(), QuillValue::from_json(json!(42)));
 
-        let result = transform_markdown_fields(&fields, &schema);
+        let result = transform(&fields, &schema);
 
         // All fields should be unchanged
         assert_eq!(result.get("title").unwrap().as_str(), Some("My Title"));
@@ -900,7 +908,7 @@ mod tests {
             QuillValue::from_json(json!("_italic_ text")),
         );
 
-        let result = transform_markdown_fields(&fields, &schema);
+        let result = transform(&fields, &schema);
 
         let body = result.get("$body").unwrap().as_str().unwrap();
         assert!(body.contains("#emph[italic]"));
@@ -923,7 +931,7 @@ mod tests {
             QuillValue::from_json(json!("My Title")),
         );
 
-        let result = transform_markdown_fields(&fields, &schema);
+        let result = transform(&fields, &schema);
         let meta = result.get("__meta__").expect("missing __meta__").as_json();
 
         let date_fields = meta["date_fields"].as_array().unwrap();
@@ -949,7 +957,7 @@ mod tests {
         }));
 
         let fields = HashMap::new();
-        let result = transform_markdown_fields(&fields, &schema);
+        let result = transform(&fields, &schema);
         let meta = result.get("__meta__").expect("missing __meta__").as_json();
 
         assert_eq!(

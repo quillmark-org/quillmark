@@ -14,14 +14,15 @@
 #let _qm-meta = _qm-raw.at("__meta__", default: (:))
 
 /// Whether `path` parses against the schema address tables: a top-level field
-/// (`subject`), a markdown[] element (`refs.2`), or a card address
+/// (`subject`), an array element (`refs.2`), or a card address
 /// (`$cards.<kind>.<n>.<field>`, optional `.<i>` element suffix). An indexed
-/// suffix (`field.N`) is only ever a real address for a `markdown[]` field —
-/// the auto-tagger index-suffixes array elements and never a scalar — so it
-/// validates against `array_fields`/`card_array_fields`, not the broader
-/// `fields`/`card_fields` name tables, rejecting `subject.0` on a scalar
-/// `subject` even though the name itself is known. Permissive when the tables
-/// are absent (no `__meta__`) — validation then has nothing to check against.
+/// suffix (`field.N`) is only a real address for an array-typed field — any
+/// array, matching the pdfform resolver's grammar — so it validates against
+/// `array_fields`/`card_array_fields`, not the broader `fields`/`card_fields`
+/// name tables, rejecting `subject.0` on a scalar `subject` even though the
+/// name itself is known: a scalar has no element for the address to resolve
+/// to. Permissive when the tables are absent (no `__meta__`) — validation
+/// then has nothing to check against.
 #let _qm-known-path(path) = {
   let fields = _qm-meta.at("fields", default: ())
   let card-fields = _qm-meta.at("card_fields", default: (:))
@@ -96,7 +97,7 @@
   assert(field == none or std.type(field) == str,
     message: "form-field: field must be a string or none, got " + repr(std.type(field)))
   assert(field == none or _qm-known-path(field),
-    message: "form-field: " + repr(field) + " is not a schema field address; expected a field name, a markdown[] element like \"refs.2\", or a card path composed from the card's $path prefix")
+    message: "form-field: " + repr(field) + " is not a schema field address; expected a field name, an array element like \"refs.2\", or a card path composed from the card's $path prefix")
   let abs-pt(field, l) = {
     let r = repr(l)
     assert(not (r.contains("em") or r.ends-with("%")),
@@ -174,7 +175,7 @@
 /// draws, package chrome included — where an auto-tag covers the field value's
 /// own ink.
 ///
-/// `field` must be a schema address: a field name (`"subject"`), a markdown[]
+/// `field` must be a schema address: a field name (`"subject"`), an array
 /// element (`"refs.2"`), or a card path (`"$cards.indorsement.1.from"`).
 /// Compose card paths from the card's injected `$path` prefix —
 /// `tagged(card.at("$path") + "from")[..]` — rather than hand-writing the
@@ -184,7 +185,7 @@
   assert(std.type(field) == str,
     message: "tagged: field must be a string, got " + repr(std.type(field)))
   assert(_qm-known-path(field),
-    message: "tagged: " + repr(field) + " is not a schema field address; expected a field name, a markdown[] element like \"refs.2\", or a card path composed from the card's $path prefix")
+    message: "tagged: " + repr(field) + " is not a schema field address; expected a field name, an array element like \"refs.2\", or a card path composed from the card's $path prefix")
   _qm-tag(field, body)
 }
 
