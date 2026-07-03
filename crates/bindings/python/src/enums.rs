@@ -51,7 +51,6 @@ py_enum! {
     pub enum PySeverity / "Severity" {
         ERROR,
         WARNING,
-        NOTE,
     }
 }
 
@@ -82,7 +81,6 @@ impl From<PySeverity> for Severity {
         match val {
             PySeverity::ERROR => Severity::Error,
             PySeverity::WARNING => Severity::Warning,
-            PySeverity::NOTE => Severity::Note,
         }
     }
 }
@@ -92,7 +90,6 @@ impl From<Severity> for PySeverity {
         match val {
             Severity::Error => PySeverity::ERROR,
             Severity::Warning => PySeverity::WARNING,
-            Severity::Note => PySeverity::NOTE,
         }
     }
 }

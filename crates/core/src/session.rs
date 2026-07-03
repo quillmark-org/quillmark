@@ -33,13 +33,13 @@ pub trait SessionHandle: Any + Send + Sync {
     /// the returned [`ChangeSet`] reports the pages the edit visibly changed.
     /// Default: apply is unsupported.
     fn apply(&mut self, _json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
-        Err(RenderError::ApplyUnsupported {
-            diags: vec![Diagnostic::new(
+        Err(RenderError::from_diag(
+            Diagnostic::new(
                 Severity::Error,
                 "this backend's session does not support apply".to_string(),
             )
-            .with_code("backend::apply_unsupported".to_string())],
-        })
+            .with_code("backend::apply_unsupported".to_string()),
+        ))
     }
 
     /// Page dimensions in points (1 pt = 1/72"), or `None` if `page` is out of

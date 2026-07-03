@@ -10,7 +10,7 @@
 
 #![cfg(feature = "typst")]
 
-use quillmark::{OutputFormat, Quillmark, RenderError, RenderOptions};
+use quillmark::{OutputFormat, Quillmark, RenderOptions};
 use quillmark_fixtures::quills_path;
 
 const PT_PER_IN: f32 = 72.0;
@@ -74,8 +74,8 @@ fn usaf_memo_signature_widget_aligns_with_signature_block() {
 
     // Font-less CI cannot exercise the renderer; skip rather than fail, matching
     // the convention in quiver_test.rs.
-    if let Err(RenderError::EngineCreation { diags }) = &result {
-        if diags[0].message.contains("No fonts found") {
+    if let Err(e) = &result {
+        if e.diagnostics()[0].message.contains("No fonts found") {
             eprintln!("skipping — no fonts available");
             return;
         }

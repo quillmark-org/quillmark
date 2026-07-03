@@ -109,7 +109,7 @@ impl QuillConfig {
             // error keeps its own `path` for UI navigation.
             let diags: Vec<Diagnostic> = errors.iter().map(|e| e.to_diagnostic()).collect();
             if !diags.is_empty() {
-                return Err(RenderError::ValidationFailed { diags });
+                return Err(RenderError::new(diags));
             }
         }
 
@@ -117,8 +117,9 @@ impl QuillConfig {
     }
 
     /// Enforce the document's `$quill` reference (`name@selector`) against this
-    /// quill, failing with [`RenderError::QuillMismatch`] if either component
-    /// diverges. The document is well-formed; it was paired with the wrong quill
+    /// quill, failing with a `quill::name_mismatch` / `quill::version_mismatch`
+    /// diagnostic if either component diverges. The document is well-formed; it
+    /// was paired with the wrong quill
     /// — a different format, or an incompatible version of one — which yields
     /// undefined output, so it errors rather than warns.
     ///
@@ -281,14 +282,14 @@ impl Quill {
     }
 }
 
-/// A single-diagnostic [`RenderError::QuillMismatch`]. `path` is unset — the
+/// A single-diagnostic quill-mismatch failure. `path` is unset — the
 /// mismatch is the root `$quill` line, not a field.
 fn quill_mismatch(message: String, code: &str, hint: &str) -> RenderError {
-    RenderError::QuillMismatch {
-        diags: vec![Diagnostic::new(Severity::Error, message)
+    RenderError::from_diag(
+        Diagnostic::new(Severity::Error, message)
             .with_code(code.to_string())
-            .with_hint(hint.to_string())],
-    }
+            .with_hint(hint.to_string()),
+    )
 }
 
 /// Render a seed-overlay validation error as a **warning**-severity diagnostic
@@ -304,14 +305,14 @@ fn seed_violation_diagnostic(v: &super::validation::ValidationError) -> Diagnost
     diag
 }
 
-/// Wrap a coercion error into `RenderError::ValidationFailed`.
+/// Wrap a coercion error into a `validation::coercion_failed` failure.
 /// `Diagnostic::path` is unset — coercion runs before structured validation.
 fn coercion_error(e: impl std::fmt::Display) -> RenderError {
-    RenderError::ValidationFailed {
-        diags: vec![Diagnostic::new(Severity::Error, e.to_string())
+    RenderError::from_diag(
+        Diagnostic::new(Severity::Error, e.to_string())
             .with_code("validation::coercion_failed".to_string())
-            .with_hint("Ensure all fields can be coerced to their declared types".to_string())],
-    }
+            .with_hint("Ensure all fields can be coerced to their declared types".to_string()),
+    )
 }
 
 /// Resolve every schema field absent from `fields`, by precedence: an authored

@@ -60,10 +60,13 @@ fn test_unsupported_backend_errors_at_render_time() {
     assert_eq!(quill.backend_id(), "non_existent");
 
     let engine = Quillmark::new();
-    match engine.supported_formats(&quill) {
-        Err(quillmark::RenderError::UnsupportedBackend { .. }) => {}
-        other => panic!("Expected UnsupportedBackend, got: {:?}", other),
-    }
+    let err = engine
+        .supported_formats(&quill)
+        .expect_err("unregistered backend must not resolve");
+    assert_eq!(
+        err.diagnostics()[0].code.as_deref(),
+        Some("engine::backend_not_found")
+    );
 }
 
 #[test]
@@ -111,8 +114,8 @@ fn test_quill_render_succeeds_with_engine_loaded_quill() {
         },
     );
 
-    if let Err(quillmark::RenderError::EngineCreation { diags }) = &result {
-        if diags[0].message.contains("No fonts found") {
+    if let Err(e) = &result {
+        if e.diagnostics()[0].message.contains("No fonts found") {
             return;
         }
     }

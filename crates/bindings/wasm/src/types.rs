@@ -51,7 +51,6 @@ impl From<quillmark_core::OutputFormat> for OutputFormat {
 pub enum Severity {
     Error,
     Warning,
-    Note,
 }
 
 impl From<quillmark_core::Severity> for Severity {
@@ -59,7 +58,6 @@ impl From<quillmark_core::Severity> for Severity {
         match severity {
             quillmark_core::Severity::Error => Severity::Error,
             quillmark_core::Severity::Warning => Severity::Warning,
-            quillmark_core::Severity::Note => Severity::Note,
         }
     }
 }
@@ -69,7 +67,6 @@ impl From<Severity> for quillmark_core::Severity {
         match severity {
             Severity::Error => quillmark_core::Severity::Error,
             Severity::Warning => quillmark_core::Severity::Warning,
-            Severity::Note => quillmark_core::Severity::Note,
         }
     }
 }
@@ -351,10 +348,6 @@ mod tests {
         let warning = Severity::Warning;
         let json_warning = serde_json::to_string(&warning).unwrap();
         assert_eq!(json_warning, "\"warning\"");
-
-        let note = Severity::Note;
-        let json_note = serde_json::to_string(&note).unwrap();
-        assert_eq!(json_note, "\"note\"");
     }
 
     #[test]
@@ -365,8 +358,8 @@ mod tests {
         let warning: Severity = serde_json::from_str("\"warning\"").unwrap();
         assert_eq!(warning, Severity::Warning);
 
-        let note: Severity = serde_json::from_str("\"note\"").unwrap();
-        assert_eq!(note, Severity::Note);
+        // "note" is not a severity; two values only.
+        assert!(serde_json::from_str::<Severity>("\"note\"").is_err());
     }
 
     #[test]
@@ -445,7 +438,7 @@ mod tests {
             })
             .with_hint("This is a hint".to_string());
 
-        let render_err = quillmark_core::RenderError::InvalidPayload { diags: vec![diag] };
+        let render_err = quillmark_core::RenderError::from_diag(diag);
         let wasm_err: WasmError = render_err.into();
 
         assert_eq!(wasm_err.message(), "Test error message");

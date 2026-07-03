@@ -262,9 +262,7 @@ fn acceptance_duplicate_name_errors() {
 #signature-field("a")
 "#;
     let err = compile(plate).expect_err("expected duplicate-name error");
-    let RenderError::CompilationFailed { diags } = &err else {
-        panic!("expected CompilationFailed, got {:?}", err);
-    };
+    let diags = err.diagnostics();
     assert!(
         diags
             .iter()

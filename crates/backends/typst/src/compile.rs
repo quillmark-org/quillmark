@@ -21,9 +21,7 @@ use quillmark_pdf::{stamp, PdfError, StampOptions};
 /// Map a stamp-spine [`PdfError`] to the backend's `RenderError`. The spine owns
 /// its own error type; this is the boundary translation.
 fn map_pdf_err(e: PdfError) -> RenderError {
-    RenderError::CompilationFailed {
-        diags: vec![Diagnostic::new(Severity::Error, e.message).with_code(e.code.to_string())],
-    }
+    RenderError::from_diag(Diagnostic::new(Severity::Error, e.message).with_code(e.code.to_string()))
 }
 
 /// Build raster render options for a given pixels-per-point scale factor.
@@ -53,7 +51,7 @@ pub(crate) fn compile_document(world: &QuillWorld) -> Result<PagedDocument, Rend
         Ok(doc) => Ok(doc),
         Err(errors) => {
             let diagnostics = map_typst_errors(&errors, world);
-            Err(RenderError::CompilationFailed { diags: diagnostics })
+            Err(RenderError::new(diagnostics))
         }
     }
 }
@@ -79,13 +77,13 @@ pub(crate) fn render_document_pages(
 ) -> Result<RenderResult, RenderError> {
     // PDF does not support selective page rendering
     if format == OutputFormat::Pdf && pages.is_some() {
-        return Err(RenderError::FormatNotSupported {
-            diags: vec![Diagnostic::new(
+        return Err(RenderError::from_diag(
+            Diagnostic::new(
                 Severity::Error,
                 "PDF does not support page selection; pass null/None to render the full document, or use PNG/SVG".to_string(),
             )
-            .with_code("typst::pdf_page_selection_not_supported".to_string())],
-        });
+            .with_code("typst::pdf_page_selection_not_supported".to_string()),
+        ));
     }
 
     let page_count = document.pages().len();
@@ -94,16 +92,16 @@ pub(crate) fn render_document_pages(
             let out_of_bounds: Vec<usize> =
                 slice.iter().copied().filter(|&i| i >= page_count).collect();
             if !out_of_bounds.is_empty() {
-                return Err(RenderError::ValidationFailed {
-                    diags: vec![Diagnostic::new(
+                return Err(RenderError::from_diag(
+                    Diagnostic::new(
                         Severity::Error,
                         format!(
                             "Page index out of bounds (page_count={}); offending indices: {:?}. Check `LiveSession.pageCount` before requesting pages.",
                             page_count, out_of_bounds
                         ),
                     )
-                    .with_code("typst::page_index_out_of_bounds".to_string())],
-                });
+                    .with_code("typst::page_index_out_of_bounds".to_string()),
+                ));
             }
             slice.to_vec()
         }
@@ -128,15 +126,12 @@ pub(crate) fn render_document_pages(
             let mut artifacts = Vec::with_capacity(selected_indices.len());
             for idx in selected_indices {
                 let pixmap = typst_render::render(&document.pages()[idx], &opts);
-                let png_data = pixmap
-                    .encode_png()
-                    .map_err(|e| RenderError::CompilationFailed {
-                        diags: vec![Diagnostic::new(
-                            Severity::Error,
-                            format!("PNG encoding failed: {}", e),
-                        )
-                        .with_code("typst::png_encoding".to_string())],
-                    })?;
+                let png_data = pixmap.encode_png().map_err(|e| {
+                    RenderError::from_diag(
+                        Diagnostic::new(Severity::Error, format!("PNG encoding failed: {}", e))
+                            .with_code("typst::png_encoding".to_string()),
+                    )
+                })?;
                 artifacts.push(Artifact {
                     bytes: png_data,
                     output_format: OutputFormat::Png,
@@ -146,13 +141,13 @@ pub(crate) fn render_document_pages(
         }
         OutputFormat::Pdf => {
             let pdf = typst_pdf::pdf(document, &PdfOptions::default()).map_err(|e| {
-                RenderError::CompilationFailed {
-                    diags: vec![Diagnostic::new(
+                RenderError::from_diag(
+                    Diagnostic::new(
                         Severity::Error,
                         format!("PDF generation failed: {:?}", e),
                     )
-                    .with_code("typst::pdf_generation".to_string())],
-                }
+                    .with_code("typst::pdf_generation".to_string()),
+                )
             })?;
             // Form-field placements → spine field specs (Typst top-left → PDF
             // bottom-left), stamped as AcroForm widgets. Only the PDF path needs
@@ -176,12 +171,12 @@ pub(crate) fn render_document_pages(
                 OutputFormat::Pdf,
             ))
         }
-        OutputFormat::Txt => Err(RenderError::FormatNotSupported {
-            diags: vec![Diagnostic::new(
+        OutputFormat::Txt => Err(RenderError::from_diag(
+            Diagnostic::new(
                 Severity::Error,
                 "TXT output is not supported for Typst".into(),
             )
-            .with_code("typst::format_not_supported".to_string())],
-        }),
+            .with_code("typst::format_not_supported".to_string()),
+        )),
     }
 }

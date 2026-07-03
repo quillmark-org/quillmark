@@ -134,15 +134,17 @@ fn transformed_json_str(
             .collect(),
     );
 
-    serde_json::to_string(&transformed_json).map_err(|e| RenderError::EngineCreation {
-        diags: vec![Diagnostic::new(
-            Severity::Error,
-            format!(
-                "failed to serialize document data for the typst backend: {}",
-                e
-            ),
+    serde_json::to_string(&transformed_json).map_err(|e| {
+        RenderError::from_diag(
+            Diagnostic::new(
+                Severity::Error,
+                format!(
+                    "failed to serialize document data for the typst backend: {}",
+                    e
+                ),
+            )
+            .with_code("backend::data_serialization_failed".to_string()),
         )
-        .with_code("backend::data_serialization_failed".to_string())],
     })
 }
 
@@ -151,14 +153,14 @@ impl SessionHandle for TypstSession {
         let format = opts.output_format.unwrap_or(OutputFormat::Pdf);
 
         if !SUPPORTED_FORMATS.contains(&format) {
-            return Err(RenderError::FormatNotSupported {
-                diags: vec![Diagnostic::new(
+            return Err(RenderError::from_diag(
+                Diagnostic::new(
                     Severity::Error,
                     format!("{:?} not supported by typst backend", format),
                 )
                 .with_code("backend::format_not_supported".to_string())
-                .with_hint(format!("Supported formats: {:?}", SUPPORTED_FORMATS))],
-            });
+                .with_hint(format!("Supported formats: {:?}", SUPPORTED_FORMATS)),
+            ));
         }
 
         compile::render_document_pages(
@@ -284,14 +286,14 @@ impl Backend for TypstBackend {
         let json_str = transformed_json_str(&transform_schema, json_data)?;
         let world =
             world::QuillWorld::new_with_data(source, &plate_content, &json_str).map_err(|e| {
-                RenderError::EngineCreation {
-                    diags: vec![Diagnostic::new(
+                RenderError::from_diag(
+                    Diagnostic::new(
                         Severity::Error,
                         format!("Failed to create Typst compilation environment: {}", e),
                     )
                     .with_code("typst::world_creation".to_string())
-                    .with_source(e.as_ref())],
-                }
+                    .with_source(e.as_ref()),
+                )
             })?;
         let document = compile::compile_document(&world)?;
         let page_count = document.pages().len();
@@ -350,11 +352,11 @@ fn read_plate(source: &Quill) -> Result<String, RenderError> {
     })
 }
 
-/// A single-diagnostic [`RenderError::EngineCreation`] carrying `code`.
+/// A single-diagnostic [`RenderError`] carrying `code`.
 fn engine_err(code: &str, message: impl Into<String>) -> RenderError {
-    RenderError::EngineCreation {
-        diags: vec![Diagnostic::new(Severity::Error, message.into()).with_code(code.to_string())],
-    }
+    RenderError::from_diag(
+        Diagnostic::new(Severity::Error, message.into()).with_code(code.to_string()),
+    )
 }
 
 /// Check if a field schema indicates markdown content: `contentMediaType =
