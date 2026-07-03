@@ -1,8 +1,7 @@
 //! Property-based fuzz tests for Quillmark using `proptest`.
 //!
 //! Covers escaping correctness (`escape_string`, `escape_markup`),
-//! parse/emit round-trip stability, schema coercion invariants,
-//! and injection safety across the Typst filter pipeline.
+//! parse/emit round-trip stability, and schema coercion invariants.
 
 #[cfg(test)]
 mod coerce_fuzz;
@@ -12,9 +11,6 @@ mod convert_fuzz;
 
 #[cfg(test)]
 mod emit_roundtrip_fuzz;
-
-#[cfg(test)]
-mod filter_fuzz;
 
 #[cfg(test)]
 mod parse_fuzz;

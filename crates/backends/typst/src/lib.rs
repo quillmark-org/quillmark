@@ -21,13 +21,6 @@ mod helper;
 mod overlay;
 mod world;
 
-/// Utilities exposed for fuzzing tests.
-/// Not intended for general use.
-#[doc(hidden)]
-pub mod fuzz_utils {
-    pub use super::helper::inject_json;
-}
-
 use convert::mark_to_typst;
 use quillmark_core::{
     quill::build_transform_schema, session::SessionHandle, Backend, ChangeSet, Diagnostic,
@@ -67,9 +60,9 @@ pub struct TypstSession {
     /// `transform_schema`'s `$defs` each time.
     schema_meta: SchemaMeta,
     /// The span scan's full classification table for the live compile:
-    /// generated eval-site windows in the helper `lib.typ` (regenerated with
-    /// the helper on every committed `apply`) followed by the plate's scalar
-    /// reference-site windows. Swapped transactionally with the document.
+    /// generated content-block windows in the helper `lib.typ` (regenerated
+    /// with the helper on every committed `apply`) followed by the plate's
+    /// scalar reference-site windows. Swapped transactionally with the document.
     windows: Vec<overlay::FieldWindow>,
     /// Byte windows of the plate's direct `data.<field>` scalar reference
     /// sites. The plate is static for the session's lifetime, so these are
@@ -135,15 +128,16 @@ fn page_hashes(document: &typst_layout::PagedDocument) -> Vec<u128> {
         .collect()
 }
 
-/// Run the schema's markdown/date transform over raw document data and
-/// serialize it for helper-package injection, plus the content entries the
-/// helper codegen turns into per-field eval call sites. `meta` is the
+/// Run the schema's markdown/date transform over raw document data, returning
+/// the transformed data object the helper codegen turns into a Typst literal
+/// (markdown fields already converted to markup; `__meta__` sentinel stripped,
+/// since the codegen reads classification from `meta` directly). `meta` is the
 /// session's cached [`SchemaMeta`].
 fn transformed_data(
     schema: &QuillValue,
     meta: &SchemaMeta,
     json_data: &serde_json::Value,
-) -> Result<(String, Vec<(String, String)>), RenderError> {
+) -> Result<serde_json::Value, RenderError> {
     let fields = json_data.as_object().map_or_else(HashMap::new, |obj| {
         obj.iter()
             .map(|(key, value)| (key.clone(), QuillValue::from_json(value.clone())))
@@ -151,73 +145,59 @@ fn transformed_data(
     });
 
     let transformed_fields = transform_markdown_fields(&fields, schema, meta);
-    let transformed_json = serde_json::Value::Object(
-        transformed_fields
-            .into_iter()
-            .map(|(key, value)| (key, value.into_json()))
-            .collect(),
-    );
+    let mut transformed_json: serde_json::Map<String, serde_json::Value> = transformed_fields
+        .into_iter()
+        .map(|(key, value)| (key, value.into_json()))
+        .collect();
+    // The codegen reads content/date classification and address tables from
+    // `meta`; the `__meta__` sentinel the transform injects for its own use is
+    // never emitted into `data`.
+    transformed_json.remove("__meta__");
 
-    let entries = content_entries(meta, &transformed_json);
-    let json_str = serde_json::to_string(&transformed_json).map_err(|e| {
+    // A date field the codegen emits as `datetime(..)` must parse. The
+    // coercion layer already rejects malformed dates before render, so this is
+    // a defensive backend invariant — but when data reaches the backend
+    // uncoerced (a direct `apply`), a bad date produces a real diagnostic here
+    // rather than a silent `none` or a cryptic Typst error deep in the compile.
+    validate_date_fields(meta, &transformed_json)?;
+
+    Ok(serde_json::Value::Object(transformed_json))
+}
+
+/// Reject any date field whose value is a non-empty string the shared
+/// [`parse_date_ymd`](quillmark_core::quill::parse_date_ymd) parser — the same
+/// one the coercion layer validates with — cannot parse. Walks the top-level
+/// date fields and each card kind's date fields.
+fn validate_date_fields(
+    meta: &SchemaMeta,
+    obj: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(), RenderError> {
+    fn bad_date(field: &str, value: &str) -> RenderError {
         RenderError::from_diag(
             Diagnostic::new(
                 Severity::Error,
-                format!(
-                    "failed to serialize document data for the typst backend: {}",
-                    e
-                ),
+                format!("invalid date in field {field:?}: {value:?} is not a recognized date"),
             )
-            .with_code("backend::data_serialization_failed".to_string()),
+            .with_code("backend::invalid_date".to_string()),
         )
-    })?;
-    Ok((json_str, entries))
-}
-
-/// The `(schema address, converted markup)` pairs the helper codegen turns
-/// into distinct eval call sites — one per content field, `markdown[]`
-/// element, and card content field carrying a non-empty string in the
-/// *transformed* data. Mirrors the template's `insert-content` lookups
-/// exactly (same non-empty-string guards, same `<key>.<i>` element and
-/// `$cards.<kind>.<n>.` card addressing, ordinals counted per kind), so every
-/// key the template asks `_qm-content` for exists.
-fn content_entries(meta: &SchemaMeta, data: &serde_json::Value) -> Vec<(String, String)> {
-    fn collect(
-        keys: &[String],
+    }
+    fn check(
+        names: &[String],
         dict: &serde_json::Map<String, serde_json::Value>,
         prefix: &str,
-        out: &mut Vec<(String, String)>,
-    ) {
-        for key in keys {
-            match dict.get(key) {
-                Some(serde_json::Value::String(s)) if !s.is_empty() => {
-                    out.push((format!("{prefix}{key}"), s.clone()));
+    ) -> Result<(), RenderError> {
+        for key in names {
+            if let Some(serde_json::Value::String(s)) = dict.get(key) {
+                if !s.is_empty() && quillmark_core::quill::parse_date_ymd(s).is_none() {
+                    return Err(bad_date(&format!("{prefix}{key}"), s));
                 }
-                Some(serde_json::Value::Array(arr)) => {
-                    for (i, elem) in arr.iter().enumerate() {
-                        if let Some(s) = elem.as_str() {
-                            if !s.is_empty() {
-                                out.push((format!("{prefix}{key}.{i}"), s.to_string()));
-                            }
-                        }
-                    }
-                }
-                _ => {}
             }
         }
+        Ok(())
     }
 
-    let mut out = Vec::new();
-    let Some(obj) = data.as_object() else {
-        return out;
-    };
-    collect(&meta.content_fields, obj, "", &mut out);
-
+    check(&meta.date_fields, obj, "")?;
     if let Some(cards) = obj.get("$cards").and_then(|v| v.as_array()) {
-        // Ordinals count per kind in document order — every string kind
-        // increments its counter (matching the template's kind-ordinals pass),
-        // whether or not that kind declares content fields.
-        let mut ordinals: HashMap<&str, usize> = HashMap::new();
         for card in cards {
             let Some(card_obj) = card.as_object() else {
                 continue;
@@ -225,23 +205,16 @@ fn content_entries(meta: &SchemaMeta, data: &serde_json::Value) -> Vec<(String, 
             let Some(kind) = card_obj.get("$kind").and_then(|v| v.as_str()) else {
                 continue;
             };
-            let n = ordinals.entry(kind).or_insert(0);
-            let prefix = format!("$cards.{kind}.{n}.");
-            *n += 1;
             let names: Vec<String> = meta
-                .card_content_fields
+                .card_date_fields
                 .get(kind)
                 .and_then(|v| v.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|s| s.as_str().map(str::to_string))
-                        .collect()
-                })
+                .map(|a| a.iter().filter_map(|s| s.as_str().map(str::to_string)).collect())
                 .unwrap_or_default();
-            collect(&names, card_obj, &prefix, &mut out);
+            check(&names, card_obj, &format!("$cards.{kind}."))?;
         }
     }
-    out
+    Ok(())
 }
 
 impl SessionHandle for TypstSession {
@@ -286,9 +259,8 @@ impl SessionHandle for TypstSession {
     /// read keeps serving the last-good compile and its warnings (the world
     /// may hold the failed source; the next `apply` overwrites it).
     fn apply(&mut self, json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
-        let (json_str, entries) =
-            transformed_data(&self.transform_schema, &self.schema_meta, json_data)?;
-        let mut windows = self.world.inject_helper_package(&json_str, &entries);
+        let data = transformed_data(&self.transform_schema, &self.schema_meta, json_data)?;
+        let mut windows = self.world.inject_helper_package(&data, &self.schema_meta);
         windows.extend(self.scalar_windows.iter().cloned());
 
         let (document, compile_warnings) = compile::compile_document(&self.world)?;
@@ -443,9 +415,9 @@ impl Backend for TypstBackend {
 
         let transform_schema = build_transform_schema(source.config());
         let schema_meta = SchemaMeta::from_schema_json(transform_schema.as_json());
-        let (json_str, entries) = transformed_data(&transform_schema, &schema_meta, json_data)?;
+        let data = transformed_data(&transform_schema, &schema_meta, json_data)?;
         let (world, mut windows) =
-            world::QuillWorld::new_with_data(source, &plate_content, &json_str, &entries)
+            world::QuillWorld::new_with_data(source, &plate_content, &data, &schema_meta)
                 .map_err(|e| {
                     RenderError::from_diag(
                         Diagnostic::new(
@@ -656,19 +628,19 @@ fn convert_content_value(value: &QuillValue) -> Option<QuillValue> {
 /// only arises for hand-built schemas in tests. The template treats an empty
 /// `__meta__` the same as an absent one.
 #[derive(Default)]
-struct SchemaMeta {
-    content_fields: Vec<String>,
-    date_fields: Vec<String>,
-    array_fields: Vec<String>,
-    card_content_fields: serde_json::Map<String, serde_json::Value>,
-    card_date_fields: serde_json::Map<String, serde_json::Value>,
-    card_field_names: serde_json::Map<String, serde_json::Value>,
-    card_array_fields: serde_json::Map<String, serde_json::Value>,
-    fields: Vec<String>,
+pub(crate) struct SchemaMeta {
+    pub(crate) content_fields: Vec<String>,
+    pub(crate) date_fields: Vec<String>,
+    pub(crate) array_fields: Vec<String>,
+    pub(crate) card_content_fields: serde_json::Map<String, serde_json::Value>,
+    pub(crate) card_date_fields: serde_json::Map<String, serde_json::Value>,
+    pub(crate) card_field_names: serde_json::Map<String, serde_json::Value>,
+    pub(crate) card_array_fields: serde_json::Map<String, serde_json::Value>,
+    pub(crate) fields: Vec<String>,
 }
 
 impl SchemaMeta {
-    fn from_schema_json(schema_json: &serde_json::Value) -> Self {
+    pub(crate) fn from_schema_json(schema_json: &serde_json::Value) -> Self {
         let Some(properties_obj) = schema_json.get("properties").and_then(|v| v.as_object()) else {
             return Self::default();
         };

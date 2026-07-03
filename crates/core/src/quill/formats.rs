@@ -35,15 +35,30 @@ static LOCAL_FMTS: LazyLock<[Vec<FormatItem<'static>>; 6]> = LazyLock::new(|| {
 /// components and calendar validity (Feb 30 is rejected). Timezone offsets
 /// require the T separator and seconds (RFC 3339 form).
 pub(crate) fn is_valid_datetime(s: &str) -> bool {
-    if OffsetDateTime::parse(s, &Rfc3339).is_ok() {
-        return true;
+    parse_date_ymd(s).is_some()
+}
+
+/// Parse a datetime string to its calendar date `(year, month, day)`,
+/// discarding any time-of-day and timezone offset. Accepts exactly the forms
+/// `is_valid_datetime` accepts — the two share this parser, so a value the
+/// coercion layer validates is one the Typst backend can emit as a
+/// `datetime(year:, month:, day:)` literal, by construction. `None` for any
+/// string that is not one of the accepted forms.
+///
+/// Date-only by design: the backend today emits `datetime(year:, month:,
+/// day:)`, matching the template's former `_parse-date`. Carrying time and
+/// offset through is tracked separately (see the datetime follow-up issue).
+pub fn parse_date_ymd(s: &str) -> Option<(i32, u8, u8)> {
+    let ymd = |d: Date| (d.year(), u8::from(d.month()), d.day());
+    if let Ok(dt) = OffsetDateTime::parse(s, &Rfc3339) {
+        return Some(ymd(dt.date()));
     }
     for fmt in LOCAL_FMTS.iter() {
-        if PrimitiveDateTime::parse(s, fmt).is_ok() {
-            return true;
+        if let Ok(dt) = PrimitiveDateTime::parse(s, fmt) {
+            return Some(ymd(dt.date()));
         }
     }
-    Date::parse(s, &*DATE_FMT).is_ok()
+    Date::parse(s, &*DATE_FMT).ok().map(ymd)
 }
 
 #[cfg(test)]

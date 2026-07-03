@@ -104,14 +104,14 @@ impl QuillWorld {
     pub fn new_with_data(
         source: &Quill,
         main: &str,
-        json_data: &str,
-        content: &[(String, String)],
+        data: &serde_json::Value,
+        meta: &crate::SchemaMeta,
     ) -> Result<(Self, Vec<crate::overlay::FieldWindow>), Box<dyn std::error::Error + Send + Sync>>
     {
         let mut world = Self::new(source, main)?;
 
         // Inject the quillmark-helper package
-        let windows = world.inject_helper_package(json_data, content);
+        let windows = world.inject_helper_package(data, meta);
 
         Ok((world, windows))
     }
@@ -155,19 +155,19 @@ impl QuillWorld {
         self.binaries.insert(id, Bytes::new(bytes));
     }
 
-    /// Inject the quillmark-helper package with JSON data plus the per-render
-    /// content entries codegen'd into `_qm-content` eval call sites (see
-    /// `helper::generate_lib_typ`). `set_source` on the helper `lib.typ` makes
-    /// a repeat injection (a session edit) an incremental reparse rather than
-    /// a fresh parse. Returns each generated call site's byte window, paired
-    /// with the helper file's id — the span scan's classification table.
+    /// Inject the quillmark-helper package generated from the transformed
+    /// document data plus the schema meta (see `helper::generate_lib_typ`).
+    /// `set_source` on the helper `lib.typ` makes a repeat injection (a session
+    /// edit) an incremental reparse rather than a fresh parse. Returns each
+    /// generated content block's byte window, paired with the helper file's id
+    /// — the span scan's classification table.
     pub(crate) fn inject_helper_package(
         &mut self,
-        json_data: &str,
-        content: &[(String, String)],
+        data: &serde_json::Value,
+        meta: &crate::SchemaMeta,
     ) -> Vec<crate::overlay::FieldWindow> {
         let file = Self::helper_fid("lib.typ");
-        let (src, windows) = helper::generate_lib_typ(json_data, content);
+        let (src, windows) = helper::generate_lib_typ(data, meta);
         self.set_source(file, &src);
         self.set_binary(
             Self::helper_fid("typst.toml"),

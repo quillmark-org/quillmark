@@ -20,20 +20,11 @@ fn map_single_diagnostic(error: &SourceDiagnostic, world: &QuillWorld) -> Diagno
 
     let location = resolve_span_to_location(error.span, world);
 
-    let mut hint = error.hints.first().map(|h| h.v.to_string());
-
-    // An unresolvable span with no Typst hint almost always means the error
-    // originated in dynamically-evaluated content (a quill `eval` of a field
-    // value), whose ephemeral source is never registered in the world. Give the
-    // caller a direction rather than a context-free message.
-    if location.is_none() && hint.is_none() {
-        hint = Some(
-            "This error originated in dynamically evaluated content (a quill `eval` of a \
-             field value); check field values for unescaped Typst-significant characters \
-             (`#`, `@`, `$`, unmatched brackets)."
-                .to_string(),
-        );
-    }
+    // Content fields now ride generated markup **blocks**, not `eval` of an
+    // ephemeral source, so an error in field content resolves to a real
+    // position in the helper `lib.typ` — no synthetic "dynamically evaluated
+    // content" hint is needed. Any hint Typst itself supplied is kept.
+    let hint = error.hints.first().map(|h| h.v.to_string());
 
     // Extract error code from message (simple heuristic)
     let code = Some(format!(
@@ -124,10 +115,11 @@ mod tests {
         Some(QuillWorld::new(&source, "// Test").expect("create world"))
     }
 
-    /// An unresolvable span (a detached span here, like the ephemeral source
-    /// from `eval(string, ...)`) must degrade to the generic eval hint.
+    /// An unresolvable span with no Typst-supplied hint carries none — the
+    /// former eval-specific synthetic hint is retired now that content rides
+    /// resolvable markup blocks rather than an ephemeral eval source.
     #[test]
-    fn unresolvable_span_gets_generic_hint() {
+    fn unresolvable_span_without_typst_hint_carries_no_hint() {
         let Some(world) = fixture_world() else {
             return;
         };
@@ -139,12 +131,10 @@ mod tests {
             mapped.location.is_none(),
             "detached span should not resolve to a location"
         );
-        let hint = mapped
-            .hint
-            .expect("unresolvable diagnostic must carry a hint");
         assert!(
-            hint.contains("dynamically evaluated content"),
-            "hint should point at dynamically-evaluated field content, got: {hint:?}"
+            mapped.hint.is_none(),
+            "no synthetic hint is injected: {:?}",
+            mapped.hint
         );
         assert_eq!(mapped.message, "unknown variable: general");
     }

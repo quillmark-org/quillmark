@@ -3,12 +3,14 @@
 //!
 //! Every `Text` glyph (and `Shape`/`Image` item) in the laid-out frames
 //! carries a [`Span`] pointing at the source expression that produced it.
-//! `eval(str, mode: "markup")` stamps its whole result with the *call-site
-//! argument's* span (`SpanMode::Uniform`), so content evaluated at a
-//! codegen-emitted per-field call site resolves to that site's byte range in
-//! the generated helper `lib.typ` — the backend records each site's **byte
-//! window** at generation time ([`FieldWindow`]) and the scan classifies a
-//! frame item by which window its resolved range nests inside. A scalar the
+//! Content fields are codegen'd as markup **block** bindings (`#let _qm_cN =
+//! [ .. ]`) in the generated helper `lib.typ`; the file parser parses each
+//! block, so every glyph carries its own syntax node's span (word/run
+//! granularity) — all nested inside the block's byte range. The backend
+//! records each block's **byte window** at generation time ([`FieldWindow`])
+//! and the scan classifies a frame item by which window its resolved range
+//! nests inside; per-node spans and a single uniform span both fall inside the
+//! same window, so classification is by containment, not identity. A scalar the
 //! plate interpolates directly (`#data.subject`) needs no codegen: its glyphs
 //! carry a span at or around the reference expression in the plate, and
 //! [`scalar_windows`] recovers those windows from the plate's syntax tree.
@@ -63,8 +65,8 @@ use crate::world::QuillWorld;
 
 /// A tracked byte window in a compiled source: the schema field whose content
 /// resolves into `range` of `file`. Content fields point at their generated
-/// eval call site in the helper `lib.typ`; scalar reference sites point at
-/// their expression in the plate.
+/// markup block (`#let _qm_cN = [ .. ]`) in the helper `lib.typ`; scalar
+/// reference sites point at their expression in the plate.
 #[derive(Debug, Clone)]
 pub(crate) struct FieldWindow {
     pub path: String,
@@ -120,11 +122,11 @@ struct Hit {
     rect: Option<Aabb>,
 }
 
-/// Memoizing span → window-index classifier. Uniform eval spans repeat across
-/// every glyph of a field's content, so the range lookup runs once per
-/// distinct span, not once per glyph. Helper-file spans resolve against the
-/// served compile's own source snapshot (see the module doc); everything else
-/// against the world.
+/// Memoizing span → window-index classifier. A block's glyphs carry a handful
+/// of distinct per-node spans (not one uniform span), so the range lookup runs
+/// once per distinct span, not once per glyph. Helper-file spans resolve
+/// against the served compile's own source snapshot (see the module doc);
+/// everything else against the world.
 struct Classifier<'a> {
     world: &'a QuillWorld,
     helper: &'a Source,
@@ -548,11 +550,11 @@ mod tests {
     }
 
     /// The premise the whole mechanism stands on: content produced by a
-    /// generated `eval(.., mode: "markup")` call site resolves to that site's
-    /// recorded byte window in the helper `lib.typ` — a *package* source, not
-    /// a plate file — through the production classifier.
+    /// generated markup **block** binding (`#let _qm_cN = [ .. ]`) resolves
+    /// into that block's recorded byte window in the helper `lib.typ` — a
+    /// *package* source, not a plate file — through the production classifier.
     #[test]
-    fn eval_output_spans_resolve_into_the_helper_file() {
+    fn block_output_spans_resolve_into_the_helper_file() {
         const YAML: &str = r#"
 quill:
   name: span_probe
@@ -577,10 +579,9 @@ main:
         let schema = quillmark_core::quill::build_transform_schema(q.config());
         let meta = crate::SchemaMeta::from_schema_json(schema.as_json());
         let data = serde_json::json!({ "intro": "A probe paragraph, PROBETOKEN." });
-        let (json_str, entries) =
-            crate::transformed_data(&schema, &meta, &data).expect("transform");
+        let transformed = crate::transformed_data(&schema, &meta, &data).expect("transform");
         let mut world = QuillWorld::new(&q, &plate).expect("world");
-        let windows = world.inject_helper_package(&json_str, &entries);
+        let windows = world.inject_helper_package(&transformed, &meta);
         let (doc, _) = compile_document(&world).expect("compile");
         let helper = world
             .source(QuillWorld::helper_fid("lib.typ"))
@@ -602,7 +603,7 @@ main:
         }
         assert!(
             hits.iter().any(|h| h.window == Some(intro_idx)),
-            "eval output glyphs must classify into the helper file's recorded window {:?}",
+            "block output glyphs must classify into the helper file's recorded window {:?}",
             windows[intro_idx].range
         );
     }

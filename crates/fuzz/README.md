@@ -53,14 +53,6 @@ DoS attack prevention:
 - Large input handling (up to 10,000 characters)
 - Ensures parser doesn't panic on malicious inputs
 
-### Filter Input Fuzzing (`filter_fuzz`)
-
-Tests for the `inject_json` helper function:
-- Validates proper escaping in JSON injection contexts
-- Tests dangerous character combinations (`\`, `"`, control chars)
-- Ensures no unescaped quotes that could break out of `json(bytes("..."))` wrapper
-- Tests Unicode handling and various input sizes
-
 ### YAML Parser Fuzzing (`parse_fuzz`)
 
 card-yaml payload security:
@@ -81,12 +73,11 @@ The fuzzing tests validate critical security properties:
 
 ## Architecture
 
-The fuzzing tests are organized into five modules:
+The fuzzing tests are organized into four modules:
 
 - `coerce_fuzz.rs` - Property tests for `QuillConfig::coerce_payload` (no-panic, well-formed error paths, idempotence)
 - `convert_fuzz.rs` - Tests for markdown to Typst conversion and escaping functions
 - `emit_roundtrip_fuzz.rs` - Round-trip stability tests (parse → emit → re-parse)
-- `filter_fuzz.rs` - Tests for filter input validation and injection safety
 - `parse_fuzz.rs` - Tests for card-yaml and markdown parsing
 
 All fuzzing tests use `proptest` for property-based testing, which generates random inputs to validate that security properties hold across a wide range of inputs.

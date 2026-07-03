@@ -96,6 +96,7 @@ Block quotes are not wrapped — their text flows through inline.
 
 `transform_markdown_fields` (`lib.rs`) calls `mark_to_typst` on every field
 declared `contentMediaType: "text/markdown"` (scalar or `markdown[]` element),
-including card fields recursively. The resulting markup strings reach the
-template, which maps `eval(val, mode: "markup")` over them (`lib.typ.template`)
-to splice rendered body content into the document.
+including card fields recursively. The codegen (`helper.rs`) emits each
+resulting markup string as a Typst markup **block** binding (`#let _qm_cN =
+[ .. ]`) in the generated `lib.typ`, which the generated `data` dict
+references — the file parser parses the body once, no runtime `eval`.

@@ -17,6 +17,7 @@ pub(crate) mod validation;
 
 pub use config::{CoercionError, QuillConfig};
 pub use fill::zero_value;
+pub use formats::parse_date_ymd;
 pub use ignore::QuillIgnore;
 pub use schema::build_transform_schema;
 pub use tree::FileTreeNode;
