@@ -261,7 +261,7 @@ name).
 Use **`engine.render`** for one-shot exports (PDF/SVG/PNG) — compiles, emits
 artifacts, done. Use **`LiveSession`** (returned by `engine.open`) for
 reactive previews: the session is a persistent compiler. `paint` / `render` /
-`regions` read its current compile without recompiling, and `apply(doc)`
+`regions` / `fieldAt` read its current compile without recompiling, and `apply(doc)`
 recompiles in place on each edit, returning a `ChangeSet` whose `dirtyPages`
 tells you which pages to repaint (`dirty ∩ visible`). Apply is transactional —
 on throw, every read keeps serving the last-good compile. Don't open a session

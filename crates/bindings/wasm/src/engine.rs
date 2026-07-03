@@ -185,7 +185,7 @@ pub struct Quill {
     inner: quillmark::Quill,
 }
 
-/// Live render session: reads (`render`, `paint`, `pageSize`, `regions`)
+/// Live render session: reads (`render`, `paint`, `pageSize`, `regions`, `fieldAt`)
 /// serve the current compile; `apply(doc)` recompiles in place. Apply is
 /// transactional — on throw, every read keeps serving the last-good compile.
 ///
@@ -1377,7 +1377,7 @@ impl LiveSession {
     /// Recompile the session against `doc` — the edit verb of a live preview.
     /// The document is compiled through the same schema pipeline as `open`
     /// (same quill), then applied transactionally: on throw every read
-    /// (`render`, `paint`, `pageSize`, `regions`) keeps serving the last-good
+    /// (`render`, `paint`, `pageSize`, `regions`, `fieldAt`) keeps serving the last-good
     /// compile, and the session recovers on the next successful `apply`. On
     /// success reads serve the new compile; repaint `dirtyPages ∩ visible`.
     #[wasm_bindgen(js_name = apply)]
@@ -1418,16 +1418,32 @@ impl LiveSession {
         })
     }
 
-    /// Schema-field geometry for this compiled session — one region per
-    /// (placement, page fragment), keyed on the quill schema field path; a
-    /// field may appear more than once (group by `field`, see `FieldRegion`).
-    /// A session-level query: no render, no byte artifact. An interactive
-    /// preview reads it to place field overlays / cross-navigation over a
-    /// `paint`-ed canvas. Empty for backends that place no schema fields.
+    /// Schema-field geometry for this compiled session — each content field's
+    /// **first placement** (one region per page it touches) plus widget and
+    /// scalar-reference-site regions, keyed on the quill schema field path; a
+    /// field may still appear more than once (group by `field`, see
+    /// `FieldRegion`). A session-level query: no render, no byte artifact. An
+    /// interactive preview reads it to scroll to / highlight the focused
+    /// field over a `paint`-ed canvas; the click direction is `fieldAt`.
+    /// Empty for backends that place no schema fields.
     #[wasm_bindgen(js_name = regions, unchecked_return_type = "FieldRegion[]")]
     pub fn regions(&self) -> Result<JsValue, JsValue> {
         let regions: Vec<FieldRegion> = self.inner.regions().into_iter().map(Into::into).collect();
         serialize_or_throw(&regions, "regions")
+    }
+
+    /// The schema field whose content is under a point on `page` — the
+    /// forward (click → field) direction: hit-test a click against the
+    /// compiled document and get back the field address to focus in the
+    /// editor, or `undefined` off any field's ink. `x`/`y` are PDF points
+    /// with a **bottom-left** origin, the same space as `FieldRegion.rect` —
+    /// from a canvas click, invert the overlay transform documented on
+    /// `FieldRegion`: `x = clickPx.x / renderScale`,
+    /// `y = pageHeightPt - clickPx.y / renderScale`. Unlike `regions()`,
+    /// *every* placement answers, not just the first.
+    #[wasm_bindgen(js_name = fieldAt)]
+    pub fn field_at(&self, page: usize, x: f32, y: f32) -> Option<String> {
+        self.inner.field_at(page, x, y)
     }
 }
 

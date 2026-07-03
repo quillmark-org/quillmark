@@ -95,14 +95,37 @@ pub trait SessionHandle: Any + Send + Sync {
     /// ([`RenderOptions::regions`](crate::RenderOptions)). Default empty — a
     /// backend that places schema fields overrides this.
     ///
-    /// Emit one region per **(placement, page fragment)**: a field may appear
-    /// more than once — placed twice, breaking across pages, or arising from
-    /// both tagged content and a bound widget — and every appearance surfaces
-    /// independently ([`LiveSession::regions`] passes them through; consumers
-    /// group by `field`). Order deterministically: widget regions first, then
-    /// content regions in (page, field, placement) order.
+    /// Emit each content field's **first placement** — one region per page
+    /// that placement touches — plus one region per widget and per scalar
+    /// reference site. `field` is still not unique in the result: page
+    /// fragments, several scalar sites, or tracked content plus a bound
+    /// widget each surface independently ([`LiveSession::regions`] passes
+    /// them through; consumers group by `field`). Order deterministically:
+    /// widget regions first, then content regions in (page, field, site)
+    /// order.
     fn regions(&self) -> Vec<RenderedRegion> {
         Vec::new()
+    }
+
+    /// The schema field whose content is under a point — the forward
+    /// (click → field) direction of the region system. `x`/`y` are PDF points
+    /// with a **bottom-left** origin on `page`, the same convention as
+    /// [`RenderedRegion::rect`]. Unlike [`regions`](Self::regions), the
+    /// intent is that *every* placement answers, not just the first: one
+    /// concrete point identifies one drawn item, whose origin is unambiguous
+    /// however many times its field is placed.
+    ///
+    /// Default: hit-test [`regions`](Self::regions) — complete only for a
+    /// backend whose regions enumerate every placement (widget-only backends
+    /// like pdfform), and empty when `regions` is. A backend whose regions
+    /// under-enumerate relative to its placements — first-placement-only
+    /// content emission, like Typst's — must override this with a real
+    /// document hit-test, or clicks on unenumerated placements dead-end.
+    fn field_at(&self, page: usize, x: f32, y: f32) -> Option<String> {
+        self.regions()
+            .into_iter()
+            .find(|r| r.contains(page, x, y))
+            .map(|r| r.field)
     }
 
     /// Non-fatal diagnostics of the **current compile**. A backend whose
@@ -180,20 +203,38 @@ impl LiveSession {
         self.inner.render_rgba(page, scale)
     }
 
-    /// Schema-field geometry for the compiled session — **one
-    /// [`RenderedRegion`] per (placement, page fragment)**, keyed on the quill
-    /// schema field path. A session-level query computed without rendering
-    /// bytes; an interactive preview reads it to place overlays / field
-    /// cross-navigation over a `paint`-ed canvas. Empty for backends that
-    /// place no schema fields.
+    /// Schema-field geometry for the compiled session — each content field's
+    /// **first placement** (one [`RenderedRegion`] per page it touches), plus
+    /// one region per `field:`-bound widget and per direct scalar reference
+    /// site, keyed on the quill schema field path. A session-level query
+    /// computed without rendering bytes; an interactive preview reads it to
+    /// scroll to / highlight the focused field over a `paint`-ed canvas.
+    /// Empty for backends that place no schema fields.
     ///
-    /// A field may appear more than once: placed at several sites, breaking
-    /// across pages (one fragment per page it touches, so a highlight covers
-    /// continuation pages), or arising from both tagged content and a
-    /// `field:`-bound widget (overlapping rects that route to the same field).
-    /// Group by `field`; every entry routes to that field in the editor.
+    /// `field` is still not unique in the result: a placement breaking across
+    /// pages surfaces one fragment per page (a highlight covers continuation
+    /// pages), a scalar referenced at several plate sites surfaces each site,
+    /// and a field arising from both tracked content and a bound widget
+    /// surfaces both (overlapping rects that route to the same field). Group
+    /// by `field`; every entry routes to that field in the editor. Later
+    /// placements of one content value are **not** enumerated — for
+    /// point-driven lookup over any placement, use
+    /// [`field_at`](Self::field_at).
     pub fn regions(&self) -> Vec<RenderedRegion> {
         self.inner.regions()
+    }
+
+    /// The schema field whose content is under a point on `page` — the
+    /// forward (click → field) direction: hit-test a click against the
+    /// compiled document and get back the field address to focus in the
+    /// editor. `x`/`y` are PDF points with a **bottom-left** origin, the same
+    /// convention as [`RenderedRegion::rect`] (a canvas consumer applies the
+    /// inverse of the overlay transform it already uses for regions). Every
+    /// placement answers, not just the first surfaced by
+    /// [`regions`](Self::regions). `None` off any field's ink, out of range,
+    /// or for backends that place no schema fields.
+    pub fn field_at(&self, page: usize, x: f32, y: f32) -> Option<String> {
+        self.inner.field_at(page, x, y)
     }
 
     /// Non-fatal diagnostics of the session's **current compile** — set at

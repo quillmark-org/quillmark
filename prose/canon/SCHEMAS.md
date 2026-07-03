@@ -58,7 +58,7 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
 - Emits path-aware errors for top-level fields and card fields
 - Validates each card's `$kind` matches a known card kind
 - Enforces `body.enabled: false` on the main card and on each card kind — body content for a body-disabled card emits `ValidationError::BodyDisabled` (whitespace-only bodies are treated as empty)
-- `body.enabled: false` also drops `$body` from `build_transform_schema`'s `properties` for that kind — absent, not present-and-empty. This cascades into the Typst helper's `__meta__` address tables, so `tagged`/`form-field(field:)` reject a `$body` address on that kind at compile time (see `PLATE_DATA.md`)
+- `body.enabled: false` also drops `$body` from `build_transform_schema`'s `properties` for that kind — absent, not present-and-empty. This cascades into the Typst helper's `__meta__` address tables, so `form-field(field:)` rejects a `$body` address on that kind at compile time (see `PLATE_DATA.md`)
 - **Null ≡ absent.** A present-null value (`field:`, `field: null`,
   `field: ~`) carries no data: it is treated exactly like an omitted field.
   It validates clean (no `TypeMismatch`) and zero-fills at render

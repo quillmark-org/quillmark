@@ -17,7 +17,7 @@ use crate::value::QuillValue;
 /// `$body` is injected into a kind's `properties` only when that kind's
 /// `body.enabled` is not `false`. A body-disabled kind's `$body` is absent,
 /// not present-and-empty: absence cascades through the `__meta__` address
-/// tables so `tagged()`/`form-field(field:)` reject `$body` addresses on that
+/// tables so `form-field(field:)` rejects `$body` addresses on that
 /// kind at compile time, matching `Quill::validate`'s hard error on authored
 /// body content for the same kind.
 pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {

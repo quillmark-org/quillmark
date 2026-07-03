@@ -96,15 +96,17 @@ export interface RenderOptions {
 /**
  * A rendered field region: the quill schema field address (`field`) plus its
  * geometry (`rect`) on the page. Emitted by backends that place schema fields
- * (`pdfform` AcroForm widgets; Typst form-fields). Only fields with a schema
- * address produce a region — a backend-only widget produces none, and the
- * backend widget name never appears.
+ * (`pdfform` AcroForm widgets; Typst form-fields and span-tracked content —
+ * markdown bodies, `markdown[]` elements, card content fields, direct scalar
+ * references). Only fields with a schema address produce a region — a
+ * backend-only widget produces none, and the backend widget name never
+ * appears.
  *
- * Use it to map between a place on the page and a field in the editor: click a
- * rendered field → focus `field` in the editor, or highlight the rect for the
- * focused field. Geometry only — `LiveSession.paint` already bakes every
- * value into the raster (see {@link LiveSession}), so a region is never a
- * compositing input.
+ * Use it to scroll to / highlight the focused field's rect; for the click
+ * direction use {@link LiveSession.fieldAt}, which resolves a point on *any*
+ * placement, not just the first one surfaced here. Geometry only —
+ * `LiveSession.paint` already bakes every value into the raster (see
+ * {@link LiveSession}), so a region is never a compositing input.
  *
  * COORDINATE TRANSFORM. `rect` is in PDF points with a **bottom-left** origin.
  *
@@ -304,17 +306,32 @@ export declare class LiveSession {
 	/**
 	 * Schema-field geometry for this compiled session, keyed on quill schema
 	 * field path. A session-level query: no render, no byte artifact. Read it
-	 * to place field overlays / cross-navigation over a `paint`-ed canvas.
-	 * Empty for backends that place no schema fields.
+	 * to scroll to / highlight the focused field over a `paint`-ed canvas;
+	 * the click direction is {@link fieldAt}. Empty for backends that place
+	 * no schema fields.
 	 *
-	 * `field` is **not** unique: this returns one {@link FieldRegion} per
-	 * (placement, page fragment). A field placed at several sites yields one
-	 * region each; a body breaking across pages yields one fragment per page
-	 * it touches (so a highlight covers continuation pages); tagged content
-	 * plus a `field:`-bound widget yields both, widget ordered first. Group by
-	 * `field` — every entry routes to that field.
+	 * `field` is **not** unique: a content field surfaces its **first
+	 * placement** as one {@link FieldRegion} per page that placement touches
+	 * (so a highlight covers continuation pages); a scalar referenced at
+	 * several plate sites surfaces each site; tracked content plus a
+	 * `field:`-bound widget yields both, widget ordered first. Group by
+	 * `field` — every entry routes to that field. Later placements of one
+	 * content value are not enumerated; {@link fieldAt} still resolves
+	 * clicks on them.
 	 */
 	regions(): FieldRegion[];
+	/**
+	 * The schema field whose content is under a point on `page` — the forward
+	 * (click → field) direction: hit-test a click against the compiled
+	 * document and get back the field address to focus in the editor, or
+	 * `undefined` off any field's ink. `x`/`y` are PDF points with a
+	 * **bottom-left** origin, the same space as {@link FieldRegion.rect} —
+	 * from a canvas click, invert the overlay transform documented there:
+	 * `x = clickPx.x / renderScale`,
+	 * `y = pageHeightPt - clickPx.y / renderScale`. Unlike {@link regions},
+	 * *every* placement answers, not just the first.
+	 */
+	fieldAt(page: number, x: number, y: number): string | undefined;
 	/** Page geometry in points (1/72″). Report-only; the painter sizes the canvas. */
 	pageSize(page: number): PageSize;
 	/**

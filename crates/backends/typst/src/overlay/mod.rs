@@ -14,12 +14,47 @@ use quillmark_pdf::{FieldSpec, FieldType, CHECKBOX_ON_STATE};
 use typst_layout::PagedDocument;
 
 mod extract;
-mod region_scan;
+mod span_scan;
 
-/// Regions for auto-tagged content fields (markdown bodies), read from the
-/// laid-out frame tree and keyed on the schema path. See [`region_scan`].
-pub(crate) fn scan_content_regions(doc: &PagedDocument) -> Vec<quillmark_core::RenderedRegion> {
-    region_scan::scan(doc)
+pub(crate) use span_scan::FieldWindow;
+
+/// Regions for content fields and direct scalar references, read from the
+/// laid-out frames' glyph spans and keyed on the schema path — each tracked
+/// window's first placement, one region per page it touches. `helper` is the
+/// helper `lib.typ` [`Source`](typst::syntax::Source) snapshot the served
+/// document was compiled from — never the world's live copy, which a failed
+/// apply may have already replaced. See [`span_scan`].
+pub(crate) fn scan_content_regions(
+    doc: &PagedDocument,
+    world: &crate::world::QuillWorld,
+    helper: &typst::syntax::Source,
+    windows: &[FieldWindow],
+) -> Vec<quillmark_core::RenderedRegion> {
+    span_scan::scan(doc, world, helper, windows)
+}
+
+/// The schema field under a point (PDF points, bottom-left origin) — the
+/// forward click→field direction. Every placement answers, not just the
+/// first. See [`span_scan::field_at`].
+pub(crate) fn field_at(
+    doc: &PagedDocument,
+    world: &crate::world::QuillWorld,
+    helper: &typst::syntax::Source,
+    windows: &[FieldWindow],
+    page: usize,
+    x: f32,
+    y: f32,
+) -> Option<String> {
+    span_scan::field_at(doc, world, helper, windows, page, x, y)
+}
+
+/// Byte windows for the plate's direct `data.<field>` scalar references. See
+/// [`span_scan::scalar_windows`].
+pub(crate) fn scalar_windows(
+    source: &typst::syntax::Source,
+    fields: &[String],
+) -> Vec<(String, std::ops::Range<usize>)> {
+    span_scan::scalar_windows(source, fields)
 }
 
 /// The kind of form field a placement declares, plus its per-kind payload.

@@ -775,10 +775,12 @@ impl PyRenderResult {
     }
 
     /// Schema-field geometry sidecar — populated only when `render(...,
-    /// regions=True)` requested it; empty otherwise. One dict per (placement,
-    /// page fragment): `{"field": str, "page": int, "rect": [x0, y0, x1, y1]}`
-    /// with rect in PDF points, bottom-left origin, page indices
-    /// document-space. A field may appear more than once; group by `field`.
+    /// regions=True)` requested it; empty otherwise. One dict per entry:
+    /// `{"field": str, "page": int, "rect": [x0, y0, x1, y1]}` with rect in
+    /// PDF points, bottom-left origin, page indices document-space. Content
+    /// fields carry their **first placement** (one entry per page it
+    /// touches); widgets and scalar reference sites each carry their own
+    /// entry. A field may still appear more than once; group by `field`.
     #[getter]
     fn regions<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         self.inner

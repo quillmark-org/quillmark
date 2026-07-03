@@ -220,18 +220,20 @@ pub struct ChangeSet {
 }
 
 /// A rendered field region: the quill schema field address plus its geometry on
-/// the page. Emitted for schema-bound fields — marker-tagged content (auto-tagged
-/// markdown bodies and explicit `tagged(..)` placements) and form-field widgets
-/// (pdfform AcroForm, Typst `form-field`). Consumers use it to map between a
-/// place on the page and a field in the editor — click a rendered field to focus
-/// it, or highlight the page rectangle for the focused field. Geometry only: the
-/// raster is already complete, so a region is never a compositing input.
+/// the page. Emitted for schema-bound fields — span-tracked content (markdown
+/// bodies, `markdown[]` elements, card content fields, direct scalar
+/// references) and form-field widgets (pdfform AcroForm, Typst `form-field`).
+/// Consumers use it to scroll to / highlight the focused field; for the
+/// reverse click direction use `LiveSession.fieldAt`, which answers over any
+/// placement. Geometry only: the raster is already complete, so a region is
+/// never a compositing input.
 ///
-/// `field` is **not** unique: `regions()` returns one entry per (placement,
-/// page fragment). A field placed at several sites yields one region each; a
-/// body breaking across pages yields one fragment per page it touches (so a
-/// highlight covers continuation pages); tagged content plus a `field:`-bound
-/// widget yields both. Group by `field` — every entry routes to that field.
+/// `field` is **not** unique: content fields surface their **first placement**
+/// (one fragment per page it touches, so a highlight covers continuation
+/// pages), a scalar referenced at several plate sites surfaces each site, and
+/// tracked content plus a `field:`-bound widget yields both. Group by `field`
+/// — every entry routes to that field. Later placements of one content value
+/// are not enumerated; `fieldAt` still resolves clicks on them.
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]

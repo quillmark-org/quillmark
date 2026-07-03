@@ -98,18 +98,22 @@ impl QuillWorld {
 
     /// Like [`new`](Self::new), but injects `json_data` as a virtual
     /// `@local/quillmark-helper:0.1.0` package. Plates import that package to
-    /// access document data and auto-evaluated markup fields.
+    /// access document data and auto-evaluated markup fields. Returns the
+    /// world plus the generated content windows (see
+    /// [`inject_helper_package`](Self::inject_helper_package)).
     pub fn new_with_data(
         source: &Quill,
         main: &str,
         json_data: &str,
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        content: &[(String, String)],
+    ) -> Result<(Self, Vec<crate::overlay::FieldWindow>), Box<dyn std::error::Error + Send + Sync>>
+    {
         let mut world = Self::new(source, main)?;
 
         // Inject the quillmark-helper package
-        world.inject_helper_package(json_data);
+        let windows = world.inject_helper_package(json_data, content);
 
-        Ok(world)
+        Ok((world, windows))
     }
 
     /// The virtual `@local/quillmark-helper` package spec.
@@ -151,18 +155,32 @@ impl QuillWorld {
         self.binaries.insert(id, Bytes::new(bytes));
     }
 
-    /// Inject the quillmark-helper package with JSON data. `set_source` on the
-    /// helper `lib.typ` makes a repeat injection (a session edit) an
-    /// incremental reparse rather than a fresh parse.
-    pub(crate) fn inject_helper_package(&mut self, json_data: &str) {
-        self.set_source(
-            Self::helper_fid("lib.typ"),
-            &helper::generate_lib_typ(json_data),
-        );
+    /// Inject the quillmark-helper package with JSON data plus the per-render
+    /// content entries codegen'd into `_qm-content` eval call sites (see
+    /// `helper::generate_lib_typ`). `set_source` on the helper `lib.typ` makes
+    /// a repeat injection (a session edit) an incremental reparse rather than
+    /// a fresh parse. Returns each generated call site's byte window, paired
+    /// with the helper file's id — the span scan's classification table.
+    pub(crate) fn inject_helper_package(
+        &mut self,
+        json_data: &str,
+        content: &[(String, String)],
+    ) -> Vec<crate::overlay::FieldWindow> {
+        let file = Self::helper_fid("lib.typ");
+        let (src, windows) = helper::generate_lib_typ(json_data, content);
+        self.set_source(file, &src);
         self.set_binary(
             Self::helper_fid("typst.toml"),
             helper::generate_typst_toml().into_bytes(),
         );
+        windows
+            .into_iter()
+            .map(|w| crate::overlay::FieldWindow {
+                path: w.path,
+                file,
+                range: w.range,
+            })
+            .collect()
     }
 
     /// Loads fonts from quill's in-memory file system.
