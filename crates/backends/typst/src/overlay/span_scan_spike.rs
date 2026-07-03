@@ -1005,3 +1005,192 @@ Footer — #data.subject
         "the two occurrences must be at visually distinct positions: {y_first} vs {y_second}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Derisk: does the "N distinct eval() call sites" codegen fix actually scale
+// to a realistic schema — several top-level fields, an array field with a
+// runtime-determined element count, and a card kind with several instances
+// each carrying its own content field (the exact `$cards.<kind>.<n>.<field>`
+// shape `content_regions.rs::card_regions_use_canonical_kind_ordinal_path`
+// and `usaf_memo_regions_test.rs` already exercise for the CURRENT marker
+// mechanism)? Only tested with 1-2 handpicked fields so far.
+// ---------------------------------------------------------------------------
+
+/// Simulates the codegen `lib.typ`'s auto-tag pass would need: one textually
+/// distinct `#let _field_<n> = eval("...", mode: "markup")` binding per
+/// field/array-element/card-field, instead of today's shared loop. Returns
+/// the generated source plus each binding's field path and the exact byte
+/// window `eval`'s string argument occupies (what codegen would track).
+fn generate_distinct_eval_bindings(
+    entries: &[(&str, &str)], // (field_path, markdown_value)
+) -> (String, Vec<(String, std::ops::Range<usize>)>) {
+    let mut src = String::new();
+    let mut windows = Vec::new();
+    for (i, (path, value)) in entries.iter().enumerate() {
+        let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+        let prefix = format!("#let _field_{i} = eval(");
+        // Typst's span for a string-literal argument covers the literal
+        // INCLUDING its surrounding quotes (empirically confirmed: expected
+        // window was one byte narrow on each side, off by exactly the quote
+        // characters) — so the window starts at the opening `"`, not after it.
+        let arg_start = src.len() + prefix.len();
+        src.push_str(&prefix);
+        src.push('"');
+        src.push_str(&escaped);
+        src.push('"');
+        let arg_end = src.len();
+        src.push_str(", mode: \"markup\")\n");
+        windows.push((path.to_string(), arg_start..arg_end));
+    }
+    (src, windows)
+}
+
+#[test]
+fn realistic_multi_field_array_and_card_codegen_all_resolve_distinctly() {
+    let entries = [
+        ("subject", "Request for Quarters"),
+        ("intro", "A short introductory paragraph."),
+        ("refs.0", "First reference document."),
+        ("refs.1", "Second reference document."),
+        ("refs.2", "Third reference document."),
+        ("$cards.indorsement.0.$body", "Indorsement zero body text."),
+        ("$cards.indorsement.1.$body", "Indorsement one body text."),
+    ];
+    let (bindings_src, windows) = generate_distinct_eval_bindings(&entries);
+
+    let mut placements_src = String::new();
+    for i in 0..entries.len() {
+        placements_src.push_str(&format!("#_field_{i}\n\n"));
+    }
+
+    // `bindings_src` must come FIRST in the plate — the windows above were
+    // computed relative to its own start at byte 0; anything prepended
+    // (like `#set page(..)`) would silently shift every window and produce
+    // false negatives that look like a Typst problem but are a test-harness
+    // bug (caught empirically: every field "failed" identically).
+    let plate = format!(
+        "{bindings_src}\n#set page(width: 400pt, height: 900pt, margin: 40pt)\n{placements_src}"
+    );
+
+    let (doc, world) = compile(&plate);
+    let hits = collect_span_hits(&doc, &world);
+
+    for (path, window) in &windows {
+        let boxes = union_by_window(&hits, world.main(), window.clone());
+        eprintln!("field {path:?} window {window:?} -> boxes {boxes:?}");
+        assert!(
+            !boxes.is_empty(),
+            "field {path:?} must resolve to a non-empty region at realistic schema scale"
+        );
+    }
+
+    // Cross-check: no two DIFFERENT fields' windows produce overlapping
+    // (indistinguishable) hit sets — every field's matching hits must be
+    // disjoint from every other field's.
+    let per_field_hits: Vec<(String, Vec<&SpanHit>)> = windows
+        .iter()
+        .map(|(path, window)| {
+            let matches: Vec<&SpanHit> = hits
+                .iter()
+                .filter(|h| {
+                    h.file == Some(world.main())
+                        && h.range
+                            .as_ref()
+                            .is_some_and(|r| window.start <= r.start && r.end <= window.end)
+                })
+                .collect();
+            (path.clone(), matches)
+        })
+        .collect();
+    for i in 0..per_field_hits.len() {
+        for j in (i + 1)..per_field_hits.len() {
+            let (name_i, hits_i) = &per_field_hits[i];
+            let (name_j, hits_j) = &per_field_hits[j];
+            let overlap = hits_i.iter().any(|a| hits_j.iter().any(|b| a.rect == b.rect));
+            assert!(
+                !overlap,
+                "fields {name_i:?} and {name_j:?} must not share any hit: {hits_i:?} vs {hits_j:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn realistic_card_body_field_survives_render_body_at_scale() {
+    // Combines the multi-field/card codegen shape above with the real
+    // adversary: one of the card body fields is piped through mainmatter
+    // (matching usaf_memo's `$cards.indorsement.<n>.$body` -> `indorsement`
+    // package call), verifying the whole codegen shape still survives the
+    // rebuild, not just a single isolated field.
+    fn host_tree() -> FileTreeNode {
+        fn walk(dir: &std::path::Path) -> std::io::Result<FileTreeNode> {
+            let mut files = HashMap::new();
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let p = entry.path();
+                let name = p.file_name().unwrap().to_string_lossy().into_owned();
+                if p.is_file() {
+                    files.insert(
+                        name,
+                        FileTreeNode::File {
+                            contents: std::fs::read(&p)?,
+                        },
+                    );
+                } else if p.is_dir() {
+                    files.insert(name, walk(&p)?);
+                }
+            }
+            Ok(FileTreeNode::Directory { files })
+        }
+        let quill_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("fixtures")
+            .join("resources")
+            .join("quills")
+            .join("usaf_memo")
+            .join("0.2.0");
+        walk(&quill_path).expect("walk fixture")
+    }
+
+    let entries = [
+        ("subject", "Request for Quarters"),
+        ("refs.0", "First reference document."),
+        (
+            "$cards.indorsement.0.$body",
+            "Indorsement paragraph one.\n\nIndorsement paragraph two.",
+        ),
+    ];
+    let (bindings_src, windows) = generate_distinct_eval_bindings(&entries);
+
+    // `bindings_src` must start the plate at byte 0 — see the comment on the
+    // sibling test above; `#let` bindings don't need to follow `#import`
+    // textually, only their USE (in `#mainmatter[..]`) does.
+    let plate = format!(
+        r#"{bindings_src}
+#import "@local/tonguetoquill-usaf-memo:3.0.0": frontmatter, mainmatter
+
+#show: frontmatter.with(subject: "Spike Memo", memo_for: ("TEST/SYMB",));
+
+#_field_0
+
+#_field_1
+
+#mainmatter[#_field_2]
+"#
+    );
+
+    let quill = Quill::from_tree(host_tree()).expect("load usaf_memo host quill");
+    let world = QuillWorld::new(&quill, &plate).expect("build world");
+    let (doc, _warnings) = compile_document(&world).expect("compile");
+    let hits = collect_span_hits(&doc, &world);
+
+    for (path, window) in &windows {
+        let boxes = union_by_window(&hits, world.main(), window.clone());
+        eprintln!("field {path:?} -> boxes {boxes:?}");
+        assert!(
+            !boxes.is_empty(),
+            "field {path:?} must resolve even when one sibling field goes through render-body"
+        );
+    }
+}
