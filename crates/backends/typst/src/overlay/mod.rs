@@ -14,6 +14,8 @@ use quillmark_pdf::{FieldSpec, FieldType, CHECKBOX_ON_STATE};
 use typst_layout::PagedDocument;
 
 mod extract;
+#[cfg(test)]
+mod markup_block_spike;
 mod span_scan;
 
 pub(crate) use span_scan::FieldWindow;
