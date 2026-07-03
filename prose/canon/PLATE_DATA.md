@@ -38,9 +38,9 @@ The `$`-prefixed keys must be accessed via `.at("$...")` because Typst identifie
 
 Helper contents (generated in `backends/typst/helper.rs` from `lib.typ.template`):
 
-- `data`: parsed JSON dictionary of all fields. A `__meta__` key, injected by the backend, lists the content and date fields to process; the helper consumes and strips it before exposing `data`, so plates never see `__meta__`.
-- Content fields are auto-evaluated into Typst content. Two schema shapes qualify (see `content_field_names`):
+- `data`: a backend-generated Typst dictionary **literal** of all fields — no runtime processing, no `__meta__` sentinel. The backend classified and transformed every field at generation time.
+- Content fields are Typst content. Two schema shapes qualify (see `content_field_names`):
   - `contentMediaType: text/markdown` — a single markdown string converted in place.
   - `markdown[]` (`{type: array, items: {contentMediaType: text/markdown}}`) — each array element converted individually.
-  Both are registered together in `__meta__.content_fields`; the helper maps `eval(.., mode: "markup")` over string values and over array elements.
-- Date fields (`format: date-time`) are converted to Typst `datetime`.
+  Each non-empty converted value is emitted as a markup **block** binding (`#let _qm_cN = [ .. ]`) that `data` references; empty values stay plain strings.
+- Date fields (`format: date-time`) are emitted as `datetime(year:, month:, day:)` constructors (date-only).
