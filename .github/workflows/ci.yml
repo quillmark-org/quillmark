@@ -118,3 +118,7 @@ jobs:
         working-directory: crates/bindings/wasm
         run: npx vitest run
 
+      - name: Typecheck WASM (canonical runtime.d.ts drift guard)
+        working-directory: crates/bindings/wasm
+        run: npm run typecheck
+
