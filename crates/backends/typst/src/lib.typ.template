@@ -11,6 +11,7 @@
 /// passes, plus the schema address tables (`fields`, `card_fields`,
 /// `array_fields`, `card_array_fields`) that validate `tagged`/`form-field`
 /// paths.
+#let _qm-has-meta = "__meta__" in _qm-raw
 #let _qm-meta = _qm-raw.at("__meta__", default: (:))
 
 /// Whether `path` parses against the schema address tables: a top-level field
@@ -21,12 +22,14 @@
 /// `array_fields`/`card_array_fields`, not the broader `fields`/`card_fields`
 /// name tables, rejecting `subject.0` on a scalar `subject` even though the
 /// name itself is known: a scalar has no element for the address to resolve
-/// to. Permissive when the tables are absent (no `__meta__`) — validation
-/// then has nothing to check against.
+/// to. Permissive when `__meta__` itself is absent — validation then has
+/// nothing to check against. Distinct from `__meta__` present with empty
+/// tables (e.g. a body-disabled main with no other fields and no cards),
+/// which validates against the empty set and so rejects every address.
 #let _qm-known-path(path) = {
+  if not _qm-has-meta { return true }
   let fields = _qm-meta.at("fields", default: ())
   let card-fields = _qm-meta.at("card_fields", default: (:))
-  if fields.len() == 0 and card-fields.len() == 0 { return true }
   let array-fields = _qm-meta.at("array_fields", default: ())
   let card-array-fields = _qm-meta.at("card_array_fields", default: (:))
   let is-index(s) = s.match(regex("^[0-9]+$")) != none
