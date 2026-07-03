@@ -40,7 +40,7 @@ pub(crate) fn is_valid_datetime(s: &str) -> bool {
 
 /// Parse a datetime string to its calendar date `(year, month, day)`,
 /// discarding any time-of-day and timezone offset. Accepts exactly the forms
-/// [`is_valid_datetime`] accepts — the two share this parser, so a value the
+/// `is_valid_datetime` accepts — the two share this parser, so a value the
 /// coercion layer validates is one the Typst backend can emit as a
 /// `datetime(year:, month:, day:)` literal, by construction. `None` for any
 /// string that is not one of the accepted forms.

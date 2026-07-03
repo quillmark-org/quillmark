@@ -781,3 +781,44 @@ main:
         "a click off any field's ink resolves to nothing"
     );
 }
+
+#[test]
+fn adversarial_codegen_inputs_still_compile() {
+    // The generated helper is Typst source built from document data, so a data
+    // value must never produce source that fails to parse. Two edges the string
+    // shape of the codegen could hide but a real compile catches:
+    //   - an unterminated `<u>` yields unbalanced `#underline[` markup that, in
+    //     a `[ .. ]` content block, would break the whole helper file;
+    //   - `i64::MIN` cannot be a Typst int literal (its magnitude overflows).
+    const YAML: &str = r#"
+quill:
+  name: adversarial_codegen
+  version: 0.1.0
+  backend: typst
+  description: codegen robustness
+typst:
+  plate_file: plate.typ
+main:
+  fields:
+    body:
+      type: markdown
+      description: a body that may carry malformed inline markup
+"#;
+    // The plate proves the int round-tripped: a wrong `i64::MIN` literal makes
+    // the assert fail, which fails the compile, which fails `open`.
+    const PLATE: &str = r#"
+#import "@local/quillmark-helper:0.1.0": data
+#set page(width: 400pt, height: 400pt, margin: 40pt)
+#assert(data.at("n") == -9223372036854775807 - 1)
+#data.body
+"#;
+    let data = serde_json::json!({
+        "body": "Please <u>sign here",   // unterminated <u>
+        "n": i64::MIN,
+    });
+    // Compile success is the assertion: a broken literal or unbalanced block
+    // would make `open` return Err.
+    TypstBackend
+        .open(&quill(YAML, PLATE), &data)
+        .expect("adversarial data (unterminated <u>, i64::MIN) must still compile");
+}

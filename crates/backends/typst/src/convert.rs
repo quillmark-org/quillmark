@@ -551,6 +551,18 @@ where
         }
     }
 
+    // Close any markup left open at end of stream. The only source of an
+    // unbalanced `#strong[` / `#underline[` is an unterminated `<u>`: the
+    // fixer maps the open tag to `Start(Tag::Strong)`, but with no matching
+    // `</u>` pulldown emits no `End`, so the `]` is never written. Flush the
+    // stack to keep the output bracket-balanced — the codegen embeds it in a
+    // `[ .. ]` content block that an unclosed `[` would break, taking the
+    // whole generated helper source down with it. Unmatched `**`/`*` never
+    // reach here (pulldown emits them as literal text, which is escaped).
+    for _ in strong_stack.drain(..) {
+        output.push(']');
+    }
+
     Ok(())
 }
 
@@ -1797,6 +1809,27 @@ mod tests {
     }
 
     #[test]
+    fn test_unterminated_u_tag_stays_bracket_balanced() {
+        // An unterminated <u> maps to Start(Strong) with no matching close;
+        // the end-of-stream flush must close it so the output is bracket-
+        // balanced (the codegen embeds it in a `[ .. ]` content block — an
+        // unbalanced `[` would break the whole generated helper file).
+        for md in [
+            "Please <u>sign here",
+            "a <u>b <u>c",
+            "text <u>",
+            "outer <u>and _emph_ still open",
+        ] {
+            let out = mark_to_typst(md).unwrap();
+            assert_eq!(
+                out.matches('[').count(),
+                out.matches(']').count(),
+                "unterminated <u> must not leave an unbalanced bracket: {md:?} -> {out:?}"
+            );
+        }
+    }
+
+    #[test]
     fn test_u_tag_intraword_renders_as_underline() {
         // <u> exists specifically to cover arbitrary-range underline that __ cannot reach.
         let md = "pre<u>mid</u>post";
@@ -2725,3 +2758,4 @@ More text with `inline code`."#;
         }
     }
 }
+

@@ -296,7 +296,16 @@ fn lit(v: &serde_json::Value) -> String {
         Bool(b) => b.to_string(),
         Number(n) => {
             if let Some(i) = n.as_i64() {
-                i.to_string()
+                // Typst lexes a negative literal as unary `-` over an unsigned
+                // magnitude, and `i64::MIN`'s magnitude (2^63) overflows i64 —
+                // so `-9223372036854775808` would not round-trip. Emit it as an
+                // int-typed expression instead (both operands fit i64). Every
+                // other i64 renders as its own literal.
+                if i == i64::MIN {
+                    "(-9223372036854775807 - 1)".to_string()
+                } else {
+                    i.to_string()
+                }
             } else {
                 let f = n.as_f64().expect("json numbers are finite");
                 format!("float(\"{f}\")")
@@ -485,7 +494,9 @@ mod tests {
         assert_eq!(lit(&serde_json::json!(null)), "none");
         assert_eq!(lit(&serde_json::json!(true)), "true");
         assert_eq!(lit(&serde_json::json!(42)), "42");
-        assert_eq!(lit(&serde_json::json!(i64::MIN)), i64::MIN.to_string());
+        // i64::MIN cannot be a Typst literal (its magnitude overflows i64);
+        // it is emitted as an int-typed expression instead.
+        assert_eq!(lit(&serde_json::json!(i64::MIN)), "(-9223372036854775807 - 1)");
         assert_eq!(lit(&serde_json::json!(1.5)), "float(\"1.5\")");
         assert_eq!(lit(&serde_json::json!("hi")), "\"hi\"");
         assert_eq!(lit(&serde_json::json!([])), "()");
