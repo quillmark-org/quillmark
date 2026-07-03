@@ -15,13 +15,13 @@ use quillmark_core::{Diagnostic, FileTreeNode, Quill, QuillIgnore, RenderError, 
 /// Pure config load — no backend, no engine; the declared backend is resolved
 /// later, at render time. For an in-memory tree, call [`Quill::from_tree`].
 pub fn quill_from_path<P: AsRef<Path>>(path: P) -> Result<Quill, RenderError> {
-    let tree = load_tree_from_path(path.as_ref()).map_err(|e| RenderError::QuillConfig {
-        diags: vec![
+    let tree = load_tree_from_path(path.as_ref()).map_err(|e| {
+        RenderError::from_diag(
             Diagnostic::new(Severity::Error, format!("Failed to load quill: {}", e))
                 .with_code("quill::load_failed".to_string()),
-        ],
+        )
     })?;
-    Quill::from_tree(tree).map_err(|diags| RenderError::QuillConfig { diags })
+    Quill::from_tree(tree).map_err(RenderError::new)
 }
 
 /// Walk a filesystem path into an in-memory [`FileTreeNode`].

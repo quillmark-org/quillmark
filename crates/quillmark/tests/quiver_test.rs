@@ -15,7 +15,7 @@
 
 #![cfg(feature = "typst")]
 
-use quillmark::{Document, OutputFormat, Quillmark, RenderError, RenderOptions};
+use quillmark::{Document, OutputFormat, Quillmark, RenderOptions};
 use quillmark_fixtures::{quills_path, resource_path};
 use std::fs;
 
@@ -61,8 +61,8 @@ fn every_quill_in_quiver_renders() {
 
         // Font-less CI environments cannot exercise the renderer; skip rather
         // than fail, matching the convention in quill_engine_test.rs.
-        if let Err(RenderError::EngineCreation { diags }) = &result {
-            if diags[0].message.contains("No fonts found") {
+        if let Err(e) = &result {
+            if e.diagnostics()[0].message.contains("No fonts found") {
                 eprintln!("quill '{name}': skipping — no fonts available");
                 continue;
             }
@@ -105,8 +105,8 @@ fn every_quill_blueprint_round_trips_and_renders() {
                 ..Default::default()
             },
         );
-        if let Err(RenderError::EngineCreation { diags }) = &result {
-            if diags[0].message.contains("No fonts found") {
+        if let Err(e) = &result {
+            if e.diagnostics()[0].message.contains("No fonts found") {
                 continue;
             }
         }

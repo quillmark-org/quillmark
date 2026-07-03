@@ -164,14 +164,14 @@ impl SessionHandle for PdfformSession {
     fn render(&self, opts: &RenderOptions) -> Result<RenderResult, RenderError> {
         let format = opts.output_format.unwrap_or(OutputFormat::Pdf);
         if !SUPPORTED_FORMATS.contains(&format) {
-            return Err(RenderError::FormatNotSupported {
-                diags: vec![Diagnostic::new(
+            return Err(RenderError::from_diag(
+                Diagnostic::new(
                     Severity::Error,
                     format!("{format:?} not supported by the pdfform backend"),
                 )
                 .with_code("pdfform::format_not_supported".to_string())
-                .with_hint(format!("Supported formats: {SUPPORTED_FORMATS:?}"))],
-            });
+                .with_hint(format!("Supported formats: {SUPPORTED_FORMATS:?}")),
+            ));
         }
 
         // Raster/vector output: rasterise the pre-flattened PDF via hayro.
@@ -375,14 +375,12 @@ fn default_producer() -> String {
 
 /// Map a stamp-spine [`PdfError`] to the backend's `RenderError` at the boundary.
 fn map_pdf_err(e: PdfError) -> RenderError {
-    RenderError::CompilationFailed {
-        diags: vec![Diagnostic::new(Severity::Error, e.message).with_code(e.code.to_string())],
-    }
+    RenderError::from_diag(Diagnostic::new(Severity::Error, e.message).with_code(e.code.to_string()))
 }
 
-/// A single-diagnostic `EngineCreation` error with `code`.
+/// A single-diagnostic `RenderError` with `code`.
 fn engine_err(code: &str, message: impl Into<String>) -> RenderError {
-    RenderError::EngineCreation {
-        diags: vec![Diagnostic::new(Severity::Error, message.into()).with_code(code.to_string())],
-    }
+    RenderError::from_diag(
+        Diagnostic::new(Severity::Error, message.into()).with_code(code.to_string()),
+    )
 }

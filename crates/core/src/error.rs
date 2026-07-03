@@ -56,6 +56,10 @@ pub const MAX_CARD_COUNT: usize = 1000;
 /// Maximum number of fields allowed per document
 pub const MAX_FIELD_COUNT: usize = 1000;
 
+/// Fatality is this two-value ladder and nothing else: `Error` blocks the
+/// stage that emits it, `Warning` never does. There is no lint-level
+/// configuration and no warning-to-error promotion; an informational aside is
+/// a [`Diagnostic::hint`], not a severity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
@@ -63,8 +67,6 @@ pub enum Severity {
     Error,
     /// Non-fatal issue that may need attention
     Warning,
-    /// Informational message
-    Note,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -164,7 +166,6 @@ impl Diagnostic {
             match self.severity {
                 Severity::Error => "ERROR",
                 Severity::Warning => "WARN",
-                Severity::Note => "NOTE",
             },
             self.message
         );
@@ -296,143 +297,56 @@ impl ParseError {
     }
 }
 
-/// Main error type for rendering operations.
+/// Main error type for rendering operations: a non-empty collection of
+/// [`Diagnostic`]s.
 ///
-/// Every variant carries a non-empty `diags: Vec<Diagnostic>`. Variants whose
-/// failure is inherently a single diagnostic still carry a one-element vector
-/// — the uniform shape lets every consumer, and every language binding,
-/// handle all rendering errors through a single code path. See
-/// [`RenderError::diagnostics`] and [`RenderError::into_diagnostics`]. The
-/// variant itself records the *kind* of failure (which bindings map to typed
-/// exceptions); the payload is always just the diagnostics.
+/// There is no failure taxonomy beyond the diagnostics themselves — the
+/// machine-routable identity of a failure is each diagnostic's namespaced
+/// `code` (`parse::*`, `validation::*`, `quill::*`, `typst::*`, `backend::*`,
+/// `engine::*`). Every consumer, and every language binding, handles all
+/// rendering errors through this single shape; route on
+/// `diagnostics()[..].code`, not on a type.
 #[derive(Debug)]
-pub enum RenderError {
-    /// Failed to initialize the backend's rendering engine.
-    EngineCreation {
-        /// Diagnostics describing the failure. Always non-empty.
-        diags: Vec<Diagnostic>,
-    },
-
-    /// Invalid YAML in a card-yaml block.
-    InvalidPayload {
-        /// Diagnostics describing the failure. Always non-empty.
-        diags: Vec<Diagnostic>,
-    },
-
-    /// Backend compilation failed with one or more errors.
-    CompilationFailed {
-        /// All compilation diagnostics. Always non-empty.
-        diags: Vec<Diagnostic>,
-    },
-
-    /// Requested output format not supported by backend.
-    FormatNotSupported {
-        /// Diagnostics describing the failure. Always non-empty.
-        diags: Vec<Diagnostic>,
-    },
-
-    /// Backend not registered with engine.
-    UnsupportedBackend {
-        /// Diagnostics describing the failure. Always non-empty.
-        diags: Vec<Diagnostic>,
-    },
-
-    /// Validation failed for parsed document — may carry multiple diagnostics
-    /// when several problems are detected during a single validation pass
-    /// (e.g. multiple missing required fields). Each diagnostic should set
-    /// `path` to anchor the error at a specific location in the document model.
-    ValidationFailed {
-        /// All validation diagnostics. Always non-empty.
-        diags: Vec<Diagnostic>,
-    },
-
-    /// Quill configuration error — may carry multiple diagnostics when several
-    /// problems are detected during parsing (e.g. several unknown keys at once).
-    QuillConfig {
-        /// All configuration diagnostics. Always non-empty.
-        diags: Vec<Diagnostic>,
-    },
-
-    /// The document was rendered with a quill that does not satisfy its `$quill`
-    /// reference — a different *name* (`quill::name_mismatch`) or a `version`
-    /// outside the selector (`quill::version_mismatch`). Distinct from
-    /// [`ValidationFailed`](RenderError::ValidationFailed): the document is
-    /// well-formed; it was paired with the wrong quill.
-    QuillMismatch {
-        /// The mismatch diagnostic. Always non-empty.
-        diags: Vec<Diagnostic>,
-    },
-
-    /// The backend's session does not support incremental
-    /// [`apply`](crate::LiveSession::apply). Both built-in backends support
-    /// it; this is the default for a backend that does not override the seam.
-    ApplyUnsupported {
-        /// Diagnostics describing the failure. Always non-empty.
-        diags: Vec<Diagnostic>,
-    },
+pub struct RenderError {
+    /// Always non-empty; held by the constructors.
+    diags: Vec<Diagnostic>,
 }
 
 impl RenderError {
+    /// Wrap `diags` as a failure. `diags` must be non-empty.
+    pub fn new(diags: Vec<Diagnostic>) -> Self {
+        debug_assert!(
+            !diags.is_empty(),
+            "RenderError requires at least one diagnostic"
+        );
+        Self { diags }
+    }
+
+    /// Wrap a single diagnostic as a failure.
+    pub fn from_diag(diag: Diagnostic) -> Self {
+        Self { diags: vec![diag] }
+    }
+
     /// Returns all diagnostics for this error. Always non-empty.
     pub fn diagnostics(&self) -> &[Diagnostic] {
-        match self {
-            RenderError::EngineCreation { diags }
-            | RenderError::InvalidPayload { diags }
-            | RenderError::CompilationFailed { diags }
-            | RenderError::FormatNotSupported { diags }
-            | RenderError::UnsupportedBackend { diags }
-            | RenderError::ValidationFailed { diags }
-            | RenderError::QuillConfig { diags }
-            | RenderError::QuillMismatch { diags }
-            | RenderError::ApplyUnsupported { diags } => diags,
-        }
+        &self.diags
     }
 
     /// Consume the error and return its diagnostics.
     pub fn into_diagnostics(self) -> Vec<Diagnostic> {
-        match self {
-            RenderError::EngineCreation { diags }
-            | RenderError::InvalidPayload { diags }
-            | RenderError::CompilationFailed { diags }
-            | RenderError::FormatNotSupported { diags }
-            | RenderError::UnsupportedBackend { diags }
-            | RenderError::ValidationFailed { diags }
-            | RenderError::QuillConfig { diags }
-            | RenderError::QuillMismatch { diags }
-            | RenderError::ApplyUnsupported { diags } => diags,
-        }
+        self.diags
     }
 }
 
+/// The primary message for a single diagnostic; an
+/// `"<N> error(s): <first message>"` aggregate for more — the same rule the
+/// WASM binding applies to thrown `Error.message`.
 impl std::fmt::Display for RenderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RenderError::CompilationFailed { diags } => {
-                write!(
-                    f,
-                    "Backend compilation failed with {} error(s)",
-                    diags.len()
-                )
-            }
-            RenderError::ValidationFailed { diags } => {
-                write!(f, "Validation failed with {} error(s)", diags.len())
-            }
-            RenderError::QuillConfig { diags } => {
-                write!(
-                    f,
-                    "Quill configuration failed with {} error(s)",
-                    diags.len()
-                )
-            }
-            RenderError::EngineCreation { .. }
-            | RenderError::InvalidPayload { .. }
-            | RenderError::FormatNotSupported { .. }
-            | RenderError::UnsupportedBackend { .. }
-            | RenderError::QuillMismatch { .. }
-            | RenderError::ApplyUnsupported { .. } => match self.diagnostics().first() {
-                Some(d) => write!(f, "{}", d.message),
-                None => write!(f, "render error"),
-            },
+        match self.diags.as_slice() {
+            [d] => write!(f, "{}", d.message),
+            [first, ..] => write!(f, "{} error(s): {}", self.diags.len(), first.message),
+            [] => write!(f, "render error"),
         }
     }
 }
@@ -441,9 +355,7 @@ impl std::error::Error for RenderError {}
 
 impl From<ParseError> for RenderError {
     fn from(err: ParseError) -> Self {
-        RenderError::InvalidPayload {
-            diags: vec![err.to_diagnostic()],
-        }
+        RenderError::from_diag(err.to_diagnostic())
     }
 }
 
@@ -518,24 +430,18 @@ mod tests {
         let diag1 = Diagnostic::new(Severity::Error, "Error 1".to_string());
         let diag2 = Diagnostic::new(Severity::Error, "Error 2".to_string());
 
-        let err = RenderError::CompilationFailed {
-            diags: vec![diag1, diag2],
-        };
+        let err = RenderError::new(vec![diag1, diag2]);
 
         let diags = err.diagnostics();
         assert_eq!(diags.len(), 2);
     }
 
     #[test]
-    fn test_render_error_uniform_single_diagnostic_shape() {
-        // Single-diagnostic kinds carry a one-element vector and expose it
-        // through the same accessors as the multi-diagnostic kinds.
-        let err = RenderError::UnsupportedBackend {
-            diags: vec![Diagnostic::new(
-                Severity::Error,
-                "no such backend".to_string(),
-            )],
-        };
+    fn test_render_error_single_diagnostic_shape() {
+        let err = RenderError::from_diag(Diagnostic::new(
+            Severity::Error,
+            "no such backend".to_string(),
+        ));
         assert_eq!(err.diagnostics().len(), 1);
         assert_eq!(err.to_string(), "no such backend");
 
@@ -546,13 +452,11 @@ mod tests {
 
     #[test]
     fn test_render_error_display_aggregates_multi_diagnostic() {
-        let err = RenderError::ValidationFailed {
-            diags: vec![
-                Diagnostic::new(Severity::Error, "a".to_string()),
-                Diagnostic::new(Severity::Error, "b".to_string()),
-            ],
-        };
-        assert_eq!(err.to_string(), "Validation failed with 2 error(s)");
+        let err = RenderError::new(vec![
+            Diagnostic::new(Severity::Error, "a".to_string()),
+            Diagnostic::new(Severity::Error, "b".to_string()),
+        ]);
+        assert_eq!(err.to_string(), "2 error(s): a");
     }
 
     #[test]

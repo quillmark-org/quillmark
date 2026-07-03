@@ -123,7 +123,7 @@ Metadata resolution:
 - Malformed `main.body` / `card_kinds.<name>.body` blocks error with `quill::invalid_body`.
 - A `body.example` set together with `body.enabled: false` warns with `quill::body_example_unused` (the example has no effect).
 
-Errors flow through `RenderError::QuillConfig { diags: Vec<Diagnostic> }` and surface to bindings as a structured array (`err.diagnostics` in WASM, `.diagnostics` attribute in Python).
+Errors flow through `RenderError` (a non-empty `Vec<Diagnostic>`) and surface to bindings as a structured array (`err.diagnostics` in WASM, `.diagnostics` attribute in Python).
 
 ## File Ignore Rules
 

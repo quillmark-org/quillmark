@@ -64,9 +64,7 @@ pub(crate) struct FieldPlacement {
 /// adapter and the introspection walk: every fail site just needs a code plus a
 /// message.
 pub(crate) fn err(code: &'static str, msg: impl Into<String>) -> RenderError {
-    RenderError::CompilationFailed {
-        diags: vec![Diagnostic::new(Severity::Error, msg.into()).with_code(code.into())],
-    }
+    RenderError::from_diag(Diagnostic::new(Severity::Error, msg.into()).with_code(code.into()))
 }
 
 /// Default `/Producer` value: `Quillmark <crate-version>`. Owned by the backend

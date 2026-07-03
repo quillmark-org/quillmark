@@ -42,27 +42,15 @@ pub fn convert_edit_errors(errors: Vec<(String, EditError)>) -> PyErr {
     raise_with_diagnostics(diags, message)
 }
 
+/// The exception message follows the count-based rule shared with the WASM
+/// binding and `RenderError`'s own `Display`: the primary diagnostic's message
+/// for a single diagnostic, an `"<N> error(s): <first>"` aggregate for more.
 pub fn convert_render_error(err: RenderError) -> PyErr {
-    let diags = err.diagnostics();
     debug_assert!(
-        !diags.is_empty(),
+        !err.diagnostics().is_empty(),
         "RenderError always carries at least one diagnostic"
     );
-
-    let message = match &err {
-        RenderError::CompilationFailed { diags } => {
-            format!("Compilation failed with {} error(s)", diags.len())
-        }
-        RenderError::QuillConfig { diags } => summary_message("Quill configuration has", diags),
-        RenderError::ValidationFailed { diags } => summary_message("Validation failed with", diags),
-        RenderError::InvalidPayload { diags }
-        | RenderError::EngineCreation { diags }
-        | RenderError::FormatNotSupported { diags }
-        | RenderError::UnsupportedBackend { diags }
-        | RenderError::QuillMismatch { diags }
-        | RenderError::ApplyUnsupported { diags } => primary_message(diags),
-    };
-
+    let message = err.to_string();
     raise_with_diagnostics(err.into_diagnostics(), message)
 }
 
@@ -80,18 +68,4 @@ pub fn raise_with_diagnostics(diags: Vec<Diagnostic>, message: String) -> PyErr 
         }
         py_err
     })
-}
-
-fn primary_message(diags: &[Diagnostic]) -> String {
-    diags
-        .first()
-        .map(|d| d.message.clone())
-        .unwrap_or_else(|| "render error".to_string())
-}
-
-fn summary_message(prefix: &str, diags: &[Diagnostic]) -> String {
-    match diags {
-        [only] => only.message.clone(),
-        _ => format!("{} {} error(s)", prefix, diags.len()),
-    }
 }

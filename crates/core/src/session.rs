@@ -33,13 +33,13 @@ pub trait SessionHandle: Any + Send + Sync {
     /// the returned [`ChangeSet`] reports the pages the edit visibly changed.
     /// Default: apply is unsupported.
     fn apply(&mut self, _json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
-        Err(RenderError::ApplyUnsupported {
-            diags: vec![Diagnostic::new(
+        Err(RenderError::from_diag(
+            Diagnostic::new(
                 Severity::Error,
                 "this backend's session does not support apply".to_string(),
             )
-            .with_code("backend::apply_unsupported".to_string())],
-        })
+            .with_code("backend::apply_unsupported".to_string()),
+        ))
     }
 
     /// Page dimensions in points (1 pt = 1/72"), or `None` if `page` is out of
@@ -104,6 +104,16 @@ pub trait SessionHandle: Any + Send + Sync {
     fn regions(&self) -> Vec<RenderedRegion> {
         Vec::new()
     }
+
+    /// Non-fatal diagnostics of the **current compile**. A backend whose
+    /// compile emits warnings (Typst: font fallback, overfull pages, …)
+    /// overrides this to expose them; they swap with the compile on each
+    /// committed [`apply`](Self::apply), so a failed apply keeps the last-good
+    /// compile's warnings alongside its document. Default empty — a backend
+    /// whose compile cannot warn leaves it.
+    fn warnings(&self) -> &[Diagnostic] {
+        &[]
+    }
 }
 
 /// Opaque, backend-backed live render session: a persistent compiler that
@@ -113,16 +123,12 @@ pub trait SessionHandle: Any + Send + Sync {
 /// success — so immutability is an invariant between commits, not a type.
 pub struct LiveSession {
     inner: Box<dyn SessionHandle>,
-    warnings: Vec<Diagnostic>,
 }
 
 impl LiveSession {
     #[doc(hidden)]
     pub fn new(inner: Box<dyn SessionHandle>) -> Self {
-        Self {
-            inner,
-            warnings: Vec::new(),
-        }
+        Self { inner }
     }
 
     /// Borrow the underlying [`SessionHandle`].
@@ -138,18 +144,6 @@ impl LiveSession {
     #[doc(hidden)]
     pub fn handle(&self) -> &dyn SessionHandle {
         &*self.inner
-    }
-
-    /// Attach session-level warnings, surfaced by [`LiveSession::warnings`]
-    /// and appended to [`RenderResult::warnings`] on every
-    /// [`LiveSession::render`] call.
-    ///
-    /// A [`Backend`](crate::Backend) chains this onto the session it returns
-    /// from `open` to carry non-fatal open-time diagnostics. The built-in Typst
-    /// backend emits none, so the channel stays empty unless a backend opts in.
-    pub fn with_warnings(mut self, warnings: Vec<Diagnostic>) -> Self {
-        self.warnings = warnings;
-        self
     }
 
     pub fn page_count(&self) -> usize {
@@ -202,16 +196,19 @@ impl LiveSession {
         self.inner.regions()
     }
 
-    /// Session-level warnings attached at `Backend::open` time, also appended
-    /// to [`RenderResult::warnings`] on each [`LiveSession::render`] call.
-    /// Exposed for consumers (e.g. canvas previews) that never call `render()`.
+    /// Non-fatal diagnostics of the session's **current compile** — set at
+    /// `Backend::open` and refreshed by each committed [`apply`](Self::apply);
+    /// a failed apply keeps the last-good compile *and* its warnings. Also
+    /// appended to [`RenderResult::warnings`] on each
+    /// [`render`](Self::render) call. Exposed for consumers (e.g. canvas
+    /// previews) that never call `render()`.
     pub fn warnings(&self) -> &[Diagnostic] {
-        &self.warnings
+        self.inner.warnings()
     }
 
     pub fn render(&self, opts: &RenderOptions) -> Result<RenderResult, RenderError> {
         let mut result = self.inner.render(opts)?;
-        result.warnings.extend(self.warnings.iter().cloned());
+        result.warnings.extend(self.inner.warnings().iter().cloned());
         // The regions sidecar is attached here, at the wrapper, so every
         // backend's one-shot render carries it without implementing anything
         // beyond the `regions` accessor it already has.
@@ -223,13 +220,15 @@ impl LiveSession {
 
     /// Recompile the session against new document data — the edit verb of a
     /// live preview. Transactional: on `Err` the previous compile stays live,
-    /// so every read keeps serving the last-good document; on `Ok` the session
-    /// serves the new compile and the [`ChangeSet`] reports what changed. Pass
-    /// data compiled by the same schema pipeline as `Backend::open`'s
-    /// `json_data` (`Quill::compile_data`) — and from the *same quill*: the
-    /// `$quill` reference check lives at the layer that still holds a
-    /// `Document` (`Quillmark::open`, the WASM `apply`); compiled data does
-    /// not carry the reference, so this seam cannot re-check it.
+    /// so every read keeps serving the last-good document and its
+    /// [`warnings`](Self::warnings); on `Ok` the session serves the new
+    /// compile — warnings included — and the [`ChangeSet`] reports what
+    /// changed. Pass data compiled by the same schema pipeline as
+    /// `Backend::open`'s `json_data` (`Quill::compile_data`) — and from the
+    /// *same quill*: the `$quill` reference check lives at the layer that
+    /// still holds a `Document` (`Quillmark::open`, the WASM `apply`);
+    /// compiled data does not carry the reference, so this seam cannot
+    /// re-check it.
     pub fn apply(&mut self, json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
         self.inner.apply(json_data)
     }
@@ -270,6 +269,57 @@ mod tests {
         fn as_any(&self) -> &dyn Any {
             self
         }
+    }
+
+    /// A warning-emitting session: `warnings` reflects the current compile
+    /// (one warning per committed apply), and `render` succeeds empty.
+    struct WarningHandle {
+        current: Vec<Diagnostic>,
+        applies: usize,
+    }
+    impl SessionHandle for WarningHandle {
+        fn render(&self, _: &RenderOptions) -> Result<RenderResult, RenderError> {
+            Ok(RenderResult::new(Vec::new(), crate::OutputFormat::Pdf))
+        }
+        fn page_count(&self) -> usize {
+            1
+        }
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+        fn apply(&mut self, _: &serde_json::Value) -> Result<ChangeSet, RenderError> {
+            self.applies += 1;
+            self.current = vec![Diagnostic::new(
+                Severity::Warning,
+                format!("warning of compile {}", self.applies),
+            )];
+            Ok(ChangeSet {
+                page_count: 1,
+                dirty_pages: vec![],
+            })
+        }
+        fn warnings(&self) -> &[Diagnostic] {
+            &self.current
+        }
+    }
+
+    /// `LiveSession::warnings` reflects the handle's current compile —
+    /// refreshed by a committed apply — and `render` appends the same set to
+    /// `RenderResult::warnings`.
+    #[test]
+    fn warnings_track_current_compile() {
+        let open_warning = vec![Diagnostic::new(Severity::Warning, "open-time".to_string())];
+        let mut session = LiveSession::new(Box::new(WarningHandle {
+            current: open_warning,
+            applies: 0,
+        }));
+        assert_eq!(session.warnings()[0].message, "open-time");
+
+        session.apply(&serde_json::Value::Null).unwrap();
+        assert_eq!(session.warnings()[0].message, "warning of compile 1");
+
+        let result = session.render(&RenderOptions::default()).unwrap();
+        assert_eq!(result.warnings[0].message, "warning of compile 1");
     }
 
     #[test]

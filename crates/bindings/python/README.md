@@ -44,7 +44,8 @@ surface is WASM-only (see `prose/canon/PREVIEW.md`).
 `quill.metadata` is a pure, infallible snapshot of the `quill:` section.
 The format probe (`supported_formats`) and rendering (`render`) are resolved
 by the engine, against a quill; they raise `QuillmarkError`
-(`UnsupportedBackend`) only if the declared backend isn't registered.
+(code `engine::backend_not_found`) only if the declared backend isn't
+registered.
 
 ### `Quillmark`
 

@@ -239,14 +239,14 @@ fn read_value_bool(d: &typst::foundations::Dict, key: &str) -> Result<Option<boo
 /// Quote the name first so downstream parsers can extract it with a stable
 /// first-quoted-token convention.
 fn duplicate_field_error(name: &str, first: Location, second: Location) -> RenderError {
-    RenderError::CompilationFailed {
-        diags: vec![Diagnostic::new(
+    RenderError::from_diag(
+        Diagnostic::new(
             Severity::Error,
             format!("{name:?} is defined twice: each form-field name must be unique"),
         )
         .with_code("typst::duplicate_form_field".to_string())
         .with_hint(format!(
             "Rename one of the calls. Conflicting Typst location ids: {first:?}, {second:?}"
-        ))],
-    }
+        )),
+    )
 }

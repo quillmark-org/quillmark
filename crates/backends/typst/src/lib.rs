@@ -65,6 +65,9 @@ pub struct TypstSession {
     /// Per-page content fingerprints of the live compile; diffed against the
     /// next compile's to produce `ChangeSet::dirty_pages`.
     page_hashes: Vec<u128>,
+    /// Typst's non-fatal warnings for the live compile, swapped with it on
+    /// each committed `apply`.
+    compile_warnings: Vec<Diagnostic>,
 }
 
 /// Per-page fingerprints of *visible* content, diffed across compiles for
@@ -134,15 +137,17 @@ fn transformed_json_str(
             .collect(),
     );
 
-    serde_json::to_string(&transformed_json).map_err(|e| RenderError::EngineCreation {
-        diags: vec![Diagnostic::new(
-            Severity::Error,
-            format!(
-                "failed to serialize document data for the typst backend: {}",
-                e
-            ),
+    serde_json::to_string(&transformed_json).map_err(|e| {
+        RenderError::from_diag(
+            Diagnostic::new(
+                Severity::Error,
+                format!(
+                    "failed to serialize document data for the typst backend: {}",
+                    e
+                ),
+            )
+            .with_code("backend::data_serialization_failed".to_string()),
         )
-        .with_code("backend::data_serialization_failed".to_string())],
     })
 }
 
@@ -151,14 +156,14 @@ impl SessionHandle for TypstSession {
         let format = opts.output_format.unwrap_or(OutputFormat::Pdf);
 
         if !SUPPORTED_FORMATS.contains(&format) {
-            return Err(RenderError::FormatNotSupported {
-                diags: vec![Diagnostic::new(
+            return Err(RenderError::from_diag(
+                Diagnostic::new(
                     Severity::Error,
                     format!("{:?} not supported by typst backend", format),
                 )
                 .with_code("backend::format_not_supported".to_string())
-                .with_hint(format!("Supported formats: {:?}", SUPPORTED_FORMATS))],
-            });
+                .with_hint(format!("Supported formats: {:?}", SUPPORTED_FORMATS)),
+            ));
         }
 
         compile::render_document_pages(
@@ -183,15 +188,15 @@ impl SessionHandle for TypstSession {
     /// keeps fonts/packages/assets parsed; the helper `lib.typ` is swapped via
     /// `Source::replace` (incremental reparse), and `comemo` reuses every
     /// memoized result the edit did not reach. Transactional: the live
-    /// document, placements, and hashes swap together only after the compile
-    /// *and* placement extraction succeed — on `Err` every read keeps serving
-    /// the last-good compile (the world may hold the failed source; the next
-    /// `apply` overwrites it).
+    /// document, placements, hashes, and compile warnings swap together only
+    /// after the compile *and* placement extraction succeed — on `Err` every
+    /// read keeps serving the last-good compile and its warnings (the world
+    /// may hold the failed source; the next `apply` overwrites it).
     fn apply(&mut self, json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
         let json_str = transformed_json_str(&self.transform_schema, json_data)?;
         self.world.inject_helper_package(&json_str);
 
-        let document = compile::compile_document(&self.world)?;
+        let (document, compile_warnings) = compile::compile_document(&self.world)?;
         let field_placements = overlay::extract(&document)?;
         let new_hashes = page_hashes(&document);
 
@@ -203,11 +208,17 @@ impl SessionHandle for TypstSession {
         self.field_placements = field_placements;
         self.page_count = new_hashes.len();
         self.page_hashes = new_hashes;
+        self.compile_warnings = compile_warnings;
 
         Ok(ChangeSet {
             page_count: self.page_count,
             dirty_pages,
         })
+    }
+
+    /// Typst's non-fatal warnings for the current compile.
+    fn warnings(&self) -> &[Diagnostic] {
+        &self.compile_warnings
     }
 
     /// Page dimensions in Typst points (1 pt = 1/72 inch). `None` if `page` is
@@ -285,16 +296,16 @@ impl Backend for TypstBackend {
         let json_str = transformed_json_str(&transform_schema, json_data)?;
         let world =
             world::QuillWorld::new_with_data(source, &plate_content, &json_str).map_err(|e| {
-                RenderError::EngineCreation {
-                    diags: vec![Diagnostic::new(
+                RenderError::from_diag(
+                    Diagnostic::new(
                         Severity::Error,
                         format!("Failed to create Typst compilation environment: {}", e),
                     )
                     .with_code("typst::world_creation".to_string())
-                    .with_source(e.as_ref())],
-                }
+                    .with_source(e.as_ref()),
+                )
             })?;
-        let document = compile::compile_document(&world)?;
+        let (document, compile_warnings) = compile::compile_document(&world)?;
         let page_count = document.pages().len();
         let field_placements = overlay::extract(&document)?;
         let hashes = page_hashes(&document);
@@ -305,6 +316,7 @@ impl Backend for TypstBackend {
             field_placements,
             transform_schema,
             page_hashes: hashes,
+            compile_warnings,
         };
         Ok(LiveSession::new(Box::new(session)))
     }
@@ -351,11 +363,11 @@ fn read_plate(source: &Quill) -> Result<String, RenderError> {
     })
 }
 
-/// A single-diagnostic [`RenderError::EngineCreation`] carrying `code`.
+/// A single-diagnostic [`RenderError`] carrying `code`.
 fn engine_err(code: &str, message: impl Into<String>) -> RenderError {
-    RenderError::EngineCreation {
-        diags: vec![Diagnostic::new(Severity::Error, message.into()).with_code(code.to_string())],
-    }
+    RenderError::from_diag(
+        Diagnostic::new(Severity::Error, message.into()).with_code(code.to_string()),
+    )
 }
 
 /// Check if a field schema indicates markdown content: `contentMediaType =

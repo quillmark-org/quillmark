@@ -57,6 +57,9 @@ pub trait SessionHandle: Any + Send + Sync {
     // Canvas seam — default None = "no painter".
     fn page_size_pt(&self, page: usize) -> Option<(f32, f32)> { None }
     fn render_rgba(&self, page: usize, scale: f32) -> Option<(u32, u32, Vec<u8>)> { None }
+
+    // Warnings seam — the current compile's non-fatal diagnostics; default empty.
+    fn warnings(&self) -> &[Diagnostic] { &[] }
 }
 ```
 
@@ -75,12 +78,12 @@ format, PNG or SVG, can paint); the session-level answer is authoritative.
 
 `apply(json_data)` recompiles the session against new document data.
 **Transactional**: on `Err` the previous compile stays live — every read keeps
-serving the last-good document, and the session recovers on the next
-successful apply. On `Ok` reads serve the new compile and the returned
-`ChangeSet { page_count, dirty_pages }` names the pages whose rendered content
-changed (including added pages; removed pages are implied by `page_count`). A
-preview repaints `dirty ∩ visible` and nothing else — that repaint bound, not
-compile speed, is the throughput lever.
+serving the last-good document and its `warnings`, and the session recovers on
+the next successful apply. On `Ok` reads serve the new compile — `warnings`
+included — and the returned `ChangeSet { page_count, dirty_pages }` names the
+pages whose rendered content changed (including added pages; removed pages are
+implied by `page_count`). A preview repaints `dirty ∩ visible` and nothing
+else — that repaint bound, not compile speed, is the throughput lever.
 
 Per-backend, apply is an implementation choice, not a flag:
 
@@ -341,9 +344,11 @@ sequentially; `runtime/runtime.js` maps each backend id to its build with a
   alpha; `ImageData` expects non-premultiplied. The backend unpremultiplies
   before handing back the buffer. One allocation per repaint; fine for edit
   cadence.
-- **`warnings` accessor on `LiveSession`.** Session-level diagnostics attached
-  at `Backend::open` are otherwise invisible to canvas consumers (only surfaced
-  via `render()`'s `RenderResult`).
+- **`warnings` accessor on `LiveSession`.** The current compile's non-fatal
+  diagnostics (e.g. Typst font fallback) — set at open, refreshed by each
+  committed `apply`, swapped transactionally with the compile. Without the
+  accessor they are invisible to canvas consumers (only surfaced via
+  `render()`'s `RenderResult`).
 - **`regions()` render-free on the session; opt-in on one-shot renders.** The
   invariants are that geometry never composites (the raster is complete
   without it) and that the edit loop reads it without producing bytes — a

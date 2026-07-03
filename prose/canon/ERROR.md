@@ -4,7 +4,11 @@
 
 ## Types
 
-**`Severity`**: `Error` | `Warning` | `Note`
+**`Severity`**: `Error` | `Warning`. Fatality is this two-value ladder and
+nothing else: `Error` blocks the stage that emits it, `Warning` never does.
+There is no lint-level configuration and no warning-to-error promotion; an
+informational aside is a `hint` on the diagnostic it annotates, not a
+severity.
 
 **`Location`**: file name, line (1-indexed), column (1-indexed)
 
@@ -12,34 +16,60 @@
 
 **`ParseError`**: parsing-stage error enum — `InputTooLarge`, `InvalidStructure`, `EmptyInput`, `MissingQuill`, `InvalidQuillReference`, `YamlErrorWithLocation`; converts to `Diagnostic` via `to_diagnostic()`. The `InvalidQuillReference` case (`parse::invalid_quill_reference`) attaches the canonical `$quill` grammar — `quill_ref_hint()` — as the diagnostic hint. That hint is the single source of truth for the reference grammar: bindings surface it verbatim (e.g. WASM `Document.quillRefHint`) rather than re-stating the rule.
 
-**`RenderError`**: main rendering error enum. Every variant carries the same
-payload — a non-empty `diags: Vec<Diagnostic>` — so all consumers (and all
-language bindings) handle errors through one code path. The variant records
-only the *kind* of failure; `diagnostics()` borrows the vector and
-`into_diagnostics()` consumes the error into it. Variants:
-- `EngineCreation` — failed to create engine
-- `InvalidPayload` — malformed YAML in a card-yaml block (also wraps `ParseError`)
-- `CompilationFailed` — backend compilation failed
-- `FormatNotSupported` — requested output format not supported
-- `UnsupportedBackend` — backend not registered
-- `ValidationFailed` — field coercion/schema validation failure
-- `QuillConfig` — Quill.yaml configuration error
-- `QuillMismatch` — the document was rendered with a quill that does not satisfy its `$quill` reference (wrong name, or version outside the selector). Distinct from `ValidationFailed`: the document is well-formed, but paired with the wrong quill. See [VERSIONING.md](VERSIONING.md).
-- `ApplyUnsupported` — the backend's session does not support incremental `apply` (code `backend::apply_unsupported`). The default for a backend that does not override the session seam; both built-in backends override it.
+**`RenderError`**: the main rendering error — a struct carrying a non-empty
+`Vec<Diagnostic>` (`RenderError::new` / `from_diag`; `diagnostics()` borrows,
+`into_diagnostics()` consumes). There is no failure taxonomy beyond the
+diagnostics themselves: the machine-routable identity of a failure is each
+diagnostic's namespaced `code` (`parse::*`, `validation::*`, `quill::*`,
+`typst::*`, `pdfform::*`, `backend::*`, `engine::*`) — consumers route on
+codes, not on a type. Multi-problem stages (validation, quill config, backend
+compilation) carry several diagnostics so every problem reaches the caller in
+one pass. `Display` follows the count-based message rule shared with both
+bindings: the primary diagnostic's message for a single diagnostic, an
+`"<N> error(s): <first message>"` aggregate for more.
 
-`ValidationFailed`, `QuillConfig`, and `CompilationFailed` routinely carry
-several diagnostics so every problem reaches the caller in one pass; the
-remaining kinds are inherently single-diagnostic and carry a one-element
-vector.
+Notable codes: `quill::name_mismatch` / `quill::version_mismatch` — the
+document is well-formed but paired with the wrong quill (see
+[VERSIONING.md](VERSIONING.md)); `backend::apply_unsupported` — the default
+for a backend session that does not override the incremental-`apply` seam
+(both built-in backends override it); `engine::backend_not_found` — the
+quill's declared backend is not registered.
 
 **`RenderResult`**: successful result carrying artifacts, output format, and non-fatal `Vec<Diagnostic>` warnings
+
+## Warning flow
+
+Warnings travel the same `Diagnostic` currency as errors, on three producer
+families:
+
+- **Parse warnings** — `Document::from_markdown_with_warnings` (e.g. a `~~~`
+  opener missing its blank line). The CLI render and the WASM one-shot render
+  splice them into `RenderResult.warnings` ahead of any compile warnings.
+- **Validation warnings** — `Quill::validate(doc)` returns every
+  `validation::*` diagnostic, mixing severities; `validation::must_fill` and
+  the `$seed` checks are the non-fatal ones. This is the editor-facing
+  surface; the render pipeline zero-fills instead of warning on incomplete
+  documents.
+- **Compile warnings** — the Typst backend maps `typst::compile`'s non-fatal
+  diagnostics (font fallback, overfull pages, …) through the same span
+  resolution as errors. They are state of the session's current compile:
+  exposed via `LiveSession::warnings()` (the `SessionHandle::warnings` seam,
+  default empty), refreshed by each committed `apply` — a failed apply keeps
+  the last-good compile *and* its warnings — and appended to
+  `RenderResult.warnings` on every `render()`, including the one-shot
+  `open` → `render` path.
+
+Ordering in a merged `RenderResult.warnings` is pipeline order: parse
+warnings first, then compile warnings. No dedup — the families cannot
+overlap (parse warnings anchor `location` in the markdown source, compile
+warnings in Typst sources).
 
 ## Bindings Error Delegation
 
 Python and WASM bindings delegate to core types:
 
-- **Python**: `PyDiagnostic` wraps `Diagnostic`. Every raised exception is `QuillmarkError` (a single type; no subclasses per variant). Every exception carries a `diagnostics` list. Base hierarchy: `QuillmarkError → PyException`.
-- **WASM**: `WasmError` carries a single `diagnostics: Vec<Diagnostic>` (always non-empty). The thrown JS `Error` has a `.diagnostics` array attached and a `.message` derived from `diagnostics`: `diagnostics[0].message` for single-diagnostic errors, an aggregate `"<N> error(s): <first.message>"` summary whenever there is more than one diagnostic (any variant — compilation, validation, or config). Same shape regardless of underlying variant; consumers read `err.diagnostics[0]` for the primary diagnostic and iterate `err.diagnostics` for the rest. Parse failures (`Document.fromMarkdown`) carry the same shape — including the `parse::input_too_large` diagnostic for inputs over `MAX_INPUT_SIZE` (10 MB) and the various `EditError::*` variants for post-parse mutators.
+- **Python**: `PyDiagnostic` wraps `Diagnostic`. Every raised exception is `QuillmarkError` (a single type). Every exception carries a `diagnostics` list; `str(exc)` follows the shared count-based message rule.
+- **WASM**: `WasmError` carries a single `diagnostics: Vec<Diagnostic>` (always non-empty). The thrown JS `Error` has a `.diagnostics` array attached and a `.message` derived from `diagnostics` by the same count-based rule. Consumers read `err.diagnostics[0]` for the primary diagnostic and iterate `err.diagnostics` for the rest. Parse failures (`Document.fromMarkdown`) carry the same shape — including the `parse::input_too_large` diagnostic for inputs over `MAX_INPUT_SIZE` (10 MB) and the various `EditError::*` variants for post-parse mutators.
 
 ## Backend Error Mapping
 
@@ -109,6 +139,6 @@ Implementation: `crates/core/src/quill/validation.rs` (the `ValidationError`
 
 **Extended printing** (`Diagnostic::fmt_pretty_with_source()`): appends each cause in the source chain as `cause N: <message>`.
 
-**Consolidated printing**: `print_errors()` handles all `RenderError` variants.
+**Consolidated printing**: `print_errors()` pretty-prints every diagnostic a `RenderError` carries.
 
 **Machine-readable**: all diagnostic types implement `serde::Serialize`.

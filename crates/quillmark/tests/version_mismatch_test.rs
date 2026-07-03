@@ -3,7 +3,7 @@
 //! A document's `$quill: name@selector` reference is checked against the loaded
 //! quill at render time (and in `dry_run`). The document may be perfectly valid,
 //! but rendering it against the wrong quill — a different *name*, or a `version`
-//! outside the selector — is a footgun, so it is a hard [`RenderError::QuillMismatch`]
+//! outside the selector — is a footgun, so it is a hard error
 //! (`quill::name_mismatch` / `quill::version_mismatch`), never a warning.
 
 use quillmark::{Document, Quillmark};
@@ -48,12 +48,8 @@ fn render_ref(
     )
 }
 
-/// The single code carried by a `QuillMismatch` error (the check emits exactly one).
+/// The single code carried by a quill-mismatch error (the check emits exactly one).
 fn mismatch_code(err: &RenderError) -> Option<&str> {
-    assert!(
-        matches!(err, RenderError::QuillMismatch { .. }),
-        "expected RenderError::QuillMismatch, got: {err:?}"
-    );
     err.diagnostics().first().and_then(|d| d.code.as_deref())
 }
 

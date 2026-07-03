@@ -12,7 +12,7 @@
 
 use std::collections::HashSet;
 
-use quillmark::{OutputFormat, Quillmark, RenderError, RenderOptions};
+use quillmark::{OutputFormat, Quillmark, RenderOptions};
 use quillmark_fixtures::quills_path;
 
 #[test]
@@ -28,9 +28,7 @@ fn usaf_memo_regions_cover_body_signature_and_cards() {
     let session = match engine.open(&quill, &parsed) {
         // Font-less CI cannot exercise the renderer; skip rather than fail,
         // matching the convention in quiver_test.rs.
-        Err(RenderError::EngineCreation { diags })
-            if diags[0].message.contains("No fonts found") =>
-        {
+        Err(e) if e.diagnostics()[0].message.contains("No fonts found") => {
             eprintln!("skipping — no fonts available");
             return;
         }

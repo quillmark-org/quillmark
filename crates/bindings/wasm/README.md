@@ -268,14 +268,16 @@ on throw, every read keeps serving the last-good compile. Don't open a session
 per export, and don't re-open per edit — `apply` instead.
 
 ### `engine.render(quill, parsed, opts?)`
-Render a pre-parsed `Document` against `quill`. Throws `UnsupportedBackend` if
-no registered backend matches the quill's declared backend.
+Render a pre-parsed `Document` against `quill`. Throws an
+`engine::backend_not_found` error if no registered backend matches the quill's
+declared backend.
 
 ### `engine.open(quill, parsed)` + `session.render(opts?)`
 Open once, render all or selected pages (`opts.pages`).
 
 The session also exposes `pageCount`, `backendId`, `supportsCanvas`,
-`warnings` (session-level diagnostics attached at `open` time),
+`warnings` (non-fatal diagnostics of the current compile — set at `open`,
+refreshed by each committed `apply`),
 `apply(doc)` for in-place recompiles, `pageSize(page)`, and
 `paint(ctx, page, opts?)` for canvas previews. See below.
 
