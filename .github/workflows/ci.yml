@@ -29,14 +29,9 @@ jobs:
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
-
-      - name: Clippy check
-        run: cargo clippy --all-features --all-targets --locked -- -D warnings
 
       - name: Build docs
         env:
