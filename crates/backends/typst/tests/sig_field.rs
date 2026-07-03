@@ -553,15 +553,17 @@ fn form_field_value_binding_from_data() {
 /// keyed on that schema path (of any field type), each carrying page+geometry. A
 /// widget that binds no schema field has only a `/T` name — not a schema
 /// address — and surfaces nothing. A session-level query, not a render output.
+/// `field:` validates against the schema like `tagged`, so each binding below
+/// is a field the `usaf_memo` host fixture actually declares.
 #[test]
 fn form_field_regions_key_on_bound_schema_field() {
     let plate = r#"
 #import "@local/quillmark-helper:0.1.0": form-field
 #set page(width: 600pt, height: 400pt, margin: 50pt)
-#form-field("txt", type: "text", value: "hi", field: "f_txt")
-#form-field("chk", type: "checkbox", value: true, field: "f_chk")
-#form-field("cho", type: "choice", options: ("A", "B"), value: "B", field: "f_cho")
-#form-field("sig", type: "signature", field: "f_sig")
+#form-field("txt", type: "text", value: "hi", field: "subject")
+#form-field("chk", type: "checkbox", value: true, field: "dissemination")
+#form-field("cho", type: "choice", options: ("A", "B"), value: "B", field: "memo_style")
+#form-field("sig", type: "signature", field: "tag_line")
 #form-field("unbound", type: "text", value: "x")
 "#;
     let source = source_with_plate(plate);
@@ -573,7 +575,7 @@ fn form_field_regions_key_on_bound_schema_field() {
     let fields: std::collections::HashMap<&str, &quillmark_core::RenderedRegion> =
         regions.iter().map(|r| (r.field.as_str(), r)).collect();
 
-    for field in ["f_txt", "f_chk", "f_cho", "f_sig"] {
+    for field in ["subject", "dissemination", "memo_style", "tag_line"] {
         let r = fields
             .get(field)
             .unwrap_or_else(|| panic!("region keyed on bound schema field {field:?}"));

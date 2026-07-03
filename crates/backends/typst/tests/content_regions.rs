@@ -186,6 +186,58 @@ typst:
 }
 
 #[test]
+fn widget_and_tagged_content_both_surface_widget_ordered_first() {
+    // A field bound to both a `field:`-bound widget and a `tagged(..)`
+    // placement surfaces both (they route to the same field; a consumer
+    // groups by `field`), deterministically ordered widget-first — the
+    // contract documented on `SessionHandle::regions` and `TypstSession::regions`.
+    const YAML: &str = r#"
+quill:
+  name: widget_and_content
+  version: 0.1.0
+  backend: typst
+  description: widget-before-content ordering test
+main:
+  fields:
+    signature_block:
+      type: string
+      description: bound to both a widget and a tagged content placement
+typst:
+  plate_file: plate.typ
+"#;
+    const PLATE: &str = r#"
+#import "@local/quillmark-helper:0.1.0": data, tagged, signature-field
+#set page(width: 612pt, height: 792pt, margin: 72pt)
+
+#tagged("signature_block")[#data.signature_block]
+#signature-field("Signature", field: "signature_block")
+"#;
+    let data = serde_json::json!({ "signature_block": "FIRST M. LAST, Rank, USAF" });
+
+    let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
+    let regions = session.regions();
+    let matches: Vec<_> = regions
+        .iter()
+        .filter(|r| r.field == "signature_block")
+        .collect();
+    assert_eq!(
+        matches.len(),
+        2,
+        "a widget-bound field with tagged content surfaces both: {regions:?}"
+    );
+
+    // The widget is a fixed-size box (200pt wide by default); the tagged
+    // content region is the ink of the placed string, distinguishing which
+    // entry is which without relying on a `source` field the type doesn't
+    // carry.
+    assert_eq!(
+        matches[0].rect[2] - matches[0].rect[0],
+        200.0,
+        "the widget region sorts first: {regions:?}"
+    );
+}
+
+#[test]
 fn nested_same_field_tags_collapse_into_one_placement() {
     // A plate that wraps an already-auto-tagged verbatim value in an explicit
     // `tagged(..)` double-tags one placement; the scan depth-counts and emits
@@ -252,6 +304,77 @@ main:
     assert!(
         msg.contains("subjcet"),
         "the compile error names the bad path: {msg}"
+    );
+}
+
+#[test]
+fn tagged_scalar_index_path_fails_the_compile() {
+    // `field.N` is only ever a real address for a markdown[] field — the
+    // auto-tagger index-suffixes array elements and never a scalar — so an
+    // index suffix on a known scalar field must fail validation too, not just
+    // an unknown name.
+    const YAML: &str = r#"
+quill:
+  name: tagged_scalar_index
+  version: 0.1.0
+  backend: typst
+  description: tagged array-type validation test
+main:
+  fields:
+    subject:
+      type: string
+      description: a scalar field, not markdown[]
+typst:
+  plate_file: plate.typ
+"#;
+    const PLATE: &str = r#"
+#import "@local/quillmark-helper:0.1.0": data, tagged
+#tagged("subject.0")[#data.subject]
+"#;
+    let data = serde_json::json!({ "subject": "not an array" });
+
+    let err = TypstBackend
+        .open(&quill(YAML, PLATE), &data)
+        .err()
+        .expect("an index suffix on a scalar field must fail the compile");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("subject.0"),
+        "the compile error names the bad path: {msg}"
+    );
+}
+
+#[test]
+fn tagged_array_index_path_compiles_and_emits_region() {
+    // The positive counterpart: an index suffix on a genuine `markdown[]`
+    // field is a real address and must still validate.
+    const YAML: &str = r#"
+quill:
+  name: tagged_array_index
+  version: 0.1.0
+  backend: typst
+  description: tagged array-type validation positive test
+main:
+  fields:
+    refs:
+      type: array
+      items:
+        type: markdown
+      description: a markdown[] field
+typst:
+  plate_file: plate.typ
+"#;
+    const PLATE: &str = r#"
+#import "@local/quillmark-helper:0.1.0": data, tagged
+#tagged("refs.0")[#data.refs.at(0)]
+"#;
+    let data = serde_json::json!({ "refs": ["First reference."] });
+
+    let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
+    let regions = session.regions();
+    assert!(
+        regions.iter().any(|r| r.field == "refs.0"),
+        "a tagged markdown[] index path compiles and surfaces a region: {regions:?}"
     );
 }
 
@@ -399,7 +522,8 @@ fn form_field_region_needs_a_schema_binding() {
     // Only a schema-addressable widget surfaces a region. `field:` keys it on a
     // schema path (so a signature widget named "Signature" routes to
     // `signature_block`); a widget that binds none has only a `/T` name and
-    // exposes nothing.
+    // exposes nothing. `field:` validates against the schema like `tagged`, so
+    // `signature_block` must be a declared field.
     const YAML: &str = r#"
 quill:
   name: field_binding
@@ -409,7 +533,13 @@ quill:
 typst:
   plate_file: plate.typ
 main:
-  fields: {}
+  fields:
+    signature_block:
+      type: array
+      items:
+        type: string
+      default: []
+      description: the signer's name and title
 "#;
     const PLATE: &str = r#"
 #import "@local/quillmark-helper:0.1.0": form-field, signature-field
