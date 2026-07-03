@@ -1,12 +1,12 @@
-//! Region coverage on the flagship `usaf_memo` quill (#783).
+//! Region coverage on the flagship `usaf_memo` quill.
 //!
 //! The memo package's `render-body` rebuilds body paragraphs through a state
 //! buffer (AFH 33-337 auto-numbering), which drops value-level auto-tag
-//! markers — `$body` was the field a user most wants to click and produced no
-//! region. The plate now brackets the package *output* with `tagged(..)` and
-//! binds the signature widgets to schema paths, so the cross-navigation
-//! surface is live on the shipped catalog. This renders the real plate
-//! end-to-end and pins that coverage, plus the one-shot regions sidecar.
+//! markers, so the plate brackets the package's *output* with `tagged(..)`
+//! and binds the signature widgets to schema paths — keeping `$body` and
+//! `signature_block` addressable for cross-navigation across the shipped
+//! catalog. This renders the real plate end-to-end and pins that coverage,
+//! plus the one-shot regions sidecar.
 
 #![cfg(feature = "typst")]
 
