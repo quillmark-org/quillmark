@@ -65,6 +65,9 @@ pub struct TypstSession {
     /// Per-page content fingerprints of the live compile; diffed against the
     /// next compile's to produce `ChangeSet::dirty_pages`.
     page_hashes: Vec<u128>,
+    /// Typst's non-fatal warnings for the live compile, swapped with it on
+    /// each committed `apply`.
+    compile_warnings: Vec<Diagnostic>,
 }
 
 /// Per-page fingerprints of *visible* content, diffed across compiles for
@@ -185,15 +188,15 @@ impl SessionHandle for TypstSession {
     /// keeps fonts/packages/assets parsed; the helper `lib.typ` is swapped via
     /// `Source::replace` (incremental reparse), and `comemo` reuses every
     /// memoized result the edit did not reach. Transactional: the live
-    /// document, placements, and hashes swap together only after the compile
-    /// *and* placement extraction succeed — on `Err` every read keeps serving
-    /// the last-good compile (the world may hold the failed source; the next
-    /// `apply` overwrites it).
+    /// document, placements, hashes, and compile warnings swap together only
+    /// after the compile *and* placement extraction succeed — on `Err` every
+    /// read keeps serving the last-good compile and its warnings (the world
+    /// may hold the failed source; the next `apply` overwrites it).
     fn apply(&mut self, json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
         let json_str = transformed_json_str(&self.transform_schema, json_data)?;
         self.world.inject_helper_package(&json_str);
 
-        let document = compile::compile_document(&self.world)?;
+        let (document, compile_warnings) = compile::compile_document(&self.world)?;
         let field_placements = overlay::extract(&document)?;
         let new_hashes = page_hashes(&document);
 
@@ -205,11 +208,17 @@ impl SessionHandle for TypstSession {
         self.field_placements = field_placements;
         self.page_count = new_hashes.len();
         self.page_hashes = new_hashes;
+        self.compile_warnings = compile_warnings;
 
         Ok(ChangeSet {
             page_count: self.page_count,
             dirty_pages,
         })
+    }
+
+    /// Typst's non-fatal warnings for the current compile.
+    fn warnings(&self) -> &[Diagnostic] {
+        &self.compile_warnings
     }
 
     /// Page dimensions in Typst points (1 pt = 1/72 inch). `None` if `page` is
@@ -295,7 +304,7 @@ impl Backend for TypstBackend {
                     .with_source(e.as_ref()),
                 )
             })?;
-        let document = compile::compile_document(&world)?;
+        let (document, compile_warnings) = compile::compile_document(&world)?;
         let page_count = document.pages().len();
         let field_placements = overlay::extract(&document)?;
         let hashes = page_hashes(&document);
@@ -306,6 +315,7 @@ impl Backend for TypstBackend {
             field_placements,
             transform_schema,
             page_hashes: hashes,
+            compile_warnings,
         };
         Ok(LiveSession::new(Box::new(session)))
     }

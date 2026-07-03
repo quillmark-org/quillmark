@@ -1,9 +1,10 @@
 //! Compiles a plate plus injected JSON data into a Typst paged document, then
 //! renders selected pages to output bytes (PDF, SVG, or PNG).
 //!
-//! Crate-internal entry points: [`compile_document`] (world → paged document)
-//! and [`render_document_pages`] (paged document → artifacts). The public
-//! surface is the [`crate::TypstBackend`] `Backend` implementation.
+//! Crate-internal entry points: [`compile_document`] (world → paged document
+//! plus compile warnings) and [`render_document_pages`] (paged document →
+//! artifacts). The public surface is the [`crate::TypstBackend`] `Backend`
+//! implementation.
 
 use typst::diag::Warned;
 use typst::utils::Scalar;
@@ -39,20 +40,21 @@ fn render_options(pixel_per_pt: f32) -> RenderOptions {
 /// live document's recompile reuses, shallow enough to bound a long session.
 const COMEMO_EVICT_MAX_AGE: usize = 10;
 
-pub(crate) fn compile_document(world: &QuillWorld) -> Result<PagedDocument, RenderError> {
+/// Compile the world, returning the paged document together with Typst's
+/// non-fatal compile warnings (font fallback, overfull pages, …) mapped into
+/// [`Diagnostic`]s with resolved spans — the boundary carries everything
+/// `typst::compile` hands back. On failure only the errors are returned; the
+/// failed compile's warnings die with it (the session keeps its last-good
+/// compile and that compile's warnings).
+pub(crate) fn compile_document(
+    world: &QuillWorld,
+) -> Result<(PagedDocument, Vec<Diagnostic>), RenderError> {
     let Warned { output, warnings } = typst::compile::<PagedDocument>(world);
     comemo::evict(COMEMO_EVICT_MAX_AGE);
 
-    for warning in warnings {
-        eprintln!("Warning: {}", warning.message);
-    }
-
     match output {
-        Ok(doc) => Ok(doc),
-        Err(errors) => {
-            let diagnostics = map_typst_errors(&errors, world);
-            Err(RenderError::new(diagnostics))
-        }
+        Ok(doc) => Ok((doc, map_typst_errors(&warnings, world))),
+        Err(errors) => Err(RenderError::new(map_typst_errors(&errors, world))),
     }
 }
 
