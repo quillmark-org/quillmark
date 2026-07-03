@@ -1,6 +1,52 @@
 // Auto-generated quillmark-helper package
 // Version: {version}
 
+/// Raw document JSON, including the `__meta__` sentinel the Rust backend
+/// injects. Parsed once; `data` strips the sentinel before plates see it.
+/// Must be defined before `form-field`/`tagged` — Typst does not hoist `#let`
+/// bindings, and both validate a `field:`/`field` path against `_qm-meta`.
+#let _qm-raw = json(bytes("{escaped_json}"))
+
+/// Backend-injected metadata: content/date field lists driving the auto
+/// passes, plus the schema address tables (`fields`, `card_fields`,
+/// `array_fields`, `card_array_fields`) that validate `tagged`/`form-field`
+/// paths.
+#let _qm-meta = _qm-raw.at("__meta__", default: (:))
+
+/// Whether `path` parses against the schema address tables: a top-level field
+/// (`subject`), an array element (`refs.2`), or a card address
+/// (`$cards.<kind>.<n>.<field>`, optional `.<i>` element suffix). An indexed
+/// suffix (`field.N`) is only a real address for an array-typed field — any
+/// array, matching the pdfform resolver's grammar — so it validates against
+/// `array_fields`/`card_array_fields`, not the broader `fields`/`card_fields`
+/// name tables, rejecting `subject.0` on a scalar `subject` even though the
+/// name itself is known: a scalar has no element for the address to resolve
+/// to. Permissive when the tables are absent (no `__meta__`) — validation
+/// then has nothing to check against.
+#let _qm-known-path(path) = {
+  let fields = _qm-meta.at("fields", default: ())
+  let card-fields = _qm-meta.at("card_fields", default: (:))
+  if fields.len() == 0 and card-fields.len() == 0 { return true }
+  let array-fields = _qm-meta.at("array_fields", default: ())
+  let card-array-fields = _qm-meta.at("card_array_fields", default: (:))
+  let is-index(s) = s.match(regex("^[0-9]+$")) != none
+  let parts = path.split(".")
+  if parts.at(0) == "$cards" {
+    if parts.len() < 4 or parts.len() > 5 { return false }
+    let kind = parts.at(1)
+    if not (kind in card-fields) { return false }
+    if not is-index(parts.at(2)) { return false }
+    let field = parts.at(3)
+    if parts.len() == 5 {
+      return field in card-array-fields.at(kind, default: ()) and is-index(parts.at(4))
+    }
+    return field in card-fields.at(kind)
+  }
+  if parts.len() == 1 { return path in fields }
+  if parts.len() == 2 { return parts.at(0) in array-fields and is-index(parts.at(1)) }
+  false
+}
+
 /// Emit an unsigned form field. PDF: a clickable AcroForm widget here (a text
 /// box, checkbox, dropdown, or signature). SVG/PNG: same invisible layout
 /// space.
@@ -50,6 +96,8 @@
     message: "form-field: type must be one of text/checkbox/choice/signature, got " + repr(type))
   assert(field == none or std.type(field) == str,
     message: "form-field: field must be a string or none, got " + repr(std.type(field)))
+  assert(field == none or _qm-known-path(field),
+    message: "form-field: " + repr(field) + " is not a schema field address; expected a field name, an array element like \"refs.2\", or a card path composed from the card's $path prefix")
   let abs-pt(field, l) = {
     let r = repr(l)
     assert(not (r.contains("em") or r.ends-with("%")),
@@ -102,15 +150,6 @@
   datetime(year: year, month: month, day: day)
 }
 
-/// Raw document JSON, including the `__meta__` sentinel the Rust backend
-/// injects. Parsed once; `data` strips the sentinel before plates see it.
-#let _qm-raw = json(bytes("{escaped_json}"))
-
-/// Backend-injected metadata: content/date field lists driving the auto
-/// passes, plus the schema address tables (`fields`, `card_fields`) that
-/// validate `tagged` paths.
-#let _qm-meta = _qm-raw.at("__meta__", default: (:))
-
 // Region tagging: wrap content between two zero-size `<__qm_region__>`
 // metadata markers carrying its schema-field `path`; the backend reads their
 // frame positions back into a region rect (`session.regions()`). Zero-size is
@@ -125,30 +164,6 @@
   [#metadata((kind: "qm-region", role: "end", field: path)) <__qm_region__>]
 }
 
-/// Whether `path` parses against the schema address tables: a top-level field
-/// (`subject`), a markdown[] element (`refs.2`), or a card address
-/// (`$cards.<kind>.<n>.<field>`, optional `.<i>` element suffix). Permissive
-/// when the tables are absent (no `__meta__`) — validation then has nothing to
-/// check against.
-#let _qm-known-path(path) = {
-  let fields = _qm-meta.at("fields", default: ())
-  let card-fields = _qm-meta.at("card_fields", default: (:))
-  if fields.len() == 0 and card-fields.len() == 0 { return true }
-  let is-index(s) = s.match(regex("^[0-9]+$")) != none
-  let parts = path.split(".")
-  if parts.at(0) == "$cards" {
-    if parts.len() < 4 or parts.len() > 5 { return false }
-    if not (parts.at(1) in card-fields) { return false }
-    if not is-index(parts.at(2)) { return false }
-    let known = parts.at(3) in card-fields.at(parts.at(1))
-    if parts.len() == 5 { return known and is-index(parts.at(4)) }
-    return known
-  }
-  if parts.len() == 1 { return path in fields }
-  if parts.len() == 2 { return parts.at(0) in fields and is-index(parts.at(1)) }
-  false
-}
-
 /// Tag `body` as the placement of schema field `field`, so it surfaces a
 /// region (`session.regions()`) at whatever geometry it lays out to. The
 /// explicit counterpart of content auto-tagging, for the two cases auto-tags
@@ -160,7 +175,7 @@
 /// draws, package chrome included — where an auto-tag covers the field value's
 /// own ink.
 ///
-/// `field` must be a schema address: a field name (`"subject"`), a markdown[]
+/// `field` must be a schema address: a field name (`"subject"`), an array
 /// element (`"refs.2"`), or a card path (`"$cards.indorsement.1.from"`).
 /// Compose card paths from the card's injected `$path` prefix —
 /// `tagged(card.at("$path") + "from")[..]` — rather than hand-writing the
@@ -170,7 +185,7 @@
   assert(std.type(field) == str,
     message: "tagged: field must be a string, got " + repr(std.type(field)))
   assert(_qm-known-path(field),
-    message: "tagged: " + repr(field) + " is not a schema field address; expected a field name, a markdown[] element like \"refs.2\", or a card path composed from the card's $path prefix")
+    message: "tagged: " + repr(field) + " is not a schema field address; expected a field name, an array element like \"refs.2\", or a card path composed from the card's $path prefix")
   _qm-tag(field, body)
 }
 

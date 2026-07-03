@@ -197,12 +197,10 @@ fn walk(frame: &Frame, ts: Transform, page_idx: usize, scan: &mut Scan) {
                         Role::Start => {
                             let next_instance = scan.instances.len();
                             let entry =
-                                scan.open
-                                    .entry(field.clone())
-                                    .or_insert_with(|| OpenField {
-                                        instance: next_instance,
-                                        depth: 0,
-                                    });
+                                scan.open.entry(field.clone()).or_insert_with(|| OpenField {
+                                    instance: next_instance,
+                                    depth: 0,
+                                });
                             if entry.depth == 0 {
                                 scan.instances.push(field.clone());
                             }

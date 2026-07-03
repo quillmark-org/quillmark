@@ -39,6 +39,19 @@ import type {
 // One mutual-assignability pair per hoisted type: typst → canonical and
 // canonical → typst. `void` the bindings so "declared but never read" is not an
 // error under noUnusedLocals.
+//
+// Mutual assignability alone cannot catch a missing OPTIONAL member: for an
+// all-optional interface pair (RenderOptions, PaintOptions) both assignments
+// compile even when one side lacks a member entirely. The `KeysEqual`
+// assertions close that hole — `true` only when both sides declare exactly
+// the same property names.
+
+type KeysEqual<A, B> = [Exclude<keyof A, keyof B>, Exclude<keyof B, keyof A>] extends [
+	never,
+	never
+]
+	? true
+	: false;
 
 const renderResultA: CanonicalRenderResult = {} as TypstRenderResult;
 const renderResultB: TypstRenderResult = {} as CanonicalRenderResult;
@@ -79,3 +92,18 @@ const fieldRegionA: CanonicalFieldRegion = {} as TypstFieldRegion;
 const fieldRegionB: TypstFieldRegion = {} as CanonicalFieldRegion;
 void fieldRegionA;
 void fieldRegionB;
+
+const renderResultKeys: KeysEqual<CanonicalRenderResult, TypstRenderResult> = true;
+const renderOptionsKeys: KeysEqual<CanonicalRenderOptions, TypstRenderOptions> = true;
+const artifactKeys: KeysEqual<CanonicalArtifact, TypstArtifact> = true;
+const pageSizeKeys: KeysEqual<CanonicalPageSize, TypstPageSize> = true;
+const paintOptionsKeys: KeysEqual<CanonicalPaintOptions, TypstPaintOptions> = true;
+const paintResultKeys: KeysEqual<CanonicalPaintResult, TypstPaintResult> = true;
+const fieldRegionKeys: KeysEqual<CanonicalFieldRegion, TypstFieldRegion> = true;
+void renderResultKeys;
+void renderOptionsKeys;
+void artifactKeys;
+void pageSizeKeys;
+void paintOptionsKeys;
+void paintResultKeys;
+void fieldRegionKeys;

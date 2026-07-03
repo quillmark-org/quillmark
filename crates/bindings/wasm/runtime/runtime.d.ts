@@ -84,6 +84,13 @@ export interface RenderOptions {
 	ppi?: number;
 	pages?: number[];
 	producer?: string;
+	/**
+	 * Populate {@link RenderResult.regions} with the schema-field geometry
+	 * sidecar (the same entries {@link LiveSession.regions} serves), for
+	 * consumers without a live session — e.g. overlays over a one-shot SVG
+	 * export. Defaults to `false`: exports pay no introspection cost.
+	 */
+	regions?: boolean;
 }
 
 /**
@@ -136,6 +143,14 @@ export interface RenderResult {
 	warnings: Diagnostic[];
 	outputFormat: OutputFormat;
 	renderTimeMs: number;
+	/**
+	 * Schema-field geometry sidecar — populated only when
+	 * {@link RenderOptions.regions} requested it; empty otherwise. The same
+	 * entries {@link LiveSession.regions} serves, for consumers without a live
+	 * session. Page indices are document-space even under a `pages` subset
+	 * render.
+	 */
+	regions: FieldRegion[];
 }
 
 /** Canonical contract every backend build must satisfy. The emittable formats. */
@@ -287,11 +302,17 @@ export declare class LiveSession {
 	apply(doc: Document): ChangeSet;
 	render(options?: RenderOptions): RenderResult;
 	/**
-	 * Schema-field geometry for this compiled session — one {@link FieldRegion}
-	 * per schema-bound field, keyed on its quill schema field path. A
-	 * session-level query: no render, no byte artifact. Read it to place field
-	 * overlays / cross-navigation over a `paint`-ed canvas. Empty for backends
-	 * that place no schema fields.
+	 * Schema-field geometry for this compiled session, keyed on quill schema
+	 * field path. A session-level query: no render, no byte artifact. Read it
+	 * to place field overlays / cross-navigation over a `paint`-ed canvas.
+	 * Empty for backends that place no schema fields.
+	 *
+	 * `field` is **not** unique: this returns one {@link FieldRegion} per
+	 * (placement, page fragment). A field placed at several sites yields one
+	 * region each; a body breaking across pages yields one fragment per page
+	 * it touches (so a highlight covers continuation pages); tagged content
+	 * plus a `field:`-bound widget yields both, widget ordered first. Group by
+	 * `field` — every entry routes to that field.
 	 */
 	regions(): FieldRegion[];
 	/** Page geometry in points (1/72″). Report-only; the painter sizes the canvas. */

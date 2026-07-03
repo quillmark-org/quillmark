@@ -553,8 +553,34 @@ fn form_field_value_binding_from_data() {
 /// keyed on that schema path (of any field type), each carrying page+geometry. A
 /// widget that binds no schema field has only a `/T` name — not a schema
 /// address — and surfaces nothing. A session-level query, not a render output.
+/// `field:` validates against the schema like `tagged`, so the test owns its
+/// schema (declaring every bound field) rather than borrowing the host
+/// fixture's field inventory — a fixture edit cannot break a widget test.
 #[test]
 fn form_field_regions_key_on_bound_schema_field() {
+    const YAML: &str = r#"
+quill:
+  name: widget_regions
+  version: 0.1.0
+  backend: typst
+  description: form-field region binding test
+typst:
+  plate_file: plate.typ
+main:
+  fields:
+    f_txt:
+      type: string
+      description: text widget binding
+    f_chk:
+      type: boolean
+      description: checkbox widget binding
+    f_cho:
+      type: string
+      description: choice widget binding
+    f_sig:
+      type: string
+      description: signature widget binding
+"#;
     let plate = r#"
 #import "@local/quillmark-helper:0.1.0": form-field
 #set page(width: 600pt, height: 400pt, margin: 50pt)
@@ -564,7 +590,20 @@ fn form_field_regions_key_on_bound_schema_field() {
 #form-field("sig", type: "signature", field: "f_sig")
 #form-field("unbound", type: "text", value: "x")
 "#;
-    let source = source_with_plate(plate);
+    let mut files = HashMap::new();
+    files.insert(
+        "Quill.yaml".to_string(),
+        FileTreeNode::File {
+            contents: YAML.as_bytes().to_vec(),
+        },
+    );
+    files.insert(
+        "plate.typ".to_string(),
+        FileTreeNode::File {
+            contents: plate.as_bytes().to_vec(),
+        },
+    );
+    let source = Quill::from_tree(FileTreeNode::Directory { files }).expect("load quill");
     let session = TypstBackend
         .open(&source, &serde_json::json!({}))
         .expect("open");

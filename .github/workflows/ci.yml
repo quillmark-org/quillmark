@@ -97,8 +97,13 @@ jobs:
             pkg
           # Namespaced cache key: never share artifacts with the release
           # workflow, which builds with the size-optimized wasm-release
-          # profile and publishes pkg/ to npm.
-          key: wasm-ci-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'crates/**/*.rs') }}
+          # profile and publishes pkg/ to npm. The key hashes every input
+          # baked into pkg/, not just Rust sources — the runtime sidecar and
+          # package.json template that build-wasm.sh copies in, plus the
+          # helper template and fonts embedded via include_str!/include_bytes!
+          # — so an edit to any of them rebuilds instead of serving a stale
+          # pkg/ to vitest and the typecheck drift guard.
+          key: wasm-ci-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'crates/**/*.rs', 'crates/bindings/wasm/runtime/**', 'crates/bindings/wasm/package.template.json', 'crates/backends/typst/src/lib.typ.template', 'crates/backends/typst/src/fonts/**', 'scripts/build-wasm.sh') }}
 
       - name: Install wasm-bindgen-cli
         if: steps.wasm-cache.outputs.cache-hit != 'true'
@@ -117,4 +122,8 @@ jobs:
       - name: Test WASM
         working-directory: crates/bindings/wasm
         run: npx vitest run
+
+      - name: Typecheck WASM (canonical runtime.d.ts drift guard)
+        working-directory: crates/bindings/wasm
+        run: npm run typecheck
 
