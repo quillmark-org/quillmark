@@ -17,6 +17,8 @@ mod extract;
 mod region_scan;
 #[cfg(test)]
 mod span_scan_spike;
+#[cfg(test)]
+mod group_label_scan_spike;
 
 /// Regions for auto-tagged content fields (markdown bodies), read from the
 /// laid-out frame tree and keyed on the schema path. See [`region_scan`].
