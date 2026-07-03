@@ -10,15 +10,25 @@
 //! field → focus it in the editor, or highlight the page rectangle for the
 //! focused field.
 //!
-//! Two producers feed regions, both keyed on the schema path:
+//! Three producers feed regions, all keyed on the schema path:
 //!
 //! - **Content fields** (a markdown body) auto-tag from their content — the
-//!   Typst eval site brackets each one with its schema address, so the key is
-//!   carried by construction with no plate-author effort. Two cases produce no
-//!   region: a computed scalar (`data.from + ", " + rank`) cannot be tagged at
-//!   all (a string has no label), and a field that is blank or draws nothing
-//!   (an empty or whitespace-only body) is tagged but has no inked extent to
-//!   bound — present-but-empty is not the same as placed.
+//!   Typst eval site brackets each one's *value* with its schema address, so
+//!   the key is carried by construction when the plate places the value
+//!   verbatim. Three cases produce no region: a computed scalar (`data.from +
+//!   ", " + rank`) cannot be tagged at all (a string has no label); a field
+//!   that is blank or draws nothing (an empty or whitespace-only body) is
+//!   tagged but has no inked extent to bound — present-but-empty is not the
+//!   same as placed; and a value passed through a package that **rebuilds its
+//!   content** (a `show`-rule pass that captures paragraphs into a state
+//!   buffer and re-emits them) loses the markers in the reconstruction — the
+//!   auto-tag contract is *content placed verbatim*, not arbitrary Typst.
+//! - **Explicit `tagged(field)[..]` placements** bracket whatever a plate
+//!   places at that site — the recovery for both auto-tag gaps: a scalar
+//!   becomes taggable as content at its placement site, and markers wrapped
+//!   *around* a package call's output survive whatever the package does
+//!   internally. The region covers the ink of the placement (package chrome
+//!   included), where an auto-tag covers the value's own ink.
 //! - **Form-field widgets** carry a schema path explicitly: pdfform binds it
 //!   from the form mapping; a Typst `form-field` binds it from its `field:`
 //!   argument. A widget that binds none produces **no** region — its backend
@@ -26,34 +36,39 @@
 //!   nothing for a consumer to route to. Only schema-addressable fields surface
 //!   a region.
 //!
-//! **One region per logical field.** A field can arise from more than one
-//! source — a content auto-tag *and* a `field:`-bound widget — or as several
-//! page-fragments of a body that breaks across pages. [`LiveSession::regions`](crate::LiveSession::regions)
-//! collapses these to one entry per `field`: a bound widget wins over a content
-//! tag (the explicit binding is the author's deliberate mapping), and a
-//! page-spanning body keeps the first page it occupies as its anchor. A consumer
-//! looks a field up and gets exactly one rectangle.
+//! **One region per (placement, page fragment).** A field placed at two sites
+//! surfaces two independent regions — a spanning union would claim the ink of
+//! whatever sits between them — and a body that breaks across pages surfaces
+//! one fragment per page it touches, so highlighting a focused field covers
+//! its continuation pages. A field arising from both tagged content and a
+//! bound widget surfaces both (overlapping rects that route to the same
+//! field). [`LiveSession::regions`](crate::LiveSession::regions) passes the
+//! backend's entries through; consumers group by `field`. Nested markers for
+//! the same field collapse into their outer placement — double-tagging one
+//! placement is not placing it twice.
 //!
-//! Regions are a session-level query, not a render output: the geometry is a
-//! property of the current compile, re-read from the session per edit without
-//! producing any byte artifact. Only the interactive-preview path wants it (to
-//! lay out overlays over a `paint`-ed canvas); a one-shot byte render
-//! (PDF/PNG/SVG) never does. They are an overlay sidecar, never a compositing
-//! input: both canvas backends hand back a complete page raster, so nothing
-//! about the picture depends on reading a region. Empty for backends that place
-//! no schema fields.
+//! Regions are primarily a session-level query: the geometry is a property of
+//! the current compile, re-read from the session per edit without producing
+//! any byte artifact — the interactive-preview path (overlays over a
+//! `paint`-ed canvas) reads it that way. A one-shot byte render carries the
+//! same sidecar only on request ([`RenderOptions::regions`](crate::RenderOptions))
+//! for consumers without a live session (static SVG overlays, PDF
+//! post-processing, CI coverage probes). Either way regions are an overlay
+//! sidecar, never a compositing input: every canvas backend hands back a
+//! complete page raster, so nothing about the picture depends on reading a
+//! region. Empty for backends that place no schema fields.
 
-/// One schema field's placement on a rendered page.
+/// One schema field placement's extent on a rendered page.
 ///
 /// `rect` is `[x0, y0, x1, y1]` in PDF points with a **bottom-left** origin —
 /// the same final geometry the stamp spine writes to the widget `/Rect`, so the
 /// region and the rendered field describe the identical box.
 ///
-/// `field` is unique within the `Vec` that [`LiveSession::regions`](crate::LiveSession::regions) returns —
-/// one region per logical schema field. (A backend's
-/// [`SessionHandle::regions`](crate::session::SessionHandle::regions) may emit a
-/// field more than once in precedence order; the session wrapper keeps the
-/// first.)
+/// `field` is **not** unique within the `Vec` that
+/// [`LiveSession::regions`](crate::LiveSession::regions) returns: a field
+/// placed at several sites, breaking across pages, or arising from both
+/// tagged content and a bound widget yields one entry per (placement, page
+/// fragment). Consumers group by `field`; every entry routes to that field.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderedRegion {

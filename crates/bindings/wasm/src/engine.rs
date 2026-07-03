@@ -267,6 +267,7 @@ impl Quillmark {
             warnings,
             output_format: result.output_format.into(),
             render_time_ms: now_ms() - start,
+            regions: result.regions.into_iter().map(Into::into).collect(),
         })
     }
 
@@ -1411,14 +1412,16 @@ impl LiveSession {
             warnings: result.warnings.into_iter().map(Into::into).collect(),
             output_format: result.output_format.into(),
             render_time_ms: now_ms() - start,
+            regions: result.regions.into_iter().map(Into::into).collect(),
         })
     }
 
     /// Schema-field geometry for this compiled session — one region per
-    /// schema-bound field, keyed on its quill schema field path. A session-level
-    /// query: no render, no byte artifact. An interactive preview reads it to
-    /// place field overlays / cross-navigation over a `paint`-ed canvas. Empty
-    /// for backends that place no schema fields.
+    /// (placement, page fragment), keyed on the quill schema field path; a
+    /// field may appear more than once (group by `field`, see `FieldRegion`).
+    /// A session-level query: no render, no byte artifact. An interactive
+    /// preview reads it to place field overlays / cross-navigation over a
+    /// `paint`-ed canvas. Empty for backends that place no schema fields.
     #[wasm_bindgen(js_name = regions, unchecked_return_type = "FieldRegion[]")]
     pub fn regions(&self) -> Result<JsValue, JsValue> {
         let regions: Vec<FieldRegion> = self.inner.regions().into_iter().map(Into::into).collect();

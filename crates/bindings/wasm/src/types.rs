@@ -202,6 +202,11 @@ pub struct RenderResult {
     pub warnings: Vec<Diagnostic>,
     pub output_format: OutputFormat,
     pub render_time_ms: f64,
+    /// Schema-field geometry sidecar — populated only when
+    /// `RenderOptions.regions` requested it; empty otherwise. The same entries
+    /// `LiveSession.regions()` serves, for consumers without a live session.
+    /// Page indices are document-space even under a `pages` subset render.
+    pub regions: Vec<FieldRegion>,
 }
 
 /// What a committed `LiveSession.apply` changed. `dirtyPages` lists the pages
@@ -218,18 +223,18 @@ pub struct ChangeSet {
 }
 
 /// A rendered field region: the quill schema field address plus its geometry on
-/// the page. Emitted for schema-bound fields — auto-tagged content (markdown
-/// bodies) and form-field widgets (pdfform AcroForm, Typst `form-field`).
-/// Consumers use it to map between a place on the page and a field in the editor
-/// — click a rendered field to focus it, or highlight the page rectangle for the
-/// focused field. Geometry only: the raster is already complete, so a region is
-/// never a compositing input.
+/// the page. Emitted for schema-bound fields — marker-tagged content (auto-tagged
+/// markdown bodies and explicit `tagged(..)` placements) and form-field widgets
+/// (pdfform AcroForm, Typst `form-field`). Consumers use it to map between a
+/// place on the page and a field in the editor — click a rendered field to focus
+/// it, or highlight the page rectangle for the focused field. Geometry only: the
+/// raster is already complete, so a region is never a compositing input.
 ///
-/// `field` is unique: `regions()` returns one entry per logical schema field. A
-/// field that would otherwise arise from several page-fragments, or from both a
-/// content auto-tag and a `field:`-bound widget, is collapsed to a single region
-/// by the session (the bound widget wins; a page-spanning body anchors to its
-/// first page).
+/// `field` is **not** unique: `regions()` returns one entry per (placement,
+/// page fragment). A field placed at several sites yields one region each; a
+/// body breaking across pages yields one fragment per page it touches (so a
+/// highlight covers continuation pages); tagged content plus a `field:`-bound
+/// widget yields both. Group by `field` — every entry routes to that field.
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
@@ -281,6 +286,14 @@ pub struct RenderOptions {
     /// the default (`Quillmark <version>`). Applies to PDF output only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub producer: Option<String>,
+    /// Populate `RenderResult.regions` with the schema-field geometry sidecar
+    /// (the same entries `LiveSession.regions()` serves), for consumers
+    /// without a live session — e.g. overlays over a one-shot SVG export.
+    /// Defaults to `false`: exports pay no introspection cost. The sidecar
+    /// always describes the whole document — page indices are document-space
+    /// even when `pages` selects a subset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub regions: Option<bool>,
 }
 
 #[cfg(any(feature = "typst", feature = "pdfform"))]
@@ -291,6 +304,7 @@ impl Default for RenderOptions {
             ppi: None,
             pages: None,
             producer: None,
+            regions: None,
         }
     }
 }
@@ -303,6 +317,7 @@ impl From<RenderOptions> for quillmark_core::RenderOptions {
             ppi: opts.ppi,
             pages: opts.pages,
             producer: opts.producer,
+            regions: opts.regions.unwrap_or(false),
         }
     }
 }
@@ -423,6 +438,7 @@ mod tests {
             ppi: None,
             pages: None,
             producer: None,
+            regions: None,
         };
         let json = serde_json::to_string(&options).unwrap();
         assert!(json.contains("\"format\":\"pdf\""));

@@ -60,6 +60,11 @@ mod tests {
         assert!(!lib.contains("#let parse-date(s)"));
         assert!(lib.contains("meta.date_fields"));
         assert!(lib.contains("meta.card_date_fields"));
+        // Public explicit-tagging surface: `tagged` (validated) over the
+        // private `_qm-tag` emitter; cards carry their `$path` prefix.
+        assert!(lib.contains("#let tagged(field, body)"));
+        assert!(lib.contains("#let _qm-tag(path, body)"));
+        assert!(lib.contains("card.insert(\"$path\", prefix)"));
     }
 
     #[test]

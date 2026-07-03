@@ -34,7 +34,8 @@ impl PyQuillmark {
     /// this engine. The default `output_format` falls back to the backend's
     /// first supported format. Raises `QuillmarkError` (`UnsupportedBackend`)
     /// when the backend is not registered. Mirrors WASM `Engine.render`.
-    #[pyo3(signature = (quill, doc, format=None, ppi=None, pages=None, producer=None))]
+    #[pyo3(signature = (quill, doc, format=None, ppi=None, pages=None, producer=None, regions=false))]
+    #[allow(clippy::too_many_arguments)] // kwargs mirror RenderOptions 1:1; the signature IS the Python API
     fn render(
         &self,
         quill: &PyQuill,
@@ -43,12 +44,14 @@ impl PyQuillmark {
         ppi: Option<f32>,
         pages: Option<Vec<usize>>,
         producer: Option<String>,
+        regions: bool,
     ) -> PyResult<PyRenderResult> {
         let opts = quillmark_core::RenderOptions {
             output_format: format.map(OutputFormat::from),
             ppi,
             pages,
             producer,
+            regions,
         };
         let start = Instant::now();
         let mut result = self
@@ -769,6 +772,26 @@ impl PyRenderResult {
     #[getter]
     fn render_time_ms(&self) -> f64 {
         self.render_time_ms
+    }
+
+    /// Schema-field geometry sidecar — populated only when `render(...,
+    /// regions=True)` requested it; empty otherwise. One dict per (placement,
+    /// page fragment): `{"field": str, "page": int, "rect": [x0, y0, x1, y1]}`
+    /// with rect in PDF points, bottom-left origin, page indices
+    /// document-space. A field may appear more than once; group by `field`.
+    #[getter]
+    fn regions<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
+        self.inner
+            .regions
+            .iter()
+            .map(|r| {
+                let d = PyDict::new(py);
+                d.set_item("field", &r.field)?;
+                d.set_item("page", r.page)?;
+                d.set_item("rect", r.rect.to_vec())?;
+                Ok(d)
+            })
+            .collect()
     }
 }
 

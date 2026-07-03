@@ -91,13 +91,16 @@ pub trait SessionHandle: Any + Send + Sync {
     /// the current compile, computed from already-resolved field placements
     /// with no rasterization and no byte artifact. An interactive preview reads
     /// it to lay out overlays / field cross-navigation over a `paint`-ed canvas;
-    /// a one-shot byte render never needs it. Default empty — a backend that
-    /// places schema fields overrides this.
+    /// a one-shot byte render carries it only on request
+    /// ([`RenderOptions::regions`](crate::RenderOptions)). Default empty — a
+    /// backend that places schema fields overrides this.
     ///
-    /// A backend may return a field more than once (several page-fragments, or a
-    /// content tag plus a bound widget); emit them in precedence order, as
-    /// [`LiveSession::regions`] keeps the first per `field` to present one
-    /// region per logical field.
+    /// Emit one region per **(placement, page fragment)**: a field may appear
+    /// more than once — placed twice, breaking across pages, or arising from
+    /// both tagged content and a bound widget — and every appearance surfaces
+    /// independently ([`LiveSession::regions`] passes them through; consumers
+    /// group by `field`). Order deterministically: widget regions first, then
+    /// content regions in (page, field, placement) order.
     fn regions(&self) -> Vec<RenderedRegion> {
         Vec::new()
     }
@@ -184,23 +187,19 @@ impl LiveSession {
     }
 
     /// Schema-field geometry for the compiled session — **one
-    /// [`RenderedRegion`] per logical schema field**, keyed on its quill schema
-    /// field path. A session-level query computed without rendering bytes; an
-    /// interactive preview reads it to place overlays / field cross-navigation
-    /// over a `paint`-ed canvas. Empty for backends that place no schema fields.
+    /// [`RenderedRegion`] per (placement, page fragment)**, keyed on the quill
+    /// schema field path. A session-level query computed without rendering
+    /// bytes; an interactive preview reads it to place overlays / field
+    /// cross-navigation over a `paint`-ed canvas. Empty for backends that
+    /// place no schema fields.
     ///
-    /// The backend ([`SessionHandle::regions`]) may surface a field from more
-    /// than one source (a content auto-tag and a bound widget) or as several
-    /// page-fragments; this keeps the first per `field` in the backend's order
-    /// — the backend orders its output to set that precedence — so a consumer
-    /// looks a field up and gets exactly one rectangle.
+    /// A field may appear more than once: placed at several sites, breaking
+    /// across pages (one fragment per page it touches, so a highlight covers
+    /// continuation pages), or arising from both tagged content and a
+    /// `field:`-bound widget (overlapping rects that route to the same field).
+    /// Group by `field`; every entry routes to that field in the editor.
     pub fn regions(&self) -> Vec<RenderedRegion> {
-        let mut seen = std::collections::HashSet::new();
-        self.inner
-            .regions()
-            .into_iter()
-            .filter(|r| seen.insert(r.field.clone()))
-            .collect()
+        self.inner.regions()
     }
 
     /// Session-level warnings attached at `Backend::open` time, also appended
@@ -213,6 +212,12 @@ impl LiveSession {
     pub fn render(&self, opts: &RenderOptions) -> Result<RenderResult, RenderError> {
         let mut result = self.inner.render(opts)?;
         result.warnings.extend(self.warnings.iter().cloned());
+        // The regions sidecar is attached here, at the wrapper, so every
+        // backend's one-shot render carries it without implementing anything
+        // beyond the `regions` accessor it already has.
+        if opts.regions {
+            result.regions = self.inner.regions();
+        }
         Ok(result)
     }
 

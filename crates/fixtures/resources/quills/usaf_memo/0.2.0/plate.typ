@@ -1,4 +1,4 @@
-#import "@local/quillmark-helper:0.1.0": data, signature-field
+#import "@local/quillmark-helper:0.1.0": data, signature-field, tagged
 #import "@local/tonguetoquill-usaf-memo:3.0.0": backmatter, frontmatter, indorsement, mainmatter
 
 // Frontmatter configuration
@@ -53,16 +53,19 @@
   memo_for_cols: 1,
 )
 
-// Mainmatter configuration
-#mainmatter[
+// Mainmatter configuration. `tagged` brackets the package *output*: the
+// package's render-body rebuilds paragraphs through a state buffer (AFH
+// 33-337 auto-numbering), which drops the value-level auto-tag markers, so
+// the body regions only when tagged here, outside the rebuild.
+#tagged("$body")[#mainmatter[
   #data.at("$body")
-]
+]]
 
 // Backmatter
 #backmatter(
   // Signature block
   signature_block: data.signature_block,
-  signing_field: signature-field("Signature"),
+  signing_field: signature-field("Signature", field: "signature_block"),
 
   // Optional cc
   ..if "cc" in data { (cc: data.cc) },
@@ -92,17 +95,27 @@
     } else {
       card_date
     }
-    indorsement(
+    // The card's `$path` prefix composes its canonical region addresses
+    // (`$cards.indorsement.<n>.…`, per-kind ordinal) — the absolute loop
+    // index `i` is NOT that ordinal once kinds interleave, so it stays a
+    // widget-name suffix only. `tagged` wraps the indorsement's *output*
+    // (the package rebuilds body paragraphs, dropping value-level markers),
+    // keyed on the card's body: clicking anywhere in the indorsement block
+    // routes to that card in the editor.
+    tagged(card.at("$path") + "$body")[#indorsement(
       from: card.at("from", default: ""),
       to: card.at("for", default: ""),
       signature_block: card.signature_block,
-      signing_field: signature-field("Ind_" + str(i) + "_Signature"),
+      signing_field: signature-field(
+        "Ind_" + str(i) + "_Signature",
+        field: card.at("$path") + "signature_block",
+      ),
       ..if "attachments" in card { (attachments: card.attachments) },
       ..if "cc" in card { (cc: card.cc) },
       format: card.at("format", default: "standard"),
       date: resolved_date,
       ..if "action" in card { (action: card.action) },
       body_content,
-    )
+    )]
   }
 }

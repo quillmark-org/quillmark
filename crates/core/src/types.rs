@@ -155,4 +155,15 @@ pub struct RenderOptions {
     /// the backend default (`Quillmark <version>` for the Typst backend).
     /// Applies to PDF output only; ignored by SVG/PNG/TXT.
     pub producer: Option<String>,
+    /// Populate [`RenderResult::regions`](crate::RenderResult) with the
+    /// schema-field geometry sidecar (the same entries
+    /// [`LiveSession::regions`](crate::LiveSession::regions) serves), for
+    /// consumers without a live session — static overlays over exported SVG,
+    /// PDF post-processing, CI coverage probes. Default `false`: exports pay
+    /// no introspection cost, and the sidecar stays a request, not a promise.
+    ///
+    /// The sidecar always describes the **whole document** — page indices are
+    /// document-space and unaffected by a `pages` subset selection — so it
+    /// never disagrees with the geometry of the compile it came from.
+    pub regions: bool,
 }

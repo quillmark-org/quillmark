@@ -124,25 +124,46 @@ compositing of its own. Backends satisfy it differently:
   flat PDF via hayro — so field values appear in the raster on their own, with
   no regions-compositing by the caller.
 
-Field geometry is a **session-level query**, `LiveSession::regions()` (see
-[SCHEMAS.md](SCHEMAS.md) and the region type in `crates/core/src/region.rs`) —
-not a field on `RenderResult`. Only the interactive-preview path wants it, and
-that path holds a session; a one-shot byte render (PDF/PNG/SVG) never does, so
-it is read off the current compile with no render — re-read it after each
-committed `apply`. Each region carries per-field geometry keyed on the **quill
-schema field path** — the address the editor uses — for **overlays** and
+Field geometry is primarily a **session-level query**, `LiveSession::regions()`
+(see the region type in `crates/core/src/region.rs`): the interactive-preview
+path holds a session and reads geometry off the current compile with no render
+— re-read it after each committed `apply`. A one-shot byte render carries the
+same sidecar only on request (`RenderOptions::regions` → `RenderResult::regions`),
+for consumers without a live session — static overlays over an exported SVG,
+PDF post-processing, CI coverage probes. The sidecar always describes the
+whole document: page indices are document-space even under a `pages` subset
+render. Each region carries per-field geometry keyed on the **quill schema
+field path** — the address the editor uses — for **overlays** and
 **cross-navigation** (click a rendered field → focus it in the editor, or
 highlight the page rectangle for the focused field).
-Two producers: **content fields** (a markdown body) auto-tag from their content
-at the Typst eval site and recover their true rendered extent from the laid-out
-frames; **form-field widgets** carry the path explicitly (pdfform from the form
-mapping, a Typst `form-field` from its `field:` argument) and surface a region
-only when they bind one — a widget with no schema field is a backend artifact,
-not a routable field. The session returns **one region per logical field**: a
-field arising from both a content tag and a bound widget, or from several
-page-fragments, is collapsed (the bound widget wins; a page-spanning body anchors
-to its first page), so a consumer looks a field up and gets one rectangle.
-Geometry only, never a value, and never needed to complete the picture.
+
+Three producers: **content fields** (a markdown body) auto-tag from their
+*value* at the Typst eval site and recover their rendered extent from the
+laid-out frames — carried by construction when the plate places the value
+verbatim, and lost when a package rebuilds the content (a `show`-rule pass
+that buffers and re-emits paragraphs drops the markers; the auto-tag contract
+is *verbatim placement*, not arbitrary Typst). **Explicit `tagged(field)[..]`
+placements** bracket whatever the plate places at that site — the recovery for
+both auto-tag gaps: scalars (a plain string carries no tag of its own) and
+package-rebuilt content (markers around the package's *output* survive its
+internals); the region covers the placement's ink, package chrome included,
+and an unknown path is a compile error (validated against schema address
+tables baked into the generated helper; cards carry their canonical prefix as
+`$path`, so plates compose card addresses without reimplementing the
+kind+ordinal grammar). **Form-field widgets** carry the path explicitly
+(pdfform from the form mapping, a Typst `form-field` from its `field:`
+argument) and surface a region only when they bind one — a widget with no
+schema field is a backend artifact, not a routable field.
+
+The result is **one region per (placement, page fragment)**, not one per
+field: a field placed at two sites surfaces two regions (a spanning union
+would claim the ink between them); a page-spanning body surfaces one fragment
+per page it touches, so highlighting a focused field covers its continuation
+pages; tagged content plus a bound widget surfaces both, overlapping rects
+that route to the same field. Consumers group by `field`. Nested markers for
+the same field collapse into their outer placement — double-tagging one
+placement is not placing it twice. Geometry only, never a value, and never
+needed to complete the picture.
 
 ## TypeScript surface
 
@@ -323,14 +344,17 @@ sequentially; `runtime/runtime.js` maps each backend id to its build with a
 - **`warnings` accessor on `LiveSession`.** Session-level diagnostics attached
   at `Backend::open` are otherwise invisible to canvas consumers (only surfaced
   via `render()`'s `RenderResult`).
-- **`regions()` on `LiveSession`, not `RenderResult`.** Field geometry is a
-  property of the current compile, and only the interactive-preview path wants
-  it — that path holds a session (it `paint()`s) and produces no byte artifact.
-  Hanging regions off `RenderResult` forced an export-only consumer to receive
-  geometry it never reads, and forced a paint-only consumer to run a throwaway
-  byte render just to harvest the sidecar. A session method computes it from
-  already-resolved placements with no rasterization, serving both the canvas and
-  SVG-overlay previews from the one handle they already hold.
+- **`regions()` render-free on the session; opt-in on one-shot renders.** The
+  invariants are that geometry never composites (the raster is complete
+  without it) and that the edit loop reads it without producing bytes — a
+  paint-only consumer must never run a throwaway byte render to harvest the
+  sidecar. Session exclusivity was never the invariant: there is exactly one
+  producer (the frame scan over the current compile), so `RenderOptions::regions`
+  attaches the same entries to `RenderResult` for consumers with no session in
+  hand (static SVG overlays, PDF post-processing, CI coverage probes — and the
+  native bindings, which expose no session surface at all). Off by default:
+  exports pay no introspection cost, and best-effort geometry stays a request,
+  not a promise attached to every artifact.
 
 ## Lifecycle and consumer flow
 

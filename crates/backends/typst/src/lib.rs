@@ -245,16 +245,17 @@ impl SessionHandle for TypstSession {
     }
 
     /// Schema-field geometry for the compiled document — bottom-left PDF-point
-    /// rects keyed on the schema-field path. Two sources, ordered: form-field
-    /// widgets (one fixed-size box each) first, then auto-tagged content fields
-    /// (markdown bodies, geometry read from the laid-out frames). The
-    /// widgets-first order sets the precedence for the one-region-per-field
-    /// dedup that [`LiveSession::regions`](quillmark_core::LiveSession::regions)
-    /// applies: an explicit `field:`-bound widget wins over a content auto-tag of
-    /// the same path, and a page-spanning body keeps its first page-fragment
-    /// (content arrives sorted by `(page, field)`, so the lowest page leads).
-    /// Geometry math over the frames, no rasterization. Widget regions are empty
-    /// if the placements fail to resolve (a render would surface the same error).
+    /// rects keyed on the schema-field path, one per (placement, page
+    /// fragment). Two sources, deterministically ordered: form-field widgets
+    /// (one fixed-size box each) first, then marker-tagged content (auto-tagged
+    /// fields and explicit `tagged(..)` placements, geometry read from the
+    /// laid-out frames) in (page, field, placement) order. Entries pass through
+    /// [`LiveSession::regions`](quillmark_core::LiveSession::regions) as-is —
+    /// a field appearing several times (multiple placements, page fragments, or
+    /// tagged content plus a bound widget) surfaces every appearance; consumers
+    /// group by field. Geometry math over the frames, no rasterization. Widget
+    /// regions are empty if the placements fail to resolve (a render would
+    /// surface the same error).
     fn regions(&self) -> Vec<quillmark_core::RenderedRegion> {
         let mut regions = overlay::build_field_specs(&self.document, &self.field_placements)
             .map(|specs| quillmark_pdf::regions_of(&specs))
@@ -484,13 +485,26 @@ fn transform_markdown_fields(
         }
     }
 
-    // Collect per-card-kind content field names from schema $defs
+    // Collect per-card-kind content field names from schema $defs, plus the
+    // full per-kind property-name lists that back `tagged` path validation.
     let mut card_content_fields = serde_json::Map::new();
     let mut card_date_fields = serde_json::Map::new();
+    let mut card_field_names = serde_json::Map::new();
     if let Some(defs) = schema_json.get("$defs").and_then(|v| v.as_object()) {
         for (def_name, def_schema) in defs {
             if let Some(card_kind) = def_name.strip_suffix("_card") {
                 let card_props = def_schema.get("properties").and_then(|v| v.as_object());
+                if let Some(props) = card_props {
+                    card_field_names.insert(
+                        card_kind.to_string(),
+                        serde_json::Value::Array(
+                            props
+                                .keys()
+                                .map(|k| serde_json::Value::String(k.clone()))
+                                .collect(),
+                        ),
+                    );
+                }
                 let card_fields = card_props.map(content_field_names).unwrap_or_default();
                 if !card_fields.is_empty() {
                     card_content_fields.insert(
@@ -520,7 +534,9 @@ fn transform_markdown_fields(
         }
     }
 
-    // Inject __meta__ so the helper package can auto-eval content fields
+    // Inject __meta__ so the helper package can auto-eval content fields.
+    // `fields` / `card_fields` are the full schema property-name tables the
+    // helper's `tagged` validates explicit region paths against.
     result.insert(
         "__meta__".to_string(),
         QuillValue::from_json(serde_json::json!({
@@ -528,6 +544,8 @@ fn transform_markdown_fields(
             "card_content_fields": card_content_fields,
             "date_fields": date_fields,
             "card_date_fields": card_date_fields,
+            "fields": properties_obj.keys().collect::<Vec<_>>(),
+            "card_fields": card_field_names,
         })),
     );
 

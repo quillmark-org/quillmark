@@ -102,33 +102,92 @@
   datetime(year: year, month: month, day: day)
 }
 
+/// Raw document JSON, including the `__meta__` sentinel the Rust backend
+/// injects. Parsed once; `data` strips the sentinel before plates see it.
+#let _qm-raw = json(bytes("{escaped_json}"))
+
+/// Backend-injected metadata: content/date field lists driving the auto
+/// passes, plus the schema address tables (`fields`, `card_fields`) that
+/// validate `tagged` paths.
+#let _qm-meta = _qm-raw.at("__meta__", default: (:))
+
+// Region tagging: wrap content between two zero-size `<__qm_region__>`
+// metadata markers carrying its schema-field `path`; the backend reads their
+// frame positions back into a region rect (`session.regions()`). Zero-size is
+// layout-neutral — the same property the form-field metadata relies on. Like
+// `form-field`, this emits `metadata`; a plate/package reading its own config
+// via an unfiltered `query(metadata)` must filter by label or an owned key.
+// Private: emits markers with no path validation — the auto-tagging pass
+// constructs its paths itself. Plates use `tagged`, which validates.
+#let _qm-tag(path, body) = {
+  [#metadata((kind: "qm-region", role: "start", field: path)) <__qm_region__>]
+  body
+  [#metadata((kind: "qm-region", role: "end", field: path)) <__qm_region__>]
+}
+
+/// Whether `path` parses against the schema address tables: a top-level field
+/// (`subject`), a markdown[] element (`refs.2`), or a card address
+/// (`$cards.<kind>.<n>.<field>`, optional `.<i>` element suffix). Permissive
+/// when the tables are absent (no `__meta__`) — validation then has nothing to
+/// check against.
+#let _qm-known-path(path) = {
+  let fields = _qm-meta.at("fields", default: ())
+  let card-fields = _qm-meta.at("card_fields", default: (:))
+  if fields.len() == 0 and card-fields.len() == 0 { return true }
+  let is-index(s) = s.match(regex("^[0-9]+$")) != none
+  let parts = path.split(".")
+  if parts.at(0) == "$cards" {
+    if parts.len() < 4 or parts.len() > 5 { return false }
+    if not (parts.at(1) in card-fields) { return false }
+    if not is-index(parts.at(2)) { return false }
+    let known = parts.at(3) in card-fields.at(parts.at(1))
+    if parts.len() == 5 { return known and is-index(parts.at(4)) }
+    return known
+  }
+  if parts.len() == 1 { return path in fields }
+  if parts.len() == 2 { return parts.at(0) in fields and is-index(parts.at(1)) }
+  false
+}
+
+/// Tag `body` as the placement of schema field `field`, so it surfaces a
+/// region (`session.regions()`) at whatever geometry it lays out to. The
+/// explicit counterpart of content auto-tagging, for the two cases auto-tags
+/// cannot reach: a scalar (`tagged("subject")[#data.subject]` — a plain string
+/// carries no tag of its own) and content placed through a package that
+/// rebuilds it (`tagged("$body")[#render(data.at("$body"))]` — the markers
+/// bracket the package's *output*, so its internal reconstruction cannot drop
+/// them). The region covers the ink of this placement — everything `body`
+/// draws, package chrome included — where an auto-tag covers the field value's
+/// own ink.
+///
+/// `field` must be a schema address: a field name (`"subject"`), a markdown[]
+/// element (`"refs.2"`), or a card path (`"$cards.indorsement.1.from"`).
+/// Compose card paths from the card's injected `$path` prefix —
+/// `tagged(card.at("$path") + "from")[..]` — rather than hand-writing the
+/// kind+ordinal grammar. An unknown address is a compile error, so a typo'd
+/// path fails loudly instead of producing a region nothing routes to.
+#let tagged(field, body) = {
+  assert(std.type(field) == str,
+    message: "tagged: field must be a string, got " + repr(std.type(field)))
+  assert(_qm-known-path(field),
+    message: "tagged: " + repr(field) + " is not a schema field address; expected a field name, a markdown[] element like \"refs.2\", or a card path composed from the card's $path prefix")
+  _qm-tag(field, body)
+}
+
 /// Document data as a dictionary.
 /// Markdown fields are automatically converted to Typst content objects.
 /// The `__meta__` key (injected by the Rust backend) is consumed here and
 /// never exposed to plate authors.
 #let data = {
-  let d = json(bytes("{escaped_json}"))
+  let d = _qm-raw
 
-  // Read and consume __meta__ (injected by transform_fields)
+  // Strip and read __meta__ (injected by transform_fields)
   let meta = d.remove("__meta__", default: (
     content_fields: (),
     card_content_fields: (:),
     date_fields: (),
     card_date_fields: (:),
   ))
-
-  // Auto-region tagging: wrap content between two zero-size `<__qm_region__>`
-  // metadata markers carrying its schema-field `path`; the backend reads their
-  // frame positions back into a region rect (`session.regions()`). Zero-size is
-  // layout-neutral — the same property the form-field metadata relies on — so a
-  // content field tags its own page geometry with no plate-author effort. Like
-  // `form-field`, this emits `metadata`; a plate/package reading its own config
-  // via an unfiltered `query(metadata)` must filter by label or an owned key.
-  let qm-region(path, body) = {
-    [#metadata((kind: "qm-region", role: "start", field: path)) <__qm_region__>]
-    body
-    [#metadata((kind: "qm-region", role: "end", field: path)) <__qm_region__>]
-  }
 
   // Eval the named content fields of `dict` into Typst content. A markdown
   // field is a string; a `markdown[]` field is an array whose string elements
@@ -141,9 +200,9 @@
       if key in dict {
         let val = dict.at(key)
         if type(val) == str and val != "" {
-          dict.insert(key, qm-region(prefix + key, eval(val, mode: "markup")))
+          dict.insert(key, _qm-tag(prefix + key, eval(val, mode: "markup")))
         } else if type(val) == array {
-          dict.insert(key, val.enumerate().map(((i, v)) => if type(v) == str and v != "" { qm-region(prefix + key + "." + str(i), eval(v, mode: "markup")) } else { v }))
+          dict.insert(key, val.enumerate().map(((i, v)) => if type(v) == str and v != "" { _qm-tag(prefix + key + "." + str(i), eval(v, mode: "markup")) } else { v }))
         }
       }
     }
@@ -182,6 +241,13 @@
         let n = kind-ordinals.at(card-type, default: 0)
         kind-ordinals.insert(card-type, n + 1)
         prefix = "$cards." + card-type + "." + str(n) + "."
+        // The card's canonical address prefix, injected so plates compose
+        // region paths — `tagged(card.at("$path") + "from")[..]` — without
+        // reimplementing the kind+ordinal grammar (an absolute enumerate()
+        // index is NOT the ordinal once kinds interleave). `$`-prefixed like
+        // the other system keys ($kind, $body), so it cannot collide with a
+        // schema field.
+        card.insert("$path", prefix)
       }
       card = eval-content(card, meta.card_content_fields.at(card-type, default: ()), prefix)
       card = parse-dates(card, meta.card_date_fields.at(card-type, default: ()))
