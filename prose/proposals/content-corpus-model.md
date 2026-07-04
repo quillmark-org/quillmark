@@ -1,4 +1,4 @@
-# Content corpus model — greenfield design
+# Prose corpus model — greenfield design
 
 Greenfield design for the content-field model, assuming the settled product
 vision: **a web form with rich prose fields is the primary authoring surface**;
@@ -10,12 +10,13 @@ writers; a Notion-class block canvas is a non-goal. Successor position to
 
 ## Shape
 
-One `Content` value per content field (card bodies included; the document
-level keeps its existing corpus-with-`$id`-card-islands shape). A `Content` is
-four aligned pieces over **one coordinate space**:
+One `Prose` value per prose field — today's "content fields," card bodies
+included; the document level keeps its existing
+corpus-with-`$id`-card-islands shape. A `Prose` is four aligned pieces over
+**one coordinate space**:
 
 ```
-Content {
+Prose {
   text:    String        // the corpus; '\n' = line boundary, U+FFFC = island slot
   lines:   Vec<LineAttrs> // one per '\n', in order: what each line is
   marks:   Vec<Mark>      // formatting + annotations over char ranges
@@ -153,7 +154,7 @@ is the line-window degenerate case of the same map.
 
 ## Storage
 
-`Content` serializes canonically: text verbatim, `lines`/`islands`
+`Prose` serializes canonically: text verbatim, `lines`/`islands`
 positionally aligned with their sentinels (validated on read), marks in
 canonical order. Byte-deterministic — no randomness exists outside island
 creation, so content hashing (DOCUMENT_STORAGE.md) holds. Migration from
@@ -164,12 +165,34 @@ arise.
 
 ## Schema surface
 
-Field type `content` (rename from `markdown` is fine pre-1.0), lowering to a
-`$ref` of the corpus schema. `content(inline)` = no `\n`, no block islands —
-a validation rule, not a sibling type. Blueprint, `default:`, `example:`,
-`body.example`, and `$seed.<kind>.$body` stay authored **markdown**, imported
-at `Quill` load and cached; since text needs no minting, defaulted content is
-stable across compiles.
+Field type `prose` (rename from `markdown`; pre-1.0 hard cutover), lowering
+to a `$ref` of the corpus schema. `prose(inline)` = no `\n`, no block islands
+— a validation rule, not a sibling type. The blueprint inline annotation
+carries the authoring-surface encoding in the existing format slot —
+`bio: !must_fill # prose<markdown>` — so the type names the role and the
+refinement tells the writer what syntax this surface accepts. `default:`,
+`example:`, `body.example`, and `$seed.<kind>.$body` stay authored
+**markdown**, imported at `Quill` load and cached; since text needs no
+minting, defaulted prose is stable across compiles.
+
+## Naming
+
+`prose` names the role at every author-facing surface (`type: prose`,
+`# prose<markdown>`, Rust/bindings `Prose`); **corpus** stays the internal
+shape term (the `text` sequence, "corpus coordinates" in module docs) and is
+not author-facing — as a facing name it carries the wrong prior (a corpus is
+a *collection* of documents) and names the implementation rather than the
+role, the same category error `markdown` made with the encoding. The word
+already means the right thing everywhere it appears in this repo — flowing
+human text as opposed to structure (the `prose/` docs directory,
+"prose message" vs. structured hint in `validation.rs`) — so the type joins
+an existing consistent sense rather than colliding with one. The rename
+sweeps canon vocabulary once ("content fields" → "prose fields") and
+rephrases the two spots where the old adjacent sense would sit next to the
+type: BLUEPRINT.md's "leading prose" (→ "leading description lines") and the
+`validation.rs` "prose message" comments (→ "message text"). `Prose` has no
+type collision in Rust, JS, or Python — notably none with
+`typst::foundations::Content`.
 
 ## What this kills, keeps, and adds
 
@@ -202,11 +225,11 @@ must confirm each candidate binding can own them.
 
 ## Sequencing
 
-1. `Content` type + canonical serialization + markdown⇄corpus codecs +
+1. `Prose` type + canonical serialization + markdown⇄corpus codecs +
    invariant/property suite (round-trip modulo loss class; diff-import
    preserves marks/islands). Engine-off, exercised against the fixture
    corpus.
-2. Engine consumes `Content`; Typst emit with line windows + run source map;
+2. Engine consumes `Prose`; Typst emit with line windows + run source map;
    navigation queries (`locate` / `position_at`) and regions re-key; storage
    cutover.
 3. Delta edit surface + revision/change-log mapping; form editor binding
