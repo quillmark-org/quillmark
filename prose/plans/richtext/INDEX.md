@@ -15,10 +15,13 @@ degenerate case. Product frame: a web form with rich prose fields is the
 primary authoring surface; the LLM/MCP whole-document markdown flow and human
 `.qmd` files stay co-equal writers; a Notion-class block canvas is a non-goal.
 
-Model shape, naming, and the corpus-vs-tree rationale live in the proposal
-(issue #831 and `prose/proposals/content-corpus-model.md` on
-`claude/issue-830-context-uuia5t`). This HQ records what is **decided** and how
-the work is **sequenced**; it does not restate the model.
+The full model spec — `RichText` shape, lines / marks / islands, codecs,
+storage, schema — lives in the body of
+[#831](https://github.com/quillmark-org/quillmark/issues/831). This HQ is the
+canonical direction: it records what is **decided**, the naming, and how the
+work is **sequenced**; it does not restate the model. The earlier working docs
+on `claude/issue-830-context-uuia5t` (proposal + #830 reviews) are superseded —
+their live conclusions are distilled here.
 
 ## Locked decisions
 
@@ -61,6 +64,19 @@ Grounding for the call:
 
 The durable contract is **"richtext crosses the seam faithfully"** (never as a
 lossy markdown string). The refactorable detail is the encoding (JSON vs typed).
+
+### Naming — `richtext`
+
+The type is `richtext` at every author-facing surface (`type: richtext`,
+`array<richtext>`, `richtext(inline)`, blueprint `# richtext<markdown>`) and in
+code (`RichText`); **corpus** stays internal shape vocabulary. The blueprint
+format slot carries the surface encoding (`# richtext<markdown>`) — the type
+names the role, the refinement names the syntax. Follows the `datetime`
+one-word precedent. Rejected, each with the criterion it failed: `markdown`
+(names one projection's encoding, not the role), `content` (saturated;
+permanent `typst::foundations::Content` collision), `prose` (undersells
+lists/tables/islands), `corpus` (implementation shape; outsider prior is a
+*collection* of documents), bare `rich` (still live as an ordinary adjective).
 
 ## Technical takeaways carried into the phases
 
