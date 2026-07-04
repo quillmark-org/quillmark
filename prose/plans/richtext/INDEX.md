@@ -1,0 +1,136 @@
+# Richtext rework — integration HQ
+
+Working plan for the content-model rework tracked in
+[#831](https://github.com/quillmark-org/quillmark/issues/831). This branch
+(`integration/richtext`) is the long-range integration point; phases land here
+behind their spike gates, not on `main` piecemeal.
+
+## Objective
+
+Replace markdown-string content fields with a canonical corpus value —
+`RichText`: one text sequence per field carrying line attributes, anchored
+marks, and embedded islands — and demote markdown to a projection (import /
+export codecs). Delivers #829's paragraph-level regions as the step-2
+degenerate case. Product frame: a web form with rich prose fields is the
+primary authoring surface; the LLM/MCP whole-document markdown flow and human
+`.qmd` files stay co-equal writers; a Notion-class block canvas is a non-goal.
+
+Model shape, naming, and the corpus-vs-tree rationale live in the proposal
+(issue #831 and `prose/proposals/content-corpus-model.md` on
+`claude/issue-830-context-uuia5t`). This HQ records what is **decided** and how
+the work is **sequenced**; it does not restate the model.
+
+## Locked decisions
+
+### Model — corpus, not block tree
+
+Settled in #831. One `RichText` per richtext field over a single coordinate
+space (Unicode scalar values): `text` + `lines` + `marks` + `islands`, every
+edit a splice. Supersedes the #830 block tree; the Peritext/Automerge research
+#830 cited points at the corpus shape, not the tree.
+
+### Seam — Option A: structured RichText-JSON across the data seam
+
+The core→backend seam (`Backend::open(source, json_data)`, `core/src/backend.rs`)
+stays a **data** contract; content crosses it as **structured RichText-JSON**,
+not a markdown string.
+
+Grounding for the call:
+
+- **Codegen is not a universal seam.** `typst` is a source backend (lowers JSON
+  → Typst dict literal + `#let` content blocks); `pdfform` is a data backend
+  (`pdfform/src/lib.rs`, `resolve_field_specs` stamps `json_data` values into an
+  AcroForm — no codegen, none possible). A codegen seam would force `pdfform` to
+  un-lower source back to values.
+- **Three tiers, named.** The seam is the *data model*; codegen is `typst`'s
+  private lowering of it (and the only place the source map can be produced);
+  JSON is the *serialization* of the model. Content-as-markdown-string was a
+  lossy encoding *inside* the data seam, not a codegen seam.
+- **Why A over a typed-`Document` seam (Option C).** Keep JSON as the
+  language-agnostic cross-backend contract: bindings already serialize it,
+  `PLATE_DATA.md` publishes it, and both backends lower from it uniformly
+  (`typst` → source + map; `pdfform` → plaintext via `RichText.text` minus
+  island slots). C (promote the seam to the typed model, demote JSON to storage
+  serialization) is cleaner conceptually but rewrites the `Backend` trait and
+  `pdfform`'s field resolution. Because both A and C carry richtext
+  *faithfully*, A↔C is a later backend refactor that changes no session API —
+  so A is the low-regret starting point.
+- **`pdfform` cost is zero today.** No pdfform fixture binds a content field
+  (`sample_form` sets `body.enabled: false`; all fields are scalar). Option A
+  ships with a trivial `RichText → .text` lowering and no fixture churn.
+
+The durable contract is **"richtext crosses the seam faithfully"** (never as a
+lossy markdown string). The refactorable detail is the encoding (JSON vs typed).
+
+## Technical takeaways carried into the phases
+
+- **Freeze ordering is the pivotal risk.** Canonical `RichText` serialization
+  (phase 1) fixes the mark set and its overlap / edge / identity semantics for
+  storage. Editors (ProseMirror / Lexical / Quill) disagree precisely there.
+  The editor-binding spike must therefore **precede** the serialization freeze,
+  not follow it (issue text puts it in step 3). Hence phase 0. The open mark set
+  absorbs new mark *types*, not changed semantics of the known ones.
+- **Source-map production is backend-internal and deferrable; the seam encoding
+  is not.** The `locate` / `position_at` / region API keys on
+  `(field, corpus range, revision)` regardless of how `typst` builds the map. But
+  the map is a codegen artifact — if content crosses as a string, `typst`
+  re-parses to build it, founding #829's deliverable on the per-render parse the
+  model exists to kill. Faithful encoding is required from the step that first
+  needs the map (phase 2).
+- **Navigation is cluster-exact, not character-exact.** Point↔corpus resolves at
+  the shaping cluster (the resolution a real caret has), inverting the source map
+  through `escape_markup` and the glyph's intra-node offset (`glyph.span.1`,
+  unused today at `span_scan.rs:197`). Ink with no corpus origin (list markers,
+  package numbering, plate decorations) is nav-ignored. `regions()` cannot ignore
+  it — the run-machine rework (grounding §3.2) is still owed for highlight boxes.
+- **Determinism has an honest boundary.** Migration is mint-free (legacy bodies
+  hold no islands). Island IDs are minted at creation, so once tables ship
+  (phase 4) hashing of island-bearing documents inherits mint-nondeterminism;
+  the content-hash contract must tolerate it. Text stays deterministic
+  throughout.
+- **The move-annotation weak spot lands on the flagship writer.** A stale-text
+  writer (MCP `update_document`, saved `.qmd`) rebases via cold-parse + corpus
+  diff. A reorder — common in LLM "reorganize/tighten" rewrites — is delete +
+  insert to the differ, so annotations on moved text drop. Not a rare
+  concurrency corner; confine it with move detection in the differ, and state
+  the limit.
+- **USV coordinates are a standing cross-binding tax.** JS editors are UTF-16,
+  Rust is UTF-8; every delta crossing WASM/Python and every editor binding
+  converts at its boundary. The property suite owns surrogate-pair / astral-plane
+  offset correctness explicitly.
+
+## Phase map
+
+Detail per phase in its own doc as it opens. Rough shape:
+
+- **[Phase 0 — spikes](phase-0-spikes.md)** — de-risk the freezes before any
+  schema lands. Editor binding (gates mark semantics), source-map/navigation
+  inversion (gates the phase-2 emit design), seam + determinism prototype (gates
+  Option A). Nothing here ships to `main`.
+- **Phase 1 — type + codecs, engine-off.** `RichText` + canonical serialization
+  (frozen only after phase-0 editor spike) + markdown⇄corpus import/export
+  codecs + property suite (round-trip modulo loss class; diff-import preserves
+  marks/islands). Exercised against the fixture corpus; engine untouched.
+- **Phase 2 — engine consumes RichText (delivers #829).** Seam carries
+  RichText-JSON (Option A); `typst` emit with per-line windows + source map;
+  `pdfform` `.text` lowering; `locate` / `position_at` + region re-key on
+  `(field, corpus range, revision)`; storage cutover (new `StoredDocument`
+  version, deterministic cold-import migration).
+- **Phase 3 — edit surface.** Per-field delta (Quill-Delta semantics) + monotonic
+  revision + bounded change log with position mapping; form-editor binding built
+  on the phase-0 spike's frozen semantics.
+- **Phase 4 — islands + collab.** First real island type (tables), then a
+  text-CRDT sync binding when wanted; core stays CRDT-free.
+
+Sequencing invariant: nothing a later phase needs is frozen before the phase-0
+spike that validates it, and no phase discards another's output.
+
+## Related
+
+- #831 (this rework), #830 (block-tree predecessor, superseded), #829 (regions,
+  delivered by phase 2)
+- `prose/canon/DOCUMENT_STORAGE.md`, `QUILL_VALUE.md`, `PREVIEW.md`,
+  `CONVERT.md`, `PLATE_DATA.md`
+- `crates/core/src/backend.rs`, `crates/core/src/region.rs`,
+  `crates/backends/typst/src/overlay/span_scan.rs`,
+  `crates/backends/typst/src/helper.rs`

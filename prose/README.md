@@ -12,6 +12,9 @@ Long-form project documentation, in three tiers by maturity:
   without forming a cycle.
 - **`proposals/`** — fleshed-out proposed changes, not yet implemented. Each is
   a concrete plan. Removed once landed or abandoned.
+- **`plans/`** — working plans for multi-phase reworks in flight: the
+  integration HQ for a change too large for a single proposal. One subdirectory
+  per rework. Removed once the rework lands.
 
 Canonical docs never reference proposals or plans. References never link
 out to other prose docs.
