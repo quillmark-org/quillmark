@@ -109,19 +109,6 @@ def test_validate_reports_unknown_card_kind(tmp_path):
     assert "validation::unknown_card" in codes, f"got: {codes}"
 
 
-def test_validate_omits_field_absent(tmp_path):
-    """Absent Unendorsed fields zero-fill silently — the removed
-    ``validation::field_absent`` code is never surfaced by validate."""
-    quill = make_quill(tmp_path)
-    doc = Document.from_markdown(_md())  # empty main card
-
-    diags = quill.validate(doc)
-    codes = [d.get("code") for d in diags]
-    assert "validation::field_absent" not in codes, (
-        f"field_absent is removed and must not be surfaced; got: {codes}"
-    )
-
-
 def test_validate_json_serializable(tmp_path):
     """The diagnostics list is fully JSON-serializable via json.dumps."""
     quill = make_quill(tmp_path)

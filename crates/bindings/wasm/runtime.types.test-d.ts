@@ -19,7 +19,8 @@ import type {
 	PageSize as CanonicalPageSize,
 	PaintOptions as CanonicalPaintOptions,
 	PaintResult as CanonicalPaintResult,
-	FieldRegion as CanonicalFieldRegion
+	FieldRegion as CanonicalFieldRegion,
+	ChangeSet as CanonicalChangeSet
   // The BUILT copy (synced from `runtime/runtime.d.ts` by build-wasm.sh / the
   // cp step), because only there does the d.ts's own `../core/wasm.js` import
   // resolve to the generated `pkg/core` build. The two copies are byte-identical.
@@ -33,7 +34,8 @@ import type {
 	PageSize as TypstPageSize,
 	PaintOptions as TypstPaintOptions,
 	PaintResult as TypstPaintResult,
-	FieldRegion as TypstFieldRegion
+	FieldRegion as TypstFieldRegion,
+	ChangeSet as TypstChangeSet
 } from '../../../pkg/backends/typst/wasm';
 
 // One mutual-assignability pair per hoisted type: typst → canonical and
@@ -93,6 +95,11 @@ const fieldRegionB: TypstFieldRegion = {} as CanonicalFieldRegion;
 void fieldRegionA;
 void fieldRegionB;
 
+const changeSetA: CanonicalChangeSet = {} as TypstChangeSet;
+const changeSetB: TypstChangeSet = {} as CanonicalChangeSet;
+void changeSetA;
+void changeSetB;
+
 const renderResultKeys: KeysEqual<CanonicalRenderResult, TypstRenderResult> = true;
 const renderOptionsKeys: KeysEqual<CanonicalRenderOptions, TypstRenderOptions> = true;
 const artifactKeys: KeysEqual<CanonicalArtifact, TypstArtifact> = true;
@@ -100,6 +107,7 @@ const pageSizeKeys: KeysEqual<CanonicalPageSize, TypstPageSize> = true;
 const paintOptionsKeys: KeysEqual<CanonicalPaintOptions, TypstPaintOptions> = true;
 const paintResultKeys: KeysEqual<CanonicalPaintResult, TypstPaintResult> = true;
 const fieldRegionKeys: KeysEqual<CanonicalFieldRegion, TypstFieldRegion> = true;
+const changeSetKeys: KeysEqual<CanonicalChangeSet, TypstChangeSet> = true;
 void renderResultKeys;
 void renderOptionsKeys;
 void artifactKeys;
@@ -107,3 +115,4 @@ void pageSizeKeys;
 void paintOptionsKeys;
 void paintResultKeys;
 void fieldRegionKeys;
+void changeSetKeys;

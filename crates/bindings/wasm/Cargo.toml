@@ -47,16 +47,11 @@ typst = ["quillmark/typst", "dep:web-sys"]
 # pdfform build: add the Typst-free PDF-form backend so the engine can render
 # `pdfform` quills → PDF (and SVG/PNG). Does NOT require `typst` — the engine /
 # LiveSession surface is available with `pdfform` alone, giving a Typst-free
-# WASM bundle. NO canvas painter (no `web-sys`): this build reports
-# `supportsCanvas == false`.
-pdfform = ["quillmark/pdfform"]
-# pdfform-preview build: pdfform plus the `web-sys` canvas surface. The pdfform
-# session already rasterizes pages via its always-linked hayro seam, so adding
-# `web-sys` ships the generic canvas painter (page_size / paint, dispatching
-# through the core `SessionHandle` seam) in the browser and reports
-# `supportsCanvas == true`. Strict superset of `pdfform`; mirrors how `typst`
-# enables the same canvas surface.
-pdfform-preview = ["pdfform", "dep:web-sys"]
+# WASM bundle. The pdfform session rasterizes pages via its always-linked hayro
+# seam, so `web-sys` ships the generic canvas painter (page_size / paint,
+# dispatching through the core `SessionHandle` seam) and this build reports
+# `supportsCanvas == true` — mirroring how `typst` enables the same surface.
+pdfform = ["quillmark/pdfform", "dep:web-sys"]
 # Core build = no features: Document + Quill (parse / load / validate / schema
 # / seed / blueprint). No engine, no Typst — ~0.34MB gzipped.
 

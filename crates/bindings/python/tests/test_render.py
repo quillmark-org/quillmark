@@ -98,6 +98,30 @@ def test_engine_render_full_document(engine, taro_quill_dir, taro_md):
     assert result.artifacts[0].mime_type == "application/pdf"
 
 
+def test_engine_render_regions_sidecar(engine, taro_quill_dir, taro_md):
+    """render(.., regions=True) populates the schema-field geometry sidecar.
+
+    Mirrors the WASM regions contract: each entry is a dict carrying `field`,
+    `page`, and `rect`. The taro plate interpolates `$body`, so the markdown
+    body auto-tags at least one region keyed `$body`.
+    """
+    quill = Quill.from_path(str(taro_quill_dir))
+    parsed = Document.from_markdown(taro_md)
+
+    result = engine.render(quill, parsed, OutputFormat.PDF, regions=True)
+
+    regions = result.regions
+    assert isinstance(regions, list) and len(regions) > 0
+    for r in regions:
+        assert set(("field", "page", "rect")).issubset(r.keys())
+        assert isinstance(r["field"], str)
+        assert isinstance(r["page"], int)
+        assert isinstance(r["rect"], list) and len(r["rect"]) == 4
+    assert any(r["field"] == "$body" for r in regions), (
+        f"expected a `$body` region; got: {[r['field'] for r in regions]}"
+    )
+
+
 def test_parse_error_carries_diagnostics():
     """Parse failures raise QuillmarkError with a non-empty `.diagnostics` list.
 

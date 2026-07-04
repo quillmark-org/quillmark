@@ -48,6 +48,19 @@ fn render_ref(
     )
 }
 
+/// `dry_run` a document referencing `quill_ref` against the quill at
+/// `quill_path`. Proves selector acceptance without driving a Typst compile —
+/// the render seam itself is covered by the reject-path tests.
+fn dry_run_ref(quill_path: &std::path::Path, quill_ref: &str) -> Result<(), RenderError> {
+    let quill = quillmark::quill_from_path(quill_path).expect("from_path failed");
+    let markdown = format!(
+        "~~~card-yaml\n$quill: {}\n$kind: main\n~~~\n\n# Content\n",
+        quill_ref
+    );
+    let doc = Document::from_markdown(&markdown).expect("parse failed");
+    quill.dry_run(&doc)
+}
+
 /// The single code carried by a quill-mismatch error (the check emits exactly one).
 fn mismatch_code(err: &RenderError) -> Option<&str> {
     err.diagnostics().first().and_then(|d| d.code.as_deref())
@@ -89,12 +102,11 @@ fn name_mismatch_is_a_hard_error() {
 }
 
 #[test]
-fn exact_selector_match_renders() {
+fn exact_selector_match_accepts() {
     let temp_dir = TempDir::new().unwrap();
     let quill_path = make_quill(&temp_dir, "2.1.0");
 
-    let result = render_ref(&quill_path, "test_quill@2.1.0").expect("render should succeed");
-    assert!(!result.artifacts.is_empty());
+    dry_run_ref(&quill_path, "test_quill@2.1.0").expect("selector should be accepted");
 }
 
 #[test]
@@ -103,7 +115,7 @@ fn minor_selector_matches_any_patch() {
     let quill_path = make_quill(&temp_dir, "2.1.5");
 
     // `@2.1` matches any patch in the 2.1 series.
-    render_ref(&quill_path, "test_quill@2.1").expect("render should succeed");
+    dry_run_ref(&quill_path, "test_quill@2.1").expect("selector should be accepted");
 }
 
 #[test]
@@ -112,5 +124,5 @@ fn latest_selector_matches_any_version() {
     let quill_path = make_quill(&temp_dir, "9.9.9");
 
     // Bare name defaults to `Latest`, which matches any version.
-    render_ref(&quill_path, "test_quill").expect("render should succeed");
+    dry_run_ref(&quill_path, "test_quill").expect("selector should be accepted");
 }

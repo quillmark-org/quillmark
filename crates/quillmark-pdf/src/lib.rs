@@ -14,8 +14,9 @@
 //!
 //! The crate owns its own [`PdfError`]; each backend maps it to
 //! `quillmark_core::RenderError` at its boundary. It depends only on
-//! `quillmark-core` (for the [`RenderedRegion`] sidecar types) and `pdf-writer`
-//! (for typed object construction); it never depends on Typst.
+//! `quillmark-core` (for the [`RenderedRegion`](quillmark_core::RenderedRegion)
+//! sidecar types) and `pdf-writer` (for typed object construction); it never
+//! depends on Typst.
 //!
 //! See [`stamp`] for the operation, [`FieldSpec`] for the currency, and
 //! `crate::reader`'s docs for the input contract the base PDF must satisfy.
@@ -29,11 +30,6 @@ pub mod writer;
 pub use error::PdfError;
 pub use stamp::{regions_of, stamp, StampOptions, CHECKBOX_ON_STATE};
 pub use update::PdfUpdate;
-
-// The region sidecar lives in core, surfaced via `LiveSession::regions` (a
-// session-level query, not part of `RenderResult`); re-export so spine
-// consumers reach it without a second `quillmark-core` import.
-pub use quillmark_core::RenderedRegion;
 
 /// The `/MediaBox` of every page of `base`, normalized to `[x0, y0, x1, y1]`
 /// (lower-left, upper-right), in document order.
@@ -59,8 +55,9 @@ pub struct FieldSpec {
     pub name: String,
     /// The quill schema field address this widget maps to, if any. Opaque to
     /// the spine (it never interprets it), carried solely to key the region
-    /// sidecar: a field with `Some(path)` emits a [`RenderedRegion`], an unbound
-    /// widget (`None`) emits none.
+    /// sidecar: a field with `Some(path)` emits a
+    /// [`RenderedRegion`](quillmark_core::RenderedRegion), an unbound widget
+    /// (`None`) emits none.
     pub schema_field: Option<String>,
     /// 0-based page index.
     pub page: usize,
@@ -88,16 +85,4 @@ pub enum FieldType {
     Choice { options: Vec<String> },
     /// An unsigned signature field.
     Signature,
-}
-
-impl FieldType {
-    /// The lowercase type id used in the [`RenderedRegion`] sidecar.
-    pub fn type_id(&self) -> &'static str {
-        match self {
-            FieldType::Text { .. } => "text",
-            FieldType::Checkbox => "checkbox",
-            FieldType::Choice { .. } => "choice",
-            FieldType::Signature => "signature",
-        }
-    }
 }

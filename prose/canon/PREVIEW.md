@@ -46,10 +46,9 @@ session type:
 
 ```rust
 // quillmark-core
-pub trait SessionHandle: Any + Send + Sync {
+pub trait SessionHandle: Send + Sync + 'static {
     fn render(&self, opts: &RenderOptions) -> Result<RenderResult, RenderError>;
     fn page_count(&self) -> usize;
-    fn as_any(&self) -> &dyn Any;
 
     // Edit seam — default Err = "apply unsupported".
     fn apply(&mut self, json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> { ... }

@@ -5,32 +5,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::value::QuillValue;
 
-/// Semantic constants for field schema key names (`type`, `description`, …).
-/// Neither parsing (`FieldSchemaDef`) nor JSON Schema generation
-/// ([`build_transform_schema`](super::build_transform_schema)) consumes these constants —
-/// both use literal strings — but they're kept for downstream consumers that want the
-/// key names without stringly-typed literals, with the IDE support (find references,
-/// autocomplete) constants provide over bare literals.
-pub mod field_key {
-    pub const TYPE: &str = "type";
-    pub const DESCRIPTION: &str = "description";
-    pub const DEFAULT: &str = "default";
-    pub const EXAMPLE: &str = "example";
-    pub const UI: &str = "ui";
-    pub const ENUM: &str = "enum";
-    pub const FORMAT: &str = "format";
-}
-
-/// Semantic constants for UI schema keys
-pub mod ui_key {
-    pub const GROUP: &str = "group";
-    pub const ORDER: &str = "order";
-    /// May be a literal string or a `{field_name}` template interpolated per-instance by UI consumers.
-    pub const TITLE: &str = "title";
-    pub const COMPACT: &str = "compact";
-    pub const MULTILINE: &str = "multiline";
-}
-
 /// UI-specific metadata for field rendering
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -109,13 +109,21 @@ main:
 }
 
 #[test]
-fn field_placed_twice_surfaces_its_first_placement_only() {
+fn field_placed_twice_surfaces_first_region_but_field_at_resolves_every_placement() {
+    // One content value placed at two sites with unrelated ink between them.
+    // Span data cannot distinguish a genuine second placement from package
+    // chrome interrupting one placement, so `regions()` promises the first
+    // placement only — never a spanning union that would claim the middle
+    // content. The forward direction differs: a click identifies one drawn
+    // item, so *both* placements resolve via `field_at` — including the second
+    // one `regions()` deliberately does not enumerate — while a point on
+    // unrelated ink resolves to nothing.
     const YAML: &str = r#"
 quill:
   name: two_placements
   version: 0.1.0
   backend: typst
-  description: first-placement region test
+  description: first-placement region + click-to-field test
 typst:
   plate_file: plate.typ
 main:
@@ -124,11 +132,6 @@ main:
       type: markdown
       description: a short paragraph placed twice
 "#;
-    // One content value placed at two sites with unrelated ink between them.
-    // Span data cannot distinguish a genuine second placement from package
-    // chrome interrupting one placement, so `regions()` promises the first
-    // placement only — never a spanning union that would claim the middle
-    // content. The second placement stays reachable point-wise via `field_at`.
     const PLATE: &str = r#"
 #import "@local/quillmark-helper:0.1.0": data
 #set page(width: 612pt, height: 792pt, margin: 72pt)
@@ -151,16 +154,49 @@ main:
     );
     // The surfaced region is the *first* placement: near the top margin, and
     // not a union stretching down over the lorem filler to the second copy.
-    let [_, y0, _, y1] = intro[0].rect;
+    let first = intro[0];
+    let [_, y0, _, y1] = first.rect;
     assert!(
         y1 - y0 < 100.0,
         "the region is one placement's extent, not a spanning union: {:?}",
-        intro[0].rect
+        first.rect
     );
     assert!(
         y1 > 600.0,
         "the region is the top-of-page first placement (bottom-left origin): {:?}",
-        intro[0].rect
+        first.rect
+    );
+
+    // A point inside the surfaced first placement resolves to the field.
+    let cx = (first.rect[0] + first.rect[2]) / 2.0;
+    let cy = (first.rect[1] + first.rect[3]) / 2.0;
+    assert_eq!(
+        session.field_at(first.page, cx, cy).as_deref(),
+        Some("intro"),
+        "a click inside the first placement resolves"
+    );
+
+    // The second placement sits below the lorem filler — probe downward from
+    // the first placement until ink resolves again; it must still say `intro`.
+    let mut second_hit = None;
+    let mut y = first.rect[1] - 12.0;
+    while y > 40.0 {
+        if let Some(f) = session.field_at(first.page, cx, y) {
+            second_hit = Some(f);
+        }
+        y -= 6.0;
+    }
+    assert_eq!(
+        second_hit.as_deref(),
+        Some("intro"),
+        "the second, un-surfaced placement still resolves point-wise"
+    );
+
+    // Far outside any ink: nothing.
+    assert_eq!(
+        session.field_at(first.page, 5.0, 5.0),
+        None,
+        "a click off any field's ink resolves to nothing"
     );
 }
 
@@ -440,56 +476,6 @@ card_kinds:
 }
 
 #[test]
-fn form_field_region_needs_a_schema_binding() {
-    // Only a schema-addressable widget surfaces a region. `field:` keys it on a
-    // schema path (so a signature widget named "Signature" routes to
-    // `signature_block`); a widget that binds none has only a `/T` name and
-    // exposes nothing. `field:` validates against the schema, so
-    // `signature_block` must be a declared field.
-    const YAML: &str = r#"
-quill:
-  name: field_binding
-  version: 0.1.0
-  backend: typst
-  description: form-field schema binding test
-typst:
-  plate_file: plate.typ
-main:
-  fields:
-    signature_block:
-      type: array
-      items:
-        type: string
-      default: []
-      description: the signer's name and title
-"#;
-    const PLATE: &str = r#"
-#import "@local/quillmark-helper:0.1.0": form-field, signature-field
-#set page(width: 600pt, height: 400pt, margin: 50pt)
-#form-field("Plain", type: "text", value: "hi")
-#signature-field("Signature", field: "signature_block")
-"#;
-    let session = TypstBackend
-        .open(&quill(YAML, PLATE), &serde_json::json!({}))
-        .expect("open");
-    let fields: std::collections::HashSet<String> =
-        session.regions().into_iter().map(|r| r.field).collect();
-
-    assert!(
-        fields.contains("signature_block"),
-        "a `field:`-bound widget keys on the schema path: {fields:?}"
-    );
-    assert!(
-        !fields.contains("Plain"),
-        "an unbound widget is not schema-addressable and exposes no region: {fields:?}"
-    );
-    assert!(
-        !fields.contains("Signature"),
-        "the bound widget must not also leak its `/T` name: {fields:?}"
-    );
-}
-
-#[test]
 fn form_field_unknown_path_fails_the_compile() {
     // `field:` validates against the schema address tables — a typo'd path
     // is a loud compile error, not a silent no-region widget.
@@ -711,78 +697,6 @@ main:
 }
 
 #[test]
-fn field_at_resolves_every_placement_not_just_the_first() {
-    // The forward direction: a click identifies one drawn item, so *both*
-    // placements of a twice-placed value resolve — including the second one
-    // that `regions()` deliberately does not enumerate — and a point on
-    // unrelated ink resolves to nothing.
-    const YAML: &str = r#"
-quill:
-  name: field_at
-  version: 0.1.0
-  backend: typst
-  description: click-to-field test
-typst:
-  plate_file: plate.typ
-main:
-  fields:
-    intro:
-      type: markdown
-      description: a short paragraph placed twice
-"#;
-    const PLATE: &str = r#"
-#import "@local/quillmark-helper:0.1.0": data
-#set page(width: 612pt, height: 792pt, margin: 72pt)
-
-#data.intro
-
-#lorem(40)
-
-#data.intro
-"#;
-    let data = serde_json::json!({ "intro": "The same intro, placed twice." });
-
-    let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
-    let regions = session.regions();
-    let first = regions
-        .iter()
-        .find(|r| r.field == "intro")
-        .expect("first placement surfaces");
-
-    // A point inside the surfaced first placement resolves to the field.
-    let cx = (first.rect[0] + first.rect[2]) / 2.0;
-    let cy = (first.rect[1] + first.rect[3]) / 2.0;
-    assert_eq!(
-        session.field_at(first.page, cx, cy).as_deref(),
-        Some("intro"),
-        "a click inside the first placement resolves"
-    );
-
-    // The second placement sits below the lorem filler — probe downward from
-    // the first placement until ink resolves again; it must still say `intro`.
-    let mut second_hit = None;
-    let mut y = first.rect[1] - 12.0;
-    while y > 40.0 {
-        if let Some(f) = session.field_at(first.page, cx, y) {
-            second_hit = Some(f);
-        }
-        y -= 6.0;
-    }
-    assert_eq!(
-        second_hit.as_deref(),
-        Some("intro"),
-        "the second, un-surfaced placement still resolves point-wise"
-    );
-
-    // Far outside any ink: nothing.
-    assert_eq!(
-        session.field_at(first.page, 5.0, 5.0),
-        None,
-        "a click off any field's ink resolves to nothing"
-    );
-}
-
-#[test]
 fn adversarial_codegen_inputs_still_compile() {
     // The generated helper is Typst source built from document data, so a data
     // value must never produce source that fails to parse. Two edges the string
@@ -821,4 +735,59 @@ main:
     TypstBackend
         .open(&quill(YAML, PLATE), &data)
         .expect("adversarial data (unterminated <u>, i64::MIN) must still compile");
+}
+
+/// Two spatially-overlapping widgets resolve `field_at` by paint order — the
+/// later-painted widget wins — not by their alphabetical `/T` names. The widget
+/// hit-test once sorted placements by `(page, name)` and `find`-first, silently
+/// violating the "later-painted wins" rule the content-field path documents
+/// (`span_scan::field_at`). `aaa` is painted first, `zzz` on top of it; a click
+/// in the shared box must resolve to `zzz`'s field, not `aaa`'s.
+#[test]
+fn overlapping_widgets_resolve_field_at_by_paint_order_not_name() {
+    const YAML: &str = r#"
+quill:
+  name: overlap_widgets
+  version: 0.1.0
+  backend: typst
+  description: overlapping widget hit-test
+typst:
+  plate_file: plate.typ
+main:
+  fields:
+    aaa_early:
+      type: string
+      description: alphabetically first, painted first (underneath)
+    zzz_late:
+      type: string
+      description: alphabetically last, painted last (on top)
+"#;
+    const PLATE: &str = r#"
+#import "@local/quillmark-helper:0.1.0": form-field
+#set page(width: 300pt, height: 200pt, margin: 0pt)
+#place(top + left, dx: 60pt, dy: 60pt,
+  form-field("aaa", type: "checkbox", field: "aaa_early", width: 40pt, height: 40pt))
+#place(top + left, dx: 60pt, dy: 60pt,
+  form-field("zzz", type: "checkbox", field: "zzz_late", width: 40pt, height: 40pt))
+"#;
+    let session = TypstBackend
+        .open(&quill(YAML, PLATE), &serde_json::json!({}))
+        .expect("open");
+    let regions = session.regions();
+    let a = regions
+        .iter()
+        .find(|r| r.field == "aaa_early")
+        .expect("aaa_early widget region");
+    let z = regions
+        .iter()
+        .find(|r| r.field == "zzz_late")
+        .expect("zzz_late widget region");
+    assert_eq!(a.page, z.page, "both widgets on the same page");
+    let cx = (z.rect[0] + z.rect[2]) / 2.0;
+    let cy = (z.rect[1] + z.rect[3]) / 2.0;
+    assert_eq!(
+        session.field_at(z.page, cx, cy).as_deref(),
+        Some("zzz_late"),
+        "the later-painted widget wins the click, not the alphabetically-first name"
+    );
 }

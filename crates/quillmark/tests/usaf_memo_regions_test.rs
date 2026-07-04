@@ -26,15 +26,9 @@ fn usaf_memo_regions_cover_body_signature_and_cards() {
     // kind, so the indorsement addresses are present.
     let parsed = quill.seed_document();
 
-    let mut session = match engine.open(&quill, &parsed) {
-        // Font-less CI cannot exercise the renderer; skip rather than fail,
-        // matching the convention in quiver_test.rs.
-        Err(e) if e.diagnostics()[0].message.contains("No fonts found") => {
-            eprintln!("skipping — no fonts available");
-            return;
-        }
-        other => other.expect("usaf_memo should open a session"),
-    };
+    let mut session = engine
+        .open(&quill, &parsed)
+        .expect("usaf_memo should open a session");
 
     let regions = session.regions();
     let fields: HashSet<&str> = regions.iter().map(|r| r.field.as_str()).collect();

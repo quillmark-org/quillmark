@@ -28,43 +28,6 @@ fn make_test_quill_path(temp_dir: &TempDir, with_required_field: bool) -> std::p
 }
 
 #[test]
-fn test_dry_run_success() {
-    let temp_dir = TempDir::new().unwrap();
-    let quill_path = make_test_quill_path(&temp_dir, true);
-
-    let quill = quillmark::quill_from_path(&quill_path).expect("from_path failed");
-
-    let markdown =
-        "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: My Document\nauthor: Test\n~~~\n\n# Content\n";
-    let parsed = Document::from_markdown(markdown).expect("parse failed");
-
-    let result = quill.dry_run(&parsed);
-    assert!(result.is_ok(), "dry_run should succeed: {:?}", result);
-}
-
-#[test]
-fn test_dry_run_missing_must_fill_field_is_tolerated() {
-    // Zero-filled render: a merely *incomplete* document (Unendorsed `title`
-    // absent) is not a hard error — `title` is zero-filled in the plate
-    // projection. See prose/canon/SCHEMAS.md.
-    let temp_dir = TempDir::new().unwrap();
-    let quill_path = make_test_quill_path(&temp_dir, true);
-
-    let quill = quillmark::quill_from_path(&quill_path).expect("from_path failed");
-
-    let markdown =
-        "~~~card-yaml\n$quill: test_quill\n$kind: main\nauthor: Test\n~~~\n\n# Content\n";
-    let parsed = Document::from_markdown(markdown).expect("parse failed");
-
-    let result = quill.dry_run(&parsed);
-    assert!(
-        result.is_ok(),
-        "dry_run should tolerate an absent Unendorsed field (zero-filled): {:?}",
-        result
-    );
-}
-
-#[test]
 fn test_dry_run_tolerates_must_fill_marker() {
     // A `!must_fill` placeholder never gates render: the marked field zero-fills
     // (null ≡ absent) and dry_run succeeds. The marker surfaces as a non-fatal

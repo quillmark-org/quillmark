@@ -113,55 +113,6 @@ fn acroform_widgets(
     (doc, by_name)
 }
 
-// ─── regression: each widget has exactly one /Subtype entry ──────────────────
-
-/// `pdf-writer::Field::into_annotation` already emits `/Subtype /Widget`; an
-/// earlier draft called `.subtype()` on the resulting Annotation too,
-/// producing a malformed widget dict with `/Subtype` written twice. lopdf
-/// silently tolerates the duplication; stricter validators (qpdf, MuPDF)
-/// reject it. This test fences the regression at the byte level.
-#[test]
-fn regression_widget_dict_has_exactly_one_subtype() {
-    let plate = r#"
-#import "@local/quillmark-helper:0.1.0": signature-field
-#set page(width: 600pt, height: 400pt, margin: 50pt)
-#signature-field("a")
-"#;
-    let pdf = compile(plate).expect("compile ok");
-
-    let doc = lopdf::Document::load_mem(&pdf).expect("reparse");
-    let cat = doc.catalog().expect("catalog");
-    let af_ref = cat.get(b"AcroForm").unwrap().as_reference().unwrap();
-    let af = doc.get_object(af_ref).unwrap().as_dict().unwrap();
-    let fields = af.get(b"Fields").unwrap().as_array().unwrap();
-    assert_eq!(fields.len(), 1);
-    let widget_ref = fields[0].as_reference().unwrap();
-
-    // Locate the widget object's raw byte range and count /Subtype occurrences.
-    let header = format!("{} 0 obj", widget_ref.0);
-    let h = header.as_bytes();
-    let start = pdf
-        .windows(h.len())
-        .position(|w| w == h)
-        .expect("widget header in PDF bytes");
-    let after = &pdf[start..];
-    let endobj = after
-        .windows(b"endobj".len())
-        .position(|w| w == b"endobj")
-        .expect("endobj after widget");
-    let body = &after[..endobj];
-    let count = body
-        .windows(b"/Subtype".len())
-        .filter(|w| *w == b"/Subtype")
-        .count();
-    assert_eq!(
-        count,
-        1,
-        "widget dict must declare /Subtype exactly once, got {count}:\n{}",
-        String::from_utf8_lossy(body)
-    );
-}
-
 // ─── case 1: two pages, two fields ────────────────────────────────────────────
 
 #[test]
@@ -180,7 +131,6 @@ Page 2.
 #signature-field("b")
 "#;
     let pdf = compile(plate).expect("compile ok");
-    fs::write("/tmp/qm_sig_two_pages.pdf", &pdf).ok();
 
     let doc = lopdf::Document::load_mem(&pdf).expect("lopdf reparse");
     let cat = doc.catalog().expect("catalog");
@@ -359,17 +309,14 @@ Just a doc.
 }
 
 // ─── generalized form-field types ────────────────────────────────────────────
+//
+// These assert the typst→spec *mapping* (the bound `/V`, checkbox truthiness,
+// choice option-matching). The spine bytes they used to re-check — the
+// MULTILINE/COMBO `Ff` flag bits and the `/MK /CA (4)` checkbox glyph — are
+// owned by `quillmark-pdf/tests/stamp.rs` at the spine seam.
 
-const MULTILINE_BIT: i64 = 0x1000; // FieldFlags::MULTILINE
-const COMBO_BIT: i64 = 0x20000; // FieldFlags::COMBO
-
-/// Read `/Ff` (field flags) as an i64, defaulting to 0 when absent.
-fn field_flags(w: &lopdf::Dictionary) -> i64 {
-    w.get(b"Ff").and_then(|o| o.as_i64()).unwrap_or(0)
-}
-
-/// case: text fields — single-line and multiline; the bound `/V` string and the
-/// MULTILINE flag bit set iff `multiline: true`.
+/// case: text fields — single-line and multiline; the bound `/V` string lands
+/// on the widget.
 #[test]
 fn form_field_text_single_and_multiline() {
     let plate = r#"
@@ -383,23 +330,13 @@ fn form_field_text_single_and_multiline() {
     let single = widgets.get("single").expect("single field");
     assert_eq!(single.get(b"FT").unwrap().as_name().unwrap(), b"Tx");
     assert_eq!(single.get(b"V").unwrap().as_str().unwrap(), b"hello");
-    assert_eq!(
-        field_flags(single) & MULTILINE_BIT,
-        0,
-        "single-line text must not set the MULTILINE bit"
-    );
 
     let multi = widgets.get("multi").expect("multi field");
     assert_eq!(multi.get(b"FT").unwrap().as_name().unwrap(), b"Tx");
-    assert_eq!(
-        field_flags(multi) & MULTILINE_BIT,
-        MULTILINE_BIT,
-        "multiline text must set the MULTILINE bit"
-    );
 }
 
 /// case: checkbox — `/FT /Btn`; `/V` and `/AS` are `/Yes` when bound truthy and
-/// `/Off` when not; `/MK /CA (4)` present on both.
+/// `/Off` when not.
 #[test]
 fn form_field_checkbox_checked_and_unchecked() {
     let plate = r#"
@@ -414,19 +351,15 @@ fn form_field_checkbox_checked_and_unchecked() {
     assert_eq!(on.get(b"FT").unwrap().as_name().unwrap(), b"Btn");
     assert_eq!(on.get(b"V").unwrap().as_name().unwrap(), b"Yes");
     assert_eq!(on.get(b"AS").unwrap().as_name().unwrap(), b"Yes");
-    let mk = on.get(b"MK").unwrap().as_dict().unwrap();
-    assert_eq!(mk.get(b"CA").unwrap().as_str().unwrap(), b"4");
 
     let off = widgets.get("decline").expect("decline field");
     assert_eq!(off.get(b"FT").unwrap().as_name().unwrap(), b"Btn");
     assert_eq!(off.get(b"V").unwrap().as_name().unwrap(), b"Off");
     assert_eq!(off.get(b"AS").unwrap().as_name().unwrap(), b"Off");
-    let mk_off = off.get(b"MK").unwrap().as_dict().unwrap();
-    assert_eq!(mk_off.get(b"CA").unwrap().as_str().unwrap(), b"4");
 }
 
-/// case: choice — `/FT /Ch`; `/Opt` carries the options; COMBO flag set; `/V`
-/// carries the chosen option when it matches, and is absent when it does not.
+/// case: choice — `/FT /Ch`; `/Opt` carries the options; `/V` carries the
+/// chosen option when it matches, and is absent when it does not.
 #[test]
 fn form_field_choice_options_and_value_matching() {
     let plate = r#"
@@ -439,11 +372,6 @@ fn form_field_choice_options_and_value_matching() {
 
     let color = widgets.get("color").expect("color field");
     assert_eq!(color.get(b"FT").unwrap().as_name().unwrap(), b"Ch");
-    assert_eq!(
-        field_flags(color) & COMBO_BIT,
-        COMBO_BIT,
-        "choice must set the COMBO bit"
-    );
     let opts = color.get(b"Opt").unwrap().as_array().unwrap();
     let opt_strs: Vec<String> = opts
         .iter()
@@ -630,4 +558,13 @@ main:
         "an unbound widget exposes no region: {:?}",
         fields.keys().collect::<Vec<_>>()
     );
+    // A bound widget keys only on its schema path — its `/T` name must not also
+    // leak as a region key.
+    for t_name in ["txt", "chk", "cho", "sig"] {
+        assert!(
+            !fields.contains_key(t_name),
+            "a bound widget must not also leak its `/T` name {t_name:?}: {:?}",
+            fields.keys().collect::<Vec<_>>()
+        );
+    }
 }

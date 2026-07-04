@@ -39,7 +39,7 @@ typst:
 
 // The hand-authored `sample_form` fixture: a `pdfform`-backend quill shipping a
 // stripped background (`form.pdf`) and a value-free field spec (`form.json`).
-// Loaded as a tree so the canvas tests can drive the pdfform-preview backend
+// Loaded as a tree so the canvas tests can drive the pdfform backend
 // (which rasterizes the pre-flattened page) exactly like a typst quill.
 const SAMPLE_FORM_DIR = join(__dirname, '../../fixtures/resources/quills/sample_form/0.1.0')
 

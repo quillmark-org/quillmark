@@ -52,7 +52,7 @@ impl Quillmark {
         self.backends.keys().map(|s| s.as_str()).collect()
     }
 
-    /// Resolve a quill's declared backend, erroring with `UnsupportedBackend`
+    /// Resolve a quill's declared backend, erroring with `engine::backend_not_found`
     /// when none is registered. The backend-existence check lives here — at
     /// render time, not load time — so a backend-less core can still load and
     /// validate quills.
@@ -94,12 +94,11 @@ impl Quillmark {
     ) -> Result<RenderResult, RenderError> {
         let default_format = self.supported_formats(quill)?.first().copied();
         let session = self.open(quill, doc)?;
+        // Struct-update so a new RenderOptions field is carried through by
+        // default; only `output_format` gets the backend-default fallback.
         let resolved = RenderOptions {
             output_format: opts.output_format.or(default_format),
-            ppi: opts.ppi,
-            pages: opts.pages.clone(),
-            producer: opts.producer.clone(),
-            regions: opts.regions,
+            ..opts.clone()
         };
         session.render(&resolved)
     }

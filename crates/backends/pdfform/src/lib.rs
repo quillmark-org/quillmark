@@ -19,11 +19,8 @@ mod form;
 mod resolve;
 mod typography;
 
-pub use form::{FieldKind, FormField, FormParseError, FormSpec, Rect};
-
-use std::any::Any;
-
 use flatten::flatten as flatten_to_pdf;
+use form::FormSpec;
 use quillmark_core::session::SessionHandle;
 use quillmark_core::{
     Artifact, Backend, ChangeSet, Diagnostic, LiveSession, OutputFormat, Quill, RenderError,
@@ -98,20 +95,13 @@ impl Backend for PdfformBackend {
 
         // Pre-flatten once so render_rgba / SVG / PNG renders have a
         // ready-to-rasterize flat PDF without re-running flatten on every
-        // paint call. The producer string only goes in the PDF Info dict and
-        // doesn't affect rasterisation, so None is fine here.
-        let flat_pdf = flatten_to_pdf(
-            base_pdf.clone(),
-            &field_specs,
-            &StampOptions { producer: None },
-        )
-        .map_err(map_pdf_err)?;
+        // paint call.
+        let flat_pdf = flatten_to_pdf(base_pdf.clone(), &field_specs).map_err(map_pdf_err)?;
 
         Ok(LiveSession::new(Box::new(PdfformSession {
             base_pdf,
             spec,
             field_specs,
-            page_count: page_boxes.len(),
             page_boxes,
             flat_pdf,
         })))
@@ -151,9 +141,9 @@ struct PdfformSession {
     /// document data by each `apply`.
     spec: FormSpec,
     field_specs: Vec<FieldSpec>,
-    page_count: usize,
     /// Page media-boxes from the background; used by `page_size_pt` without
-    /// reparsing the PDF on every canvas-paint call.
+    /// reparsing the PDF on every canvas-paint call. Its length is the page
+    /// count (the background is fixed for the session).
     page_boxes: Vec<[f32; 4]>,
     /// Pre-flattened PDF (values baked as content-stream operators) ready for
     /// hayro rasterisation. Produced once at session-open time.
@@ -204,11 +194,7 @@ impl SessionHandle for PdfformSession {
     }
 
     fn page_count(&self) -> usize {
-        self.page_count
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
+        self.page_boxes.len()
     }
 
     /// Page dimensions in PDF points derived from the background's `/MediaBox`.
@@ -258,12 +244,7 @@ impl SessionHandle for PdfformSession {
     /// visible delta.
     fn apply(&mut self, json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
         let field_specs = resolve_field_specs(&self.spec, &self.page_boxes, json_data)?;
-        let flat_pdf = flatten_to_pdf(
-            self.base_pdf.clone(),
-            &field_specs,
-            &StampOptions { producer: None },
-        )
-        .map_err(map_pdf_err)?;
+        let flat_pdf = flatten_to_pdf(self.base_pdf.clone(), &field_specs).map_err(map_pdf_err)?;
 
         let mut dirty_pages: Vec<usize> = self
             .field_specs
@@ -279,7 +260,7 @@ impl SessionHandle for PdfformSession {
         self.flat_pdf = flat_pdf;
 
         Ok(ChangeSet {
-            page_count: self.page_count,
+            page_count: self.page_boxes.len(),
             dirty_pages,
         })
     }

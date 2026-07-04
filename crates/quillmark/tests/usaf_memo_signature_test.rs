@@ -72,15 +72,6 @@ fn usaf_memo_signature_widget_aligns_with_signature_block() {
         },
     );
 
-    // Font-less CI cannot exercise the renderer; skip rather than fail, matching
-    // the convention in quiver_test.rs.
-    if let Err(e) = &result {
-        if e.diagnostics()[0].message.contains("No fonts found") {
-            eprintln!("skipping — no fonts available");
-            return;
-        }
-    }
-
     let rendered = result.expect("usaf_memo should render to PDF");
     let pdf = &rendered.artifacts[0].bytes;
 

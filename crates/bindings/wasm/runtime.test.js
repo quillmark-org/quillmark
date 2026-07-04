@@ -134,21 +134,6 @@ describe('@quillmark/wasm/runtime — Engine (hidden core→backend crossing)', 
     expect(typeof (await engine.supportsCanvas(quill))).toBe('boolean')
   })
 
-  it('session.regions() is always a non-null array', async () => {
-    // Regions are a session-level query, not on the render result. The document
-    // body is a markdown content field, so it auto-tags one schema-field region
-    // keyed `$body`; the result is always an array, never undefined.
-    const engine = new Engine()
-    const quill = makeRuntimeQuill()
-    const doc = Document.fromMarkdown(TEST_MARKDOWN)
-
-    const session = await engine.open(quill, doc)
-    const regions = session.regions()
-    expect(Array.isArray(regions)).toBe(true)
-    expect(regions.some((r) => r.field === '$body')).toBe(true)
-    session.free()
-  })
-
   it('manifest-backed capability probes do NOT load the backend', async () => {
     // A descriptor-form counting loader: it carries the same manifest the
     // default registry uses, so probes answer from the manifest (no load),

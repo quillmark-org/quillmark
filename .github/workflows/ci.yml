@@ -33,6 +33,11 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
 
+      # Clippy is intentionally NOT gated here. A clippy gate was tried
+      # (a11caa45), the tree made clippy-clean, then the gate removed
+      # (68c3751a) as not worth the CI time; `cargo doc -Dwarnings` is the
+      # standing lint gate. Do not re-add a "make clippy clean" pass expecting
+      # CI to enforce it — record the policy change here first if that changes.
       - name: Build docs
         env:
           RUSTDOCFLAGS: -Dwarnings
@@ -83,31 +88,28 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Cache WASM build output
-        id: wasm-cache
+      - name: Cache WASM cargo build
         uses: actions/cache@v4
         with:
-          path: |
-            target/wasm32-unknown-unknown/wasm-ci
-            pkg
-          # Namespaced cache key: never share artifacts with the release
-          # workflow, which builds with the size-optimized wasm-release
-          # profile and publishes pkg/ to npm. The key hashes every input
-          # baked into pkg/, not just Rust sources — the runtime sidecar and
-          # package.json template that build-wasm.sh copies in, plus the
-          # helper template and fonts embedded via include_str!/include_bytes!
-          # — so an edit to any of them rebuilds instead of serving a stale
-          # pkg/ to vitest and the typecheck drift guard.
-          key: wasm-ci-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'crates/**/*.rs', 'crates/bindings/wasm/runtime/**', 'crates/bindings/wasm/package.template.json', 'crates/backends/typst/src/lib.typ.template', 'crates/backends/typst/src/fonts/**', 'scripts/build-wasm.sh') }}
+          # Cache only the wasm cargo build dir — not pkg/. build-wasm.sh always
+          # regenerates pkg/ from a warm target/ (a quick incremental rebuild +
+          # wasm-bindgen), so pkg/ never needs to survive across runs, no pkg
+          # inputs need enumerating in the key, and no stale pkg/ can be served
+          # to vitest or the typecheck drift guard. Namespaced to wasm-ci so it
+          # never mixes with the release workflow's size-optimized wasm-release
+          # build. Cargo's own incremental staleness handles source edits within
+          # a restored target/, so the key only busts on a dependency change.
+          path: target/wasm32-unknown-unknown/wasm-ci
+          key: wasm-ci-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            wasm-ci-${{ runner.os }}-
 
       - name: Install wasm-bindgen-cli
-        if: steps.wasm-cache.outputs.cache-hit != 'true'
         uses: taiki-e/install-action@v2
         with:
           tool: wasm-bindgen-cli@0.2.118
 
       - name: Build WASM
-        if: steps.wasm-cache.outputs.cache-hit != 'true'
         run: ./scripts/build-wasm.sh --ci
 
       - name: Install npm dependencies

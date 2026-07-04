@@ -79,6 +79,14 @@ impl QuillWorld {
         // must be vendored under `packages/` in the quill tree.
         Self::load_packages_from_quill(source, &mut sources, &mut binaries)?;
 
+        // The helper package's typst.toml is constant for the session's
+        // lifetime, so insert it once here. Re-injecting the helper `lib.typ`
+        // per apply leaves it untouched.
+        binaries.insert(
+            Self::helper_fid("typst.toml"),
+            Bytes::new(helper::generate_typst_toml().into_bytes()),
+        );
+
         // Create main source
         let main_id = file_id(
             None,
@@ -116,49 +124,39 @@ impl QuillWorld {
         Ok((world, windows))
     }
 
-    /// The virtual `@local/quillmark-helper` package spec.
-    pub(crate) fn helper_spec() -> PackageSpec {
-        PackageSpec {
+    /// A [`FileId`] for `rel` inside the virtual `@local/quillmark-helper`
+    /// package (e.g. `lib.typ`).
+    pub(crate) fn helper_fid(rel: &str) -> FileId {
+        let spec = PackageSpec {
             namespace: helper::HELPER_NAMESPACE.into(),
             name: helper::HELPER_NAME.into(),
             version: helper::HELPER_VERSION
                 .parse()
                 .expect("Invalid helper version"),
-        }
-    }
-
-    /// A [`FileId`] for `rel` inside the helper package (e.g. `lib.typ`).
-    pub(crate) fn helper_fid(rel: &str) -> FileId {
-        file_id(
-            Some(Self::helper_spec()),
-            VirtualPath::new(rel).expect("valid helper vpath"),
-        )
+        };
+        file_id(Some(spec), VirtualPath::new(rel).expect("valid helper vpath"))
     }
 
     /// Replace-or-insert a source. An existing source is edited via
     /// [`Source::replace`] — a prefix/suffix diff reparses only the changed
     /// span, preserving spans on the untouched regions so `comemo` constraints
-    /// keep matching across an edit. A new source is inserted whole. Returns
-    /// the byte length of the reparsed range (0 on insert).
-    pub(crate) fn set_source(&mut self, id: FileId, text: &str) -> usize {
+    /// keep matching across an edit. A new source is inserted whole.
+    pub(crate) fn set_source(&mut self, id: FileId, text: &str) {
         match self.sources.get_mut(&id) {
-            Some(s) => s.replace(text).len(),
+            Some(s) => {
+                s.replace(text);
+            }
             None => {
                 self.sources.insert(id, Source::new(id, text.to_string()));
-                0
             }
         }
-    }
-
-    /// Set a binary file (e.g. the helper `typst.toml`).
-    pub(crate) fn set_binary(&mut self, id: FileId, bytes: Vec<u8>) {
-        self.binaries.insert(id, Bytes::new(bytes));
     }
 
     /// Inject the quillmark-helper package generated from the transformed
     /// document data plus the schema meta (see `helper::generate_lib_typ`).
     /// `set_source` on the helper `lib.typ` makes a repeat injection (a session
-    /// edit) an incremental reparse rather than a fresh parse. Returns each
+    /// edit) an incremental reparse rather than a fresh parse. The helper's
+    /// `typst.toml` is constant and set once at construction. Returns each
     /// generated content block's byte window, paired with the helper file's id
     /// — the span scan's classification table.
     pub(crate) fn inject_helper_package(
@@ -169,10 +167,6 @@ impl QuillWorld {
         let file = Self::helper_fid("lib.typ");
         let (src, windows) = helper::generate_lib_typ(data, meta);
         self.set_source(file, &src);
-        self.set_binary(
-            Self::helper_fid("typst.toml"),
-            helper::generate_typst_toml().into_bytes(),
-        );
         windows
             .into_iter()
             .map(|w| crate::overlay::FieldWindow {

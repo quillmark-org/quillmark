@@ -11,8 +11,6 @@ A field's *cell* is determined by whether the schema declares a `default:`.
   the default is used when absent.
 """
 
-import pytest
-
 from quillmark import Document, OutputFormat, Quill
 
 
@@ -136,51 +134,6 @@ def test_blueprint_no_legacy_required_optional_tags(tmp_path):
 # Validation surface — new diagnostic codes
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize(
-    "supplied_fields",
-    [
-        # Partial: an Endorsed override present, both Unendorsed fields omitted.
-        pytest.param("status: ready\n", id="partial"),
-        # Empty: nothing supplied at all.
-        pytest.param("", id="empty"),
-    ],
-)
-def test_absent_unendorsed_emits_no_completeness_codes(engine, tmp_path, supplied_fields):
-    """An absent Unendorsed field is not a render gate, and its absence is silent.
-
-    Per the zero-filled-render contract (``prose/canon/SCHEMAS.md``), render
-    succeeds — each absent field is zero-filled in the ephemeral plate
-    projection — and ``quill.validate`` surfaces neither the removed
-    ``validation::field_absent`` nor any legacy ``required`` code, whether the
-    document is partially filled or fully empty.
-    """
-    quill = make_quill(tmp_path)
-    md = (
-        "~~~card-yaml\n"
-        "$quill: py_schema_smoke\n"
-        "$kind: main\n"
-        f"{supplied_fields}"
-        "~~~\n"
-    )
-    doc = Document.from_markdown(md)
-
-    # Absence does not gate render: an incomplete (or empty) document renders fine.
-    result = engine.render(quill, doc, OutputFormat.PDF)
-    assert len(result.artifacts) > 0
-
-    # Absence is silent — none of the removed/legacy completeness codes surface.
-    codes = [d.get("code") for d in quill.validate(doc)]
-    for legacy in (
-        "validation::field_absent",
-        "validation::missing_required",
-        "validation::required_field_absent",
-        "validation::unfilled_placeholder",
-    ):
-        assert legacy not in codes, (
-            f"`{legacy}` must not be surfaced; got: {codes}"
-        )
-
-
 def test_render_tolerates_must_fill_marker(engine, tmp_path):
     """A ``!must_fill`` marker left in the document is non-fatal.
 
@@ -211,6 +164,13 @@ def test_render_tolerates_must_fill_marker(engine, tmp_path):
     )
     assert all(d.get("severity") == "warning" for d in fill), (
         f"validation::must_fill must be a non-fatal warning; got: {fill}"
+    )
+
+    # The removed `validation::field_absent` completeness code never surfaces —
+    # absent Unendorsed fields zero-fill silently.
+    codes = [d.get("code") for d in diags]
+    assert "validation::field_absent" not in codes, (
+        f"field_absent is removed and must not be surfaced; got: {codes}"
     )
 
 

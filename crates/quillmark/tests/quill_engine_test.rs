@@ -71,32 +71,6 @@ fn test_unsupported_backend_errors_at_render_time() {
 
 #[test]
 #[cfg(feature = "typst")]
-fn test_quill_engine_end_to_end() {
-    let temp_dir = TempDir::new().unwrap();
-    let quill_path = temp_dir.path().join("test_quill");
-    fs::create_dir_all(&quill_path).unwrap();
-    fs::write(
-        quill_path.join("Quill.yaml"),
-        "quill:\n  name: \"my_test_quill\"\n  version: \"1.0\"\n  backend: \"typst\"\n  description: \"Test\"\n\ntypst:\n  plate_file: plate.typ\n",
-    ).unwrap();
-    fs::write(
-        quill_path.join("plate.typ"),
-        "= {{ title | String(default=\"Test\") }}\n\n{{ body | Content }}",
-    )
-    .unwrap();
-
-    let quill = quillmark::quill_from_path(&quill_path).expect("Quill::from_path failed");
-
-    let markdown =
-        "~~~card-yaml\n$quill: my_test_quill\n$kind: main\ntitle: Test Document\n~~~\n\n# Introduction\n";
-    let parsed = Document::from_markdown(markdown).expect("parse failed");
-
-    let result = quill.dry_run(&parsed);
-    assert!(result.is_ok(), "dry_run failed: {:?}", result);
-}
-
-#[test]
-#[cfg(feature = "typst")]
 fn test_quill_render_succeeds_with_engine_loaded_quill() {
     let temp_dir = TempDir::new().unwrap();
     let quill_path = make_quill_dir(&temp_dir, "my_quill", "typst");
@@ -114,11 +88,6 @@ fn test_quill_render_succeeds_with_engine_loaded_quill() {
         },
     );
 
-    if let Err(e) = &result {
-        if e.diagnostics()[0].message.contains("No fonts found") {
-            return;
-        }
-    }
     assert!(
         result.is_ok(),
         "render should succeed for engine-loaded quill"

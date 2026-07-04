@@ -1171,19 +1171,6 @@ body: "B"
     expect(diags.some((d) => d.code === 'validation::unknown_card')).toBe(true)
   })
 
-  it('does not emit field_absent for absent Unendorsed fields (removed signal)', () => {
-    const quill = buildQuill()
-    const md = `~~~card-yaml
-$quill: validate_smoke_test
-$kind: main
-~~~
-`
-    const diags = quill.validate(Document.fromMarkdown(md))
-    // Absent Unendorsed fields zero-fill silently; validate does not emit
-    // `validation::field_absent`.
-    expect(diags.some((d) => d.code === 'validation::field_absent')).toBe(false)
-  })
-
   it('result is JSON.stringify-able', () => {
     const quill = buildQuill()
     const md = `~~~card-yaml
@@ -1389,6 +1376,9 @@ title: !must_fill
           d.hint.includes('!must_fill'),
       ),
     ).toBe(true)
+    // The removed `validation::field_absent` completeness code never surfaces —
+    // absent Unendorsed fields zero-fill silently.
+    expect(diagsFill.some((d) => d.code === 'validation::field_absent')).toBe(false)
   })
 })
 

@@ -75,9 +75,6 @@ fn field_type(kind: &FieldKind) -> FieldType {
 /// (`schema_field: None`), an absent/null target, a signature, an empty text
 /// value, an unchecked checkbox, or a choice value matching no option.
 fn resolve_value(kind: &FieldKind, schema_field: Option<&str>, data: &Value) -> Option<String> {
-    if matches!(kind, FieldKind::Signature) {
-        return None;
-    }
     let raw = lookup(data, schema_field?)?;
     match kind {
         FieldKind::Text { .. } => coerce_text(raw),

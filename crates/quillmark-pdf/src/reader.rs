@@ -27,7 +27,7 @@ pub fn err(code: &'static str, msg: impl Into<String>) -> PdfError {
 }
 
 /// The offset stored after the last `startxref` marker.
-pub fn find_startxref(pdf: &[u8]) -> Result<usize, PdfError> {
+pub(crate) fn find_startxref(pdf: &[u8]) -> Result<usize, PdfError> {
     let needle = b"startxref";
     let from = pdf.len().saturating_sub(1024);
     let tail = &pdf[from..];
@@ -54,7 +54,7 @@ pub fn find_startxref(pdf: &[u8]) -> Result<usize, PdfError> {
 }
 
 /// Bail if the base PDF stores an xref stream instead of a traditional table.
-pub fn assert_traditional_xref(pdf: &[u8], xref_offset: usize) -> Result<(), PdfError> {
+pub(crate) fn assert_traditional_xref(pdf: &[u8], xref_offset: usize) -> Result<(), PdfError> {
     if pdf.get(xref_offset..xref_offset + 4) != Some(b"xref") {
         return Err(err(
             CODE_XREF_STREAM,
@@ -67,7 +67,7 @@ pub fn assert_traditional_xref(pdf: &[u8], xref_offset: usize) -> Result<(), Pdf
 /// Return the trailer dictionary bytes for the xref section at `xref_offset`.
 /// The slice is the inner dict (between `<<` and `>>`) and may be queried with
 /// [`find_dict_value`].
-pub fn find_trailer_dict(pdf: &[u8], xref_offset: usize) -> Result<&[u8], PdfError> {
+pub(crate) fn find_trailer_dict(pdf: &[u8], xref_offset: usize) -> Result<&[u8], PdfError> {
     let needle = b"trailer";
     let pos = pdf[xref_offset..]
         .windows(needle.len())
@@ -108,7 +108,7 @@ pub struct UpdatedObject {
 /// `/Info <id> 0 R` for the case where the prior trailer had none (a fresh
 /// `/Info` object was created). `new_size` is the updated `/Size` (highest
 /// object number + 1) and `root_id` the document catalog.
-pub fn append_incremental_update(
+pub(crate) fn append_incremental_update(
     mut pdf: Vec<u8>,
     prev_xref: usize,
     root_id: u32,
@@ -221,7 +221,7 @@ fn find_endobj_end(pdf: &[u8], from: usize) -> Option<usize> {
 /// The generation number in object `id`'s header (`<id> <gen> obj`), or `None`
 /// when the object is absent or its header is malformed. Reads the *live* copy
 /// (the last serialized revision), matching [`find_object_bytes`].
-pub fn object_generation(pdf: &[u8], id: u32) -> Option<u16> {
+pub(crate) fn object_generation(pdf: &[u8], id: u32) -> Option<u16> {
     let (start, _) = find_object_bytes(pdf, id)?;
     let after_id = start + format!("{id} ").len();
     let rest = &pdf[after_id..];
@@ -242,7 +242,7 @@ pub fn object_generation(pdf: &[u8], id: u32) -> Option<u16> {
 /// posture, consistent with the xref-stream / `/Encrypt` rejections.
 ///
 /// `None` (object absent) is left for the caller's own not-found error path.
-pub fn assert_overwrite_gen_zero(pdf: &[u8], id: u32, what: &str) -> Result<(), PdfError> {
+pub(crate) fn assert_overwrite_gen_zero(pdf: &[u8], id: u32, what: &str) -> Result<(), PdfError> {
     match object_generation(pdf, id) {
         Some(0) | None => Ok(()),
         Some(gen) => Err(err(
@@ -492,7 +492,7 @@ fn is_pdf_delim(c: u8) -> bool {
     )
 }
 
-pub fn parse_indirect_ref(s: &[u8]) -> Option<(u32, u16)> {
+pub(crate) fn parse_indirect_ref(s: &[u8]) -> Option<(u32, u16)> {
     let s = skip_ws(s);
     let mut i = 0;
     while i < s.len() && s[i].is_ascii_digit() {
@@ -554,7 +554,7 @@ fn skip_ws(s: &[u8]) -> &[u8] {
 /// Resolve the catalog's `/Pages` tree into a flat list of page object IDs,
 /// in document order. The recursion is defensive and capped to prevent runaway
 /// on a pathological PDF.
-pub fn resolve_page_ids(pdf: &[u8], catalog_id: u32) -> Result<Vec<u32>, PdfError> {
+pub(crate) fn resolve_page_ids(pdf: &[u8], catalog_id: u32) -> Result<Vec<u32>, PdfError> {
     let root_pages_id = root_pages_id(pdf, catalog_id)?;
 
     const MAX_NODES: usize = 100_000;
@@ -625,7 +625,11 @@ fn root_pages_id(pdf: &[u8], catalog_id: u32) -> Result<u32, PdfError> {
 /// this guard turns a rotated `pdfform` base into a clean rejection rather than
 /// silently mis-placed output, consistent with the reader's other hard
 /// rejections.
-pub fn assert_unrotated_page(pdf: &[u8], catalog_id: u32, page_id: u32) -> Result<(), PdfError> {
+pub(crate) fn assert_unrotated_page(
+    pdf: &[u8],
+    catalog_id: u32,
+    page_id: u32,
+) -> Result<(), PdfError> {
     let read_rotate = |id: u32| -> Option<i64> {
         let (s, e) = find_object_bytes(pdf, id)?;
         let dict = extract_outer_dict(&pdf[s..e])?;
@@ -718,7 +722,7 @@ fn normalize_rect(mb: [f32; 4]) -> [f32; 4] {
 /// full rect — not just width/height — is returned so a caller that owns
 /// page-relative top-left geometry can honour a non-zero page origin when
 /// flipping to bottom-left PDF user space.
-pub fn page_media_boxes(pdf: &[u8]) -> Result<Vec<[f32; 4]>, PdfError> {
+pub(crate) fn page_media_boxes(pdf: &[u8]) -> Result<Vec<[f32; 4]>, PdfError> {
     let xref_offset = find_startxref(pdf)?;
     assert_traditional_xref(pdf, xref_offset)?;
     let trailer = find_trailer_dict(pdf, xref_offset)?;

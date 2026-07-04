@@ -59,15 +59,6 @@ fn every_quill_in_quiver_renders() {
             },
         );
 
-        // Font-less CI environments cannot exercise the renderer; skip rather
-        // than fail, matching the convention in quill_engine_test.rs.
-        if let Err(e) = &result {
-            if e.diagnostics()[0].message.contains("No fonts found") {
-                eprintln!("quill '{name}': skipping — no fonts available");
-                continue;
-            }
-        }
-
         let rendered = result
             .unwrap_or_else(|e| panic!("quill '{name}' failed to render: {e:?}\n---\n{markdown}"));
         assert!(
@@ -105,11 +96,6 @@ fn every_quill_blueprint_round_trips_and_renders() {
                 ..Default::default()
             },
         );
-        if let Err(e) = &result {
-            if e.diagnostics()[0].message.contains("No fonts found") {
-                continue;
-            }
-        }
         result.unwrap_or_else(|e| {
             panic!("quill '{name}' blueprint failed to render: {e:?}\n---\n{bp}")
         });

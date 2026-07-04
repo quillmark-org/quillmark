@@ -32,7 +32,7 @@ impl PyQuillmark {
 
     /// Render `doc` against `quill` in one shot, resolving `quill`'s backend on
     /// this engine. The default `output_format` falls back to the backend's
-    /// first supported format. Raises `QuillmarkError` (`UnsupportedBackend`)
+    /// first supported format. Raises `QuillmarkError` (`engine::backend_not_found`)
     /// when the backend is not registered. Mirrors WASM `Engine.render`.
     #[pyo3(signature = (quill, doc, format=None, ppi=None, pages=None, producer=None, regions=false))]
     #[allow(clippy::too_many_arguments)] // kwargs mirror RenderOptions 1:1; the signature IS the Python API
@@ -69,7 +69,7 @@ impl PyQuillmark {
     }
 
     /// The output formats `quill`'s backend can emit. Raises `QuillmarkError`
-    /// (`UnsupportedBackend`) for an unregistered backend. Mirrors WASM
+    /// (`engine::backend_not_found`) for an unregistered backend. Mirrors WASM
     /// `Engine.supportedFormats`.
     fn supported_formats(&self, quill: &PyQuill) -> PyResult<Vec<PyOutputFormat>> {
         Ok(self

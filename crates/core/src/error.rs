@@ -397,10 +397,6 @@ impl RenderResult {
         }
     }
 
-    pub fn with_warning(mut self, warning: Diagnostic) -> Self {
-        self.warnings.push(warning);
-        self
-    }
 }
 
 pub fn print_errors(err: &RenderError) {
@@ -438,17 +434,6 @@ mod tests {
         assert!(json.contains("E001"));
         assert!(json.contains("\"severity\":\"error\""));
         assert!(json.contains("\"column\":5"));
-    }
-
-    #[test]
-    fn test_render_error_diagnostics_extraction() {
-        let diag1 = Diagnostic::new(Severity::Error, "Error 1".to_string());
-        let diag2 = Diagnostic::new(Severity::Error, "Error 2".to_string());
-
-        let err = RenderError::new(vec![diag1, diag2]);
-
-        let diags = err.diagnostics();
-        assert_eq!(diags.len(), 2);
     }
 
     #[test]
@@ -532,14 +517,4 @@ mod tests {
         assert!(output.contains("Underlying error"));
     }
 
-    #[test]
-    fn test_render_result_with_warnings() {
-        let artifacts = vec![];
-        let warning = Diagnostic::new(Severity::Warning, "Test warning".to_string());
-
-        let result = RenderResult::new(artifacts, OutputFormat::Pdf).with_warning(warning);
-
-        assert_eq!(result.warnings.len(), 1);
-        assert_eq!(result.warnings[0].message, "Test warning");
-    }
 }

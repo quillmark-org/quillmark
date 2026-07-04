@@ -48,7 +48,7 @@ pub fn pdf_escape(out: &mut Vec<u8>, bytes: &[u8]) {
 
 /// Encode `s` as a PDF text string. ASCII uses a literal `( … )` with `(`, `)`
 /// and `\` escaped; anything else uses a UTF-16BE hex string with a BOM.
-pub fn pdf_text_string(s: &str) -> Vec<u8> {
+pub(crate) fn pdf_text_string(s: &str) -> Vec<u8> {
     if s.is_ascii() {
         let mut out = Vec::with_capacity(s.len() + 2);
         out.push(b'(');
@@ -68,7 +68,7 @@ pub fn pdf_text_string(s: &str) -> Vec<u8> {
 }
 
 /// Replace `/Producer`'s value if present, else append the entry.
-pub fn upsert_producer(info_dict: &[u8], literal: &[u8]) -> Vec<u8> {
+pub(crate) fn upsert_producer(info_dict: &[u8], literal: &[u8]) -> Vec<u8> {
     let key = b"/Producer";
     match find_dict_value(info_dict, "Producer") {
         None => {
@@ -87,7 +87,7 @@ pub fn upsert_producer(info_dict: &[u8], literal: &[u8]) -> Vec<u8> {
 /// `info_ref` is the trailer's `/Info` reference, if any. Returns `Some(info_id)`
 /// when a *new* `/Info` object was allocated (the caller threads it into the
 /// trailer), or `None` when the existing `/Info` was updated in place.
-pub fn apply_producer_stamp(
+pub(crate) fn apply_producer_stamp(
     pdf: &[u8],
     info_ref: Option<(u32, u16)>,
     producer: &str,
@@ -124,7 +124,7 @@ pub fn apply_producer_stamp(
 /// flatten path draws text directly into a content stream, so it must commit to
 /// a byte encoding the font agrees with (unlike the stamp path, where the viewer
 /// synthesizes appearances from a UTF-16 `/V`).
-pub fn winansi_byte(c: char) -> Option<u8> {
+pub(crate) fn winansi_byte(c: char) -> Option<u8> {
     let cp = c as u32;
     match cp {
         // ASCII and the upper Latin-1 range are identity-mapped in WinAnsi.
@@ -165,7 +165,7 @@ pub fn winansi_byte(c: char) -> Option<u8> {
 }
 
 /// Transcode `s` to WinAnsi (CP1252) bytes, substituting `?` for any code point
-/// WinAnsi cannot represent. See [`winansi_byte`].
+/// WinAnsi cannot represent. Per-char via the crate-private `winansi_byte`.
 pub fn winansi_encode(s: &str) -> Vec<u8> {
     s.chars().map(|c| winansi_byte(c).unwrap_or(b'?')).collect()
 }

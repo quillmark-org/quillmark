@@ -1,5 +1,3 @@
-use std::any::Any;
-
 use crate::{Diagnostic, RenderError, RenderOptions, RenderResult, RenderedRegion, Severity};
 
 /// What a committed [`LiveSession::apply`] changed.
@@ -15,14 +13,13 @@ pub struct ChangeSet {
 
 /// Backend-specific session implementation.
 ///
-/// Implementors must be `'static` (required by `Any`), `Send`, and `Sync`. The
-/// `'static` bound prevents borrowing source data — own anything you need to
-/// keep alive for the session's lifetime.
+/// Implementors must be `'static`, `Send`, and `Sync`. The `'static` bound
+/// prevents borrowing source data — own anything you need to keep alive for
+/// the session's lifetime.
 #[doc(hidden)]
-pub trait SessionHandle: Any + Send + Sync {
+pub trait SessionHandle: Send + Sync + 'static {
     fn render(&self, opts: &RenderOptions) -> Result<RenderResult, RenderError>;
     fn page_count(&self) -> usize;
-    fn as_any(&self) -> &dyn Any;
 
     /// Recompile the session against new document data.
     ///
@@ -154,21 +151,6 @@ impl LiveSession {
         Self { inner }
     }
 
-    /// Borrow the underlying [`SessionHandle`].
-    ///
-    /// The canonical canvas-preview path does **not** go through here: it
-    /// dispatches generically through [`page_size_pt`](LiveSession::page_size_pt)
-    /// / [`render_rgba`](LiveSession::render_rgba) on the session, with no
-    /// downcast. This accessor exists only as a last-resort escape hatch for a
-    /// backend that exposes a richer *typed* surface — reach it by downcasting
-    /// via [`SessionHandle::as_any`]. No in-tree caller does. Intentionally
-    /// `#[doc(hidden)]` — the shape of this accessor is not part of the stable
-    /// public API.
-    #[doc(hidden)]
-    pub fn handle(&self) -> &dyn SessionHandle {
-        &*self.inner
-    }
-
     pub fn page_count(&self) -> usize {
         self.inner.page_count()
     }
@@ -290,9 +272,6 @@ mod tests {
         fn page_count(&self) -> usize {
             self.pages
         }
-        fn as_any(&self) -> &dyn Any {
-            self
-        }
         fn page_size_pt(&self, page: usize) -> Option<(f32, f32)> {
             (page < self.pages).then_some((612.0, 792.0))
         }
@@ -306,9 +285,6 @@ mod tests {
         }
         fn page_count(&self) -> usize {
             1
-        }
-        fn as_any(&self) -> &dyn Any {
-            self
         }
     }
 
@@ -324,9 +300,6 @@ mod tests {
         }
         fn page_count(&self) -> usize {
             1
-        }
-        fn as_any(&self) -> &dyn Any {
-            self
         }
         fn apply(&mut self, _: &serde_json::Value) -> Result<ChangeSet, RenderError> {
             self.applies += 1;

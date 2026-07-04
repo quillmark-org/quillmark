@@ -27,7 +27,7 @@ use quillmark_pdf::{
         UpdatedObject,
     },
     writer::{alloc_id, dict_object, pdf_escape, winansi_encode},
-    FieldSpec, FieldType, PdfError, PdfUpdate, StampOptions, CHECKBOX_ON_STATE,
+    FieldSpec, FieldType, PdfError, PdfUpdate, CHECKBOX_ON_STATE,
 };
 
 use crate::typography;
@@ -37,19 +37,19 @@ const CODE_PARSE: &str = "pdf::flatten_parse";
 /// Flatten `fields` onto `base` PDF by drawing values as PDF content stream
 /// operators. Unlike the stamp/Technique-A path, the result is visible in all
 /// rasterizers. Returns the flat PDF bytes.
-pub fn flatten(
-    base: Vec<u8>,
-    fields: &[FieldSpec],
-    opts: &StampOptions,
-) -> Result<Vec<u8>, PdfError> {
-    if fields.is_empty() && opts.producer.is_none() {
+///
+/// Backs raster/vector output only (SVG/PNG/canvas), never a PDF deliverable,
+/// so it never stamps an `/Info /Producer` — that rides the interactive `stamp`
+/// path.
+pub fn flatten(base: Vec<u8>, fields: &[FieldSpec]) -> Result<Vec<u8>, PdfError> {
+    if fields.is_empty() {
         return Ok(base);
     }
 
     let pdf = base;
     // Shared envelope: validate the input contract, read the trailer, seed the
-    // id counter, apply the optional `/Info` `/Producer` stamp.
-    let mut up = PdfUpdate::begin(&pdf, opts.producer.as_deref())?;
+    // id counter. No producer stamp on the flatten path.
+    let mut up = PdfUpdate::begin(&pdf, None)?;
 
     if !fields.is_empty() {
         let page_ids = up.resolve_pages(&pdf, fields)?;
@@ -132,7 +132,7 @@ fn build_content_stream(fields: &[&FieldSpec]) -> Vec<u8> {
                 // ZapfDingbats check glyphs are roughly square; centre in the box.
                 let x_pos = x0 + (w - size * typography::CHECK_GLYPH_WIDTH_FACTOR) * 0.5;
                 let y_pos = y0 + (h - size) * 0.5;
-                write_zadb_char(&mut out, b'4', x_pos, y_pos, size);
+                write_zadb_char(&mut out, x_pos, y_pos, size);
             }
             FieldType::Text { .. } => {
                 if let Some(value) = &spec.value {
@@ -198,22 +198,18 @@ fn write_text_block(out: &mut Vec<u8>, lines: &[&str], x: f32, y: f32, size: f32
     out.extend_from_slice(b"ET\nQ\n");
 }
 
-/// Write a single ZapfDingbats character (as its raw byte code) in a `BT/ET` block.
-/// Glyph 0x34 (`'4'`) is the filled check mark — identical to the `/MK /CA (4)`
-/// glyph the AcroForm stamp path declares for checked checkboxes.
-fn write_zadb_char(out: &mut Vec<u8>, glyph: u8, x: f32, y: f32, size: f32) {
+/// Write the ZapfDingbats checkmark in a `BT/ET` block. Glyph 0x34 (`'4'`) is
+/// the filled check mark — identical to the `/MK /CA (4)` glyph the AcroForm
+/// stamp path declares for checked checkboxes. It is the only glyph the flatten
+/// path draws, so it is written literally (no escape needed).
+fn write_zadb_char(out: &mut Vec<u8>, x: f32, y: f32, size: f32) {
     out.extend_from_slice(b"q\nBT\n/ZaDb ");
     push_f32(out, size);
     out.extend_from_slice(b" Tf\n");
     push_f32(out, x);
     out.push(b' ');
     push_f32(out, y);
-    out.extend_from_slice(b" Td\n(");
-    if matches!(glyph, b'(' | b')' | b'\\') {
-        out.push(b'\\');
-    }
-    out.push(glyph);
-    out.extend_from_slice(b") Tj\nET\nQ\n");
+    out.extend_from_slice(b" Td\n(4) Tj\nET\nQ\n");
 }
 
 // ── Page dict rewriting ───────────────────────────────────────────────────────
@@ -416,7 +412,7 @@ mod tests {
     }
 
     fn flatten_ok(fields: &[FieldSpec]) -> Vec<u8> {
-        flatten(BASE.to_vec(), fields, &StampOptions::default()).expect("flatten succeeds")
+        flatten(BASE.to_vec(), fields).expect("flatten succeeds")
     }
 
     fn contains_window(haystack: &[u8], needle: &[u8]) -> bool {
@@ -437,33 +433,16 @@ mod tests {
         );
     }
 
-    /// 2. The flat output declares both standard fonts, a WinAnsi-encoded text
-    ///    font, the `BT`/`Tj` text operators, and the literal field value.
+    /// 2. The flat output's text font declares `WinAnsiEncoding`, so its WinAnsi
+    ///    content-stream bytes render correctly. The `BT`/`Tj` operators and the
+    ///    field-value literal are already pinned by the byte-window transcode
+    ///    test below and the lopdf reparse above.
     #[test]
-    fn flatten_has_fonts_and_text_operators() {
+    fn flatten_text_font_declares_winansi_encoding() {
         let pdf = flatten_ok(&[text_field("FullName", "Ada Lovelace")]);
-        let text = String::from_utf8_lossy(&pdf);
-
-        assert!(text.contains("/Helvetica"), "must declare Helvetica");
         assert!(
-            text.contains("/ZapfDingbats"),
-            "must declare ZapfDingbats (checkbox glyph font)"
-        );
-        assert!(
-            text.contains("/Encoding /WinAnsiEncoding"),
+            String::from_utf8_lossy(&pdf).contains("/Encoding /WinAnsiEncoding"),
             "text font must declare WinAnsiEncoding"
-        );
-        assert!(
-            text.contains("BT\n") || text.contains("BT "),
-            "must contain BT (begin text) operator"
-        );
-        assert!(
-            text.contains("Tj\n") || text.contains("Tj "),
-            "must contain Tj (show text) operator"
-        );
-        assert!(
-            text.contains("Ada Lovelace"),
-            "must contain the field value literal"
         );
     }
 

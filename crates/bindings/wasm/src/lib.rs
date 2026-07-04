@@ -7,9 +7,8 @@
 //! (`pkg/core/`) for load / validate / schema / seed / blueprint, and two
 //! engine-carrying **backend** binaries — `pkg/backends/typst/` (Typst) and
 //! `pkg/backends/pdfform/` (Typst-free PDF-form) — each adding the engine and
-//! canvas preview. The `typst` / `pdfform` / `pdfform-preview` cargo features
-//! gate the engine half (the default `typst` feature enables it; a
-//! no-feature build is the core).
+//! canvas preview. The `typst` / `pdfform` cargo features gate the engine half
+//! (the default `typst` feature enables it; a no-feature build is the core).
 //!
 //! Both backend builds are PRIVATE binaries — neither is a public npm
 //! export. The package's public root (`@quillmark/wasm`) is a hand-written

@@ -68,15 +68,17 @@ fn resolve_span_to_location(span: typst::syntax::DiagSpan, world: &QuillWorld) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quillmark_core::{FileTreeNode, Quill};
+    use crate::TypstBackend;
+    use quillmark_core::{Backend, FileTreeNode, OutputFormat, Quill, RenderOptions};
     use std::collections::HashMap;
     use std::fs;
     use std::path::{Path, PathBuf};
     use typst::diag::SourceDiagnostic;
     use typst::syntax::Span;
 
-    /// A `QuillWorld` with a valid main source to resolve spans against.
-    fn fixture_world() -> Option<QuillWorld> {
+    /// Walk the `usaf_memo@0.2.0` fixture into an in-memory tree, or `None` when
+    /// the fixture is absent (a stripped checkout).
+    fn walk_fixture() -> Option<FileTreeNode> {
         fn walk(dir: &Path) -> std::io::Result<FileTreeNode> {
             let mut files = HashMap::new();
             for entry in fs::read_dir(dir)? {
@@ -110,9 +112,29 @@ mod tests {
         if !quill_path.exists() {
             return None;
         }
-        let tree = walk(&quill_path).expect("walk fixture");
+        Some(walk(&quill_path).expect("walk fixture"))
+    }
+
+    /// A `QuillWorld` with a valid main source to resolve spans against.
+    fn fixture_world() -> Option<QuillWorld> {
+        let tree = walk_fixture()?;
         let source = Quill::from_tree(tree).expect("load source");
         Some(QuillWorld::new(&source, "// Test").expect("create world"))
+    }
+
+    /// The host quill with its `plate.typ` replaced by `plate`; the fixture's
+    /// `typst.plate_file: plate.typ` makes the backend read this override.
+    fn source_with_plate(plate: &str) -> Option<Quill> {
+        let mut tree = walk_fixture()?;
+        if let FileTreeNode::Directory { files } = &mut tree {
+            files.insert(
+                "plate.typ".to_string(),
+                FileTreeNode::File {
+                    contents: plate.as_bytes().to_vec(),
+                },
+            );
+        }
+        Some(Quill::from_tree(tree).expect("load source"))
     }
 
     /// An unresolvable span with no Typst-supplied hint carries none — the
@@ -158,22 +180,42 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_severity_mapping() {
-        assert_eq!(
-            match typst::diag::Severity::Error {
-                typst::diag::Severity::Error => Severity::Error,
-                typst::diag::Severity::Warning => Severity::Warning,
-            },
-            Severity::Error
-        );
+    /// `eval`s an unknown variable; the error resolves to the call site in
+    /// `main.typ`, so it is the resolvable common case.
+    const EVAL_ERROR_PLATE: &str =
+        "#set page(width: 400pt, height: 300pt)\n#eval(\"#general\", mode: \"markup\")\n";
 
-        assert_eq!(
-            match typst::diag::Severity::Warning {
-                typst::diag::Severity::Error => Severity::Error,
-                typst::diag::Severity::Warning => Severity::Warning,
-            },
-            Severity::Warning
+    /// A resolvable eval error keeps its real source location: the error
+    /// resolves to the call site, so the mapped diagnostic carries a location.
+    /// (Issue #745; moved here from the retired `eval_error_hint.rs`.)
+    #[test]
+    fn resolvable_eval_error_is_unchanged() {
+        let Some(source) = source_with_plate(EVAL_ERROR_PLATE) else {
+            return;
+        };
+
+        // Compilation happens during `open`, so the error may surface from
+        // either `open` or `render`.
+        let diags = match TypstBackend.open(&source, &serde_json::json!({})) {
+            Ok(session) => session
+                .render(&RenderOptions {
+                    output_format: Some(OutputFormat::Pdf),
+                    ..Default::default()
+                })
+                .expect_err("eval of `#general` should fail to compile")
+                .into_diagnostics(),
+            Err(err) => err.into_diagnostics(),
+        };
+        assert!(!diags.is_empty(), "compilation error must carry diagnostics");
+
+        let diag = diags
+            .iter()
+            .find(|d| d.message.contains("unknown variable: general"))
+            .expect("expected the `unknown variable: general` diagnostic");
+
+        assert!(
+            diag.location.is_some(),
+            "this eval error resolves to the call site; expected a location, got None"
         );
     }
 }

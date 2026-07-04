@@ -1,8 +1,8 @@
 //! Visual preview harness for the `pdfform` backend.
 //!
-//! Renders `sample_form` → `sample_form_filled.pdf` and `taro` → `taro_preview.svg`,
-//! writes both to the fixtures output directory, and prints the regions sidecar
-//! for the filled form so field geometry can be cross-checked against a viewer.
+//! Renders `sample_form` → `sample_form_filled.pdf`, writes it to the fixtures
+//! output directory, and prints the regions sidecar for the filled form so
+//! field geometry can be cross-checked against a viewer.
 //!
 //! Run with:
 //!   cargo run --example pdfform_preview -p quillmark
@@ -21,18 +21,6 @@ comments:
 agree: true
 favorite_color: green
 ~~~
-";
-
-const TARO_MD: &str = "\
-~~~
-$quill: taro
-$kind: main
-author: Ada Lovelace
-title: Taro Preview
-ice_cream: taro
-~~~
-
-This is a preview document rendered for visual review of the SVG backend output.
 ";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -82,31 +70,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // --- Typst backend: taro → SVG ---
-    println!("\n=== Typst backend: taro → SVG ===");
-    let taro_quill = quillmark::quill_from_path(quills_path("taro")).expect("load taro quill");
-    let taro_doc = Document::from_markdown(TARO_MD).expect("parse taro markdown");
-    let taro_result = engine
-        .render(
-            &taro_quill,
-            &taro_doc,
-            &RenderOptions {
-                output_format: Some(OutputFormat::Svg),
-                ..Default::default()
-            },
-        )
-        .expect("taro SVG render");
-
-    write_example_output("taro_preview.svg", &taro_result.artifacts[0].bytes)?;
-    println!("Written: {}", out_dir.join("taro_preview.svg").display());
-    println!("SVG size: {} bytes", taro_result.artifacts[0].bytes.len());
-
-    println!("\nDone. Open the files in the output directory to review:");
+    println!("\nDone. Open the file in the output directory to review:");
     println!(
         "  PDF: {}",
         out_dir.join("sample_form_filled.pdf").display()
     );
-    println!("  SVG: {}", out_dir.join("taro_preview.svg").display());
 
     Ok(())
 }

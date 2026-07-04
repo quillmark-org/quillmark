@@ -13,8 +13,8 @@ set -o pipefail
 #   pkg/backends/typst/   — Typst-backed engine + LiveSession + canvas (a private
 #                           backend binary, NOT a public export)
 #   pkg/backends/pdfform/ — Typst-free PDF-form backend (engine + LiveSession +
-#                           canvas; the pdfform-preview feature adds the web-sys
-#                           canvas painter over the always-linked hayro raster;
+#                           canvas; the pdfform feature ships the web-sys canvas
+#                           painter over the always-linked hayro raster;
 #                           private backend binary, NOT a public export)
 #
 # These generated artifacts plus the hand-written canonical layer ship as one
@@ -50,6 +50,12 @@ done
 echo "Building WASM modules for @quillmark/wasm... [profile: $MODE_LABEL]"
 
 cd "$(dirname "$0")/.."
+
+# Start from a clean pkg/. CI restores a cached pkg/ from a previous build
+# (restore-keys partial-matches an older release), and this script only ever
+# mkdir/cp/sed *into* pkg/ — it never removes files. Without this, any file
+# dropped from the pkg layout between builds lingers and ships on `npm publish`.
+rm -rf pkg
 
 # Check for required tools. The CLI's version must match the wasm-bindgen
 # crate in Cargo.lock; wasm-bindgen itself only detects a mismatch when it
@@ -102,14 +108,14 @@ build_variant() {
 }
 
 # backends/typst   = default features (Typst).
-# backends/pdfform = the Typst-free PDF-form backend with its canvas preview
-#                    seam (pdfform-preview). Built like the typst variant: the
-#                    same cargo build + wasm-bindgen pass, sequentially (every
-#                    variant emits the same quillmark_wasm.wasm to the same
-#                    target path, so they must not run concurrently).
+# backends/pdfform = the Typst-free PDF-form backend with its web-sys canvas
+#                    painter. Built like the typst variant: the same cargo build
+#                    + wasm-bindgen pass, sequentially (every variant emits the
+#                    same quillmark_wasm.wasm to the same target path, so they
+#                    must not run concurrently).
 # core             = no features (Typst excluded).
 build_variant backends/typst
-build_variant backends/pdfform --no-default-features --features pdfform-preview
+build_variant backends/pdfform --no-default-features --features pdfform
 build_variant core --no-default-features
 
 # runtime = the canonical consumer API: a hand-written JS layer (NOT generated

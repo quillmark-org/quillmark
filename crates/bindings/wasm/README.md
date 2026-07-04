@@ -29,8 +29,8 @@ bash scripts/build-wasm.sh
 ```
 
 The script builds three variants — the core (no backend), the Typst backend
-(default features), and the Typst-free pdfform backend (`pdfform-preview`
-feature) — each with `--target bundler` and `--weak-refs` enabled (see
+(default features), and the Typst-free pdfform backend (`pdfform` feature) —
+each with `--target bundler` and `--weak-refs` enabled (see
 [Lifecycle](#lifecycle)).
 
 ## Test

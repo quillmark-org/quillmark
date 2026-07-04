@@ -9,48 +9,9 @@ use quillmark_pdf::{regions_of, stamp, FieldSpec, FieldType, StampOptions};
 /// Build an `n`-page base PDF (612×792, traditional xref) with a trivial
 /// content stream per page. This is exactly the input contract the spine
 /// requires and mirrors how the hand-authored fixture background is produced.
+/// A US-Letter origin-zero specialization of [`build_base_pdf_origin`].
 fn build_base_pdf(n: usize) -> Vec<u8> {
-    let mut pdf = Pdf::new();
-    let catalog_id = Ref::new(1);
-    let page_tree_id = Ref::new(2);
-    pdf.catalog(catalog_id).pages(page_tree_id);
-
-    let mut page_ids = Vec::new();
-    let mut next = 3i32;
-    // Pre-allocate page + content ids.
-    let mut content_ids = Vec::new();
-    for _ in 0..n {
-        page_ids.push(Ref::new(next));
-        next += 1;
-        content_ids.push(Ref::new(next));
-        next += 1;
-    }
-
-    {
-        let mut pages = pdf.pages(page_tree_id);
-        pages
-            .kids(page_ids.iter().copied())
-            .count(n as i32)
-            .media_box(Rect::new(0.0, 0.0, 612.0, 792.0));
-    }
-
-    for i in 0..n {
-        {
-            pdf.page(page_ids[i])
-                .parent(page_tree_id)
-                .media_box(Rect::new(0.0, 0.0, 612.0, 792.0))
-                .contents(content_ids[i]);
-        }
-        // A resource-free content stream: stroke a box so the page has marks
-        // without referencing an undefined font.
-        let mut content = Content::new();
-        content.set_line_width(1.0);
-        content.rect(72.0, 700.0, 200.0, 20.0);
-        content.stroke();
-        pdf.stream(content_ids[i], &content.finish());
-    }
-
-    pdf.finish()
+    build_base_pdf_origin(n, [0.0, 0.0, 612.0, 792.0])
 }
 
 fn all_four_fields() -> Vec<FieldSpec> {

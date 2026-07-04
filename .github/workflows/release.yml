@@ -137,16 +137,16 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Restore WASM build cache
-        id: wasm-cache
         uses: actions/cache@v4
         with:
-          path: |
-            target/wasm32-unknown-unknown/wasm-release
-            pkg
-          # Namespaced under wasm-release- so a CI cache (wasm-ci-...) can
-          # never satisfy this restore — that would publish an unoptimized
-          # bundle to npm.
-          key: wasm-release-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'crates/**/*.rs') }}
+          # Cache only the wasm cargo build dir — not pkg/. build-wasm.sh always
+          # regenerates pkg/ (and the version-assert below refuses to publish a
+          # mismatched stamp), so a partially-restored pkg/ can never ship. That
+          # removes the stale-pkg hazard the `restore-keys` prefix once carried.
+          # Namespaced under wasm-release- so a CI cache (wasm-ci-...) can never
+          # satisfy this restore — that would publish an unoptimized bundle.
+          path: target/wasm32-unknown-unknown/wasm-release
+          key: wasm-release-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             wasm-release-${{ runner.os }}-
 
@@ -157,13 +157,11 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install wasm-bindgen-cli
-        if: steps.wasm-cache.outputs.cache-hit != 'true'
         uses: taiki-e/install-action@v2
         with:
           tool: wasm-bindgen-cli@0.2.118
 
       - name: Build WASM packages
-        if: steps.wasm-cache.outputs.cache-hit != 'true'
         # --release-stamp: stamp the workspace version verbatim. This checkout
         # is the bumped release tag, so the number is truthful here — and only
         # here; every other build gets the script's default -dev.<sha> stamp.

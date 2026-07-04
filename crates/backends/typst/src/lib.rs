@@ -27,7 +27,6 @@ use quillmark_core::{
     LiveSession, OutputFormat, Quill, QuillValue, RenderError, RenderOptions, RenderResult,
     Severity,
 };
-use std::any::Any;
 use std::collections::HashMap;
 
 /// Typst backend implementation for Quillmark.
@@ -42,9 +41,10 @@ const SUPPORTED_FORMATS: &[OutputFormat] =
 /// Holds the compiled `PagedDocument` *and* the `QuillWorld` it was compiled
 /// through. Persisting the world keeps fonts, packages, and assets parsed once
 /// per session rather than once per compile — the substrate for incremental
-/// recompiles. Exposes Typst-only operations (page geometry, raster rendering)
-/// used by the WASM canvas painter.
-pub struct TypstSession {
+/// recompiles. Typst-only operations (page geometry, raster rendering) are
+/// served generically through the `SessionHandle` trait; callers never name
+/// this type.
+struct TypstSession {
     world: world::QuillWorld,
     document: typst_layout::PagedDocument,
     page_count: usize,
@@ -305,10 +305,6 @@ impl SessionHandle for TypstSession {
         self.page_count
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     /// Incremental recompile against new document data. The persistent world
     /// keeps fonts/packages/assets parsed; the helper `lib.typ` is swapped via
     /// `Source::replace` (incremental reparse), and `comemo` reuses every
@@ -412,13 +408,16 @@ impl SessionHandle for TypstSession {
     /// origin) — the forward click→field direction. `field:`-bound widget
     /// boxes answer first: a widget is a deliberate click target that draws
     /// no spanned ink of its own, so content ink beneath it must not swallow
-    /// the click. Otherwise the span data answers, over every placement, not
-    /// just the first: one concrete point identifies one frame item, whose
-    /// span is unambiguous however many times its field is placed. Overrides
-    /// the regions-hit-testing default.
+    /// the click. Among two spatially-overlapping widgets the later-painted one
+    /// wins (`rev()` over the paint-ordered placements), matching the
+    /// content-field rule in `span_scan::field_at`. Otherwise the span data
+    /// answers, over every placement, not just the first: one concrete point
+    /// identifies one frame item, whose span is unambiguous however many times
+    /// its field is placed. Overrides the regions-hit-testing default.
     fn field_at(&self, page: usize, x: f32, y: f32) -> Option<String> {
         self.widget_regions()
             .into_iter()
+            .rev()
             .find(|r| r.contains(page, x, y))
             .map(|r| r.field)
             .or_else(|| {

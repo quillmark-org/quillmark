@@ -82,7 +82,13 @@ pub(crate) fn extract(doc: &PagedDocument) -> Result<Vec<FieldPlacement>, Render
         });
     }
 
-    placements.sort_by(|a, b| (a.page, &a.name).cmp(&(b.page, &b.name)));
+    // Group by page but keep the introspector's document order (= paint order)
+    // within a page: a stable sort preserves the query order among equal pages.
+    // `field_at` relies on this to resolve two spatially-overlapping widgets by
+    // "later-painted wins", matching the content-field path's documented rule
+    // (span_scan::field_at) — an alphabetical `name` tie-break would silently
+    // violate it.
+    placements.sort_by_key(|p| p.page);
     Ok(placements)
 }
 
@@ -96,7 +102,7 @@ fn read_field_kind(
 ) -> Result<FieldKind, RenderError> {
     match field_type {
         "text" => Ok(FieldKind::Text {
-            multiline: read_bool(d, "multiline")?.unwrap_or(false),
+            multiline: read_value_bool(d, "multiline")?.unwrap_or(false),
             value: read_value_str(d, "value")?,
         }),
         "checkbox" => Ok(FieldKind::Checkbox {
@@ -136,19 +142,6 @@ fn read_f64(d: &typst::foundations::Dict, key: &str) -> Result<f64, RenderError>
             format!("expected metadata.{key} to be float, got {}", other.ty()),
         )),
         Err(_) => Err(err(CODE_INTERNAL, format!("metadata.{key} missing"))),
-    }
-}
-
-/// Read an optional boolean key (`None` for a missing key, an error for a
-/// present-but-wrong-type key). Used for the `multiline` flag.
-fn read_bool(d: &typst::foundations::Dict, key: &str) -> Result<Option<bool>, RenderError> {
-    match d.get(key) {
-        Ok(Value::Bool(b)) => Ok(Some(*b)),
-        Ok(other) => Err(err(
-            CODE_INTERNAL,
-            format!("expected metadata.{key} to be bool, got {}", other.ty()),
-        )),
-        Err(_) => Ok(None),
     }
 }
 
@@ -220,18 +213,17 @@ fn read_value_str(d: &typst::foundations::Dict, key: &str) -> Result<Option<Stri
     Ok((!s.is_empty()).then_some(s))
 }
 
-/// Read the polymorphic `value` key as a boolean (for checkbox fields). A
-/// `Bool` passes through; `None` (or a missing key) yields `None` (unchecked).
+/// Read an optional boolean key: a `Bool` passes through; `None` or a missing
+/// key yields `None`; any other present type errors. Used for the checkbox
+/// `value` binding and the text `multiline` flag — both treat a `none` as the
+/// unset default rather than an error.
 fn read_value_bool(d: &typst::foundations::Dict, key: &str) -> Result<Option<bool>, RenderError> {
     match d.get(key) {
         Ok(Value::Bool(b)) => Ok(Some(*b)),
         Ok(Value::None) | Err(_) => Ok(None),
         Ok(other) => Err(err(
             CODE_INTERNAL,
-            format!(
-                "expected checkbox metadata.{key} to be bool or none, got {}",
-                other.ty()
-            ),
+            format!("expected metadata.{key} to be bool or none, got {}", other.ty()),
         )),
     }
 }

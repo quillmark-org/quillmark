@@ -102,16 +102,14 @@ impl QuillConfig {
         );
         let coerced_doc = Document::from_main_and_cards(coerced_main, coerced_cards, Vec::new());
 
-        if let Err(errors) = self.validate_document(&coerced_doc) {
-            // Only *malformed* input is fatal (a value that won't
-            // coerce/validate). An incomplete document — absent fields or
-            // `!must_fill` placeholders — renders fine via zero-fill. Each
-            // error keeps its own `path` for UI navigation.
-            let diags: Vec<Diagnostic> = errors.iter().map(|e| e.to_diagnostic()).collect();
-            if !diags.is_empty() {
-                return Err(RenderError::new(diags));
-            }
-        }
+        // Only *malformed* input is fatal (a value that won't coerce/validate).
+        // An incomplete document — absent fields or `!must_fill` placeholders —
+        // renders fine via zero-fill. `validate_document` returns `Err` only
+        // with a non-empty error list; each error keeps its own `path` for UI
+        // navigation.
+        self.validate_document(&coerced_doc).map_err(|errors| {
+            RenderError::new(errors.iter().map(|e| e.to_diagnostic()).collect())
+        })?;
 
         Ok(coerced_doc)
     }

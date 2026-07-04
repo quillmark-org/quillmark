@@ -5,7 +5,7 @@ use crate::types::Diagnostic;
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 use crate::types::{ChangeSet, FieldRegion, RenderOptions, RenderResult};
 use js_sys::{Array, Uint8Array};
-#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -152,7 +152,7 @@ export interface Card {
 /// `densityScale` proportionally and surfaces the actual backing
 /// dimensions in the returned `PaintResult` so consumers can detect the
 /// clamp.
-#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 const MAX_BACKING_DIMENSION: u32 = 16384;
 
 #[cfg(any(feature = "typst", feature = "pdfform"))]
@@ -272,7 +272,7 @@ impl Quillmark {
     }
 
     /// The output formats `quill`'s backend can emit. Static capability —
-    /// resolves the backend but compiles nothing. Throws `UnsupportedBackend`
+    /// resolves the backend but compiles nothing. Throws `engine::backend_not_found`
     /// if no registered backend matches the quill's declared backend.
     #[wasm_bindgen(js_name = supportedFormats, unchecked_return_type = "OutputFormat[]")]
     pub fn supported_formats(&self, quill: &Quill) -> Result<JsValue, JsValue> {
@@ -1261,7 +1261,7 @@ fn js_bytes_for_tree_entry(path: &str, value: JsValue) -> Result<Vec<u8>, JsValu
 }
 
 /// TypeScript declarations for the canvas-preview surface.
-#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 #[wasm_bindgen(typescript_custom_section)]
 const CANVAS_PREVIEW_TS: &'static str = r#"
 /**
@@ -1445,11 +1445,7 @@ impl LiveSession {
     pub fn field_at(&self, page: usize, x: f32, y: f32) -> Option<String> {
         self.inner.field_at(page, x, y)
     }
-}
 
-#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
-#[wasm_bindgen]
-impl LiveSession {
     /// Page dimensions in points (1 pt = 1/72 inch).
     /// Throws if the backend has no canvas painter or `page` is out of range.
     #[wasm_bindgen(js_name = pageSize, unchecked_return_type = "PageSize")]
@@ -1585,7 +1581,7 @@ impl LiveSession {
     }
 }
 
-#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 impl LiveSession {
     /// Gate a canvas operation on the session's canvas capability, derived from
     /// the core `SessionHandle` seam (`page_size_pt` / `render_rgba`) — the same
@@ -1612,13 +1608,13 @@ impl LiveSession {
     }
 }
 
-#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 enum CanvasCtx<'a> {
     OnScreen(&'a web_sys::CanvasRenderingContext2d),
     OffScreen(&'a web_sys::OffscreenCanvasRenderingContext2d),
 }
 
-#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 impl<'a> CanvasCtx<'a> {
     fn from_js(ctx: &'a JsValue) -> Result<Self, JsValue> {
         if let Some(c) = ctx.dyn_ref::<web_sys::CanvasRenderingContext2d>() {
@@ -1660,7 +1656,7 @@ impl<'a> CanvasCtx<'a> {
     }
 }
 
-#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 #[derive(Serialize)]
 struct PageSize {
     #[serde(rename = "widthPt")]
@@ -1669,7 +1665,7 @@ struct PageSize {
     height_pt: f32,
 }
 
-#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PaintOptions {
@@ -1679,7 +1675,7 @@ struct PaintOptions {
     density_scale: Option<f32>,
 }
 
-#[cfg(any(feature = "typst", feature = "pdfform-preview"))]
+#[cfg(any(feature = "typst", feature = "pdfform"))]
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PaintResult {

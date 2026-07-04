@@ -8,12 +8,6 @@
 // is `form-field` / `signature-field` (widget geometry + metadata hand-off)
 // and `_qm-known-path` (path validation); both read the generated `_qm-meta`.
 
-/// The backend always generates `_qm-meta` (below), so validation always has
-/// tables to check against. Kept as a binding — rather than inlined — so
-/// `_qm-known-path`'s permissive branch stays exercisable by hand-built test
-/// helpers that set it `false`.
-#let _qm-has-meta = true
-
 /// Backend-generated schema address tables (`fields`, `card_fields`,
 /// `array_fields`, `card_array_fields`) that validate `form-field` paths.
 /// A generated literal — never parsed from document data.
@@ -27,12 +21,10 @@
 /// `array_fields`/`card_array_fields`, not the broader `fields`/`card_fields`
 /// name tables, rejecting `subject.0` on a scalar `subject` even though the
 /// name itself is known: a scalar has no element for the address to resolve
-/// to. Permissive when `_qm-has-meta` is false — validation then has nothing
-/// to check against. Distinct from present-with-empty tables (e.g. a
-/// body-disabled main with no other fields and no cards), which validates
-/// against the empty set and so rejects every address.
+/// to. Distinct from present-with-empty tables (e.g. a body-disabled main with
+/// no other fields and no cards), which validates against the empty set and so
+/// rejects every address.
 #let _qm-known-path(path) = {
-  if not _qm-has-meta { return true }
   let fields = _qm-meta.at("fields", default: ())
   let card-fields = _qm-meta.at("card_fields", default: (:))
   let array-fields = _qm-meta.at("array_fields", default: ())
