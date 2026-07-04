@@ -82,7 +82,13 @@ pub(crate) fn extract(doc: &PagedDocument) -> Result<Vec<FieldPlacement>, Render
         });
     }
 
-    placements.sort_by(|a, b| (a.page, &a.name).cmp(&(b.page, &b.name)));
+    // Group by page but keep the introspector's document order (= paint order)
+    // within a page: a stable sort preserves the query order among equal pages.
+    // `field_at` relies on this to resolve two spatially-overlapping widgets by
+    // "later-painted wins", matching the content-field path's documented rule
+    // (span_scan::field_at) — an alphabetical `name` tie-break would silently
+    // violate it.
+    placements.sort_by_key(|p| p.page);
     Ok(placements)
 }
 

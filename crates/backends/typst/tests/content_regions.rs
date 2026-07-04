@@ -822,3 +822,58 @@ main:
         .open(&quill(YAML, PLATE), &data)
         .expect("adversarial data (unterminated <u>, i64::MIN) must still compile");
 }
+
+/// Two spatially-overlapping widgets resolve `field_at` by paint order — the
+/// later-painted widget wins — not by their alphabetical `/T` names. The widget
+/// hit-test once sorted placements by `(page, name)` and `find`-first, silently
+/// violating the "later-painted wins" rule the content-field path documents
+/// (`span_scan::field_at`). `aaa` is painted first, `zzz` on top of it; a click
+/// in the shared box must resolve to `zzz`'s field, not `aaa`'s.
+#[test]
+fn overlapping_widgets_resolve_field_at_by_paint_order_not_name() {
+    const YAML: &str = r#"
+quill:
+  name: overlap_widgets
+  version: 0.1.0
+  backend: typst
+  description: overlapping widget hit-test
+typst:
+  plate_file: plate.typ
+main:
+  fields:
+    aaa_early:
+      type: string
+      description: alphabetically first, painted first (underneath)
+    zzz_late:
+      type: string
+      description: alphabetically last, painted last (on top)
+"#;
+    const PLATE: &str = r#"
+#import "@local/quillmark-helper:0.1.0": form-field
+#set page(width: 300pt, height: 200pt, margin: 0pt)
+#place(top + left, dx: 60pt, dy: 60pt,
+  form-field("aaa", type: "checkbox", field: "aaa_early", width: 40pt, height: 40pt))
+#place(top + left, dx: 60pt, dy: 60pt,
+  form-field("zzz", type: "checkbox", field: "zzz_late", width: 40pt, height: 40pt))
+"#;
+    let session = TypstBackend
+        .open(&quill(YAML, PLATE), &serde_json::json!({}))
+        .expect("open");
+    let regions = session.regions();
+    let a = regions
+        .iter()
+        .find(|r| r.field == "aaa_early")
+        .expect("aaa_early widget region");
+    let z = regions
+        .iter()
+        .find(|r| r.field == "zzz_late")
+        .expect("zzz_late widget region");
+    assert_eq!(a.page, z.page, "both widgets on the same page");
+    let cx = (z.rect[0] + z.rect[2]) / 2.0;
+    let cy = (z.rect[1] + z.rect[3]) / 2.0;
+    assert_eq!(
+        session.field_at(z.page, cx, cy).as_deref(),
+        Some("zzz_late"),
+        "the later-painted widget wins the click, not the alphabetically-first name"
+    );
+}
