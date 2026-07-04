@@ -15,11 +15,6 @@
     }
   ),
 
-  // Optional Freedom 250 emblem, placed opposite the seal
-  ..if data.at("freedom250", default: false) {
-    (letterhead_emblem: image("assets/freedom250.png"))
-  },
-
   // Date
   date: data.at("date", default: none),
 
@@ -42,6 +37,12 @@
   ..if "classification" in data { (classification_level: data.classification) },
 
   ..if "dissemination" in data { (dissemination: data.dissemination) },
+
+  // CUI designation indicator block fields (DoDM 5200.48)
+  ..if "cui_controlled_by" in data { (cui_controlled_by: data.cui_controlled_by) },
+  ..if "cui_category" in data { (cui_category: data.cui_category) },
+  ..if "cui_limited_dissemination" in data { (cui_limited_dissemination: data.cui_limited_dissemination) },
+  ..if "cui_poc" in data { (cui_poc: data.cui_poc) },
 
   // USAF vs DAF memorandum style (date format, body indentation)
   memo_style: data.at("memo_style", default: "usaf"),
@@ -87,11 +88,12 @@
     let body = card.at("$body", default: "")
     let body_content = if type(body) == str { [] } else { body }
     // Per AFH 33-337 Ch. 14, an indorsement is dated when the endorser signs
-    // it (distinct from the originating memo's date). Default to today when
-    // the card omits or leaves the date blank.
+    // it (distinct from the originating memo's date). The signing date is
+    // generally unknown at compile time and filled in by hand, so a blank or
+    // omitted date renders a fill-in line rather than stamping the compile date.
     let card_date = card.at("date", default: none)
     let resolved_date = if card_date == none or card_date == "" {
-      datetime.today()
+      none
     } else {
       card_date
     }
@@ -109,8 +111,6 @@
         "Ind_" + str(i) + "_Signature",
         field: card.at("$path") + "signature_block",
       ),
-      ..if "attachments" in card { (attachments: card.attachments) },
-      ..if "cc" in card { (cc: card.cc) },
       format: card.at("format", default: "standard"),
       date: resolved_date,
       ..if "action" in card { (action: card.action) },
