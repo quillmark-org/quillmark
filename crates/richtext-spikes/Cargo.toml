@@ -1,0 +1,23 @@
+[package]
+name = "quillmark-richtext-spikes"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Throwaway Phase-0 spikes for the richtext content model (#831). Not shipped."
+
+# Deliberately NOT in workspace default-members (see root Cargo.toml): the
+# normal `cargo build`/`cargo test` at the root skips this crate; the documented
+# `cargo test --workspace` compiles and runs it so the spike findings stay
+# verifiable in CI. Delete this crate when the phases it de-risks land.
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+pulldown-cmark = { workspace = true }
+
+[dev-dependencies]
+quillmark-core = { workspace = true }
+quillmark-typst = { workspace = true }
+quillmark = { workspace = true }
+quillmark-fixtures = { workspace = true }
+serde_json = { workspace = true }

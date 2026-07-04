@@ -2369,6 +2369,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "quillmark-richtext-spikes"
+version = "0.0.0"
+dependencies = [
+ "pulldown-cmark",
+ "quillmark",
+ "quillmark-core",
+ "quillmark-fixtures",
+ "quillmark-typst",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "quillmark-typst"
 version = "0.92.1"
 dependencies = [

@@ -10,6 +10,10 @@ members = [
     "crates/fuzz",
     "crates/bindings/python",
     "crates/bindings/cli",
+    # Throwaway Phase-0 richtext spikes (#831): a workspace member so
+    # `cargo test --workspace` runs the findings, but deliberately absent from
+    # default-members below so a bare `cargo build`/`cargo test` skips it.
+    "crates/richtext-spikes",
 ]
 # The default members to include when running `cargo build` or `cargo test` in the workspace root.
 default-members = [

@@ -122,7 +122,11 @@ Detail per phase in its own doc as it opens. Rough shape:
 - **[Phase 0 — spikes](phase-0-spikes.md)** — de-risk the freezes before any
   schema lands. Editor binding (gates mark semantics), source-map/navigation
   inversion (gates the phase-2 emit design), seam + determinism prototype (gates
-  Option A). Nothing here ships to `main`.
+  Option A). Nothing here ships to `main`. **Reported — no red flag**
+  ([A](phase-0-finding-a-editor.md) · [B](phase-0-finding-b-sourcemap.md) ·
+  [C](phase-0-finding-c-seam.md); runnable probe `crates/richtext-spikes/`).
+  Phase 1 may open on the Spike-A contract, with a live-editor binding tracked
+  as its residual gate.
 - **Phase 1 — type + codecs, engine-off.** `RichText` + canonical serialization
   (frozen only after phase-0 editor spike) + markdown⇄corpus import/export
   codecs + property suite (round-trip modulo loss class; diff-import preserves

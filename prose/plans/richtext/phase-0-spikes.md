@@ -9,6 +9,16 @@ The one rule: **no canonical `RichText` serialization is written until Spike A
 reports.** Phase 1 freezes the mark set and its semantics for storage; the
 editor spike is what tells us those semantics are the ones a real editor needs.
 
+**Status: all three reported.** Findings —
+[A · editor](phase-0-finding-a-editor.md),
+[B · source-map](phase-0-finding-b-sourcemap.md),
+[C · seam](phase-0-finding-c-seam.md). The runnable probe is
+`crates/richtext-spikes/`: a workspace member held outside `default-members`, so
+`cargo test --workspace` runs it while a bare `cargo test` skips it. Every claim
+in a finding maps to an assertion in `tests/spike_{a,b,c}_*.rs`. Delete the
+crate when the phases it de-risks land. No spike surfaced a red flag; one
+residual gate remains on Spike A (a live editor binding — see its finding).
+
 ## Spike A — editor binding (gates the mark-semantics freeze)
 
 **Question.** Which mark semantics must the model encode, and which does it
@@ -36,6 +46,12 @@ adjacent-merge as editor/CRDT concerns). Names the differ's move-detection
 policy or accepts the drop and states it. **Unblocks phase 1's canonical
 serialization and phase 3's editor binding.**
 
+→ **Reported:** [phase-0-finding-a-editor.md](phase-0-finding-a-editor.md). Mark
+set + three normalization rules frozen; edge-expand/adjacent-merge delegated to
+the editor (so the freeze is editor-independent); move detector confines the
+reorder weak spot, residual drop stated. Live-editor binding is the one residual
+gate. No live JS editor ran (no browser here) — see the finding's scope note.
+
 ## Spike B — source-map inversion + navigation (gates the phase-2 emit design)
 
 **Question.** Does glyph-offset inversion actually yield a usable point↔corpus
@@ -60,6 +76,14 @@ construct that breaks run-alignment. **Unblocks phase 2's emit + source-map
 design.** Does *not* attempt the `regions()` run-machine rework (grounding §3.2)
 — that is phase-2 work, scoped separately.
 
+→ **Reported:** [phase-0-finding-b-sourcemap.md](phase-0-finding-b-sourcemap.md).
+Cluster-exact (say "cluster", not "character-exact"); map invertible by
+recomputation, no stored tables; the escape transform is char-local except the
+`//`→`\/\/` coupling (handled with 1-char lookahead), and the reimplementation
+is cross-checked against the shipped `escape_markup` as the run-alignment
+tripwire. Span→byte→field chain confirmed on a real render; `glyph.span.1` is
+the one remaining, mechanical phase-2 step.
+
 ## Spike C — seam encoding + determinism (confirms Option A, gates phase 2 storage)
 
 **Question.** Does canonical RichText-JSON on the data seam serialize
@@ -82,9 +106,21 @@ trivially to both backends?
 story, and a one-paragraph note on the island-mint hash boundary. **Unblocks
 phase 2's seam + storage cutover.**
 
+→ **Reported:** [phase-0-finding-c-seam.md](phase-0-finding-c-seam.md). Option A
+confirmed: byte-deterministic (once mark order and `props` keys are sorted), seam
+and storage are one encoding, dual-lower is trivial with zero `pdfform` fixture
+churn. Island mint is the sole hash nondeterminism; text/marks/lines stay
+deterministic, so migration is mint-free.
+
 ## Gate
 
 Phase 1 opens when Spike A reports. Phase 2's emit design opens when Spike B
 reports; its storage cutover when Spike C reports. A spike that surfaces a
 red flag reshapes the phase it gates before that phase starts — that is the
 point of running them first.
+
+**All three have reported; no red flag.** Phase 1 may open on the Spike-A
+contract (with the live-editor binding tracked as its residual gate); phase 2's
+emit design and storage cutover may open on Spikes B and C. The `glyph.span.1`
+character-precision step (Spike B) and the recursive `props` canonicalization
+(Spike C) are the two carry-forward items into phase 2.
