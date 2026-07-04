@@ -5,6 +5,9 @@ Standalone review documents:
 - **[issue-830-grounding.md](issue-830-grounding.md)** — verification of the
   #830 content-block-tree proposal against the tree at `28b29ea`: claims
   checked, corrections, unpriced costs, sequencing critique.
+- **[issue-830-content-model-alternatives.md](issue-830-content-model-alternatives.md)**
+  — block tree vs. text corpus with embedded blocks: collab-shape correction,
+  consumer alignment, axis comparison, staged corpus path, verdict.
 
 # Branch review — open items
 
