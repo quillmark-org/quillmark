@@ -91,9 +91,14 @@ fn fixture_renders_structurally_valid_filled_pdf() {
     assert_eq!(af.get(b"SigFlags").unwrap().as_i64().unwrap(), 1);
     assert_eq!(af.get(b"Fields").unwrap().as_array().unwrap().len(), 5);
 
-    // Text: bound scalar.
+    // This e2e pins the *binding* layer — markdown/schema → field values,
+    // tooltip, array join, regions, producer default. The spine bytes it once
+    // re-checked (the `Ff` multiline/combo flags, `/Opt` length, checkbox
+    // `/V`+`/AS`, and `/FT` names) are owned by the spine seam in
+    // `quillmark-pdf/tests/stamp.rs`.
+
+    // Text: bound scalar value + tooltip.
     let full = widget(&doc, af, "FullName");
-    assert_eq!(full.get(b"FT").unwrap().as_name().unwrap(), b"Tx");
     assert_eq!(full.get(b"V").unwrap().as_str().unwrap(), b"Ada Lovelace");
     assert_eq!(
         full.get(b"TU").unwrap().as_str().unwrap(),
@@ -103,34 +108,13 @@ fn fixture_renders_structurally_valid_filled_pdf() {
     // Multiline text: array joined with newlines.
     let comments = widget(&doc, af, "Comments");
     assert_eq!(
-        comments.get(b"Ff").unwrap().as_i64().unwrap() & (1 << 12),
-        1 << 12
-    );
-    assert_eq!(
         decode_pdf_text(comments.get(b"V").unwrap().as_str().unwrap()),
         "First comment line.\nSecond comment line."
     );
 
-    // Checkbox: truthy → on-state.
-    let agree = widget(&doc, af, "Agree");
-    assert_eq!(agree.get(b"FT").unwrap().as_name().unwrap(), b"Btn");
-    assert_eq!(agree.get(b"V").unwrap().as_name().unwrap(), b"Yes");
-    assert_eq!(agree.get(b"AS").unwrap().as_name().unwrap(), b"Yes");
-
-    // Choice: matching option bound; combo dropdown.
+    // Choice: matching option bound.
     let color = widget(&doc, af, "FavoriteColor");
-    assert_eq!(color.get(b"FT").unwrap().as_name().unwrap(), b"Ch");
-    assert_eq!(
-        color.get(b"Ff").unwrap().as_i64().unwrap() & (1 << 17),
-        1 << 17
-    );
     assert_eq!(color.get(b"V").unwrap().as_str().unwrap(), b"green");
-    assert_eq!(color.get(b"Opt").unwrap().as_array().unwrap().len(), 3);
-
-    // Signature: unbound, no /V.
-    let sig = widget(&doc, af, "Signature");
-    assert_eq!(sig.get(b"FT").unwrap().as_name().unwrap(), b"Sig");
-    assert!(sig.get(b"V").is_err());
 
     // Region geometry is a session-level query (`session.regions()`), not on the
     // render result: one per *schema-bound* field, keyed on the schema path. The

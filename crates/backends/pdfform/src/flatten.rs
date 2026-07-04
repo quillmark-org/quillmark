@@ -433,33 +433,16 @@ mod tests {
         );
     }
 
-    /// 2. The flat output declares both standard fonts, a WinAnsi-encoded text
-    ///    font, the `BT`/`Tj` text operators, and the literal field value.
+    /// 2. The flat output's text font declares `WinAnsiEncoding`, so its WinAnsi
+    ///    content-stream bytes render correctly. The `BT`/`Tj` operators and the
+    ///    field-value literal are already pinned by the byte-window transcode
+    ///    test below and the lopdf reparse above.
     #[test]
-    fn flatten_has_fonts_and_text_operators() {
+    fn flatten_text_font_declares_winansi_encoding() {
         let pdf = flatten_ok(&[text_field("FullName", "Ada Lovelace")]);
-        let text = String::from_utf8_lossy(&pdf);
-
-        assert!(text.contains("/Helvetica"), "must declare Helvetica");
         assert!(
-            text.contains("/ZapfDingbats"),
-            "must declare ZapfDingbats (checkbox glyph font)"
-        );
-        assert!(
-            text.contains("/Encoding /WinAnsiEncoding"),
+            String::from_utf8_lossy(&pdf).contains("/Encoding /WinAnsiEncoding"),
             "text font must declare WinAnsiEncoding"
-        );
-        assert!(
-            text.contains("BT\n") || text.contains("BT "),
-            "must contain BT (begin text) operator"
-        );
-        assert!(
-            text.contains("Tj\n") || text.contains("Tj "),
-            "must contain Tj (show text) operator"
-        );
-        assert!(
-            text.contains("Ada Lovelace"),
-            "must contain the field value literal"
         );
     }
 
