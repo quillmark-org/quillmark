@@ -1,4 +1,4 @@
-# Prose corpus model — greenfield design
+# Richtext corpus model — greenfield design
 
 Greenfield design for the content-field model, assuming the settled product
 vision: **a web form with rich prose fields is the primary authoring surface**;
@@ -10,13 +10,13 @@ writers; a Notion-class block canvas is a non-goal. Successor position to
 
 ## Shape
 
-One `Prose` value per prose field — today's "content fields," card bodies
+One `RichText` value per richtext field — today's "content fields," card bodies
 included; the document level keeps its existing
-corpus-with-`$id`-card-islands shape. A `Prose` is four aligned pieces over
+corpus-with-`$id`-card-islands shape. A `RichText` is four aligned pieces over
 **one coordinate space**:
 
 ```
-Prose {
+RichText {
   text:    String        // the corpus; '\n' = line boundary, U+FFFC = island slot
   lines:   Vec<LineAttrs> // one per '\n', in order: what each line is
   marks:   Vec<Mark>      // formatting + annotations over char ranges
@@ -154,7 +154,7 @@ is the line-window degenerate case of the same map.
 
 ## Storage
 
-`Prose` serializes canonically: text verbatim, `lines`/`islands`
+`RichText` serializes canonically: text verbatim, `lines`/`islands`
 positionally aligned with their sentinels (validated on read), marks in
 canonical order. Byte-deterministic — no randomness exists outside island
 creation, so content hashing (DOCUMENT_STORAGE.md) holds. Migration from
@@ -165,34 +165,44 @@ arise.
 
 ## Schema surface
 
-Field type `prose` (rename from `markdown`; pre-1.0 hard cutover), lowering
-to a `$ref` of the corpus schema. `prose(inline)` = no `\n`, no block islands
+Field type `richtext` (rename from `markdown`; pre-1.0 hard cutover), lowering
+to a `$ref` of the corpus schema. `richtext(inline)` = no `\n`, no block islands
 — a validation rule, not a sibling type. The blueprint inline annotation
 carries the authoring-surface encoding in the existing format slot —
-`bio: !must_fill # prose<markdown>` — so the type names the role and the
+`bio: !must_fill # richtext<markdown>` — so the type names the role and the
 refinement tells the writer what syntax this surface accepts. `default:`,
 `example:`, `body.example`, and `$seed.<kind>.$body` stay authored
 **markdown**, imported at `Quill` load and cached; since text needs no
-minting, defaulted prose is stable across compiles.
+minting, defaulted richtext is stable across compiles.
 
 ## Naming
 
-`prose` names the role at every author-facing surface (`type: prose`,
-`# prose<markdown>`, Rust/bindings `Prose`); **corpus** stays the internal
-shape term (the `text` sequence, "corpus coordinates" in module docs) and is
-not author-facing — as a facing name it carries the wrong prior (a corpus is
-a *collection* of documents) and names the implementation rather than the
-role, the same category error `markdown` made with the encoding. The word
-already means the right thing everywhere it appears in this repo — flowing
-human text as opposed to structure (the `prose/` docs directory,
-"prose message" vs. structured hint in `validation.rs`) — so the type joins
-an existing consistent sense rather than colliding with one. The rename
-sweeps canon vocabulary once ("content fields" → "prose fields") and
-rephrases the two spots where the old adjacent sense would sit next to the
-type: BLUEPRINT.md's "leading prose" (→ "leading description lines") and the
-`validation.rs` "prose message" comments (→ "message text"). `Prose` has no
-type collision in Rust, JS, or Python — notably none with
-`typst::foundations::Content`.
+`richtext` names the type at every author-facing surface (`type: richtext`,
+`array<richtext>`, `richtext(inline)`, blueprint `# richtext<markdown>`) and
+in code (Rust/bindings `RichText`); **corpus** stays the internal shape term
+(the `text` sequence, "corpus coordinates" in module docs). The one-word
+collapse follows the `datetime` precedent, and the rich-text tradition has
+included lists, tables, and embedded objects for decades, so the name covers
+the full block set. The token is lexically unique — `richtext` is not an
+English word, so the term of art never collides with ordinary usage in
+running prose, greps precisely, and `RichText` self-describes in code with
+no collision in Rust, JS, or Python (none with `typst::foundations::Content`).
+The blueprint's format slot carries the surface encoding
+(`# richtext<markdown>`): the type names the role, the refinement tells the
+writer what syntax this surface accepts. The rename sweeps canon once
+("content fields" → "richtext fields").
+
+Rejected alternatives, with the criterion each failed:
+
+- `markdown` — names the encoding of one projection surface, not the role.
+- `content` — ambiguous and saturated; near-zero signal to authors or LLMs;
+  permanent `typst::foundations::Content` collision in the backend.
+- `prose` — implies flowing text, underselling bullets, tables, islands.
+- `corpus` — names the implementation shape, and its outsider prior is a
+  *collection* of documents; kept as internal vocabulary only.
+- `rich` — bare adjective still alive in the ordinary tech-writing register
+  ("rich diagnostics"), so the term of art and the sell collide in running
+  prose; the compound removes the ambiguity for one syllable.
 
 ## What this kills, keeps, and adds
 
@@ -225,11 +235,11 @@ must confirm each candidate binding can own them.
 
 ## Sequencing
 
-1. `Prose` type + canonical serialization + markdown⇄corpus codecs +
+1. `RichText` type + canonical serialization + markdown⇄corpus codecs +
    invariant/property suite (round-trip modulo loss class; diff-import
    preserves marks/islands). Engine-off, exercised against the fixture
    corpus.
-2. Engine consumes `Prose`; Typst emit with line windows + run source map;
+2. Engine consumes `RichText`; Typst emit with line windows + run source map;
    navigation queries (`locate` / `position_at`) and regions re-key; storage
    cutover.
 3. Delta edit surface + revision/change-log mapping; form editor binding
