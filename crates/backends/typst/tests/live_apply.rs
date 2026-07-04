@@ -206,14 +206,16 @@ main:
 #[test]
 fn reapply_with_reordered_fields_same_content_is_clean() {
     // The web-app's #801 `[0]`, reproduced at the backend. `serde_json` is built
-    // with `preserve_order`, so field insertion order survives on the wire, and
-    // the helper codegen emits the `data` literal in that order. An editor's
-    // mutate path can hand `apply` a document with the SAME content but a
-    // different field order than `open` saw — which shifts the byte layout of
-    // the helper `lib.typ`, hence every content block's glyph `Span`s below it.
-    // The old page fingerprint folded those spans in and reported the page dirty
-    // for a source-location shift that moved no ink; hashing only rendered
-    // content keeps a reorder clean.
+    // with `preserve_order`, so field insertion order survives on the wire; an
+    // editor's mutate path can hand `apply` a document with the SAME content but
+    // a different field order than `open` saw. Two independent layers keep that
+    // reorder clean, and this pins their conjunction end-to-end: the helper
+    // codegen emits dicts in canonical (sorted-key) order, so a reorder-only
+    // apply produces byte-identical `lib.typ` (unit-pinned by
+    // `reordered_input_emits_byte_identical_source`), and `page_hashes` excludes
+    // source-location `Span`s, so even a byte-layout shift cannot dirty a page
+    // whose ink didn't move (unit-pinned by
+    // `page_hashes_ignore_span_shift_when_ink_is_identical`).
     let backend = TypstBackend;
     let q = two_field_quill();
 

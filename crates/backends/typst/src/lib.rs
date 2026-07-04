@@ -914,6 +914,67 @@ mod tests {
         assert!(backend.supported_formats().contains(&OutputFormat::Svg));
     }
 
+    /// Direct teeth for the pixels-not-spans contract (#801): two compiles
+    /// whose pages ink identically must fingerprint identically even when every
+    /// glyph's `Span` differs. The quills below are identical except one schema
+    /// declares an extra unused field, which lengthens the generated `_qm-meta`
+    /// literal ahead of the content blocks in `lib.typ` — shifting every block's
+    /// byte position, hence every content glyph's span, while the rendered
+    /// pages stay pixel-identical. Folding spans into the hash fails this.
+    #[test]
+    fn page_hashes_ignore_span_shift_when_ink_is_identical() {
+        use quillmark_core::FileTreeNode;
+
+        const PLATE: &str = r#"#import "@local/quillmark-helper:0.1.0": data
+#set page(width: 300pt, height: 200pt, margin: 20pt)
+#set text(size: 11pt)
+#data.body
+"#;
+        let quill_with = |extra_field: bool| {
+            let mut yaml = String::from(
+                "quill:\n  name: shift\n  version: 0.1.0\n  backend: typst\n  description: span shift probe\ntypst:\n  plate_file: plate.typ\nmain:\n  fields:\n    body:\n      type: markdown\n      description: body\n",
+            );
+            if extra_field {
+                yaml.push_str(
+                    "    zz_unused:\n      type: string\n      description: never placed\n",
+                );
+            }
+            let mut files = HashMap::new();
+            files.insert(
+                "Quill.yaml".to_string(),
+                FileTreeNode::File {
+                    contents: yaml.into_bytes(),
+                },
+            );
+            files.insert(
+                "plate.typ".to_string(),
+                FileTreeNode::File {
+                    contents: PLATE.as_bytes().to_vec(),
+                },
+            );
+            Quill::from_tree(FileTreeNode::Directory { files }).expect("quill")
+        };
+
+        let json = serde_json::json!({ "body": "A **markdown** body with real ink to lay out." });
+        let hashes_of = |quill: &Quill| {
+            let plate_content = read_plate(quill).expect("plate");
+            let transform_schema = build_transform_schema(quill.config());
+            let schema_meta = SchemaMeta::from_schema_json(transform_schema.as_json());
+            let data = transformed_data(&transform_schema, &schema_meta, &json).expect("data");
+            let (world, _windows) =
+                world::QuillWorld::new_with_data(quill, &plate_content, &data, &schema_meta)
+                    .expect("world");
+            let (document, _warnings) = compile::compile_document(&world).expect("compile");
+            page_hashes(&document)
+        };
+
+        assert_eq!(
+            hashes_of(&quill_with(false)),
+            hashes_of(&quill_with(true)),
+            "identical ink must fingerprint identically across a whole-file span shift"
+        );
+    }
+
     #[test]
     fn test_is_markdown_field() {
         let markdown_schema = json!({
