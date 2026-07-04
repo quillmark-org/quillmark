@@ -24,100 +24,93 @@
 - Verified against the production quill catalog: a real-wasm vitest
   suite (open / apply / ChangeSet / transactional failure / regions /
   `fieldAt`) plus a browser drive of the live app.
-- Three passes so far: filed findings as #782 (resolved by
-  #783/#784/#785/#788); pulled again onto the span-based region rework
-  (#795, superseding #788) and a helper-codegen rewrite (#800), which
-  is the pass this report now describes.
+- Four passes so far: filed findings as #782 (resolved by
+  #783/#784/#785/#788); pulled onto the span-based region rework (#795,
+  superseding #788) and a helper-codegen rewrite (#800), filing the two
+  findings below as #801; pulled again onto #801's fix (landed as
+  #813) plus an unrelated correctness fix (#814), which is the pass
+  this report now describes.
 
 The surface holds together: `apply` is transactional as documented, a
 failed apply keeps every read serving the last-good compile, the
-canvas paint/DPR contract needed no consumer-side changes, and
-`fieldAt` — once its own gap below was fixed — resolves clicks
-correctly everywhere content is drawn, including where `regions()`
-under-enumerates.
+canvas paint/DPR contract needed no consumer-side changes, `fieldAt`
+resolves clicks correctly everywhere content is drawn (including where
+`regions()` under-enumerates), and a no-op apply now correctly dirties
+nothing — the last open finding from this spike is closed.
 
-## New this pass
+## Resolved this pass: both #801 findings landed upstream (#813)
 
-### `fieldAt` was typed but not implemented — found and fixed here
+### `fieldAt` delegation — fixed on `main`, this branch's local patch superseded
 
-`dbcd553` added `fieldAt(page, x, y)` to the generated Typst/pdfform
-backends and to the canonical `runtime.d.ts` type declaration, but
-never added a delegation method to the canonical `LiveSession` wrapper
-class in the hand-written `runtime.js`. Every other method on that
-class (`regions`, `pageSize`, `paint`, `render`, …) forwards to
-`#inner`; `fieldAt` simply had no such forward. Result: `@quillmark/wasm`
-type-checks `session.fieldAt(...)` cleanly (the `.d.ts` says it exists)
-but throws `session.fieldAt is not a function` at runtime — the method
-is unreachable through the package's actual public surface.
+The missing `runtime.js` delegation (found last pass, patched locally
+on this branch as a stopgap) is now fixed identically on `main`
+(`346c864`). Rebasing produced the expected conflict — both sides added
+the same three-line forward with different doc-comment wording — kept
+upstream's wording and dropped the local patch's own copy. No smoke
+test asserting a live call (not just a type-check) was added, per the
+original ask; still worth doing, but not blocking.
 
-The type-level drift guard (`runtime.types.test-d.ts`) does not catch
-this class of bug — it checks structural type compatibility between
-the canonical and generated interfaces, not whether the hand-written
-JS implementation actually has a matching method. Nothing in the test
-suite calls `fieldAt` on the canonical `LiveSession` instance.
+### Dirty-page tracking — fixed on `main` with a two-layer, root-cause repair (`346c864`)
 
-**Fixed directly on this branch** (`crates/bindings/wasm/runtime/runtime.js`):
-added the missing three-line delegation, matching every sibling
-method's style. Trivial and unambiguous, so fixed rather than just
-reported. **Ask:** land the same fix on `main`, and add a smoke test
-that calls every canonical `LiveSession` method (not just type-checks
-it) against a live session — the gap this bug fell through.
+Confirmed by direct inspection of the landed diff, not just changelog
+text. Two independent layers, matching the mechanism this report
+guessed at:
 
-### Dirty-page tracking no longer converges to empty on a no-op apply, for any quill with content fields
+1. **`page_hashes` (`crates/backends/typst/src/lib.rs`) now explicitly
+   excludes Typst `Span` from every hashed `FrameItem`** — glyphs keep
+   font/size/paint/geometry, `Shape`/`Image` keep their visible fields,
+   none keep the trailing source-location `Span` their derived `Hash`
+   impl would otherwise fold in. The fix's own doc comment states the
+   contract plainly: *"two compiles whose pages rasterize
+   pixel-for-pixel identically must hash identically... only
+   render-affecting data... may enter the hash."* A direct regression
+   test (`page_hashes_ignore_span_shift_when_ink_is_identical`)
+   pins it: two quills differing only by an unused extra schema field
+   (shifting every content block's byte position, hence every glyph's
+   span, with zero rendered-pixel difference) must hash identically.
+2. **Codegen (`crates/backends/typst/src/helper.rs`) now emits every
+   dict in canonical sorted-key order**, closing the actual trigger
+   this report traced to: `serde_json`'s `preserve_order` let an
+   editor's mutate path hand `apply` the same content in a different
+   field order than `open` saw, shifting the generated `lib.typ`'s
+   byte layout (hence every span below the shift) with no rendered
+   change. Canonical ordering makes the generated source a pure
+   function of values, independent of caller insertion order — a
+   reorder-only apply is now a `Source::replace` no-op, pinned by
+   `reordered_input_emits_byte_identical_source`.
 
-**Severity: high — undermines the incremental-repaint value proposition
-`apply`/`ChangeSet` exists for.**
+Both are load-bearing: sorted-key emission prevents the common
+reorder-only trigger from shifting layout at all, and span-exclusion
+makes hashing correct even when a layout shift does happen for some
+other reason. The backend's own end-to-end regression test
+(`reapply_with_reordered_fields_same_content_is_clean`,
+`crates/backends/typst/tests/live_apply.rs`) names this exact scenario
+as *"the web-app's #801 `[0]`, reproduced at the backend"* and asserts
+the conjunction holds.
 
-Reapplying byte-identical markdown to an already-open `usaf_memo`
-session reports `dirtyPages: [0]` — every time, including a *second*
-consecutive no-op apply of the same content (not a one-time settling
-artifact). Isolated the cause with a differential test:
+**Verified against web-app's own integration test**: the "no-op apply"
+case, which last pass pinned the buggy `[0]` with an explanatory
+comment, now asserts the correct `dirtyPages: []` and passes.
 
-- `usaf_memo` (has a `$body` markdown content field): reapplying
-  identical content → `[0]`, every time.
-- `af4141` (a form-fill quill with `main.body.enabled: false`, no
-  markdown content fields at all): reapplying identical content →
-  `[]`, correctly.
+## Unrelated fix landed in the same pull: silent data loss in typed-dict/table resolution (#814)
 
-The difference tracks content fields specifically, which points at
-`page_hashes` (`crates/backends/typst/src/lib.rs`): it hashes every
-non-`Tag` `FrameItem` via that item's own `Hash` impl, and a `Text`
-item's hash transitively includes each glyph's Typst `Span` — data the
-span-based region-tracking rework (#795) now depends on for content
-fields. If `Span` identity is not guaranteed stable across two separate
-compiles of byte-identical source (plausible if spans are allocated
-from a per-parse arena rather than derived purely from content), a
-content-bearing page's hash differs between compiles even when nothing
-about the rendered pixels changed, so `dirty_pages` reports it dirty
-unconditionally.
+Not something this spike found — noting it because it landed in the
+same `main` pull and is a genuine correctness fix worth knowing about.
+`resolve_value` (`crates/core/src/quill/compose.rs`), which projects a
+present value against its field schema at render time, previously
+**rebuilt** a typed dictionary or typed-table row from only its
+*declared* properties — any key the schema didn't name was silently
+dropped from what reached the plate. Fixed to preserve undeclared keys
+verbatim (the schema is a floor, not an allowlist), with regression
+tests for both the plain typed-dict and typed-table-row cases. Also in
+this pull: a blueprint fix so an Unendorsed markdown field's `example:`
+surfaces as a `# e.g.` hint instead of vanishing, and doc-comment
+corrections for error messages/codes stale since the earlier error-
+system rework (no behavioral change).
 
-**Consequence for consumers:** any quill with a markdown content field
-loses the `dirty ∩ visible` optimization for that field's page(s) —
-expect a same-page repaint on *every* keystroke, not just ones that
-touch that page. For a single-page memo this is a full-page repaint
-per keystroke (functionally correct, no longer incremental); for a
-multi-page document only the page(s) actually carrying tracked content
-are affected. Web-app's `QuillmarkPreviewController` still works
-correctly (repainting an unnecessarily-dirtied page is wasted work,
-not a correctness bug) but the perf story is weaker than `apply`
-advertises for the common case.
-
-**Not fixed here** — this is a Typst-`Span`-semantics question deeper
-than a delegation bug, and needs proper investigation (does `Span`
-have a stable, content-derived identity across separate `Source`
-instances, or does page-hashing need a different fingerprint for
-content-field frame items — e.g., hash the item's *rendered output*
-sans span, or hash span *ranges relative to the field's own window*
-rather than raw `Span` values) rather than a guess from this pass.
-**Ask:** reproduce against a minimal quill (one markdown field, two
-identical `apply` calls, assert `dirtyPages` converges to `[]`) and
-trace whether `Span` truly varies between compiles of identical
-source, or whether the bug is elsewhere in the hash walk.
-
-`live-session.integration.test.ts`'s "no-op apply" case now pins the
-observed `[0]` behavior with a comment explaining why, rather than
-asserting the correct-but-false `[]` — so this regression is visible
-and testable, not silently normalized.
+**No web-app action**: confirmed none of the four production quills
+(`usaf_memo`, `af4141`, `daf1206`, `daf4392`) declare a `type: object`
+field, so this bug had no surface to affect in the current catalog.
 
 ## Superseded from the previous pass: `tagged()` is gone, replaced by span tracking (#795)
 
@@ -164,7 +157,7 @@ existing whole-canvas mask) that converts the click point to PDF pt
 and calls `fieldAt`; `regions()` is read only to draw a non-interactive
 highlight box for the editor's currently-focused field.
 
-## Resolved from the previous pass (recap)
+## Resolved from earlier passes (recap)
 
 - **`Document` lifetime footgun** (#785) — fixed; the natural
   `try { return engine.open(...) } finally { doc.free() }` shape is
@@ -172,11 +165,13 @@ highlight box for the editor's currently-focused field.
 - **`apply` warnings channel** (#784/#790) — fixed; `session.warnings`
   reflects the current compile, refreshed per committed apply.
 - **From-source version stamping** (#785) — fixed; this rebuild
-  produced `0.92.2-dev.d2d2d46`, not `0.92.1`.
-- **Canonical `runtime.d.ts` drift** (flagged last pass, `b1b5438`) —
+  produced `0.92.2-dev.dcea9f7`, not `0.92.1`.
+- **Canonical `runtime.d.ts` drift** (flagged two passes ago, `b1b5438`) —
   fixed; `RenderOptions.regions` and the per-placement `regions()` doc
   are synced, and a `typecheck` step is now wired into CI so this class
   of drift fails the build going forward.
+- **`fieldAt` delegation gap and dirty-page span-hashing bug** (#801,
+  fixed as of this pass, `#813`/`346c864`) — see above.
 - **`plate_file`** — still a deliberate scope decision, not a fix
   (pre-1.0 hard cutover policy); web-app's branch still carries a
   hand-migrated local copy of `@airmark/quiver`'s `Quill.yaml`s.
@@ -220,10 +215,6 @@ highlight box for the editor's currently-focused field.
 - `live-session.integration.test.ts` pins: current region coverage
   (`$body`/`signature_block`/`tag_line`, span-tracked, no `tagged()`);
   `fieldAt` resolving both at region centers and past what `regions()`
-  enumerates; kind-scoped card addressing; and the dirty-page
-  regression's actual (`[0]`, not `[]`) behavior on a no-op apply, with
-  a comment pointing back here. Several of these assertions are
-  designed to start failing the moment the underlying issue is fixed
-  upstream — that's the point for the regression pin; the coverage/
-  `fieldAt` pins guard against silent regressions in the other
-  direction.
+  enumerates; kind-scoped card addressing; and — since #801's fix
+  landed — the CORRECT no-op-apply behavior (`dirtyPages: []`), no
+  longer a pin on the regression itself.
