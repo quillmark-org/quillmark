@@ -1,3 +1,9 @@
+# Reviews
+
+- [Minimize review — v0.92.1 → main](minimize-0.92.1-main.md): dead code,
+  unrealized cascades, redundant tests, disproportionate complexity across
+  the release window.
+
 # Branch review — open items
 
 Findings from the swarm review of `claude/branch-review-agent-swarm-h9rbk4`
