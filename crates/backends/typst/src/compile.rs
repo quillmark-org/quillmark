@@ -40,6 +40,15 @@ fn render_options(pixel_per_pt: f32) -> RenderOptions {
 /// eviction — an editing loop (one compile per keystroke) leaks otherwise.
 /// 10 matches typst-cli's watch-loop policy: deep enough to keep everything a
 /// live document's recompile reuses, shallow enough to bound a long session.
+///
+/// Caveat: the "age" clock is also process-global, not per-`QuillWorld`. Two
+/// sessions compiling interleaved in one process share it, so a document that
+/// goes quiet for 10 compiles *summed across all sessions* has its entries
+/// evicted even when its own edit history is shorter — reuse degrades under
+/// concurrent-session use (WASM canvas-preview, a long-lived multi-session
+/// Python/CLI process). Never a wrong render (comemo entries are pure functions
+/// of input), only lost reuse. A true per-session bound needs an eviction
+/// counter scoped to the `World`, which comemo doesn't expose today.
 const COMEMO_EVICT_MAX_AGE: usize = 10;
 
 /// Compile the world, returning the paged document together with Typst's

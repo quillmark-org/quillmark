@@ -314,6 +314,29 @@ pub fn find_dict_value<'a>(dict_bytes: &'a [u8], key: &str) -> Option<&'a [u8]> 
     }
 }
 
+/// Replace `key`'s value in a flat dict, given the current `value` slice — which
+/// MUST be the subslice [`find_dict_value`] returned for that key. Its start
+/// locates the key span by pointer subtraction (`[value_start - key.len,
+/// value_end)`), not by re-scanning, so a `key` token appearing inside another
+/// value can't be matched by accident. The `key`+value span is rewritten as
+/// `key` + one space + `new_value`; the rest of `dict` is copied verbatim.
+///
+/// `key` is the on-page byte form including the leading slash (`b"/Producer"`).
+/// Callers that build the replacement value from `value`'s own bytes must do so
+/// before calling — `dict` is borrowed immutably here.
+pub fn splice_dict_value(dict: &[u8], key: &[u8], value: &[u8], new_value: &[u8]) -> Vec<u8> {
+    let value_start = value.as_ptr() as usize - dict.as_ptr() as usize;
+    let value_end = value_start + value.len();
+    let key_at = value_start - key.len();
+    let mut out = Vec::with_capacity(key_at + key.len() + 1 + new_value.len() + dict.len() - value_end);
+    out.extend_from_slice(&dict[..key_at]);
+    out.extend_from_slice(key);
+    out.push(b' ');
+    out.extend_from_slice(new_value);
+    out.extend_from_slice(&dict[value_end..]);
+    out
+}
+
 /// Skip PDF whitespace and `%`-comments (which run to end-of-line) starting at
 /// `start`; returns the index of the first significant byte at or after it.
 fn skip_ws_and_comments(b: &[u8], start: usize) -> usize {

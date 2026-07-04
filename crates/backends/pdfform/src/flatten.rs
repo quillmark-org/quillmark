@@ -22,7 +22,10 @@
 //! Entry point: [`flatten`].
 
 use quillmark_pdf::{
-    reader::{err, extract_outer_dict, find_dict_value, find_object_bytes, UpdatedObject},
+    reader::{
+        err, extract_outer_dict, find_dict_value, find_object_bytes, splice_dict_value,
+        UpdatedObject,
+    },
     writer::{alloc_id, dict_object, pdf_escape, winansi_encode},
     FieldSpec, FieldType, PdfError, PdfUpdate, StampOptions, CHECKBOX_ON_STATE,
 };
@@ -251,16 +254,12 @@ fn add_content_stream(pg_dict: &[u8], stream_id: u32) -> Result<Vec<u8>, PdfErro
                 // Single indirect ref — wrap in array.
                 format!("[{} {ref_str}]", String::from_utf8_lossy(trimmed).trim())
             };
-            let key = b"/Contents";
-            let value_start = existing.as_ptr() as usize - pg_dict.as_ptr() as usize;
-            let key_at = value_start - key.len();
-            let value_end = value_start + existing.len();
-            let mut out = Vec::new();
-            out.extend_from_slice(&pg_dict[..key_at]);
-            out.extend_from_slice(b"/Contents ");
-            out.extend_from_slice(new_val.as_bytes());
-            out.extend_from_slice(&pg_dict[value_end..]);
-            Ok(out)
+            Ok(splice_dict_value(
+                pg_dict,
+                b"/Contents",
+                existing,
+                new_val.as_bytes(),
+            ))
         }
     }
 }
@@ -321,15 +320,7 @@ fn add_font_resource(pg_dict: &[u8], name: &str, font_id: u32) -> Result<Vec<u8>
                     new_font_val.extend_from_slice(format!(" {helv_entry} >>").as_bytes());
 
                     // Splice new_font_val into res_inner replacing /Font <font_val>.
-                    let fv_start = font_val.as_ptr() as usize - res_inner.as_ptr() as usize;
-                    let key_at = fv_start - b"/Font".len();
-                    let fv_end = fv_start + font_val.len();
-                    let mut out = Vec::new();
-                    out.extend_from_slice(&res_inner[..key_at]);
-                    out.extend_from_slice(b"/Font ");
-                    out.extend_from_slice(&new_font_val);
-                    out.extend_from_slice(&res_inner[fv_end..]);
-                    out
+                    splice_dict_value(res_inner, b"/Font", font_val, &new_font_val)
                 }
             };
 
@@ -338,16 +329,12 @@ fn add_font_resource(pg_dict: &[u8], name: &str, font_id: u32) -> Result<Vec<u8>
             new_res_val.extend_from_slice(&new_res_inner);
             new_res_val.extend_from_slice(b" >>");
 
-            let rv_start = res_val.as_ptr() as usize - pg_dict.as_ptr() as usize;
-            let key_at = rv_start - b"/Resources".len();
-            let rv_end = rv_start + res_val.len();
-
-            let mut out = Vec::new();
-            out.extend_from_slice(&pg_dict[..key_at]);
-            out.extend_from_slice(b"/Resources ");
-            out.extend_from_slice(&new_res_val);
-            out.extend_from_slice(&pg_dict[rv_end..]);
-            Ok(out)
+            Ok(splice_dict_value(
+                pg_dict,
+                b"/Resources",
+                res_val,
+                &new_res_val,
+            ))
         }
     }
 }

@@ -95,6 +95,11 @@ impl PdfUpdate {
     pub fn resolve_pages(&self, pdf: &[u8], fields: &[FieldSpec]) -> Result<Vec<u32>, PdfError> {
         let page_ids = resolve_page_ids(pdf, self.catalog_id)?;
         let page_count = page_ids.len();
+        // Both assertions below re-scan the whole PDF byte buffer per call
+        // (`find_object_bytes` is linear), so a form with N fields on the same
+        // page would otherwise pay O(N × file_size). Validate each distinct page
+        // once; the bounds check still runs per field.
+        let mut checked = vec![false; page_count];
         for spec in fields {
             if spec.page >= page_count {
                 return Err(err(
@@ -105,6 +110,9 @@ impl PdfUpdate {
                     ),
                 ));
             }
+            if checked[spec.page] {
+                continue;
+            }
             // A targeted page node is overwritten (its `/Annots`) and referenced
             // by every widget on it as gen 0, so a non-zero-generation page would
             // be silently corrupted.
@@ -112,6 +120,7 @@ impl PdfUpdate {
             // Widget/content geometry is written in unrotated user space; a
             // rotated target page would mis-place every field. Reject cleanly.
             assert_unrotated_page(pdf, self.catalog_id, page_ids[spec.page])?;
+            checked[spec.page] = true;
         }
         Ok(page_ids)
     }

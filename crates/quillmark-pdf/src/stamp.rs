@@ -21,7 +21,8 @@ use quillmark_core::RenderedRegion;
 
 use crate::error::PdfError;
 use crate::reader::{
-    err, extract_outer_dict, find_dict_value, find_object_bytes, parse_indirect_ref, UpdatedObject,
+    err, extract_outer_dict, find_dict_value, find_object_bytes, parse_indirect_ref,
+    splice_dict_value, UpdatedObject,
 };
 use crate::update::PdfUpdate;
 use crate::writer::{alloc_id, dict_object};
@@ -298,16 +299,12 @@ fn rewrite_page_with_annots(pg_dict: &[u8], widget_refs: &[u32]) -> Result<Vec<u
                     String::from_utf8_lossy(inner).trim(),
                     widgets_str
                 );
-                let key = b"/Annots";
-                let value_start = existing.as_ptr() as usize - pg_dict.as_ptr() as usize;
-                let key_at = value_start - key.len();
-                let value_end = value_start + existing.len();
-                let mut out = Vec::new();
-                out.extend_from_slice(&pg_dict[..key_at]);
-                out.extend_from_slice(b"/Annots ");
-                out.extend_from_slice(merged.as_bytes());
-                out.extend_from_slice(&pg_dict[value_end..]);
-                Ok(out)
+                Ok(splice_dict_value(
+                    pg_dict,
+                    b"/Annots",
+                    existing,
+                    merged.as_bytes(),
+                ))
             } else if parse_indirect_ref(existing).is_some() {
                 Err(err(
                     "pdf::indirect_annots",

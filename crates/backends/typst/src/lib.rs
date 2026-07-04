@@ -616,21 +616,28 @@ fn is_date_field(field_schema: &serde_json::Value) -> bool {
 
 /// Names of the markdown / `markdown[]` fields in a schema `properties` map —
 /// the fields whose values carry backend markup for the helper to `eval`.
-fn content_field_names(properties: &serde_json::Map<String, serde_json::Value>) -> Vec<String> {
+/// Names of the schema `properties` whose field schema satisfies `predicate`,
+/// in map order. Shared spine of the field-class selectors below.
+fn field_names_where(
+    properties: &serde_json::Map<String, serde_json::Value>,
+    predicate: impl Fn(&serde_json::Value) -> bool,
+) -> Vec<String> {
     properties
         .iter()
-        .filter(|(_, fs)| is_markdown_field(fs) || is_markdown_array_field(fs))
+        .filter(|(_, fs)| predicate(fs))
         .map(|(name, _)| name.clone())
         .collect()
 }
 
+fn content_field_names(properties: &serde_json::Map<String, serde_json::Value>) -> Vec<String> {
+    field_names_where(properties, |fs| {
+        is_markdown_field(fs) || is_markdown_array_field(fs)
+    })
+}
+
 /// Names of the date fields in a schema `properties` map.
 fn date_field_names(properties: &serde_json::Map<String, serde_json::Value>) -> Vec<String> {
-    properties
-        .iter()
-        .filter(|(_, fs)| is_date_field(fs))
-        .map(|(name, _)| name.clone())
-        .collect()
+    field_names_where(properties, is_date_field)
 }
 
 /// Names of the array-typed fields in a schema `properties` map — the fields
@@ -641,11 +648,9 @@ fn date_field_names(properties: &serde_json::Map<String, serde_json::Value>) -> 
 /// the content codegen only *produces* eval sites for `markdown[]` elements,
 /// but a widget binding of a plain array element is a real, routable address.
 fn array_field_names(properties: &serde_json::Map<String, serde_json::Value>) -> Vec<String> {
-    properties
-        .iter()
-        .filter(|(_, fs)| fs.get("type").and_then(|v| v.as_str()) == Some("array"))
-        .map(|(name, _)| name.clone())
-        .collect()
+    field_names_where(properties, |fs| {
+        fs.get("type").and_then(|v| v.as_str()) == Some("array")
+    })
 }
 
 /// Convert a content field's value to backend markup: a markdown string is

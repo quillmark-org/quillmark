@@ -8,7 +8,7 @@
 use crate::error::PdfError;
 use crate::reader::{
     assert_overwrite_gen_zero, err, extract_outer_dict, find_dict_value, find_object_bytes,
-    UpdatedObject,
+    splice_dict_value, UpdatedObject,
 };
 
 const CODE_PARSE: &str = "pdf::write";
@@ -77,21 +77,7 @@ pub fn upsert_producer(info_dict: &[u8], literal: &[u8]) -> Vec<u8> {
             out.extend_from_slice(literal);
             out
         }
-        Some(value) => {
-            // `value` starts exactly after the matched `/Producer` key, so the
-            // key span is `[value_start - key.len, value_end)` — derived, not
-            // re-scanned, so a `/Producer` token inside another value can't be
-            // matched by accident.
-            let value_start = value.as_ptr() as usize - info_dict.as_ptr() as usize;
-            let value_end = value_start + value.len();
-            let key_at = value_start - key.len();
-            let mut out = Vec::new();
-            out.extend_from_slice(&info_dict[..key_at]);
-            out.extend_from_slice(b"/Producer ");
-            out.extend_from_slice(literal);
-            out.extend_from_slice(&info_dict[value_end..]);
-            out
-        }
+        Some(value) => splice_dict_value(info_dict, key, value, literal),
     }
 }
 
