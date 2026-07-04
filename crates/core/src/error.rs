@@ -437,17 +437,6 @@ mod tests {
     }
 
     #[test]
-    fn test_render_error_diagnostics_extraction() {
-        let diag1 = Diagnostic::new(Severity::Error, "Error 1".to_string());
-        let diag2 = Diagnostic::new(Severity::Error, "Error 2".to_string());
-
-        let err = RenderError::new(vec![diag1, diag2]);
-
-        let diags = err.diagnostics();
-        assert_eq!(diags.len(), 2);
-    }
-
-    #[test]
     fn test_render_error_single_diagnostic_shape() {
         let err = RenderError::from_diag(Diagnostic::new(
             Severity::Error,

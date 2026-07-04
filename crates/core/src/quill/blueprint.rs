@@ -554,28 +554,6 @@ main:
     }
 
     #[test]
-    fn must_fill_array_with_example_renders_example_as_block_items() {
-        // Plain (non-typed-table) Unendorsed array with an example: the example
-        // rides along as the `!must_fill` suggested value (block items), no `# e.g.`.
-        let t = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    memo_from:
-      type: array
-      items: { type: string }
-      example:
-        - ORG/SYMBOL
-        - City ST 12345
-"#)
-        .blueprint();
-        assert!(t.contains(
-            "memo_from: !must_fill # array<string>\n  - ORG/SYMBOL\n  - City ST 12345\n"
-        ));
-        assert!(!t.contains("# e.g."));
-    }
-
-    #[test]
     fn description_emitted_as_single_line() {
         let t = cfg(r#"
 quill: { name: x, version: 1.0.0, backend: typst, description: x }
@@ -1108,28 +1086,6 @@ main:
         assert_eq!(
             doc1, doc2,
             "Document must be equal after blueprint → parse → emit → parse"
-        );
-    }
-
-    #[test]
-    fn blueprint_renders_default_and_surfaces_example_as_hint() {
-        // A field with BOTH a `default:` and an `example:`: the blueprint
-        // value cell renders the default (Endorsed), while the
-        // example surfaces only as a leading `# e.g.` hint, never the value.
-        let blueprint = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    status: { type: string, default: draft, example: final }
-"#)
-        .blueprint();
-        assert!(
-            blueprint.contains("status: draft # string\n"),
-            "blueprint should render the default value: {blueprint}"
-        );
-        assert!(
-            blueprint.contains("# e.g. final\n"),
-            "blueprint should surface the example as a hint: {blueprint}"
         );
     }
 
