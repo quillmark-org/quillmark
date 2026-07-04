@@ -137,8 +137,8 @@ Two preview queries ride on the emit, with very different machinery costs:
   covering glyph among the page hits (per-glyph boxes are already computed),
   return its page and box. Granularity is the shaping cluster — the same
   resolution every real caret has. Ink with no corpus origin (list markers,
-  plate decorations, package-generated numbering) falls back to the
-  enclosing line's range: marker attribution is a luxury, not a requirement.
+  plate decorations, package-generated numbering) is ignored for navigation:
+  `position_at` answers only for glyphs that map to a corpus character.
 - **Highlight boxes (paragraph regions) — leaf line windows only.** The
   single-cursor run machine keeps its existing disjoint-leaf invariant;
   marker ink goes unclassified (accepted); field boxes derive by unioning
