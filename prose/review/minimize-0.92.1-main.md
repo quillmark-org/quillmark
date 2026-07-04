@@ -9,6 +9,20 @@ discarded. Line numbers refer to HEAD (`5869d307`).
 Estimated total: **~700 deletable lines** plus a public-API narrowing of
 `quillmark-pdf` and one untested feature configuration removed.
 
+Tracked as issues: [#817](https://github.com/quillmark-org/quillmark/issues/817)
+(wasm feature collapse, §1.2), [#818](https://github.com/quillmark-org/quillmark/issues/818)
+(dead escape hatch, §1.3), [#819](https://github.com/quillmark-org/quillmark/issues/819)
+(core dead code, §1.4–1.5, §2 partial, §4 partial),
+[#820](https://github.com/quillmark-org/quillmark/issues/820) (typst seams,
+§1.7, §2 partial), [#821](https://github.com/quillmark-org/quillmark/issues/821)
+(pdf-crate surface, §1.6, §1.8, §2 partial),
+[#822](https://github.com/quillmark-org/quillmark/issues/822) /
+[#823](https://github.com/quillmark-org/quillmark/issues/823) /
+[#824](https://github.com/quillmark-org/quillmark/issues/824) (test dedup, §3),
+[#825](https://github.com/quillmark-org/quillmark/issues/825) (release pkg
+staleness + cache key, §4). The `__meta__` cascade (§1.1) was already tracked
+as [#792](https://github.com/quillmark-org/quillmark/issues/792).
+
 ## 1. Unrealized simplification cascades
 
 ### 1.1 The `__meta__` sentinel is write-only (typst) — ~70–90 lines
