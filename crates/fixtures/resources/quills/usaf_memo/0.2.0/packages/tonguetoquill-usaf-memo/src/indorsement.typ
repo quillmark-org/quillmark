@@ -19,8 +19,6 @@
   signature_block: none,
   signature_blank_lines: 4,
   signing_field: none,
-  attachments: none,
-  cc: none,
   date: none,
   // Format of indorsement: "standard" (same page), "informal" (no header), or "separate_page" (starts on new page)
   format: "standard",
@@ -79,33 +77,66 @@
       let indorsement_number = counters.indorsement.get().at(0, default: 1)
       let indorsement_label = format-indorsement-number(indorsement_number)
 
+      let ind_date = align(right)[#if actual_date != none { display-date(actual_date, memo-style: memo-style) } else { date-placeholder-line() }]
+
+      // Separate-page header body: restates the original memo's identity (FROM,
+      // date, subject) on its own line, since the indorsement no longer shares a
+      // page with the action document. Rendered as a non-breakable, sticky unit
+      // so it travels to the next page *with* the content it heads rather than
+      // being stranded at the bottom of a page.
+      let separate-page-body = block(breakable: false, sticky: true)[
+        #[#indorsement_label to #original_from, #display-date(original_date, memo-style: memo-style), #original_subject]
+        #blank-line()
+        #grid(columns: (auto, 1fr), ind_from, ind_date)
+        #blank-line()
+        #grid(columns: (auto, auto, 1fr), "MEMORANDUM FOR", "  ", ind_for)
+      ]
+
+      // Standard header: terse "Nth Ind, FROM    date" line, used when the
+      // indorsement stays on the same page as the action document. Same
+      // non-breakable + sticky treatment so the two header lines never split
+      // across a page boundary and never detach from the body/signature below.
+      let standard-header = block(breakable: false, sticky: true)[
+        #blank-line()
+        #grid(columns: (auto, 1fr), [#indorsement_label, #ind_from], ind_date)
+        #blank-line()
+        #grid(columns: (auto, auto, 1fr), "MEMORANDUM FOR", "  ", ind_for)
+      ]
+
       if format == "separate_page" {
+        // Explicit separate-page indorsement always begins on a fresh page.
         pagebreak()
-        [#indorsement_label to #original_from, #display-date(original_date, memo-style: memo-style), #original_subject]
-
-        blank-line()
-        grid(
-          columns: (auto, 1fr),
-          ind_from, align(right)[#if actual_date != none { display-date(actual_date, memo-style: memo-style) }],
-        )
-
-        blank-line()
-        grid(
-          columns: (auto, auto, 1fr),
-          "MEMORANDUM FOR", "  ", ind_for,
-        )
+        separate-page-body
       } else {
-        blank-line()
-        grid(
-          columns: (auto, 1fr),
-          [#indorsement_label, #ind_from], align(right)[#if actual_date != none { display-date(actual_date, memo-style: memo-style) }],
-        )
-
-        blank-line()
-        grid(
-          columns: (auto, auto, 1fr),
-          "MEMORANDUM FOR", "  ", ind_for,
-        )
+        // AFH 33-337: a standard indorsement that no longer fits on the action
+        // document's page moves to a separate page, where it carries the fuller
+        // separate-page identifying header (it has lost its visual link to the
+        // original). Auto-upgrade to that header when the indorsement is pushed
+        // to a new page, rather than printing the terse same-page header at the
+        // top of a continuation page where it no longer makes sense.
+        //
+        // Detection: because the header is a non-breakable, sticky unit, Typst
+        // moves it wholesale to the next page when it would not fit — so a
+        // pushed indorsement lands at the top content margin. If the header's
+        // resolved position is at the top of its page, it was pushed; emit the
+        // separate-page body (no extra pagebreak — we are already at page top).
+        // Otherwise the header flows in place with the standard form.
+        let stride = {
+          let s = LINE_STRIDE.get()
+          if s == none {
+            let one-line = measure(par(spacing: 0pt)[x]).height
+            measure(par(spacing: 0pt)[x#linebreak()x]).height - one-line
+          } else { s }
+        }
+        // here().position().y is the resolved flow position of this header. On a
+        // continuation page the first content sits at the top margin; allow one
+        // line stride of tolerance for baseline/rounding.
+        let pushed-to-new-page = here().position().y <= spacing.margin + stride
+        if pushed-to-new-page {
+          separate-page-body
+        } else {
+          standard-header
+        }
       }
     }
     // Header→content gap. Skipped when there is neither an action line nor
@@ -128,6 +159,4 @@
   }
 
   render-signature-block(signature_block, signature-blank-lines: signature_blank_lines, signing-field: signing_field)
-
-  render-backmatter-sections(attachments: attachments, cc: cc)
 }

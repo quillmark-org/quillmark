@@ -10,7 +10,7 @@ main:
       - Attachment description, YYYY MMM DD
       ui:
         group: Additional
-        order: 13
+        order: 18
       items:
         type: string
     cc:
@@ -21,20 +21,20 @@ main:
       - Rank and Name, ORG/SYMBOL
       ui:
         group: Additional
-        order: 11
+        order: 16
       items:
         type: string
     classification:
       type: string
       description: >-
-        Select the classification marking displayed in the header/footer banner. Banner
-        colors follow DoD/CAPCO marking guidance (UNCLASSIFIED green, CUI/CONFIDENTIAL
-        black, SECRET red, TOP SECRET orange). Follow AFI 31-401 and applicable DoD
-        guidance. Leave blank to omit the banner.
+        Select the classification marking shown in the header and footer banner.
+        Unclassified documents typically omit this banner entirely — leave blank unless the
+        document is CUI or classified. Mark per DAFI 16-1404 (DoDM 5200.48 for CUI) and
+        applicable DoD guidance.
       default: ""
       ui:
-        group: Additional
-        order: 17
+        group: Classification
+        order: 9
         compact: true
       enum:
       - ""
@@ -43,23 +43,63 @@ main:
       - CONFIDENTIAL
       - SECRET
       - TOP SECRET
+    cui_category:
+      type: string
+      description: >-
+        CUI category from the DoD CUI Registry (e.g., 'Privacy/MED', 'CTI', 'PRVCY').
+        Leave blank to omit.
+      default: ""
+      ui:
+        group: Classification
+        order: 12
+        compact: true
+    cui_controlled_by:
+      type: string
+      description: >-
+        Office or organization that designated this information as CUI (e.g.,
+        'SAF/AA'). Required by DoDM 5200.48 when classification is CUI.
+      default: ""
+      ui:
+        group: Classification
+        order: 11
+        compact: true
+    cui_limited_dissemination:
+      type: string
+      description: >-
+        Limited dissemination control shown in the indicator block (e.g., 'FEDONLY',
+        'NOFORN'). Independent from the banner suffix above.
+      default: ""
+      ui:
+        group: Classification
+        order: 13
+        compact: true
+    cui_poc:
+      type: string
+      description: >-
+        Point of contact for CUI questions (e.g., 'Capt J. Smith, DSN 555-1234,
+        john.smith@us.af.mil'). Required by DoDM 5200.48 when classification is CUI.
+      default: ""
+      ui:
+        group: Classification
+        order: 14
+        compact: true
     date:
       type: datetime
       description: YYYY-MM-DD. Leave blank to use today's date.
       default: ""
       ui:
         group: Additional
-        order: 16
+        order: 21
         compact: true
     dissemination:
       type: string
       description: >-
-        Optional marking appended after double slash (e.g. NF with classification CUI
-        renders as CUI//NF). Leave blank to show only the classification with no //.
+        Banner dissemination suffix appended after double slash (e.g. 'NF' renders as
+        CUI//NF in the header/footer). Leave blank for no suffix.
       default: ""
       ui:
-        group: Additional
-        order: 18
+        group: Classification
+        order: 10
         compact: true
     distribution:
       type: array
@@ -72,32 +112,21 @@ main:
       - ORG2/SYMBOL
       ui:
         group: Additional
-        order: 12
+        order: 17
       items:
         type: string
     font_size:
       type: number
-      description: Font size for the memo text (pt). Decimal values (e.g. 11.5) are supported.
+      description: Body text size in points; decimals allowed (e.g. 11.5).
       default: 12
-      example: 12
       ui:
         group: Additional
-        order: 15
-        compact: true
-    freedom250:
-      type: boolean
-      description: >-
-        Show the America 250 / Freedom 250 commemorative emblem in the letterhead,
-        mirrored opposite the seal.
-      default: false
-      ui:
-        group: Letterhead
-        order: 9
+        order: 20
         compact: true
     letterhead_caption:
       type: array
       description: The full organization name of your unit.
-      default:
+      example:
       - HEADQUARTERS [UNIT NAME]
       ui:
         group: Letterhead
@@ -119,7 +148,7 @@ main:
       - dod
     letterhead_seal_subtitle:
       type: string
-      description: Optional line below the DoW seal (bold caps). Leave blank to omit.
+      description: Bold-caps line below the seal; blank to omit.
       default: ""
       ui:
         group: Letterhead
@@ -127,7 +156,7 @@ main:
         compact: true
     letterhead_title:
       type: string
-      description: Standard title. Only change for Joint Commands or DoW Agencies.
+      description: Change only for Joint Commands or DoW agencies.
       default: DEPARTMENT OF THE AIR FORCE
       ui:
         group: Letterhead
@@ -136,9 +165,8 @@ main:
       type: array
       description: >-
         Organization/office symbol in UPPERCASE. To address a specific person, add
-        their rank and name in parentheses (e.g., 'ORG/SYMBOL (LT COL JANE DOE)'). For
-        numerous recipients, use 'DISTRIBUTION'.
-      default: []
+        their rank and name in parentheses (e.g., 'ORG/SYMBOL (LT COL JANE DOE)'). For many
+        recipients, enter 'SEE DISTRIBUTION' and list them in the Distribution field.
       example:
       - ORG1/SYMBOL
       - ORG2/SYMBOL
@@ -168,33 +196,36 @@ main:
     memo_style:
       type: string
       description: >-
-        USAF memorandum (default) or DAF headquarters memorandum. DAF changes date
-        formatting and body paragraph layout per AFH 33-337.
+        USAF memorandum or DAF headquarters memorandum; DAF changes date format and
+        body paragraph layout per AFH 33-337.
       default: usaf
       ui:
         group: Additional
-        order: 14
+        order: 19
         compact: true
       enum:
       - usaf
       - daf
     references:
       type: array
-      description: Cite by organization, type, date, and title.
+      description: >-
+        References, auto-lettered (a), (b), (c) per AFH 33-337. Cite each by
+        organization, type, date, and title; italicize publication titles with *asterisks*
+        (standard Markdown emphasis).
       default: []
       example:
-      - AFM 33-326, 31 July 2019, Preparing Official Communications
+      - AFMAN 33-326, 25 November 2011, *Preparing Official Communications*
+      - AFI 33-360, *Publications and Forms Management*
       ui:
         group: Additional
-        order: 10
+        order: 15
       items:
-        type: string
+        type: markdown
     signature_block:
       type: array
-      description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title. Spell out 'Colonel' and general officer ranks."
-      default: []
+      description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title."
       example:
-      - FIRST M. LAST, Rank, USSF
+      - FIRST M. LAST, Rank, USAF
       - Duty Title
       ui:
         group: Addressing
@@ -207,14 +238,15 @@ main:
         Be brief and clear. Capitalize the first letter of each word except articles,
         prepositions, and conjunctions. Include suspense dates in parentheses if
         applicable.
-      default: ""
       example: Subject of the Memorandum
       ui:
         group: Addressing
         order: 2
     tag_line:
-      type: string
-      description: Organizational motto at the bottom of the page.
+      type: markdown
+      description: >-
+        Organizational motto at the bottom of the page. Supports Markdown emphasis
+        (e.g. *italics*, **bold**).
       default: ""
       ui:
         group: Letterhead
@@ -239,72 +271,54 @@ card_kinds:
           or 'disapprove' to circle the selected option.
         default: ""
         ui:
-          group: Addressing
+          group: Additional
           order: 4
+          compact: true
         enum:
         - ""
         - undecided
         - approve
         - disapprove
-      attachments:
-        type: array
-        description: List of attachments specific to this endorsement.
-        default: []
-        ui:
-          group: Additional
-          order: 5
-        items:
-          type: string
-      cc:
-        type: array
-        description: List of office symbols to receive copies of this endorsement.
-        default: []
-        ui:
-          group: Additional
-          order: 6
-        items:
-          type: string
       date:
         type: datetime
         description: >-
           YYYY-MM-DD. Date the endorser signs/forwards the memo (per AFH 33-337 Ch. 14,
-          this is distinct from the originating memo's date). Leave blank to use today's
-          date.
+          this is distinct from the originating memo's date). Leave blank to render a
+          fill-in line for the endorser to date by hand when signing.
         default: ""
         ui:
           group: Additional
-          order: 7
+          order: 5
+          compact: true
       for:
         type: string
         description: Office symbol or organization receiving the endorsed memo.
-        default: ORG/SYMBOL
+        example: ORG/SYMBOL
         ui:
           group: Addressing
           order: 1
       format:
         type: string
-        description: "Format style: 'standard' (formal on same page), 'informal' (less formal routing), or 'separate_page' (starts on new page)."
+        description: "'standard' (formal, same page), 'informal' (less formal routing), or 'separate_page' (begins on a new page)."
         default: standard
         ui:
           group: Additional
           order: 3
+          compact: true
         enum:
         - standard
         - informal
         - separate_page
       from:
         type: string
-        description: Office symbol or Rank Name of the endorsing official (e.g., 'ORG/SYMBOL').
-        default: ORG/SYMBOL
+        description: Office symbol or Rank Name of the endorsing official.
+        example: ORG/SYMBOL
         ui:
           group: Addressing
           order: 0
       signature_block:
         type: array
         description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title."
-        default:
-        - FIRST M. LAST, Rank, USAF
-        - Duty Title
         example:
         - FIRST M. LAST, Rank, USAF
         - Duty Title
