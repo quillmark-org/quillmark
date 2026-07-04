@@ -420,6 +420,21 @@ export class LiveSession {
 		return this.#inner.regions();
 	}
 
+	/**
+	 * The schema field whose content is under a point on `page` — the forward
+	 * (click → field) direction, resolving *every* placement, not just the first
+	 * that `regions` enumerates. `x`/`y` are PDF points with a bottom-left origin
+	 * (the `FieldRegion.rect` space). See `runtime.d.ts` for the click-to-point
+	 * inverse transform.
+	 * @param {number} page
+	 * @param {number} x
+	 * @param {number} y
+	 * @returns {string | undefined}
+	 */
+	fieldAt(page, x, y) {
+		return this.#inner.fieldAt(page, x, y);
+	}
+
 	/** @param {number} page */
 	pageSize(page) {
 		return this.#inner.pageSize(page);

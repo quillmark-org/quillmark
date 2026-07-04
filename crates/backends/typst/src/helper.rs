@@ -9,6 +9,10 @@
 //! `$path`, and everything else is a value literal Typst judges equal to the
 //! former `json()` parse; the schema address tables are a generated literal
 //! `_qm-meta`. See [`generate_lib_typ`].
+//!
+//! Output is **canonical**: dict keys emit in sorted order at every level (via
+//! [`sorted`]), so equal data produces byte-equal source regardless of the
+//! caller's field order. `$cards` array order is semantic and preserved.
 
 use std::collections::HashMap;
 use std::ops::Range;
@@ -129,7 +133,7 @@ impl<'m> Codegen<'m> {
     /// the `__meta__` sentinel (if any survived) is dropped.
     fn emit_data(&mut self, obj: &serde_json::Map<String, serde_json::Value>) -> String {
         let mut items = Vec::with_capacity(obj.len());
-        for (key, value) in obj {
+        for (key, value) in sorted(obj) {
             if key == "__meta__" {
                 continue;
             }
@@ -191,7 +195,7 @@ impl<'m> Codegen<'m> {
         // without reimplementing the kind+ordinal grammar. `$`-prefixed so it
         // cannot collide with a schema field.
         items.push(format!("\"$path\": \"{}\"", escape_string(prefix)));
-        for (key, value) in obj {
+        for (key, value) in sorted(obj) {
             if key == "$path" {
                 continue;
             }
@@ -314,11 +318,27 @@ fn lit(v: &serde_json::Value) -> String {
         String(s) => format!("\"{}\"", escape_string(s)),
         Array(a) => wrap_array(a.iter().map(lit).collect()),
         Object(o) => wrap_dict(
-            o.iter()
+            sorted(o)
+                .into_iter()
                 .map(|(k, v)| format!("\"{}\": {}", escape_string(k), lit(v)))
                 .collect(),
         ),
     }
+}
+
+/// A map's entries in canonical (sorted-key) order — every dict the generator
+/// emits goes through this. The workspace builds `serde_json` with
+/// `preserve_order`, so a map's own iteration order is whatever the caller
+/// inserted (and the transform pipeline routes through a `std::collections::
+/// HashMap`, so it is not even that). Emitting in a canonical order instead
+/// makes the generated source a pure function of the data's *values*: a
+/// reorder-only `apply` produces byte-identical `lib.typ`, `Source::replace`
+/// sees an empty diff, comemo reuses the whole compile, and no content block's
+/// spans move (#801).
+fn sorted(obj: &serde_json::Map<String, serde_json::Value>) -> Vec<(&String, &serde_json::Value)> {
+    let mut entries: Vec<_> = obj.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    entries
 }
 
 /// A Typst array literal from pre-rendered element expressions. The trailing
@@ -487,6 +507,53 @@ mod tests {
             payload > data_binding,
             "the payload sits inside the data literal, after the real slot"
         );
+    }
+
+    /// The caller's field order must not reach the emitted source: the same
+    /// values in any key order — top-level, card, and nested dicts — produce
+    /// byte-identical `lib.typ` and identical windows, so a reorder-only
+    /// `apply` is a `Source::replace` no-op (#801).
+    #[test]
+    fn reordered_input_emits_byte_identical_source() {
+        let meta = meta_from(serde_json::json!({
+            "properties": {
+                "body": { "type": "string", "contentMediaType": "text/markdown" },
+                "note": { "type": "string", "contentMediaType": "text/markdown" },
+                "extra": { "type": "object" }
+            },
+            "$defs": {
+                "note_card": {
+                    "properties": {
+                        "$body": { "type": "string", "contentMediaType": "text/markdown" }
+                    }
+                }
+            }
+        }));
+        let a: serde_json::Value = serde_json::from_str(
+            r#"{
+                "body": "The body.",
+                "note": "The note.",
+                "extra": { "x": 1, "y": 2 },
+                "$cards": [ { "$kind": "note", "$body": "Card body", "tag": "t" } ]
+            }"#,
+        )
+        .unwrap();
+        let b: serde_json::Value = serde_json::from_str(
+            r#"{
+                "$cards": [ { "tag": "t", "$body": "Card body", "$kind": "note" } ],
+                "extra": { "y": 2, "x": 1 },
+                "note": "The note.",
+                "body": "The body."
+            }"#,
+        )
+        .unwrap();
+
+        let (lib_a, win_a) = generate_lib_typ(&a, &meta);
+        let (lib_b, win_b) = generate_lib_typ(&b, &meta);
+        assert_eq!(lib_a, lib_b, "reordered input must emit identical source");
+        let wa: Vec<_> = win_a.iter().map(|w| (&w.path, w.range.clone())).collect();
+        let wb: Vec<_> = win_b.iter().map(|w| (&w.path, w.range.clone())).collect();
+        assert_eq!(wa, wb, "windows must be identical too");
     }
 
     #[test]

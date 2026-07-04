@@ -88,9 +88,51 @@ pub struct TypstSession {
 /// *other* pages (a page-spanning paragraph's tag sits on its first page and
 /// covers the whole text, so hashing it dirties page 0 on an end-of-document
 /// edit the page never shows).
+///
+/// PIXELS, NOT SPANS. Every hashed item drops its source-location `Span` — the
+/// glyph `span` on a `Text` run, the trailing `Span` on `Shape`/`Image`. A
+/// `Span` is a `FileId` plus a parse-numbering index; it locates source, it does
+/// not paint. This fingerprint's whole contract is *visible content*, so folding
+/// in a span is a category error: two compiles whose pages rasterize
+/// pixel-for-pixel identically must hash identically, and only render-affecting
+/// data (font, size, paint, glyph geometry, position) may enter the hash.
+///
+/// This is the #801 dirty-every-reapply bug, and it is real, not theoretical.
+/// The span rework (#795) routes content-field glyphs' spans into the helper
+/// `lib.typ`, which is regenerated per `apply` with a `data` literal whose keys
+/// serialize in field order (`serde_json` is built with `preserve_order`). An
+/// editor's mutate path can hand `apply` the SAME content in a different field
+/// order than `open` saw; that shifts the helper's byte layout, hence every
+/// content block's glyph spans below it — with no change to a single rendered
+/// pixel. Folding those spans into the hash reported the content page dirty on
+/// every such reapply (see `reapply_with_reordered_fields_same_content_is_clean`
+/// in `tests/live_apply.rs`). Excluding spans makes the invariant structural: a
+/// page cannot be reported dirty for a source-location shift that moved no ink.
 fn page_hashes(document: &typst_layout::PagedDocument) -> Vec<u128> {
     use std::hash::{Hash, Hasher};
     use typst::layout::FrameItem;
+
+    // A text run's rendered content: font, size, paint, and per-glyph geometry —
+    // but not each glyph's `span` (see the fn doc). Everything that moves a pixel
+    // is retained, so a genuine content change still re-hashes.
+    fn hash_text<H: Hasher>(text: &typst::text::TextItem, state: &mut H) {
+        text.font.hash(state);
+        text.size.hash(state);
+        text.fill.hash(state);
+        text.stroke.hash(state);
+        text.lang.hash(state);
+        text.region.hash(state);
+        text.text.hash(state);
+        for g in &text.glyphs {
+            g.id.hash(state);
+            g.x_advance.hash(state);
+            g.x_offset.hash(state);
+            g.y_advance.hash(state);
+            g.y_offset.hash(state);
+            g.range.hash(state);
+            // g.span deliberately omitted — source location, not pixels.
+        }
+    }
 
     fn walk<H: Hasher>(frame: &typst::layout::Frame, state: &mut H) {
         frame.size().hash(state);
@@ -103,9 +145,26 @@ fn page_hashes(document: &typst_layout::PagedDocument) -> Vec<u128> {
                     g.clip.hash(state);
                     walk(&g.frame, state);
                 }
-                other => {
+                FrameItem::Text(text) => {
                     pos.hash(state);
-                    other.hash(state);
+                    hash_text(text, state);
+                }
+                // Shape/Image carry a trailing `Span` their derived `Hash` would
+                // fold in; destructure to hash the visible parts and drop it, same
+                // reason as glyph spans above.
+                FrameItem::Shape(shape, _span) => {
+                    pos.hash(state);
+                    shape.hash(state);
+                }
+                FrameItem::Image(image, size, _span) => {
+                    pos.hash(state);
+                    image.hash(state);
+                    size.hash(state);
+                }
+                FrameItem::Link(dest, size) => {
+                    pos.hash(state);
+                    dest.hash(state);
+                    size.hash(state);
                 }
             }
         }
@@ -853,6 +912,67 @@ mod tests {
         assert_eq!(backend.id(), "typst");
         assert!(backend.supported_formats().contains(&OutputFormat::Pdf));
         assert!(backend.supported_formats().contains(&OutputFormat::Svg));
+    }
+
+    /// Direct teeth for the pixels-not-spans contract (#801): two compiles
+    /// whose pages ink identically must fingerprint identically even when every
+    /// glyph's `Span` differs. The quills below are identical except one schema
+    /// declares an extra unused field, which lengthens the generated `_qm-meta`
+    /// literal ahead of the content blocks in `lib.typ` — shifting every block's
+    /// byte position, hence every content glyph's span, while the rendered
+    /// pages stay pixel-identical. Folding spans into the hash fails this.
+    #[test]
+    fn page_hashes_ignore_span_shift_when_ink_is_identical() {
+        use quillmark_core::FileTreeNode;
+
+        const PLATE: &str = r#"#import "@local/quillmark-helper:0.1.0": data
+#set page(width: 300pt, height: 200pt, margin: 20pt)
+#set text(size: 11pt)
+#data.body
+"#;
+        let quill_with = |extra_field: bool| {
+            let mut yaml = String::from(
+                "quill:\n  name: shift\n  version: 0.1.0\n  backend: typst\n  description: span shift probe\ntypst:\n  plate_file: plate.typ\nmain:\n  fields:\n    body:\n      type: markdown\n      description: body\n",
+            );
+            if extra_field {
+                yaml.push_str(
+                    "    zz_unused:\n      type: string\n      description: never placed\n",
+                );
+            }
+            let mut files = HashMap::new();
+            files.insert(
+                "Quill.yaml".to_string(),
+                FileTreeNode::File {
+                    contents: yaml.into_bytes(),
+                },
+            );
+            files.insert(
+                "plate.typ".to_string(),
+                FileTreeNode::File {
+                    contents: PLATE.as_bytes().to_vec(),
+                },
+            );
+            Quill::from_tree(FileTreeNode::Directory { files }).expect("quill")
+        };
+
+        let json = serde_json::json!({ "body": "A **markdown** body with real ink to lay out." });
+        let hashes_of = |quill: &Quill| {
+            let plate_content = read_plate(quill).expect("plate");
+            let transform_schema = build_transform_schema(quill.config());
+            let schema_meta = SchemaMeta::from_schema_json(transform_schema.as_json());
+            let data = transformed_data(&transform_schema, &schema_meta, &json).expect("data");
+            let (world, _windows) =
+                world::QuillWorld::new_with_data(quill, &plate_content, &data, &schema_meta)
+                    .expect("world");
+            let (document, _warnings) = compile::compile_document(&world).expect("compile");
+            page_hashes(&document)
+        };
+
+        assert_eq!(
+            hashes_of(&quill_with(false)),
+            hashes_of(&quill_with(true)),
+            "identical ink must fingerprint identically across a whole-file span shift"
+        );
     }
 
     #[test]

@@ -327,6 +327,103 @@ describe('@quillmark/wasm/runtime — Engine (hidden core→backend crossing)', 
     }
   })
 
+  // GUARD for the class of bug where a method is declared in runtime.d.ts and
+  // implemented in the backend build, but the hand-written canonical LiveSession
+  // wrapper (runtime.js) forgets to forward it — `fieldAt`, issue #801. The
+  // type-level drift test (runtime.types.test-d.ts) only checks structural type
+  // compatibility, so a wrapper that TYPE-checks but has no matching JS method
+  // sails through it and throws `X is not a function` at runtime. This calls
+  // EVERY documented LiveSession member on a live canonical session, so a
+  // dropped delegation surfaces here instead of only in a consumer.
+  it('canonical LiveSession forwards every documented method to the inner session', async () => {
+    // paint() downcasts its argument to a 2D context via wasm-bindgen's
+    // `instanceof` check, so it needs these globals present (Node has no DOM).
+    class FakeImageData {
+      constructor(data, width, height) {
+        this.data = data
+        this.width = width
+        this.height = height
+      }
+    }
+    class FakeCanvasRenderingContext2D {
+      constructor() {
+        this.calls = []
+        this.canvas = { width: 0, height: 0 }
+      }
+      putImageData(img, dx, dy) {
+        this.calls.push({ width: img.width, height: img.height, dx, dy })
+      }
+    }
+    globalThis.ImageData = FakeImageData
+    globalThis.CanvasRenderingContext2D = FakeCanvasRenderingContext2D
+
+    // A SINGLE-LINE $body, deliberately. `fieldAt` hit-tests per-glyph ink
+    // boxes, so the probe point below (the region rect's centre) must land on
+    // ink: a one-line body's region rect IS that line's contiguous glyph
+    // boxes, so its centre is ink by construction. TEST_MARKDOWN's
+    // heading+paragraph body has an inter-line gap at the union rect's
+    // centre, where fieldAt correctly answers undefined.
+    const SMOKE_MARKDOWN = `~~~card-yaml
+$quill: test_quill
+$kind: main
+title: Smoke Test
+author: Smoke Author
+~~~
+
+A single line of body ink.`
+
+    const engine = new Engine()
+    const quill = makeRuntimeQuill()
+    const doc = Document.fromMarkdown(SMOKE_MARKDOWN)
+    const session = await engine.open(quill, doc)
+    try {
+      // Getters.
+      expect(session.pageCount).toBeGreaterThan(0)
+      expect(session.backendId).toBe('typst')
+      expect(typeof session.supportsCanvas).toBe('boolean')
+      expect(Array.isArray(session.warnings)).toBe(true)
+
+      // render.
+      expect(typeof session.render).toBe('function')
+      expect(session.render({ format: 'svg' }).artifacts.length).toBeGreaterThan(0)
+
+      // regions — the $body markdown content field auto-tags one region.
+      expect(typeof session.regions).toBe('function')
+      const regions = session.regions()
+      const body = regions.find((r) => r.field === '$body')
+      expect(body).toBeDefined()
+
+      // pageSize.
+      const size = session.pageSize(body.page)
+      expect(size.widthPt).toBeGreaterThan(0)
+      expect(size.heightPt).toBeGreaterThan(0)
+
+      // fieldAt — the delegation that was missing (#801). Hit-test the centre
+      // of the $body region's rect ([x0, y0, x1, y1], bottom-left PDF points)
+      // — guaranteed ink for the single-line body (see SMOKE_MARKDOWN above) —
+      // and expect it to resolve back through the wrapper. Off any field's ink
+      // (the page corner) the contract is undefined.
+      expect(typeof session.fieldAt).toBe('function')
+      const [x0, y0, x1, y1] = body.rect
+      const hit = session.fieldAt(body.page, (x0 + x1) / 2, (y0 + y1) / 2)
+      expect(hit).toBe('$body')
+      expect(session.fieldAt(body.page, 1, 1)).toBeUndefined()
+
+      // paint.
+      expect(typeof session.paint).toBe('function')
+      const ctx = new FakeCanvasRenderingContext2D()
+      const paintResult = session.paint(ctx, body.page)
+      expect(paintResult.pixelWidth).toBeGreaterThan(0)
+
+      // apply — recompile in place.
+      expect(typeof session.apply).toBe('function')
+      const cs = session.apply(Document.fromMarkdown(SMOKE_MARKDOWN))
+      expect(Array.isArray(cs.dirtyPages)).toBe(true)
+    } finally {
+      session.free()
+    }
+  })
+
   it('renders repeatedly from the same quill (clone-on-demand, no shared handle)', async () => {
     const engine = new Engine()
     const quill = makeRuntimeQuill()
