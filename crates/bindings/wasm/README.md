@@ -154,9 +154,9 @@ genuinely malformed Markdown.
 
 ### Storage compatibility across versions
 
-The `schema` value (`quillmark/document@0.92.0`) is the **model version**,
+The `schema` value (`quillmark/document@0.93.0`) is the **model version**,
 not the running crate version. It is a hand-set constant, bumped only when
-the `Document` model itself changes — so every `0.92.x` patch release reads
+the `Document` model itself changes — so every `0.93.x` patch release reads
 and writes that same value.
 
 - **Upgrading is safe.** A newer build always reads documents written by an

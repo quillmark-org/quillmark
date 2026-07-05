@@ -46,9 +46,7 @@ impl RichText {
     /// `serde_json`'s `preserve_order` feature being enabled in the consumer's
     /// crate graph — the canonical form is feature-independent.
     pub fn to_canonical_json(&self) -> String {
-        let mut rt = self.clone();
-        rt.normalize();
-        sorted_value(&rt.to_value()).to_string()
+        to_canonical_value(self).to_string()
     }
 
     /// Parse canonical JSON, normalize (idempotent), and validate. Returns
@@ -58,10 +56,7 @@ impl RichText {
     /// value and re-serializes to identical bytes.
     pub fn from_canonical_json(s: &str) -> Result<RichText, ParseError> {
         let v: Value = serde_json::from_str(s).map_err(|e| ParseError::Json(e.to_string()))?;
-        let mut rt = RichText::from_value(&v)?;
-        rt.normalize();
-        rt.validate().map_err(ParseError::Invalid)?;
-        Ok(rt)
+        from_canonical_value(&v)
     }
 
     fn to_value(&self) -> Value {
@@ -108,6 +103,31 @@ impl RichText {
             islands,
         })
     }
+}
+
+/// The canonical richtext form as a structural [`Value`] — the recursively
+/// key-sorted tree [`content_key`] renders to bytes. A storage layer embeds
+/// this as a nested object (never an escaped string): serializing the returned
+/// value with `serde_json` is byte-identical to [`content_key`]
+/// (`to_canonical_value(rt).to_string() == content_key(rt)`), independent of the
+/// consumer's `preserve_order` feature. Normalizes a copy first, so the value is
+/// canonical whatever the caller's mark/island order.
+pub fn to_canonical_value(rt: &RichText) -> Value {
+    let mut rt = rt.clone();
+    rt.normalize();
+    sorted_value(&rt.to_value())
+}
+
+/// Parse the canonical richtext form from a structural [`Value`], normalize
+/// (idempotent), and validate — the [`Value`]-input counterpart to
+/// [`RichText::from_canonical_json`]. Returns [`ParseError::Invalid`] for a
+/// corpus that violates its invariants, so a storage layer parsing the embedded
+/// object rejects a malformed value at load rather than round-tripping it.
+pub fn from_canonical_value(v: &Value) -> Result<RichText, ParseError> {
+    let mut rt = RichText::from_value(v)?;
+    rt.normalize();
+    rt.validate().map_err(ParseError::Invalid)?;
+    Ok(rt)
 }
 
 fn arr<'a>(obj: &'a Map<String, Value>, key: &'static str) -> Result<&'a Vec<Value>, ParseError> {
