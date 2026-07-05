@@ -99,7 +99,7 @@ impl Document {
 
         // ── Root block (card-yaml fence + global body) ────────────────────────
         // Bodies are corpora; the markdown surface is their export projection,
-        // so a `.qmd` round-trip canonicalizes the body markdown (leading blank
+        // so a `Document` → markdown → `Document` round-trip canonicalizes the body markdown (leading blank
         // lines dropped, a single trailing `\n`). A blank line separates the
         // closing fence from a non-empty body, the conventional card-yaml shape.
         emit_block(&mut out, self.main());

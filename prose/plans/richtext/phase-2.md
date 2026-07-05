@@ -31,7 +31,7 @@ holding the model, canonical serialization, edit deltas, and the markdown codecs
 **core depends on richtext**. `import` (and `pulldown-cmark`) live in that leaf,
 reachable from the two core entry points that need it — the storage migration and
 `Document::from_markdown`, which every binding (including the no-feature `pkg/core`
-WASM build) uses to turn a `.qmd` body into the live model. The `typst` backend
+WASM build) uses to turn a markdown document body into the live model. The `typst` backend
 **drops** its `pulldown-cmark` dependency; markup is produced by walking the
 corpus, never by re-parsing.
 
@@ -145,7 +145,7 @@ the same depth), so nothing renderable is lost.
 (fence/YAML only); an empty body ⇒ `RichText::empty()`; body-disabled validation
 (`validation.rs:239,270`) moves from `body().trim().is_empty()` to a new
 `RichText::is_blank()`. Author-visible consequence, stated not hidden:
-`.qmd → Document → .qmd` now **canonicalizes** body markdown (`__b__` re-emits as
+markdown → `Document` → markdown now **canonicalizes** body markdown (`__b__` re-emits as
 `**b**`, fence-adjacent whitespace normalizes) — inherent to demoting markdown to
 a projection; documented in markdown-spec and release notes.
 
@@ -360,7 +360,7 @@ may lower an inline field without block wrapping (headers).
   output *is* the markdown surface). `$seed` overlays import at `seed_card` time (a
   user action, not a render loop).
 
-Stated honestly: a richtext *field* authored as a string in a `.qmd` re-imports at
+Stated honestly: a richtext *field* authored as a string in a markdown document re-imports at
 each `compile_data` (the same tier as date parsing — deterministic, so its regions'
 corpus ranges are stable). This does **not** found #829 on a per-render parse —
 `$body`, the #829 payload, is a typed corpus on `Card` and never re-parses. Full
@@ -447,7 +447,7 @@ the landed code diverges from the plan text above).
 (`From<&Card> for CardV0_92_0` writes `body_markdown()`). The typst backend is
 therefore unchanged in PR-B.
 
-**Author-visible consequence (documented):** a `.qmd` round-trip canonicalizes the
+**Author-visible consequence (documented):** a document round-trip canonicalizes the
 body — leading blank lines dropped, one trailing `\n`, `__b__`→`**b**`, and
 inline-HTML-in-prose (`<<placeholder>>`, where `<placeholder>` reads as a CommonMark
 tag) mangles per CommonMark. Rendered output is unchanged (the render path already
@@ -560,7 +560,7 @@ no render path in the workspace parses markdown.
    body/import path becomes reachable from `pkg/core` (the PR-B/E cutover), tree-
    shaken until then. Feature-gating import out of core builds is rejected
    (`fromMarkdown` is that build's purpose); accept or slim.
-5. **`.qmd` body canonicalization** on round-trip — author-visible git churn on save;
+5. **Document-body canonicalization** on round-trip — author-visible git churn on save;
    document in markdown-spec and release notes.
 6. **String-authored richtext *fields*** keep a per-`compile_data` import and get
    only field-level nav precision until stored structurally; watch the

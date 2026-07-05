@@ -157,7 +157,7 @@ impl Card {
     }
 
     /// The card body rendered back to its markdown projection. This is a
-    /// derived view (`export ∘ body`), not stored state; a `.qmd` round-trip
+    /// derived view (`export ∘ body`), not stored state; a `Document` round-trip
     /// therefore canonicalizes the body (e.g. `__b__` → `**b**`).
     pub fn body_markdown(&self) -> String {
         quillmark_richtext::export::to_markdown(&self.body)

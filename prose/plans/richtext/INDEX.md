@@ -12,8 +12,8 @@ Replace markdown-string content fields with a canonical corpus value —
 marks, and embedded islands — and demote markdown to a projection (import /
 export codecs). Delivers #829's paragraph-level regions as the step-2
 degenerate case. Product frame: a web form with rich prose fields is the
-primary authoring surface; the LLM/MCP whole-document markdown flow and human
-`.qmd` files stay co-equal writers; a Notion-class block canvas is a non-goal.
+primary authoring surface; the LLM/MCP whole-document markdown flow and
+human-authored markdown documents stay co-equal writers; a Notion-class block canvas is a non-goal.
 
 The full model spec — `RichText` shape, lines / marks / islands, codecs,
 storage, schema — lives in the body of
@@ -124,7 +124,7 @@ not this list.
   (`model::sorted_value` recursively sorts before serialization). Mint
   nondeterminism does not appear until phase 4 (islands).
 - **The move-annotation weak spot lands on the flagship writer.** The stale-text
-  writer (MCP `update_document`, saved `.qmd`) rebases via cold-parse + corpus
+  writer (MCP `update_document`, a saved document) rebases via cold-parse + corpus
   diff; a reorder is delete+insert, so annotations on moved text drop unless a
   move detector confines it. → **Implemented in phase 1** (`delta::diff_import`):
   a verbatim block move re-homes the anchor, restricted to *inserted* text
