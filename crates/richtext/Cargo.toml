@@ -6,20 +6,20 @@ include.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository = "https://github.com/quillmark-org/quillmark"
-description = "RichText corpus content model and markdown codecs for Quillmark (issue #831, phase 1)"
-# Phase 1 is engine-off: the model + codecs are exercised in isolation and no
-# engine crate consumes them yet. Kept out of the default publish set until
-# phase 2 wires storage/backends to it. Tracked in prose/plans/richtext/.
-publish = false
+description = "RichText corpus content model, canonical serialization, edit deltas, and markdown codecs for Quillmark (issue #831)"
+# The leaf content-model crate: `quillmark-core` depends on it for the storage
+# body type and the markdown-string normalizer, so it carries no dependency on
+# the document engine. Published because `quillmark-core` (published) depends on
+# it. Tracked in prose/plans/richtext/.
+publish = true
 
 [dependencies]
-quillmark-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 indexmap = { workspace = true }
 unicode-normalization = { workspace = true }
-# The markdown projection's parser. Core stays markdown-engine-free (pulldown is
-# dev-only there); the codecs that need a CommonMark parser live in this crate.
+# The markdown projection's parser. This crate is the workspace's single home
+# for a CommonMark parser; render paths consume the corpus, never markdown.
 pulldown-cmark = { workspace = true }
 
 [dev-dependencies]

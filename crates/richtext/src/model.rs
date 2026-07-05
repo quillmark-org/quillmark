@@ -240,7 +240,7 @@ pub(crate) fn sorted_value(v: &JsonValue) -> JsonValue {
 }
 
 /// The bidi formatting chars import normalization strips; their presence in a
-/// corpus is an invariant violation. Mirrors `quillmark_core::normalize`'s set.
+/// corpus is an invariant violation. Mirrors [`crate::normalize`]'s set.
 fn is_bidi_char(c: char) -> bool {
     matches!(
         c,

@@ -1,8 +1,22 @@
-//! The per-field edit surface: a [`Delta`] (Quill-Delta semantics) over the USV
-//! corpus, plus the **stale-text writer** path — cold-parse a full new markdown
-//! document, char-diff it against the base, and rebase the base's identity marks
+//! The per-field edit surface: a [`Delta`] of text splices over the USV corpus,
+//! plus the **stale-text writer** path — cold-parse a full new markdown document,
+//! char-diff it against the base, and rebase the base's identity marks
 //! (anchors/comments) through the diff so annotations survive an LLM
 //! full-document rewrite with no preservation contract on the LLM.
+//!
+//! ## Text splices, not attributed ops
+//!
+//! [`Delta`] is `retain` / `insert` / `delete` over the character sequence —
+//! CodeMirror `ChangeSet` / OT text semantics, **not** Quill-Delta. It carries
+//! no formatting attributes: marks and islands are separate `(range, kind)` data
+//! that *rebase through* a delta ([`Delta::map_pos`]), they do not ride it as op
+//! attributes. This is deliberate — an attribute map is a per-character property
+//! map and cannot represent overlapping same-kind marks or two distinct
+//! identity anchors over one range, the exact algebra the corpus model keeps
+//! (Peritext free overlap + identity handles). Editing marks and line/block
+//! attributes are their own op channels (phase 3), not attributes on this delta.
+//! The positional channel stays isomorphic to a text CRDT's op stream (the
+//! phase-4 collab target).
 //!
 //! Phase 1 delivers the diff + rebase + a **move detector**; the live delta
 //! transport (revision, bounded change log) is phase 3. Position mapping follows

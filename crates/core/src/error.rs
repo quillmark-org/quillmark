@@ -44,8 +44,11 @@ pub const MAX_INPUT_SIZE: usize = 10 * 1024 * 1024;
 /// Maximum YAML size (1 MB)
 pub const MAX_YAML_SIZE: usize = 1024 * 1024;
 
-/// Maximum nesting depth for markdown structures (100 levels)
-pub const MAX_NESTING_DEPTH: usize = 100;
+/// Maximum nesting depth for markdown structures (100 levels). Owned by the
+/// markdown codecs in `quillmark-richtext` (the import guard) and re-exported
+/// here so the typst backend's markup converter shares one limit — a document
+/// that imports also renders, and vice versa.
+pub use quillmark_richtext::MAX_NESTING_DEPTH;
 
 /// Re-exported from [`crate::document::limits::MAX_YAML_DEPTH`].
 pub use crate::document::limits::MAX_YAML_DEPTH;

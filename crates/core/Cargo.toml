@@ -12,6 +12,12 @@ repository = "https://github.com/quillmark-org/quillmark"
 publish = true
 
 [dependencies]
+# The leaf crate owning the RichText corpus model, canonical serialization, edit
+# deltas, and markdown codecs. `core` depends on it for the storage/body content
+# type and the markdown-string normalizer; the parser (pulldown) it carries is
+# reachable only through the codecs, so no-feature `pkg/core` still ships without
+# it (tree-shaken until a body/import path is wired — issue #831 phase 2).
+quillmark-richtext = { workspace = true }
 serde = { workspace = true }
 serde-saphyr = { workspace = true }
 serde_json = { workspace = true }
@@ -24,6 +30,7 @@ indexmap = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 quillmark-fixtures = { workspace = true }
-# Cross-checks the hand-rolled fence scanner against a real CommonMark parser
-# (tests only — core has no markdown-engine dependency in production).
+# Cross-checks the hand-rolled fence scanner against a real CommonMark parser.
+# A direct dev-dep so the test can name `pulldown_cmark` (the production markdown
+# engine lives in the `quillmark-richtext` dependency, not linked directly here).
 pulldown-cmark = { workspace = true }

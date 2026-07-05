@@ -2,7 +2,7 @@
 //!
 //! The one place the `<u>` allowlist and `***` fixups run — once, at the
 //! boundary (issue #831 § Codecs). Input is normalized by
-//! [`quillmark_core::normalize::normalize_markdown`] (CRLF→LF, bidi strip, HTML
+//! [`crate::normalize::normalize_markdown`] (CRLF→LF, bidi strip, HTML
 //! comment-fence repair) so the corpus invariants hold by construction, then
 //! parsed with `pulldown_cmark` (CommonMark + strikethrough + pipe tables) and
 //! walked into a [`RichText`].
@@ -36,9 +36,9 @@
 use crate::model::{
     Container, Island, Line, LineKind, Loss, Mark, MarkKind, RichText, ISLAND_SLOT,
 };
+use crate::normalize::normalize_markdown;
+use crate::MAX_NESTING_DEPTH;
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
-use quillmark_core::error::MAX_NESTING_DEPTH;
-use quillmark_core::normalize::normalize_markdown;
 use serde_json::json;
 use std::ops::Range;
 

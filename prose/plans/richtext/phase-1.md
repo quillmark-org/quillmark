@@ -26,9 +26,10 @@ One crate, six modules, layered on `model.rs` with no cycles:
 - **`import.rs`** — `from_markdown`: `normalize → pulldown → corpus`, with the
   `<u>` allowlist and `***` fixups ported from the typst backend.
 - **`export.rs`** — `to_markdown`: corpus → markdown per island loss class.
-- **`delta.rs`** — `Delta` (Quill-Delta ops), `diff`, `map_pos`, and
-  `diff_import` (the stale-text writer: cold-parse + anchor rebase with a
-  block-move detector).
+- **`delta.rs`** — `Delta` (`retain`/`insert`/`delete` text splices, CodeMirror
+  `ChangeSet` semantics — not attributed Quill-Delta; marks rebase *through* a
+  delta, not as op attributes), `diff`, `map_pos`, and `diff_import` (the
+  stale-text writer: cold-parse + anchor rebase with a block-move detector).
 - **`usv.rs`** — char / UTF-8 / UTF-16 conversions.
 
 Depends **down** on `quillmark-core` (reuses `normalize::normalize_markdown`) and
@@ -113,13 +114,16 @@ deleted-vs-inserted move detection, both now adopted.
 
 ## Handover to Phase 2
 
-Phase 2 makes the engine consume `RichText` and delivers #829. Carry-forward, in
-priority order:
+Phase 2 makes the engine consume `RichText` and delivers #829. The authority for
+Phase-2 decisions is now [phase-2.md](phase-2.md); items 1 and 4 below are
+**revised** there. Carry-forward, in priority order:
 
-1. **Re-home the type, keep the codecs parser-side.** Move `RichText` +
-   `serial` into `core` for the new `StoredDocument` version; keep `import`/
-   `export` in a parser-bearing crate so `core` stays markdown-engine-free.
-   Canonical bytes are unchanged by the move.
+1. **Type home — revised.** phase-2.md keeps `quillmark-richtext` a **separate
+   leaf crate** that `core` **depends on** (arrow inverted), rather than dissolving
+   `RichText`/`serial` into `core`: the model + frozen wire format sit one layer
+   below the engine, and the codecs stay with them. The circularity that blocked a
+   leaf crate is removed by relocating `normalize_markdown` into it (landed).
+   Canonical bytes are unchanged.
 2. **Seam (Option A).** Carry structured `RichText`-JSON across
    `Backend::open(source, json_data)` — never a markdown string. The canonical
    serializer is ready; `pdfform` lowers via `RichText.text` minus island slots
