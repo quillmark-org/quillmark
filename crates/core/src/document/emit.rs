@@ -699,21 +699,35 @@ pub(crate) fn saphyr_emit_scalar(value: &JsonValue) -> String {
         buf.pop();
     }
 
-    // Saphyr 0.0.23's plain-safety check inspects only the leading byte
-    // as ASCII whitespace, missing strings whose first or last char is
-    // Unicode whitespace (U+2000…) or whose last char is an ASCII space.
-    // YAML strips such whitespace from plain scalars on parse, losing
-    // the data. Detect and emit double-quoted ourselves so the round-
-    // trip is preserved.
+    // Saphyr 0.0.23's emitter and parser disagree about which plain scalars
+    // are string-safe: it emits some `String`s unquoted that its own parser
+    // reads back as a non-string (`_0` → integer 0) or as a different string.
+    // Edge-whitespace strings are one class — the plain-safety check inspects
+    // only the leading ASCII byte, missing a leading/trailing Unicode-
+    // whitespace char (U+2000…) or a trailing ASCII space, and YAML strips
+    // such whitespace from plain scalars on parse. `_0`-style numeric-looking
+    // strings are another. Both lose the original string on round-trip. When
+    // saphyr emits a `String` unquoted, re-parse the emitted plain scalar with
+    // the same library the parser uses and, unless it round-trips to the exact
+    // same string, emit double-quoted ourselves. Edge whitespace stays an
+    // explicit guard: a trailing Unicode-whitespace char survives the isolated
+    // re-parse yet is still stripped in the real block context.
     if let JsonValue::String(s) = value {
         let unquoted = !buf.starts_with('"')
             && !buf.starts_with('\'')
             && !buf.starts_with('|')
             && !buf.starts_with('>');
-        let has_edge_whitespace = !s.is_empty()
-            && (s.starts_with(char::is_whitespace) || s.ends_with(char::is_whitespace));
-        if unquoted && has_edge_whitespace {
-            return double_quote_string(s);
+        if unquoted {
+            let has_edge_whitespace = !s.is_empty()
+                && (s.starts_with(char::is_whitespace) || s.ends_with(char::is_whitespace));
+            // A parse error counts as "must quote", conservatively.
+            let reparses_same = matches!(
+                serde_saphyr::from_str::<JsonValue>(&buf),
+                Ok(JsonValue::String(ref s2)) if s2 == s
+            );
+            if has_edge_whitespace || !reparses_same {
+                return double_quote_string(s);
+            }
         }
     }
     buf
@@ -823,6 +837,37 @@ mod tests {
         ] {
             assert_scalar_round_trips(serde_json::json!(*ambiguous));
         }
+    }
+
+    #[test]
+    fn saphyr_scalar_round_trips_numeric_looking_strings() {
+        // Saphyr's emitter treats a leading-underscore-then-digits scalar as
+        // plain-safe, but its parser reads the plain form back as an integer
+        // (underscores are digit separators, leading ones ignored): `_0` → 0,
+        // `-_0` → 0, `__0` → 0. `_0` is the minimal fuzz-shrunk case. Each is
+        // emitted unquoted and re-parsed as `Number` before the fix; the
+        // general round-trip check must quote every one.
+        for numericish in &["_0", "_1", "-_0", "__0"] {
+            assert_scalar_round_trips(serde_json::json!(*numericish));
+        }
+    }
+
+    #[test]
+    fn string_underscore_zero_round_trips_via_document() {
+        // Full `to_markdown` → `from_markdown` path for the reported bug:
+        // `String("_0")` must return as a `String`, still equal to `"_0"`.
+        let src = "~~~card-yaml\n$quill: q\n$kind: main\na: \"_0\"\n~~~\n\nBody.\n";
+        let doc = crate::document::Document::from_markdown(src).expect("parse src");
+        let emitted = doc.to_markdown();
+        let reparsed = crate::document::Document::from_markdown(&emitted)
+            .expect("re-parse emitted markdown");
+        let value = reparsed.main().payload().get("a").expect("field 'a'").as_json();
+        assert_eq!(
+            value,
+            &serde_json::Value::String("_0".to_string()),
+            "String(\"_0\") must round-trip as a string; emitted:\n{}",
+            emitted
+        );
     }
 
     #[test]

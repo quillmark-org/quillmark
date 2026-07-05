@@ -7,3 +7,4 @@
 cc 85e5e30e185a77a461fdb3de6a033c8c0b0e1ae73b2583f53bcfae56945d06b2 # shrinks to quill = "a", key = "a", value = "a "
 cc 67e04947f208ff589f79f9637b4f2cd37591d0d428c24bac549f9f1117e47f7a # shrinks to quill = "a", card_kind = "a", card_key = "a", card_value = "A "
 cc ae88f103316c034c0ac82b5f2ab2af7ca2471a9607f25182ac9b4913909ea151 # shrinks to quill = "a", key = "a", value = "අ\u{2000}"
+cc 7a17715d7b0712aa6ace567b6bcb1b14b6633cf4e5e4faaef295eb037a3ee902 # shrinks to quill = "a", key = "a", value = "_0"
