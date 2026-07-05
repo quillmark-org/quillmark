@@ -43,7 +43,7 @@
 use crate::convert::{escape_markup, escape_string};
 use quillmark_core::error::MAX_NESTING_DEPTH;
 use quillmark_richtext::model::{
-    Container, LineKind, MarkKind, RichText, ISLAND_SLOT,
+    Container, LineKind, Mark, MarkKind, RichText, ISLAND_SLOT,
 };
 use std::ops::Range;
 
@@ -497,91 +497,45 @@ impl<'a> Emit<'a> {
         }
         codes.sort_unstable();
 
-        // (end, ord) for a mark on the open stack; ord tie-breaks reopen order.
-        let mut stack: Vec<(usize, u8)> = Vec::new();
-        // Parallel to `stack`: the close delimiter is always `]`.
-        let mut pos = lo;
-        while pos <= hi {
-            // Close every mark ending at `pos`; reopen any deeper survivors that
-            // do not (free overlap → proper nesting).
-            if let Some(idx) = stack.iter().position(|&(end, _)| end == pos) {
-                let mut reopen: Vec<(usize, u8)> = Vec::new();
-                while stack.len() > idx {
-                    let (end, ord) = stack.pop().unwrap();
-                    self.out.push(']');
-                    if end != pos {
-                        reopen.push((end, ord));
-                    }
-                }
-                for (end, ord) in reopen.into_iter().rev() {
-                    self.out.push_str(&wrap_open_for(ord, &wraps, pos, end));
-                    stack.push((end, ord));
-                }
-            }
-            if pos == hi {
-                break;
-            }
-            // Open marks starting at `pos`: longer span first, then kind-ord.
-            let mut opening: Vec<&Wrap> = wraps.iter().filter(|w| w.start == pos).collect();
-            opening.sort_by(|a, b| b.end.cmp(&a.end).then(a.ord.cmp(&b.ord)));
-            for w in opening {
-                self.out.push_str(&w.open);
-                stack.push((w.end, w.ord));
-            }
-
+        // Sweep the marks with the shared boundary walk, filling a scratch buffer
+        // whose bytes land at `base` once appended — so each run's generated span
+        // is `base + buf.len()` (absolute into `self.out`). The content callback
+        // owns the segment-specific bits: `#linebreak()`, island slots, atomic
+        // `#raw(...)` code, and escaped plain runs (recorded).
+        let base = self.out.len();
+        let mut buf = String::new();
+        sweep_marks(lo, hi, &wraps, &mut buf, |buf, pos| {
             let c = self.chars[pos];
             if c == '\n' {
-                self.out.push_str("#linebreak()");
-                pos += 1;
-                continue;
+                buf.push_str("#linebreak()");
+                return pos + 1;
             }
             if c == ISLAND_SLOT {
                 let markup = self.island_markup(pos);
-                self.out.push_str(&markup);
-                pos += 1;
-                continue;
+                buf.push_str(&markup);
+                return pos + 1;
             }
             if let Some(&(cs, ce)) = codes.iter().find(|(s, _)| *s == pos) {
                 let content: String = self.chars[cs..ce].iter().collect();
-                self.out.push_str("#raw(\"");
-                let rg0 = self.out.len();
-                self.out.push_str(&escape_string(&content));
-                let rg1 = self.out.len();
-                self.out.push_str("\")");
+                buf.push_str("#raw(\"");
+                let rg0 = base + buf.len();
+                buf.push_str(&escape_string(&content));
+                let rg1 = base + buf.len();
+                buf.push_str("\")");
                 runs.push((cs..ce, rg0..rg1, EscapeCtx::StringLit));
-                pos = ce;
-                continue;
+                return ce;
             }
             // Plain text run up to the next boundary.
-            let re = self.next_boundary(pos, hi, &wraps, &codes);
+            let re = next_boundary(pos, hi, &self.chars, &wraps, &codes);
             let content: String = self.chars[pos..re].iter().collect();
-            let rg0 = self.out.len();
-            self.out.push_str(&escape_markup(&content));
-            let rg1 = self.out.len();
+            let rg0 = base + buf.len();
+            buf.push_str(&escape_markup(&content));
+            let rg1 = base + buf.len();
             runs.push((pos..re, rg0..rg1, EscapeCtx::Markup));
-            pos = re;
-        }
+            re
+        });
+        self.out.push_str(&buf);
         runs
-    }
-
-    /// The next position after `pos` at which a plain run must stop: any mark
-    /// start/end, any code start, an interior `\n`, an island slot, or `hi`.
-    fn next_boundary(&self, pos: usize, hi: usize, wraps: &[Wrap], codes: &[(usize, usize)]) -> usize {
-        let mut p = pos + 1;
-        while p < hi {
-            let c = self.chars[p];
-            if c == '\n' || c == ISLAND_SLOT {
-                break;
-            }
-            if wraps.iter().any(|w| w.start == p || w.end == p) {
-                break;
-            }
-            if codes.iter().any(|(s, _)| *s == p) {
-                break;
-            }
-            p += 1;
-        }
-        p
     }
 
     /// The island backing the slot at USV position `pos`, rendered to Typst.
@@ -629,6 +583,137 @@ fn wrap_open_for(ord: u8, wraps: &[Wrap], pos: usize, end: usize) -> String {
         .unwrap_or_default()
 }
 
+/// The mark boundary sweep, shared by prose inline emission and table-cell
+/// rendering. Walks `[lo, hi)` opening `wraps` (longer span first, then kind-ord)
+/// and closing-and-reopening deeper survivors at overlaps — free overlap →
+/// proper nesting. Wrapping delimiters/`]` go to `out`; `emit_content(out, pos)`
+/// writes the content at `pos` (plain run, atomic code, island slot, line break)
+/// and returns the next position. Records nothing itself — the caller's callback
+/// owns any source-map bookkeeping.
+fn sweep_marks(
+    lo: usize,
+    hi: usize,
+    wraps: &[Wrap],
+    out: &mut String,
+    mut emit_content: impl FnMut(&mut String, usize) -> usize,
+) {
+    // (end, ord) for a mark on the open stack; ord tie-breaks reopen order.
+    let mut stack: Vec<(usize, u8)> = Vec::new();
+    let mut pos = lo;
+    while pos <= hi {
+        // Close every mark ending at `pos`; reopen any deeper survivors that do
+        // not (free overlap → proper nesting).
+        if let Some(idx) = stack.iter().position(|&(end, _)| end == pos) {
+            let mut reopen: Vec<(usize, u8)> = Vec::new();
+            while stack.len() > idx {
+                let (end, ord) = stack.pop().unwrap();
+                out.push(']');
+                if end != pos {
+                    reopen.push((end, ord));
+                }
+            }
+            for (end, ord) in reopen.into_iter().rev() {
+                out.push_str(&wrap_open_for(ord, wraps, pos, end));
+                stack.push((end, ord));
+            }
+        }
+        if pos == hi {
+            break;
+        }
+        // Open marks starting at `pos`: longer span first, then kind-ord.
+        let mut opening: Vec<&Wrap> = wraps.iter().filter(|w| w.start == pos).collect();
+        opening.sort_by(|a, b| b.end.cmp(&a.end).then(a.ord.cmp(&b.ord)));
+        for w in opening {
+            out.push_str(&w.open);
+            stack.push((w.end, w.ord));
+        }
+        pos = emit_content(out, pos);
+    }
+}
+
+/// The next position after `pos` at which a plain run must stop: any mark
+/// start/end, any code start, an interior `\n`, an island slot, or `hi`.
+fn next_boundary(pos: usize, hi: usize, chars: &[char], wraps: &[Wrap], codes: &[(usize, usize)]) -> usize {
+    let mut p = pos + 1;
+    while p < hi {
+        let c = chars[p];
+        if c == '\n' || c == ISLAND_SLOT {
+            break;
+        }
+        if wraps.iter().any(|w| w.start == p || w.end == p) {
+            break;
+        }
+        if codes.iter().any(|(s, _)| *s == p) {
+            break;
+        }
+        p += 1;
+    }
+    p
+}
+
+/// Build the wrapping/atomic marks for a flat inline run of `chars` under
+/// cell-local `marks` (USV offsets into `chars`). Shared by cell rendering; the
+/// prose path builds the same lists inline from clipped corpus marks.
+fn wraps_and_codes(chars: &[char], marks: &[Mark]) -> (Vec<Wrap>, Vec<(usize, usize)>) {
+    let n = chars.len();
+    let mut wraps = Vec::new();
+    let mut codes = Vec::new();
+    for m in marks {
+        if m.start >= n {
+            continue;
+        }
+        let s = m.start;
+        let e = m.end.min(n);
+        if s >= e {
+            continue;
+        }
+        match &m.kind {
+            MarkKind::Code => codes.push((s, e)),
+            MarkKind::Strong | MarkKind::Emph | MarkKind::Underline | MarkKind::Strike => {
+                wraps.push(Wrap {
+                    start: s,
+                    end: e,
+                    ord: m.kind.ord(),
+                    open: wrap_open(&m.kind),
+                });
+            }
+            MarkKind::Link { url } => wraps.push(Wrap {
+                start: s,
+                end: e,
+                ord: m.kind.ord(),
+                open: format!("#link(\"{}\")[", escape_string(url)),
+            }),
+            MarkKind::Anchor { .. } | MarkKind::Unknown { .. } => {}
+        }
+    }
+    codes.sort_unstable();
+    (wraps, codes)
+}
+
+/// Render one table cell's `{text, marks}` to Typst markup via the SAME
+/// [`sweep_marks`] walk prose runs use: wrapping marks nest, `code` marks render
+/// atomically as `#raw("…")`. A cell is flat inline — no islands, no line breaks
+/// — so its markup carries no source-map runs (like other island markup).
+fn cell_markup(text: &str, marks: &[Mark]) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let (wraps, codes) = wraps_and_codes(&chars, marks);
+    let mut out = String::new();
+    sweep_marks(0, chars.len(), &wraps, &mut out, |out, pos| {
+        if let Some(&(cs, ce)) = codes.iter().find(|(s, _)| *s == pos) {
+            let content: String = chars[cs..ce].iter().collect();
+            out.push_str("#raw(\"");
+            out.push_str(&escape_string(&content));
+            out.push_str("\")");
+            return ce;
+        }
+        let re = next_boundary(pos, chars.len(), &chars, &wraps, &codes);
+        let content: String = chars[pos..re].iter().collect();
+        out.push_str(&escape_markup(&content));
+        re
+    });
+    out
+}
+
 /// `#image("url"[, alt: "…"])` from an image island's props.
 fn image_markup(props: &serde_json::Value) -> String {
     let url = props.get("url").and_then(|v| v.as_str()).unwrap_or("");
@@ -642,17 +727,20 @@ fn image_markup(props: &serde_json::Value) -> String {
 }
 
 /// `#table(columns:, align:, table.header(…), …)` from a table island's props,
-/// matching `mark_to_typst`'s grammar. Cells are the stored raw source slices,
-/// escaped as markup — faithful for plain cells; inline formatting inside a cell
-/// is a known parity gap (Risk 3), since the engine-off emitter cannot re-parse
-/// the cell's markdown.
+/// matching `mark_to_typst`'s grammar. Each cell is canonical `{text, marks}`,
+/// rendered through the same mark sweep prose runs use ([`cell_markup`]) — so a
+/// formatted cell reaches `#strong[…]`/`#emph[…]`/`#raw(…)`/`#link(…)[…]` byte
+/// parity with the oracle, no markdown re-parse.
 fn table_markup(props: &serde_json::Value) -> String {
     let header = props.get("header").and_then(|v| v.as_array());
     let rows = props.get("rows").and_then(|v| v.as_array());
     let aligns = props.get("aligns").and_then(|v| v.as_array());
     let cols = header.map(|h| h.len()).unwrap_or(0);
 
-    let cell = |v: &serde_json::Value| escape_markup(v.as_str().unwrap_or(""));
+    let cell = |v: &serde_json::Value| {
+        let (text, marks) = quillmark_richtext::serial::parse_cell(v);
+        cell_markup(&text, &marks)
+    };
 
     let mut out = String::from("#table(\n");
     out.push_str(&format!("  columns: {},\n", cols));
@@ -714,9 +802,10 @@ mod tests {
         emit_richtext(&rt).expect("emit")
     }
 
-    /// Inputs on which the emitter must byte-match `mark_to_typst`. Excludes the
-    /// enumerated intentional diffs (block quotes) and Risk-3 residuals
-    /// (formatted/escaped table cells) — those are asserted separately below.
+    /// Inputs on which the emitter must byte-match `mark_to_typst`. Excludes only
+    /// the enumerated intentional diff (block quotes). Formatted/escaped-pipe
+    /// table cells USED to be Risk-3 residuals; Option A stores cells as
+    /// `{text, marks}`, so they now reach byte parity and live here.
     fn parity_inputs() -> Vec<&'static str> {
         vec![
             // headings
@@ -826,6 +915,20 @@ mod tests {
             "| Status |\n|--------|\n| ✅ Done |",
             "Before.\n\n| A |\n|---|\n| 1 |\n\nAfter.",
             "# Title\n\n| A |\n|---|\n| 1 |",
+            // formatted cells (Option A: cells carry {text, marks}, no re-parse)
+            "| Name | Note |\n|------|------|\n| **bold** | _italic_ |",
+            "| Func | Desc |\n|------|------|\n| `foo()` | does stuff |",
+            "| Site |\n|------|\n| [Example](https://example.com) |",
+            "| A |\n|---|\n| ~~deleted~~ |",
+            "| A |\n|---|\n| **bold** and _italic_ |",
+            "| A |\n|---|\n| <u>underlined</u> |",
+            "| A |\n|---|\n| use #tag |",
+            "| A |\n|---|\n| a\\|b |",
+            "| A |\n|---|\n| $100 @ref ~space {brace} |",
+            "| A |\n|---|\n| a // comment |",
+            "| A |\n|---|\n| line1<br>line2 |",
+            "| Bold | Link |\n|------|------|\n| **b** | [x](https://e.com) |",
+            "| Mixed |\n|-------|\n| a **b** `c` [d](https://e.com) ~~e~~ |",
             // mixed
             "A paragraph with **bold** and a [link](https://example.com).\n\nAnother paragraph with `inline code`.\n\n- A list item\n- Another item",
             "# Title\n\nThis is a paragraph with **bold** and *italic* text.\n\n## Section\n\n- List item 1\n- List item 2 with [link](https://example.com)\n\nMore text with `inline code`.",
@@ -885,29 +988,33 @@ mod tests {
         assert!(out.contains("one") && out.contains("two"));
     }
 
-    // ---- known residuals (Risk 3): cataloged, not papered over ----
+    // ---- cleared residuals (Option A): formatted cells now byte-match ----
 
-    /// A table cell carrying inline markdown does NOT reach byte parity: the
-    /// corpus stores the raw source slice (`**bold**`), and the engine-off
-    /// emitter escapes it as literal text rather than re-parsing to `#strong[…]`.
+    /// A table cell carrying inline markdown NOW reaches byte parity: the corpus
+    /// stores the cell as `{text, marks}`, and the emitter renders those marks
+    /// through the same sweep prose runs use — `**bold**` → `#strong[bold]`, not
+    /// an escaped literal. (Was `residual_formatted_table_cell_diverges`.)
     #[test]
-    fn residual_formatted_table_cell_diverges() {
+    fn formatted_table_cell_matches_oracle() {
         let md = "| Name | Note |\n|------|------|\n| **bold** | _italic_ |";
         let got = emit(md).markup;
-        let want = mark_to_typst(md).unwrap();
-        assert_ne!(got, want, "if this ever matches, promote it out of residuals");
-        // The emitter escapes the raw slice as literal text.
-        assert!(got.contains("\\*\\*bold\\*\\*"), "got {got:?}");
-        assert!(want.contains("#strong[bold]"), "oracle renders it");
+        assert_eq!(got, mark_to_typst(md).unwrap());
+        assert!(got.contains("#strong[bold]"), "got {got:?}");
+        assert!(got.contains("#emph[italic]"), "got {got:?}");
     }
 
-    /// A cell with an escaped pipe keeps the backslash from the source slice,
-    /// where the oracle (which parses the cell) drops it — same root cause.
+    /// A cell with an escaped pipe now matches: import unescapes `\|`→`|` into the
+    /// cell text, and the emitter escapes it as markup (`|` is not Typst-special),
+    /// matching the oracle. (Was `residual_escaped_pipe_table_cell_diverges`.)
     #[test]
-    fn residual_escaped_pipe_table_cell_diverges() {
+    fn escaped_pipe_table_cell_matches_oracle() {
         let md = "| A |\n|---|\n| a\\|b |";
-        assert_ne!(emit(md).markup, mark_to_typst(md).unwrap());
+        let got = emit(md).markup;
+        assert_eq!(got, mark_to_typst(md).unwrap());
+        assert!(got.contains("[a|b]"), "got {got:?}");
     }
+
+    // ---- known residuals: cataloged, not papered over ----
 
     /// Coincident `strong`+`emph` over the *same* range lose their source
     /// nesting order at import: `***x***`, `_**x**_`, and `**_x_**` all normalize

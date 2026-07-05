@@ -316,6 +316,84 @@ fn mark_from_value(v: &Value) -> Result<Mark, ParseError> {
     Ok(Mark { start, end, kind })
 }
 
+// ---- Table cell {text, marks} ----
+//
+// A pipe-table cell is inline-only: its own plain `text` plus `marks` whose
+// ranges are USV offsets into that text (0..cell_len). The marks ride the SAME
+// wire shape prose marks use (`mark_to_value`/`mark_from_value`), so nothing
+// forks the encoding. Import builds cells, export/emit render them, and
+// `RichText::normalize`/`validate` canonicalize/check the marks — all through
+// these helpers.
+
+/// Parse a table-cell object `{text, marks}` leniently: its plain text plus the
+/// marks over it. A malformed mark is skipped rather than failing — cells are
+/// flat inline, so this never recurses. Public so the typst emitter renders a
+/// cell through the same parse the codecs use.
+pub fn parse_cell(v: &Value) -> (String, Vec<Mark>) {
+    let text = v
+        .get("text")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let marks = v
+        .get("marks")
+        .and_then(Value::as_array)
+        .map(|arr| arr.iter().filter_map(|m| mark_from_value(m).ok()).collect())
+        .unwrap_or_default();
+    (text, marks)
+}
+
+/// Build a table-cell object `{text, marks}` — the inverse of [`parse_cell`],
+/// reusing [`mark_to_value`]. Key order is fixed by the recursive
+/// [`sorted_value`] pass in [`RichText::normalize`], not here.
+pub(crate) fn cell_to_value(text: &str, marks: &[Mark]) -> Value {
+    let mut m = Map::new();
+    m.insert("text".into(), Value::String(text.to_string()));
+    m.insert(
+        "marks".into(),
+        Value::Array(marks.iter().map(mark_to_value).collect()),
+    );
+    Value::Object(m)
+}
+
+/// Every cell's `(text, marks)` in a table island's props — header then each
+/// body row, in order. For [`RichText::validate`]'s cell-mark invariant checks.
+pub(crate) fn table_cells(props: &Value) -> Vec<(String, Vec<Mark>)> {
+    let mut out = Vec::new();
+    if let Some(h) = props.get("header").and_then(Value::as_array) {
+        out.extend(h.iter().map(parse_cell));
+    }
+    if let Some(rows) = props.get("rows").and_then(Value::as_array) {
+        for row in rows {
+            if let Some(r) = row.as_array() {
+                out.extend(r.iter().map(parse_cell));
+            }
+        }
+    }
+    out
+}
+
+/// Canonicalize a table island's cell marks in place: re-run mark normalization
+/// (sort, same-kind union, drop zero-width) on each cell so equal cells
+/// serialize to equal bytes. Cells hold no `\n`, so there is no line-boundary
+/// edge-trim. Called by [`RichText::normalize`] for `type=="table"` islands.
+pub(crate) fn normalize_table_cell_marks(props: &mut Value) {
+    fn canon(cell: &mut Value) {
+        let (text, marks) = parse_cell(cell);
+        *cell = cell_to_value(&text, &crate::model::normalize_marks(marks));
+    }
+    if let Some(h) = props.get_mut("header").and_then(Value::as_array_mut) {
+        h.iter_mut().for_each(canon);
+    }
+    if let Some(rows) = props.get_mut("rows").and_then(Value::as_array_mut) {
+        for row in rows.iter_mut() {
+            if let Some(r) = row.as_array_mut() {
+                r.iter_mut().for_each(canon);
+            }
+        }
+    }
+}
+
 // ---- Island ----
 
 fn island_to_value(island: &Island) -> Value {

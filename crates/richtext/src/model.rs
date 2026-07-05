@@ -325,8 +325,14 @@ impl RichText {
     /// props and unknown-mark attrs, then sort marks canonically. Idempotent —
     /// the fixed point the canonical serialization commits to.
     pub fn normalize(&mut self) {
-        // Islands: canonicalize props key order.
+        // Islands: canonicalize props key order. A table island's cells carry
+        // inline `{text, marks}`; canonicalize each cell's marks (sort, union,
+        // drop zero-width) first so equal cells serialize to equal bytes — the
+        // props are otherwise opaque here.
         for island in &mut self.islands {
+            if island.island_type == "table" {
+                crate::serial::normalize_table_cell_marks(&mut island.props);
+            }
             island.props = sorted_value(&island.props);
         }
         for mark in &mut self.marks {
@@ -421,6 +427,34 @@ impl RichText {
             if let LineKind::Heading { level } = line.kind {
                 if !(1..=6).contains(&level) {
                     return Err(Invariant::BadHeadingLevel(level));
+                }
+            }
+        }
+        // Table-cell marks: the prose range/zero-width/reserved-tag rules again,
+        // but each mark is bounded by its own cell's text length (in USV). Cells
+        // hold no `\n`, so the edge-on-newline rule does not apply.
+        for island in &self.islands {
+            if island.island_type != "table" {
+                continue;
+            }
+            for (text, marks) in crate::serial::table_cells(&island.props) {
+                let clen = text.chars().count();
+                for m in &marks {
+                    if m.start > m.end || m.end > clen {
+                        return Err(Invariant::MarkOutOfRange {
+                            start: m.start,
+                            end: m.end,
+                            len: clen,
+                        });
+                    }
+                    if m.start == m.end && m.kind.is_formatting() {
+                        return Err(Invariant::ZeroWidthFormatting { at: m.start });
+                    }
+                    if let MarkKind::Unknown { tag, .. } = &m.kind {
+                        if Self::RESERVED_MARK_TYPES.contains(&tag.as_str()) {
+                            return Err(Invariant::ReservedUnknownTag(tag.clone()));
+                        }
+                    }
                 }
             }
         }
@@ -641,5 +675,87 @@ mod tests {
         rt.normalize();
         assert_eq!(rt.marks, once);
         assert_eq!(rt.validate(), Ok(()));
+    }
+
+    /// A table cell built with un-normalized marks (reversed order, an adjacent
+    /// same-kind pair, a zero-width formatting mark) canonicalizes to the same
+    /// marks whatever the input order — the live-model determinism invariant.
+    #[test]
+    fn table_cell_marks_normalize_and_are_idempotent() {
+        fn table(cell_marks: serde_json::Value) -> RichText {
+            let mut rt = RichText::empty();
+            rt.text = ISLAND_SLOT.to_string();
+            rt.lines = vec![Line {
+                kind: LineKind::Island,
+                containers: vec![],
+                continues: false,
+            }];
+            rt.islands = vec![Island {
+                id: "i".into(),
+                island_type: "table".into(),
+                props: serde_json::json!({
+                    "aligns": ["none"],
+                    "header": [{"text": "abcd", "marks": cell_marks}],
+                    "rows": [],
+                }),
+                loss: Loss::Lossless,
+            }];
+            rt
+        }
+        // Reversed order + adjacent same-kind pair (0..2)+(2..4) → unioned 0..4;
+        // a zero-width strong at 1 → dropped.
+        let mut a = table(serde_json::json!([
+            {"start": 2, "end": 4, "type": "strong"},
+            {"start": 1, "end": 1, "type": "strong"},
+            {"start": 0, "end": 2, "type": "strong"}
+        ]));
+        a.normalize();
+        assert_eq!(a.validate(), Ok(()));
+        let cell = &a.islands[0].props["header"][0];
+        assert_eq!(cell["marks"].as_array().unwrap().len(), 1);
+        assert_eq!(cell["marks"][0]["start"], 0);
+        assert_eq!(cell["marks"][0]["end"], 4);
+        // Same content, different input order → identical canonical bytes.
+        let mut b = table(serde_json::json!([
+            {"start": 0, "end": 2, "type": "strong"},
+            {"start": 2, "end": 4, "type": "strong"}
+        ]));
+        b.normalize();
+        assert_eq!(a.to_canonical_json(), b.to_canonical_json());
+        // Idempotent.
+        let once = a.to_canonical_json();
+        a.normalize();
+        assert_eq!(a.to_canonical_json(), once);
+    }
+
+    /// `validate` bounds a cell mark by its own cell's text length (in USV).
+    #[test]
+    fn validate_catches_cell_mark_out_of_range() {
+        let mut rt = RichText::empty();
+        rt.text = ISLAND_SLOT.to_string();
+        rt.lines = vec![Line {
+            kind: LineKind::Island,
+            containers: vec![],
+            continues: false,
+        }];
+        rt.islands = vec![Island {
+            id: "i".into(),
+            island_type: "table".into(),
+            props: serde_json::json!({
+                "aligns": ["none"],
+                // "ab" is 2 USV; a mark ending at 5 runs past the cell.
+                "header": [{"text": "ab", "marks": [{"start": 0, "end": 5, "type": "strong"}]}],
+                "rows": [],
+            }),
+            loss: Loss::Lossless,
+        }];
+        assert_eq!(
+            rt.validate(),
+            Err(Invariant::MarkOutOfRange {
+                start: 0,
+                end: 5,
+                len: 2
+            })
+        );
     }
 }

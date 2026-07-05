@@ -1469,6 +1469,22 @@ title: Hi
         assert_eq!(body.islands.len(), 1, "table imports as one island");
         assert_eq!(body.islands[0].id, "isl-0", "sequential island id");
         assert_eq!(body.islands[0].island_type, "table");
+        // Option A: each cell is inline `{text, marks}`, not a raw markdown slice.
+        // The @0.93.0 table-body canonical bytes changed with this; the freeze is
+        // branch-private/unreleased, so amending this golden pre-release is
+        // expected. Regenerated golden below.
+        let key = quillmark_richtext::serial::content_key(body);
+        assert_eq!(
+            key,
+            "{\"islands\":[{\"id\":\"isl-0\",\"loss\":\"lossless\",\"props\":{\
+             \"aligns\":[\"none\",\"none\"],\
+             \"header\":[{\"marks\":[],\"text\":\"A\"},{\"marks\":[],\"text\":\"B\"}],\
+             \"rows\":[[{\"marks\":[],\"text\":\"1\"},{\"marks\":[],\"text\":\"2\"}]]},\
+             \"type\":\"table\"}],\
+             \"lines\":[{\"containers\":[],\"kind\":\"island\"}],\
+             \"marks\":[],\"text\":\"\u{FFFC}\"}",
+            "regenerated @0.93.0 golden: cells are structured text+marks"
+        );
 
         let again: Document = serde_json::from_str(blob).unwrap();
         assert_eq!(

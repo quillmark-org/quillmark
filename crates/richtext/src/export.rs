@@ -299,17 +299,15 @@ fn emit_table(isl: &Island, out: &mut String) {
     if cols == 0 {
         return;
     }
-    // Cells are stored as raw markdown source slices (pipes already escaped as
-    // `\|` at import), so emit them verbatim — re-escaping would double the
-    // backslash and split the cell on re-import.
-    let cell = |v: &serde_json::Value| v.as_str().unwrap_or("").to_string();
-
+    // Cells are canonical `{text, marks}`; reconstruct each cell's markdown from
+    // its structure (the prose mark→syntax rendering, plus `|`→`\|`), so nothing
+    // re-parses markdown and `import(export(table))` is a fixed point.
     // header row
     out.push_str("| ");
     if let Some(h) = header {
         out.push_str(
             &h.iter()
-                .map(&cell)
+                .map(render_cell_md)
                 .collect::<Vec<_>>()
                 .join(" | "),
         );
@@ -331,7 +329,7 @@ fn emit_table(isl: &Island, out: &mut String) {
         for row in rs {
             if let Some(r) = row.as_array() {
                 out.push_str("\n| ");
-                out.push_str(&r.iter().map(&cell).collect::<Vec<_>>().join(" | "));
+                out.push_str(&r.iter().map(render_cell_md).collect::<Vec<_>>().join(" | "));
                 out.push_str(" |");
             }
         }
@@ -391,21 +389,51 @@ fn render_inline(ctx: &Ctx, i: usize, escape_leading_block: bool) -> String {
         None
     };
 
-    let mut out = String::new();
-    let island_at = |pos_local: usize| -> Option<&Island> {
-        let global = line_start + pos_local;
-        let before = ctx
-            .rt
-            .text
-            .chars()
-            .take(global)
-            .filter(|c| *c == ISLAND_SLOT)
-            .count();
-        ctx.rt.islands.get(before)
-    };
+    render_marked_core(
+        &chars,
+        &code_ranges,
+        &fmt,
+        &links,
+        escape_punct_at,
+        escape_leading_block,
+        false, // prose text does not escape `|`
+        |pos_local| {
+            let global = line_start + pos_local;
+            let before = ctx
+                .rt
+                .text
+                .chars()
+                .take(global)
+                .filter(|c| *c == ISLAND_SLOT)
+                .count();
+            ctx.rt.islands.get(before).map(|isl| {
+                let mut tmp = String::new();
+                emit_island(isl, &mut tmp);
+                tmp
+            })
+        },
+    )
+}
 
-    // Formatting delimiter open/close order at each boundary (proper nesting):
-    // open longer marks first, close shorter marks first.
+/// Render marks over a standalone char slice to markdown: the projection's mark
+/// boundary sweep, shared by prose lines and table cells. `code_ranges`/`fmt`/
+/// `links` are the marks clipped to `chars` (local offsets); `escape_pipe` adds
+/// `|`→`\|` for cells; `island_markup_at` renders an island slot (prose) or
+/// yields `None` (cells carry no slot). Marks nest properly — longer spans open
+/// first, shorter close first.
+#[allow(clippy::too_many_arguments)]
+fn render_marked_core(
+    chars: &[char],
+    code_ranges: &[(usize, usize)],
+    fmt: &[(usize, usize, &MarkKind)],
+    links: &[(usize, usize, &str)],
+    escape_punct_at: Option<usize>,
+    escape_leading_block: bool,
+    escape_pipe: bool,
+    island_markup_at: impl Fn(usize) -> Option<String>,
+) -> String {
+    let n = chars.len();
+    let mut out = String::new();
     let mut stack: Vec<(usize, &MarkKind)> = Vec::new(); // (end, kind)
     let mut pos = 0usize;
     while pos <= n {
@@ -436,7 +464,7 @@ fn render_inline(ctx: &Ctx, i: usize, escape_leading_block: bool) -> String {
         // plain content (nested marks in link text are out of scope for phase 1).
         if let Some(&(ls, le, url)) = links.iter().find(|(s, _, _)| *s == pos) {
             out.push('[');
-            out.push_str(&escape_run(&chars[ls..le]));
+            out.push_str(&escape_run(&chars[ls..le], escape_pipe));
             out.push_str("](");
             out.push_str(url);
             out.push(')');
@@ -457,21 +485,52 @@ fn render_inline(ctx: &Ctx, i: usize, escape_leading_block: bool) -> String {
         if pos < n {
             let c = chars[pos];
             if c == ISLAND_SLOT {
-                if let Some(isl) = island_at(pos) {
-                    let mut tmp = String::new();
-                    emit_island(isl, &mut tmp);
-                    out.push_str(&tmp);
+                if let Some(markup) = island_markup_at(pos) {
+                    out.push_str(&markup);
                 }
             } else if Some(pos) == escape_punct_at {
                 out.push('\\');
                 out.push(c);
             } else {
-                out.push_str(&escape_char(c, pos == 0 && escape_leading_block));
+                out.push_str(&escape_char(c, pos == 0 && escape_leading_block, escape_pipe));
             }
         }
         pos += 1;
     }
     out
+}
+
+/// Reconstruct a table cell's markdown from its `{text, marks}`: the same mark
+/// sweep as prose (`render_marked_core`) with `|`→`\|` escaping so the cell
+/// survives re-import through `pulldown`'s pipe splitting. A cell is flat inline
+/// — no islands, no leading-block escape — so `import(export(table))` is a fixed
+/// point.
+fn render_cell_md(v: &serde_json::Value) -> String {
+    let (text, marks) = crate::serial::parse_cell(v);
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    let mut code_ranges: Vec<(usize, usize)> = Vec::new();
+    let mut fmt: Vec<(usize, usize, &MarkKind)> = Vec::new();
+    let mut links: Vec<(usize, usize, &str)> = Vec::new();
+    for m in &marks {
+        if m.start >= n {
+            continue;
+        }
+        let s = m.start;
+        let e = m.end.min(n);
+        if s >= e {
+            continue;
+        }
+        match &m.kind {
+            MarkKind::Anchor { .. } => {}
+            MarkKind::Code => code_ranges.push((s, e)),
+            MarkKind::Link { url } => links.push((s, e, url)),
+            _ => fmt.push((s, e, &m.kind)),
+        }
+    }
+    render_marked_core(&chars, &code_ranges, &fmt, &links, None, false, true, |_| {
+        None
+    })
 }
 
 fn delim_open(kind: &MarkKind) -> String {
@@ -498,17 +557,18 @@ fn delim_close(kind: &MarkKind) -> String {
     }
 }
 
-fn escape_run(chars: &[char]) -> String {
+fn escape_run(chars: &[char], escape_pipe: bool) -> String {
     let mut s = String::new();
     for (i, c) in chars.iter().enumerate() {
-        s.push_str(&escape_char(*c, i == 0));
+        s.push_str(&escape_char(*c, i == 0, escape_pipe));
     }
     s
 }
 
 /// Escape a char so it re-imports as literal text. `leading` also escapes
-/// block-starter chars that would otherwise open a heading/list/quote.
-fn escape_char(c: char, leading: bool) -> String {
+/// block-starter chars that would otherwise open a heading/list/quote;
+/// `escape_pipe` adds `|`→`\|`, so a table cell survives `pulldown`'s pipe split.
+fn escape_char(c: char, leading: bool, escape_pipe: bool) -> String {
     match c {
         '\\' => "\\\\".into(),
         '*' => "\\*".into(),
@@ -518,6 +578,7 @@ fn escape_char(c: char, leading: bool) -> String {
         ']' => "\\]".into(),
         '<' => "\\<".into(),
         '~' => "\\~".into(),
+        '|' if escape_pipe => "\\|".into(),
         '#' if leading => "\\#".into(),
         '>' if leading => "\\>".into(),
         '-' if leading => "\\-".into(),
@@ -658,6 +719,31 @@ mod tests {
     #[test]
     fn table_with_escaped_pipe_round_trips() {
         round_trips("| a \\| b | c |\n| --- | --- |\n| 1 | 2 |");
+    }
+
+    #[test]
+    fn table_with_formatted_cells_round_trips() {
+        // Option A: cells carry {text, marks}; export reconstructs their markdown
+        // from structure, so the corpus is a fixed point across formatted cells.
+        round_trips("| Name | Note |\n| --- | --- |\n| **bold** | _italic_ |");
+        round_trips("| A |\n| --- |\n| **b** and _i_ `c` [d](https://e.com) ~~e~~ |");
+        round_trips("| A |\n| --- |\n| <u>under</u> |");
+        // A literal pipe inside a cell survives via `\|` re-escaping on export.
+        round_trips("| A |\n| --- |\n| a \\| b |");
+    }
+
+    #[test]
+    fn formatted_cell_marks_are_structured_not_reparsed() {
+        // The cell stores marks, not a markdown slice: a strong cell's island
+        // props carry a `strong` mark over the cell-local range, and export
+        // renders it back to `**bold**` from that structure.
+        let rt = from_markdown("| H |\n| --- |\n| **bold** |").unwrap();
+        let cell = &rt.islands[0].props["rows"][0][0];
+        assert_eq!(cell["text"], "bold");
+        assert_eq!(cell["marks"][0]["type"], "strong");
+        assert_eq!(cell["marks"][0]["start"], 0);
+        assert_eq!(cell["marks"][0]["end"], 4);
+        assert!(to_markdown(&rt).contains("**bold**"));
     }
 
     #[test]
