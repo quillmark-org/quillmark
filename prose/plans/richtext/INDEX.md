@@ -65,6 +65,13 @@ Grounding for the call:
 The durable contract is **"richtext crosses the seam faithfully"** (never as a
 lossy markdown string). The refactorable detail is the encoding (JSON vs typed).
 
+**Confirmed by [phase 0](phase-0.md) (Spike C):** canonical
+RichText-JSON serializes byte-deterministically, the seam JSON and the storage
+serialization are the *same* canonical bytes (one encoding, not two to keep
+aligned), and both backends lower trivially — `typst` via the shipped
+`mark_to_typst`, `pdfform` via `RichText.text` minus island slots, with zero
+`sample_form` fixture churn.
+
 ### Naming — `richtext`
 
 The type is `richtext` at every author-facing surface (`type: richtext`,
@@ -80,61 +87,83 @@ lists/tables/islands), `corpus` (implementation shape; outsider prior is a
 
 ## Technical takeaways carried into the phases
 
-- **Freeze ordering is the pivotal risk.** Canonical `RichText` serialization
-  (phase 1) fixes the mark set and its overlap / edge / identity semantics for
-  storage. Editors (ProseMirror / Lexical / Quill) disagree precisely there.
-  The editor-binding spike must therefore **precede** the serialization freeze,
-  not follow it (issue text puts it in step 3). Hence phase 0. The open mark set
-  absorbs new mark *types*, not changed semantics of the known ones.
-- **Source-map production is backend-internal and deferrable; the seam encoding
-  is not.** The `locate` / `position_at` / region API keys on
-  `(field, corpus range, revision)` regardless of how `typst` builds the map. But
-  the map is a codegen artifact — if content crosses as a string, `typst`
-  re-parses to build it, founding #829's deliverable on the per-render parse the
-  model exists to kill. Faithful encoding is required from the step that first
-  needs the map (phase 2).
+Risk register. Each item states the risk in one line; a resolved item collapses
+to its status and points at the phase doc that owns the detail. The [phase
+0](phase-0.md) items reported with no red flag; the source of truth for their
+results is `phase-0.md` (and the assertions in `crates/richtext-spikes/tests/`),
+not this list.
+
+- **Freeze ordering.** Phase-1 serialization fixes the mark set + overlap / edge
+  / identity semantics, exactly where ProseMirror / Lexical / Quill disagree —
+  so the editor spike must *precede* the freeze (hence phase 0). The open mark
+  set absorbs new mark *types*, not changed semantics of known ones.
+  → **Resolved (phase 0·A):** editor-independent by construction — the model
+  encodes only the mark set + three normalization rules and delegates
+  edge-expand / adjacent-merge to the editor. Phase 1 may freeze now; a live
+  binding is the residual gate ([phase-0.md](phase-0.md#residual-gate)).
+- **Seam encoding, not map production.** `locate` / `position_at` / regions key
+  on `(field, corpus range, revision)` however `typst` builds the map — but the
+  map is a codegen artifact, so content must cross the seam *faithfully* (not as
+  a re-parsed string) from phase 2 on. Map production itself is deferrable.
+  → Encoding confirmed under **Seam — Option A** above (phase 0·C).
 - **Navigation is cluster-exact, not character-exact.** Point↔corpus resolves at
-  the shaping cluster (the resolution a real caret has), inverting the source map
-  through `escape_markup` and the glyph's intra-node offset (`glyph.span.1`,
-  unused today at `span_scan.rs:197`). Ink with no corpus origin (list markers,
-  package numbering, plate decorations) is nav-ignored. `regions()` cannot ignore
-  it — the run-machine rework (grounding §3.2) is still owed for highlight boxes.
+  the shaping cluster, inverting the source map through `escape_markup` and the
+  glyph's intra-node offset (`glyph.span.1`, unused at `span_scan.rs:197`).
+  Origin-less ink (list markers, numbering, decorations) is nav-ignored;
+  `regions()` still owes the run-machine rework (grounding §3.2) for highlight
+  boxes. → **Resolved (phase 0·B):** cluster-exact, invertible by recomputation;
+  `escape_markup` char-local except the `//`→`\/\/` coupling. See
+  [phase-0.md](phase-0.md).
 - **Determinism has an honest boundary.** Migration is mint-free (legacy bodies
-  hold no islands). Island IDs are minted at creation, so once tables ship
-  (phase 4) hashing of island-bearing documents inherits mint-nondeterminism;
-  the content-hash contract must tolerate it. Text stays deterministic
-  throughout.
-- **The move-annotation weak spot lands on the flagship writer.** A stale-text
+  hold no islands); island IDs mint at creation, so phase-4 hashing of
+  island-bearing documents inherits mint-nondeterminism. Text stays
+  deterministic. → **Resolved (phase 0·C):** mint is the *sole* source; **new
+  carry-forward** — `serde_json` `preserve_order` leaks island `props` key order
+  into the hash unless keys are recursively sorted before hashing (phase 2).
+- **The move-annotation weak spot lands on the flagship writer.** The stale-text
   writer (MCP `update_document`, saved `.qmd`) rebases via cold-parse + corpus
-  diff. A reorder — common in LLM "reorganize/tighten" rewrites — is delete +
-  insert to the differ, so annotations on moved text drop. Not a rare
-  concurrency corner; confine it with move detection in the differ, and state
-  the limit.
+  diff; a reorder is delete+insert, so annotations on moved text drop unless a
+  move detector confines it. → **Resolved (phase 0·A):** move detector re-homes
+  a single near-verbatim block move; residual drop (moved *and* rewritten)
+  accepted and stated. See [phase-0.md](phase-0.md).
 - **USV coordinates are a standing cross-binding tax.** JS editors are UTF-16,
-  Rust is UTF-8; every delta crossing WASM/Python and every editor binding
-  converts at its boundary. The property suite owns surrogate-pair / astral-plane
-  offset correctness explicitly.
+  Rust UTF-8; every delta crossing WASM/Python converts at its boundary, and the
+  property suite owns surrogate-pair / astral-plane correctness. → Validated in
+  phase 0 (mid-surrogate rounds down to its owning char).
 
 ## Phase map
 
 Detail per phase in its own doc as it opens. Rough shape:
 
-- **[Phase 0 — spikes](phase-0-spikes.md)** — de-risk the freezes before any
+- **[Phase 0 — spikes](phase-0.md)** — de-risk the freezes before any
   schema lands. Editor binding (gates mark semantics), source-map/navigation
   inversion (gates the phase-2 emit design), seam + determinism prototype (gates
-  Option A). Nothing here ships to `main`.
+  Option A). Nothing here ships to `main`. **Reported — no red flag** (see
+  [phase-0.md](phase-0.md); runnable probe `crates/richtext-spikes/`). Phase 1
+  may open on the Spike-A contract, with a live-editor binding tracked as its
+  residual gate.
 - **Phase 1 — type + codecs, engine-off.** `RichText` + canonical serialization
-  (frozen only after phase-0 editor spike) + markdown⇄corpus import/export
-  codecs + property suite (round-trip modulo loss class; diff-import preserves
-  marks/islands). Exercised against the fixture corpus; engine untouched.
+  (frozen on the [Spike-A contract](phase-0.md): mark set + three normalization
+  rules) + markdown⇄corpus import/export codecs +
+  property suite (round-trip modulo loss class; diff-import preserves
+  marks/islands). Exercised against the fixture corpus; engine untouched. Carry
+  from phase 0: the move detector and USV conversions have working shapes in
+  `crates/richtext-spikes/` to port and harden.
 - **Phase 2 — engine consumes RichText (delivers #829).** Seam carries
-  RichText-JSON (Option A); `typst` emit with per-line windows + source map;
-  `pdfform` `.text` lowering; `locate` / `position_at` + region re-key on
-  `(field, corpus range, revision)`; storage cutover (new `StoredDocument`
-  version, deterministic cold-import migration).
+  RichText-JSON (Option A, [confirmed](phase-0.md)); `typst` emit
+  with per-line windows + source map; `pdfform` `.text` lowering; `locate` /
+  `position_at` + region re-key on `(field, corpus range, revision)`; storage
+  cutover (new `StoredDocument` version, deterministic cold-import migration).
+  Two carry-forward items from phase 0: **(a)** character-precision nav = add
+  `glyph.span.1` to the resolved node range then invert the run map (Spike B);
+  **(b)** recursively canonicalize island `props` keys before hashing, or
+  `preserve_order` leaks insertion order into the content hash (Spike C).
 - **Phase 3 — edit surface.** Per-field delta (Quill-Delta semantics) + monotonic
   revision + bounded change log with position mapping; form-editor binding built
-  on the phase-0 spike's frozen semantics.
+  on the phase-0 spike's frozen semantics. Opens the **residual Spike-A gate**:
+  bind one real rich editor and confirm no editor forces an edge-expand /
+  adjacent-merge semantic back into the model (if one does, it enters as editor
+  config, not a serialization change).
 - **Phase 4 — islands + collab.** First real island type (tables), then a
   text-CRDT sync binding when wanted; core stays CRDT-free.
 
