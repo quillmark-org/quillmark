@@ -155,7 +155,13 @@ Detail per phase in its own doc as it opens. Rough shape:
   with the Phase-0 spike code — the freeze is byte-deterministic across producers
   and feature configs. Decisions, review outcome, and the Phase-2 handover in
   [phase-1.md](phase-1.md).
-- **[Phase 2 — engine consumes RichText](phase-2.md) (delivers #829) — planned.**
+- **[Phase 2 — engine consumes RichText](phase-2.md) (delivers #829) — in progress.**
+  **PR-A** (leaf-crate arrow inversion) and **PR-B** (`Card.body: RichText`) are
+  **landed** (PR #836 → `integration/richtext`); **PR-C** (storage cutover to
+  `quillmark/document@0.93.0`) is next — its concrete handover, and the two PR-B
+  deviations that later PRs inherit (bindings still expose markdown, deferred to
+  PR-E; lossy example import, deferred to PR-G), are in
+  [phase-2.md § PR-B landing log](phase-2.md#pr-b-landing-log--pr-c-handover).
   The markdown parse moves to ingest: `crates/richtext` stays a **separate leaf
   crate** (`quillmark-richtext`) that `core` now **depends on** (arrow inverted
   from phase 1), so `import` runs once at ingest, not per render. The seam carries

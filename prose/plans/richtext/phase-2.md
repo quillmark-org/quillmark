@@ -15,8 +15,11 @@ run-machine rework #829 needs — the reference the superseded #830-era "§3.2"
 grounding pointed at, written here because that doc never migrated off the dead
 branch.
 
-**Status: planned.** No code has landed. The decisions below are settled; the
-decomposition (§ Sub-PRs) is the landing order.
+**Status: in progress.** PR-A and PR-B are **landed** (PR #836 →
+`integration/richtext`); PR-C is next. The decisions below are settled; the
+decomposition (§ Sub-PRs) is the landing order, and
+[§ PR-B landing log](#pr-b-landing-log--pr-c-handover) records what actually
+shipped, the deviations later PRs inherit, and the concrete PR-C handover.
 
 ## The pivot — one parse site, at ingest
 
@@ -79,13 +82,13 @@ different data, different disciplines.
   inspectable.
 - Rejected — **whole-envelope key-sort**: reorders authored field maps (a content
   change), failing a semantic criterion, not a style one.
-- Rejected — **a hand-mirrored `RichTextV0_NN_0` DTO tree**: a second copy of a
+- Rejected — **a hand-mirrored `RichTextV0_93_0` DTO tree**: a second copy of a
   freeze the phase-1 golden-bytes test already pins, free to drift from it.
 
 Shape (`document/dto.rs`):
 
 ```rust
-struct CardV0_NN_0 { payload: PayloadV0_NN_0, body: CanonicalRichText }
+struct CardV0_93_0 { payload: PayloadV0_93_0, body: CanonicalRichText }
 
 // newtype whose serde IS the canonical serializer — no parallel struct tree
 struct CanonicalRichText(RichText);
@@ -93,7 +96,7 @@ struct CanonicalRichText(RichText);
 //   Deserialize = serial::from_value → normalize → validate  (reject invalid at load)
 ```
 
-Bytes discipline, stated exactly: within `quillmark/document@0.NN.0` the envelope
+Bytes discipline, stated exactly: within `quillmark/document@0.93.0` the envelope
 is `serde_json` compact under frozen struct order with payload values insertion-
 ordered; every `body` subtree is byte-identical to `content_key(&rt)`
 (`richtext/serial.rs:349`), independent of `preserve_order`. A golden test asserts
@@ -104,7 +107,7 @@ byte-equality aligned.
 ### Migration — a fallible cold-import hop inside core
 
 The new version's read hop cold-imports the legacy body:
-`TryFrom<CardV0_92_0> for CardV0_NN_0` runs `quillmark_richtext::import::from_markdown(&card.body)`
+`TryFrom<CardV0_92_0> for CardV0_93_0` runs `quillmark_richtext::import::from_markdown(&card.body)`
 (reachable because richtext is the leaf `core` depends on).
 Import is a pure function (`normalize → pulldown → corpus → normalize`), so the
 migration is deterministic. The reader chain (`dto.rs:413`) gains a `?` per hop —
@@ -376,15 +379,23 @@ wire states below are branch-private.
    edit surface (doc-only). *Discharges handover 1 (revised); stages the
    seam/storage freeze.* Measured `pkg/core` cost of the eventual parser reach:
    ~75 KB gzipped (see risk 4).
-2. **PR-B — live model `Card.body: RichText`.** `from_markdown` imports /
-   `to_markdown` exports; `is_blank()`; wasm/python accessors (`body` → corpus,
-   `bodyMarkdown` via export). Wire format held at V0_92_0 by writing through
-   `export(body)` — a branch-private bridge, sound only because the phase merges
-   atomically.
-3. **PR-C — storage cutover V0_NN_0.** New DTO + `CanonicalRichText` + fallible-hop
-   migration + goldens (a table-bearing legacy body; the `content_key`-equality
-   assertion on the body subtree); DOCUMENT_STORAGE.md updates. *Closes the Spike-C
-   storage gate.*
+2. **PR-B — live model `Card.body: RichText` (landed).** `from_markdown` imports /
+   `to_markdown` exports; `is_blank()`; over-nested bodies → `ParseError::BodyImport`.
+   Wire/seam/bindings held at markdown by writing through `export(body)` — a
+   branch-private bridge, sound only because the phase merges atomically. **Two
+   deviations from the plan as written**, both to keep each intermediate green and
+   respect the dependency order — see [PR-B landing log](#pr-b-landing-log--pr-c-handover):
+   (a) the binding `body → corpus` / `bodyMarkdown` split is **deferred to PR-E**
+   (where corpus-JSON becomes the real seam); PR-B keeps `body` returning markdown
+   so no binding test churns on a value the seam will re-shape anyway. (b) the
+   infallible construction paths (seed, blueprint, `replace_body`) use an
+   `import_body_lossy` bridge (over-nesting degrades to empty) pending PR-G's
+   load-time example import.
+3. **PR-C — storage cutover V0_93_0** (`quillmark/document@0.93.0`, confirmed).
+   New DTO + `CanonicalRichText` + fallible-hop migration + goldens (a table-bearing
+   legacy body; the `content_key`-equality assertion on the body subtree);
+   DOCUMENT_STORAGE.md updates. *Closes the Spike-C storage gate.* Concrete starting
+   state and steps in the [PR-C handover](#pr-b-landing-log--pr-c-handover).
 4. **PR-D — typst emitter (`emit.rs`) + segment maps.** `emit_richtext`, island
    lowering, block-quote render, escape tripwire, parity suite vs the still-present
    `mark_to_typst`. Engine-off (no production caller yet). *Discharges the emit half
@@ -406,6 +417,115 @@ wire states below are branch-private.
 Dependency order: **A → B → {C, D} → E → F → G** (C and D parallel; E needs B and
 D, and follows C so the freeze is de-risked before the seam multiplies its
 consumers).
+
+## PR-B landing log & PR-C handover
+
+**PR-B is landed** on `claude/phase-2-readiness-review-pbsdq9` (PR #836 → `integration/richtext`).
+This section is the grounding for whoever picks up **PR-C** (and the record of where
+the landed code diverges from the plan text above).
+
+### What PR-B actually shipped
+
+`Card` holds `body: RichText` (`document/mod.rs`). Reached only through:
+- `Card::body() -> &RichText` (the corpus) and `Card::body_markdown() -> String`
+  (the export projection). `RichText::is_blank()` is new in `quillmark-richtext`.
+- **One markdown→corpus boundary**: `import_body` (empty ⇒ `RichText::empty()`, else
+  `import::from_markdown`) and `import_body_lossy` (over-nesting → empty) in
+  `document/mod.rs`, `pub(crate)`. Every string→body path routes through them:
+  `assemble::decompose` (parse, fallible → `ParseError::BodyImport`, code
+  `parse::body_import`), `wire.rs` `TryFrom<CardWire>` (→ `WireError::InvalidField`
+  key `$body`), `dto.rs` `TryFrom<CardV0_92_0>` (→ `StorageError::Malformed`),
+  `seed.rs`, `blueprint.rs`, and `edit.rs::replace_body` (the last three lossy).
+- `normalize::normalize_document` **no longer touches the body** — a body is already
+  a normalized corpus at import; it keeps only the NFC field-name pass.
+- Validation keys on `body().is_blank()` (`quill/validation.rs:239,270`).
+- `Document::to_markdown` re-emits `body_markdown()` and inserts one blank line
+  after the closing fence (`emit.rs::append_body`).
+
+**Branch-private bridges (still markdown strings, by design):** the plate-JSON
+`$body` (`to_plate_json`), the `CardWire.body`, and the storage envelope
+(`From<&Card> for CardV0_92_0` writes `body_markdown()`). The typst backend is
+therefore unchanged in PR-B.
+
+**Author-visible consequence (documented):** a `.qmd` round-trip canonicalizes the
+body — leading blank lines dropped, one trailing `\n`, `__b__`→`**b**`, and
+inline-HTML-in-prose (`<<placeholder>>`, where `<placeholder>` reads as a CommonMark
+tag) mangles per CommonMark. Rendered output is unchanged (the render path already
+parsed markdown). ~50 test expectations were updated to the projection; the exact
+chevron / code-context behavior is pinned in `assemble_tests.rs`.
+
+**Verification at landing:** `quillmark-core` (604) + `quillmark-richtext` (110) +
+full workspace + clippy + `RUSTDOCFLAGS=-Dwarnings cargo doc --no-deps --locked`
+green; Python bindings 113 passed (built locally); WASM job green on CI. A separate
+commit on the branch fixes a **pre-existing** YAML scalar round-trip bug surfaced by
+the `emit_roundtrip_fuzz` proptest (`String("_0")` emitted bare re-parsed as
+`Number(0)`) — unrelated to the body change; the fix quotes payload scalars whose
+plain emission would not round-trip.
+
+### Deviations from the plan text — carry into later PRs
+
+- **Bindings still expose markdown, not corpus JSON.** The plan's PR-B line said
+  `body → corpus, bodyMarkdown via export`. Deferred to **PR-E**: the corpus-JSON
+  seam is PR-E's contract, and flipping the binding accessor before then would churn
+  JS/Python tests twice. **PR-E owes**: rename the binding `body` accessor to return
+  canonical corpus JSON and add `bodyMarkdown` (export), updating `CardWire` / the
+  wasm+python getters together with the `$body` seam flip.
+- **`import_body_lossy` on seed/blueprint/`replace_body`.** Over-nesting degrades to
+  the empty corpus (never reachable for real examples). **PR-G owes** the honest
+  version: import + validate schema examples at `QuillConfig::from_yaml` and cache on
+  the schema, so seed/blueprint read a pre-validated corpus and the lossy bridge is
+  removed.
+- **`blueprint()` canonicalizes example bodies** (it goes through `to_markdown` /
+  `body_markdown`). The plan says "blueprint keeps reading the authored markdown"; in
+  practice the example content is preserved but its whitespace canonicalizes. If PR-G
+  needs byte-exact authored examples in the blueprint, special-case it there.
+
+### PR-C — concrete handover
+
+Goal: cut storage over to `quillmark/document@0.93.0`, embedding the **canonical
+richtext corpus** in the envelope instead of a markdown string. The freeze
+(`serial.rs`, golden-bytes) is already pinned in `quillmark-richtext`; PR-C is its
+first storage consumer.
+
+Starting state (all in `crates/core/src/document/dto.rs`): today the newest DTO is
+`CardV0_92_0 { payload, body: String }`; `SCHEMA_V0_92_0 = "quillmark/document@0.92.0"`
+(dto.rs:52); the `StoredDocument` enum + serde `rename`s (dto.rs:80,84,88); the
+reader chain `TryFrom<StoredDocument> for Document` (dto.rs:419) dispatches per
+version; `From<&Document> for StoredDocument` (dto.rs:298) writes the newest.
+PR-B already made `TryFrom<CardV0_92_0> for Card` cold-import the body string
+(dto.rs:479) and `From<&Card> for CardV0_92_0` export it (dto.rs:306) — those become
+the **legacy** hop.
+
+Steps:
+1. Add `SCHEMA_V0_93_0 = "quillmark/document@0.93.0"`; add `StoredDocument::V0_93_0`
+   (newest) with its serde `rename`; make new documents serialize as V0_93_0
+   (dto.rs:293 currently asserts V0_92_0 — the write path moves to 93).
+2. `struct CardV0_93_0 { payload: PayloadV0_93_0, body: CanonicalRichText }`. Reuse
+   `PayloadV0_92_0`'s shape if unchanged (payload is not part of this freeze).
+   `struct CanonicalRichText(RichText)` whose `Serialize` **is** the canonical
+   serializer — `serial::to_value` then recursive key-sort (see `serial.rs`
+   `content_key`/`to_canonical_json`/`sorted_value`, richtext crate) — and whose
+   `Deserialize` = `serial::from_value` → `normalize()` → `validate()` (reject
+   invalid at load). Do **not** hand-mirror a `RichTextV0_93_0` DTO tree; the newtype
+   delegates to the one frozen serializer (rejected alternative in § Seam + storage).
+3. Migration: `TryFrom<CardV0_92_0> for CardV0_93_0` runs `import_body(&card.body)`
+   (fallible; `NestingTooDeep` → `StorageError::Malformed`). The reader chain gains a
+   V0_93_0 arm (direct) and reworks the V0_92_0 arm to migrate 92→93→live. Legacy
+   read paths (V0_81/82→92) stay; only the *newest* hop changes.
+4. Envelope bytes discipline (two disciplines in one envelope): the envelope stays
+   compact `serde_json` in frozen struct order with payload values in **insertion**
+   order (`preserve_order`); every `body` subtree is byte-identical to
+   `content_key(&rt)`. Golden test: `&envelope_bytes[body_range] == content_key(rt)`,
+   plus a table-bearing legacy body migrating deterministically to sequential
+   `isl-N` island ids (Spike-C is mint-free for text/marks; islands mint sequentially
+   on import — a pure function).
+5. `DOCUMENT_STORAGE.md`: add the two-discipline byte-stability paragraph; amend the
+   "Adding a Schema Version" playbook step 5 for the `TryFrom`-when-a-migration-can-
+   reject case; record the migrated-row conditional-stability caveat (byte-stability
+   of migrated rows is now conditional on `pulldown-cmark`; recommend read-repair).
+
+Verify: `cargo test -p quillmark-core`, the new goldens, `cargo doc -Dwarnings`,
+clippy. PR-C is **independent of PR-D** (typst emitter) — both branch off PR-B.
 
 ## Sequencing invariant
 
