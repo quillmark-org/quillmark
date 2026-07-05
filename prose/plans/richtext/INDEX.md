@@ -156,11 +156,14 @@ Detail per phase in its own doc as it opens. Rough shape:
   and feature configs. Decisions, review outcome, and the Phase-2 handover in
   [phase-1.md](phase-1.md).
 - **[Phase 2 — engine consumes RichText](phase-2.md) (delivers #829) — in progress.**
-  **PR-A** (leaf-crate arrow inversion) and **PR-B** (`Card.body: RichText`) are
-  **landed** (PR #836 → `integration/richtext`); **PR-C** (storage cutover to
-  `quillmark/document@0.93.0`) is next — its concrete handover, and the two PR-B
-  deviations that later PRs inherit (bindings still expose markdown, deferred to
-  PR-E; lossy example import, deferred to PR-G), are in
+  **PR-A**, **PR-B**, **PR-C** (storage cutover to `quillmark/document@0.93.0`),
+  and **PR-D** (typst emitter + segment maps) are **landed** (PR #836 →
+  `integration/richtext`), plus a landed **Option A** structured-table-cell step
+  (parity 116/116, table cells no longer a raw markdown slice). **PR-E** (seam
+  flip) is handed off — self-contained, decisions locked — in
+  [phase-2.md § PR-E handover](phase-2.md#pr-e-handover--seam-flip-option-a-live).
+  The one PR-B deviation still owed by a later PR (lossy example import,
+  deferred to PR-G) is in
   [phase-2.md § PR-B landing log](phase-2.md#pr-b-landing-log--pr-c-handover).
   The markdown parse moves to ingest: `crates/richtext` stays a **separate leaf
   crate** (`quillmark-richtext`) that `core` now **depends on** (arrow inverted
