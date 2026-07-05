@@ -72,7 +72,7 @@ as a point.
 
 ### The stale-text writer and the move weak spot
 
-An MCP `update_document` / saved `.qmd` is a full new document: cold-parse →
+An MCP `update_document` / a saved document is a full new document: cold-parse →
 corpus → char-diff against the base → delta → rebase marks/anchors through it
 (CodeMirror `ChangeDesc.mapPos` semantics). No preservation contract on the LLM.
 An edit *around* an annotation rebases cleanly. A **paragraph reorder** is

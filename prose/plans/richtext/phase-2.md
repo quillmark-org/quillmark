@@ -15,11 +15,16 @@ run-machine rework #829 needs — the reference the superseded #830-era "§3.2"
 grounding pointed at, written here because that doc never migrated off the dead
 branch.
 
-**Status: in progress.** PR-A and PR-B are **landed** (PR #836 →
-`integration/richtext`); PR-C is next. The decisions below are settled; the
-decomposition (§ Sub-PRs) is the landing order, and
-[§ PR-B landing log](#pr-b-landing-log--pr-c-handover) records what actually
-shipped, the deviations later PRs inherit, and the concrete PR-C handover.
+**Status: in progress.** PR-A and PR-B are **landed** on `integration/richtext`
+(PR #836); PR-C, PR-D, and an **Option A — structured table cells** step
+(inserted between PR-D and PR-E, § Sub-PRs) are **landed as commits on this
+branch** (`claude/richtext-phase-2-review-1hgtwk`), not yet merged to
+integration. **PR-E is next**, and its
+handover is fully specified — decisions locked, no re-derivation needed — in
+[§ PR-E handover](#pr-e-handover--seam-flip-option-a-live). The decisions below
+are settled; the decomposition (§ Sub-PRs) is the landing order, and
+[§ PR-B landing log](#pr-b-landing-log--pr-c-handover) records what PR-B and
+PR-C actually shipped and the one deviation PR-G still inherits.
 
 ## The pivot — one parse site, at ingest
 
@@ -31,7 +36,7 @@ holding the model, canonical serialization, edit deltas, and the markdown codecs
 **core depends on richtext**. `import` (and `pulldown-cmark`) live in that leaf,
 reachable from the two core entry points that need it — the storage migration and
 `Document::from_markdown`, which every binding (including the no-feature `pkg/core`
-WASM build) uses to turn a `.qmd` body into the live model. The `typst` backend
+WASM build) uses to turn a markdown document body into the live model. The `typst` backend
 **drops** its `pulldown-cmark` dependency; markup is produced by walking the
 corpus, never by re-parsing.
 
@@ -145,7 +150,7 @@ the same depth), so nothing renderable is lost.
 (fence/YAML only); an empty body ⇒ `RichText::empty()`; body-disabled validation
 (`validation.rs:239,270`) moves from `body().trim().is_empty()` to a new
 `RichText::is_blank()`. Author-visible consequence, stated not hidden:
-`.qmd → Document → .qmd` now **canonicalizes** body markdown (`__b__` re-emits as
+markdown → `Document` → markdown now **canonicalizes** body markdown (`__b__` re-emits as
 `**b**`, fence-adjacent whitespace normalizes) — inherent to demoting markdown to
 a projection; documented in markdown-spec and release notes.
 
@@ -215,8 +220,11 @@ fn emit_richtext(rt: &RichText) -> Result<EmittedContent, EmitError>
   nothing.
 - **Islands are mandatory here, not Phase 4.** Migrated bodies carry tables and
   images; skipping them regresses rendering. `table` props → `#table(columns:,
-  align:, table.header(…), …)` (today's grammar); `image` → `#image("url", alt:)`;
-  unknown island types emit nothing (documented, parallel to the HTML rule).
+  align:, table.header(…), …)`; each cell is structured `{text, marks}` (Option A,
+  landed), so its inline marks lower through the same mark sweep — `**bold**` in a
+  cell renders `#strong[bold]`, not an escaped source slice. `image` →
+  `#image("url", alt:)`; unknown island types emit nothing (documented, parallel
+  to the HTML rule).
 - **The 2→4 coupling and recomputation.** Each run records only its `(corpus, gen)`
   pair; per-char spans are **recomputed** (Spike B: invertible, no stored tables)
   by a one-scan that treats `//`→`\/\/` as a 2-char/4-byte cluster and every other
@@ -360,7 +368,7 @@ may lower an inline field without block wrapping (headers).
   output *is* the markdown surface). `$seed` overlays import at `seed_card` time (a
   user action, not a render loop).
 
-Stated honestly: a richtext *field* authored as a string in a `.qmd` re-imports at
+Stated honestly: a richtext *field* authored as a string in a markdown document re-imports at
 each `compile_data` (the same tier as date parsing — deterministic, so its regions'
 corpus ranges are stable). This does **not** found #829 on a per-render parse —
 `$body`, the #829 payload, is a typed corpus on `Card` and never re-parses. Full
@@ -391,38 +399,65 @@ wire states below are branch-private.
    infallible construction paths (seed, blueprint, `replace_body`) use an
    `import_body_lossy` bridge (over-nesting degrades to empty) pending PR-G's
    load-time example import.
-3. **PR-C — storage cutover V0_93_0** (`quillmark/document@0.93.0`, confirmed).
-   New DTO + `CanonicalRichText` + fallible-hop migration + goldens (a table-bearing
-   legacy body; the `content_key`-equality assertion on the body subtree);
-   DOCUMENT_STORAGE.md updates. *Closes the Spike-C storage gate.* Concrete starting
-   state and steps in the [PR-C handover](#pr-b-landing-log--pr-c-handover).
-4. **PR-D — typst emitter (`emit.rs`) + segment maps.** `emit_richtext`, island
-   lowering, block-quote render, escape tripwire, parity suite vs the still-present
-   `mark_to_typst`. Engine-off (no production caller yet). *Discharges the emit half
-   of handover 3; stages Spike-B's map.*
-5. **PR-E — seam flip (Option A live).** `compile_data` / `to_plate_json` emit
+3. **PR-C — storage cutover V0_93_0 (landed).** `quillmark/document@0.93.0`;
+   `CanonicalRichText` newtype whose serde *is* the canonical serializer; fallible
+   92→93 cold-import migration; goldens (body-subtree byte-identical to
+   `content_key`; a table-bearing legacy body migrates deterministically to
+   sequential `isl-N` ids); DOCUMENT_STORAGE.md updates. *Closed the Spike-C
+   storage gate.* Starting state and steps, kept as the historical record, in the
+   [PR-C handover](#pr-b-landing-log--pr-c-handover).
+4. **PR-D — typst emitter (`emit.rs`) + segment maps (landed).** `emit_richtext`
+   walks the corpus to Typst markup + per-segment source maps; island lowering,
+   block-quote render (`#quote(block: true)`, the one intentional divergence),
+   escape tripwire, parity suite vs the still-present `mark_to_typst`: **103
+   inputs byte-identical** at landing. Engine-off (no production caller;
+   `mark_to_typst` stays the oracle until PR-E deletes it). *Discharged the emit
+   half of handover 3; staged Spike-B's map.*
+5. **Option A — structured table cells (landed).** Table islands previously
+   stored each cell as a raw markdown source slice — the last place markdown was
+   load-bearing inside the corpus. Cells now carry inline structure `{text,
+   marks}` (marks are USV offsets into the cell's own text, reusing the frozen
+   `Mark` wire shape). Import parses cells once; export reconstructs the pipe
+   table; the emitter renders `#strong[...]`/`#raw`/`#link` inside `#table(...)`.
+   `normalize()` canonicalizes cell marks before key-sorting props; `validate()`
+   bounds them by the cell's own text. **Amends the @0.93.0 freeze**
+   (branch-private, pre-release — the golden was regenerated, not re-versioned)
+   and **retires PR-D's two table-cell parity residuals**: formatted and
+   escaped-pipe cells now byte-match `mark_to_typst`. Parity: **116 inputs
+   byte-identical**; the only remaining diffs are the block-quote render
+   (intentional) plus two inherent import canonicalizations (coincident
+   `***`→`#strong[#emph[...]]`; empty-text link dropped) — both corpus-level, so
+   no emitter and no future table type can differ from them. *Materially retires
+   risk 3 (§ Risk register).*
+6. **PR-E — seam flip (Option A live).** `compile_data` / `to_plate_json` emit
    canonical corpus JSON for `$body` + richtext fields; typst consumes via
    `emit_richtext` (retiring `convert_content_value`); `ContentWindow → ContentMap`;
    pdfform `.text`-minus-slots lowering; schema rename + coercion + blueprint slot +
    alias warning; fixtures/goldens regen; **delete** `mark_to_typst` / fixer /
    pulldown from the backend; `__meta__` cleanup; PLATE_DATA.md + CONVERT.md.
-   *Discharges handover 2 and 4.*
-6. **PR-F — regions + navigation (#829).** Two-tier windows + segment run machine;
+   *Discharges handover 2 and 4.* Self-contained, decisions-locked handover in
+   [§ PR-E handover](#pr-e-handover--seam-flip-option-a-live) — implement from
+   there, not from this summary line.
+7. **PR-F — regions + navigation (#829).** Two-tier windows + segment run machine;
    `RenderedRegion.span`; `position_at` / `locate` with `glyph.span.1`; session/wasm
    surface; PREVIEW.md rework; INDEX.md revision-defer amendment. *Discharges
    handover 3 and 5; the Spike-B carry; delivers #829.*
-7. **PR-G — `richtext(inline)` + load-time schema-value import + seed-commits-corpus.**
+8. **PR-G — `richtext(inline)` + load-time schema-value import + seed-commits-corpus.**
    Separable from E for reviewability.
 
-Dependency order: **A → B → {C, D} → E → F → G** (C and D parallel; E needs B and
-D, and follows C so the freeze is de-risked before the seam multiplies its
-consumers).
+Dependency order: **A → B → {C, D} → Option-A-cells → E → F → G** (C and D
+parallel; Option-A-cells follows D, retiring its two table-cell parity residuals
+before E multiplies the seam's consumers; E needs B, D, and Option-A-cells, and
+follows C so the storage freeze was de-risked first).
 
 ## PR-B landing log & PR-C handover
 
 **PR-B is landed** on `claude/phase-2-readiness-review-pbsdq9` (PR #836 → `integration/richtext`).
-This section is the grounding for whoever picks up **PR-C** (and the record of where
-the landed code diverges from the plan text above).
+**PR-C has since landed too** (see the handover below, kept as the historical
+record of its starting state and steps). This section is now historical —
+the record of where PR-B's and PR-C's landed code diverged from the plan text
+above — and the deviations later PRs still owe. The live, actionable handover
+for the next PR is [§ PR-E handover](#pr-e-handover--seam-flip-option-a-live).
 
 ### What PR-B actually shipped
 
@@ -447,7 +482,7 @@ the landed code diverges from the plan text above).
 (`From<&Card> for CardV0_92_0` writes `body_markdown()`). The typst backend is
 therefore unchanged in PR-B.
 
-**Author-visible consequence (documented):** a `.qmd` round-trip canonicalizes the
+**Author-visible consequence (documented):** a document round-trip canonicalizes the
 body — leading blank lines dropped, one trailing `\n`, `__b__`→`**b**`, and
 inline-HTML-in-prose (`<<placeholder>>`, where `<placeholder>` reads as a CommonMark
 tag) mangles per CommonMark. Rendered output is unchanged (the render path already
@@ -467,9 +502,10 @@ plain emission would not round-trip.
 - **Bindings still expose markdown, not corpus JSON.** The plan's PR-B line said
   `body → corpus, bodyMarkdown via export`. Deferred to **PR-E**: the corpus-JSON
   seam is PR-E's contract, and flipping the binding accessor before then would churn
-  JS/Python tests twice. **PR-E owes**: rename the binding `body` accessor to return
-  canonical corpus JSON and add `bodyMarkdown` (export), updating `CardWire` / the
-  wasm+python getters together with the `$body` seam flip.
+  JS/Python tests twice. **PR-E owes** this, and it is now fully specified — not
+  restated here — under "Bindings" in
+  [§ PR-E handover](#pr-e-handover--seam-flip-option-a-live)'s locked decisions,
+  with concrete step 8.
 - **`import_body_lossy` on seed/blueprint/`replace_body`.** Over-nesting degrades to
   the empty corpus (never reachable for real examples). **PR-G owes** the honest
   version: import + validate schema examples at `QuillConfig::from_yaml` and cache on
@@ -480,7 +516,12 @@ plain emission would not round-trip.
   practice the example content is preserved but its whitespace canonicalizes. If PR-G
   needs byte-exact authored examples in the blueprint, special-case it there.
 
-### PR-C — concrete handover
+### PR-C — concrete handover (landed)
+
+**Landed as specified below**: `quillmark/document@0.93.0` shipped with the
+`CanonicalRichText` newtype, the fallible 92→93 migration, and the goldens in
+step 4. Kept as the historical record of the starting state and steps — nothing
+below is prescriptive anymore.
 
 Goal: cut storage over to `quillmark/document@0.93.0`, embedding the **canonical
 richtext corpus** in the envelope instead of a markdown string. The freeze
@@ -527,6 +568,106 @@ Steps:
 Verify: `cargo test -p quillmark-core`, the new goldens, `cargo doc -Dwarnings`,
 clippy. PR-C is **independent of PR-D** (typst emitter) — both branch off PR-B.
 
+## PR-E handover — seam flip (Option A live)
+
+This is the grounding for whoever implements **PR-E** — self-contained; the
+decisions below are locked, not proposals to re-evaluate.
+
+**Prereqs landed:** PR-C, PR-D, Option-A structured cells, `.qmd` removal — all
+on this branch.
+
+**Goal:** flip the render seam from markdown-string to canonical corpus JSON
+(Option A); typst backend consumes `emit_richtext`; delete `mark_to_typst` /
+fixer / `pulldown-cmark` from the backend; schema rename; wire bindings;
+regenerate goldens.
+
+### Locked decisions — do not re-litigate
+
+- **Seam = Option A (JSON).** `Backend::open(source, json_data)` stays a JSON
+  data contract; the typst backend deserializes the `$body`/richtext-field
+  corpus JSON → `RichText` → `emit_richtext`. Do **not** reshape the `Backend`
+  trait to a typed seam (Option C) — C is a deferred, API-stable later
+  refactor, explicitly out of scope for E. Rationale: the JSON payload doubles
+  as the published plate contract (`to_plate_json`, PLATE_DATA.md); E is
+  already the widest PR; the Rust-internal `RichText → JSON → RichText`
+  round-trip is cheap next to a Typst compile.
+- **Bindings.** `card.body` returns canonical corpus JSON (source-of-truth
+  model); add `card.bodyMarkdown` = the export projection. `CardWire.body`
+  flips to corpus JSON. Two ingest paths: editor/structured writes corpus JSON
+  via `CardWire`; LLM/markdown writes via `from_markdown` (imports). Breaking
+  for JS/Python consumers reading `body` as a string — update the binding
+  tests.
+- **pdfform.** Lower via `RichText.text` minus island slots → **plaintext
+  only**. `/RV` rich-text AcroForm fields are **deferred indefinitely**
+  (Adobe-only; other viewers ignore `/RV`). Future direction (noted, not
+  built): a `ui` attribute on richtext fields that disables rich formatting
+  while still riding the content model.
+- **Atomicity relaxed.** Work lands on `integration/richtext`, which merges to
+  `main` atomically as a whole — so E need not keep every intermediate commit
+  green-to-main. Internal two-commit sequencing (flip+consume, then delete) is
+  a convenience, not a requirement.
+
+### Concrete steps (with anchors)
+
+1. **Core seam flip.** `to_plate_json` (`crates/core/src/document/mod.rs`,
+   ~lines 347-374): emit `$body` and each card `$body` as canonical corpus JSON
+   via the richtext serializer (`content_key`/`to_canonical_value`), not
+   `body_markdown()`. Same for richtext payload fields (coerced to corpus).
+   Remove the branch-private markdown-bridge comment there.
+2. **Typst consumes the corpus.** Retire `convert_content_value`
+   (`crates/backends/typst/src/lib.rs:659,813`); `is_markdown_field` →
+   `is_richtext_field` on media type `application/quillmark-richtext+json`
+   (`lib.rs:582`). Deserialize each content field's corpus JSON → `RichText` →
+   `emit_richtext`. Relocate `convert::emit` to a crate-root `mod emit` in
+   `lib.rs` (PR-D declared it via `#[path]` to avoid touching lib.rs).
+3. **ContentWindow → ContentMap.** `crates/backends/typst/src/helper.rs`:
+   `generate_lib_typ` takes the emitted `{markup, segments}`, splices markup
+   into `#let _qm_cN = [ … ]`, and rebases segment/run offsets by the block
+   start (as it rebases the bracket window at `helper.rs:83-88`).
+   `ContentWindow { path, range }` → `ContentMap { path, block: Range, segments:
+   Vec<SegmentMap> }`.
+4. **Segment-map offset test (MANDATED, do not defer to PR-F).** For a known
+   corpus, assert each `segment.gen` range slices the expected substring of the
+   generated `lib.typ`, and each run inverts to the right corpus range.
+5. **pdfform lowering.** `RichText.text` minus island slots → plaintext field
+   value. No fixture exercises it (`sample_form` binds no content field);
+   recommend adding one synthetic pdfform quill that binds a richtext field to
+   exercise the path (else it ships untested — note which).
+6. **Schema surface.** `FieldType::RichText { inline }` replaces `Markdown`;
+   keep `markdown` as a deprecated alias (load-time warning → `RichText{inline:
+   false}`). Transform-schema marker → `{type:object,
+   contentMediaType:"application/quillmark-richtext+json"}`. Blueprint format
+   slot emits `richtext<markdown>`. Coercion (`config.rs`): string →
+   `import::from_markdown` → corpus (error → `CoercionError` at field path);
+   object → `from_value`+normalize+validate. (`richtext(inline)` enforcement is
+   PR-G, not E.)
+7. **Delete the oracle** (parity is green — 116/116 + block-quote + 2
+   canonicalizations): remove `mark_to_typst`, the backend `MarkdownFixer`
+   copy, and the backend `pulldown-cmark` dep. Gate: after E, no render path in
+   the workspace parses markdown.
+8. **Bindings:** `card.body` → corpus JSON, add `bodyMarkdown`; `CardWire.body`
+   → corpus JSON; update wasm+python getters and their tests.
+9. **Cleanup + goldens.** Remove the `__meta__` drift (`lib.rs`, ~line 830, vs
+   PLATE_DATA.md). Regenerate fixtures/goldens under this **audit discipline:**
+   the ONLY legitimate rendered-output changes are (a) block-quote fixtures now
+   rendering `#quote`, (b) the two import canonicalizations. Any other golden
+   delta is a regression. Table-bearing fixtures' storage/seam goldens carry
+   structured cells; their rendered output is unchanged (parity holds).
+10. **Docs:** rewrite CONVERT.md ("RichText → Typst lowering"), PLATE_DATA.md
+    (corpus JSON for content fields; `__meta__` removed), SCHEMAS.md /
+    BLUEPRINT.md (markdown → richtext, the alias).
+
+### Gates
+
+Parity green (done); the segment-map offset test; the golden audit; the
+"no render path parses markdown" invariant after deletion.
+
+### Out of scope (later)
+
+Revision + regions/nav/#829 (PR-F); `richtext(inline)` enforcement + load-time
+example import + seed-commits-corpus (PR-G); typed seam Option C (deferred
+refactor); pdfform `/RV` (deferred indefinitely).
+
 ## Sequencing invariant
 
 Nothing embeds the canonical bytes before they are re-pinned in core: **A before C
@@ -551,16 +692,22 @@ no render path in the workspace parses markdown.
    first commit is a probe test; degrade path: cluster resolution falls back to
    node-start (segment-level correctness kept, char precision lost locally).
 3. **Emitter/importer parity gaps** (`***` fixups, list starts, tight/loose lists,
-   table-alignment corners). The parity suite is the gate; intentional diffs (block
-   quotes render; import canonicalizations) are enumerated, everything else matches
-   byte-for-byte.
+   table-alignment corners) — **materially retired.** PR-D's parity suite closed
+   most of this; the two remaining residuals (formatted and escaped-pipe table
+   cells) closed when Option A gave cells structure instead of a raw markdown
+   slice. Parity now stands at **116/116 inputs byte-identical**, with two
+   enumerated, corpus-level intentional diffs (block quotes render as
+   `#quote(block: true)`; two inherent import canonicalizations — coincident
+   `***`, empty-text link) that no future emitter or table type can differ from.
+   Residual: none tracked; re-open only if a new island or mark type reopens a
+   parity gap.
 4. **`pkg/core` WASM growth** from pulldown — **measured: ~75 KB gzipped** (the
    pulldown crate; the import codec adds ~9 KB more), ~+24% on the ~0.34 MB core
    bundle, well inside the 1.5 MB `CORE_MAX_GZIP_BYTES` guard. It lands only when a
    body/import path becomes reachable from `pkg/core` (the PR-B/E cutover), tree-
    shaken until then. Feature-gating import out of core builds is rejected
    (`fromMarkdown` is that build's purpose); accept or slim.
-5. **`.qmd` body canonicalization** on round-trip — author-visible git churn on save;
+5. **Document-body canonicalization** on round-trip — author-visible git churn on save;
    document in markdown-spec and release notes.
 6. **String-authored richtext *fields*** keep a per-`compile_data` import and get
    only field-level nav precision until stored structurally; watch the

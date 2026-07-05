@@ -81,10 +81,81 @@ pub fn from_markdown(markdown: &str) -> Result<RichText, ImportError> {
 // Corpus builder
 // ---------------------------------------------------------------------------
 
+/// A flat inline accumulator: `text` plus `marks` over local USV offsets, with
+/// the corpus char-filtering baked in. One implementation serves both a prose
+/// line's inline content (embedded in the [`Builder`], which layers the
+/// line/block scaffolding on top) and a table cell's isolated content (offsets
+/// `0..cell_len`) — the mark-building logic is written once, not copied per site.
+#[derive(Default)]
+struct Inline {
+    /// The accumulated text (a whole corpus for the [`Builder`]; one cell's text
+    /// for a table cell). USV length is tracked in [`Self::pos`].
+    text: String,
+    /// USV position = char count of [`Self::text`].
+    pos: usize,
+    marks: Vec<Mark>,
+    /// `(kind, start)` for each mark opened but not yet closed.
+    open: Vec<(MarkKind, usize)>,
+}
+
+impl Inline {
+    /// Append inline text, stripping characters the corpus forbids: `\r` and a
+    /// stray [`ISLAND_SLOT`] are dropped; a stray `\n` becomes a space (inline
+    /// text carries no line boundary — real ones go through [`Self::push_raw`]).
+    fn push_text(&mut self, s: &str) {
+        for c in s.chars() {
+            let c = match c {
+                '\r' => continue,
+                ISLAND_SLOT => continue,
+                '\n' => ' ',
+                other => other,
+            };
+            self.text.push(c);
+            self.pos += 1;
+        }
+    }
+
+    /// Append one char verbatim (a line-boundary `\n`, an island slot), bypassing
+    /// the [`Self::push_text`] filtering.
+    fn push_raw(&mut self, c: char) {
+        self.text.push(c);
+        self.pos += 1;
+    }
+
+    /// Open a mark at the current position.
+    fn open_mark(&mut self, kind: MarkKind) {
+        self.open.push((kind, self.pos));
+    }
+
+    /// Close the innermost open mark (pulldown nests them well).
+    fn close_mark(&mut self) {
+        if let Some((kind, start)) = self.open.pop() {
+            self.marks.push(Mark {
+                start,
+                end: self.pos,
+                kind,
+            });
+        }
+    }
+
+    /// Append inline code text and record its [`MarkKind::Code`] mark over it.
+    fn push_code(&mut self, s: &str) {
+        let start = self.pos;
+        self.push_text(s);
+        self.marks.push(Mark {
+            start,
+            end: self.pos,
+            kind: MarkKind::Code,
+        });
+    }
+}
+
 struct Builder<'a> {
     source: &'a str,
-    text: String,
-    pos: usize, // USV position = char count of `text`
+    /// The corpus text + marks; the [`Builder`] adds line/block structure around
+    /// it (a `\n` boundary is [`Inline::push_raw`], inline content is the mark
+    /// machinery). A table cell reuses the same [`Inline`] in isolation.
+    inline: Inline,
     lines: Vec<Line>,
     cur: Option<Line>, // the line currently open (kind + containers fixed at open)
     /// A block start records `(kind, continues)` the next inline content should
@@ -93,8 +164,6 @@ struct Builder<'a> {
     /// hard break sets `continues = true`. Cleared when a block that owns its own
     /// lines (List/Quote/CodeBlock/Table) takes over.
     pending: Option<(LineKind, bool)>,
-    marks: Vec<Mark>,
-    open_marks: Vec<(MarkKind, usize)>, // (kind, start)
     islands: Vec<Island>,
     island_seq: usize,
     containers: Vec<Container>,
@@ -125,10 +194,15 @@ struct ListInfo {
 
 struct TableAcc {
     aligns: Vec<&'static str>,
-    header: Vec<String>,
-    rows: Vec<Vec<String>>,
-    cur_row: Vec<String>,
+    /// Cells as canonical `{text, marks}` JSON (via `serial::cell_to_value`), so
+    /// nothing downstream re-parses markdown to render a formatted cell.
+    header: Vec<serde_json::Value>,
+    rows: Vec<Vec<serde_json::Value>>,
+    cur_row: Vec<serde_json::Value>,
     in_head: bool,
+    /// The cell currently open (between `Tag::TableCell` start/end), building its
+    /// inline text + marks with the same [`Inline`] machinery prose uses.
+    cell: Option<Inline>,
 }
 
 fn align_str(a: &pulldown_cmark::Alignment) -> &'static str {
@@ -144,13 +218,10 @@ impl<'a> Builder<'a> {
     fn new(source: &'a str) -> Self {
         Builder {
             source,
-            text: String::new(),
-            pos: 0,
+            inline: Inline::default(),
             lines: Vec::new(),
             cur: None,
             pending: None,
-            marks: Vec::new(),
-            open_marks: Vec::new(),
             islands: Vec::new(),
             island_seq: 0,
             containers: Vec::new(),
@@ -174,8 +245,7 @@ impl<'a> Builder<'a> {
         // The first line (no line yet open) can never continue anything.
         let continues = continues && self.cur.is_some();
         if let Some(prev) = self.cur.take() {
-            self.text.push('\n');
-            self.pos += 1;
+            self.inline.push_raw('\n');
             self.lines.push(prev);
         }
         self.cur = Some(Line {
@@ -202,16 +272,7 @@ impl<'a> Builder<'a> {
     /// becomes a space — inline text should carry none).
     fn push_inline(&mut self, s: &str) {
         self.ensure_open(LineKind::Para);
-        for c in s.chars() {
-            let c = match c {
-                '\r' => continue,
-                ISLAND_SLOT => continue,
-                '\n' => ' ',
-                other => other,
-            };
-            self.text.push(c);
-            self.pos += 1;
-        }
+        self.inline.push_text(s);
     }
 
     /// Lines emitted so far, counting the line currently open. A container that
@@ -246,18 +307,12 @@ impl<'a> Builder<'a> {
         // it. Without this the mark swallows the separator and equal content
         // from an editor vs from import serializes to different canonical bytes.
         self.ensure_open(LineKind::Para);
-        self.open_marks.push((kind, self.pos));
+        self.inline.open_mark(kind);
     }
 
     fn close_mark(&mut self) {
         // Well-nested by pulldown: close the innermost open mark.
-        if let Some((kind, start)) = self.open_marks.pop() {
-            self.marks.push(Mark {
-                start,
-                end: self.pos,
-                kind,
-            });
-        }
+        self.inline.close_mark();
     }
 
     fn mint_island(&mut self, island_type: &str, props: serde_json::Value, loss: Loss) {
@@ -274,7 +329,7 @@ impl<'a> Builder<'a> {
     fn check_depth(&self) -> Result<(), ImportError> {
         // Container path plus open marks approximates the structural depth the
         // typst backend caps; bound it identically for parity.
-        let depth = self.containers.len() + self.open_marks.len();
+        let depth = self.containers.len() + self.inline.open.len();
         if depth > MAX_NESTING_DEPTH {
             return Err(ImportError::NestingTooDeep {
                 depth,
@@ -306,8 +361,10 @@ impl<'a> Builder<'a> {
                 continue;
             }
 
-            // Table collection routes structural events to the accumulator and
-            // ignores inline content (captured by cell source-slicing).
+            // Table collection routes both structural events (head/row/cell) and
+            // a cell's inline content (text/marks) to the accumulator, so each
+            // cell is stored as canonical `{text, marks}` — no markdown re-parse
+            // downstream.
             if self.table.is_some() {
                 self.table_event(&event, &range);
                 if matches!(event, Event::End(TagEnd::Table)) {
@@ -328,13 +385,7 @@ impl<'a> Builder<'a> {
                 }
                 Event::Code(t) => {
                     self.ensure_open(LineKind::Para);
-                    let start = self.pos;
-                    self.push_inline(&t);
-                    self.marks.push(Mark {
-                        start,
-                        end: self.pos,
-                        kind: MarkKind::Code,
-                    });
+                    self.inline.push_code(&t);
                 }
                 Event::SoftBreak => self.push_inline(" "),
                 Event::HardBreak => {
@@ -438,14 +489,14 @@ impl<'a> Builder<'a> {
             Tag::Table(aligns) => {
                 self.pending = None;
                 self.open_line(LineKind::Island, false);
-                self.text.push(ISLAND_SLOT);
-                self.pos += 1;
+                self.inline.push_raw(ISLAND_SLOT);
                 self.table = Some(TableAcc {
                     aligns: aligns.iter().map(align_str).collect(),
                     header: Vec::new(),
                     rows: Vec::new(),
                     cur_row: Vec::new(),
                     in_head: false,
+                    cell: None,
                 });
             }
             Tag::Emphasis => {
@@ -541,40 +592,125 @@ impl<'a> Builder<'a> {
 
     fn push_code_line(&mut self, seg: &str) {
         for c in seg.chars() {
-            let c = match c {
+            match c {
                 '\r' | '\n' => continue,
                 ISLAND_SLOT => continue,
-                other => other,
-            };
-            self.text.push(c);
-            self.pos += 1;
+                other => self.inline.push_raw(other),
+            }
         }
     }
 
     // ---- table ----
 
+    /// The open table cell's inline accumulator, if one is open.
+    fn cell_mut(&mut self) -> Option<&mut Inline> {
+        self.table.as_mut()?.cell.as_mut()
+    }
+
+    /// Route one table event: structural events (head/row/cell boundaries) shape
+    /// the accumulator; inline events (text/code/marks) build the open cell with
+    /// the SAME [`Inline`] machinery prose uses — a cell is flat inline (no lines,
+    /// no nested islands), so its marks are USV offsets into its own text.
     fn table_event(&mut self, event: &Event, range: &Range<usize>) {
-        let Some(acc) = self.table.as_mut() else {
-            return;
-        };
         match event {
-            Event::Start(Tag::TableHead) => acc.in_head = true,
-            Event::End(TagEnd::TableHead) => {
-                acc.header = std::mem::take(&mut acc.cur_row);
-                acc.in_head = false;
+            Event::Start(Tag::TableHead) => {
+                if let Some(a) = self.table.as_mut() {
+                    a.in_head = true;
+                }
             }
-            Event::Start(Tag::TableRow) => acc.cur_row.clear(),
+            Event::End(TagEnd::TableHead) => {
+                if let Some(a) = self.table.as_mut() {
+                    a.header = std::mem::take(&mut a.cur_row);
+                    a.in_head = false;
+                }
+            }
+            Event::Start(Tag::TableRow) => {
+                if let Some(a) = self.table.as_mut() {
+                    a.cur_row.clear();
+                }
+            }
             Event::End(TagEnd::TableRow) => {
-                if !acc.in_head {
-                    let row = std::mem::take(&mut acc.cur_row);
-                    acc.rows.push(row);
+                if let Some(a) = self.table.as_mut() {
+                    if !a.in_head {
+                        let row = std::mem::take(&mut a.cur_row);
+                        a.rows.push(row);
+                    }
                 }
             }
             Event::Start(Tag::TableCell) => {
-                // Capture the cell's markdown source verbatim (preserves inline
-                // formatting), so a pipe table round-trips losslessly.
-                let cell = self.source.get(range.clone()).unwrap_or("").trim();
-                acc.cur_row.push(cell.to_string());
+                if let Some(a) = self.table.as_mut() {
+                    a.cell = Some(Inline::default());
+                }
+            }
+            Event::End(TagEnd::TableCell) => {
+                if let Some(a) = self.table.as_mut() {
+                    if let Some(mut cell) = a.cell.take() {
+                        // Close any marks pulldown left open (malformed input).
+                        while !cell.open.is_empty() {
+                            cell.close_mark();
+                        }
+                        a.cur_row
+                            .push(crate::serial::cell_to_value(&cell.text, &cell.marks));
+                    }
+                }
+            }
+            // Inline content of the open cell (pulldown already trimmed the cell's
+            // surrounding whitespace; the fixer already stripped non-`<u>` HTML
+            // and fixed `***`). A soft/hard break in a single-line cell is a space.
+            Event::Text(t) => {
+                if let Some(c) = self.cell_mut() {
+                    c.push_text(t);
+                }
+            }
+            Event::Code(t) => {
+                if let Some(c) = self.cell_mut() {
+                    c.push_code(t);
+                }
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                if let Some(c) = self.cell_mut() {
+                    c.push_text(" ");
+                }
+            }
+            Event::Start(Tag::Emphasis) => {
+                if let Some(c) = self.cell_mut() {
+                    c.open_mark(MarkKind::Emph);
+                }
+            }
+            Event::Start(Tag::Strong) => {
+                // `<u>` is rewritten to Start(Strong) by the fixer; distinguish it
+                // by peeking the source, exactly as the prose path does.
+                let kind = if self
+                    .source
+                    .get(range.start..range.start + 2)
+                    .is_some_and(|s| s.eq_ignore_ascii_case("<u"))
+                {
+                    MarkKind::Underline
+                } else {
+                    MarkKind::Strong
+                };
+                if let Some(c) = self.cell_mut() {
+                    c.open_mark(kind);
+                }
+            }
+            Event::Start(Tag::Strikethrough) => {
+                if let Some(c) = self.cell_mut() {
+                    c.open_mark(MarkKind::Strike);
+                }
+            }
+            Event::Start(Tag::Link { dest_url, .. }) => {
+                let url = dest_url.to_string();
+                if let Some(c) = self.cell_mut() {
+                    c.open_mark(MarkKind::Link { url });
+                }
+            }
+            Event::End(TagEnd::Emphasis)
+            | Event::End(TagEnd::Strong)
+            | Event::End(TagEnd::Strikethrough)
+            | Event::End(TagEnd::Link) => {
+                if let Some(c) = self.cell_mut() {
+                    c.close_mark();
+                }
             }
             _ => {}
         }
@@ -593,8 +729,7 @@ impl<'a> Builder<'a> {
 
     fn emit_image(&mut self) {
         self.ensure_open(LineKind::Para);
-        self.text.push(ISLAND_SLOT);
-        self.pos += 1;
+        self.inline.push_raw(ISLAND_SLOT);
         let props = json!({
             "url": self.image_url,
             "alt": self.image_alt.trim(),
@@ -615,13 +750,13 @@ impl<'a> Builder<'a> {
             });
         }
         // Close any marks left open (unterminated `<u>`, malformed input).
-        while !self.open_marks.is_empty() {
+        while !self.inline.open.is_empty() {
             self.close_mark();
         }
         RichText {
-            text: self.text,
+            text: self.inline.text,
             lines: self.lines,
-            marks: self.marks,
+            marks: self.inline.marks,
             islands: self.islands,
         }
     }

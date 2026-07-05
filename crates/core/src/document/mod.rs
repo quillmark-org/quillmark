@@ -53,7 +53,9 @@ pub mod prescan;
 pub mod wire;
 pub(crate) mod yaml_hints;
 
-pub use dto::{peek_schema_version, StorageError, StoredDocument, SCHEMA_V0_92_0};
+pub use dto::{
+    peek_schema_version, StorageError, StoredDocument, SCHEMA_V0_92_0, SCHEMA_V0_93_0,
+};
 pub use edit::EditError;
 pub use meta::{is_valid_kind_name, validate_composable_kind, CardKindError};
 pub use payload::{MetaKey, Payload, PayloadItem};
@@ -155,7 +157,7 @@ impl Card {
     }
 
     /// The card body rendered back to its markdown projection. This is a
-    /// derived view (`export ∘ body`), not stored state; a `.qmd` round-trip
+    /// derived view (`export ∘ body`), not stored state; a `Document` round-trip
     /// therefore canonicalizes the body (e.g. `__b__` → `**b**`).
     pub fn body_markdown(&self) -> String {
         quillmark_richtext::export::to_markdown(&self.body)

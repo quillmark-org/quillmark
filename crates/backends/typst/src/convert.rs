@@ -14,6 +14,14 @@ use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use quillmark_core::error::MAX_NESTING_DEPTH;
 use std::ops::Range;
 
+// PR-D: the corpus→Typst emitter + its source map. Declared here (a sibling file
+// at `src/emit.rs`, reached via `#[path]`) so `lib.rs` and the render path stay
+// untouched — the emitter is engine-off until PR-E wires it in. It reuses this
+// module's `escape_markup`/`escape_string` and is parity-tested against
+// `mark_to_typst` below it.
+#[path = "emit.rs"]
+pub mod emit;
+
 /// Errors that can occur during markdown to Typst conversion
 #[derive(Debug, thiserror::Error)]
 pub enum ConversionError {
