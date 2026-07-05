@@ -206,7 +206,10 @@ mod tests {
                 .into_diagnostics(),
             Err(err) => err.into_diagnostics(),
         };
-        assert!(!diags.is_empty(), "compilation error must carry diagnostics");
+        assert!(
+            !diags.is_empty(),
+            "compilation error must carry diagnostics"
+        );
 
         let diag = diags
             .iter()

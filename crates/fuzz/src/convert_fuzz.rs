@@ -1,5 +1,16 @@
 use proptest::prelude::*;
-use quillmark_typst::convert::{escape_markup, escape_string, mark_to_typst};
+use quillmark_typst::emit::{escape_markup, escape_string};
+
+/// Markdown → Typst markup over the corpus pipeline: import to a `RichText`, then
+/// lower it. This is the render path the former single-step `mark_to_typst`
+/// became — property-fuzzed here (no panic, escaping, formatting → Typst
+/// functions) exactly as that lowering was.
+fn mark_to_typst(markdown: &str) -> Result<String, String> {
+    let rt = quillmark_richtext::import::from_markdown(markdown).map_err(|e| e.to_string())?;
+    quillmark_typst::emit::emit_richtext(&rt)
+        .map(|ec| ec.markup)
+        .map_err(|e| e.to_string())
+}
 
 // Typst special characters that need escaping in markup context (excluding backslash and //)
 // Backslash is handled first to prevent double-escaping, and // is handled as a pattern

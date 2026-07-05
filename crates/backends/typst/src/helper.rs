@@ -18,8 +18,7 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
-use crate::convert::escape_string;
-use crate::emit::{emit_richtext, EmitError, EmittedContent, SegmentMap};
+use crate::emit::{emit_richtext, escape_string, EmitError, EmittedContent, SegmentMap};
 use crate::SchemaMeta;
 use quillmark_richtext::serial::from_canonical_value;
 
@@ -70,7 +69,8 @@ pub fn generate_lib_typ(
     // literal placeholder text cannot hijack a splice point (the #795 hygiene
     // fix, carried over). Slots are unique and ordered; each `find` starts
     // after the previous slot, scanning only the static template.
-    let mut out = String::with_capacity(LIB_TYP_TEMPLATE.len() + cg.blocks.len() + data_literal.len());
+    let mut out =
+        String::with_capacity(LIB_TYP_TEMPLATE.len() + cg.blocks.len() + data_literal.len());
     let mut cursor = 0usize;
     let mut blocks_at = 0usize;
     for (slot, value) in [
@@ -322,7 +322,11 @@ fn card_names(table: &serde_json::Map<String, serde_json::Value>, kind: &str) ->
     table
         .get(kind)
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|s| s.as_str().map(str::to_string)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|s| s.as_str().map(str::to_string))
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -446,7 +450,7 @@ entrypoint = "lib.typ"
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::convert::escape_markup;
+    use crate::emit::escape_markup;
     use crate::emit::EscapeCtx;
     use quillmark_core::quill::RICHTEXT_MEDIA_TYPE;
 
@@ -516,7 +520,7 @@ mod tests {
                 let src: String = chars[corpus_range.clone()].iter().collect();
                 let expect = match ctx {
                     EscapeCtx::Markup => escape_markup(&src),
-                    EscapeCtx::StringLit => crate::convert::escape_string(&src),
+                    EscapeCtx::StringLit => crate::emit::escape_string(&src),
                 };
                 assert_eq!(&lib[gen.clone()], expect, "run inverts to its corpus slice");
                 // The run sits inside its segment's window.
@@ -680,7 +684,10 @@ mod tests {
         assert_eq!(lit(&serde_json::json!(42)), "42");
         // i64::MIN cannot be a Typst literal (its magnitude overflows i64);
         // it is emitted as an int-typed expression instead.
-        assert_eq!(lit(&serde_json::json!(i64::MIN)), "(-9223372036854775807 - 1)");
+        assert_eq!(
+            lit(&serde_json::json!(i64::MIN)),
+            "(-9223372036854775807 - 1)"
+        );
         assert_eq!(lit(&serde_json::json!(1.5)), "float(\"1.5\")");
         assert_eq!(lit(&serde_json::json!("hi")), "\"hi\"");
         assert_eq!(lit(&serde_json::json!([])), "()");

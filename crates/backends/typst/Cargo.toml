@@ -13,10 +13,11 @@ repository = "https://github.com/quillmark-org/quillmark"
 [dependencies]
 # Typst's process-global memo cache; evicted after each compile (compile.rs).
 comemo = "0.5"
-pulldown-cmark = { workspace = true }
 quillmark-core = { workspace = true }
-# PR-D: the corpus model the (engine-off) emit.rs walks. Reached directly rather
-# than through core so the emitter names RichText/Mark/Island types head-on.
+# The corpus model `emit.rs` lowers to Typst markup. Reached directly rather than
+# through core so the emitter names RichText/Mark/Island types head-on. No
+# markdown parser is linked into this backend — the corpus crosses the seam
+# already imported.
 quillmark-richtext = { workspace = true }
 quillmark-pdf = { workspace = true }
 serde_json = { workspace = true }

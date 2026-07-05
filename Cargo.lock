@@ -2331,6 +2331,7 @@ dependencies = [
  "indexmap",
  "proptest",
  "quillmark-core",
+ "quillmark-richtext",
  "quillmark-typst",
  "serde_json",
 ]
@@ -2390,7 +2391,6 @@ dependencies = [
  "comemo",
  "js-sys",
  "lopdf",
- "pulldown-cmark",
  "quillmark-core",
  "quillmark-pdf",
  "quillmark-richtext",

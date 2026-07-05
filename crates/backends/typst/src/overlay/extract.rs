@@ -223,7 +223,10 @@ fn read_value_bool(d: &typst::foundations::Dict, key: &str) -> Result<Option<boo
         Ok(Value::None) | Err(_) => Ok(None),
         Ok(other) => Err(err(
             CODE_INTERNAL,
-            format!("expected metadata.{key} to be bool or none, got {}", other.ty()),
+            format!(
+                "expected metadata.{key} to be bool or none, got {}",
+                other.ty()
+            ),
         )),
     }
 }

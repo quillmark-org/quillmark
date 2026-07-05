@@ -149,15 +149,14 @@ impl Classifier<'_> {
         // routed to the served compile's snapshot instead of the world.
         let resolved = match DiagSpan::from(span).get() {
             DiagSpanKind::Detached => None,
-            DiagSpanKind::Number {
-                id,
-                num,
-                sub_range,
-            } => {
+            DiagSpanKind::Number { id, num, sub_range } => {
                 let range = if id == self.helper.id() {
                     self.helper.range(num, sub_range)
                 } else {
-                    self.world.source(id).ok().and_then(|s| s.range(num, sub_range))
+                    self.world
+                        .source(id)
+                        .ok()
+                        .and_then(|s| s.range(num, sub_range))
                 };
                 range.map(|r| (id, r))
             }
@@ -177,12 +176,7 @@ impl Classifier<'_> {
 /// — per glyph for text (a text run may mix spans), per item for shapes and
 /// images (each carries a single span). Boxes are computed for classified
 /// ink only.
-fn collect_page_hits(
-    frame: &Frame,
-    page: usize,
-    cls: &mut Classifier,
-    out: &mut Vec<Hit>,
-) {
+fn collect_page_hits(frame: &Frame, page: usize, cls: &mut Classifier, out: &mut Vec<Hit>) {
     fn walk(frame: &Frame, ts: Transform, page: usize, cls: &mut Classifier, out: &mut Vec<Hit>) {
         for (pos, item) in frame.items() {
             match item {
@@ -260,7 +254,9 @@ fn item_aabb(pos: Point, lo: Point, hi: Point, ts: Transform) -> Aabb {
 enum Run {
     NotSeen,
     /// Interrupted by foreign ink; may resume on page `last_page + 1` only.
-    Suspended { last_page: usize },
+    Suspended {
+        last_page: usize,
+    },
     Done,
 }
 
@@ -489,10 +485,7 @@ fn collect_anchors(
 
 /// If `node` is a `data.<field>` access or a `data.at("<field>")` call head
 /// with a declared field, its schema path and the node to widen from.
-fn data_access<'a>(
-    node: &LinkedNode<'a>,
-    fields: &[String],
-) -> Option<(String, LinkedNode<'a>)> {
+fn data_access<'a>(node: &LinkedNode<'a>, fields: &[String]) -> Option<(String, LinkedNode<'a>)> {
     if node.kind() != SyntaxKind::FieldAccess {
         return None;
     }

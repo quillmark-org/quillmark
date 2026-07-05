@@ -390,7 +390,8 @@ typst:
   block(r)
 }
 "#;
-    let data = serde_json::json!({ "refs": [corpus("First reference."), corpus("Second reference.")] });
+    let data =
+        serde_json::json!({ "refs": [corpus("First reference."), corpus("Second reference.")] });
 
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
     let regions = session.regions();
@@ -507,7 +508,10 @@ main:
 #form-field("S", type: "text", value: "x", field: "subjcet")
 "#;
     let err = TypstBackend
-        .open(&quill(YAML, PLATE), &serde_json::json!({ "subject": "typo'd" }))
+        .open(
+            &quill(YAML, PLATE),
+            &serde_json::json!({ "subject": "typo'd" }),
+        )
         .err()
         .expect("a typo'd field binding must fail the compile");
     let msg = format!("{err:?}");
@@ -560,7 +564,9 @@ main:
     // Shorter content shifts every byte offset in the regenerated helper,
     // and the unparseable date fails the compile at data-assembly time.
     let bad = serde_json::json!({ "intro": corpus("X"), "when": "not-a-date" });
-    session.apply(&bad).expect_err("the bad date must fail the compile");
+    session
+        .apply(&bad)
+        .expect_err("the bad date must fail the compile");
 
     assert_eq!(
         session.regions(),

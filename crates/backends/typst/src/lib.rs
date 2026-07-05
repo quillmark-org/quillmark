@@ -4,21 +4,23 @@
 //! [`TypstBackend`] implements the [`Backend`] trait from `quillmark-core`.
 //! Callers typically reach it through the `quillmark` crate's `Quill` API.
 //!
-//! Markdown fields are converted to Typst markup before compilation; the plate
-//! accesses them via the `@local/quillmark-helper` virtual package. Unsigned
-//! AcroForm widgets (text, checkbox, choice, signature) are embedded via the
-//! `form-field` helper in `lib.typ`; only PDF output carries the interactive
-//! widget — SVG and PNG render an invisible placeholder.
+//! Richtext fields cross the seam as canonical corpus JSON and are lowered to
+//! Typst markup by [`emit`] at codegen time — the only markup-producing path,
+//! never a markdown re-parse. The plate accesses fields via the
+//! `@local/quillmark-helper` virtual package. Unsigned AcroForm widgets (text,
+//! checkbox, choice, signature) are embedded via the `form-field` helper in
+//! `lib.typ`; only PDF output carries the interactive widget — SVG and PNG
+//! render an invisible placeholder.
 //!
 //! The `compile` and `error_mapping` modules are internal and not part of the
-//! public API. The public conversion surface is [`convert`].
+//! public API. The public lowering surface is [`emit`].
 
 mod compile;
-pub mod convert;
 /// The corpus → Typst-markup lowering + its per-segment source map (the codegen
 /// tier of the richtext seam, Option A). The one place that both lowers a
 /// [`RichText`](quillmark_richtext::RichText) and knows the resulting byte
-/// layout, so the only place a source map can be produced.
+/// layout, so the only place a source map can be produced. This is the sole
+/// markup-producing path in the render engine — no code parses markdown.
 pub mod emit;
 mod error_mapping;
 
@@ -257,7 +259,11 @@ fn validate_date_fields(
                 .card_date_fields
                 .get(kind)
                 .and_then(|v| v.as_array())
-                .map(|a| a.iter().filter_map(|s| s.as_str().map(str::to_string)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|s| s.as_str().map(str::to_string))
+                        .collect()
+                })
                 .unwrap_or_default();
             check(&names, card_obj, &format!("$cards.{kind}."))?;
         }
@@ -444,7 +450,12 @@ fn helper_source(world: &world::QuillWorld) -> Result<typst::syntax::Source, Ren
     use typst::World as _;
     world
         .source(world::QuillWorld::helper_fid("lib.typ"))
-        .map_err(|e| engine_err("typst::helper_source", format!("helper lib.typ unreadable: {e}")))
+        .map_err(|e| {
+            engine_err(
+                "typst::helper_source",
+                format!("helper lib.typ unreadable: {e}"),
+            )
+        })
 }
 
 impl Backend for TypstBackend {
@@ -467,8 +478,8 @@ impl Backend for TypstBackend {
         let schema_meta = SchemaMeta::from_schema_json(transform_schema.as_json());
         let data = transformed_data(&schema_meta, json_data)?;
         let (world, mut windows) =
-            world::QuillWorld::new_with_data(source, &plate_content, &data, &schema_meta)
-                .map_err(|e| {
+            world::QuillWorld::new_with_data(source, &plate_content, &data, &schema_meta).map_err(
+                |e| {
                     RenderError::from_diag(
                         Diagnostic::new(
                             Severity::Error,
@@ -477,7 +488,8 @@ impl Backend for TypstBackend {
                         .with_code("typst::world_creation".to_string())
                         .with_source(e.as_ref()),
                     )
-                })?;
+                },
+            )?;
         // The plate is static for the session, so its direct scalar
         // reference sites are windowed once here.
         let scalar_windows: Vec<overlay::FieldWindow> = {
@@ -734,7 +746,6 @@ impl SchemaMeta {
             fields,
         }
     }
-
 }
 
 #[cfg(test)]
@@ -801,7 +812,8 @@ mod tests {
         };
 
         // The body crosses the seam as canonical corpus JSON, not markdown.
-        let json = serde_json::json!({ "body": corpus("A **markdown** body with real ink to lay out.") });
+        let json =
+            serde_json::json!({ "body": corpus("A **markdown** body with real ink to lay out.") });
         let hashes_of = |quill: &Quill| {
             let plate_content = read_plate(quill).expect("plate");
             let transform_schema = build_transform_schema(quill.config());

@@ -134,7 +134,10 @@ impl QuillWorld {
                 .parse()
                 .expect("Invalid helper version"),
         };
-        file_id(Some(spec), VirtualPath::new(rel).expect("valid helper vpath"))
+        file_id(
+            Some(spec),
+            VirtualPath::new(rel).expect("valid helper vpath"),
+        )
     }
 
     /// Replace-or-insert a source. An existing source is edited via
