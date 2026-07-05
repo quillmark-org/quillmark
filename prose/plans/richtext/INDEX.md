@@ -155,17 +155,18 @@ Detail per phase in its own doc as it opens. Rough shape:
   with the Phase-0 spike code — the freeze is byte-deterministic across producers
   and feature configs. Decisions, review outcome, and the Phase-2 handover in
   [phase-1.md](phase-1.md).
-- **Phase 2 — engine consumes RichText (delivers #829).** Seam carries
-  RichText-JSON (Option A, [confirmed](phase-0.md)); `typst` emit
-  with per-line windows + source map; `pdfform` `.text` lowering; `locate` /
-  `position_at` + region re-key on `(field, corpus range, revision)`; storage
-  cutover (new `StoredDocument` version, deterministic cold-import migration).
-  Re-home the `RichText` type into `core` (codecs stay parser-side) and unify the
-  `MarkdownFixer` duplicated in Phase 1. Carry-forward: **(a)** character-precision
-  nav = add `glyph.span.1` to the resolved node range then invert the run map
-  (Spike B); **(b)** island `props` recursive key-sort before hashing —
-  **already done in Phase 1** (`model::sorted_value`), so Phase 2 inherits it.
-  Full list in [phase-1.md](phase-1.md#handover-to-phase-2).
+- **[Phase 2 — engine consumes RichText](phase-2.md) (delivers #829) — planned.**
+  The markdown parse moves to ingest: `core` hosts the whole richtext tree (import
+  included, so `crates/richtext` dissolves), the seam carries canonical
+  RichText-JSON (Option A, [confirmed](phase-0.md)), `typst` lowers the corpus to
+  markup with a per-segment source map, `pdfform` lowers via `.text`, storage cuts
+  over (new `StoredDocument` version, fallible cold-import migration), and regions
+  re-key on `(field, corpus range)` — `revision` **defers to Phase 3** with the
+  change-log. Delivers #829's paragraph regions as the segment-map degenerate case.
+  Supersedes phase-1 handover items 1 (re-home) and 4 (`MarkdownFixer` unify).
+  Decisions, sub-PRs (A–G), sequencing, risks, and the canon rework it forces are
+  in [phase-2.md](phase-2.md); the design inverts the "markdown-engine-free core"
+  invariant into "one parse site, in `core::richtext::import`".
 - **Phase 3 — edit surface.** Per-field delta (Quill-Delta semantics) + monotonic
   revision + bounded change log with position mapping; form-editor binding built
   on the phase-0 spike's frozen semantics. Opens the **residual Spike-A gate**:
