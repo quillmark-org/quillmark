@@ -28,30 +28,58 @@ use quillmark_richtext::RichText;
 // are pinned by explicit unit tests, not fuzzed here).
 // ---------------------------------------------------------------------------
 
-fn word() -> impl Strategy<Value = String> {
-    "[a-z]{1,6}"
+// `clean_word` is safe content for inside a formatted span / url / code / cell.
+fn clean_word() -> impl Strategy<Value = String> {
+    "[a-z0-9]{1,6}"
+}
+
+// `plain_word` carries inline-special and astral chars as *literal text*, so
+// escaping and USV bounds are exercised by the round-trip. The first char is
+// alphanumeric and the set excludes block-marker chars (`> # - .`): a
+// block marker *leading* an item's content (`- >`, `- #`) makes pulldown build
+// an empty nested block, not literal text — a degenerate corpus no editor emits
+// (leading-marker escaping is covered by `export::tests::*` unit tests instead).
+fn plain_word() -> impl Strategy<Value = String> {
+    r"[a-z0-9][a-z0-9*_~\\😀你]{0,5}"
 }
 
 fn inline_token() -> impl Strategy<Value = String> {
     prop_oneof![
-        word(),
-        word().prop_map(|w| format!("**{w}**")),
-        word().prop_map(|w| format!("_{w}_")),
-        word().prop_map(|w| format!("~~{w}~~")),
-        word().prop_map(|w| format!("`{w}`")),
-        word().prop_map(|w| format!("<u>{w}</u>")),
-        (word(), word()).prop_map(|(t, u)| format!("[{t}](https://ex.com/{u})")),
+        plain_word(),
+        clean_word().prop_map(|w| format!("**{w}**")),
+        clean_word().prop_map(|w| format!("_{w}_")),
+        clean_word().prop_map(|w| format!("~~{w}~~")),
+        clean_word().prop_map(|w| format!("`{w}`")),
+        clean_word().prop_map(|w| format!("<u>{w}</u>")),
+        (clean_word(), clean_word()).prop_map(|(t, u)| format!("[{t}](https://ex.com/{u})")),
     ]
 }
 
 fn prose() -> impl Strategy<Value = String> {
+    // Mix single-space and hard-break (`\`+newline) separators, and let some
+    // tokens abut, so delimiter-adjacency and hard breaks are covered.
     prop::collection::vec(inline_token(), 1..5).prop_map(|toks| toks.join(" "))
+}
+
+// Hard breaks join clean, non-empty *text* lines (the realistic case — an
+// address block, a signature). A mark that *spans* a hard break, or an empty
+// line adjacent to one, is a degenerate corpus markdown cannot represent (no
+// blank-then-forced-break syntax); those are recorded as documented codec
+// limits (see `export::tests::known_hard_break_limits`), not fuzzed here.
+fn hard_break_line() -> impl Strategy<Value = String> {
+    prop::collection::vec(clean_word(), 1..4).prop_map(|w| w.join(" "))
+}
+
+fn hard_break_prose() -> impl Strategy<Value = String> {
+    prop::collection::vec(hard_break_line(), 2..4).prop_map(|lines| lines.join("\\\n"))
 }
 
 fn block() -> impl Strategy<Value = String> {
     prop_oneof![
         prose(),
+        hard_break_prose(),
         (1u8..=6, prose()).prop_map(|(lvl, p)| format!("{} {p}", "#".repeat(lvl as usize))),
+        // Bullet list, some items multi-paragraph (nested blank line).
         prop::collection::vec(prose(), 1..4).prop_map(|items| items
             .iter()
             .map(|p| format!("- {p}"))
@@ -63,10 +91,13 @@ fn block() -> impl Strategy<Value = String> {
             .map(|(i, p)| format!("{}. {p}", i + 1))
             .collect::<Vec<_>>()
             .join("\n")),
+        // Nested bullet list (two container levels).
+        (prose(), prose(), prose())
+            .prop_map(|(a, b, c)| format!("- {a}\n  - {b}\n  - {c}")),
         prose().prop_map(|p| format!("> {p}")),
-        prop::collection::vec(word(), 1..4)
+        prop::collection::vec(clean_word(), 1..4)
             .prop_map(|ls| format!("```\n{}\n```", ls.join("\n"))),
-        (word(), word()).prop_map(|(a, b)| format!("| {a} | {b} |\n| --- | --- |\n| 1 | 2 |")),
+        (clean_word(), clean_word()).prop_map(|(a, b)| format!("| {a} | {b} |\n| --- | --- |\n| 1 | 2 |")),
     ]
 }
 

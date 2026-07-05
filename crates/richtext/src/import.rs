@@ -9,10 +9,22 @@
 //!
 //! ## Phase-1 canonicalizations (documented, not bugs)
 //!
-//! - **Soft breaks → space, hard breaks → line boundary.** A markdown hard break
-//!   (two trailing spaces or `\`) canonicalizes to a corpus line boundary,
-//!   indistinguishable from a paragraph break — the model has no
-//!   within-paragraph break and needs none for phase 1.
+//! Import maps some distinct markdown to one canonical corpus. All of them, in
+//! one place:
+//!
+//! - **Soft breaks → space; hard breaks → a `continues` line.** A soft break is
+//!   a space (CommonMark rendering); a hard break (two trailing spaces or `\`)
+//!   is a within-block continuation line ([`crate::model::Line::continues`]),
+//!   kept distinct from a paragraph boundary. A hard break inside a heading is a
+//!   space (ATX headings can't carry one).
+//! - **Adjacent sibling lists of the same shape merge.** Two consecutive lists
+//!   of the same kind whose items share an `ordinal` (`* a` then `+ b`, or two
+//!   ordered lists both starting at 1) are indistinguishable from one list /
+//!   one multi-paragraph item — item identity is positional `ordinal`, not a
+//!   minted list instance. Adjacent block quotes likewise merge into one.
+//! - **Empty blocks and containers keep their line.** An empty heading (`#`),
+//!   empty paragraph, empty `- ` item, or empty `>` quote each yields one empty
+//!   line so the structure survives, rather than vanishing.
 //! - **Island ids are minted sequentially** (`isl-0`, `isl-1`, …) so import is a
 //!   pure, deterministic function. Real minting (the hash-nondeterminism source)
 //!   is phase 4; sequential ids round-trip (export drops them, re-import
@@ -75,16 +87,21 @@ struct Builder<'a> {
     pos: usize, // USV position = char count of `text`
     lines: Vec<Line>,
     cur: Option<Line>, // the line currently open (kind + containers fixed at open)
-    /// A block start records the kind the next inline content should open a
-    /// fresh line with. Set at Paragraph/Heading/Item (tight lists emit no
-    /// Paragraph wrapper, so Item must force a line); cleared when a block that
-    /// owns its own lines (List/Quote/CodeBlock/Table) takes over.
-    pending_kind: Option<LineKind>,
+    /// A block start records `(kind, continues)` the next inline content should
+    /// open a fresh line with. Set at Paragraph/Heading/Item (tight lists emit no
+    /// Paragraph wrapper, so Item must force a line) with `continues = false`; a
+    /// hard break sets `continues = true`. Cleared when a block that owns its own
+    /// lines (List/Quote/CodeBlock/Table) takes over.
+    pending: Option<(LineKind, bool)>,
     marks: Vec<Mark>,
     open_marks: Vec<(MarkKind, usize)>, // (kind, start)
     islands: Vec<Island>,
     island_seq: usize,
     containers: Vec<Container>,
+    /// Parallel to `containers`: the [`Self::emitted`] count when each container
+    /// opened, so a container that closes having emitted no line (an empty `>`
+    /// quote, an empty `- ` item) can still get one.
+    container_marks: Vec<usize>,
     list_stack: Vec<ListInfo>,
     // code block
     code_lang: Option<String>,
@@ -131,12 +148,13 @@ impl<'a> Builder<'a> {
             pos: 0,
             lines: Vec::new(),
             cur: None,
-            pending_kind: None,
+            pending: None,
             marks: Vec::new(),
             open_marks: Vec::new(),
             islands: Vec::new(),
             island_seq: 0,
             containers: Vec::new(),
+            container_marks: Vec::new(),
             list_stack: Vec::new(),
             code_lang: None,
             in_code: false,
@@ -152,7 +170,9 @@ impl<'a> Builder<'a> {
     /// open sets the line directly; each later one first closes the previous
     /// line with a single `\n` boundary — so `lines.len()` always equals the
     /// `\n`-segment count.
-    fn open_line(&mut self, kind: LineKind) {
+    fn open_line(&mut self, kind: LineKind, continues: bool) {
+        // The first line (no line yet open) can never continue anything.
+        let continues = continues && self.cur.is_some();
         if let Some(prev) = self.cur.take() {
             self.text.push('\n');
             self.pos += 1;
@@ -161,6 +181,7 @@ impl<'a> Builder<'a> {
         self.cur = Some(Line {
             kind,
             containers: self.containers.clone(),
+            continues,
         });
     }
 
@@ -169,10 +190,10 @@ impl<'a> Builder<'a> {
     /// pending and no line open. A no-op when a line is already open and no new
     /// one is pending — inline content flows onto the current line.
     fn ensure_open(&mut self, default: LineKind) {
-        if let Some(k) = self.pending_kind.take() {
-            self.open_line(k);
+        if let Some((k, cont)) = self.pending.take() {
+            self.open_line(k, cont);
         } else if self.cur.is_none() {
-            self.open_line(default);
+            self.open_line(default, false);
         }
     }
 
@@ -193,7 +214,38 @@ impl<'a> Builder<'a> {
         }
     }
 
+    /// Lines emitted so far, counting the line currently open. A container that
+    /// closes with this unchanged from when it opened produced nothing.
+    fn emitted(&self) -> usize {
+        self.lines.len() + usize::from(self.cur.is_some())
+    }
+
+    /// Open a line for a block that ended with no inline content (an empty
+    /// heading `#`, an empty paragraph) — otherwise the block, and any content
+    /// model it carries, is silently lost.
+    fn flush_empty_block(&mut self) {
+        if let Some((k, cont)) = self.pending.take() {
+            self.open_line(k, cont);
+        }
+    }
+
+    /// Close a container: if it emitted no line, give it one empty `Para` line
+    /// (an empty `- ` item, an empty `>` quote) so the structure survives; then
+    /// pop it. `mark` is the [`Self::emitted`] snapshot from when it opened.
+    fn close_container(&mut self, mark: usize) {
+        if self.emitted() == mark {
+            self.pending = None;
+            self.open_line(LineKind::Para, false);
+        }
+        self.containers.pop();
+    }
+
     fn open_mark(&mut self, kind: MarkKind) {
+        // Resolve any armed line first, so a mark that begins a block records
+        // the position *after* the block's line boundary — not the `\n` before
+        // it. Without this the mark swallows the separator and equal content
+        // from an editor vs from import serializes to different canonical bytes.
+        self.ensure_open(LineKind::Para);
         self.open_marks.push((kind, self.pos));
     }
 
@@ -286,14 +338,24 @@ impl<'a> Builder<'a> {
                 }
                 Event::SoftBreak => self.push_inline(" "),
                 Event::HardBreak => {
-                    // Canonicalized to a line boundary of the same kind: arm a
-                    // pending line so the next content opens it.
-                    let kind = self
-                        .cur
-                        .as_ref()
-                        .map(|l| l.kind.clone())
-                        .unwrap_or(LineKind::Para);
-                    self.pending_kind = Some(kind);
+                    match self.cur.as_ref().map(|l| &l.kind) {
+                        // ATX headings can't carry a hard break in markdown, so
+                        // one inside a heading canonicalizes to a space (a
+                        // documented, representable choice).
+                        Some(LineKind::Heading { .. }) => self.push_inline(" "),
+                        // Elsewhere: a within-block line break — arm a pending
+                        // continuation line (same kind, continues = true) so it
+                        // stays one block and export re-emits a hard break, not a
+                        // paragraph split.
+                        _ => {
+                            let kind = self
+                                .cur
+                                .as_ref()
+                                .map(|l| l.kind.clone())
+                                .unwrap_or(LineKind::Para);
+                            self.pending = Some((kind, true));
+                        }
+                    }
                 }
                 // Html/InlineHtml already stripped or rewritten by the fixer;
                 // math/footnotes/etc. produce no corpus content.
@@ -305,15 +367,19 @@ impl<'a> Builder<'a> {
 
     fn start_tag(&mut self, tag: Tag<'a>, range: Range<usize>) -> Result<(), ImportError> {
         match tag {
-            // Block starts arm a pending line; the next inline content opens it.
-            Tag::Paragraph => self.pending_kind = Some(LineKind::Para),
+            // Block starts arm a pending line (new block, continues = false);
+            // the next inline content opens it.
+            Tag::Paragraph => self.pending = Some((LineKind::Para, false)),
             Tag::Heading { level, .. } => {
-                self.pending_kind = Some(LineKind::Heading {
-                    level: heading_level(level),
-                })
+                self.pending = Some((
+                    LineKind::Heading {
+                        level: heading_level(level),
+                    },
+                    false,
+                ))
             }
             Tag::CodeBlock(kind) => {
-                self.pending_kind = None; // code opens its own lines
+                self.pending = None; // code opens its own lines
                 self.in_code = true;
                 self.code_lang = match kind {
                     pulldown_cmark::CodeBlockKind::Fenced(lang) => {
@@ -332,7 +398,7 @@ impl<'a> Builder<'a> {
                 self.code_opened = false;
             }
             Tag::List(start) => {
-                self.pending_kind = None; // nested list content sets its own
+                self.pending = None; // nested list content sets its own
                 self.list_stack.push(ListInfo {
                     ordered: start.is_some(),
                     start: start.unwrap_or(1),
@@ -342,7 +408,8 @@ impl<'a> Builder<'a> {
             Tag::Item => {
                 // Tight-list items carry no Paragraph wrapper, so the item start
                 // is what forces a new line for the item's first inline content.
-                self.pending_kind = Some(LineKind::Para);
+                self.pending = Some((LineKind::Para, false));
+                self.container_marks.push(self.emitted());
                 let container = match self.list_stack.last_mut() {
                     Some(info) => {
                         let ordinal = info.count;
@@ -363,13 +430,14 @@ impl<'a> Builder<'a> {
                 self.check_depth()?;
             }
             Tag::BlockQuote(_) => {
-                self.pending_kind = None; // quote content sets its own
+                self.pending = None; // quote content sets its own
+                self.container_marks.push(self.emitted());
                 self.containers.push(Container::Quote);
                 self.check_depth()?;
             }
             Tag::Table(aligns) => {
-                self.pending_kind = None;
-                self.open_line(LineKind::Island);
+                self.pending = None;
+                self.open_line(LineKind::Island, false);
                 self.text.push(ISLAND_SLOT);
                 self.pos += 1;
                 self.table = Some(TableAcc {
@@ -425,7 +493,7 @@ impl<'a> Builder<'a> {
                 if !self.code_opened {
                     // Empty code block: one empty Code line.
                     let lang = self.code_lang.take();
-                    self.open_line(LineKind::Code { lang });
+                    self.open_line(LineKind::Code { lang }, false);
                 }
                 self.in_code = false;
                 self.code_lang = None;
@@ -434,15 +502,19 @@ impl<'a> Builder<'a> {
                 self.list_stack.pop();
             }
             TagEnd::Item => {
-                self.containers.pop();
+                let mark = self.container_marks.pop().unwrap_or(0);
+                self.close_container(mark);
             }
             TagEnd::BlockQuote(_) => {
-                self.containers.pop();
+                let mark = self.container_marks.pop().unwrap_or(0);
+                self.close_container(mark);
             }
             TagEnd::Emphasis
             | TagEnd::Strong
             | TagEnd::Strikethrough
             | TagEnd::Link => self.close_mark(),
+            // A block that produced no inline content still gets its line.
+            TagEnd::Heading(_) | TagEnd::Paragraph => self.flush_empty_block(),
             _ => {}
         }
     }
@@ -452,9 +524,15 @@ impl<'a> Builder<'a> {
         // content; drop exactly one so an N-line block yields N lines.
         let content = content.strip_suffix('\n').unwrap_or(content);
         for seg in content.split('\n') {
-            self.open_line(LineKind::Code {
-                lang: self.code_lang.clone(),
-            });
+            // First line of the block starts it (continues = false); every later
+            // line is a within-block continuation, so the fence stays one block.
+            let continues = self.code_opened;
+            self.open_line(
+                LineKind::Code {
+                    lang: self.code_lang.clone(),
+                },
+                continues,
+            );
             self.code_opened = true;
             // Code text is literal; still enforce corpus invariants.
             self.push_code_line(seg);
@@ -533,6 +611,7 @@ impl<'a> Builder<'a> {
             self.lines.push(Line {
                 kind: LineKind::Para,
                 containers: Vec::new(),
+                continues: false,
             });
         }
         // Close any marks left open (unterminated `<u>`, malformed input).
@@ -996,10 +1075,98 @@ mod tests {
     }
 
     #[test]
+    fn empty_list_item_keeps_its_line() {
+        // An empty `- ` item (here an empty bullet nested in an ordered item)
+        // must not vanish (regression for the container-flush fix).
+        let rt = imp("- a\n-\n- b");
+        assert_eq!(rt.lines.len(), 3, "empty middle item preserved");
+    }
+
+    #[test]
+    fn empty_blockquote_keeps_its_line() {
+        let rt = imp("> ");
+        assert_eq!(rt.lines.len(), 1);
+        assert_eq!(rt.lines[0].containers, vec![Container::Quote]);
+    }
+
+    #[test]
+    fn adjacent_sibling_lists_merge_is_stable() {
+        // Documented canonicalization: two sibling bullet lists collapse to one.
+        // Distinct markdown, one corpus — but the corpus is a fixed point.
+        let rt = imp("* a\n\n+ b");
+        let rt2 = from_markdown(&crate::export::to_markdown(&rt)).unwrap();
+        assert_eq!(rt, rt2, "merged sibling lists still round-trip");
+    }
+
+    #[test]
     fn empty_input_one_empty_line() {
         let rt = imp("");
         assert_eq!(rt.text, "");
         assert_eq!(rt.lines.len(), 1);
+    }
+
+    #[test]
+    fn mark_does_not_swallow_leading_newline() {
+        // Regression (review finding 1): a mark starting a block must begin at
+        // the content, not on the preceding line boundary.
+        let rt = imp("a\n\n**b**");
+        assert_eq!(rt.text, "a\nb");
+        let m = &rt.marks[0];
+        assert_eq!((m.start, m.end), (2, 3));
+        assert_eq!(rt.text.chars().nth(m.start), Some('b'));
+    }
+
+    #[test]
+    fn import_and_editor_corpus_same_canonical_bytes() {
+        // The freeze's central promise: equal content → equal bytes, whatever
+        // the producer. Import of "a\n\n**b**" must byte-match a hand-built
+        // editor corpus of the same content.
+        let imported = imp("a\n\n**b**");
+        let editor = RichText {
+            text: "a\nb".into(),
+            lines: vec![
+                Line {
+                    kind: LineKind::Para,
+                    containers: vec![],
+                    continues: false,
+                },
+                Line {
+                    kind: LineKind::Para,
+                    containers: vec![],
+                    continues: false,
+                },
+            ],
+            marks: vec![Mark {
+                start: 2,
+                end: 3,
+                kind: MarkKind::Strong,
+            }],
+            islands: vec![],
+        };
+        assert_eq!(imported.to_canonical_json(), editor.to_canonical_json());
+    }
+
+    #[test]
+    fn hard_break_is_a_continuation_line() {
+        let rt = imp("line one\\\nline two");
+        assert_eq!(rt.text, "line one\nline two");
+        assert_eq!(rt.lines.len(), 2);
+        assert!(!rt.lines[0].continues);
+        assert!(rt.lines[1].continues, "hard break -> continuation line");
+    }
+
+    #[test]
+    fn heading_cannot_carry_hard_break() {
+        // ATX headings are single-line: `## a  \nb` is a heading plus a separate
+        // paragraph, never a heading with a continuation. (The heading→space
+        // canonicalization in HardBreak handling is defensive for editor-built
+        // corpora, unreachable via markdown import.)
+        let rt = imp("## a  \nb");
+        assert_eq!(rt.text, "a\nb");
+        assert_eq!(rt.lines.len(), 2);
+        assert_eq!(rt.lines[0].kind, LineKind::Heading { level: 2 });
+        assert_eq!(rt.lines[1].kind, LineKind::Para);
+        assert!(!rt.lines[1].continues, "separate block, not a continuation");
     }
 
     #[test]

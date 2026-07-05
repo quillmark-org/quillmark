@@ -11,6 +11,21 @@
 //! `from_markdown(to_markdown(rt)) == rt` modulo island loss class — markdown
 //! source is not canonical, but the corpus is, so round-trip is defined at the
 //! corpus, not the string.
+//!
+//! ## Documented codec limits (degenerate, non-authorable corpora)
+//!
+//! The fixed point holds for corpora a well-behaved producer emits. Two
+//! degenerate shapes markdown cannot represent do **not** round-trip, and are
+//! recorded here rather than hidden (see `tests::known_hard_break_limits`):
+//!
+//! - **A mark spanning a hard break** — per-line rendering splits it into two
+//!   per-line marks (they do not re-union across the `\n`).
+//! - **An empty first line in a hard-break block** — markdown has no
+//!   blank-then-forced-break syntax, so the leading empty line is dropped.
+//!
+//! Both arise only from adversarial delimiter/break placement, never from clean
+//! markdown or a form editor. Hardening them is deferred (a phase-3 concern once
+//! a live editor defines what it can even produce).
 
 use crate::model::{Container, Island, LineKind, Loss, MarkKind, RichText, ISLAND_SLOT};
 
@@ -90,25 +105,16 @@ fn emit_block(ctx: &Ctx, range: std::ops::Range<usize>, depth: usize, out: &mut 
             first_block = false;
             i = j;
         } else {
-            // Leaf block at this depth. Code lines coalesce into one fence.
-            if let LineKind::Code { lang } = &line.kind {
-                let mut j = i + 1;
-                while j < range.end
-                    && lines[j].containers.len() == depth
-                    && matches!(&lines[j].kind, LineKind::Code { lang: l } if l == lang)
-                {
-                    j += 1;
-                }
-                block_separator(out, first_block);
-                emit_code(ctx, i..j, lang.as_deref(), out);
-                first_block = false;
-                i = j;
-            } else {
-                block_separator(out, first_block);
-                emit_leaf(ctx, i, out);
-                first_block = false;
-                i += 1;
+            // A leaf block: this line (continues == false) plus every following
+            // line that continues it (a hard-break run, or a code fence's lines).
+            let mut j = i + 1;
+            while j < range.end && lines[j].containers.len() == depth && lines[j].continues {
+                j += 1;
             }
+            block_separator(out, first_block);
+            emit_leaf_block(ctx, i..j, out);
+            first_block = false;
+            i = j;
         }
     }
 }
@@ -217,29 +223,35 @@ fn emit_code(ctx: &Ctx, range: std::ops::Range<usize>, lang: Option<&str>, out: 
     out.push_str(&fence);
 }
 
-fn emit_leaf(ctx: &Ctx, i: usize, out: &mut String) {
-    let line = &ctx.rt.lines[i];
-    match &line.kind {
+/// Emit one leaf block: the lines `range.start` (a block start) plus any
+/// continuation lines. A paragraph block joins its lines with a markdown hard
+/// break (`\` + newline); a code block renders one fence; a heading/island is a
+/// single line.
+fn emit_leaf_block(ctx: &Ctx, range: std::ops::Range<usize>, out: &mut String) {
+    let first = &ctx.rt.lines[range.start];
+    match &first.kind {
+        LineKind::Code { lang } => emit_code(ctx, range, lang.as_deref(), out),
+        LineKind::Island => {
+            // A block island: the segment is a single slot. Resolve and emit.
+            if let Some(isl) = slot_island(ctx, range.start) {
+                emit_island(isl, out);
+            }
+        }
         LineKind::Heading { level } => {
             for _ in 0..*level {
                 out.push('#');
             }
             out.push(' ');
-            out.push_str(&render_inline(ctx, i, false));
-        }
-        LineKind::Island => {
-            // A block island: the segment is a single slot. Resolve and emit.
-            let island = slot_island(ctx, i);
-            if let Some(isl) = island {
-                emit_island(isl, out);
-            }
-        }
-        LineKind::Code { .. } => {
-            // Handled by emit_code; a lone code line still renders as a fence.
-            emit_code(ctx, i..i + 1, None, out);
+            // Headings never carry continuations (import maps a hard break in a
+            // heading to a space), so only the first line contributes.
+            out.push_str(&render_inline(ctx, range.start, false));
         }
         LineKind::Para => {
-            out.push_str(&render_inline(ctx, i, true));
+            // Join continuation lines with a backslash hard break.
+            let parts: Vec<String> = range
+                .map(|i| render_inline(ctx, i, true))
+                .collect();
+            out.push_str(&parts.join("\\\n"));
         }
     }
 }
@@ -287,7 +299,10 @@ fn emit_table(isl: &Island, out: &mut String) {
     if cols == 0 {
         return;
     }
-    let cell = |v: &serde_json::Value| v.as_str().unwrap_or("").replace('|', "\\|");
+    // Cells are stored as raw markdown source slices (pipes already escaped as
+    // `\|` at import), so emit them verbatim — re-escaping would double the
+    // backslash and split the cell on re-import.
+    let cell = |v: &serde_json::Value| v.as_str().unwrap_or("").to_string();
 
     // header row
     out.push_str("| ");
@@ -360,6 +375,22 @@ fn render_inline(ctx: &Ctx, i: usize, escape_leading_block: bool) -> String {
         }
     }
 
+    // Leading ordered-list marker: a line whose text starts `<digits>.` or
+    // `<digits>)` would re-import as an ordered list, so escape that punctuation.
+    let escape_punct_at = if escape_leading_block {
+        let lead_digits = chars.iter().take_while(|c| c.is_ascii_digit()).count();
+        if lead_digits > 0
+            && lead_digits < n
+            && matches!(chars[lead_digits], '.' | ')')
+        {
+            Some(lead_digits)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let mut out = String::new();
     let island_at = |pos_local: usize| -> Option<&Island> {
         let global = line_start + pos_local;
@@ -431,11 +462,11 @@ fn render_inline(ctx: &Ctx, i: usize, escape_leading_block: bool) -> String {
                     emit_island(isl, &mut tmp);
                     out.push_str(&tmp);
                 }
+            } else if Some(pos) == escape_punct_at {
+                out.push('\\');
+                out.push(c);
             } else {
-                out.push_str(&escape_char(
-                    c,
-                    pos == 0 && escape_leading_block,
-                ));
+                out.push_str(&escape_char(c, pos == 0 && escape_leading_block));
             }
         }
         pos += 1;
@@ -446,7 +477,9 @@ fn render_inline(ctx: &Ctx, i: usize, escape_leading_block: bool) -> String {
 fn delim_open(kind: &MarkKind) -> String {
     match kind {
         MarkKind::Strong => "**".into(),
-        MarkKind::Emph => "_".into(),
+        // `*`, not `_`: `_` cannot do intraword emphasis (CommonMark flanking),
+        // so `_a_你` re-imports as literal text; `*a*你` emphasizes correctly.
+        MarkKind::Emph => "*".into(),
         MarkKind::Underline => "<u>".into(),
         MarkKind::Strike => "~~".into(),
         MarkKind::Unknown { .. } => String::new(),
@@ -458,7 +491,7 @@ fn delim_open(kind: &MarkKind) -> String {
 fn delim_close(kind: &MarkKind) -> String {
     match kind {
         MarkKind::Strong => "**".into(),
-        MarkKind::Emph => "_".into(),
+        MarkKind::Emph => "*".into(),
         MarkKind::Underline => "</u>".into(),
         MarkKind::Strike => "~~".into(),
         _ => String::new(),
@@ -598,6 +631,46 @@ mod tests {
     #[test]
     fn literal_asterisks_escaped() {
         round_trips("2 * 3 = 6 and a_b_c");
+    }
+
+    #[test]
+    fn hard_break_round_trips() {
+        round_trips("line one\\\nline two");
+    }
+
+    #[test]
+    fn hard_break_in_list_item() {
+        round_trips("- one\\\ntwo\n- three");
+    }
+
+    #[test]
+    fn leading_ordered_marker_escaped() {
+        // Corpus prose that begins `N.` must not re-import as an ordered list.
+        let mut rt = from_markdown("x").unwrap();
+        rt.text = "1. not a list".into();
+        let md = to_markdown(&rt);
+        let back = from_markdown(&md).unwrap();
+        assert_eq!(back.lines[0].kind, LineKind::Para);
+        assert!(back.lines[0].containers.is_empty());
+        assert_eq!(back, rt);
+    }
+
+    #[test]
+    fn table_with_escaped_pipe_round_trips() {
+        round_trips("| a \\| b | c |\n| --- | --- |\n| 1 | 2 |");
+    }
+
+    #[test]
+    fn known_hard_break_limits() {
+        // Recorded, not hidden: a mark spanning a hard break splits per line.
+        let rt = from_markdown("**one\\\ntwo**").unwrap();
+        let rt2 = from_markdown(&to_markdown(&rt)).unwrap();
+        // The spanning strong becomes two per-line strongs on round-trip.
+        assert!(
+            rt != rt2,
+            "if this ever round-trips, promote it out of the known-limits list"
+        );
+        assert_eq!(rt2.marks.len(), 2, "mark split across the hard break");
     }
 
     #[test]

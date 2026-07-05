@@ -81,7 +81,10 @@ impl Delta {
         for op in &self.ops {
             match op {
                 Op::Retain(n) => {
-                    if pos <= old + n {
+                    // Strictly inside the retain resolves here; the right
+                    // boundary (pos == old + n) falls through, so a following
+                    // Insert can apply its `assoc`.
+                    if pos < old + n {
                         return new + (pos - old);
                     }
                     old += n;
@@ -108,18 +111,19 @@ impl Delta {
                 }
             }
         }
-        new
+        new + pos.saturating_sub(old)
     }
 
-    /// Whether base position `pos` sits strictly inside a deleted span (used to
-    /// detect a collapsed zero-width anchor).
+    /// Whether base position `pos` sits strictly inside a deleted span. The
+    /// deletion's left edge (`pos == old`) survives — a point anchor there stays
+    /// put — so only `old < pos < old + n` counts as deleted.
     fn is_deleted(&self, pos: usize) -> bool {
         let mut old = 0usize;
         for op in &self.ops {
             match op {
                 Op::Retain(n) => old += n,
                 Op::Delete(n) => {
-                    if pos >= old && pos < old + n {
+                    if pos > old && pos < old + n {
                         return true;
                     }
                     old += n;
@@ -129,12 +133,44 @@ impl Delta {
         }
         false
     }
+
+    /// New-text char ranges covered by `Insert` ops — the only regions an anchor
+    /// may be re-homed into (moved text must have been *inserted*, not merely
+    /// present in surviving text elsewhere).
+    fn inserted_spans(&self) -> Vec<(usize, usize)> {
+        let mut spans = Vec::new();
+        let mut new = 0usize;
+        for op in &self.ops {
+            match op {
+                Op::Retain(n) => new += n,
+                Op::Insert(s) => {
+                    let len = s.chars().count();
+                    if len > 0 {
+                        spans.push((new, new + len));
+                    }
+                    new += len;
+                }
+                Op::Delete(_) => {}
+            }
+        }
+        spans
+    }
 }
+
+/// A relocation match shorter than this many chars is too weak to trust — the
+/// verbatim-move detector's length floor (mirrors the spike's `MIN_MOVE`).
+const MIN_MOVE: usize = 4;
 
 /// Char-level diff via common-prefix / common-suffix trim: the change is one
 /// `Delete` of the differing base middle and one `Insert` of the new middle.
-/// Coarse but valid — the move detector recovers relocations from the new text
-/// directly, so a finer diff is not needed for phase-1 anchor rebase.
+///
+/// Coarse by design for phase 1. A consequence: two disjoint edits collapse the
+/// whole span between them into one delete+insert, so an anchor sitting between
+/// them collapses and must relocate via the move detector. Anchor *survival*
+/// still holds (relocation recovers moved text; unrelated edits keep the
+/// surrounding retain), but the returned `Delta` is not a minimal edit script.
+/// Phase 3 (the real edit surface + change log) replaces this with a Myers/LCS
+/// diff; phase-1 anchor rebase does not need one.
 pub fn diff(base: &str, new: &str) -> Delta {
     let a: Vec<char> = base.chars().collect();
     let b: Vec<char> = new.chars().collect();
@@ -180,14 +216,16 @@ pub fn diff_import(
     let mut new_rt = crate::import::from_markdown(new_markdown)?;
     let delta = diff(&base.text, &new_rt.text);
 
+    let base_chars: Vec<char> = base.text.chars().collect();
     let new_chars: Vec<char> = new_rt.text.chars().collect();
+    let inserted = delta.inserted_spans();
     for m in &base.marks {
         // Only identity marks live in the corpus but not in markdown; formatting
         // marks are re-derived by the fresh import, so we do not carry them.
         let MarkKind::Anchor { .. } = &m.kind else {
             continue;
         };
-        if let Some((ns, ne)) = rebase_anchor(&base.text, &delta, &new_chars, m) {
+        if let Some((ns, ne)) = rebase_anchor(&delta, &base_chars, &new_chars, &inserted, m) {
             new_rt.marks.push(Mark {
                 start: ns,
                 end: ne,
@@ -203,22 +241,21 @@ pub fn diff_import(
 /// Rebase one anchor through the delta. Returns its new range, or `None` if it
 /// detaches (its text was deleted and no verbatim move re-homes it).
 fn rebase_anchor(
-    base_text: &str,
     delta: &Delta,
+    base_chars: &[char],
     new_chars: &[char],
+    inserted: &[(usize, usize)],
     m: &Mark,
 ) -> Option<(usize, usize)> {
     if m.start == m.end {
         // Zero-width point anchor.
         if !delta.is_deleted(m.start) {
-            return Some((
-                delta.map_pos(m.start, Assoc::Before),
-                delta.map_pos(m.start, Assoc::Before),
-            ));
+            let p = delta.map_pos(m.start, Assoc::Before);
+            return Some((p, p));
         }
-        // Context relocation: place it at the same offset inside its
-        // surrounding text if that context survived the move.
-        return relocate_point(base_text, new_chars, m.start);
+        // Its surrounding text was deleted — relocate only if that text was
+        // re-inserted verbatim elsewhere (a move).
+        return relocate_point(base_chars, new_chars, inserted, m.start);
     }
 
     let ns = delta.map_pos(m.start, Assoc::After);
@@ -226,54 +263,68 @@ fn rebase_anchor(
     if ns < ne {
         return Some((ns, ne)); // survived a surrounding edit
     }
-    // Collapsed — try a verbatim block move: find the annotated span in the new
-    // corpus.
-    relocate_span(base_text, new_chars, m.start, m.end)
+    // Collapsed — try a verbatim block move: the annotated span must reappear
+    // inside inserted text (not merely somewhere in the surviving corpus).
+    relocate_span(base_chars, new_chars, inserted, m.start, m.end)
 }
 
+/// Find the annotated span `base[start..end]` inside an inserted region of the
+/// new text. Requires a length floor and containment in inserted text, so an
+/// unrelated surviving occurrence of the same words cannot capture the anchor.
 fn relocate_span(
-    base_text: &str,
+    base_chars: &[char],
     new_chars: &[char],
+    inserted: &[(usize, usize)],
     start: usize,
     end: usize,
 ) -> Option<(usize, usize)> {
-    let base_chars: Vec<char> = base_text.chars().collect();
     if end > base_chars.len() {
         return None;
     }
     let needle = &base_chars[start..end];
-    find_subslice(new_chars, needle).map(|pos| (pos, pos + needle.len()))
+    find_in_spans(new_chars, needle, inserted).map(|pos| (pos, pos + needle.len()))
 }
 
-fn relocate_point(base_text: &str, new_chars: &[char], pos: usize) -> Option<(usize, usize)> {
+/// Relocate a point anchor by its left context (text immediately before it),
+/// but only if that context reappears inside inserted text — the same
+/// move-only, length-floored discipline as [`relocate_span`].
+fn relocate_point(
+    base_chars: &[char],
+    new_chars: &[char],
+    inserted: &[(usize, usize)],
+    pos: usize,
+) -> Option<(usize, usize)> {
     const K: usize = 24;
-    let base_chars: Vec<char> = base_text.chars().collect();
-    // Prefer left context (text immediately before the point); fall back to
-    // right context. The point lands at the boundary between them.
     let l0 = pos.saturating_sub(K);
     let left = &base_chars[l0..pos];
-    if !left.is_empty() {
-        if let Some(p) = find_subslice(new_chars, left) {
-            return Some((p + left.len(), p + left.len()));
-        }
+    if let Some(p) = find_in_spans(new_chars, left, inserted) {
+        return Some((p + left.len(), p + left.len()));
     }
     let r1 = (pos + K).min(base_chars.len());
     let right = &base_chars[pos..r1];
-    if !right.is_empty() {
-        if let Some(p) = find_subslice(new_chars, right) {
-            return Some((p, p));
-        }
+    if let Some(p) = find_in_spans(new_chars, right, inserted) {
+        return Some((p, p));
     }
     None
 }
 
-/// First index where `needle` occurs in `hay` (char slices). `None` if absent or
-/// empty needle.
-fn find_subslice(hay: &[char], needle: &[char]) -> Option<usize> {
-    if needle.is_empty() || needle.len() > hay.len() {
+/// First index where `needle` occurs in `hay` while *overlapping* an inserted
+/// span — i.e. the match touches text the rewrite actually inserted, not purely
+/// surviving text. Overlap (not full containment) is required because a coarse
+/// diff can split a moved block across an inserted region and the retained
+/// suffix; demanding containment would miss real moves, while demanding overlap
+/// still rejects an unrelated occurrence sitting entirely in retained text.
+/// Enforces [`MIN_MOVE`].
+fn find_in_spans(hay: &[char], needle: &[char], spans: &[(usize, usize)]) -> Option<usize> {
+    if needle.len() < MIN_MOVE || needle.len() > hay.len() {
         return None;
     }
-    (0..=hay.len() - needle.len()).find(|&i| &hay[i..i + needle.len()] == needle)
+    (0..=hay.len() - needle.len()).find(|&i| {
+        &hay[i..i + needle.len()] == needle
+            && spans
+                .iter()
+                .any(|&(s, e)| i < e && i + needle.len() > s)
+    })
 }
 
 #[cfg(test)]
@@ -361,6 +412,46 @@ mod tests {
                 .any(|m| matches!(&m.kind, MarkKind::Anchor { id } if id == "c1")),
             "anchor on deleted text detaches (accepted residual)"
         );
+    }
+
+    #[test]
+    fn anchor_not_rehomed_onto_unrelated_survivor() {
+        // Regression (review finding 5): an anchor on deleted text must NOT
+        // capture an unrelated *surviving* occurrence of the same words.
+        let mut base = from_markdown("target one to drop\n\nkeep the target two").unwrap();
+        base.marks.push(Mark {
+            start: 0,
+            end: 6, // "target" in the first (deleted) paragraph
+            kind: MarkKind::Anchor { id: "c1".into() },
+        });
+        base.normalize();
+        // First paragraph deleted; the second (with its own "target") survives
+        // as retained text — the anchor must drop, not jump to it.
+        let (new_rt, _) = diff_import(&base, "keep the target two").unwrap();
+        assert!(
+            !new_rt
+                .marks
+                .iter()
+                .any(|m| matches!(&m.kind, MarkKind::Anchor { id } if id == "c1")),
+            "anchor wrongly re-homed onto surviving unrelated text"
+        );
+    }
+
+    #[test]
+    fn map_pos_after_moves_past_boundary_insertion() {
+        // Regression (finding 7): a point at a retain|insert boundary with
+        // Assoc::After lands after the inserted text.
+        let d = diff("abcdef", "abcXYdef");
+        assert_eq!(d.map_pos(3, Assoc::After), 5);
+        assert_eq!(d.map_pos(3, Assoc::Before), 3);
+    }
+
+    #[test]
+    fn point_anchor_at_deletion_left_edge_survives() {
+        // Regression (finding 13): the deletion's left edge is not "deleted".
+        let d = diff("abcdef", "abef"); // delete "cd" (span [2,4))
+        assert!(!d.is_deleted(2), "left edge of deletion survives");
+        assert!(d.is_deleted(3), "interior of deletion is deleted");
     }
 
     fn byte(s: &str, char_idx: usize) -> usize {

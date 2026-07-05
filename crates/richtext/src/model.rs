@@ -52,6 +52,15 @@ pub struct Line {
     /// `Para` lines sharing one `[ListItem]` path; a paragraph in a quote in a
     /// list item is `[ListItem, Quote]`.
     pub containers: Vec<Container>,
+    /// Whether this line continues the previous line's *block* across a hard
+    /// line break (no paragraph break between), rather than starting a new
+    /// block. `false` = a new block (paragraph spacing on either side); `true` =
+    /// a within-block line break (markdown hard break; consecutive lines of one
+    /// code fence). The first line is always `false`. This is what keeps a hard
+    /// break (backend `#linebreak()`) distinct from a paragraph boundary through
+    /// the freeze, and what groups a code fence's lines without an
+    /// adjacency heuristic.
+    pub continues: bool,
 }
 
 /// The block role of a line. The tree between lines is inferred: two adjacent
@@ -74,10 +83,13 @@ pub enum LineKind {
 pub enum Container {
     /// A list item. `ordered` distinguishes `1.` from `-`; `start` is the list's
     /// first number (1 by default); `ordinal` is this item's 0-based index in
-    /// its list. Item identity is the full triple: two lines belong to the same
-    /// item iff their whole container path (ordinals included) is equal — so a
-    /// multi-paragraph item is two lines sharing one `ListItem`, while the next
-    /// item differs by `ordinal`. Positional and deterministic — no minted ids.
+    /// its list. Two *adjacent* lines belong to the same item iff their whole
+    /// container path (ordinals included) is equal — so a multi-paragraph item
+    /// is two lines sharing one `ListItem`, while the next item differs by
+    /// `ordinal`. (Identity is path **plus contiguity**: two sibling inner lists
+    /// under one outer item can produce equal first-item paths, distinguished
+    /// only by the non-adjacency of their runs.) Positional and deterministic —
+    /// no minted ids.
     ListItem {
         ordered: bool,
         start: u64,
@@ -265,6 +277,13 @@ pub enum Invariant {
     ZeroWidthFormatting { at: Usv },
     /// A heading level outside 1..=6.
     BadHeadingLevel(u8),
+    /// The first line has `continues: true` (nothing precedes it to continue).
+    FirstLineContinues,
+    /// An [`MarkKind::Unknown`] reused a reserved built-in `type` name.
+    ReservedUnknownTag(String),
+    /// A formatting mark edge sits on a `\n` (normalization should have trimmed
+    /// it) — a hand-built corpus that skipped `normalize`.
+    MarkEdgeOnNewline { at: Usv },
 }
 
 impl RichText {
@@ -275,6 +294,7 @@ impl RichText {
             lines: vec![Line {
                 kind: LineKind::Para,
                 containers: Vec::new(),
+                continues: false,
             }],
             marks: Vec::new(),
             islands: Vec::new(),
@@ -305,8 +325,30 @@ impl RichText {
                 *attrs = sorted_value(attrs);
             }
         }
+        // A formatting mark's edges never sit on a line boundary: markdown can't
+        // bold a `\n`, so two producers that disagree only about whether the
+        // boundary is "inside" the mark must canonicalize to the same bounds.
+        // Trim leading/trailing `\n` (interior boundaries are kept — a mark may
+        // legitimately span lines). Zero-width results are dropped below.
+        let chars: Vec<char> = self.text.chars().collect();
+        for m in &mut self.marks {
+            if m.kind.is_formatting() {
+                while m.start < m.end && chars.get(m.start) == Some(&'\n') {
+                    m.start += 1;
+                }
+                while m.end > m.start && chars.get(m.end - 1) == Some(&'\n') {
+                    m.end -= 1;
+                }
+            }
+        }
         self.marks = normalize_marks(std::mem::take(&mut self.marks));
     }
+
+    /// Mark `type` names the projection reserves; an [`MarkKind::Unknown`] may
+    /// not reuse one (its serialization would parse back as the built-in,
+    /// silently dropping its attrs — non-injective). Checked by [`validate`].
+    pub const RESERVED_MARK_TYPES: [&'static str; 7] =
+        ["strong", "emph", "underline", "strike", "code", "link", "anchor"];
 
     /// Check every invariant. `Ok(())` on a well-formed corpus. Import
     /// guarantees this; a hand-built corpus should be run through it in tests.
@@ -336,7 +378,11 @@ impl RichText {
                 segments,
             });
         }
+        if self.lines.first().is_some_and(|l| l.continues) {
+            return Err(Invariant::FirstLineContinues);
+        }
         let len = self.len_usv();
+        let chars: Vec<char> = self.text.chars().collect();
         for m in &self.marks {
             if m.start > m.end || m.end > len {
                 return Err(Invariant::MarkOutOfRange {
@@ -347,6 +393,19 @@ impl RichText {
             }
             if m.start == m.end && m.kind.is_formatting() {
                 return Err(Invariant::ZeroWidthFormatting { at: m.start });
+            }
+            if m.kind.is_formatting() {
+                if chars.get(m.start) == Some(&'\n') {
+                    return Err(Invariant::MarkEdgeOnNewline { at: m.start });
+                }
+                if m.end > m.start && chars.get(m.end - 1) == Some(&'\n') {
+                    return Err(Invariant::MarkEdgeOnNewline { at: m.end - 1 });
+                }
+            }
+            if let MarkKind::Unknown { tag, .. } = &m.kind {
+                if Self::RESERVED_MARK_TYPES.contains(&tag.as_str()) {
+                    return Err(Invariant::ReservedUnknownTag(tag.clone()));
+                }
             }
         }
         for line in &self.lines {
@@ -505,6 +564,7 @@ mod tests {
         rt.lines = vec![Line {
             kind: LineKind::Island,
             containers: vec![],
+            continues: false,
         }];
         assert_eq!(
             rt.validate(),

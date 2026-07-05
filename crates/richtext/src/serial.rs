@@ -24,6 +24,8 @@ pub enum ParseError {
     Shape(&'static str),
     /// The JSON itself did not parse.
     Json(String),
+    /// The value parsed but violates a corpus invariant.
+    Invalid(crate::model::Invariant),
 }
 
 impl std::fmt::Display for ParseError {
@@ -31,6 +33,7 @@ impl std::fmt::Display for ParseError {
         match self {
             ParseError::Shape(s) => write!(f, "richtext json shape: {s}"),
             ParseError::Json(s) => write!(f, "richtext json parse: {s}"),
+            ParseError::Invalid(inv) => write!(f, "richtext invariant: {inv:?}"),
         }
     }
 }
@@ -38,20 +41,26 @@ impl std::error::Error for ParseError {}
 
 impl RichText {
     /// Serialize to canonical JSON bytes. Normalizes a copy first, so the output
-    /// is canonical regardless of the caller's mark/island order.
+    /// is canonical regardless of the caller's mark/island order. Every object
+    /// key is sorted recursively so the bytes do **not** depend on
+    /// `serde_json`'s `preserve_order` feature being enabled in the consumer's
+    /// crate graph — the canonical form is feature-independent.
     pub fn to_canonical_json(&self) -> String {
         let mut rt = self.clone();
         rt.normalize();
-        rt.to_value().to_string()
+        sorted_value(&rt.to_value()).to_string()
     }
 
-    /// Parse canonical JSON. Normalizes defensively (idempotent), so
+    /// Parse canonical JSON, normalize (idempotent), and validate. Returns
+    /// [`ParseError::Invalid`] for a corpus that violates its invariants, so
+    /// storage cannot silently round-trip a malformed value.
     /// `from_canonical_json(to_canonical_json(x))` round-trips to a canonical
     /// value and re-serializes to identical bytes.
     pub fn from_canonical_json(s: &str) -> Result<RichText, ParseError> {
         let v: Value = serde_json::from_str(s).map_err(|e| ParseError::Json(e.to_string()))?;
         let mut rt = RichText::from_value(&v)?;
         rt.normalize();
+        rt.validate().map_err(ParseError::Invalid)?;
         Ok(rt)
     }
 
@@ -133,6 +142,11 @@ fn line_to_value(line: &Line) -> Value {
         "containers".into(),
         Value::Array(line.containers.iter().map(container_to_value).collect()),
     );
+    // Omitted when false (the common case) — deterministic since presence is a
+    // pure function of the value.
+    if line.continues {
+        m.insert("continues".into(), Value::Bool(true));
+    }
     Value::Object(m)
 }
 
@@ -159,7 +173,12 @@ fn line_from_value(v: &Value) -> Result<Line, ParseError> {
         .iter()
         .map(container_from_value)
         .collect::<Result<_, _>>()?;
-    Ok(Line { kind, containers })
+    let continues = o.get("continues").and_then(Value::as_bool).unwrap_or(false);
+    Ok(Line {
+        kind,
+        containers,
+        continues,
+    })
 }
 
 fn container_to_value(c: &Container) -> Value {
@@ -316,9 +335,11 @@ fn loss_to_str(loss: Loss) -> &'static str {
 
 fn loss_from_str(s: &str) -> Loss {
     match s {
+        "lossless" => Loss::Lossless,
         "degraded" => Loss::Degraded,
-        "unrepresentable" => Loss::Unrepresentable,
-        _ => Loss::Lossless,
+        // Unknown/future loss class defaults to the *safe* end: never claim a
+        // value the reader can't interpret "carries faithfully".
+        _ => Loss::Unrepresentable,
     }
 }
 
@@ -340,6 +361,7 @@ mod tests {
             lines: vec![Line {
                 kind: LineKind::Para,
                 containers: vec![],
+                continues: false,
             }],
             marks: vec![
                 Mark {
@@ -382,6 +404,7 @@ mod tests {
         one.lines = vec![Line {
             kind: LineKind::Island,
             containers: vec![],
+            continues: false,
         }];
         one.islands = vec![Island {
             id: "i1".into(),
@@ -392,6 +415,55 @@ mod tests {
         let mut two = one.clone();
         two.islands[0].props = serde_json::json!({"a": 2, "b": 1}); // keys reversed
         assert_eq!(one.to_canonical_json(), two.to_canonical_json());
+    }
+
+    #[test]
+    fn golden_bytes_are_feature_independent() {
+        // Pins the exact canonical form. Every object key is sorted, so the
+        // bytes do not depend on serde_json's preserve_order feature. If this
+        // string changes, the freeze changed — bump the schema version.
+        let rt = sample();
+        assert_eq!(
+            rt.to_canonical_json(),
+            r#"{"islands":[],"lines":[{"containers":[],"kind":"para"}],"marks":[{"end":5,"start":0,"type":"emph"},{"end":11,"start":6,"type":"strong"}],"text":"hello world"}"#
+        );
+    }
+
+    #[test]
+    fn from_canonical_json_rejects_invalid() {
+        // lines.len() != segment count — must not silently round-trip.
+        let bad = r#"{"text":"a\nb","lines":[{"kind":"para","containers":[]}],"marks":[],"islands":[]}"#;
+        assert!(matches!(
+            RichText::from_canonical_json(bad),
+            Err(ParseError::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn reserved_unknown_tag_rejected() {
+        // An Unknown mark may not reuse a built-in type name (would parse back
+        // as the built-in, dropping attrs — non-injective).
+        let mut rt = RichText::empty();
+        rt.text = "abcd".into();
+        rt.marks = vec![Mark {
+            start: 0,
+            end: 4,
+            kind: MarkKind::Unknown {
+                tag: "strong".into(),
+                attrs: serde_json::json!({}),
+            },
+        }];
+        assert!(matches!(
+            rt.validate(),
+            Err(crate::model::Invariant::ReservedUnknownTag(_))
+        ));
+    }
+
+    #[test]
+    fn unknown_loss_class_defaults_unrepresentable() {
+        let json = r#"{"text":"￼","lines":[{"kind":"island","containers":[]}],"marks":[],"islands":[{"id":"i1","type":"widget","props":{},"loss":"future_class"}]}"#;
+        let rt = RichText::from_canonical_json(json).unwrap();
+        assert_eq!(rt.islands[0].loss, Loss::Unrepresentable);
     }
 
     #[test]
