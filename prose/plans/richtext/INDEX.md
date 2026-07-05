@@ -99,8 +99,10 @@ not this list.
   set absorbs new mark *types*, not changed semantics of known ones.
   → **Resolved (phase 0·A):** editor-independent by construction — the model
   encodes only the mark set + three normalization rules and delegates
-  edge-expand / adjacent-merge to the editor. Phase 1 may freeze now; a live
-  binding is the residual gate ([phase-0.md](phase-0.md#residual-gate)).
+  edge-expand / adjacent-merge to the editor. **Frozen in phase 1** and verified
+  byte-deterministic across producers (import vs a hand-built editor corpus emit
+  identical bytes) and feature configs (whole-tree key sort); a live binding is
+  the residual gate ([phase-1.md](phase-1.md), [phase-0.md](phase-0.md#residual-gate)).
 - **Seam encoding, not map production.** `locate` / `position_at` / regions key
   on `(field, corpus range, revision)` however `typst` builds the map — but the
   map is a codegen artifact, so content must cross the seam *faithfully* (not as
@@ -117,15 +119,17 @@ not this list.
 - **Determinism has an honest boundary.** Migration is mint-free (legacy bodies
   hold no islands); island IDs mint at creation, so phase-4 hashing of
   island-bearing documents inherits mint-nondeterminism. Text stays
-  deterministic. → **Resolved (phase 0·C):** mint is the *sole* source; **new
-  carry-forward** — `serde_json` `preserve_order` leaks island `props` key order
-  into the hash unless keys are recursively sorted before hashing (phase 2).
+  deterministic. → **Resolved (phase 0·C):** mint is the *sole* source; the
+  `preserve_order` `props`-key-order leak is **closed in phase 1**
+  (`model::sorted_value` recursively sorts before serialization). Mint
+  nondeterminism does not appear until phase 4 (islands).
 - **The move-annotation weak spot lands on the flagship writer.** The stale-text
   writer (MCP `update_document`, saved `.qmd`) rebases via cold-parse + corpus
   diff; a reorder is delete+insert, so annotations on moved text drop unless a
-  move detector confines it. → **Resolved (phase 0·A):** move detector re-homes
-  a single near-verbatim block move; residual drop (moved *and* rewritten)
-  accepted and stated. See [phase-0.md](phase-0.md).
+  move detector confines it. → **Implemented in phase 1** (`delta::diff_import`):
+  a verbatim block move re-homes the anchor, restricted to *inserted* text
+  (overlap + length floor) so it cannot capture unrelated surviving text; residual
+  drop (moved *and* rewritten) accepted and stated. See [phase-1.md](phase-1.md).
 - **USV coordinates are a standing cross-binding tax.** JS editors are UTF-16,
   Rust UTF-8; every delta crossing WASM/Python converts at its boundary, and the
   property suite owns surrogate-pair / astral-plane correctness. → Validated in
@@ -139,25 +143,29 @@ Detail per phase in its own doc as it opens. Rough shape:
   schema lands. Editor binding (gates mark semantics), source-map/navigation
   inversion (gates the phase-2 emit design), seam + determinism prototype (gates
   Option A). Nothing here ships to `main`. **Reported — no red flag** (see
-  [phase-0.md](phase-0.md); runnable probe `crates/richtext-spikes/`). Phase 1
-  may open on the Spike-A contract, with a live-editor binding tracked as its
-  residual gate.
-- **Phase 1 — type + codecs, engine-off.** `RichText` + canonical serialization
-  (frozen on the [Spike-A contract](phase-0.md): mark set + three normalization
-  rules) + markdown⇄corpus import/export codecs +
-  property suite (round-trip modulo loss class; diff-import preserves
-  marks/islands). Exercised against the fixture corpus; engine untouched. Carry
-  from phase 0: the move detector and USV conversions have working shapes in
-  `crates/richtext-spikes/` to port and harden.
+  [phase-0.md](phase-0.md); runnable probe `crates/richtext-spikes/` on branch
+  `claude/issue-831-phase-0-tbjjm1`, not on `main`/`integration`). Phase 1 opened
+  on the Spike-A contract, with a live-editor binding tracked as its residual
+  gate.
+- **[Phase 1 — type + codecs, engine-off](phase-1.md)** — **landed.** `RichText`
+  + canonical serialization (frozen on the [Spike-A contract](phase-0.md): mark
+  set + three normalization rules) + markdown⇄corpus import/export codecs +
+  property suite. New crate `crates/richtext`, engine untouched. Built from the
+  written contract, then hardened against an independent review cross-checked
+  with the Phase-0 spike code — the freeze is byte-deterministic across producers
+  and feature configs. Decisions, review outcome, and the Phase-2 handover in
+  [phase-1.md](phase-1.md).
 - **Phase 2 — engine consumes RichText (delivers #829).** Seam carries
   RichText-JSON (Option A, [confirmed](phase-0.md)); `typst` emit
   with per-line windows + source map; `pdfform` `.text` lowering; `locate` /
   `position_at` + region re-key on `(field, corpus range, revision)`; storage
   cutover (new `StoredDocument` version, deterministic cold-import migration).
-  Two carry-forward items from phase 0: **(a)** character-precision nav = add
-  `glyph.span.1` to the resolved node range then invert the run map (Spike B);
-  **(b)** recursively canonicalize island `props` keys before hashing, or
-  `preserve_order` leaks insertion order into the content hash (Spike C).
+  Re-home the `RichText` type into `core` (codecs stay parser-side) and unify the
+  `MarkdownFixer` duplicated in Phase 1. Carry-forward: **(a)** character-precision
+  nav = add `glyph.span.1` to the resolved node range then invert the run map
+  (Spike B); **(b)** island `props` recursive key-sort before hashing —
+  **already done in Phase 1** (`model::sorted_value`), so Phase 2 inherits it.
+  Full list in [phase-1.md](phase-1.md#handover-to-phase-2).
 - **Phase 3 — edit surface.** Per-field delta (Quill-Delta semantics) + monotonic
   revision + bounded change log with position mapping; form-editor binding built
   on the phase-0 spike's frozen semantics. Opens the **residual Spike-A gate**:

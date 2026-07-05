@@ -5,6 +5,7 @@ members = [
     "crates/quillmark-pdf",
     "crates/backends/typst",
     "crates/backends/pdfform",
+    "crates/richtext",
     "crates/fixtures",
     "crates/bindings/wasm",
     "crates/fuzz",
@@ -63,6 +64,7 @@ typst-svg = "0.15.0"
 
 # Intra-project dependencies
 quillmark-core = { version = "0.92.1", path = "crates/core" }
+quillmark-richtext = { version = "0.92.1", path = "crates/richtext" }
 quillmark-pdf = { version = "0.92.1", path = "crates/quillmark-pdf" }
 quillmark-typst = { version = "0.92.1", path = "crates/backends/typst", default-features = false }
 quillmark-pdfform = { version = "0.92.1", path = "crates/backends/pdfform", default-features = false }

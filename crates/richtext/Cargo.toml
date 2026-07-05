@@ -1,0 +1,27 @@
+[package]
+name = "quillmark-richtext"
+version.workspace = true
+edition.workspace = true
+include.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository = "https://github.com/quillmark-org/quillmark"
+description = "RichText corpus content model and markdown codecs for Quillmark (issue #831, phase 1)"
+# Phase 1 is engine-off: the model + codecs are exercised in isolation and no
+# engine crate consumes them yet. Kept out of the default publish set until
+# phase 2 wires storage/backends to it. Tracked in prose/plans/richtext/.
+publish = false
+
+[dependencies]
+quillmark-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+indexmap = { workspace = true }
+unicode-normalization = { workspace = true }
+# The markdown projection's parser. Core stays markdown-engine-free (pulldown is
+# dev-only there); the codecs that need a CommonMark parser live in this crate.
+pulldown-cmark = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+quillmark-fixtures = { workspace = true }
