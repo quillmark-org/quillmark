@@ -48,7 +48,7 @@ Two escapers guard the two Typst contexts; both live in `emit`:
 | Corpus construct | Typst |
 |---|---|
 | `LineKind::Heading{level}` | `=` … `======` (`level` × `=`) |
-| `LineKind::Para` | inline content; an interior line break (a `continues` join) emits `#linebreak()` |
+| `LineKind::Para` | inline content; a hard break (a `continues` line join) emits `#linebreak()`, a soft break is a space (both settled at import) |
 | `LineKind::Code{lang}` (code fence) | `#raw(block: true, lang: "…", "…")`; `lang:` emitted only when the language tag is non-empty |
 | `MarkKind::Strong` | `#strong[…]` |
 | `MarkKind::Emph` | `#emph[…]` |
