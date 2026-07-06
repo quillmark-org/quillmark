@@ -25,7 +25,7 @@ Supported field types:
 | `array` | Ordered list; requires an `items:` element schema (e.g. `items: { type: string }` for `string[]`, `items: { type: object, properties: … }` for a typed table) |
 | `object` | Structured map; requires `properties:` |
 | `datetime` | YAML 1.1 timestamp: bare `YYYY-MM-DD` through full RFC 3339 with offset; seconds optional |
-| `markdown` | Rich text; backends handle conversion |
+| `richtext` | Rich prose over a canonical corpus (`RichText`); markdown is a projection of it. `richtext(inline)` is the single-line variant. `markdown` is a deprecated alias for block `richtext` |
 
 ## Type coercion
 
@@ -34,16 +34,17 @@ Supported field types:
 - Returns `Result<IndexMap<String, QuillValue>, CoercionError>`
 - Coerces top-level fields and per-card fields to their declared types
 - Fails fast (`Err`) on the first value that cannot be coerced
-- Coercion rules per type: array wrapping plus element-wise coercion against the `items` schema (a bad element fails at its indexed path, e.g. `counts[1]`); boolean from string/int/float; number/integer from string or from boolean (`true→1`, `false→0`); string/markdown unwrap a length-1 string array into the bare string (else identity); date/datetime format validation; object property recursion
+- Coercion rules per type: array wrapping plus element-wise coercion against the `items` schema (a bad element fails at its indexed path, e.g. `counts[1]`); boolean from string/int/float; number/integer from string or from boolean (`true→1`, `false→0`); string unwraps a length-1 string array into the bare string (else identity); richtext commits the canonical corpus form (the model) — an authored markdown string imports (via `quillmark-richtext::import`), an editor-supplied corpus object revalidates and re-canonicalizes, and the length-1-array-unwrap / bare-scalar-stringify leniencies feed the import; date/datetime format validation; object property recursion
 - **Null short-circuits coercion.** A null value (`field:`, `field: null`,
   `field: ~`) passes coercion unchanged for *every* type — null ≡ absent, so
   it carries no data to coerce. The value reaches the render floor and
   zero-fills (authored › `default:` › type-zero) exactly like an omitted
   field
-- **Bare scalars stringify into `string`/`markdown` fields.** A bare boolean,
+- **Bare scalars stringify into `string`/`richtext` fields.** A bare boolean,
   integer, or number written where a `string` is expected adopts its canonical
   scalar token (`true`, `47`, `1.0`) instead of failing — it is unambiguously
-  text (null and collections are excluded). The leniency is scoped to
+  text (null and collections are excluded); a `richtext` field then imports that
+  token as its markdown source. The leniency is scoped to
   *document* payloads via the shared `scalar_as_string` predicate; a quill
   author's own `default:`/`example:` literals stay strict, so the blueprint
   keeps quoting ambiguous string literals
