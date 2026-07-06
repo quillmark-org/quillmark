@@ -59,15 +59,17 @@ def test_payload_access(taro_md):
 def test_body_is_str(taro_md):
     """Test that body is a str (not None)."""
     doc = Document.from_markdown(taro_md)
-    assert isinstance(doc.body, str)
-    assert "nutty" in doc.body
+    # `body` is the canonical corpus (a dict); `body_markdown` its projection.
+    assert isinstance(doc.body, dict)
+    assert isinstance(doc.body_markdown, str)
+    assert "nutty" in doc.body_markdown
 
 
 def test_body_empty_when_absent():
     """Test that body is empty string when no body content."""
     md = "~~~card-yaml\n$quill: taro\n$kind: main\nauthor: Test\ntitle: Test\nice_cream: Vanilla\n~~~\n"
     doc = Document.from_markdown(md)
-    assert doc.body == ""
+    assert doc.body_markdown == ""
 
 
 def test_cards_access():
@@ -81,7 +83,7 @@ def test_cards_access():
     card = doc.cards[0]
     assert card["kind"] == "note"
     assert field(card, "foo") == "bar"
-    assert "Card body." in card["body"]
+    assert "Card body." in card["body_markdown"]
 
 
 def test_cards_empty_when_none():

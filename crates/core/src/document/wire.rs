@@ -31,6 +31,7 @@ use super::payload::{MetaKey, Payload, PayloadItem};
 use super::Card;
 use crate::value::{PathSegment, QuillValue};
 use crate::version::QuillReference;
+use quillmark_richtext::RichText;
 
 /// One entry in a [`CardWire`]'s `payload_items`: a user field or a comment.
 /// The `$` system entries are hoisted onto [`CardWire`] itself, never here.
@@ -123,9 +124,20 @@ pub struct CardWire {
     /// User fields and comments, in source order.
     #[serde(default, alias = "payload_items")]
     pub payload_items: Vec<PayloadItemWire>,
-    /// Markdown body after the card's closing fence. Empty when absent.
+    /// The card body as canonical RichText-JSON — the source-of-truth content
+    /// model (a corpus object, `{text, lines, marks, islands}`). The empty corpus
+    /// when absent. A markdown string is also accepted on input (imported), so an
+    /// LLM/markdown writer can still hand a string here.
     #[serde(default)]
-    pub body: String,
+    pub body: JsonValue,
+    /// The body's markdown projection (`export ∘ body`) — a read convenience, not
+    /// stored state. Always emitted (empty string for an empty body, so consumers
+    /// need not guard for absence); ignored on input (`body` is authoritative, so
+    /// a round-trip through this shape is lossless regardless of `bodyMarkdown`).
+    /// The snake_case `body_markdown` is also accepted on input (the Python dict
+    /// shape), like `payload_items`.
+    #[serde(default, alias = "body_markdown")]
+    pub body_markdown: String,
 }
 
 /// Failure converting a [`CardWire`] back into a [`Card`].
@@ -163,7 +175,8 @@ impl From<&Card> for CardWire {
             ext: None,
             seed: None,
             payload_items: Vec::new(),
-            body: card.body_markdown(),
+            body: quillmark_richtext::serial::to_canonical_value(card.body()),
+            body_markdown: card.body_markdown(),
         };
         for item in card.payload().items() {
             match item {
@@ -288,11 +301,35 @@ impl TryFrom<CardWire> for Card {
             };
             payload.set_seed(seed);
         }
-        let body = super::import_body(&wire.body).map_err(|e| WireError::InvalidField {
-            key: "$body".to_string(),
-            reason: e.to_string(),
-        })?;
+        let body = body_from_wire(&wire.body)?;
         Ok(Card::from_parts(payload, body))
+    }
+}
+
+/// Read a [`CardWire::body`] into a [`RichText`] corpus. The body is the source
+/// of truth in two accepted encodings: a **corpus object** (an editor / a
+/// re-serialized card) is deserialized and validated; a **markdown string** (an
+/// LLM / markdown writer) is imported. `null`/absent is the empty corpus; any
+/// other shape is an invalid `$body`. `body_markdown` is never read.
+fn body_from_wire(body: &JsonValue) -> Result<RichText, WireError> {
+    let invalid = |reason: String| WireError::InvalidField {
+        key: "$body".to_string(),
+        reason,
+    };
+    match body {
+        JsonValue::String(md) => super::import_body(md).map_err(|e| invalid(e.to_string())),
+        JsonValue::Object(_) => quillmark_richtext::serial::from_canonical_value(body)
+            .map_err(|e| invalid(e.to_string())),
+        JsonValue::Null => Ok(RichText::empty()),
+        other => Err(invalid(format!(
+            "expected a richtext corpus object or a markdown string, got {}",
+            match other {
+                JsonValue::Bool(_) => "a boolean",
+                JsonValue::Number(_) => "a number",
+                JsonValue::Array(_) => "an array",
+                _ => "an unsupported value",
+            }
+        ))),
     }
 }
 
@@ -403,7 +440,8 @@ mod tests {
                 fill: false,
                 nested_fills: Vec::new(),
             }],
-            body: String::new(),
+            body: JsonValue::Null,
+            body_markdown: String::new(),
         })
         .unwrap();
         let json = serde_json::to_value(CardWire::from(&card)).unwrap();
@@ -423,7 +461,8 @@ mod tests {
             ext: None,
             seed: None,
             payload_items: Vec::new(),
-            body: String::new(),
+            body: JsonValue::Null,
+            body_markdown: String::new(),
         })
         .unwrap_err();
         assert!(matches!(err, WireError::InvalidQuillReference { .. }));

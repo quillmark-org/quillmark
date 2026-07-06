@@ -140,7 +140,27 @@ export interface Card {
     ext?: Record<string, unknown>;
     seed?: Record<string, unknown>;
     payloadItems: PayloadItem[];
-    body: string;
+    /**
+     * The card body as canonical RichText-JSON — the source-of-truth content
+     * model. An editor writes this shape back; a markdown string is also accepted
+     * on input (imported). Read `bodyMarkdown` for the markdown projection.
+     */
+    body: RichText;
+    /** The body's markdown projection (`export ∘ body`). Read-only; `""` for an empty body. */
+    bodyMarkdown: string;
+}
+
+/**
+ * Canonical richtext corpus — the content model for a card body (and richtext
+ * fields). One text sequence over a single coordinate space (Unicode scalar
+ * values): `text` plus line attributes, anchored `marks`, and embedded
+ * `islands`. Every edit is a splice; markdown is a projection, not the model.
+ */
+export interface RichText {
+    text: string;
+    lines: unknown[];
+    marks: unknown[];
+    islands: unknown[];
 }
 "#;
 
@@ -915,15 +935,24 @@ impl Document {
                 nested_fills: Vec::new(),
             })
             .collect();
-        let wire = quillmark_core::CardWire {
+        let string_wire = quillmark_core::CardWire {
             kind,
             quill: None,
             id: None,
             ext: None,
             seed: None,
             payload_items,
-            body: body.unwrap_or_default(),
+            // The `body` argument is markdown; `Card::try_from` imports it to the
+            // corpus (and validates the fields).
+            body: serde_json::Value::String(body.unwrap_or_default()),
+            body_markdown: String::new(),
         };
+        // Round-trip through `Card` so the emitted card carries the corpus body
+        // (the source-of-truth shape `cards()` returns) plus its markdown
+        // projection, not the raw authored string.
+        let card = quillmark_core::Card::try_from(string_wire)
+            .map_err(|e| WasmError::from(format!("makeCard: {e}")).to_js_value())?;
+        let wire = quillmark_core::CardWire::from(&card);
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         wire.serialize(&serializer).map_err(|e| {
             WasmError::from(format!("makeCard: serialization failed: {e}")).to_js_value()

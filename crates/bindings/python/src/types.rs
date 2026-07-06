@@ -405,9 +405,19 @@ impl PyDocument {
             .collect()
     }
 
-    /// Main card's global Markdown body (the corpus body's markdown projection).
+    /// Main card's global body as canonical RichText-JSON — the source-of-truth
+    /// content model (a corpus dict, `{text, lines, marks, islands}`). Use
+    /// [`body_markdown`](Self::body_markdown) for the markdown projection.
     #[getter]
-    fn body(&self) -> String {
+    fn body<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let wire = quillmark_core::CardWire::from(self.inner.main());
+        json_to_py(py, &wire.body)
+    }
+
+    /// Main card's global body rendered back to its markdown projection
+    /// (`export ∘ body`).
+    #[getter]
+    fn body_markdown(&self) -> String {
         self.inner.main().body_markdown()
     }
 
@@ -636,7 +646,10 @@ impl PyDocument {
             ext: None,
             seed: None,
             payload_items,
-            body: body.unwrap_or_default(),
+            // The `body` argument is markdown; `Card::try_from` imports it to the
+            // corpus, and `card_to_pydict` re-emits the corpus + its projection.
+            body: serde_json::Value::String(body.unwrap_or_default()),
+            body_markdown: String::new(),
         };
         let card = quillmark_core::Card::try_from(wire)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -996,7 +1009,10 @@ fn card_to_pydict<'py>(
         None => d.set_item("seed", py.None())?,
     }
 
-    d.set_item("body", &wire.body)?;
+    // `body` is the canonical corpus (source of truth); `body_markdown` its
+    // read-only projection. The reverse path (`py_dict_to_card`) reads `body`.
+    d.set_item("body", json_to_py(py, &wire.body)?)?;
+    d.set_item("body_markdown", &wire.body_markdown)?;
     Ok(d)
 }
 

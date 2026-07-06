@@ -86,7 +86,7 @@ def test_blank_document_constructor():
     doc = Document("test_quill")
     assert doc.quill_ref == "test_quill"
     assert doc.card_count == 0
-    assert doc.body == ""
+    assert doc.body_markdown == ""
     assert field_keys(doc.main) == []
     doc.set_fields({"title": "Hello"})
     assert field(doc.main, "title") == "Hello"
@@ -231,7 +231,7 @@ def test_replace_body():
     """replace_body replaces the global Markdown body."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.replace_body("New body content.")
-    assert doc.body == "New body content.\n"
+    assert doc.body_markdown == "New body content.\n"
 
 
 def test_push_card():
@@ -240,7 +240,7 @@ def test_push_card():
     doc.push_card({"kind": "note", "body": "Card body."})
     assert len(doc.cards) == 1
     assert doc.cards[0]["kind"] == "note"
-    assert doc.cards[0]["body"] == "Card body.\n"
+    assert doc.cards[0]["body_markdown"] == "Card body.\n"
 
 
 def test_push_card_invalid_kind():
@@ -266,7 +266,7 @@ def test_remove_card_then_push_card_round_trips_fields():
     assert len(doc.cards) == 1
     assert doc.cards[0]["kind"] == "note"
     assert field(doc.cards[0], "author") == "Alice"  # field survived the round-trip
-    assert doc.cards[0]["body"] == "Body\n"
+    assert doc.cards[0]["body_markdown"] == "Body\n"
 
 
 def test_make_card_accepts_any_kind_push_card_is_the_gate():
@@ -361,7 +361,7 @@ def test_update_card_body():
     """update_card_body replaces the card body."""
     doc = Document.from_markdown(MD_WITH_CARDS)
     doc.update_card_body(0, "New card body.")
-    assert doc.cards[0]["body"] == "New card body.\n"
+    assert doc.cards[0]["body_markdown"] == "New card body.\n"
 
 
 def test_update_card_body_out_of_range():
@@ -525,11 +525,11 @@ def test_to_markdown_general_round_trip():
     # Re-parse and assert structure survives
     doc2 = Document.from_markdown(emitted)
     assert field(doc2.main, "title") == "New Title"
-    assert doc2.body.rstrip("\n") == "Updated body"
+    assert doc2.body_markdown.rstrip("\n") == "Updated body"
     assert len(doc2.cards) == original_card_count + 1
     assert doc2.cards[0]["kind"] == "note"
     assert field(doc2.cards[0], "author") == "Alice"
-    assert doc2.cards[0]["body"] == "Hello\n"
+    assert doc2.cards[0]["body_markdown"] == "Hello\n"
 
 
 def test_to_markdown_ambiguous_string_survival():

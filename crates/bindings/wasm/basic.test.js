@@ -58,11 +58,16 @@ describe('Document.fromMarkdown', () => {
     expect(hasField(doc.main, '$cards')).toBe(false)
   })
 
-  it('should expose body as a string', () => {
+  it('should expose body as a corpus with a markdown projection', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
-    expect(typeof doc.main.body).toBe('string')
-    expect(doc.main.body).toContain('Hello World')
+    // `body` is the canonical corpus (source-of-truth model); `bodyMarkdown` is
+    // the markdown projection.
+    expect(typeof doc.main.body).toBe('object')
+    expect(typeof doc.main.body.text).toBe('string')
+    expect(doc.main.body.text).toContain('Hello World')
+    expect(typeof doc.main.bodyMarkdown).toBe('string')
+    expect(doc.main.bodyMarkdown).toContain('Hello World')
   })
 
   it('should expose cards as an array', () => {
@@ -92,7 +97,7 @@ Card body.
     expect(doc.cards.length).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
     expect(field(doc.cards[0], 'foo')).toBe('bar')
-    expect(doc.cards[0].body).toContain('Card body.')
+    expect(doc.cards[0].bodyMarkdown).toContain('Card body.')
   })
 
   it('should expose warnings array', () => {
@@ -172,15 +177,15 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
     // Note on trailing newlines: the global body is followed by a card fence,
     // so the wire format inserts a line terminator + F2 blank line between
     // them (`Updated body\n\n~~~card-yaml`). On re-parse the F2 blank is
-    // stripped but the terminator stays, so `doc2.main.body === 'Updated body\n'`. The card
+    // stripped but the terminator stays, so `doc2.main.bodyMarkdown === 'Updated body\n'`. The card
     // body is at EOF and has no F2 separator, so it survives byte-for-byte.
     const doc2 = Document.fromMarkdown(emitted)
     expect(field(doc2.main, 'title')).toBe('New Title')
-    expect(doc2.main.body).toBe('Updated body\n')
+    expect(doc2.main.bodyMarkdown).toBe('Updated body\n')
     expect(doc2.cards.length).toBe(originalCardCount + 1)
     expect(doc2.cards[0].kind).toBe('note')
     expect(field(doc2.cards[0], 'author')).toBe('Alice')
-    expect(doc2.cards[0].body).toBe('Hello\n')
+    expect(doc2.cards[0].bodyMarkdown).toBe('Hello\n')
   })
 
   it('ambiguous-string survival: YAML-keyword values are preserved as strings', () => {
@@ -243,7 +248,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
     expect(field(restored.main, 'title')).toBe('New Title')
     expect(restored.cards[0].kind).toBe('note')
     expect(field(restored.cards[0], 'author')).toBe('Alice')
-    expect(restored.cards[0].body).toBe('Hello\n')
+    expect(restored.cards[0].bodyMarkdown).toBe('Hello\n')
   })
 
   it('toJson output is standard JSON parseable by the JSON global', () => {
@@ -517,7 +522,7 @@ describe('Document blank-canvas constructor', () => {
     const doc = new Document('test_quill')
     expect(doc.quillRef).toBe('test_quill')
     expect(doc.cards.length).toBe(0)
-    expect(doc.main.body).toBe('')
+    expect(doc.main.bodyMarkdown).toBe('')
     doc.setFields({ title: 'Hello' })
     expect(field(doc.main, 'title')).toBe('Hello')
   })
@@ -577,7 +582,7 @@ describe('Document editor surface — setQuillRef / replaceBody', () => {
   it('replaceBody changes the body', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.replaceBody('Brand new body.')
-    expect(doc.main.body).toBe('Brand new body.\n')
+    expect(doc.main.bodyMarkdown).toBe('Brand new body.\n')
   })
 })
 
@@ -608,7 +613,7 @@ Card two.
     doc.pushCard(Document.makeCard('note', {}, 'My card.'))
     expect(doc.cards.length).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
-    expect(doc.cards[0].body).toBe('My card.\n')
+    expect(doc.cards[0].bodyMarkdown).toBe('My card.\n')
   })
 
   it('pushCard throws on invalid kind', () => {
@@ -648,7 +653,7 @@ Card two.
     const bare = Document.makeCard('note')
     expect(bare.kind).toBe('note')
     expect(bare.payloadItems).toEqual([])
-    expect(bare.body).toBe('')
+    expect(bare.bodyMarkdown).toBe('')
   })
 
   it('a stale { kind, fields } object is a loud error, not a silent empty card', () => {
@@ -827,7 +832,7 @@ Card body.
   it('updateCardBody replaces card body', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
     doc.updateCardBody(0, 'New card body.')
-    expect(doc.cards[0].body).toBe('New card body.\n')
+    expect(doc.cards[0].bodyMarkdown).toBe('New card body.\n')
   })
 
   it('updateCardBody throws IndexOutOfRange when card absent', () => {
@@ -848,10 +853,10 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
 
     // Assert state
     expect(field(doc.main, 'author')).toBe('Bob')
-    expect(doc.main.body).toBe('New body text.\n')
+    expect(doc.main.bodyMarkdown).toBe('New body text.\n')
     expect(doc.cards.length).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
-    expect(doc.cards[0].body).toBe('Card content.\n')
+    expect(doc.cards[0].bodyMarkdown).toBe('Card content.\n')
     expect(doc.quillRef).toBe('updated_quill')
 
     // Original title still present
