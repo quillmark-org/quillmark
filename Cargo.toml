@@ -6,6 +6,7 @@ members = [
     "crates/backends/typst",
     "crates/backends/pdfform",
     "crates/richtext",
+    "crates/richtext-spikes",
     "crates/fixtures",
     "crates/bindings/wasm",
     "crates/fuzz",

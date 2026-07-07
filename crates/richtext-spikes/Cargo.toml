@@ -1,0 +1,11 @@
+[package]
+name = "quillmark-richtext-spikes"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Throwaway phase-3 probes — not in default-members"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]

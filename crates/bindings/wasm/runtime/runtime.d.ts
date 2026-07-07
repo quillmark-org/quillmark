@@ -130,6 +130,12 @@ export interface RenderOptions {
  * const top    = (pageHeightPt - y1) * renderScale;  // flip Y
  * ```
  */
+/** A click resolved to a field and USV offset into its RichText. */
+export interface CorpusHit {
+	field: string;
+	pos: number;
+}
+
 export interface FieldRegion {
 	/** Quill schema field path (e.g. `"signature_block"`), not a backend widget name. */
 	field: string;
@@ -339,6 +345,13 @@ export declare class LiveSession {
 	 * *every* placement answers, not just the first.
 	 */
 	fieldAt(page: number, x: number, y: number): string | undefined;
+	/**
+	 * Fine-grained click → corpus position (caret placement). Same PDF-point
+	 * space as {@link fieldAt}; `undefined` off all content ink.
+	 */
+	positionAt(page: number, x: number, y: number): CorpusHit | undefined;
+	/** Corpus position → caret rect — reverse of {@link positionAt}. */
+	locate(field: string, pos: number): FieldRegion | undefined;
 	/** Page geometry in points (1/72″). Report-only; the painter sizes the canvas. */
 	pageSize(page: number): PageSize;
 	/**

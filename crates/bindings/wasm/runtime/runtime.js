@@ -435,6 +435,25 @@ export class LiveSession {
 		return this.#inner.fieldAt(page, x, y);
 	}
 
+	/**
+	 * @param {number} page
+	 * @param {number} x
+	 * @param {number} y
+	 * @returns {import('./runtime.d.ts').CorpusHit | undefined}
+	 */
+	positionAt(page, x, y) {
+		return this.#inner.positionAt(page, x, y);
+	}
+
+	/**
+	 * @param {string} field
+	 * @param {number} pos
+	 * @returns {import('./runtime.d.ts').FieldRegion | undefined}
+	 */
+	locate(field, pos) {
+		return this.#inner.locate(field, pos);
+	}
+
 	/** @param {number} page */
 	pageSize(page) {
 		return this.#inner.pageSize(page);

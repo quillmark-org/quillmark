@@ -233,7 +233,7 @@ main:
       items:
         type: string
     subject:
-      type: string
+      type: richtext(inline)
       description: >-
         Be brief and clear. Capitalize the first letter of each word except articles,
         prepositions, and conjunctions. Include suspense dates in parentheses if

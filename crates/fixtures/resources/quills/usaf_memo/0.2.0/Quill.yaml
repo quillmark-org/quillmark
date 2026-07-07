@@ -40,7 +40,7 @@ main:
       description: "If recipients are on the same installation, use only the office symbol. For recipients on other installations, include the full mailing address to enable return correspondence. Omit entirely to produce a Memorandum for Record (no MEMO FROM line)."
 
     subject:
-      type: string
+      type: richtext(inline)
       example: Subject of the Memorandum
       ui:
         group: Addressing

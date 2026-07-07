@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quillmark — richtext form POC</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <header class="banner">
+      <h1>Richtext form POC</h1>
+      <p class="subtitle">
+        Phase-3 manual test harness — ProseMirror richtext fields drive
+        <code>LiveSession.apply</code> and canvas preview with region cross-navigation
+        (<code>usaf_memo</code>).
+      </p>
+      <p id="status" class="status" aria-live="polite">Loading…</p>
+    </header>
+    <main class="layout">
+      <section class="preview-pane" aria-label="Document preview">
+        <canvas id="page-canvas" width="612" height="792"></canvas>
+        <div id="region-highlight" class="region-highlight" hidden></div>
+      </section>
+      <aside class="form-pane" aria-label="Form fields">
+        <form id="memo-form" autocomplete="off">
+          <fieldset>
+            <legend>Body</legend>
+            <label>
+              Memo body <span class="hint">markdown</span>
+              <div id="body-editor" class="body-editor-host"></div>
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>Addressing</legend>
+            <label>
+              Subject <span class="hint">richtext(inline)</span>
+              <div class="toolbar" id="subject-toolbar">
+                <button type="button" data-mark="strong" title="Bold">B</button>
+                <button type="button" data-mark="emph" title="Italic"><em>I</em></button>
+                <button type="button" data-mark="underline" title="Underline"><u>U</u></button>
+              </div>
+              <div id="subject-editor" class="richtext-editor"></div>
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>Letterhead</legend>
+            <label>
+              Tag line <span class="hint">richtext(inline)</span>
+              <div class="toolbar" id="tag-line-toolbar">
+                <button type="button" data-mark="strong" title="Bold">B</button>
+                <button type="button" data-mark="emph" title="Italic"><em>I</em></button>
+                <button type="button" data-mark="underline" title="Underline"><u>U</u></button>
+              </div>
+              <div id="tag-line-editor" class="richtext-editor"></div>
+            </label>
+          </fieldset>
+        </form>
+        <details class="debug">
+          <summary>Regions (debug)</summary>
+          <pre id="regions-dump"></pre>
+        </details>
+      </aside>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

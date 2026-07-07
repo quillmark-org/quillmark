@@ -1,0 +1,20 @@
+{
+  "name": "quillmark-richtext-spike-a",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Phase-3 Spike-A — ProseMirror corpus mark binding probe",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "prosemirror-model": "^1.24.1",
+    "prosemirror-schema-basic": "^1.2.3",
+    "prosemirror-state": "^1.4.3",
+    "prosemirror-transform": "^1.10.2"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
+  }
+}
