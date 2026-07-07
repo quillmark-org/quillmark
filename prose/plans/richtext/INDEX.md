@@ -12,7 +12,10 @@ Phases 0–2 are landed, **including PR-G** — `richtext(inline)` enforcement
 `#[serde(skip)]` corpus cache, seed-commits-corpus, and the hard `markdown`-alias
 cutover (`type: markdown` is now a schema load error, not a silent alias).
 PR-G's spec lives in [phase-2.md](phase-2.md); the landed behavior lives in
-`prose/canon/` (SCHEMAS.md). Phase 3 (edit surface) is the next open work.
+`prose/canon/` (SCHEMAS.md). **Phase 3 (edit surface) is open** — PR-A + PR-H
+reported on `spike/richtext-phase-3` (no model change; whole-doc apply POC
+validates the session surface); PR-B (Myers/LCS diff) is next. See
+[phase-3.md](phase-3.md).
 
 For how the system works *today* — the `RichText` corpus, the seam, storage,
 schema surface, navigation — see `prose/canon/` (ARCHITECTURE, CONVERT,
@@ -44,8 +47,8 @@ not restate the model.
   `Document` seam ("Option C") stays available as a later, non-urgent backend
   refactor — not ruled out, just not needed yet.
 - **Type name is `richtext`** at every author-facing surface and in code
-  (`RichText`); `markdown` is today a deprecated alias, becoming a load error
-  in PR-G. Current surface: SCHEMAS.md.
+  (`RichText`); `type: markdown` is a schema load error (PR-G cutover).
+  Current surface: SCHEMAS.md.
 
 ## Phase map
 
@@ -60,13 +63,13 @@ not restate the model.
   through PR-G: seam flip to corpus JSON, typst emitter + segment maps,
   storage cutover, regions + navigation (`locate`/`position_at`), and PR-G's
   `richtext(inline)` + load-time example cache + `markdown`-alias cutover.
-- **Phase 3 — edit surface.** Per-field delta (`retain`/`insert`/`delete` text
-  splices, CodeMirror `ChangeSet` semantics, not attributed Quill-Delta) +
-  monotonic revision + bounded change log; form-editor binding on phase-0's
-  frozen mark semantics. Opens the residual Spike-A gate: bind one real rich
-  editor and confirm none forces an edge-expand / adjacent-merge semantic back
-  into the model (if one does, it enters as editor config, not a
-  serialization change).
+- **[Phase 3 — edit surface](phase-3.md).** Open. Per-field delta
+  (`retain`/`insert`/`delete` text splices, CodeMirror `ChangeSet` semantics,
+  not attributed Quill-Delta) + monotonic revision + bounded change log;
+  form-editor binding on phase-0's frozen mark semantics. PR-A + PR-H probes on
+  `spike/richtext-phase-3` — Spike-A closed the phase-0 residual gate (no model
+  change); form POC confirms whole-doc `LiveSession.apply` + region
+  cross-navigation for inline fields. PR-B gates on nothing further.
 - **Phase 4 — islands + collab.** First real island type (tables, with
   per-creation id minting rather than import's sequential ids), then a
   text-CRDT sync binding if wanted; core stays CRDT-free.

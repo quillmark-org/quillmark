@@ -24,9 +24,12 @@ mitigation, a verbatim-block move detector restricted to inserted text.
 Confirmed USV coordinates round-trip correctly at the UTF-16 surrogate-pair
 boundary.
 
-**Residual gate (Phase 3, still open):** bind one real rich editor and confirm
+**Residual gate (Phase 3, closed in PR-A):** bind one real rich editor and confirm
 none forces an edge-expand / adjacent-merge semantic back into the model. If
-one does, it enters as editor config, not a serialization change.
+one does, it enters as editor config, not a serialization change. ProseMirror
+probe on `spike/richtext-phase-3` (`crates/richtext-spikes/editor-pm/`) — all
+matrix scenarios green, no serialization change. Findings in
+[phase-3.md](phase-3.md) § Spike-A.
 
 ---
 
