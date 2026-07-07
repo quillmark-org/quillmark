@@ -1,7 +1,7 @@
 use crate::{
     CorpusHit, Diagnostic, RenderError, RenderOptions, RenderResult, RenderedRegion, Severity,
 };
-pub use quillmark_richtext::{Assoc, ChangeLog, Delta, FieldChange, StaleRevision};
+pub use quillmark_richtext::{Assoc, ApplyError, ChangeLog, Delta, FieldChange, LineOp, MarkOp, StaleRevision};
 
 /// What a committed [`LiveSession::apply`] changed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,13 +195,20 @@ impl LiveSession {
         &self.change_log
     }
 
-    /// Record a committed field text splice; returns the new revision. Mark and
-    /// line op channels (PR-D) extend the log entry shape later.
-    pub fn record_field_delta(
+    /// Record a committed field edit bundle; returns the new revision.
+    pub fn record_field_change(
         &mut self,
         path: impl Into<String>,
         text_delta: Delta,
+        mark_ops: impl Into<Vec<MarkOp>>,
+        line_ops: impl Into<Vec<LineOp>>,
     ) -> u64 {
+        self.change_log
+            .record_change(path, text_delta, mark_ops, line_ops)
+    }
+
+    /// Record a text-only field splice; returns the new revision.
+    pub fn record_field_delta(&mut self, path: impl Into<String>, text_delta: Delta) -> u64 {
         self.change_log.record(path, text_delta)
     }
 
@@ -436,11 +443,15 @@ mod tests {
         session.record_field_delta("subject", d);
         assert_eq!(session.revision(), 1);
         assert_eq!(
-            session.map_field_pos("subject", 0, 3, Assoc::Before).unwrap(),
+            session
+                .map_field_pos("subject", 0, 3, Assoc::Before)
+                .unwrap(),
             3
         );
         assert_eq!(
-            session.map_field_pos("subject", 0, 3, Assoc::After).unwrap(),
+            session
+                .map_field_pos("subject", 0, 3, Assoc::After)
+                .unwrap(),
             5
         );
     }

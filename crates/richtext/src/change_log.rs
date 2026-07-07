@@ -1,25 +1,27 @@
 //! Bounded per-field change log with monotonic revision and composed
 //! [`Delta::map_pos`](crate::delta::Delta::map_pos).
 //!
-//! Phase 3 PR-C: the live session records text splices per schema field;
-//! mark and line op slots land in PR-D. Consumers map a position captured at
-//! revision *N* forward through edits *N+1…*; entries older than the ring
-//! buffer are dropped — callers that fall behind re-read at
-//! [`ChangeLog::revision`].
+//! Phase 3 PR-C/D: the live session records text splices, mark ops, and line ops
+//! per schema field. Consumers map a position captured at revision *N* forward
+//! through edits *N+1…*; entries older than the ring buffer are dropped —
+//! callers that fall behind re-read at [`ChangeLog::revision`].
 
 use std::collections::VecDeque;
 
 use crate::delta::{Assoc, Delta};
+use crate::ops::{LineOp, MarkOp};
 
 /// Default ring capacity — enough for a typing burst without unbounded growth.
 pub const DEFAULT_CAPACITY: usize = 256;
 
-/// One committed field edit. `mark_ops` / `line_ops` slots are PR-D.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One committed field edit: text splice plus optional mark/line op streams.
+#[derive(Debug, Clone, PartialEq)]
 pub struct FieldChange {
     pub revision: u64,
     pub path: String,
     pub text_delta: Delta,
+    pub mark_ops: Vec<MarkOp>,
+    pub line_ops: Vec<LineOp>,
 }
 
 /// Position mapping failed because `base_revision` precedes the oldest entry
@@ -30,8 +32,7 @@ pub struct StaleRevision {
     pub oldest_retained: u64,
 }
 
-/// Monotonic revision counter plus a bounded ring of per-field text deltas.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChangeLog {
     capacity: usize,
     revision: u64,
@@ -70,14 +71,26 @@ impl ChangeLog {
         self.entries.is_empty()
     }
 
-    /// Append a field edit, bump revision, evict the oldest entry when over
-    /// capacity. Returns the new revision.
+    /// Append a text-only field edit, bump revision, evict when over capacity.
     pub fn record(&mut self, path: impl Into<String>, text_delta: Delta) -> u64 {
+        self.record_change(path, text_delta, [], [])
+    }
+
+    /// Append a full field edit bundle. Returns the new revision.
+    pub fn record_change(
+        &mut self,
+        path: impl Into<String>,
+        text_delta: Delta,
+        mark_ops: impl Into<Vec<MarkOp>>,
+        line_ops: impl Into<Vec<LineOp>>,
+    ) -> u64 {
         self.revision = self.revision.saturating_add(1);
         let entry = FieldChange {
             revision: self.revision,
             path: path.into(),
             text_delta,
+            mark_ops: mark_ops.into(),
+            line_ops: line_ops.into(),
         };
         self.entries.push_back(entry);
         while self.entries.len() > self.capacity {
@@ -159,7 +172,7 @@ mod tests {
     #[test]
     fn map_pos_composes_same_field() {
         let mut log = ChangeLog::with_default_capacity();
-        // "hello" -> insert "!" at 5 -> "hello!" -> replace "hello" prefix... 
+        // "hello" -> insert "!" at 5 -> "hello!" -> replace "hello" prefix...
         // Use two explicit diffs on one field.
         let d1 = diff("abc", "abXc"); // insert X at 2
         let d2 = diff("abXc", "abXYc"); // insert Y at 3
@@ -182,7 +195,10 @@ mod tests {
     fn map_pos_identity_at_current_revision() {
         let mut log = ChangeLog::with_default_capacity();
         log.record("f", diff("abc", "abd"));
-        assert_eq!(log.map_pos("f", log.revision(), 1, Assoc::Before).unwrap(), 1);
+        assert_eq!(
+            log.map_pos("f", log.revision(), 1, Assoc::Before).unwrap(),
+            1
+        );
     }
 
     #[test]

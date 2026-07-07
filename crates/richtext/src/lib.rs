@@ -26,6 +26,9 @@
 //!   cold-parse + corpus-diff stale-text writer with a block-move detector. The
 //!   text-splice channel is the positional core; mark and line-attribute edits
 //!   are separate op channels (phase 3), not op attributes — see [`delta`].
+//! - [`ops`] — mark and line op channels (phase 3 PR-D):
+//!   [`RichText::apply_text_delta`], [`apply_mark_ops`](RichText::apply_mark_ops),
+//!   [`apply_line_ops`](RichText::apply_line_ops).
 //! - [`normalize`] — the markdown-string input primitive (line endings, bidi
 //!   strip, HTML-comment fence repair), applied at the import boundary.
 //! - [`usv`] — coordinate conversions across the UTF-8 / UTF-16 / USV boundary.
@@ -36,14 +39,18 @@ pub mod export;
 pub mod import;
 pub mod model;
 pub mod normalize;
+pub mod ops;
 pub mod serial;
 pub mod usv;
 
-pub use change_log::{ChangeLog, FieldChange, StaleRevision, DEFAULT_CAPACITY as CHANGE_LOG_DEFAULT_CAPACITY};
+pub use change_log::{
+    ChangeLog, FieldChange, StaleRevision, DEFAULT_CAPACITY as CHANGE_LOG_DEFAULT_CAPACITY,
+};
 pub use delta::{Assoc, Delta, Op};
 pub use model::{
     Container, Invariant, Island, Line, LineKind, Loss, Mark, MarkKind, RichText, Usv,
 };
+pub use ops::{ApplyError, LineOp, MarkOp};
 pub use normalize::normalize_markdown;
 pub use serial::ParseError;
 

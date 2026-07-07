@@ -43,7 +43,10 @@ pub mod region;
 pub use region::{CorpusHit, RenderedRegion};
 
 pub mod session;
-pub use session::{Assoc, ChangeLog, ChangeSet, Delta, FieldChange, LiveSession, StaleRevision};
+pub use session::{
+    ApplyError, Assoc, ChangeLog, ChangeSet, Delta, FieldChange, LineOp, LiveSession, MarkOp,
+    StaleRevision,
+};
 
 pub mod quill;
 pub use quill::{zero_value, FileTreeNode, Quill, QuillIgnore, STANDARD_METADATA_KEYS};
