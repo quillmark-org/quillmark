@@ -91,8 +91,8 @@ impl CardSchema {
 ///
 /// Serializes as its type expression (`FieldType::as_str`) and deserializes by
 /// parsing that string (`FieldType::from_str`), so a YAML `type:` value round-
-/// trips as the one token that names it — including the parenthesized refinement
-/// `richtext(inline)`, which a plain serde enum could not carry.
+/// trips as the one token that names it. Richtext inline shape is declared on
+/// [`FieldSchema::inline`], not in the `type:` token.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FieldType {
     String,
@@ -106,19 +106,19 @@ pub enum FieldType {
     /// (bare `YYYY-MM-DD` through full RFC 3339 with offset).
     DateTime,
     /// Rich text — the canonical corpus content model ([`RichText`]). Surfaced
-    /// as `type: richtext` (block) or `richtext(inline)` (exactly one `Para`
-    /// line, no container, no islands); the transform schema marks it
-    /// `contentMediaType: application/quillmark-richtext+json`. The pre-richtext
-    /// `markdown` spelling is no longer accepted — a Quill.yaml must declare
-    /// `richtext` / `richtext(inline)` explicitly (`from_str` returns `None` for
-    /// `markdown`, so the loader raises a schema load error).
+    /// as `type: richtext`; single-line shape is declared with [`FieldSchema::inline`].
+    /// The transform schema marks it `contentMediaType:
+    /// application/quillmark-richtext+json` and, when inline, `quillmark:inline:
+    /// true`. The pre-richtext `markdown` spelling is no longer accepted — a
+    /// Quill.yaml must declare `richtext` explicitly (`from_str` returns `None`
+    /// for `markdown`, so the loader raises a schema load error).
     ///
     /// [`RichText`]: quillmark_richtext::RichText
     RichText {
-        /// Single-`Para`-line variant (`richtext(inline)`); editors mount a
-        /// one-line editor and the emitter may lower without block wrapping. The
-        /// constraint is enforced at coercion, validation, and load-time example
-        /// import.
+        /// When `true`, the field is `richtext(inline)` — exactly one `Para`
+        /// line, no container, no islands. Populated from [`FieldSchema::inline`]
+        /// at load; editors mount a one-line surface. Enforced at coercion,
+        /// validation, and load-time example import.
         inline: bool,
     },
 }
@@ -135,7 +135,6 @@ impl FieldType {
             "object" => Some(FieldType::Object),
             "datetime" => Some(FieldType::DateTime),
             "richtext" => Some(FieldType::RichText { inline: false }),
-            "richtext(inline)" => Some(FieldType::RichText { inline: true }),
             // The pre-richtext `markdown` spelling is retired: it returns `None`
             // here so the loader reports it as an unknown type rather than
             // silently aliasing it to block richtext.
@@ -152,8 +151,7 @@ impl FieldType {
             FieldType::Array => "array",
             FieldType::Object => "object",
             FieldType::DateTime => "datetime",
-            FieldType::RichText { inline: false } => "richtext",
-            FieldType::RichText { inline: true } => "richtext(inline)",
+            FieldType::RichText { .. } => "richtext",
         }
     }
 }
@@ -167,6 +165,12 @@ impl Serialize for FieldType {
 impl<'de> Deserialize<'de> for FieldType {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
+        if s.trim() == "richtext(inline)" {
+            return Err(serde::de::Error::custom(
+                "richtext(inline) is no longer accepted as a type token; \
+                 use type: richtext with inline: true",
+            ));
+        }
         FieldType::from_str(&s)
             .ok_or_else(|| serde::de::Error::custom(format!("unknown field type: {s:?}")))
     }
@@ -217,6 +221,11 @@ pub struct FieldSchema {
     /// `object` carrying its own `properties`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub items: Option<Box<FieldSchema>>,
+    /// When `true` on a `richtext` field, the corpus must be exactly one `Para`
+    /// line (no container, no islands). Omitted on block richtext and on every
+    /// other type.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inline: Option<bool>,
     /// Canonical-corpus form of [`default`](Self::default) for a richtext-bearing
     /// field, imported once at quill load and cached — never serialized. The
     /// render floor (`resolve_fields`) commits this for an absent field, so a
@@ -247,6 +256,7 @@ struct FieldSchemaDef {
     pub properties: Option<serde_json::Map<String, serde_json::Value>>,
     // Element schema for arrays.
     pub items: Option<serde_json::Value>,
+    pub inline: Option<bool>,
 }
 
 impl FieldSchema {
@@ -268,6 +278,7 @@ impl FieldSchema {
             enum_values: None,
             properties: None,
             items: None,
+            inline: None,
             default_corpus: None,
             example_corpus: None,
         }
@@ -276,14 +287,20 @@ impl FieldSchema {
     pub fn from_quill_value(key: String, value: &QuillValue) -> Result<Self, String> {
         let def: FieldSchemaDef = serde_json::from_value(value.clone().into_json())
             .map_err(|e| format!("Failed to parse field schema: {}", e))?;
+        let r#type = Self::resolve_richtext_inline(def.r#type, def.inline)?;
+        let inline = match &r#type {
+            FieldType::RichText { inline: true } => Some(true),
+            _ => None,
+        };
         Ok(Self {
             name: key.clone(),
-            r#type: def.r#type,
+            r#type,
             description: def.description,
             default: def.default,
             example: def.example,
             ui: def.ui,
             enum_values: def.enum_values,
+            inline,
             properties: if let Some(props) = def.properties {
                 let mut p = BTreeMap::new();
                 for (key, value) in props {
@@ -313,5 +330,25 @@ impl FieldSchema {
             default_corpus: None,
             example_corpus: None,
         })
+    }
+
+    fn resolve_richtext_inline(
+        r#type: FieldType,
+        inline: Option<bool>,
+    ) -> Result<FieldType, String> {
+        match (r#type, inline) {
+            (FieldType::RichText { .. }, Some(true)) => Ok(FieldType::RichText { inline: true }),
+            (FieldType::RichText { .. }, Some(false) | None) => {
+                Ok(FieldType::RichText { inline: false })
+            }
+            (other, Some(_)) => {
+                let _ = other;
+                Err(
+                "inline is only valid on type: richtext fields; omit inline or declare type: richtext"
+                    .to_string(),
+            )
+            }
+            (other, None) => Ok(other),
+        }
     }
 }

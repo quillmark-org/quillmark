@@ -9,7 +9,8 @@ main:
     enabled: false
   fields:
     headline:
-      type: richtext(inline)
+      type: richtext
+      inline: true
       default: ""
       example: "The **headline**"
       description: "Inline richtext bound to the single-line FullName widget; lowered to plaintext."

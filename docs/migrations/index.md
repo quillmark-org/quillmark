@@ -12,6 +12,10 @@ guides in order.
 
 ## Available guides
 
+- [0.93 → 0.94](0.93-to-0.94.md) — `type: richtext(inline)` retires; declare
+  `type: richtext` with `inline: true` instead. Blueprint still emits
+  `richtext(inline)<markdown>`; `build_transform_schema` gains
+  `quillmark:inline: true`.
 - [0.92 → 0.93](0.92-to-0.93.md) — the blueprint placeholder is rebuilt on two
   orthogonal axes (value and marker): blueprints now stamp the `!must_fill` tag
   instead of the `<must-fill>` string sentinel, and bare-null / `field:` now

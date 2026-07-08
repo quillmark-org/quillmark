@@ -25,7 +25,7 @@ Supported field types:
 | `array` | Ordered list; requires an `items:` element schema (e.g. `items: { type: string }` for `string[]`, `items: { type: object, properties: … }` for a typed table) |
 | `object` | Structured map; requires `properties:` |
 | `datetime` | YAML 1.1 timestamp: bare `YYYY-MM-DD` through full RFC 3339 with offset; seconds optional |
-| `richtext` | Rich prose over a canonical corpus (`RichText`); markdown is a projection of it. `richtext(inline)` is the single-line variant (exactly one `Para` line, no container, no islands). The pre-richtext `markdown` spelling is no longer accepted — it is a schema load error (`quill::field_parse_error`) |
+| `richtext` | Rich prose over a canonical corpus (`RichText`); markdown is a projection of it. Declare `inline: true` for the single-line variant (exactly one `Para` line, no container, no islands). The pre-richtext `markdown` spelling and the retired `type: richtext(inline)` token are schema load errors (`quill::field_parse_error`) |
 
 ## Type coercion
 
@@ -35,7 +35,7 @@ Supported field types:
 - Coerces top-level fields and per-card fields to their declared types
 - Fails fast (`Err`) on the first value that cannot be coerced
 - Coercion rules per type: array wrapping plus element-wise coercion against the `items` schema (a bad element fails at its indexed path, e.g. `counts[1]`); boolean from string/int/float; number/integer from string or from boolean (`true→1`, `false→0`); string unwraps a length-1 string array into the bare string (else identity); richtext commits the canonical corpus form (the model) — an authored markdown string imports (via `quillmark-richtext::import`), an editor-supplied corpus object revalidates and re-canonicalizes, and the length-1-array-unwrap / bare-scalar-stringify leniencies feed the import; date/datetime format validation; object property recursion
-- **`richtext(inline)` enforcement.** An `inline` field's corpus must be exactly one `Para` line, in no container, with no islands (`RichText::is_inline`). The empty corpus satisfies it, so a blank or zero-filled inline field passes. The constraint is checked in three places: coercion (`CoercionError` for a document value), validation (`richtext::not_inline`, the `TypeMismatch` fatality class, as a backstop for a corpus that bypassed coercion), and load-time example import (a schema literal that violates it is a load error)
+- **`inline` richtext enforcement.** A `richtext` field with `inline: true` requires its corpus to be exactly one `Para` line, in no container, with no islands (`RichText::is_inline`). The empty corpus satisfies it, so a blank or zero-filled inline field passes. The constraint is checked in three places: coercion (`CoercionError` for a document value), validation (`richtext::not_inline`, the `TypeMismatch` fatality class, as a backstop for a corpus that bypassed coercion), and load-time example import (a schema literal that violates it is a load error). Blueprint still annotates inline fields as `richtext(inline)<markdown>`; `build_transform_schema` emits `quillmark:inline: true`
 - **Null short-circuits coercion.** A null value (`field:`, `field: null`,
   `field: ~`) passes coercion unchanged for *every* type — null ≡ absent, so
   it carries no data to coerce. The value reaches the render floor and
@@ -258,7 +258,7 @@ metadata, not schema fields, and do not appear in `fields`.
 
 For LLM/MCP authoring, see [BLUEPRINT.md](BLUEPRINT.md) — `blueprint()` emits a document-shaped, pre-filled Markdown reference that's denser than schema for prompt-time use.
 
-Top-level schema keys: `main`, optional `card_kinds` (map keyed by card name). `main` and each entry in `card_kinds` share the same `CardSchema` shape: `fields` (map keyed by field name), optional `description`, optional `ui`, optional `body`. Each `FieldSchema` includes `type`, optional `description`/`default`/`example`/`enum`/`properties`/`items`/`ui`. `items` (the element schema, itself a `FieldSchema`) is required on `array` fields and rejected elsewhere; `properties` is used by `object` fields (and by an array's `object`-typed `items`).
+Top-level schema keys: `main`, optional `card_kinds` (map keyed by card name). `main` and each entry in `card_kinds` share the same `CardSchema` shape: `fields` (map keyed by field name), optional `description`, optional `ui`, optional `body`. Each `FieldSchema` includes `type`, optional `description`/`default`/`example`/`enum`/`inline`/`properties`/`items`/`ui`. `inline` is valid only on `richtext` fields. `items` (the element schema, itself a `FieldSchema`) is required on `array` fields and rejected elsewhere; `properties` is used by `object` fields (and by an array's `object`-typed `items`).
 
 ### `default` and `example`
 

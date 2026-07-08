@@ -40,7 +40,8 @@ main:
       description: "If recipients are on the same installation, use only the office symbol. For recipients on other installations, include the full mailing address to enable return correspondence. Omit entirely to produce a Memorandum for Record (no MEMO FROM line)."
 
     subject:
-      type: richtext(inline)
+      type: richtext
+      inline: true
       example: Subject of the Memorandum
       ui:
         group: Addressing
@@ -94,7 +95,8 @@ main:
       description: Bold-caps line below the seal; blank to omit.
 
     tag_line:
-      type: richtext(inline)
+      type: richtext
+      inline: true
       default: ""
       ui:
         group: Letterhead
@@ -159,7 +161,8 @@ main:
     references:
       type: array
       items:
-        type: richtext(inline)
+        type: richtext
+        inline: true
       default: []
       example:
         - "AFMAN 33-326, 25 November 2011, *Preparing Official Communications*"

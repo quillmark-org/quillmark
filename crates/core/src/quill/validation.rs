@@ -964,7 +964,7 @@ main:
     fn rejects_richtext_inline_with_multi_block_corpus() {
         // A pre-built two-paragraph corpus reaches the validator directly (no
         // coercion), so the validation-layer NotInline backstop must fire.
-        let config = config_with("    tag:\n      type: richtext(inline)", "");
+        let config = config_with("    tag:\n      type: richtext\n      inline: true", "");
         let rt = quillmark_richtext::import::from_markdown("one\n\ntwo").unwrap();
         let corpus = quillmark_richtext::serial::to_canonical_value(&rt);
         let doc = doc_from_fm(&[("tag", corpus)]);
@@ -977,7 +977,7 @@ main:
 
     #[test]
     fn accepts_richtext_inline_single_para_corpus() {
-        let config = config_with("    tag:\n      type: richtext(inline)", "");
+        let config = config_with("    tag:\n      type: richtext\n      inline: true", "");
         let rt = quillmark_richtext::import::from_markdown("one line only").unwrap();
         let corpus = quillmark_richtext::serial::to_canonical_value(&rt);
         let doc = doc_from_fm(&[("tag", corpus)]);

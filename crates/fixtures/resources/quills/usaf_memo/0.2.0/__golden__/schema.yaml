@@ -220,7 +220,8 @@ main:
         group: Additional
         order: 15
       items:
-        type: richtext(inline)
+        type: richtext
+        inline: true
     signature_block:
       type: array
       description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title."
@@ -233,7 +234,7 @@ main:
       items:
         type: string
     subject:
-      type: richtext(inline)
+      type: richtext
       description: >-
         Be brief and clear. Capitalize the first letter of each word except articles,
         prepositions, and conjunctions. Include suspense dates in parentheses if
@@ -242,8 +243,9 @@ main:
       ui:
         group: Addressing
         order: 2
+      inline: true
     tag_line:
-      type: richtext(inline)
+      type: richtext
       description: >-
         Organizational motto at the bottom of the page. Supports Markdown emphasis
         (e.g. *italics*, **bold**).
@@ -252,6 +254,7 @@ main:
         group: Letterhead
         order: 8
         compact: true
+      inline: true
   body:
     example: |
       The first paragraph. Top-level paragraphs are auto-numbered; do not add manual numbering.

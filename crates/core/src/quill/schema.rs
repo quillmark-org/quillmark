@@ -15,6 +15,11 @@ use crate::value::QuillValue;
 /// corpus rather than a scalar.
 pub const RICHTEXT_MEDIA_TYPE: &str = "application/quillmark-richtext+json";
 
+/// Transform-schema keyword marking a single-`Para` richtext field (`inline: true`
+/// in Quill.yaml). Blueprint still emits `richtext(inline)<markdown>`; this key
+/// is the JSON Schema–shaped wire for editor and backend consumers.
+pub const QUILLMARK_INLINE_KEY: &str = "quillmark:inline";
+
 /// Build a JSON-Schema-shaped descriptor of a [`QuillConfig`]'s main + card fields.
 ///
 /// The descriptor marks richtext fields with `contentMediaType:
@@ -37,7 +42,7 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
                     serde_json::Value::String("string".to_string()),
                 );
             }
-            FieldType::RichText { .. } => {
+            FieldType::RichText { inline } => {
                 // The corpus crosses the seam as a JSON object (canonical
                 // RichText-JSON), not a string; `type: object` + the richtext
                 // media type is how a backend classifies it to lower the corpus.
@@ -49,6 +54,12 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
                     "contentMediaType".to_string(),
                     serde_json::Value::String(RICHTEXT_MEDIA_TYPE.to_string()),
                 );
+                if inline {
+                    schema.insert(
+                        QUILLMARK_INLINE_KEY.to_string(),
+                        serde_json::Value::Bool(true),
+                    );
+                }
             }
             FieldType::Number => {
                 schema.insert(
@@ -293,6 +304,50 @@ card_kinds:
                 "{def_name} $body should be richtext"
             );
         }
+    }
+
+    #[test]
+    fn inline_richtext_emits_quillmark_inline() {
+        let yaml = r#"
+quill:
+  name: x
+  version: 1.0.0
+  backend: typst
+  description: x
+main:
+  fields:
+    subject:
+      type: richtext
+      inline: true
+"#;
+        let schema = build_from_yaml(yaml);
+        let json = schema.as_json();
+        let subject = &json["properties"]["subject"];
+        assert_eq!(subject["type"], "object");
+        assert_eq!(subject["contentMediaType"], RICHTEXT_MEDIA_TYPE);
+        assert_eq!(subject[QUILLMARK_INLINE_KEY], true);
+    }
+
+    #[test]
+    fn inline_richtext_array_items_emit_quillmark_inline() {
+        let yaml = r#"
+quill:
+  name: x
+  version: 1.0.0
+  backend: typst
+  description: x
+main:
+  fields:
+    refs:
+      type: array
+      items:
+        type: richtext
+        inline: true
+"#;
+        let schema = build_from_yaml(yaml);
+        let json = schema.as_json();
+        let items = &json["properties"]["refs"]["items"];
+        assert_eq!(items[QUILLMARK_INLINE_KEY], true);
     }
 
     #[test]

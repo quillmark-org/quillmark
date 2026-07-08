@@ -557,6 +557,15 @@ impl QuillConfig {
                 ),
             );
         }
+        if schema.inline.is_some() && !matches!(schema.r#type, FieldType::RichText { .. }) {
+            return err(
+                "quill::inline_not_supported",
+                format!(
+                    "Field '{owner}' declares 'inline' but is not type: richtext. \
+                     'inline' is only valid on richtext fields."
+                ),
+            );
+        }
 
         match schema.r#type {
             FieldType::Object => {
@@ -950,6 +959,13 @@ impl QuillConfig {
             if obj.contains_key("title") {
                 return Some(
                     "'title' is not a valid field key; use 'description' instead.".to_string(),
+                );
+            }
+            if obj.get("type").and_then(|v| v.as_str()) == Some("richtext(inline)") {
+                return Some(
+                    "richtext(inline) is no longer accepted as a type token; \
+                     use type: richtext with inline: true."
+                        .to_string(),
                 );
             }
         }
