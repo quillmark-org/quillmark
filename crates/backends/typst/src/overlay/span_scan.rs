@@ -400,6 +400,8 @@ pub(crate) fn scan(
                         (page_h - b.min_y) as f32,
                     ],
                     span,
+                    // The session wrapper stamps the revision; the backend has none.
+                    revision: None,
                 },
                 ki,
             ));
@@ -660,6 +662,8 @@ pub(crate) fn position_at(
     Some(CorpusHit {
         field: window.path.clone(),
         pos: invert_hit(helper, segmap, &hit.node, hit.offset),
+        // The session wrapper stamps the revision; the backend has none.
+        revision: None,
     })
 }
 
@@ -759,6 +763,8 @@ pub(crate) fn locate(
             (page_h - b.min_y) as f32,
         ],
         span: Some([pos, pos]),
+        // The session wrapper stamps the revision; the backend has none.
+        revision: None,
     })
 }
 

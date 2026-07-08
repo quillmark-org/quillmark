@@ -255,6 +255,13 @@ pub struct FieldRegion {
     /// union same-page segments for the whole-field box.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<[usize; 2]>,
+    /// The `LiveSession.revision` this geometry was read at — `regions()` and
+    /// `locate()` stamp the current revision so a consumer can pair a highlight
+    /// box or caret with the edit state it reflects and map a position forward
+    /// through later edits (`mapFieldPos`). `undefined` on a one-shot
+    /// `RenderResult.regions` sidecar (no live session). Additive-optional.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<u32>,
 }
 
 #[cfg(any(feature = "typst", feature = "pdfform"))]
@@ -265,6 +272,9 @@ impl From<quillmark_core::RenderedRegion> for FieldRegion {
             page: r.page,
             rect: r.rect,
             span: r.span,
+            // A session revision is a small monotonic counter; narrowing to the
+            // JS-number-friendly u32 at the boundary avoids a BigInt.
+            revision: r.revision.map(|v| v as u32),
         }
     }
 }
@@ -282,6 +292,11 @@ pub struct CorpusHit {
     pub field: String,
     /// USV offset into the field's `RichText`.
     pub pos: usize,
+    /// The `LiveSession.revision` this hit was resolved at — `positionAt`
+    /// stamps it so a caller can record the captured `pos` against this base
+    /// revision and map it forward (`mapFieldPos`). Additive-optional.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<u32>,
 }
 
 #[cfg(any(feature = "typst", feature = "pdfform"))]
@@ -290,6 +305,49 @@ impl From<quillmark_core::CorpusHit> for CorpusHit {
         CorpusHit {
             field: h.field,
             pos: h.pos,
+            revision: h.revision.map(|v| v as u32),
+        }
+    }
+}
+
+/// A text-splice delta over a field's USV corpus — CodeMirror `ChangeSet`
+/// semantics: `retain` / `insert` / `delete` ops applied left-to-right,
+/// consuming base positions. The native form-editor edit unit `applyFieldDelta`
+/// consumes; carries no formatting (marks/lines are separate channels).
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+pub struct Delta {
+    pub ops: Vec<DeltaOp>,
+}
+
+/// One [`Delta`] op. On the wire: `{ retain: n }`, `{ insert: "text" }`, or
+/// `{ delete: n }` — exactly one key.
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[serde(rename_all = "camelCase")]
+pub enum DeltaOp {
+    /// Keep `n` USV of the base unchanged.
+    Retain(usize),
+    /// Insert this text at the cursor.
+    Insert(String),
+    /// Drop `n` USV of the base.
+    Delete(usize),
+}
+
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+impl From<Delta> for quillmark_core::Delta {
+    fn from(d: Delta) -> Self {
+        quillmark_core::Delta {
+            ops: d
+                .ops
+                .into_iter()
+                .map(|op| match op {
+                    DeltaOp::Retain(n) => quillmark_core::Op::Retain(n),
+                    DeltaOp::Insert(s) => quillmark_core::Op::Insert(s),
+                    DeltaOp::Delete(n) => quillmark_core::Op::Delete(n),
+                })
+                .collect(),
         }
     }
 }
@@ -528,14 +586,16 @@ mod tests {
             page: 0,
             rect: [180.0, 672.0, 520.0, 692.0],
             span: None,
+            revision: None,
         };
         let json = serde_json::to_string(&region).unwrap();
         assert!(json.contains("\"field\":\"full_name\""));
         assert!(json.contains("\"page\":0"));
         assert!(json.contains("\"rect\":[180.0,672.0,520.0,692.0]"));
-        // A scalar/widget region omits `span`; no backend widget name or
-        // kind/value leaks into the wire shape.
+        // A scalar/widget region omits `span`; an unstamped region omits
+        // `revision`; no backend widget name or kind/value leaks either.
         assert!(!json.contains("\"span\""));
+        assert!(!json.contains("\"revision\""));
         assert!(!json.contains("\"name\""));
         assert!(!json.contains("\"kind\""));
     }
@@ -549,12 +609,15 @@ mod tests {
             page: 0,
             rect: [180.0, 422.0, 520.0, 462.0],
             span: Some([0, 25]),
+            revision: Some(4),
         };
         let json = serde_json::to_string(&region).unwrap();
+        assert!(json.contains("\"revision\":4"), "{json}");
         let back: FieldRegion = serde_json::from_str(&json).expect("round-trips");
         assert_eq!(back.field, "signature_block");
         assert_eq!(back.rect, [180.0, 422.0, 520.0, 462.0]);
         assert_eq!(back.span, Some([0, 25]));
+        assert_eq!(back.revision, Some(4));
     }
 
     #[test]
@@ -567,11 +630,33 @@ mod tests {
             page: 0,
             rect: [180.0, 538.0, 194.0, 552.0],
             span: None,
+            revision: Some(9),
         };
         let wasm_region: FieldRegion = core_region.into();
         assert_eq!(wasm_region.field, "agree");
         assert_eq!(wasm_region.page, 0);
         assert_eq!(wasm_region.rect, [180.0, 538.0, 194.0, 552.0]);
         assert_eq!(wasm_region.span, None);
+        // The core u64 revision narrows to u32 at the JS boundary.
+        assert_eq!(wasm_region.revision, Some(9));
+    }
+
+    #[test]
+    #[cfg(any(feature = "typst", feature = "pdfform"))]
+    fn delta_wire_converts_to_core() {
+        // `{ retain }`, `{ insert }`, `{ delete }` — one key each.
+        let json = r#"{"ops":[{"retain":3},{"insert":"XY"},{"delete":2}]}"#;
+        let wire: Delta = serde_json::from_str(json).expect("delta wire parses");
+        let core: quillmark_core::Delta = wire.into();
+        assert_eq!(
+            core.ops,
+            vec![
+                quillmark_core::Op::Retain(3),
+                quillmark_core::Op::Insert("XY".to_string()),
+                quillmark_core::Op::Delete(2),
+            ]
+        );
+        // The delta applies as CodeMirror text-splice semantics.
+        assert_eq!(core.apply("abcde"), "abcXY");
     }
 }

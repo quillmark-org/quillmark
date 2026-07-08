@@ -44,7 +44,7 @@ pub use region::{CorpusHit, RenderedRegion};
 
 pub mod session;
 pub use session::{
-    ApplyError, Assoc, ChangeLog, ChangeSet, Delta, FieldChange, LineOp, LiveSession, MarkOp,
+    ApplyError, Assoc, ChangeLog, ChangeSet, Delta, FieldChange, LineOp, LiveSession, MarkOp, Op,
     StaleRevision,
 };
 

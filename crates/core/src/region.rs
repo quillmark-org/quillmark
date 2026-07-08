@@ -103,9 +103,21 @@ pub struct RenderedRegion {
     /// The corpus slice this box covers: USV `[start, end)` into the field's
     /// `RichText` for content ink (one segment's range), `None` for a scalar
     /// reference site or a widget — geometry with no corpus address. Additive
-    /// and optional so Phase 3 can append a `revision` without a break.
+    /// and optional, alongside `revision`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<[usize; 2]>,
+    /// The [`LiveSession`](crate::LiveSession) revision this geometry was read
+    /// at. [`LiveSession::regions`](crate::LiveSession::regions) and
+    /// [`locate`](crate::LiveSession::locate) stamp the current revision so a
+    /// consumer can pair a captured box or caret with the edit state it
+    /// reflects and map a position forward through later edits
+    /// ([`map_field_pos`](crate::LiveSession::map_field_pos)). `None` for a
+    /// region produced outside a live session (a one-shot
+    /// [`RenderOptions::regions`](crate::RenderOptions) sidecar) or straight
+    /// from a backend. Additive-optional: omitted from the wire when `None`, so
+    /// this stamp does not break the phase-2 region shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<u64>,
 }
 
 impl RenderedRegion {
@@ -142,6 +154,15 @@ pub struct CorpusHit {
     pub field: String,
     /// USV offset into the field's `RichText`.
     pub pos: usize,
+    /// The [`LiveSession`](crate::LiveSession) revision this hit was resolved
+    /// at — [`position_at`](crate::LiveSession::position_at) stamps the current
+    /// revision so a caller can record the captured `pos` against a base
+    /// revision and map it forward through later edits
+    /// ([`map_field_pos`](crate::LiveSession::map_field_pos)). `None` when the
+    /// hit came straight from a backend. Additive-optional: omitted from the
+    /// wire when `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<u64>,
 }
 
 #[cfg(test)]
@@ -155,29 +176,47 @@ mod tests {
             page: 0,
             rect: [180.0, 715.0, 520.0, 735.0],
             span: Some([12, 34]),
+            revision: Some(7),
         };
         let json = serde_json::to_string(&region).unwrap();
         assert!(json.contains("\"field\":\"full_name\""), "{json}");
         assert!(json.contains("\"span\":[12,34]"), "{json}");
+        assert!(json.contains("\"revision\":7"), "{json}");
         let back: RenderedRegion = serde_json::from_str(&json).unwrap();
         assert_eq!(back, region);
     }
 
-    /// `span` is omitted for a scalar/widget region and defaults back to `None`
-    /// on read — the additive-optional discipline that lets Phase 3 append a
-    /// `revision` without a wire break.
+    /// `span` and `revision` are both omitted when `None` and default back on
+    /// read — the additive-optional discipline that let Phase 3 append
+    /// `revision` without a wire break, and that keeps a backend-emitted region
+    /// (no session, no revision) parsing as a phase-2 region did.
     #[test]
-    fn scalar_region_omits_span() {
+    fn optional_fields_omitted_when_none() {
         let region = RenderedRegion {
             field: "subject".to_string(),
             page: 0,
             rect: [1.0, 2.0, 3.0, 4.0],
             span: None,
+            revision: None,
         };
         let json = serde_json::to_string(&region).unwrap();
         assert!(!json.contains("span"), "scalar region omits span: {json}");
+        assert!(
+            !json.contains("revision"),
+            "unstamped region omits revision: {json}"
+        );
         let back: RenderedRegion = serde_json::from_str(&json).unwrap();
         assert_eq!(back, region);
+    }
+
+    /// A phase-2 region on the wire (no `revision` key) still reads back — the
+    /// stamp is additive, not a required field.
+    #[test]
+    fn region_reads_legacy_wire_without_revision() {
+        let json = r#"{"field":"subject","page":0,"rect":[1.0,2.0,3.0,4.0]}"#;
+        let back: RenderedRegion = serde_json::from_str(json).unwrap();
+        assert_eq!(back.revision, None);
+        assert_eq!(back.span, None);
     }
 
     #[test]
@@ -185,9 +224,27 @@ mod tests {
         let hit = CorpusHit {
             field: "body".to_string(),
             pos: 42,
+            revision: Some(3),
         };
         let json = serde_json::to_string(&hit).unwrap();
         assert!(json.contains("\"field\":\"body\"") && json.contains("\"pos\":42"));
+        assert!(json.contains("\"revision\":3"), "{json}");
+        let back: CorpusHit = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, hit);
+    }
+
+    #[test]
+    fn corpus_hit_omits_revision_when_none() {
+        let hit = CorpusHit {
+            field: "body".to_string(),
+            pos: 42,
+            revision: None,
+        };
+        let json = serde_json::to_string(&hit).unwrap();
+        assert!(
+            !json.contains("revision"),
+            "unstamped hit omits revision: {json}"
+        );
         let back: CorpusHit = serde_json::from_str(&json).unwrap();
         assert_eq!(back, hit);
     }

@@ -11,8 +11,8 @@ freeze](phase-1.md). Spike-A (phase-0 residual gate) closed in PR-A before PR-B
 freezes transport shape.
 
 **Status: open.** PR-A + PR-H **reported** on `spike/richtext-phase-3` (origin).
-**PR-B–E landed** on `integration/richtext` (`0c108163a`…). **PR-F** (preview
-wire + revision stamp) is next.
+**PR-B–G landed** on `integration/richtext` (`0c108163a`…). **PR-H**
+(form-editor POC promotion) is the remaining integration step.
 
 ## Spike branch
 
@@ -66,15 +66,24 @@ cd crates/richtext-spikes/form-poc && npm install && npm run dev  # PR-H manual
    retired for [`EditError::BodyImport`](../../crates/core/src/document/edit.rs)
    /`CorpusApply`. Existing field/kind invariant enforcement unchanged.
    Findings in § PR-E.
-6. **PR-F — preview wire + revision stamp.** Append optional `revision` to
-   [`RenderedRegion`](../../crates/core/src/region.rs) and tag read responses
-   (`regions`, `fieldAt`, `positionAt`, `locate`) — the additive-optional
-   discipline phase 2 froze for this. Session applies field deltas against a
-   base revision; mismatch surfaces as a diagnostic, not a silent stale read.
-7. **PR-G — WASM session API.** `LiveSession::applyFieldDelta` (or equivalent
-   batch) in [`bindings/wasm`](../../crates/bindings/wasm/); vitest coverage.
-   Whole-document `apply(doc)` remains for the markdown/LLM path; form fields
-   use the delta path.
+6. **PR-F — preview wire + revision stamp.** **Landed.** Optional `revision` on
+   [`RenderedRegion`](../../crates/core/src/region.rs) and
+   [`CorpusHit`](../../crates/core/src/region.rs), stamped by the
+   [`LiveSession`](../../crates/core/src/session.rs) wrapper on `regions` /
+   `locate` / `position_at` (backends emit `None`; `field_at` stays a bare,
+   revision-invariant address). `ensure_base_revision` /
+   `record_field_delta_at` / `record_field_change_at` guard a field delta
+   against its base revision — a mismatch is a `session::revision_mismatch`
+   diagnostic, not a silent stale write. Additive-optional throughout. Findings
+   in § PR-F.
+7. **PR-G — WASM session API.** **Landed.** `LiveSession.applyFieldDelta(doc,
+   field, baseRevision, delta)` in [`bindings/wasm`](../../crates/bindings/wasm/)
+   splices the main body corpus (`apply_body_change`), recompiles, and records
+   the delta; a `revision` getter and `mapFieldPos(field, base, pos, assoc)`
+   complete the surface, and `FieldRegion`/`CorpusHit` carry the optional
+   `revision`. Whole-document `apply(doc)` remains the markdown/LLM path; form
+   fields use the delta path. vitest coverage in `canvas.test.js`. Findings in
+   § PR-G.
 8. **PR-H — form-editor POC.** First end-to-end consumer:
    `crates/richtext-spikes/form-poc/` — Vite dev app with ProseMirror inline
    fields, `LiveSession.apply`, and canvas preview on `usaf_memo`. Reuses the
@@ -265,6 +274,67 @@ crate-internal `Card::body_mut`; `RichText` re-exported from
    `updateCardBody` and python `replace_body` / `update_card_body` wrappers now
    propagate instead of swallowing.
 
+## PR-F — preview wire + revision stamp findings
+
+**Implementation:** [`region.rs`](../../crates/core/src/region.rs),
+[`session.rs`](../../crates/core/src/session.rs).
+
+1. **Stamp at the wrapper, not the backend.** `revision` is an
+   additive-optional field on `RenderedRegion` and `CorpusHit`
+   (`skip_serializing_if = None`, so a phase-2 wire with no `revision` key still
+   reads back). Backends construct with `revision: None`; the
+   [`LiveSession`](../../crates/core/src/session.rs) wrapper overwrites it with
+   the current `revision()` on `regions` / `locate` / `position_at`. No backend
+   learns about revisions, and the one-shot `RenderOptions::regions` sidecar
+   stays `None` (no session).
+2. **`field_at` is not stamped.** It returns a bare field address, which is
+   revision-invariant — only a *position* drifts. Stamping it would have meant
+   changing its return shape (a break), against the freeze; the fine-grained
+   `position_at` carries the stamp instead.
+3. **Base-revision guard, three surfaces.** `ensure_base_revision` is the raw
+   check (`base == current`, else a `session::revision_mismatch` diagnostic);
+   `record_field_delta_at` / `record_field_change_at` fold guard-then-record for
+   callers where record *is* commit. A caller that interleaves a document
+   mutation and a recompile (PR-G) uses `ensure_base_revision` up front and the
+   plain `record_field_delta` last, so the log advances only on a fully
+   committed edit.
+
+## PR-G — WASM session API findings
+
+**Implementation:** [`engine.rs`](../../crates/bindings/wasm/src/engine.rs),
+[`types.rs`](../../crates/bindings/wasm/src/types.rs);
+[`canvas.test.js`](../../crates/bindings/wasm/canvas.test.js).
+
+1. **`applyFieldDelta` ties Document + session in one call.** It guards the base
+   revision (untouched on mismatch), splices the main body via
+   `apply_body_change` (text delta only), recompiles from the mutated document,
+   and records the delta into the log **last** — so `revision` advances in
+   lockstep with the live preview and a failed recompile leaves the log where it
+   was. The `field` argument is `$body` this phase (the only structurally-stored
+   corpus; scalar `richtext` fields still coerce from strings at `compile_data`);
+   any other address throws, pointing the caller at `apply(doc)`.
+2. **Delta wire shape.** `Delta = { ops: ({retain:n}|{insert:s}|{delete:n})[] }`
+   — CodeMirror-flavoured, externally-tagged with `camelCase` keys, converted to
+   `quillmark_core::Delta` at the boundary (`Op` newly re-exported from core). A
+   pure-insert delta (`{ops:[{insert:"…"}]}`) needs no length knowledge — apply
+   appends the untouched remainder — which the tests exploit.
+3. **`revision` narrows u64 → u32 at the boundary** to stay a JS `number`
+   (parity with `pageCount`), and `mapFieldPos(field, base, pos, "before"|"after")`
+   exposes the forward map, throwing `session::stale_revision` past the ring.
+   `FieldRegion.revision` / `CorpusHit.revision` are optional `u32`.
+4. **Whole-doc `apply(doc)` stays revision-neutral.** It recompiles from a
+   fully-formed document and records nothing (it holds no prior body to diff);
+   the markdown/LLM path re-reads geometry rather than mapping positions
+   forward. The stale-text writer that *wants* monotonic mapping records via
+   `Document::import_body_delta` + an explicit record at the caller (per PR-E),
+   not through `apply(doc)`.
+5. **Canonical `runtime.js` wrapper unchanged.** It already forwards only a
+   curated subset (no `positionAt` / `locate`), and its cross-wasm-memory
+   `apply` bridge (`mod.Document.fromJson(doc.toJson())`) does not compose with
+   an in-place *mutating* `applyFieldDelta`. The phase-3 nav/edit surface is
+   consumed off the backend-build `LiveSession` directly (as PR-H's spike does);
+   forwarding it through the canonical layer is a later pass.
+
 ## Sequencing invariant
 
 - Spike-A reports before PR-B freezes change-log entry shape (text delta only
@@ -272,6 +342,7 @@ crate-internal `Card::body_mut`; `RichText` re-exported from
 - PR-B (minimal diff) before PR-C (log stores deltas worth replaying). **Closed.**
 - PR-D (mark/line ops) before PR-E (mutators emit them). **Both landed.**
 - PR-F (revision stamp) before PR-G (WASM exposes revision-aware apply).
+  **Both landed.**
 - PR-A's bridge pattern is reused in PR-H; no second editor serialization.
 
 Phase 2 outputs (`RenderedRegion`, canonical bytes, segment maps) extend; none

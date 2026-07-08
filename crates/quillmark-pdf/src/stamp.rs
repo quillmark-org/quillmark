@@ -178,6 +178,8 @@ pub fn regions_of(fields: &[FieldSpec]) -> Vec<RenderedRegion> {
                 rect: f.rect,
                 // A widget is a fixed box with no corpus address.
                 span: None,
+                // The session wrapper stamps the revision; the backend has none.
+                revision: None,
             })
         })
         .collect()

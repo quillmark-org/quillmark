@@ -388,3 +388,96 @@ describe('LiveSession.apply', () => {
     session.free()
   })
 })
+
+describe('LiveSession revision stamp + applyFieldDelta (PR-F/PR-G)', () => {
+  // A pure-insert delta prepends `text` to the body corpus without needing to
+  // know its length (Delta.apply appends the untouched remainder after the ops).
+  const prepend = (text) => ({ ops: [{ insert: text }] })
+
+  it('stamps geometry reads with the current revision', () => {
+    const session = openSession()
+    expect(session.revision).toBe(0)
+
+    // Every region carries the session's revision; a fresh session is at 0.
+    const regions = session.regions()
+    expect(regions.length).toBeGreaterThan(0)
+    for (const r of regions) expect(r.revision).toBe(0)
+
+    // positionAt / locate stamp the same revision.
+    const bodyRegion = regions.find((r) => r.field === '$body' && r.span)
+    expect(bodyRegion).toBeTruthy()
+    const caret = session.locate('$body', bodyRegion.span[0])
+    expect(caret.revision).toBe(0)
+  })
+
+  it('applyFieldDelta splices the body, advances the revision, and dirties the page', () => {
+    const { engine, quill } = openQuill()
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    const session = engine.open(quill, doc)
+    expect(session.revision).toBe(0)
+
+    const cs = session.applyFieldDelta(doc, '$body', 0, prepend('NEW '))
+    expect(cs.dirtyPages).toContain(0)
+
+    // The revision advanced and the mutation reached the document body.
+    expect(session.revision).toBe(1)
+    expect(doc.main.bodyMarkdown).toContain('NEW')
+
+    // The next read is stamped at the new revision.
+    const region = session.regions().find((r) => r.field === '$body')
+    expect(region.revision).toBe(1)
+    session.free()
+  })
+
+  it('maps a position captured at an older revision forward through the edit', () => {
+    const { engine, quill } = openQuill()
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    const session = engine.open(quill, doc)
+
+    // At the base revision, mapping is the identity.
+    expect(session.mapFieldPos('$body', 0, 0, 'after')).toBe(0)
+
+    // Prepend a 4-USV run ("NEW ") at corpus position 0.
+    session.applyFieldDelta(doc, '$body', 0, prepend('NEW '))
+
+    // A position captured at revision 0 maps forward past the leading insert
+    // with Assoc::After, and stays put with Assoc::Before.
+    expect(session.mapFieldPos('$body', 0, 0, 'after')).toBe(4)
+    expect(session.mapFieldPos('$body', 0, 0, 'before')).toBe(0)
+    session.free()
+  })
+
+  it('rejects a stale base revision without mutating (session::revision_mismatch)', () => {
+    const { engine, quill } = openQuill()
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    const session = engine.open(quill, doc)
+
+    session.applyFieldDelta(doc, '$body', 0, prepend('A '))
+    expect(session.revision).toBe(1)
+
+    // Re-submitting against the now-stale base 0 throws and changes nothing.
+    let thrown
+    try {
+      session.applyFieldDelta(doc, '$body', 0, prepend('B '))
+    } catch (e) {
+      thrown = e
+    }
+    expect(thrown).toBeTruthy()
+    expect(thrown.diagnostics?.[0]?.code).toBe('session::revision_mismatch')
+    expect(session.revision).toBe(1)
+    session.free()
+  })
+
+  it('rejects a non-body field as a delta-path target', () => {
+    const { engine, quill } = openQuill()
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    const session = engine.open(quill, doc)
+    expect(() => session.applyFieldDelta(doc, 'subject', 0, prepend('x'))).toThrow(/\$body/)
+    session.free()
+  })
+
+  it('mapFieldPos accepts only "before" or "after"', () => {
+    const session = openSession()
+    expect(() => session.mapFieldPos('$body', 0, 0, 'sideways')).toThrow(/before.*after/)
+  })
+})
