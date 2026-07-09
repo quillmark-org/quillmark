@@ -17,7 +17,7 @@ use proptest::prelude::*;
 use quillmark_richtext::delta::diff_import;
 use quillmark_richtext::export::to_markdown;
 use quillmark_richtext::import::from_markdown;
-use quillmark_richtext::model::{Mark, MarkKind};
+use quillmark_richtext::model::{Line, Mark, MarkKind};
 use quillmark_richtext::usv::{char_to_utf16, utf16_to_char};
 use quillmark_richtext::{Delta, LineKind, LineOp, MarkOp, Op, RichText};
 
@@ -34,13 +34,15 @@ fn clean_word() -> impl Strategy<Value = String> {
 }
 
 // `plain_word` carries inline-special and astral chars as *literal text*, so
-// escaping and USV bounds are exercised by the round-trip. The first char is
-// alphanumeric and the set excludes block-marker chars (`> # - .`): a
-// block marker *leading* an item's content (`- >`, `- #`) makes pulldown build
-// an empty nested block, not literal text — a degenerate corpus no editor emits
-// (leading-marker escaping is covered by `export::tests::*` unit tests instead).
+// escaping and USV bounds are exercised by the round-trip. The first char stays
+// alphanumeric, so a block marker never *leads* an item's content (`- >`, `- #`
+// would make pulldown build an empty nested block, not literal text — a
+// degenerate corpus no editor emits); but the tail now carries `&` and the
+// block-marker chars (`# > - . +`), exercising `&`-entity escaping (#848 part 2)
+// and a trailing-`#` heading run (#848 part 3) through the round-trip, not just
+// the pinned `export::tests::*` unit tests.
 fn plain_word() -> impl Strategy<Value = String> {
-    r"[a-z0-9][a-z0-9*_~\\😀你]{0,5}"
+    r"[a-z0-9][a-z0-9*_~\\&#>.+😀你-]{0,5}"
 }
 
 fn inline_token() -> impl Strategy<Value = String> {
@@ -105,6 +107,36 @@ fn document() -> impl Strategy<Value = String> {
     prop::collection::vec(block(), 1..6).prop_map(|blocks| blocks.join("\n\n"))
 }
 
+// ---------------------------------------------------------------------------
+// Overlapping-mark helpers (issue #848 property): the four formatting kinds an
+// editor can freely overlap, and the predicates for the one unrepresentable
+// shape (two asterisk-family marks partially overlapping).
+// ---------------------------------------------------------------------------
+
+fn ov_kind(i: u8) -> MarkKind {
+    match i % 4 {
+        0 => MarkKind::Strong,
+        1 => MarkKind::Emph,
+        2 => MarkKind::Strike,
+        _ => MarkKind::Underline,
+    }
+}
+
+/// Both marks render as a run of the same `*` character (`strong`/`emph`).
+fn both_asterisk(marks: &[Mark]) -> bool {
+    marks
+        .iter()
+        .all(|m| matches!(m.kind, MarkKind::Strong | MarkKind::Emph))
+}
+
+/// The marks intersect but neither contains the other — the shape that forces a
+/// close-and-reopen (and, for asterisk delimiters, an ambiguous `***` merge).
+fn partial_overlap(marks: &[Mark]) -> bool {
+    let (a, b) = (&marks[0], &marks[1]);
+    (a.start < b.start && b.start < a.end && a.end < b.end)
+        || (b.start < a.start && a.start < b.end && b.end < a.end)
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(400))]
 
@@ -118,6 +150,70 @@ proptest! {
         let md2 = to_markdown(&rt);
         let rt2 = from_markdown(&md2).unwrap();
         prop_assert_eq!(&rt, &rt2, "not a fixed point.\n in:  {:?}\n out: {:?}", md, md2);
+    }
+
+    /// Property 1b (issue #848): overlapping formatting marks — the free
+    /// (Peritext-style) overlap `apply_mark_ops` produces but markdown import
+    /// never does — export to *balanced* markdown that preserves the text.
+    ///
+    /// The shape is the issue's canonical overlap: two marks over contiguous
+    /// word-char text in a staircase (`s1 < s2 < e1 < e2 == n`), the
+    /// representable family markdown can carry. (Arbitrary editor marks that end
+    /// mid-word before another word char, or reopen before a space, hit
+    /// CommonMark flanking rules and are *not* generally representable — an
+    /// editor-only degenerate shape outside the `from_markdown` fixed-point
+    /// contract, like the hard-break limits.) The export must:
+    ///   - preserve the text exactly (the corruption the issue reported);
+    ///   - round-trip exactly for marks with *distinct* delimiters;
+    ///   - stay text-safe for the `strong`+`emph` asterisk clash, whose overlap
+    ///     is unrepresentable and degrades to its nested subset (documented).
+    #[test]
+    fn overlapping_marks_export_is_text_safe(
+        raw in "[a-z]{4,8}",
+        x in 0usize..64, y in 0usize..64, z in 0usize..64,
+        k1i in 0u8..4, k2i in 0u8..4,
+    ) {
+        let text = raw;
+        let n = text.chars().count();
+        // Three distinct interior cut points → the staircase s1<s2<e1<e2==n,
+        // built by construction (no rejection) so the whole family is covered.
+        let s1 = x % (n - 2);
+        let s2 = s1 + 1 + y % (n - s1 - 2);
+        let e1 = s2 + 1 + z % (n - s2 - 1);
+        let e2 = n;
+
+        let marks = vec![
+            Mark { start: s1, end: e1, kind: ov_kind(k1i) },
+            Mark { start: s2, end: e2, kind: ov_kind(k2i) },
+        ];
+        let mut rt = RichText {
+            text: text.clone(),
+            lines: vec![Line { kind: LineKind::Para, containers: vec![], continues: false }],
+            marks,
+            islands: vec![],
+        };
+        rt.normalize();
+        prop_assert_eq!(rt.validate(), Ok(()), "hand-built corpus invalid");
+
+        let md = to_markdown(&rt);
+        let rt2 = from_markdown(&md).unwrap();
+        prop_assert_eq!(rt2.validate(), Ok(()), "re-import invalid for {:?}", md);
+        // The critical #848 invariant: overlap never corrupts the text (no
+        // unbalanced/unclosed delimiter leaks a literal `**`/`*` into the corpus).
+        prop_assert_eq!(&rt2.text, &rt.text, "overlap corrupted text: {:?}", md);
+
+        // Distinct delimiters → an exact fixed point via close-and-reopen. Two
+        // asterisk-family marks that still partially overlap after normalization
+        // are unrepresentable, so only text-safety (asserted above) holds.
+        let asterisk_clash = both_asterisk(&rt.marks) && rt.marks.len() == 2
+            && partial_overlap(&rt.marks);
+        if !asterisk_clash {
+            prop_assert_eq!(&rt, &rt2, "distinct-delim overlap not a fixed point: {:?}", md);
+        }
+        // Whatever the shape, the re-imported corpus is itself a genuine fixed
+        // point (it lives in the `from_markdown` domain the contract covers).
+        prop_assert_eq!(&rt2, &from_markdown(&to_markdown(&rt2)).unwrap(),
+            "re-imported overlap corpus not a fixed point: {:?}", md);
     }
 
     /// Property 2a: canonical JSON is a fixed point.
