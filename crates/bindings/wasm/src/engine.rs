@@ -244,10 +244,12 @@ pub struct Quill {
 /// `fieldAt`, `positionAt`, `locate`) serve the current compile. Two edit
 /// verbs, both transactional (on throw every read keeps serving the last-good
 /// compile): `apply(doc)` recompiles a whole document in place (the
-/// markdown/LLM path, revision-neutral), and `applyFieldDelta(doc, …)` splices
-/// one content field's corpus, advancing the monotonic `revision` so captured
-/// positions map forward via `mapFieldPos`. Geometry reads stamp that
-/// `revision` (`FieldRegion.revision` / `CorpusHit.revision`).
+/// markdown/LLM path) and invalidates the change log, so a position captured
+/// before it now throws `session::stale_revision` on `mapFieldPos` instead of
+/// silently resolving; `applyFieldDelta(doc, …)` splices one content field's
+/// corpus, advancing the monotonic `revision` so captured positions map
+/// forward instead. Geometry reads stamp that `revision` (`FieldRegion.revision`
+/// / `CorpusHit.revision`).
 ///
 /// **Empty documents.** A zero-page document yields a valid session
 /// (`pageCount === 0`); `paint(ctx, 0)` or `pageSize(0)` throws with
@@ -1463,7 +1465,10 @@ impl LiveSession {
     /// (same quill), then applied transactionally: on throw every read
     /// (`render`, `paint`, `pageSize`, `regions`, `fieldAt`) keeps serving the last-good
     /// compile, and the session recovers on the next successful `apply`. On
-    /// success reads serve the new compile; repaint `dirtyPages ∩ visible`.
+    /// success reads serve the new compile; repaint `dirtyPages ∩ visible`, and
+    /// the change log is invalidated — a position captured before this call now
+    /// throws `session::stale_revision` on `mapFieldPos` instead of silently
+    /// resolving against text this rewrite may have replaced.
     #[wasm_bindgen(js_name = apply)]
     pub fn apply(&mut self, doc: &Document) -> Result<ChangeSet, JsValue> {
         self.config
@@ -1487,8 +1492,10 @@ impl LiveSession {
     /// `applyFieldDelta`, incremented by each committed native field edit. The
     /// stamp on `regions()` / `positionAt` / `locate`; pass a captured value
     /// back as `applyFieldDelta`'s `baseRevision` and to `mapFieldPos`. A
-    /// whole-document `apply(doc)` does **not** advance it (the markdown/LLM
-    /// path re-reads geometry rather than mapping positions forward).
+    /// whole-document `apply(doc)` also advances it (invalidating the change
+    /// log), so a position captured before an `apply(doc)` call always fails
+    /// `mapFieldPos` with `session::stale_revision` rather than mapping forward
+    /// through per-field deltas that no longer describe the rewritten text.
     #[wasm_bindgen(getter, js_name = revision)]
     pub fn revision(&self) -> u32 {
         self.inner.revision().try_into().unwrap_or(u32::MAX)
@@ -1507,8 +1514,11 @@ impl LiveSession {
     ///
     /// This phase targets the **main body** corpus only (`field === "$body"`);
     /// any other address throws (use `apply(doc)` for those). Transactional on
-    /// the compile: a failed recompile keeps the last-good preview and does not
-    /// advance `revision`. On success `doc`'s body carries the edit, the
+    /// the compile *and* on `doc`: a failed splice or recompile leaves both the
+    /// preview and `doc` byte-identical to before the call (the splice is
+    /// rolled back), so a caller's natural retry with the same arguments is
+    /// safe rather than double-applying the delta. `revision` does not advance
+    /// on failure either. On success `doc`'s body carries the edit, the
     /// preview reflects it, and `revision` is `baseRevision + 1`.
     #[wasm_bindgen(js_name = applyFieldDelta)]
     pub fn apply_field_delta(
@@ -1538,28 +1548,53 @@ impl LiveSession {
                 .to_js_value()
             })?;
 
-        // Native writer: splice the main body corpus (text delta only).
-        doc.inner
-            .main_mut()
-            .apply_body_change(&core_delta, &[], &[])
-            .map_err(|e| edit_error_to_js(&e))?;
+        // Snapshot the pre-edit card: a failed splice or recompile below must
+        // leave `doc` exactly as it was, or a caller's retry double-applies the
+        // delta onto an already-mutated document.
+        let pre_edit_main = doc.inner.main().clone();
 
-        // Recompile from the mutated document, transactional on the compile.
-        self.config
-            .check_quill_reference(&doc.inner)
-            .map_err(|e| WasmError::from(e).to_js_value())?;
-        let json_data = self
+        // Native writer: splice the main body corpus (text delta only).
+        if let Err(e) = doc.inner.main_mut().apply_body_change(&core_delta, &[], &[]) {
+            *doc.inner.main_mut() = pre_edit_main;
+            return Err(edit_error_to_js(&e));
+        }
+
+        // Recompile from the mutated document, transactional on the compile —
+        // and, via the snapshot above, on `doc` itself.
+        let recompiled = self
             .config
-            .compile_data(&doc.inner)
-            .map_err(|e| WasmError::from(e).to_js_value())?;
-        let cs = self
-            .inner
-            .apply(&json_data)
-            .map_err(|e| WasmError::from(e).to_js_value())?;
+            .check_quill_reference(&doc.inner)
+            .map_err(|e| WasmError::from(e).to_js_value())
+            .and_then(|()| {
+                self.config
+                    .compile_data(&doc.inner)
+                    .map_err(|e| WasmError::from(e).to_js_value())
+            })
+            .and_then(|json_data| {
+                self.inner
+                    .apply(&json_data)
+                    .map_err(|e| WasmError::from(e).to_js_value())
+            });
+        let cs = match recompiled {
+            Ok(cs) => cs,
+            Err(e) => {
+                *doc.inner.main_mut() = pre_edit_main;
+                return Err(e);
+            }
+        };
 
         // Commit into the change log only after a successful recompile, so the
-        // revision advances in lockstep with the live preview.
-        self.inner.record_field_delta(field.to_string(), core_delta);
+        // revision advances in lockstep with the live preview. Checked against
+        // `base_revision` like every other recording path — no unchecked
+        // bypass of the guard already enforced above.
+        self.inner
+            .record_field_delta_at(field.to_string(), base_revision as u64, core_delta)
+            .map_err(|d| {
+                WasmError {
+                    diagnostics: vec![d],
+                }
+                .to_js_value()
+            })?;
 
         Ok(ChangeSet {
             page_count: cs.page_count,

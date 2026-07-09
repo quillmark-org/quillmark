@@ -152,6 +152,26 @@ impl ChangeLog {
     pub fn entries_after(&self, after: u64) -> impl Iterator<Item = &FieldChange> {
         self.entries.iter().filter(move |e| e.revision > after)
     }
+
+    /// Invalidate the log for a whole-document rewrite that bypasses the
+    /// delta protocol (`LiveSession::apply`): bump the revision and drop
+    /// every entry, replacing them with one sentinel at the new revision. A
+    /// later `map_pos` call against any base revision recorded before this
+    /// point now fails closed with [`StaleRevision`] instead of silently
+    /// composing through per-field deltas that no longer describe the
+    /// current text. Returns the new revision.
+    pub fn invalidate(&mut self) -> u64 {
+        self.revision = self.revision.saturating_add(1);
+        self.entries.clear();
+        self.entries.push_back(FieldChange {
+            revision: self.revision,
+            path: String::new(),
+            text_delta: Delta { ops: Vec::new() },
+            mark_ops: Vec::new(),
+            line_ops: Vec::new(),
+        });
+        self.revision
+    }
 }
 
 #[cfg(test)]
@@ -308,6 +328,27 @@ mod tests {
                 oldest_retained: 1,
             }
         );
+    }
+
+    #[test]
+    fn invalidate_fails_closed_for_pre_apply_bases() {
+        let mut log = ChangeLog::with_default_capacity();
+        log.record("f", diff("a", "b")); // rev 1
+        log.record("f", diff("b", "c")); // rev 2
+        let r = log.invalidate();
+        assert_eq!(r, 3);
+        assert_eq!(log.revision(), 3);
+        // Any base captured before the invalidation is now stale...
+        let err = log.map_pos("f", 2, 0, Assoc::Before).unwrap_err();
+        assert_eq!(
+            err,
+            StaleRevision {
+                base_revision: 2,
+                oldest_retained: 3,
+            }
+        );
+        // ...but a read taken exactly at the new revision still resolves.
+        assert_eq!(log.map_pos("f", 3, 5, Assoc::Before).unwrap(), 5);
     }
 
     #[test]
