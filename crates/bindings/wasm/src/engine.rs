@@ -145,7 +145,7 @@ export interface Card {
      * model. An editor writes this shape back; a markdown string is also accepted
      * on input (imported). Read `bodyMarkdown` for the markdown projection.
      */
-    body: RichText;
+    body: RichText | string;
     /** The body's markdown projection (`export ∘ body`). Read-only; `""` for an empty body. */
     bodyMarkdown: string;
 }
@@ -155,12 +155,47 @@ export interface Card {
  * fields). One text sequence over a single coordinate space (Unicode scalar
  * values): `text` plus line attributes, anchored `marks`, and embedded
  * `islands`. Every edit is a splice; markdown is a projection, not the model.
+ * Mirrors `quillmark_richtext::serial`'s canonical JSON encoding.
  */
 export interface RichText {
     text: string;
-    lines: unknown[];
-    marks: unknown[];
-    islands: unknown[];
+    lines: RichTextLine[];
+    marks: RichTextMark[];
+    islands: RichTextIsland[];
+}
+
+/** One `\n`-separated segment of `RichText.text`, in order. */
+export type RichTextLine = {
+    containers: RichTextContainer[];
+    /** A within-block hard line break rather than a new block. Omitted (false) in the common case. */
+    continues?: boolean;
+} & (
+    | { kind: "para" }
+    | { kind: "heading"; level: number }
+    | { kind: "code"; lang?: string }
+    | { kind: "island" }
+);
+
+/** An ancestor block a line nests inside, outermost first. */
+export type RichTextContainer =
+    | { container: "list_item"; ordered: boolean; start: number; ordinal: number }
+    | { container: "quote" };
+
+/** A mark over char range `[start, end)` into `RichText.text`. */
+export type RichTextMark = { start: number; end: number } & (
+    | { type: "strong" | "emph" | "underline" | "strike" | "code" }
+    | { type: "link"; url: string }
+    | { type: "anchor"; id: string }
+    | { type: string; attrs: unknown }
+);
+
+/** A structured object (table, figure, …) occupying one island slot in `RichText.text`. */
+export interface RichTextIsland {
+    id: string;
+    type: string;
+    props: unknown;
+    /** How faithfully the markdown projection can carry this island. */
+    loss: "lossless" | "degraded" | "unrepresentable";
 }
 "#;
 
@@ -1456,7 +1491,7 @@ impl LiveSession {
     /// path re-reads geometry rather than mapping positions forward).
     #[wasm_bindgen(getter, js_name = revision)]
     pub fn revision(&self) -> u32 {
-        self.inner.revision() as u32
+        self.inner.revision().try_into().unwrap_or(u32::MAX)
     }
 
     /// Commit a native form-editor edit to a content field: splice `delta` into

@@ -20,7 +20,8 @@ import type {
 	PaintOptions as CanonicalPaintOptions,
 	PaintResult as CanonicalPaintResult,
 	FieldRegion as CanonicalFieldRegion,
-	ChangeSet as CanonicalChangeSet
+	ChangeSet as CanonicalChangeSet,
+	CorpusHit as CanonicalCorpusHit
   // The BUILT copy (synced from `runtime/runtime.d.ts` by build-wasm.sh / the
   // cp step), because only there does the d.ts's own `../core/wasm.js` import
   // resolve to the generated `pkg/core` build. The two copies are byte-identical.
@@ -35,7 +36,8 @@ import type {
 	PaintOptions as TypstPaintOptions,
 	PaintResult as TypstPaintResult,
 	FieldRegion as TypstFieldRegion,
-	ChangeSet as TypstChangeSet
+	ChangeSet as TypstChangeSet,
+	CorpusHit as TypstCorpusHit
 } from '../../../pkg/backends/typst/wasm';
 
 // One mutual-assignability pair per hoisted type: typst → canonical and
@@ -100,6 +102,11 @@ const changeSetB: TypstChangeSet = {} as CanonicalChangeSet;
 void changeSetA;
 void changeSetB;
 
+const corpusHitA: CanonicalCorpusHit = {} as TypstCorpusHit;
+const corpusHitB: TypstCorpusHit = {} as CanonicalCorpusHit;
+void corpusHitA;
+void corpusHitB;
+
 const renderResultKeys: KeysEqual<CanonicalRenderResult, TypstRenderResult> = true;
 const renderOptionsKeys: KeysEqual<CanonicalRenderOptions, TypstRenderOptions> = true;
 const artifactKeys: KeysEqual<CanonicalArtifact, TypstArtifact> = true;
@@ -108,6 +115,7 @@ const paintOptionsKeys: KeysEqual<CanonicalPaintOptions, TypstPaintOptions> = tr
 const paintResultKeys: KeysEqual<CanonicalPaintResult, TypstPaintResult> = true;
 const fieldRegionKeys: KeysEqual<CanonicalFieldRegion, TypstFieldRegion> = true;
 const changeSetKeys: KeysEqual<CanonicalChangeSet, TypstChangeSet> = true;
+const corpusHitKeys: KeysEqual<CanonicalCorpusHit, TypstCorpusHit> = true;
 void renderResultKeys;
 void renderOptionsKeys;
 void artifactKeys;
@@ -116,3 +124,4 @@ void paintOptionsKeys;
 void paintResultKeys;
 void fieldRegionKeys;
 void changeSetKeys;
+void corpusHitKeys;
