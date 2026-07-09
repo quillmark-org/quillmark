@@ -48,6 +48,18 @@ not restate the model.
 - **Type name is `richtext`** at every author-facing surface and in code
   (`RichText`); `type: markdown` is a schema load error (PR-G cutover).
   Current surface: SCHEMAS.md.
+- **Core stays CRDT-free; Automerge is the phase-4 sync library** (settled
+  [#863](https://github.com/quillmark-org/quillmark/issues/863)): a CRDT
+  backing store is rejected — mandatory inclusion breaks the core wasm budget
+  (~340KB → ≥538KB gzipped), and merge is dead weight while storage and
+  transport are materialized canonical JSON with no op-history exchange.
+  RichText's exact marks and materialized-view canonical JSON converge
+  byte-identically with Automerge under `ExpandMark::None`, so a later sync
+  binding needs no model change. Automerge over Loro on every measured axis
+  (dependency count, build time, wasm size, mark-boundary API, shape fit).
+  The spike's convergence tests (`claude/loro-text-format-eval-uzlhhq`) seed
+  a differential suite — Automerge as CI oracle for the edit-transform layer,
+  never linked into artifacts.
 
 ## Phase map
 
@@ -74,8 +86,8 @@ not restate the model.
   PR-H landed the fixture and runtime nav docs. See
   [PREVIEW.md](../../canon/PREVIEW.md) for the landed edit-surface contract.
 - **Phase 4 — islands + collab.** First real island type (tables, with
-  per-creation id minting rather than import's sequential ids), then a
-  text-CRDT sync binding if wanted; core stays CRDT-free.
+  per-creation id minting rather than import's sequential ids), then an
+  Automerge sync binding if wanted; core stays CRDT-free (settled #863).
 
 Sequencing invariant: nothing a later phase needs is frozen before the
 phase-0 spike that validates it, and no phase discards another's output.
@@ -83,6 +95,7 @@ phase-0 spike that validates it, and no phase discards another's output.
 ## Related
 
 - #831 (this rework), #830 (block-tree predecessor, superseded), #829
-  (regions, delivered by phase 2)
+  (regions, delivered by phase 2), #863 (CRDT spike, settled the phase-4
+  library and the CRDT-free core)
 - `prose/canon/DOCUMENT_STORAGE.md`, `QUILL_VALUE.md`, `PREVIEW.md`,
   `CONVERT.md`, `PLATE_DATA.md`, `SCHEMAS.md`
