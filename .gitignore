@@ -45,6 +45,11 @@ node_modules/
 package-lock.json
 *.tgz
 
+# Frontend build/dev-cache/test-run output (Vite dist, dep cache, Playwright results)
+dist/
+.vite/
+test-results/
+
 .env
 
 # MkDocs build artifacts

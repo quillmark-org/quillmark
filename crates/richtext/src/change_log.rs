@@ -24,8 +24,13 @@ pub struct FieldChange {
     pub line_ops: Vec<LineOp>,
 }
 
-/// Position mapping failed because `base_revision` precedes the oldest entry
-/// still retained in the ring buffer.
+/// Position mapping failed because `base_revision` cannot be folded forward
+/// against the retained log — either it precedes the oldest entry still
+/// retained in the ring buffer, or it is in the future (greater than the
+/// log's current revision). `oldest_retained` carries the ring's oldest
+/// retained revision in the stale case; in the future-revision case there is
+/// no meaningful "oldest retained" to report, so it carries the log's current
+/// revision instead — the value the caller should re-read at either way.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StaleRevision {
     pub base_revision: u64,
@@ -103,9 +108,11 @@ impl ChangeLog {
     /// subsequent text deltas for that field. Identity when `base_revision` is
     /// current or when no matching entries exist.
     ///
-    /// Returns [`StaleRevision`] when `base_revision` is strictly before the
-    /// oldest retained entry — the consumer must re-read at
-    /// [`Self::revision`].
+    /// Returns [`StaleRevision`] when `base_revision` cannot be folded forward
+    /// against the retained log: either it is in the future (greater than
+    /// [`Self::revision`] — a caller passing a revision it never observed), or
+    /// it is stale (an entry the fold needs, `base_revision + 1`, has already
+    /// been evicted). The consumer must re-read at [`Self::revision`].
     pub fn map_pos(
         &self,
         field: &str,
@@ -114,12 +121,19 @@ impl ChangeLog {
         assoc: Assoc,
     ) -> Result<usize, StaleRevision> {
         if base_revision > self.revision {
-            return Ok(pos);
+            return Err(StaleRevision {
+                base_revision,
+                oldest_retained: self.revision,
+            });
         }
         if let Some(oldest) = self.oldest_retained() {
-            // Revision 0 is the pre-edit baseline (no log entry); only evicted
-            // *recorded* revisions are stale.
-            if base_revision > 0 && base_revision < oldest {
+            // The fold below needs every entry with revision > base_revision,
+            // i.e. starting at `base_revision + 1`. That entry is retained iff
+            // `base_revision + 1 >= oldest`; anything older has already been
+            // evicted and folding would silently skip it, corrupting the
+            // result. Revision 0 is the pre-edit baseline (no log entry) but
+            // is not exempt: once entry 1 is evicted, base 0 is stale too.
+            if base_revision + 1 < oldest {
                 return Err(StaleRevision {
                     base_revision,
                     oldest_retained: oldest,
@@ -137,6 +151,26 @@ impl ChangeLog {
     /// Entries with `revision > after`, in commit order.
     pub fn entries_after(&self, after: u64) -> impl Iterator<Item = &FieldChange> {
         self.entries.iter().filter(move |e| e.revision > after)
+    }
+
+    /// Invalidate the log for a whole-document rewrite that bypasses the
+    /// delta protocol (`LiveSession::apply`): bump the revision and drop
+    /// every entry, replacing them with one sentinel at the new revision. A
+    /// later `map_pos` call against any base revision recorded before this
+    /// point now fails closed with [`StaleRevision`] instead of silently
+    /// composing through per-field deltas that no longer describe the
+    /// current text. Returns the new revision.
+    pub fn invalidate(&mut self) -> u64 {
+        self.revision = self.revision.saturating_add(1);
+        self.entries.clear();
+        self.entries.push_back(FieldChange {
+            revision: self.revision,
+            path: String::new(),
+            text_delta: Delta { ops: Vec::new() },
+            mark_ops: Vec::new(),
+            line_ops: Vec::new(),
+        });
+        self.revision
     }
 }
 
@@ -201,20 +235,120 @@ mod tests {
         );
     }
 
+    /// Corrected boundary: staleness is `base_revision + 1 < oldest`, not
+    /// `base_revision < oldest`. Once rev 1 is evicted (`oldest == 2`), base 0
+    /// is stale (`0 + 1 == 1 < 2`) because folding it needs rev 1, which is
+    /// gone — but base 1 is *not* stale (`1 + 1 == 2`, not `< 2`) because
+    /// folding it only needs entries with revision > 1 (rev 2, rev 3), both
+    /// still retained. The old strict-less-than check rejected base 1 too,
+    /// even though nothing it needed had been evicted.
     #[test]
     fn map_pos_stale_when_base_before_ring() {
         let mut log = ChangeLog::new(2);
         log.record("f", diff("a", "b")); // rev 1
         log.record("f", diff("b", "c")); // rev 2
         log.record("f", diff("c", "d")); // rev 3, evicts rev 1
-        let err = log.map_pos("f", 1, 0, Assoc::Before).unwrap_err();
+        let err = log.map_pos("f", 0, 0, Assoc::Before).unwrap_err();
         assert_eq!(
             err,
             StaleRevision {
-                base_revision: 1,
+                base_revision: 0,
                 oldest_retained: 2,
             }
         );
+    }
+
+    /// The off-by-one boundary case pinned above from the other side: base ==
+    /// `oldest - 1` still maps correctly after eviction, because the fold
+    /// only ever needs entries with revision > base_revision — it never reads
+    /// the evicted entry itself.
+    #[test]
+    fn map_pos_succeeds_at_oldest_minus_one() {
+        let mut log = ChangeLog::new(2);
+        log.record("f", diff("hello", "help")); // rev 1: Retain(3), Delete(2), Insert("p")
+        log.record("f", diff("help", "helpful")); // rev 2: Retain(4), Insert("ful")
+        log.record("f", diff("helpful", "helpfully")); // rev 3: Retain(7), Insert("ly"), evicts rev 1
+        assert_eq!(log.oldest_retained(), Some(2));
+
+        // Position 3 in "help" (the state as of rev 1, right before the
+        // trailing "p") maps through rev 2 and rev 3 without needing rev 1,
+        // which is already evicted.
+        assert_eq!(log.map_pos("f", 1, 3, Assoc::Before).unwrap(), 3);
+    }
+
+    /// The exact bug from GH-845: a position captured at the pre-edit
+    /// baseline (revision 0, before any edit) must go stale once the entry
+    /// it needs (rev 1) is evicted — folding only the retained suffix (rev 2,
+    /// rev 3) would otherwise silently return a wrong position instead of
+    /// erroring.
+    ///
+    /// Ground truth, tracing the full (unevicted) history: position 4 in
+    /// "hello" (the 'o') sits inside the `Delete(2)` of rev 1
+    /// (`diff("hello", "help")` = `Retain(3), Delete(2), Insert("p")`), which
+    /// collapses it to 3; rev 2 (`Retain(4), Insert("ful")`) and rev 3
+    /// (`Retain(7), Insert("ly")`) both retain position 3 unchanged (it falls
+    /// inside their leading `Retain`). So the correct forward mapping is 3.
+    /// A fold that skips the evicted rev 1 and starts from the raw base
+    /// position 4 instead would run rev 2's `Insert` at position 4 (the
+    /// insertion point, `Assoc::Before` stays put) giving 4, then rev 3's
+    /// leading `Retain(7)` passes 4 through unchanged — a wrong answer (4
+    /// instead of 3) returned with no indication anything was skipped. The
+    /// fix must refuse to compute either number and return `StaleRevision`.
+    #[test]
+    fn map_pos_base_zero_stale_after_prefix_eviction() {
+        let mut log = ChangeLog::new(2);
+        log.record("f", diff("hello", "help")); // rev 1, evicted below
+        log.record("f", diff("help", "helpful")); // rev 2
+        log.record("f", diff("helpful", "helpfully")); // rev 3, evicts rev 1
+        assert_eq!(log.oldest_retained(), Some(2));
+
+        let err = log.map_pos("f", 0, 4, Assoc::Before).unwrap_err();
+        assert_eq!(
+            err,
+            StaleRevision {
+                base_revision: 0,
+                oldest_retained: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn map_pos_errors_on_future_revision() {
+        let mut log = ChangeLog::with_default_capacity();
+        log.record("f", diff("a", "b")); // rev 1
+        assert_eq!(log.revision(), 1);
+
+        // base_revision 5 was never observed — no entry, no ring position —
+        // and must error rather than silently pass `pos` through unchanged.
+        let err = log.map_pos("f", 5, 0, Assoc::Before).unwrap_err();
+        assert_eq!(
+            err,
+            StaleRevision {
+                base_revision: 5,
+                oldest_retained: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn invalidate_fails_closed_for_pre_apply_bases() {
+        let mut log = ChangeLog::with_default_capacity();
+        log.record("f", diff("a", "b")); // rev 1
+        log.record("f", diff("b", "c")); // rev 2
+        let r = log.invalidate();
+        assert_eq!(r, 3);
+        assert_eq!(log.revision(), 3);
+        // Any base captured before the invalidation is now stale...
+        let err = log.map_pos("f", 2, 0, Assoc::Before).unwrap_err();
+        assert_eq!(
+            err,
+            StaleRevision {
+                base_revision: 2,
+                oldest_retained: 3,
+            }
+        );
+        // ...but a read taken exactly at the new revision still resolves.
+        assert_eq!(log.map_pos("f", 3, 5, Assoc::Before).unwrap(), 5);
     }
 
     #[test]

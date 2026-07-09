@@ -178,6 +178,20 @@ impl Delta {
 /// verbatim-move detector's length floor (mirrors the spike's `MIN_MOVE`).
 const MIN_MOVE: usize = 4;
 
+/// Above this many USV chars, the single-line path skips `similar`'s
+/// char-level Myers diff and falls back to [`coarse_replace`] (issue #849).
+/// `TextDiff::from_chars` is O(N·D) with no deadline; on two long, unrelated
+/// single-line strings (no newlines to fall back to line granularity — the
+/// realistic shape of an LLM full-document rewrite) D grows with N, so cost
+/// is effectively quadratic. Two unrelated 30,000-char lines measured 86s in
+/// a debug build. This threshold sits comfortably below that (6x headroom)
+/// while still covering a real single-paragraph field, which plausibly runs
+/// to a few thousand chars. A fixed cutoff was chosen over
+/// `TextDiffConfig::timeout` — nothing in this crate uses `TextDiffConfig`
+/// today, and a char budget is deterministic (no wall-clock flakiness in
+/// CI, no partial-diff result to reason about).
+const CHAR_DIFF_LIMIT: usize = 5_000;
+
 /// Char-level Myers/LCS diff over USV: a minimal `Retain` / `Delete` / `Insert`
 /// script. Disjoint edits no longer collapse the span between them into one
 /// delete+insert, so anchors sitting in unchanged middle text survive rebase
@@ -185,9 +199,17 @@ const MIN_MOVE: usize = 4;
 ///
 /// Single-line text diffs at char granularity; multi-line text diffs at line
 /// granularity so a paragraph reorder surfaces as whole-line insert spans the
-/// move detector can match (char Myers fragments reordered blocks).
+/// move detector can match (char Myers fragments reordered blocks). Above
+/// [`CHAR_DIFF_LIMIT`] chars, the single-line path skips Myers entirely and
+/// uses [`coarse_replace`] instead.
 pub fn diff(base: &str, new: &str) -> Delta {
-    let text_diff = if base.contains('\n') || new.contains('\n') {
+    let multiline = base.contains('\n') || new.contains('\n');
+    if !multiline
+        && (base.chars().count() > CHAR_DIFF_LIMIT || new.chars().count() > CHAR_DIFF_LIMIT)
+    {
+        return coarse_replace(base, new);
+    }
+    let text_diff = if multiline {
         TextDiff::from_lines(base, new)
     } else {
         TextDiff::from_chars(base, new)
@@ -200,6 +222,37 @@ pub fn diff(base: &str, new: &str) -> Delta {
             ChangeTag::Insert => push_insert(&mut ops, change.value()),
         }
     }
+    Delta { ops }
+}
+
+/// Linear-time fallback for [`diff`] above [`CHAR_DIFF_LIMIT`]: trims the
+/// longest common prefix and suffix (plain char comparison, no Myers) and
+/// replaces only the middle. Not a minimal edit script, but still useful for
+/// anchor rebasing — an anchor sitting in the untouched prefix or suffix maps
+/// through a real `Retain` exactly as it would from a full diff; only an
+/// anchor inside the replaced middle depends on the move detector.
+fn coarse_replace(base: &str, new: &str) -> Delta {
+    let base_chars: Vec<char> = base.chars().collect();
+    let new_chars: Vec<char> = new.chars().collect();
+    let max_common = base_chars.len().min(new_chars.len());
+
+    let mut prefix = 0;
+    while prefix < max_common && base_chars[prefix] == new_chars[prefix] {
+        prefix += 1;
+    }
+    let mut suffix = 0;
+    while suffix < max_common - prefix
+        && base_chars[base_chars.len() - 1 - suffix] == new_chars[new_chars.len() - 1 - suffix]
+    {
+        suffix += 1;
+    }
+
+    let mut ops = Vec::new();
+    push_retain(&mut ops, prefix);
+    push_delete(&mut ops, base_chars.len() - prefix - suffix);
+    let inserted: String = new_chars[prefix..new_chars.len() - suffix].iter().collect();
+    push_insert(&mut ops, &inserted);
+    push_retain(&mut ops, suffix);
     Delta { ops }
 }
 
@@ -537,5 +590,99 @@ mod tests {
 
     fn byte(s: &str, char_idx: usize) -> usize {
         crate::usv::char_to_byte(s, char_idx)
+    }
+
+    /// Deterministic filler with no long common substring between the two
+    /// variants — worst case for a char-level Myers diff (issue #849).
+    fn filler(n: usize, offset: u8) -> String {
+        (0..n)
+            .map(|i| char::from(b'a' + ((i as u8).wrapping_mul(7).wrapping_add(offset)) % 26))
+            .collect()
+    }
+
+    #[test]
+    fn large_single_line_diff_stays_fast() {
+        // Two long, unrelated single-line strings — exactly the shape
+        // `similar::TextDiff::from_chars` chokes on with no cutoff (issue
+        // #849: 30,000 unrelated chars measured 86s in a debug build). Above
+        // CHAR_DIFF_LIMIT, `diff` must skip Myers and stay far under budget
+        // regardless of input size.
+        let base = format!("PREFIX-{}-BASE-SUFFIX", filler(25_000, 0));
+        let new = format!("PREFIX-{}-NEW-SUFFIX", filler(25_000, 13));
+
+        let start = std::time::Instant::now();
+        let d = diff(&base, &new);
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "large single-line diff took {elapsed:?}, expected well under the 2s budget"
+        );
+
+        // Sensible, not just fast: still round-trips exactly.
+        assert_eq!(d.apply(&base), new);
+    }
+
+    #[test]
+    fn large_single_line_diff_retains_common_prefix_and_suffix() {
+        // The coarse fallback must still be *usable* for anchor rebasing,
+        // not merely fast: a shared prefix/suffix around a large rewritten
+        // middle should come back as real Retain ops, not a single
+        // whole-field Delete+Insert that would force every anchor through
+        // the move detector.
+        let base = format!("shared-prefix-{}-shared-suffix", filler(20_000, 0));
+        let new = format!("shared-prefix-{}-shared-suffix", filler(20_000, 5));
+        let d = diff(&base, &new);
+        assert_eq!(d.apply(&base), new);
+
+        let Some(Op::Retain(prefix_len)) = d.ops.first() else {
+            panic!("expected a leading Retain for the shared prefix: {:?}", d.ops);
+        };
+        assert!(
+            *prefix_len >= "shared-prefix-".len(),
+            "shared prefix should be retained, got Retain({prefix_len})"
+        );
+        let Some(Op::Retain(suffix_len)) = d.ops.last() else {
+            panic!("expected a trailing Retain for the shared suffix: {:?}", d.ops);
+        };
+        assert!(
+            *suffix_len >= "shared-suffix".len(),
+            "shared suffix should be retained, got Retain({suffix_len})"
+        );
+    }
+
+    #[test]
+    fn diff_import_large_single_line_rewrite_keeps_prefix_anchor() {
+        // End-to-end through the real DoS-exposed path: `diff_import` is
+        // what a full-document LLM rewrite hits. A large, single-line,
+        // unrelated-middle rewrite must complete quickly *and* still rebase
+        // an anchor sitting in unchanged (shared) text.
+        let base_text = format!("hello target world-{}-end", filler(30_000, 0));
+        let mut base = from_markdown(&base_text).unwrap();
+        base.marks.push(Mark {
+            start: 6,
+            end: 12, // "target"
+            kind: MarkKind::Anchor { id: "c1".into() },
+        });
+        base.normalize();
+
+        let new_markdown = format!("hello target world-{}-end", filler(30_000, 11));
+        let start = std::time::Instant::now();
+        let (new_rt, _delta) = diff_import(&base, &new_markdown).unwrap();
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "diff_import took {elapsed:?}, expected well under the 2s budget"
+        );
+
+        let anchor = new_rt
+            .marks
+            .iter()
+            .find(|m| matches!(&m.kind, MarkKind::Anchor { id } if id == "c1"))
+            .expect("anchor in shared prefix survives the coarse fallback diff");
+        assert_eq!(
+            new_rt.text[byte(&new_rt.text, anchor.start)..byte(&new_rt.text, anchor.end)]
+                .to_string(),
+            "target"
+        );
     }
 }

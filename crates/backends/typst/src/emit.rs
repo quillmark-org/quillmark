@@ -535,6 +535,16 @@ impl<'a> Emit<'a> {
                     runs,
                 });
             }
+            LineKind::Rule => {
+                let g0 = self.out.len();
+                self.out.push_str("#line(length: 100%)");
+                let g1 = self.out.len();
+                self.segments.push(SegmentMap {
+                    corpus: lo..hi,
+                    gen: g0..g1,
+                    runs: Vec::new(),
+                });
+            }
         }
         self.end_newline = false;
     }
@@ -619,6 +629,9 @@ impl<'a> Emit<'a> {
             }
         }
         codes.sort_unstable();
+        // Atomic code spans can't carry partial styling; clip wraps out of their
+        // interiors so overlapping wrap+code lowers to balanced markup.
+        clip_wraps_to_codes(&mut wraps, &codes);
 
         // Sweep the marks with the shared boundary walk, filling a scratch buffer
         // whose bytes land at `base` once appended — so each run's generated span
@@ -698,15 +711,28 @@ fn wrap_open(kind: &MarkKind) -> String {
     }
 }
 
-/// The open delimiter for a to-be-reopened mark, recovered from the `wraps` list
-/// by `(ord, end)`. A reopened mark covers `[pos, end)`, so it matches on `end`
-/// and `ord`; the original `start` is irrelevant to the delimiter text.
-fn wrap_open_for(ord: u8, wraps: &[Wrap], pos: usize, end: usize) -> String {
-    wraps
-        .iter()
-        .find(|w| w.ord == ord && w.end == end && w.start <= pos)
-        .map(|w| w.open.clone())
-        .unwrap_or_default()
+/// Clip wrapping marks so none crosses the interior of an atomic code span. A
+/// wrap edge landing strictly inside a `[cs, ce)` code span is pulled to that
+/// span's boundary (`start`→`ce`, `end`→`cs`); a wrap swallowed whole by a code
+/// span collapses and drops. `#raw(...)` is atomic and cannot carry partial
+/// styling, so a partial wrap/code overlap becomes the wrap over the text
+/// *outside* the code — and, crucially, no wrap `end` is left hiding inside a
+/// code span the sweep's cursor jumps over (start→end atomically), which is what
+/// produced unbalanced markup for `strong[0,4)` + `code[2,6)`. A wrap whose
+/// range strictly contains a code span keeps both edges (neither is interior),
+/// so the code nests inside it as before.
+fn clip_wraps_to_codes(wraps: &mut Vec<Wrap>, codes: &[(usize, usize)]) {
+    for &(cs, ce) in codes {
+        for w in wraps.iter_mut() {
+            if cs < w.start && w.start < ce {
+                w.start = ce;
+            }
+            if cs < w.end && w.end < ce {
+                w.end = cs;
+            }
+        }
+    }
+    wraps.retain(|w| w.start < w.end);
 }
 
 /// The mark boundary sweep, shared by prose inline emission and table-cell
@@ -715,7 +741,9 @@ fn wrap_open_for(ord: u8, wraps: &[Wrap], pos: usize, end: usize) -> String {
 /// proper nesting. Wrapping delimiters/`]` go to `out`; `emit_content(out, pos)`
 /// writes the content at `pos` (plain run, atomic code, island slot, line break)
 /// and returns the next position. Records nothing itself — the caller's callback
-/// owns any source-map bookkeeping.
+/// owns any source-map bookkeeping. `wraps` must already be clipped against the
+/// code spans ([`clip_wraps_to_codes`]) so no wrap `end` hides inside a span the
+/// callback's cursor jumps over.
 fn sweep_marks(
     lo: usize,
     hi: usize,
@@ -723,37 +751,50 @@ fn sweep_marks(
     out: &mut String,
     mut emit_content: impl FnMut(&mut String, usize) -> usize,
 ) {
-    // (end, ord) for a mark on the open stack; ord tie-breaks reopen order.
-    let mut stack: Vec<(usize, u8)> = Vec::new();
+    // Indices into `wraps` for the marks currently open, outermost first. Storing
+    // the index (not just `(end, ord)`) keeps each open mark's identity, so a
+    // reopened mark re-emits its OWN delimiter — two same-`(ord, end)` links with
+    // distinct URLs no longer collapse onto whichever the `(ord, end)` lookup hit
+    // first.
+    let mut stack: Vec<usize> = Vec::new();
     let mut pos = lo;
     while pos <= hi {
         // Close every mark ending at `pos`; reopen any deeper survivors that do
         // not (free overlap → proper nesting).
-        if let Some(idx) = stack.iter().position(|&(end, _)| end == pos) {
-            let mut reopen: Vec<(usize, u8)> = Vec::new();
+        if let Some(idx) = stack.iter().position(|&wi| wraps[wi].end == pos) {
+            let mut reopen: Vec<usize> = Vec::new();
             while stack.len() > idx {
-                let (end, ord) = stack.pop().unwrap();
+                let wi = stack.pop().unwrap();
                 out.push(']');
-                if end != pos {
-                    reopen.push((end, ord));
+                if wraps[wi].end != pos {
+                    reopen.push(wi);
                 }
             }
-            for (end, ord) in reopen.into_iter().rev() {
-                out.push_str(&wrap_open_for(ord, wraps, pos, end));
-                stack.push((end, ord));
+            for wi in reopen.into_iter().rev() {
+                out.push_str(&wraps[wi].open);
+                stack.push(wi);
             }
         }
         if pos == hi {
             break;
         }
         // Open marks starting at `pos`: longer span first, then kind-ord.
-        let mut opening: Vec<&Wrap> = wraps.iter().filter(|w| w.start == pos).collect();
-        opening.sort_by(|a, b| b.end.cmp(&a.end).then(a.ord.cmp(&b.ord)));
-        for w in opening {
-            out.push_str(&w.open);
-            stack.push((w.end, w.ord));
+        let mut opening: Vec<usize> = (0..wraps.len()).filter(|&wi| wraps[wi].start == pos).collect();
+        opening.sort_by(|&a, &b| wraps[b].end.cmp(&wraps[a].end).then(wraps[a].ord.cmp(&wraps[b].ord)));
+        for wi in opening {
+            out.push_str(&wraps[wi].open);
+            stack.push(wi);
         }
         pos = emit_content(out, pos);
+    }
+    // Drain any mark still open when the sweep runs off the end. The codegen
+    // embeds this markup in a `#let _qm = [ .. ]` content block that a single
+    // unclosed `[` would break — failing the whole helper file's parse, not just
+    // this field — so a trailing open must always close. Clipping keeps every
+    // wrap `end` reachable, so this normally drains nothing; it is the final
+    // stack-drain guard the old `convert.rs` carried, belt to the clip's braces.
+    while stack.pop().is_some() {
+        out.push(']');
     }
 }
 
@@ -828,7 +869,8 @@ fn wraps_and_codes(chars: &[char], marks: &[Mark]) -> (Vec<Wrap>, Vec<(usize, us
 /// — so its markup carries no source-map runs (like other island markup).
 fn cell_markup(text: &str, marks: &[Mark]) -> String {
     let chars: Vec<char> = text.chars().collect();
-    let (wraps, codes) = wraps_and_codes(&chars, marks);
+    let (mut wraps, codes) = wraps_and_codes(&chars, marks);
+    clip_wraps_to_codes(&mut wraps, &codes);
     let mut out = String::new();
     sweep_marks(0, chars.len(), &wraps, &mut out, |out, pos| {
         if let Some(&(cs, ce)) = codes.iter().find(|(s, _)| *s == pos) {
@@ -867,7 +909,17 @@ fn table_markup(props: &serde_json::Value) -> String {
     let header = props.get("header").and_then(|v| v.as_array());
     let rows = props.get("rows").and_then(|v| v.as_array());
     let aligns = props.get("aligns").and_then(|v| v.as_array());
-    let cols = header.map(|h| h.len()).unwrap_or(0);
+    // Column count is the widest row, not just the header: an editor-built table
+    // island can carry an empty/short header over wider data rows, and a
+    // `columns: 0` would fail to compile.
+    let mut cols = header.map(|h| h.len()).unwrap_or(0);
+    if let Some(rs) = rows {
+        for row in rs {
+            if let Some(r) = row.as_array() {
+                cols = cols.max(r.len());
+            }
+        }
+    }
 
     let cell = |v: &serde_json::Value| {
         let (text, marks) = quillmark_richtext::serial::parse_cell(v);
@@ -1001,6 +1053,10 @@ mod tests {
             "Hello~World",
             "Use path/to/file for the file",
             "Path: C:\\\\Users\\\\file",
+            // thematic breaks
+            "one\n\n---\n\ntwo",
+            "one\n\n***\n\ntwo",
+            "one\n\n___\n\ntwo",
             // lists
             "- Item 1\n- Item 2\n- Item 3",
             "1. First\n2. Second\n3. Third",
@@ -1106,6 +1162,19 @@ mod tests {
         let out = emit("> one\n>\n> two").markup;
         assert!(out.contains("#quote(block: true)["));
         assert!(out.contains("one") && out.contains("two"));
+    }
+
+    // ---- thematic breaks ----
+
+    #[test]
+    fn thematic_break_renders_line() {
+        for src in ["---", "***", "___"] {
+            let out = emit(&format!("one\n\n{src}\n\ntwo")).markup;
+            assert_eq!(
+                out, "one\n\n#line(length: 100%)\n\ntwo\n\n",
+                "source: {src}, got {out:?}"
+            );
+        }
     }
 
     // ---- structured table cells (Option A) ----
@@ -1362,6 +1431,180 @@ mod tests {
         assert_eq!(out, "#strong[ab#emph[cd]]#emph[ef]\n\n");
         // Bracket-balanced regardless.
         assert_eq!(out.matches('[').count(), out.matches(']').count());
+    }
+
+    /// Build a single-paragraph corpus over `text` with hand-placed `marks`
+    /// (the free-overlap shapes an editor can produce but import never does),
+    /// normalize + validate it, and lower it.
+    fn emit_marked(text: &str, marks: Vec<Mark>) -> String {
+        use quillmark_richtext::model::Line;
+        let mut rt = RichText {
+            text: text.to_string(),
+            lines: vec![Line {
+                kind: LineKind::Para,
+                containers: vec![],
+                continues: false,
+            }],
+            marks,
+            islands: vec![],
+        };
+        rt.normalize();
+        assert_eq!(rt.validate(), Ok(()), "corpus invariants");
+        emit_richtext(&rt).unwrap().markup
+    }
+
+    fn balanced(out: &str) -> bool {
+        out.matches('[').count() == out.matches(']').count()
+    }
+
+    use quillmark_richtext::model::Mark;
+
+    /// A wrap that partially overlaps an atomic `code` mark lowers to balanced
+    /// markup: `#raw(...)` can't carry partial styling, so the wrap clips to the
+    /// text *outside* the code. Regression for the compile-breaking case — the
+    /// sweep used to jump the cursor start→end across the code span, skipping the
+    /// wrap `end` inside it and trailing an unclosed `[` that broke the whole
+    /// generated helper file's parse.
+    #[test]
+    fn wrap_over_atomic_code_stays_balanced() {
+        // Wrap starts first, ends inside the code: strong[0,4) + code[2,6).
+        let out = emit_marked(
+            "abcdef",
+            vec![
+                Mark {
+                    start: 0,
+                    end: 4,
+                    kind: MarkKind::Strong,
+                },
+                Mark {
+                    start: 2,
+                    end: 6,
+                    kind: MarkKind::Code,
+                },
+            ],
+        );
+        assert_eq!(out, "#strong[ab]#raw(\"cdef\")\n\n");
+        assert!(balanced(&out));
+
+        // Code starts first, wrap starts inside it: code[0,4) + strong[2,6).
+        let out = emit_marked(
+            "abcdef",
+            vec![
+                Mark {
+                    start: 0,
+                    end: 4,
+                    kind: MarkKind::Code,
+                },
+                Mark {
+                    start: 2,
+                    end: 6,
+                    kind: MarkKind::Strong,
+                },
+            ],
+        );
+        assert_eq!(out, "#raw(\"abcd\")#strong[ef]\n\n");
+        assert!(balanced(&out));
+
+        // A code span fully inside a wrap still nests (neither wrap edge is
+        // interior to the code, so nothing is clipped): strong[0,6) + code[2,4).
+        let out = emit_marked(
+            "abcdef",
+            vec![
+                Mark {
+                    start: 0,
+                    end: 6,
+                    kind: MarkKind::Strong,
+                },
+                Mark {
+                    start: 2,
+                    end: 4,
+                    kind: MarkKind::Code,
+                },
+            ],
+        );
+        assert_eq!(out, "#strong[ab#raw(\"cd\")ef]\n\n");
+        assert!(balanced(&out));
+    }
+
+    /// A wrap still open when the sweep runs off the end closes cleanly — the
+    /// stack-drain guard (belt to clipping's braces): strong[0,6) over "abcdef".
+    #[test]
+    fn wrap_trailing_to_end_closes() {
+        let out = emit_marked(
+            "abcdef",
+            vec![Mark {
+                start: 0,
+                end: 6,
+                kind: MarkKind::Strong,
+            }],
+        );
+        assert_eq!(out, "#strong[abcdef]\n\n");
+        assert!(balanced(&out));
+    }
+
+    /// Two overlapping `link` marks that share an `end` but carry distinct URLs
+    /// reopen with their OWN URL, not whichever the old `(ord, end)` lookup hit
+    /// first. `link{wrong}[0,6)` + `strong[0,4)` + `link{right}[2,6)` on "abcdef":
+    /// at pos 4 the strong closes and the inner `link{right}` reopens — it must
+    /// re-emit `right`, though `link{wrong}` shares its `(ord=5, end=6)`.
+    #[test]
+    fn overlapping_links_reopen_with_correct_url() {
+        let out = emit_marked(
+            "abcdef",
+            vec![
+                Mark {
+                    start: 0,
+                    end: 6,
+                    kind: MarkKind::Link {
+                        url: "wrong".into(),
+                    },
+                },
+                Mark {
+                    start: 0,
+                    end: 4,
+                    kind: MarkKind::Strong,
+                },
+                Mark {
+                    start: 2,
+                    end: 6,
+                    kind: MarkKind::Link {
+                        url: "right".into(),
+                    },
+                },
+            ],
+        );
+        // The reopened tail after the strong closes carries the inner link's URL.
+        assert!(
+            out.contains("#link(\"right\")[ef]"),
+            "reopened link keeps its own URL, got {out:?}"
+        );
+        assert!(
+            !out.contains("#link(\"wrong\")[ef]"),
+            "reopen must not borrow the outer link's URL, got {out:?}"
+        );
+        assert!(balanced(&out));
+    }
+
+    /// A table island's `columns:` count is the widest row, not just the header:
+    /// an editor-built table with a short/empty header over wider data rows must
+    /// not emit `columns: 0` (which fails to compile).
+    #[test]
+    fn table_columns_span_widest_row() {
+        let cell = |t: &str| serde_json::json!({ "text": t, "marks": [] });
+        let props = serde_json::json!({
+            "header": [ cell("H") ],
+            "rows": [ [ cell("a"), cell("b"), cell("c") ] ],
+        });
+        let out = table_markup(&props);
+        assert!(out.contains("columns: 3,"), "got {out:?}");
+
+        // Empty header, populated rows: still counts the rows.
+        let props = serde_json::json!({
+            "header": [],
+            "rows": [ [ cell("a"), cell("b") ] ],
+        });
+        let out = table_markup(&props);
+        assert!(out.contains("columns: 2,"), "got {out:?}");
     }
 
     /// A paragraph is one segment even across a hard break; a heading and a code

@@ -50,6 +50,7 @@ Two escapers guard the two Typst contexts; both live in `emit`:
 | `LineKind::Heading{level}` | `=` … `======` (`level` × `=`) |
 | `LineKind::Para` | inline content; a hard break (a `continues` line join) emits `#linebreak()`, a soft break is a space (both settled at import) |
 | `LineKind::Code{lang}` (code fence) | `#raw(block: true, lang: "…", "…")`; `lang:` emitted only when the language tag is non-empty |
+| `LineKind::Rule` (thematic break) | `#line(length: 100%)` |
 | `MarkKind::Strong` | `#strong[…]` |
 | `MarkKind::Emph` | `#emph[…]` |
 | `MarkKind::Underline` | `#underline[…]` |

@@ -6,10 +6,11 @@
 //! ([`import::from_markdown`]) and export ([`export::to_markdown`]) codecs — so
 //! every edit is a splice and all structure moves with it.
 //!
-//! This crate is **phase 1**: the model, the canonical serialization freeze,
-//! the markdown codecs, and the delta/rebase surface, exercised in isolation.
-//! No engine crate consumes it yet (phase 2 wires the seam and storage). See
-//! `prose/plans/richtext/` for the phase map.
+//! `core`, `quillmark`, and both backends (`typst`, `pdfform`) consume this
+//! crate: the seam carries corpus JSON, storage embeds it structurally (see
+//! `prose/canon/DOCUMENT_STORAGE.md`), and the live-preview edit surface
+//! (`change_log`, `ops`) drives it through `LiveSession`. See
+//! `prose/plans/richtext/` for the phase map that landed it.
 //!
 //! ## Layout
 //!

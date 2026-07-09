@@ -197,23 +197,6 @@ impl LiveSession {
         &self.change_log
     }
 
-    /// Record a committed field edit bundle; returns the new revision.
-    pub fn record_field_change(
-        &mut self,
-        path: impl Into<String>,
-        text_delta: Delta,
-        mark_ops: impl Into<Vec<MarkOp>>,
-        line_ops: impl Into<Vec<LineOp>>,
-    ) -> u64 {
-        self.change_log
-            .record_change(path, text_delta, mark_ops, line_ops)
-    }
-
-    /// Record a text-only field splice; returns the new revision.
-    pub fn record_field_delta(&mut self, path: impl Into<String>, text_delta: Delta) -> u64 {
-        self.change_log.record(path, text_delta)
-    }
-
     /// Record a text-only field splice **committed against `base_revision`**,
     /// guarding revision monotonicity: a delta is only composable onto the
     /// state it was computed from, so `base_revision` must equal the session's
@@ -439,9 +422,16 @@ impl LiveSession {
     /// *same quill*: the `$quill` reference check lives at the layer that
     /// still holds a `Document` (`Quillmark::open`, the WASM `apply`);
     /// compiled data does not carry the reference, so this seam cannot
-    /// re-check it.
+    /// re-check it. On success this also invalidates the change log
+    /// ([`ChangeLog::invalidate`]): a whole-document rewrite is not
+    /// expressed as per-field deltas, so any position captured before this
+    /// call now maps forward as `session::stale_revision` rather than
+    /// silently resolving against text `apply` may have rewritten out from
+    /// under it.
     pub fn apply(&mut self, json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
-        self.inner.apply(json_data)
+        let change_set = self.inner.apply(json_data)?;
+        self.change_log.invalidate();
+        Ok(change_set)
     }
 }
 
@@ -532,7 +522,7 @@ mod tests {
         assert_eq!(session.revision(), 0);
 
         let d = diff("abcdef", "abcXYdef");
-        session.record_field_delta("subject", d);
+        session.record_field_delta_at("subject", 0, d).unwrap();
         assert_eq!(session.revision(), 1);
         assert_eq!(
             session
@@ -563,7 +553,7 @@ mod tests {
             .main_mut()
             .import_body_delta("hello brave world")
             .unwrap();
-        let rev = session.record_field_delta("$body", delta);
+        let rev = session.record_field_delta_at("$body", 0, delta).unwrap();
         assert_eq!(rev, 1);
         assert_eq!(doc.main().body().text, "hello brave world");
 
@@ -623,7 +613,9 @@ mod tests {
         assert_eq!(session.position_at(0, 2.0, 3.0).unwrap().revision, Some(0));
         assert_eq!(session.locate("subject", 1).unwrap().revision, Some(0));
 
-        session.record_field_delta("subject", diff("abc", "abXc"));
+        session
+            .record_field_delta_at("subject", 0, diff("abc", "abXc"))
+            .unwrap();
         assert_eq!(session.regions()[0].revision, Some(1));
         assert_eq!(session.position_at(0, 2.0, 3.0).unwrap().revision, Some(1));
         assert_eq!(session.locate("subject", 1).unwrap().revision, Some(1));

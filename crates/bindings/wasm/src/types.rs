@@ -273,8 +273,10 @@ impl From<quillmark_core::RenderedRegion> for FieldRegion {
             rect: r.rect,
             span: r.span,
             // A session revision is a small monotonic counter; narrowing to the
-            // JS-number-friendly u32 at the boundary avoids a BigInt.
-            revision: r.revision.map(|v| v as u32),
+            // JS-number-friendly u32 at the boundary avoids a BigInt. Saturate
+            // rather than wrap so an implausible overflow reads as "very large,"
+            // not as a small stale-looking value.
+            revision: r.revision.map(|v| v.try_into().unwrap_or(u32::MAX)),
         }
     }
 }
@@ -305,7 +307,7 @@ impl From<quillmark_core::CorpusHit> for CorpusHit {
         CorpusHit {
             field: h.field,
             pos: h.pos,
-            revision: h.revision.map(|v| v as u32),
+            revision: h.revision.map(|v| v.try_into().unwrap_or(u32::MAX)),
         }
     }
 }

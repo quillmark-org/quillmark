@@ -269,6 +269,19 @@ def test_remove_card_then_push_card_round_trips_fields():
     assert doc.cards[0]["body_markdown"] == "Body\n"
 
 
+def test_push_card_accepts_corpus_dict_body():
+    """`body` on a pushed card may be the canonical corpus dict (the shape
+    `cards()`/`remove_card` emit), not just a markdown string — exercises
+    `py_dict_to_card`'s corpus-dict input path."""
+    doc = Document.from_markdown(SIMPLE_MD)
+    doc.push_card({"kind": "note", "body": "**Bold** body."})
+    corpus_body = doc.cards[0]["body"]
+    assert isinstance(corpus_body, dict)
+
+    doc.push_card({"kind": "note", "body": corpus_body})
+    assert doc.cards[1]["body_markdown"] == doc.cards[0]["body_markdown"]
+
+
 def test_make_card_accepts_any_kind_push_card_is_the_gate():
     """make_card is permissive data-shaping; the kind invariant is enforced at
     push_card, not construction."""

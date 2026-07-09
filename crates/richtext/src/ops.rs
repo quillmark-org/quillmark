@@ -7,7 +7,7 @@
 //! channel — record `\n` edits there when mapping stale positions.
 
 use crate::delta::{Assoc, Delta, Op};
-use crate::model::{Container, Line, LineKind, Mark, MarkKind, RichText, Usv};
+use crate::model::{Container, Island, Line, LineKind, Mark, MarkKind, RichText, Usv, ISLAND_SLOT};
 use crate::usv::char_to_byte;
 
 /// A mark edit in post-text-delta coordinates.
@@ -50,16 +50,50 @@ pub enum LineOp {
 /// broken before normalization could repair them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApplyError {
-    MarkOutOfRange { start: Usv, end: Usv, len: Usv },
-    LineOutOfRange { line: usize, lines: usize },
-    SplitAtNewline { at: Usv },
-    LineCountMismatch { lines: usize, segments: usize },
+    MarkOutOfRange {
+        start: Usv,
+        end: Usv,
+        len: Usv,
+    },
+    LineOutOfRange {
+        line: usize,
+        lines: usize,
+    },
+    SplitAtNewline {
+        at: Usv,
+    },
+    LineCountMismatch {
+        lines: usize,
+        segments: usize,
+    },
+    /// An `Op::Insert` carried a raw [`ISLAND_SLOT`]. Islands are structurally
+    /// uneditable through the text channel — a slot inserted here would have no
+    /// backing [`Island`], an orphaned-slot invariant violation. Islands are
+    /// created through their own channel, never a text splice.
+    IslandSlotInInsert,
 }
 
 impl RichText {
     /// Splice `text` via `delta`, rebase marks, sync `lines` to `\n` changes,
-    /// then normalize.
+    /// cascade island removal for any deleted slot, then normalize.
+    ///
+    /// Islands stay in lockstep with their [`ISLAND_SLOT`] chars: a delta that
+    /// *deletes* a slot drops the corresponding [`Island`] (the content goes
+    /// away with its slot); a delta that *inserts* a raw slot is rejected
+    /// ([`ApplyError::IslandSlotInInsert`]) — islands are created through their
+    /// own channel, never a text splice, so a slot arriving here would orphan.
     pub fn apply_text_delta(&mut self, delta: &Delta) -> Result<(), ApplyError> {
+        // Reject before mutating: a raw slot in an insert would create a slot
+        // with no backing island. Checked up front so the corpus is untouched
+        // on this error.
+        for op in &delta.ops {
+            if let Op::Insert(s) = op {
+                if s.contains(ISLAND_SLOT) {
+                    return Err(ApplyError::IslandSlotInInsert);
+                }
+            }
+        }
+
         let old_chars: Vec<char> = self.text.chars().collect();
         let old_lines = self.lines.clone();
         let new_text = delta.apply(&self.text);
@@ -82,6 +116,8 @@ impl RichText {
 
         self.text = new_text;
         self.lines = sync_lines_for_delta(&old_chars, &old_lines, delta)?;
+        let old_islands = std::mem::take(&mut self.islands);
+        self.islands = sync_islands_for_delta(&old_chars, old_islands, delta);
         if self.lines.len() != self.segment_count() {
             return Err(ApplyError::LineCountMismatch {
                 lines: self.lines.len(),
@@ -297,10 +333,8 @@ fn sync_lines_for_delta(
                     if old >= old_chars.len() {
                         break;
                     }
-                    if old_chars[old] == '\n' {
-                        if line_idx + 1 < lines.len() {
-                            lines.remove(line_idx + 1);
-                        }
+                    if old_chars[old] == '\n' && line_idx + 1 < lines.len() {
+                        lines.remove(line_idx + 1);
                     }
                     old += 1;
                 }
@@ -314,7 +348,7 @@ fn sync_lines_for_delta(
                             .unwrap_or_else(default_para_line);
                         let mut new_line = template;
                         new_line.continues = false;
-                        if line_idx + 1 <= lines.len() {
+                        if line_idx < lines.len() {
                             lines.insert(line_idx + 1, new_line);
                         } else {
                             lines.push(new_line);
@@ -326,6 +360,60 @@ fn sync_lines_for_delta(
         }
     }
     Ok(lines)
+}
+
+/// Walk `delta` over `old_chars` and drop any island whose [`ISLAND_SLOT`] char
+/// was deleted (cascade removal — the island's content goes away with its slot).
+/// Islands are stored in slot order, so the Nth slot backs the Nth island; a
+/// deleted slot drops its island and the survivors renumber implicitly. Raw
+/// slot *inserts* are rejected upstream, so an insert never mints a new slot.
+fn sync_islands_for_delta(
+    old_chars: &[char],
+    old_islands: Vec<Island>,
+    delta: &Delta,
+) -> Vec<Island> {
+    let mut keep = vec![true; old_islands.len()];
+    let mut old = 0usize;
+    let mut slot_idx = 0usize;
+
+    for op in &delta.ops {
+        match op {
+            Op::Retain(n) => {
+                for _ in 0..*n {
+                    if old >= old_chars.len() {
+                        break;
+                    }
+                    if old_chars[old] == ISLAND_SLOT {
+                        slot_idx += 1;
+                    }
+                    old += 1;
+                }
+            }
+            Op::Delete(n) => {
+                for _ in 0..*n {
+                    if old >= old_chars.len() {
+                        break;
+                    }
+                    if old_chars[old] == ISLAND_SLOT {
+                        if let Some(k) = keep.get_mut(slot_idx) {
+                            *k = false;
+                        }
+                        slot_idx += 1;
+                    }
+                    old += 1;
+                }
+            }
+            // Inserts add no slots (a raw ISLAND_SLOT insert is rejected before
+            // this walk), so they never touch the island list.
+            Op::Insert(_) => {}
+        }
+    }
+
+    old_islands
+        .into_iter()
+        .zip(keep)
+        .filter_map(|(island, keep)| keep.then_some(island))
+        .collect()
 }
 
 fn line_index_at(chars: &[char], at: Usv) -> usize {
@@ -425,6 +513,97 @@ mod tests {
         }])
         .unwrap();
         assert!(matches!(rt.lines[0].kind, LineKind::Heading { level: 2 }));
+    }
+
+    fn island(id: &str) -> Island {
+        Island {
+            id: id.into(),
+            island_type: "image".into(),
+            props: serde_json::json!({}),
+            loss: crate::model::Loss::Lossless,
+        }
+    }
+
+    /// A single-line corpus `a￼b` (one inline island slot, one backing island).
+    fn corpus_with_island() -> RichText {
+        let mut rt = RichText::empty();
+        rt.text = format!("a{ISLAND_SLOT}b");
+        rt.lines = vec![Line {
+            kind: LineKind::Para,
+            containers: vec![],
+            continues: false,
+        }];
+        rt.islands = vec![island("i1")];
+        assert_eq!(rt.validate(), Ok(()));
+        rt
+    }
+
+    #[test]
+    fn delete_slot_cascades_island_removal() {
+        let mut rt = corpus_with_island();
+        // Delete the slot char at index 1 (`a￼b` -> `ab`).
+        let d = Delta {
+            ops: vec![Op::Retain(1), Op::Delete(1), Op::Retain(1)],
+        };
+        rt.apply_text_delta(&d).unwrap();
+        assert_eq!(rt.text, "ab");
+        assert!(rt.islands.is_empty(), "island cascaded away with its slot");
+        // slot count now equals islands.len() — validate confirms the sync.
+        assert_eq!(rt.validate(), Ok(()));
+    }
+
+    #[test]
+    fn delete_one_of_two_slots_removes_the_matching_island() {
+        let mut rt = RichText::empty();
+        rt.text = format!("{ISLAND_SLOT}x{ISLAND_SLOT}");
+        rt.lines = vec![Line {
+            kind: LineKind::Para,
+            containers: vec![],
+            continues: false,
+        }];
+        rt.islands = vec![island("first"), island("second")];
+        assert_eq!(rt.validate(), Ok(()));
+
+        // Delete the FIRST slot (index 0): `￼x￼` -> `x￼`.
+        let d = Delta {
+            ops: vec![Op::Delete(1), Op::Retain(2)],
+        };
+        rt.apply_text_delta(&d).unwrap();
+        assert_eq!(rt.text, format!("x{ISLAND_SLOT}"));
+        // The surviving island is the second one — the cascade removed the
+        // island whose slot was deleted, not merely the last entry.
+        assert_eq!(rt.islands.len(), 1);
+        assert_eq!(rt.islands[0].id, "second");
+        assert_eq!(rt.validate(), Ok(()));
+    }
+
+    #[test]
+    fn insert_raw_slot_is_rejected() {
+        let mut rt = from_markdown("ab").unwrap();
+        // An Op::Insert carrying a raw U+FFFC would orphan a slot — reject it.
+        let d = Delta {
+            ops: vec![
+                Op::Retain(1),
+                Op::Insert(ISLAND_SLOT.to_string()),
+                Op::Retain(1),
+            ],
+        };
+        assert_eq!(rt.apply_text_delta(&d), Err(ApplyError::IslandSlotInInsert));
+        // Corpus untouched on the rejected insert (checked before any mutation).
+        assert_eq!(rt.text, "ab");
+        assert!(rt.islands.is_empty());
+        assert_eq!(rt.validate(), Ok(()));
+    }
+
+    #[test]
+    fn insert_slot_mixed_with_text_is_rejected() {
+        // Even embedded in a larger insert, a raw slot is rejected wholesale.
+        let mut rt = from_markdown("ab").unwrap();
+        let d = Delta {
+            ops: vec![Op::Retain(2), Op::Insert(format!("x{ISLAND_SLOT}y"))],
+        };
+        assert_eq!(rt.apply_text_delta(&d), Err(ApplyError::IslandSlotInInsert));
+        assert_eq!(rt.text, "ab");
     }
 
     #[test]

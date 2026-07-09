@@ -157,6 +157,9 @@ fn line_to_value(line: &Line) -> Value {
         LineKind::Island => {
             m.insert("kind".into(), "island".into());
         }
+        LineKind::Rule => {
+            m.insert("kind".into(), "rule".into());
+        }
     }
     m.insert(
         "containers".into(),
@@ -184,6 +187,7 @@ fn line_from_value(v: &Value) -> Result<Line, ParseError> {
             lang: o.get("lang").and_then(Value::as_str).map(str::to_string),
         },
         Some("island") => LineKind::Island,
+        Some("rule") => LineKind::Rule,
         _ => return Err(ParseError::Shape("line kind")),
     };
     let containers = o

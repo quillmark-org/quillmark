@@ -473,7 +473,7 @@ impl Card {
     /// [`replace_body`](Self::replace_body). The stale-text writer wired to the
     /// change log: a caller holding a [`LiveSession`](crate::LiveSession) feeds
     /// the returned delta to
-    /// [`record_field_delta`](crate::LiveSession::record_field_delta) so a
+    /// [`record_field_delta_at`](crate::LiveSession::record_field_delta_at) so a
     /// stale corpus position maps forward through the whole-document replace,
     /// the same as a native field edit. Surviving identity anchors rebase onto
     /// the new text; formatting marks are re-derived by the fresh import.
@@ -491,7 +491,7 @@ impl Card {
     /// ranges are in post-text-delta coordinates. A caller recording into a
     /// session change log passes the same `text_delta`, `line_ops`, and
     /// `mark_ops` to
-    /// [`record_field_change`](crate::LiveSession::record_field_change).
+    /// [`record_field_change_at`](crate::LiveSession::record_field_change_at).
     /// Returns [`EditError::CorpusApply`] when an op is out of bounds; the body
     /// is unchanged on error only up to the failing op — apply the bundle
     /// against a body at the delta's base revision.

@@ -80,6 +80,10 @@ pub enum LineKind {
     },
     /// A block-level island: the line's sole content is one [`ISLAND_SLOT`].
     Island,
+    /// A thematic break (`---`/`***`/`___`). The line carries no text — the
+    /// break is the line itself, parallel to how an island's content is its
+    /// one slot char.
+    Rule,
 }
 
 /// A container a line nests inside. The ancestor path is a `Vec<Container>`.

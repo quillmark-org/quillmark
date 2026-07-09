@@ -32,6 +32,10 @@
 //! - **Tables and images are islands.** Tables are block islands (their own
 //!   `Island` line); images are inline island slots. Both `Lossless` — pipe
 //!   tables and `![alt](url)` carry them faithfully.
+//! - **Thematic breaks are `Rule` lines.** `---`/`***`/`___` in prose (never
+//!   the root-block frontmatter alias, resolved before this layer runs) map
+//!   to a `LineKind::Rule` line carrying no text — the break is the line
+//!   itself.
 
 use crate::model::{
     Container, Island, Line, LineKind, Loss, Mark, MarkKind, RichText, ISLAND_SLOT,
@@ -387,6 +391,7 @@ impl<'a> Builder<'a> {
                     self.ensure_open(LineKind::Para);
                     self.inline.push_code(&t);
                 }
+                Event::Rule => self.open_line(LineKind::Rule, false),
                 Event::SoftBreak => self.push_inline(" "),
                 Event::HardBreak => {
                     match self.cur.as_ref().map(|l| &l.kind) {
@@ -1187,6 +1192,20 @@ mod tests {
         let rt = imp("> quoted");
         assert_eq!(rt.text, "quoted");
         assert_eq!(rt.lines[0].containers, vec![Container::Quote]);
+    }
+
+    #[test]
+    fn thematic_break_is_rule_line() {
+        for src in ["---", "***", "___"] {
+            let md = format!("one\n\n{src}\n\ntwo");
+            let rt = imp(&md);
+            assert_eq!(rt.lines.len(), 3, "source: {src}");
+            assert_eq!(rt.lines[0].kind, LineKind::Para);
+            assert_eq!(rt.lines[1].kind, LineKind::Rule, "source: {src}");
+            assert_eq!(rt.lines[2].kind, LineKind::Para);
+            // The rule line carries no text of its own.
+            assert_eq!(rt.text, "one\n\ntwo");
+        }
     }
 
     #[test]
