@@ -113,13 +113,12 @@ consumer there is no cross-edit reader to protect. If a long-lived read-only
 viewer ever needs to shed the retained world, a `freeze()` that drops it and
 keeps the pageable document is a *mode* to add, not a second type.
 
-The same "nothing to protect" argument keeps regions and `CorpusHit` **counter-free**:
-they key on `(field, corpus range)` against the session's *current* compile, with
-no revision stamp. A revision earns its keep only in Phase 3, alongside the
-per-field change log — when a position captured before an edit must be *mapped*
-forward (`delta::map_pos`) rather than merely detected stale. It appends then as
-an optional field (`RenderedRegion.span` is already additive-optional for exactly
-this), breaking nothing.
+Regions and `CorpusHit` carry an optional revision stamp (`LiveSession::revision`,
+a monotonic counter starting at `0`), because a position captured before an edit
+must be *mapped* forward (`ChangeLog::map_pos`) rather than merely detected
+stale. The stamp is additive-optional (`RenderedRegion.revision` /
+`CorpusHit.revision`) and set only by a live-session read; the sessionless
+one-shot paths (`RenderResult.regions`, native bindings) leave it absent.
 
 ### Complete-raster contract
 
@@ -249,8 +248,13 @@ class LiveSession {
   readonly backendId: string;
   readonly supportsCanvas: boolean;
   readonly warnings: Diagnostic[];
+  readonly revision: number;            // monotonic; 0 before the first applyFieldDelta
 
-  apply(doc: Document): ChangeSet;      // in-place recompile; transactional
+  apply(doc: Document): ChangeSet;      // in-place recompile; transactional; revision-neutral
+  applyFieldDelta(doc: Document, field: string, baseRevision: number, delta: Delta): ChangeSet;
+                                        // native field-editor path; $body only; advances revision
+  mapFieldPos(field: string, baseRevision: number, pos: number, assoc: "before" | "after"): number;
+                                        // maps a captured position forward through recorded deltas
   render(opts?: RenderOptions): RenderResult;
   regions(): FieldRegion[];             // field → rects (one per segment); session query, no render
   fieldAt(page: number, x: number, y: number): string | undefined;
@@ -289,11 +293,13 @@ interface FieldRegion {
   page: number;           // 0-based
   rect: [number, number, number, number];   // [x0,y0,x1,y1] PDF pt, bottom-left
   span?: [number, number];// USV [start,end) of the covered corpus; absent for scalar/widget
+  revision?: number;      // session revision this geometry was read at; absent off-session
 }
 
 interface CorpusHit {
   field: string;
   pos: number;            // USV offset into the field's RichText (cluster floor)
+  revision?: number;      // session revision this hit was resolved at; absent off-session
 }
 ```
 

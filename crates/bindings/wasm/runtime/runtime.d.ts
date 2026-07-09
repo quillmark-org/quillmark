@@ -93,11 +93,22 @@ export interface RenderOptions {
 	regions?: boolean;
 }
 
+/** A click resolved to a field and USV offset into its RichText. */
+export interface CorpusHit {
+	field: string;
+	pos: number;
+	/**
+	 * The session {@link LiveSession.revision} this hit was resolved at.
+	 * Stamped only by a live-session read; absent on sessionless paths.
+	 */
+	revision?: number;
+}
+
 /**
  * A rendered field region: the quill schema field address (`field`) plus its
  * geometry (`rect`) on the page. Emitted by backends that place schema fields
  * (`pdfform` AcroForm widgets; Typst form-fields and span-tracked content —
- * markdown bodies, `markdown[]` elements, card content fields, direct scalar
+ * richtext bodies, `richtext[]` elements, card content fields, direct scalar
  * references). Only fields with a schema address produce a region — a
  * backend-only widget produces none, and the backend widget name never
  * appears.
@@ -130,17 +141,6 @@ export interface RenderOptions {
  * const top    = (pageHeightPt - y1) * renderScale;  // flip Y
  * ```
  */
-/** A click resolved to a field and USV offset into its RichText. */
-export interface CorpusHit {
-	field: string;
-	pos: number;
-	/**
-	 * The session {@link LiveSession.revision} this hit was resolved at.
-	 * Stamped only by a live-session read; absent on sessionless paths.
-	 */
-	revision?: number;
-}
-
 export interface FieldRegion {
 	/** Quill schema field path (e.g. `"signature_block"`), not a backend widget name. */
 	field: string;

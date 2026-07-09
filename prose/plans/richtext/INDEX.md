@@ -12,9 +12,9 @@ Phases 0–2 are landed, **including PR-G** — `richtext(inline)` enforcement
 `#[serde(skip)]` corpus cache, seed-commits-corpus, and the hard `markdown`-alias
 cutover (`type: markdown` is now a schema load error, not a silent alias).
 PR-G's spec lives in [phase-2.md](phase-2.md); the landed behavior lives in
-`prose/canon/` (SCHEMAS.md). **Phase 3 (edit surface) is open** — **PR-B–H
-landed** on `integration/richtext` (PR-H findings; harness on
-`spike/richtext-phase-3`). See [phase-3.md](phase-3.md).
+`prose/canon/` (SCHEMAS.md). **Phase 3 (edit surface) — PR-B–H landed** on
+`integration/richtext` (PR-H findings; harness on `spike/richtext-phase-3`).
+See [phase-3.md](phase-3.md) and [PREVIEW.md](../../canon/PREVIEW.md).
 
 For how the system works *today* — the `RichText` corpus, the seam, storage,
 schema surface, navigation — see `prose/canon/` (ARCHITECTURE, CONVERT,
@@ -62,15 +62,17 @@ not restate the model.
   through PR-G: seam flip to corpus JSON, typst emitter + segment maps,
   storage cutover, regions + navigation (`locate`/`position_at`), and PR-G's
   `richtext(inline)` + load-time example cache + `markdown`-alias cutover.
-- **[Phase 3 — edit surface](phase-3.md).** Open. Per-field delta
+- **[Phase 3 — edit surface](phase-3.md).** Landed (PR-B–H). Per-field delta
   (`retain`/`insert`/`delete` text splices, CodeMirror `ChangeSet` semantics;
   marks via separate op channels) + monotonic revision + bounded change log;
   form-editor binding on phase-0's frozen mark semantics. PR-A + PR-H probes on
   `spike/richtext-phase-3` — Spike-A closed the phase-0 residual gate (no model
   change); form POC confirms whole-doc `LiveSession.apply` + region
-  cross-navigation for inline fields. **PR-B–E landed** (Myers diff, change log,
-  mark/line ops, fallible document mutators). PR-F (preview wire + revision
-  stamp) is next.
+  cross-navigation for inline fields. PR-B–E landed the Myers diff, change log,
+  mark/line ops, and fallible document mutators; PR-F/G landed the preview wire
+  and revision stamp (`LiveSession.revision`, `applyFieldDelta`, `mapFieldPos`);
+  PR-H landed the fixture and runtime nav docs. See
+  [PREVIEW.md](../../canon/PREVIEW.md) for the landed edit-surface contract.
 - **Phase 4 — islands + collab.** First real island type (tables, with
   per-creation id minting rather than import's sequential ids), then a
   text-CRDT sync binding if wanted; core stays CRDT-free.
