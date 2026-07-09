@@ -2376,14 +2376,11 @@ dependencies = [
 name = "quillmark-richtext"
 version = "0.92.1"
 dependencies = [
- "indexmap",
  "proptest",
  "pulldown-cmark",
  "quillmark-fixtures",
- "serde",
  "serde_json",
  "similar",
- "unicode-normalization",
 ]
 
 [[package]]

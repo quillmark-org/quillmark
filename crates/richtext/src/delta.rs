@@ -65,10 +65,31 @@ pub enum Assoc {
     After,
 }
 
+/// A delta's expected base length disagreed with the text it was applied to —
+/// the delta was built against a different revision of the base.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BaseLengthMismatch {
+    pub expected: usize,
+    pub actual: usize,
+}
+
 impl Delta {
+    /// Chars of base the `Retain`/`Delete` ops together consume — the base
+    /// length this delta was built against.
+    pub fn expected_base_len(&self) -> usize {
+        self.ops
+            .iter()
+            .map(|op| match op {
+                Op::Retain(n) | Op::Delete(n) => *n,
+                Op::Insert(_) => 0,
+            })
+            .sum()
+    }
+
     /// Apply to `base`, producing the new text. Ignores over-long
     /// `Retain`/`Delete` gracefully (clamps), so a mismatched delta cannot
-    /// panic.
+    /// panic. Silently produces garbage on a length mismatch — use
+    /// [`Self::try_apply`] where the base's provenance isn't already trusted.
     pub fn apply(&self, base: &str) -> String {
         let chars: Vec<char> = base.chars().collect();
         let mut out = String::new();
@@ -88,6 +109,17 @@ impl Delta {
         }
         out.extend(&chars[i.min(chars.len())..]);
         out
+    }
+
+    /// [`Self::apply`], but rejects a delta whose expected base length
+    /// disagrees with `base`'s actual length instead of clamping silently.
+    pub fn try_apply(&self, base: &str) -> Result<String, BaseLengthMismatch> {
+        let expected = self.expected_base_len();
+        let actual = base.chars().count();
+        if expected != actual {
+            return Err(BaseLengthMismatch { expected, actual });
+        }
+        Ok(self.apply(base))
     }
 
     /// Map a base char position to its new position. `assoc` decides the side of
@@ -401,7 +433,9 @@ fn relocate_point(
 /// can split a moved block across an inserted region and the retained
 /// suffix; demanding containment would miss real moves, while demanding overlap
 /// still rejects an unrelated occurrence sitting entirely in retained text.
-/// Enforces [`MIN_MOVE`].
+/// Enforces [`MIN_MOVE`]. O(hay × needle) naive scan — fine at memo/document
+/// scale; a large-document target would want a substring-search algorithm
+/// (e.g. KMP) here.
 fn find_in_spans(hay: &[char], needle: &[char], spans: &[(usize, usize)]) -> Option<usize> {
     if needle.len() < MIN_MOVE || needle.len() > hay.len() {
         return None;

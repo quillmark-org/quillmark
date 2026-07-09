@@ -9,6 +9,7 @@
 //! the resulting range, so the stored form is identical whatever the editor
 //! did. See `prose/plans/richtext/phase-0.md` § Spike A.
 
+use crate::normalize::is_bidi_char;
 use serde_json::Value as JsonValue;
 
 /// A position in a [`RichText`], counted in Unicode scalar values (USV) — never
@@ -247,26 +248,6 @@ pub(crate) fn sorted_value(v: &JsonValue) -> JsonValue {
     }
 }
 
-/// The bidi formatting chars import normalization strips; their presence in a
-/// corpus is an invariant violation. Mirrors [`crate::normalize`]'s set.
-fn is_bidi_char(c: char) -> bool {
-    matches!(
-        c,
-        '\u{061C}'
-            | '\u{200E}'
-            | '\u{200F}'
-            | '\u{202A}'
-            | '\u{202B}'
-            | '\u{202C}'
-            | '\u{202D}'
-            | '\u{202E}'
-            | '\u{2066}'
-            | '\u{2067}'
-            | '\u{2068}'
-            | '\u{2069}'
-    )
-}
-
 /// Ways a [`RichText`] can violate its invariants. Returned by
 /// [`RichText::validate`]; import normalization guarantees none of these.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -365,14 +346,17 @@ impl RichText {
         // boundary is "inside" the mark must canonicalize to the same bounds.
         // Trim leading/trailing `\n` (interior boundaries are kept — a mark may
         // legitimately span lines). Zero-width results are dropped below.
-        let chars: Vec<char> = self.text.chars().collect();
-        for m in &mut self.marks {
-            if m.kind.is_formatting() {
-                while m.start < m.end && chars.get(m.start) == Some(&'\n') {
-                    m.start += 1;
-                }
-                while m.end > m.start && chars.get(m.end - 1) == Some(&'\n') {
-                    m.end -= 1;
+        // Skip the full-text char collection when nothing needs trimming.
+        if self.marks.iter().any(|m| m.kind.is_formatting()) {
+            let chars: Vec<char> = self.text.chars().collect();
+            for m in &mut self.marks {
+                if m.kind.is_formatting() {
+                    while m.start < m.end && chars.get(m.start) == Some(&'\n') {
+                        m.start += 1;
+                    }
+                    while m.end > m.start && chars.get(m.end - 1) == Some(&'\n') {
+                        m.end -= 1;
+                    }
                 }
             }
         }

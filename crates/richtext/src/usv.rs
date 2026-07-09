@@ -1,10 +1,14 @@
-//! Coordinate conversions across the binding boundary.
+//! Coordinate conversions between USV and the two other coordinate spaces a
+//! consumer may hold a position in.
 //!
 //! [`RichText`](crate::RichText) positions count Unicode scalar values (USV,
-//! Rust `char`). The three boundaries that disagree:
+//! Rust `char`) throughout, including at the WASM boundary — the `wasm`
+//! binding's delta and hit-test APIs pass raw USV positions through and leave
+//! any UTF-16 conversion to the JS caller, so the helpers here are unused at
+//! that boundary today. Three coordinate spaces disagree:
 //!
 //! - **Rust / storage** — UTF-8 bytes. Slicing the corpus needs a byte offset.
-//! - **JS editors** — UTF-16 code units. Every delta crossing WASM converts.
+//! - **JS editors** — UTF-16 code units, if a caller chooses to convert.
 //! - **USV** — the model's coordinate. One astral char is 1 USV / 4 UTF-8 bytes
 //!   / 2 UTF-16 units.
 //!

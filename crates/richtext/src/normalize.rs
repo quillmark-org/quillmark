@@ -9,7 +9,7 @@
 //! this crate is a leaf `quillmark-core` depends on.
 
 #[inline]
-fn is_bidi_char(c: char) -> bool {
+pub(crate) fn is_bidi_char(c: char) -> bool {
     matches!(
         c,
         '\u{061C}' // ARABIC LETTER MARK (ALM)

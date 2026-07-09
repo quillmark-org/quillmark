@@ -177,12 +177,16 @@ fn line_from_value(v: &Value) -> Result<Line, ParseError> {
     let o = v.as_object().ok_or(ParseError::Shape("line"))?;
     let kind = match o.get("kind").and_then(Value::as_str) {
         Some("para") => LineKind::Para,
-        Some("heading") => LineKind::Heading {
-            level: o
+        Some("heading") => {
+            let level = o
                 .get("level")
                 .and_then(Value::as_u64)
-                .ok_or(ParseError::Shape("heading level"))? as u8,
-        },
+                .ok_or(ParseError::Shape("heading level"))?;
+            if !(1..=6).contains(&level) {
+                return Err(ParseError::Shape("heading level"));
+            }
+            LineKind::Heading { level: level as u8 }
+        }
         Some("code") => LineKind::Code {
             lang: o.get("lang").and_then(Value::as_str).map(str::to_string),
         },

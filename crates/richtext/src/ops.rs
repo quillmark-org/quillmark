@@ -59,12 +59,22 @@ pub enum ApplyError {
         line: usize,
         lines: usize,
     },
+    SplitPositionOutOfRange {
+        at: Usv,
+        len: Usv,
+    },
     SplitAtNewline {
         at: Usv,
     },
     LineCountMismatch {
         lines: usize,
         segments: usize,
+    },
+    /// The text delta's expected base length disagreed with the corpus —
+    /// it was built against a different revision.
+    DeltaBaseMismatch {
+        expected: usize,
+        actual: usize,
     },
     /// An `Op::Insert` carried a raw [`ISLAND_SLOT`]. Islands are structurally
     /// uneditable through the text channel — a slot inserted here would have no
@@ -96,7 +106,12 @@ impl RichText {
 
         let old_chars: Vec<char> = self.text.chars().collect();
         let old_lines = self.lines.clone();
-        let new_text = delta.apply(&self.text);
+        let new_text = delta
+            .try_apply(&self.text)
+            .map_err(|e| ApplyError::DeltaBaseMismatch {
+                expected: e.expected,
+                actual: e.actual,
+            })?;
 
         for m in &mut self.marks {
             if m.start == m.end {
@@ -217,25 +232,26 @@ impl RichText {
     }
 
     fn split_line(&mut self, at: Usv) -> Result<(), ApplyError> {
-        let len = self.len_usv();
+        let char_indices: Vec<(usize, char)> = self.text.char_indices().collect();
+        let len = char_indices.len();
         if at > len {
-            return Err(ApplyError::MarkOutOfRange {
-                start: at,
-                end: at,
-                len,
-            });
+            return Err(ApplyError::SplitPositionOutOfRange { at, len });
         }
-        if at > 0 && self.text.chars().nth(at - 1) == Some('\n') {
+        if at > 0 && char_indices[at - 1].1 == '\n' {
             return Err(ApplyError::SplitAtNewline { at });
         }
-        if at < len && self.text.chars().nth(at) == Some('\n') {
+        if at < len && char_indices[at].1 == '\n' {
             return Err(ApplyError::SplitAtNewline { at });
         }
 
-        let byte = char_to_byte(&self.text, at);
+        // `at`'s newline-adjacency neighbors, `at`'s byte offset, and the
+        // newline count before `at` (== the post-insert line index, since the
+        // insertion lands at index `at`, not before it) all come from this
+        // one pass over `char_indices`, instead of four separate text scans.
+        let byte = char_indices.get(at).map_or(self.text.len(), |&(b, _)| b);
+        let line_idx = char_indices[..at].iter().filter(|&(_, c)| *c == '\n').count();
         self.text.insert(byte, '\n');
 
-        let line_idx = line_index_at(self.text.chars().collect::<Vec<_>>().as_slice(), at);
         let template = self
             .lines
             .get(line_idx)
@@ -414,10 +430,6 @@ fn sync_islands_for_delta(
         .zip(keep)
         .filter_map(|(island, keep)| keep.then_some(island))
         .collect()
-}
-
-fn line_index_at(chars: &[char], at: Usv) -> usize {
-    chars.iter().take(at).filter(|&&c| c == '\n').count()
 }
 
 fn newline_at_line_boundary(text: &str, line: usize) -> Result<Usv, ApplyError> {

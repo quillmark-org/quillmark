@@ -787,13 +787,11 @@ fn sanitize_lang(lang: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// MarkdownFixer — ported from crates/backends/typst/src/convert.rs.
+// MarkdownFixer — the crate's single copy of the pulldown-cmark event fixups.
 //
 // Two jobs before events reach the builder: allowlist `<u>…</u>` as underline
 // (rewrite to Strong start/end, detected by source peek) and strip all other
-// raw HTML; and fix `***`-adjacency runs pulldown splits awkwardly. Phase 2
-// unifies this with the backend's copy; phase 1 duplicates it to stay
-// engine-off.
+// raw HTML; and fix `***`-adjacency runs pulldown splits awkwardly.
 // ---------------------------------------------------------------------------
 
 fn is_u_open_tag(html: &str) -> bool {
