@@ -65,14 +65,6 @@ fixer emits the distinction explicitly (wrapper event or `MarkKind`), deleting
 both peeks. The low-risk helper extraction above narrows the drift but not the
 altitude.
 
-### usv.rs:30 — `char_to_utf16` / `utf16_to_char` have no production consumers
-
-Only the crate's own property tests use them; the module doc states the WASM
-boundary passes raw USV and leaves UTF-16 to JS. Public surrogate-rounding
-semantics to document and keep stable for a caller that does not exist. Fix:
-delete until a UTF-16 consumer appears (`char_to_byte` stays). Public API of a
-published crate.
-
 ### change_log.rs:77, change_log.rs:169 — unused `ChangeLog` surface
 
 `len`, `is_empty`, `entries_after`, and the `CHANGE_LOG_DEFAULT_CAPACITY`
@@ -81,12 +73,6 @@ session.rs uses only `record`/`record_change`/`revision`/`map_pos`/
 `invalidate`. `entries_after` implies an incremental-reader protocol that is
 not wired anywhere. Fix: drop or demote to `#[cfg(test)]` until the
 delta-transport consumer lands. Published-crate API.
-
-### serial.rs:455 — `content_key` is a second public name for `to_canonical_json`
-
-A one-line alias whose only workspace use is one core dto test; both names are
-frozen by the determinism contract. Fix: drop the alias and reference
-`to_canonical_json` directly. Public API; core/dto.rs docs cite the name.
 
 ### serial.rs:115 — `to_canonical_value` builds the JSON tree twice
 

@@ -344,7 +344,7 @@ impl Document {
         );
 
         // The seam carries the body as canonical RichText-JSON (Option A): a
-        // nested corpus object, byte-identical to `content_key`, never a lossy
+        // nested corpus object, byte-identical to `to_canonical_json`, never a lossy
         // markdown string. Backends lower the corpus (typst → markup + source
         // map; pdfform → `.text`); the markdown projection is `body_markdown`.
         map.insert(

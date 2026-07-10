@@ -14,7 +14,7 @@
 //!
 //! - **`quillmark/document@0.93.0`** — current. The V0_92_0 payload model with
 //!   the card `body` stored as the **canonical richtext corpus** embedded
-//!   structurally (a nested object byte-identical to `content_key`), not a
+//!   structurally (a nested object byte-identical to `to_canonical_json`), not a
 //!   markdown string. The envelope carries two byte disciplines: the outer
 //!   structure stays compact `serde_json` in frozen struct + payload-insertion
 //!   order (`preserve_order`), while every `body` subtree is the recursively
@@ -59,7 +59,7 @@ use crate::version::QuillReference;
 
 /// Schema version for the V0_93_0 wire format. Newly serialized documents carry
 /// this tag. Stores the card `body` as the canonical richtext corpus embedded
-/// structurally (byte-identical to `content_key`) rather than a markdown string;
+/// structurally (byte-identical to `to_canonical_json`) rather than a markdown string;
 /// the payload shape is unchanged from V0_92_0.
 pub const SCHEMA_V0_93_0: &str = "quillmark/document@0.93.0";
 
@@ -170,14 +170,14 @@ pub type PayloadV0_93_0 = PayloadV0_92_0;
 /// a hand-mirrored DTO tree that could drift from the frozen wire format:
 ///
 /// - `Serialize` emits the recursively key-sorted structure byte-identical to
-///   `content_key(&self.0)` as a **nested JSON object**, never an escaped string.
-///   Embedded in the compact envelope, the `body` subtree bytes equal
-///   `content_key`, independent of `preserve_order`.
+///   `self.0.to_canonical_json()` as a **nested JSON object**, never an escaped
+///   string. Embedded in the compact envelope, the `body` subtree bytes equal
+///   that canonical JSON, independent of `preserve_order`.
 /// - `Deserialize` parses that structure, normalizes, and validates, so an
 ///   invalid corpus is rejected at load (a serde error) rather than silently
 ///   round-tripped.
 ///
-/// Byte-equality with `content_key` holds because every `RichText` in a live
+/// Byte-equality with `to_canonical_json` holds because every `RichText` in a live
 /// [`Document`] is normalized at construction; the serializer normalizes a copy
 /// regardless, so a hand-built value cannot leak non-canonical bytes.
 #[derive(Debug, Clone, PartialEq)]
@@ -1344,7 +1344,7 @@ title: Hi
 
     /// Slice the value of the first top-level `"body":` object out of a compact
     /// `serde_json` envelope — the exact bytes embedded, balanced-brace and
-    /// string-aware. Used to prove the body subtree equals `content_key`.
+    /// string-aware. Used to prove the body subtree equals `to_canonical_json`.
     fn locate_body_subtree(envelope: &str) -> &str {
         const KEY: &str = "\"body\":";
         let start = envelope.find(KEY).expect("body key present") + KEY.len();
@@ -1380,10 +1380,10 @@ title: Hi
     }
 
     #[test]
-    fn body_subtree_is_byte_identical_to_content_key() {
+    fn body_subtree_is_byte_identical_to_canonical_json() {
         // Two disciplines in one envelope: the outer structure is compact
         // insertion-ordered serde_json, but the `body` subtree is the canonical
-        // richtext form, byte-identical to `content_key(&rt)`.
+        // richtext form, byte-identical to `rt.to_canonical_json()`.
         let doc = Document::from_markdown(
             "~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: Hi\n~~~\n\n\
              A paragraph with **bold**, _emph_, and a [link](https://example.com).\n\n\
@@ -1395,12 +1395,12 @@ title: Hi
             !rt.marks.is_empty(),
             "test needs a non-trivial corpus (marks present)"
         );
-        let expected = quillmark_richtext::serial::content_key(&rt);
+        let expected = rt.to_canonical_json();
         let envelope = serde_json::to_string(&doc).unwrap();
         let body = locate_body_subtree(&envelope);
         assert_eq!(
             body, expected,
-            "the envelope body subtree must equal content_key byte-for-byte"
+            "the envelope body subtree must equal to_canonical_json byte-for-byte"
         );
         // A nested structure, not a double-encoded string.
         assert!(body.starts_with("{\"islands\":"));
@@ -1445,7 +1445,7 @@ title: Hi
         // The @0.93.0 table-body canonical bytes changed with this; the freeze is
         // branch-private/unreleased, so amending this golden pre-release is
         // expected. Regenerated golden below.
-        let key = quillmark_richtext::serial::content_key(body);
+        let key = body.to_canonical_json();
         assert_eq!(
             key,
             "{\"islands\":[{\"id\":\"isl-0\",\"loss\":\"lossless\",\"props\":{\

@@ -103,7 +103,7 @@ values keeps YAML insertion order via the workspace's
 `serde_json/preserve_order` feature, and no whole-envelope key sort is
 applied. Every `body` subtree, by contrast, is the recursively key-sorted
 **canonical richtext form** (`CanonicalRichText` in `dto.rs`) — byte-identical
-to `content_key(&rt)` and independent of `preserve_order`, even in a
+to `rt.to_canonical_json()` and independent of `preserve_order`, even in a
 consumer crate graph that lacks the feature. Sortedness is semantic
 *inside* the corpus (mark/island/attribute order carries no meaning, so the
 serializer commits to one bit pattern); insertion order is semantic
