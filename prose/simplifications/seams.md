@@ -49,14 +49,15 @@ a core/quillmark-level
 `apply_field_delta(session, config, doc, field, base_revision, delta)` owning
 field-address routing and the transaction; bindings become thin wrappers.
 
-### Transactionality is the caller's job
+### ~~Transactionality is the caller's job~~ (done for the corpus apply)
 
-`Card::apply_body_change` is documented non-transactional ("body is unchanged
-on error only up to the failing op" — `core/src/document/edit.rs:497`), so the
-WASM binding snapshots the main card and hand-rolls rollback at two exits
-(`wasm/src/engine.rs:1554`). Every consumer must replicate the
-clone-and-restore dance or corrupt the document on a failed op. Fix: make
-transactionality the callee's contract — apply to a scratch copy and swap on
-success in `RichText::apply_field_change` (or `Card::apply_body_change`),
-deleting the caller-side rollback. Subsumes the two low-risk rollback entries
-in bindings.md.
+`RichText::apply_field_change` is now all-or-nothing: a multi-op bundle stages
+on a scratch copy and swaps on success (`richtext/src/ops.rs`), and
+`Card::apply_body_change` documents the same contract, so no consumer needs to
+snapshot-and-restore around a *half-applied body*. The WASM binding still holds
+one body snapshot (`wasm/src/engine.rs`), but only as the transaction boundary
+for the compile and record steps that run *after* the (now atomic) body
+mutation and can still fail — which is the separate "delta-commit orchestration
+lives in the WASM binding" seam above, not corpus transactionality. Close that
+seam (a core/quillmark-level `apply_field_delta` owning apply + compile + record
++ rollback) and the caller-side snapshot goes with it.

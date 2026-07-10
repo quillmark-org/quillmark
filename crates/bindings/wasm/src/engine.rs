@@ -1544,10 +1544,13 @@ impl LiveSession {
                 .to_js_value()
             })?;
 
-        // Snapshot the pre-edit body: the fallible steps below mutate only the
-        // main body corpus (`apply_body_change`), so restoring it leaves `doc`
+        // Snapshot the pre-edit body: `apply_body_change` is itself atomic, but
+        // the compile and record steps that follow it can fail *after* the body
+        // has changed, so restoring the snapshot on any failure leaves `doc`
         // exactly as it was — a caller's retry then never double-applies the
-        // delta onto an already-mutated document.
+        // delta onto an already-mutated document. This snapshot is the
+        // compile/record transaction boundary, not a guard against a
+        // half-applied body.
         let pre_edit_body = doc.inner.main().body().clone();
 
         // Splice the main body corpus (text delta only), then recompile from the

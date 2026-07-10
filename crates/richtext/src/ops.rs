@@ -218,15 +218,30 @@ impl RichText {
     }
 
     /// One committed field edit bundle: text delta, then line ops, then marks.
+    ///
+    /// All-or-nothing: on any op's error `self` is left exactly as it was, so a
+    /// caller need not snapshot-and-restore around a failed bundle. A bundle
+    /// carrying line or mark ops has several fallible stages that would
+    /// otherwise partially commit, so it is staged on a scratch copy and
+    /// swapped in only once every stage succeeds. The pure-text-delta path (the
+    /// per-keystroke hot path) skips the clone: `apply_text_delta` validates the
+    /// delta before mutating, so it is already atomic on the errors a caller can
+    /// provoke.
     pub fn apply_field_change(
         &mut self,
         text_delta: &Delta,
         line_ops: &[LineOp],
         mark_ops: &[MarkOp],
     ) -> Result<(), ApplyError> {
-        self.apply_text_delta(text_delta)?;
-        self.apply_line_ops(line_ops)?;
-        self.apply_mark_ops(mark_ops)
+        if line_ops.is_empty() && mark_ops.is_empty() {
+            return self.apply_text_delta(text_delta);
+        }
+        let mut scratch = self.clone();
+        scratch.apply_text_delta(text_delta)?;
+        scratch.apply_line_ops(line_ops)?;
+        scratch.apply_mark_ops(mark_ops)?;
+        *self = scratch;
+        Ok(())
     }
 
     fn line_mut(&mut self, line: usize) -> Result<&mut Line, ApplyError> {
@@ -640,5 +655,33 @@ mod tests {
             .unwrap();
         assert_eq!((strong.start, strong.end), (3, 4));
         assert_eq!(rt.text, "abXc");
+    }
+
+    #[test]
+    fn apply_field_change_is_all_or_nothing() {
+        // A bundle whose text delta and first mark op succeed but whose second
+        // mark op is out of range must leave the corpus exactly as it was — the
+        // successful earlier stages do not partially commit.
+        let mut rt = from_markdown("abc").unwrap();
+        let before = rt.clone();
+        let d = diff("abc", "abXc");
+        let err = rt.apply_field_change(
+            &d,
+            &[],
+            &[
+                MarkOp::Add {
+                    start: 0,
+                    end: 2,
+                    kind: MarkKind::Strong,
+                },
+                MarkOp::Add {
+                    start: 99,
+                    end: 100,
+                    kind: MarkKind::Emph,
+                },
+            ],
+        );
+        assert!(matches!(err, Err(ApplyError::MarkOutOfRange { .. })));
+        assert_eq!(rt, before, "failed bundle must not mutate the corpus");
     }
 }
