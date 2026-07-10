@@ -48,58 +48,57 @@ pub fn flatten(base: Vec<u8>, fields: &[FieldSpec]) -> Result<Vec<u8>, PdfError>
 
     let pdf = base;
     // Shared envelope: validate the input contract, read the trailer, seed the
-    // id counter. No producer stamp on the flatten path.
+    // id counter. No producer stamp on the flatten path. Non-empty `fields` is
+    // guaranteed by the early return above.
     let mut up = PdfUpdate::begin(&pdf, None)?;
 
-    if !fields.is_empty() {
-        let page_ids = up.resolve_pages(&pdf, fields)?;
-        let page_count = page_ids.len();
+    let page_ids = up.resolve_pages(&pdf, fields)?;
+    let page_count = page_ids.len();
 
-        // Standard Type1 fonts: Helvetica for text/choice, ZapfDingbats for
-        // checkboxes. Both are among the 14 standard PDF fonts every conforming
-        // reader provides.
-        let helv_id = alloc_id(&mut up.next_id)?;
-        let zadb_id = alloc_id(&mut up.next_id)?;
-        up.objects.push(type1_font_object(
-            helv_id,
-            typography::TEXT_FONT,
-            Some("WinAnsiEncoding"),
+    // Standard Type1 fonts: Helvetica for text/choice, ZapfDingbats for
+    // checkboxes. Both are among the 14 standard PDF fonts every conforming
+    // reader provides.
+    let helv_id = alloc_id(&mut up.next_id)?;
+    let zadb_id = alloc_id(&mut up.next_id)?;
+    up.objects.push(type1_font_object(
+        helv_id,
+        typography::TEXT_FONT,
+        Some("WinAnsiEncoding"),
+    ));
+    up.objects
+        .push(type1_font_object(zadb_id, typography::CHECK_FONT, None));
+
+    // Group fields by page.
+    let mut fields_by_page: Vec<Vec<&FieldSpec>> = vec![Vec::new(); page_count];
+    for spec in fields {
+        fields_by_page[spec.page].push(spec);
+    }
+
+    // For each page with drawable fields: emit a content stream and rewrite the page dict.
+    for (page_idx, page_fields) in fields_by_page.iter().enumerate() {
+        let drawable: Vec<&FieldSpec> = page_fields
+            .iter()
+            .copied()
+            .filter(|s| has_drawable_value(s))
+            .collect();
+        if drawable.is_empty() {
+            continue;
+        }
+
+        let stream_id = alloc_id(&mut up.next_id)?;
+        up.objects.push(content_stream_object(
+            stream_id,
+            &build_content_stream(&drawable),
         ));
-        up.objects
-            .push(type1_font_object(zadb_id, typography::CHECK_FONT, None));
 
-        // Group fields by page.
-        let mut fields_by_page: Vec<Vec<&FieldSpec>> = vec![Vec::new(); page_count];
-        for spec in fields {
-            fields_by_page[spec.page].push(spec);
-        }
+        let page_obj_id = page_ids[page_idx];
+        let (s, e) = find_object_bytes(&pdf, page_obj_id)
+            .ok_or_else(|| err(CODE_PARSE, format!("page object {page_obj_id} not found")))?;
+        let pg_dict = extract_outer_dict(&pdf[s..e])
+            .ok_or_else(|| err(CODE_PARSE, "page dict not parseable"))?;
 
-        // For each page with drawable fields: emit a content stream and rewrite the page dict.
-        for (page_idx, page_fields) in fields_by_page.iter().enumerate() {
-            let drawable: Vec<&FieldSpec> = page_fields
-                .iter()
-                .copied()
-                .filter(|s| has_drawable_value(s))
-                .collect();
-            if drawable.is_empty() {
-                continue;
-            }
-
-            let stream_id = alloc_id(&mut up.next_id)?;
-            up.objects.push(content_stream_object(
-                stream_id,
-                &build_content_stream(&drawable),
-            ));
-
-            let page_obj_id = page_ids[page_idx];
-            let (s, e) = find_object_bytes(&pdf, page_obj_id)
-                .ok_or_else(|| err(CODE_PARSE, format!("page object {page_obj_id} not found")))?;
-            let pg_dict = extract_outer_dict(&pdf[s..e])
-                .ok_or_else(|| err(CODE_PARSE, "page dict not parseable"))?;
-
-            let new_pg = rewrite_page_for_flatten(pg_dict, helv_id, zadb_id, stream_id)?;
-            up.objects.push(dict_object(page_obj_id, &new_pg));
-        }
+        let new_pg = rewrite_page_for_flatten(pg_dict, helv_id, zadb_id, stream_id)?;
+        up.objects.push(dict_object(page_obj_id, &new_pg));
     }
 
     up.finish(pdf)

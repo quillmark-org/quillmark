@@ -263,13 +263,6 @@ impl QuillValue {
         self
     }
 
-    /// Set the root node's `!must_fill` marker in place.
-    ///
-    /// Does not invalidate the JSON projection: `fill` is never part of it.
-    pub fn set_fill(&mut self, fill: bool) {
-        self.node.fill = fill;
-    }
-
     /// Paths (relative to this value's root) of every node carrying the
     /// `!must_fill` marker. The root, if filled, is reported as the empty
     /// path. The JSON projection carries no fill, so this is the only way to
