@@ -169,8 +169,8 @@ pub trait SessionHandle: Send + Sync + 'static {
 /// a stable document — `apply` is transactional, swapping the compile only on
 /// success — so immutability is an invariant between commits, not a type.
 ///
-/// Phase 3 adds a monotonic [`revision`](Self::revision) and a bounded
-/// [`change_log`](Self::change_log) of per-field text deltas so stale corpus
+/// A monotonic [`revision`](Self::revision) and a bounded
+/// [`change_log`](Self::change_log) of per-field text deltas let stale corpus
 /// positions map forward via [`map_field_pos`](Self::map_field_pos) instead of
 /// silently reading the current compile.
 pub struct LiveSession {
@@ -572,7 +572,7 @@ mod tests {
         );
     }
 
-    /// The PR-E wiring seam: a document body edit produces a text delta
+    /// The wiring seam: a document body edit produces a text delta
     /// (`Card::import_body_delta`) that the session records, so a stale corpus
     /// position maps forward through the whole-document replace.
     #[test]

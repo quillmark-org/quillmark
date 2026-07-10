@@ -64,7 +64,9 @@ fn load_dir(
     Ok(FileTreeNode::Directory { files })
 }
 
-/// Test helper: filesystem equivalent of the old `Quill::from_path`.
+/// Test helper: loads a `Quill` from a filesystem path via `Quill::from_tree`
+/// — core is filesystem-agnostic, so production filesystem loading lives in
+/// `quillmark::quill_from_path` instead.
 fn load_from_path<P: AsRef<Path>>(path: P) -> Result<Quill, Box<dyn StdError + Send + Sync>> {
     let tree = load_tree(path.as_ref())?;
     Quill::from_tree(tree).map_err(|diags| {
@@ -3073,9 +3075,9 @@ fn type_mismatch_preview_shows_array_contents() {
     );
 }
 
-// ── PR-G: richtext inline field, load-time example import + cache ─────────────
+// ── Richtext inline field: load-time example import + cache ───────────────────
 
-/// A minimal quill declaring one field, for the richtext PR-G tests.
+/// A minimal quill declaring one field, for the richtext field-type tests.
 fn quill_with_field(field_yaml: &str) -> Result<QuillConfig, Vec<Diagnostic>> {
     let yaml = format!(
         "quill:\n  name: rt\n  version: \"1.0\"\n  backend: typst\n  description: rt\nmain:\n  fields:\n{field_yaml}"

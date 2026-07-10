@@ -143,8 +143,8 @@ struct Hit {
     page: usize,
     class: HitClass,
     /// `Some` for any window-classified ink (both boxable and transparent),
-    /// `None` for foreign ink — matching the old `window.is_some()` rule so
-    /// [`field_at`] hit-testing is unchanged.
+    /// `None` for foreign ink — matching `HitClass::window`'s `is_some()`, so
+    /// [`field_at`] hit-testing is unaffected by the two-tier split.
     rect: Option<Aabb>,
 }
 
@@ -1061,12 +1061,11 @@ main:
 
     // -----------------------------------------------------------------
     // Two-tier `(window, Option<segment>)` classification and the run-machine
-    // transparency arm (#829). These evolved from the PR-F spike's probes
-    // (folded into `prose/plans/richtext/phase-2.md` § PR-F): the classifier is now
-    // the production `Classifier::classify_seg`, and the machine tests drive
-    // the production `run_scan_machine` directly, so the crux the spike proved
-    // — a transparent same-window arm, still-suspending across fields — is
-    // pinned against the shipped code, not a re-derived copy.
+    // transparency arm (#829). The tests below drive the production
+    // `Classifier::classify_seg` and `run_scan_machine` directly, pinning a
+    // transparent same-window arm that still suspends across fields against
+    // the shipped code, not a re-derived copy. See
+    // `prose/plans/richtext/phase-2.md` § PR-F for background.
     // -----------------------------------------------------------------
 
     /// Every drawn item's span in a frame, geometry dropped — classification
@@ -1369,12 +1368,11 @@ main:
             .collect()
     }
 
-    /// The crux (spike `field_only_ink_is_transparent_but_foreign_ink_is_not`),
-    /// now against the shipped `run_scan_machine`: transparent same-window ink
-    /// between two hits of one segment keeps the run — both accrue into one
-    /// unioned box — while foreign ink in the identical shape ends it, leaving
-    /// only the first hit's extent. Distinct rects make the difference visible
-    /// (same-page union vs. suppressed second hit).
+    /// The crux: transparent same-window ink between two hits of one segment
+    /// keeps the run — both accrue into one unioned box — while foreign ink in
+    /// the identical shape ends it, leaving only the first hit's extent.
+    /// Distinct rects make the difference visible (same-page union vs.
+    /// suppressed second hit).
     #[test]
     fn field_only_ink_is_transparent_but_foreign_ink_is_not() {
         let keys = vec![(0usize, Some(0usize))];
@@ -1460,12 +1458,11 @@ main:
     }
 
     // -----------------------------------------------------------------
-    // PR-F spike probe (Unknown 2, risk register risk 2) — does
-    // `glyph.span.1` give usable per-character intra-node offsets, and
+    // Does `glyph.span.1` give usable per-character intra-node offsets, and
     // where does it degrade (raw string literals, list/enum numbering,
-    // shaping clusters)? See `prose/plans/richtext/phase-2.md` § PR-F
-    // for the full write-up; this test pins the empirical findings so a
-    // future Typst upgrade cannot silently change them unnoticed.
+    // shaping clusters)? See `prose/plans/richtext/phase-2.md` § PR-F for the
+    // full write-up; this test pins the empirical findings so a future Typst
+    // upgrade cannot silently change them unnoticed.
     // -----------------------------------------------------------------
 
     /// One glyph's classification-relevant facts: the resolved node range

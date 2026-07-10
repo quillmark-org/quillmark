@@ -109,7 +109,7 @@ pub enum FieldType {
     /// as `type: richtext`; single-line shape is declared with [`FieldSchema::inline`].
     /// The transform schema marks it `contentMediaType:
     /// application/quillmark-richtext+json` and, when inline, `quillmark:inline:
-    /// true`. The pre-richtext `markdown` spelling is no longer accepted — a
+    /// true`. The pre-richtext `markdown` spelling is not accepted — a
     /// Quill.yaml must declare `richtext` explicitly (`from_str` returns `None`
     /// for `markdown`, so the loader raises a schema load error).
     ///
@@ -135,9 +135,9 @@ impl FieldType {
             "object" => Some(FieldType::Object),
             "datetime" => Some(FieldType::DateTime),
             "richtext" => Some(FieldType::RichText { inline: false }),
-            // The pre-richtext `markdown` spelling is retired: it returns `None`
-            // here so the loader reports it as an unknown type rather than
-            // silently aliasing it to block richtext.
+            // The pre-richtext `markdown` spelling is not a recognized type: it
+            // returns `None` here so the loader reports it as an unknown type
+            // rather than silently aliasing it to block richtext.
             _ => None,
         }
     }

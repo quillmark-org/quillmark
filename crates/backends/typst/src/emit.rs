@@ -26,9 +26,8 @@
 //!   `code` → `#raw("…")`. `anchor`/`unknown` emit nothing.
 //! - **Islands.** `table` → `#table(columns:, align:, table.header(…), …)`;
 //!   `image` → `#image("url", alt:)`; unknown types emit nothing.
-//! - **Block quotes render** — the one intentional divergence from the prior
-//!   markdown lowering, which flattened them: `Container::Quote` →
-//!   `#quote(block: true)[…]` (a superset behavior, landed as a tested decision).
+//! - **Block quotes render**, not flatten: `Container::Quote` →
+//!   `#quote(block: true)[…]` (a superset behavior, a tested design decision).
 //! - **Line-anchored text.** [`escape_markup`](crate::emit::escape_markup)
 //!   neutralizes inline markup but is position-blind; Typst's heading `= `, list
 //!   `- `/`+ `/`N. `, and term `/ ` are line-anchored — only special as the
@@ -291,8 +290,8 @@ struct Emit<'a> {
     line_usv: Vec<(usize, usize)>,
     out: String,
     segments: Vec<SegmentMap>,
-    /// Whether `out` currently ends at a fresh line — mirrors the prior markdown lowering's
-    /// `end_newline`, so block separators land identically.
+    /// Whether `out` currently ends at a fresh line, tracked so block
+    /// separators land consistently.
     end_newline: bool,
 }
 
@@ -407,9 +406,9 @@ impl<'a> Emit<'a> {
         j
     }
 
-    /// A leaf block terminated with `\n\n`. An empty paragraph emits nothing (as
-    /// the prior markdown lowering emitted no paragraph for empty content); every other block —
-    /// including an empty heading (`= `) or empty code fence — still renders.
+    /// A leaf block terminated with `\n\n`. An empty paragraph emits nothing;
+    /// every other block — including an empty heading (`= `) or empty code
+    /// fence — still renders.
     fn emit_leaf_terminated(&mut self, range: Range<usize>, depth: usize) {
         let first = &self.rt.lines[range.start];
         let (lo, _) = self.line_usv[range.start];
@@ -485,8 +484,7 @@ impl<'a> Emit<'a> {
 
     /// A list item's body at `content_depth` (`= depth+1`): the first block flows
     /// straight off the marker; each later block is preceded by a blank line and
-    /// the continuation indent (`2×content_depth`), matching the prior markdown lowering's
-    /// `list_item_first_block` handling. Nested lists/quotes recurse.
+    /// the continuation indent (`2×content_depth`). Nested lists/quotes recurse.
     fn emit_item_body(&mut self, range: Range<usize>, content_depth: usize) {
         let cont_indent = "  ".repeat(content_depth);
         let mut first_block = true;
@@ -525,9 +523,9 @@ impl<'a> Emit<'a> {
         }
     }
 
-    /// A block quote (the intentional divergence): `#quote(block: true)[…]`
-    /// wrapping the quote's inner blocks, lowered under the block-level
-    /// discipline. The prior markdown lowering flattened quotes; this renders them.
+    /// A block quote: `#quote(block: true)[…]` wrapping the quote's inner
+    /// blocks, lowered under the block-level discipline — rendered
+    /// structurally, not flattened.
     fn emit_quote(&mut self, range: Range<usize>, depth: usize) {
         if !self.end_newline {
             self.out.push('\n');
@@ -807,9 +805,9 @@ fn sweep_marks(
 ) {
     // Indices into `wraps` for the marks currently open, outermost first. Storing
     // the index (not just `(end, ord)`) keeps each open mark's identity, so a
-    // reopened mark re-emits its OWN delimiter — two same-`(ord, end)` links with
-    // distinct URLs no longer collapse onto whichever the `(ord, end)` lookup hit
-    // first.
+    // reopened mark re-emits its OWN delimiter: two same-`(ord, end)` links with
+    // distinct URLs must not collapse onto whichever mark a bare `(ord, end)`
+    // lookup would hit first.
     let mut stack: Vec<usize> = Vec::new();
     let mut pos = lo;
     while pos <= hi {
@@ -846,7 +844,7 @@ fn sweep_marks(
     // unclosed `[` would break — failing the whole helper file's parse, not just
     // this field — so a trailing open must always close. Clipping keeps every
     // wrap `end` reachable, so this normally drains nothing; it is the final
-    // stack-drain guard the old `convert.rs` carried, belt to the clip's braces.
+    // stack-drain guard, belt to the clip's braces.
     while stack.pop().is_some() {
         out.push(']');
     }
@@ -1041,8 +1039,7 @@ mod tests {
 
     /// A broad corpus of markdown inputs exercising every lowering path — the
     /// sample set the source-map alignment test ([`runs_map_corpus_to_generated_bytes`])
-    /// scans. (These once pinned byte parity against the markdown oracle, now
-    /// deleted; the emitter is the sole lowering.)
+    /// scans. The emitter is the sole lowering path.
     fn sample_inputs() -> Vec<&'static str> {
         vec![
             // headings
@@ -1276,7 +1273,7 @@ mod tests {
         assert_eq!(emit("[](https://example.com)").markup, "");
     }
 
-    // ---- escape tripwire (Spike-B run alignment, productionized) ----
+    // ---- escape tripwire: run alignment ----
 
     /// Reconstruct a run's generated bytes by a one-scan that treats `//`→`\/\/`
     /// as a 2-char/4-byte cluster and every other char as its own cluster, then
@@ -1515,10 +1512,11 @@ mod tests {
 
     /// A wrap that partially overlaps an atomic `code` mark lowers to balanced
     /// markup: `#raw(...)` can't carry partial styling, so the wrap clips to the
-    /// text *outside* the code. Regression for the compile-breaking case — the
-    /// sweep used to jump the cursor start→end across the code span, skipping the
-    /// wrap `end` inside it and trailing an unclosed `[` that broke the whole
-    /// generated helper file's parse.
+    /// text *outside* the code. Regression: a wrap `end` inside an atomic code
+    /// span must still close its bracket, or the generated helper file fails to
+    /// parse — the sweep's cursor must not jump straight from the code span's
+    /// start to its end, skipping over the wrap `end` and trailing an unclosed
+    /// `[`.
     #[test]
     fn wrap_over_atomic_code_stays_balanced() {
         // Wrap starts first, ends inside the code: strong[0,4) + code[2,6).
@@ -1597,10 +1595,11 @@ mod tests {
     }
 
     /// Two overlapping `link` marks that share an `end` but carry distinct URLs
-    /// reopen with their OWN URL, not whichever the old `(ord, end)` lookup hit
-    /// first. `link{wrong}[0,6)` + `strong[0,4)` + `link{right}[2,6)` on "abcdef":
-    /// at pos 4 the strong closes and the inner `link{right}` reopens — it must
-    /// re-emit `right`, though `link{wrong}` shares its `(ord=5, end=6)`.
+    /// reopen with their OWN URL, not whichever mark a bare `(ord, end)` lookup
+    /// would hit first. `link{wrong}[0,6)` + `strong[0,4)` + `link{right}[2,6)`
+    /// on "abcdef": at pos 4 the strong closes and the inner `link{right}`
+    /// reopens — it must re-emit `right`, though `link{wrong}` shares its
+    /// `(ord=5, end=6)`.
     #[test]
     fn overlapping_links_reopen_with_correct_url() {
         let out = emit_marked(

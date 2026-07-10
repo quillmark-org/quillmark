@@ -192,11 +192,10 @@ fn page_hashes(document: &typst_layout::PagedDocument) -> Vec<u128> {
 }
 
 /// Prepare raw document data for the helper codegen. The seam already carries
-/// the render shape — richtext fields are canonical corpus JSON (lowered to
-/// markup at codegen via [`emit::emit_richtext`]), dates are strings (lowered to
-/// `datetime(..)` at codegen) — so there is no per-field transform here: content
-/// no longer round-trips through a markdown re-parse. `meta` is the session's
-/// cached [`SchemaMeta`].
+/// the render shape — richtext fields are canonical corpus JSON, not markdown
+/// to re-parse (lowered to markup at codegen via [`emit::emit_richtext`]), dates
+/// are strings (lowered to `datetime(..)` at codegen) — so there is no
+/// per-field transform here. `meta` is the session's cached [`SchemaMeta`].
 ///
 /// The one check kept is a defensive date validation: the coercion layer already
 /// rejects malformed dates before render, but a direct `apply` can hand the
@@ -942,7 +941,7 @@ mod tests {
         let string_schema = json!({ "type": "string" });
         assert!(!is_richtext_field(&string_schema));
 
-        // The pre-richtext media type is no longer classified as content.
+        // `text/markdown` is not a richtext content type.
         let old_media_type = json!({ "type": "string", "contentMediaType": "text/markdown" });
         assert!(!is_richtext_field(&old_media_type));
     }

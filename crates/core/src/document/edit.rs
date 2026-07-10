@@ -70,7 +70,7 @@ pub enum EditError {
 
     /// Markdown body import failed — the corpus codec rejected the input
     /// (e.g. container nesting past [`MAX_NESTING_DEPTH`](quillmark_richtext::MAX_NESTING_DEPTH)).
-    /// The fallible replacement for the pre-phase-3 silent degrade-to-empty.
+    /// Returned instead of silently degrading the body to empty on a rejected import.
     #[error("body import failed: {0}")]
     BodyImport(ImportError),
 
@@ -461,8 +461,8 @@ impl Card {
     /// the current body, and rebases surviving identity anchors onto the new
     /// text (cold import + [`diff_import`]). A pathologically over-nested input
     /// (`> MAX_NESTING_DEPTH`) returns [`EditError::BodyImport`] rather than
-    /// silently degrading to the empty corpus (retired in phase 3). To also
-    /// obtain the text [`Delta`] for recording into a session change log, call
+    /// silently degrading to the empty corpus. To also obtain the text
+    /// [`Delta`] for recording into a session change log, call
     /// [`import_body_delta`](Self::import_body_delta).
     pub fn replace_body(&mut self, body: impl Into<String>) -> Result<(), EditError> {
         self.import_body_delta(body).map(|_| ())
