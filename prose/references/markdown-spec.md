@@ -367,14 +367,14 @@ the `$` sigil.
 ```typescript
 interface PlateJson {
   $quill: string;         // quill name@version, from the root block $quill
-  $body: string;          // prose body of the root block
+  $body: object;          // root-block body as canonical RichText-JSON corpus (text/lines/marks/islands), not a markdown string
   $cards: Card[];         // zero or more cards, in document order
   [field: string]: any;   // root-block payload fields, flat
 }
 
 interface Card {
   $kind: string;          // card kind, matches /^[a-z_][a-z0-9_]*$/
-  $body: string;          // card prose body
+  $body: object;          // card body as canonical RichText-JSON corpus, not a markdown string
   [field: string]: any;   // card payload fields, flat
 }
 ```
@@ -384,6 +384,9 @@ interface Card {
   own scope.
 - Body text is preserved verbatim — whitespace, line endings, and inline
   CommonMark are untouched by the splitter.
+- `$body` (root and per-card) and every `richtext` payload field cross as
+  canonical RichText-JSON corpus objects (`{ text, lines, marks, islands }`);
+  markdown is a lossless projection of the corpus, not the wire form.
 
 ## 6. Markdown Content
 
@@ -465,8 +468,9 @@ error when any is exceeded:
 | Field count per block | 1000 |
 | Card count per document | 1000 |
 
-Markdown block nesting depth (100) is enforced by the Typst backend at
-render time, not by the parser.
+Markdown block nesting depth (100) is enforced at import time by the
+markdown→corpus parser (`Document::from_markdown`); the Typst backend re-checks
+at render as a backstop for corpora built without importing.
 
 ## 9. Emission Contract
 

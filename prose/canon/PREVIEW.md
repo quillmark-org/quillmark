@@ -113,12 +113,15 @@ consumer there is no cross-edit reader to protect. If a long-lived read-only
 viewer ever needs to shed the retained world, a `freeze()` that drops it and
 keeps the pageable document is a *mode* to add, not a second type.
 
-Regions and `CorpusHit` carry an optional revision stamp (`LiveSession::revision`,
-a monotonic counter starting at `0`), because a position captured before an edit
-must be *mapped* forward (`ChangeLog::map_pos`) rather than merely detected
-stale. The stamp is additive-optional (`RenderedRegion.revision` /
-`CorpusHit.revision`) and set only by a live-session read; the sessionless
-one-shot paths (`RenderResult.regions`, native bindings) leave it absent.
+Whole-document `apply` is revision-neutral, so the canonical WASM surface
+exposes no revision stamp and no field-delta path — the published `FieldRegion`
+and `CorpusHit` omit `revision`, and `LiveSession` has no `applyFieldDelta` /
+`mapFieldPos` (#850). The core session still carries the machinery: a monotonic
+`LiveSession::revision` and a `ChangeLog::map_pos` that maps a position captured
+before an edit *forward* rather than merely flagging it stale, with the stamp
+riding `RenderedRegion` / `CorpusHit` and set only by a live-session read. It
+surfaces through WASM once the field-delta path is reachable through
+`runtime.js`.
 
 ### Complete-raster contract
 
@@ -248,13 +251,8 @@ class LiveSession {
   readonly backendId: string;
   readonly supportsCanvas: boolean;
   readonly warnings: Diagnostic[];
-  readonly revision: number;            // monotonic; 0 before the first applyFieldDelta
 
-  apply(doc: Document): ChangeSet;      // in-place recompile; transactional; revision-neutral
-  applyFieldDelta(doc: Document, field: string, baseRevision: number, delta: Delta): ChangeSet;
-                                        // native field-editor path; $body only; advances revision
-  mapFieldPos(field: string, baseRevision: number, pos: number, assoc: "before" | "after"): number;
-                                        // maps a captured position forward through recorded deltas
+  apply(doc: Document): ChangeSet;      // in-place recompile; transactional
   render(opts?: RenderOptions): RenderResult;
   regions(): FieldRegion[];             // field → rects (one per segment); session query, no render
   fieldAt(page: number, x: number, y: number): string | undefined;
@@ -293,13 +291,11 @@ interface FieldRegion {
   page: number;           // 0-based
   rect: [number, number, number, number];   // [x0,y0,x1,y1] PDF pt, bottom-left
   span?: [number, number];// USV [start,end) of the covered corpus; absent for scalar/widget
-  revision?: number;      // session revision this geometry was read at; absent off-session
 }
 
 interface CorpusHit {
   field: string;
   pos: number;            // USV offset into the field's RichText (cluster floor)
-  revision?: number;      // session revision this hit was resolved at; absent off-session
 }
 ```
 
@@ -365,17 +361,16 @@ painter cannot disagree:
 | ----------------------------------------- | -------- | ------ | -------------------------------------------------------- |
 | `pkg/core/` (no features)                 | —        | no     | `Document` + `Quill` only; no engine, no Typst           |
 | `pkg/backends/typst/` (`typst`)           | typst    | yes    | native page raster                                       |
-| `pkg/backends/pdfform/` (`pdfform-preview`) | pdfform | yes    | pre-flatten + hayro raster/SVG/PNG; adds the `web-sys` painter |
-| (`pdfform`, no `web-sys`)                 | pdfform  | no     | renders PDF + SVG + PNG, but no canvas painter           |
+| `pkg/backends/pdfform/` (`pdfform`)       | pdfform  | yes    | pre-flatten + hayro raster/SVG/PNG; `web-sys` canvas painter |
 
 The pdfform backend always links its hayro raster seam, so it renders PDF, SVG,
-and PNG without any preview feature (`supports_canvas() == true`). The wasm `pdfform-preview`
-feature is a strict superset of `pdfform` that only adds the `web-sys` canvas
-*painter*, so the in-browser `paint()` surface ships; a `pdfform` build without
-`web-sys` still renders SVG/PNG but carries no painter. `build-wasm.sh` builds
-the three artifacts (core, typst, pdfform — the last with `pdfform-preview`)
-sequentially; `runtime/runtime.js` maps each backend id to its build with a
-`{ formats, canvas }` manifest, drift-guarded by `runtime.test.js`.
+and PNG (`supports_canvas() == true`). The wasm `pdfform` feature pulls in
+`web-sys` unconditionally, so the pdfform build also ships the generic canvas
+*painter* (`page_size` / `paint`, dispatching through the core `SessionHandle`
+seam) — there is no painterless pdfform variant. `build-wasm.sh` builds the
+three artifacts (core, typst, pdfform) sequentially; `runtime/runtime.js` maps
+each backend id to its build with a `{ formats, canvas }` manifest, drift-guarded
+by `runtime.test.js`.
 
 ## Non-goals
 

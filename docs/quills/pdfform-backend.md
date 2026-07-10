@@ -212,7 +212,13 @@ Treat the stamped PDF, not the raster preview, as the source of truth for what a
 Field geometry is a session-level query, not part of `RenderResult`: open a session and call `regions()` to get one entry per schema-bound field, keyed on its schema field path:
 
 ```rust
-pub struct RenderedRegion { pub field: String, pub page: usize, pub rect: [f32; 4] }
+pub struct RenderedRegion {
+    pub field: String,            // schema field path
+    pub page: usize,              // 0-based
+    pub rect: [f32; 4],           // [x0, y0, x1, y1], PDF pt, bottom-left origin
+    pub span: Option<[usize; 2]>, // USV [start, end) of the covered corpus; None for a scalar/widget
+    pub revision: Option<u64>,    // live-session revision stamp; None off-session
+}
 ```
 
 `regions()` reads off the compiled session without producing another byte artifact, so a GUI can fetch geometry once and overlay it on whatever surface it shows (a `paint`-ed canvas or a rendered page), independent of which format it goes on to render. A field with no `schema_field` never surfaces a region. The `pdfform_preview` example (`crates/quillmark/examples/`) opens a session for the `sample_form` fixture and prints its regions for cross-checking against a viewer.
