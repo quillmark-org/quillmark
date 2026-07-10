@@ -2,15 +2,19 @@
 
 ## Needs judgment
 
-### span_scan.rs:557 vs span_scan.rs:272 — `walk_glyphs` duplicates `collect_page_hits`
+### span_scan.rs — `walk_glyphs`/`collect_page_hits` geometry deduplicated; classifier merge remains
 
-~60 lines of identical frame-walk geometry (`Group` transform recursion,
-per-glyph cursor/advance/bbox math, `Shape`/`Image` handling), and all three
-item arms recompute `(classify_seg, resolve_range)` although `classify_seg`
-already calls `resolve_range`. Fix: one shared walker emitting
-`(page, span, offset, rect)` with two thin consumers, and one classifier
-method returning `(window, seg, node_range)` together. Hot path for
-region/hit-testing.
+Done: the ~60 lines of identical frame-walk geometry (`Group` transform
+recursion, per-glyph cursor/advance/bbox, `Shape`/`Image` extents) now live in
+one `walk_items` walker that invokes a per-item `visit(page, span, offset,
+|| rect)` callback; `collect_page_hits` and `walk_glyphs` are thin consumers
+(the region scan emits every item with a lazy box; the corpus walk emits only
+classified+resolved ink). The box thunk keeps the region scan's "compute a box
+only for classified ink" laziness. Remaining: `walk_glyphs` still calls both
+`classify_seg` and `resolve_range` per item though `classify_seg` already
+resolves internally — a `classify` returning `(window, seg, node_range)`
+together would drop the second resolve. Smaller, separable; `classify_seg` is
+shared with the region path, so its signature change is pinned separately.
 
 ### span_scan.rs:703 — `locate` walks every page to place one caret
 

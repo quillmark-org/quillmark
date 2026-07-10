@@ -281,59 +281,66 @@ impl<'a> Classifier<'a> {
 /// images (each carries a single span). Boxes are computed for classified
 /// ink only.
 fn collect_page_hits(frame: &Frame, page: usize, cls: &mut Classifier, out: &mut Vec<Hit>) {
-    fn walk(frame: &Frame, ts: Transform, page: usize, cls: &mut Classifier, out: &mut Vec<Hit>) {
-        for (pos, item) in frame.items() {
-            match item {
-                FrameItem::Group(group) => {
-                    let ts = ts
-                        .pre_concat(Transform::translate(pos.x, pos.y))
-                        .pre_concat(group.transform);
-                    walk(&group.frame, ts, page, cls, out);
-                }
-                FrameItem::Text(text) => {
-                    let bb = text.bbox();
-                    let mut cursor = Point::zero();
-                    for glyph in &text.glyphs {
-                        let advance = Point::new(
-                            glyph.x_advance.at(text.size),
-                            glyph.y_advance.at(text.size),
-                        );
-                        let class = hit_class(cls.classify_seg(glyph.span.0), cls.windows);
-                        let rect = class.window().is_some().then(|| {
-                            let offset = Point::new(
-                                glyph.x_offset.at(text.size),
-                                glyph.y_offset.at(text.size),
-                            );
-                            let lo = Point::new(cursor.x + offset.x, cursor.y + bb.min.y);
-                            let hi =
-                                Point::new(cursor.x + offset.x + advance.x, cursor.y + bb.max.y);
-                            item_aabb(*pos, lo, hi, ts)
-                        });
-                        out.push(Hit { page, class, rect });
-                        cursor += advance;
-                    }
-                }
-                FrameItem::Shape(shape, span) => {
-                    let class = hit_class(cls.classify_seg(*span), cls.windows);
-                    let rect = class.window().is_some().then(|| {
-                        let bb = shape.geometry.bbox(shape.stroke.as_ref());
-                        item_aabb(*pos, bb.min, bb.max, ts)
-                    });
-                    out.push(Hit { page, class, rect });
-                }
-                FrameItem::Image(_, size, span) => {
-                    let class = hit_class(cls.classify_seg(*span), cls.windows);
-                    let rect = class
-                        .window()
-                        .is_some()
-                        .then(|| item_aabb(*pos, Point::zero(), size.to_point(), ts));
-                    out.push(Hit { page, class, rect });
-                }
-                _ => {}
+    walk_items(frame, Transform::identity(), page, &mut |page, span, _offset, aabb| {
+        let class = hit_class(cls.classify_seg(span), cls.windows);
+        // Boxes are computed for classified ink only; foreign ink still emits a
+        // (rect-less) Hit so the run machine sees the full ink sequence.
+        let rect = class.window().is_some().then(|| aabb());
+        out.push(Hit { page, class, rect });
+    });
+}
+
+/// Walk one page frame in document order, invoking `visit` once per drawn item
+/// — per glyph for text (a run may mix spans), per item for shapes and images
+/// (each carries a single span). `visit` receives the `page`, the item's
+/// `span`, the intra-node byte `offset` (`glyph.span.1` for text, `0`
+/// otherwise), and a thunk computing the item's page-space box on demand — so a
+/// consumer that discards foreign ink pays no box arithmetic. This is the frame
+/// geometry (group transform recursion, per-glyph cursor/advance/bbox,
+/// shape/image extents) shared by the region scan ([`collect_page_hits`]) and
+/// the corpus-position walk ([`walk_glyphs`]).
+fn walk_items(
+    frame: &Frame,
+    ts: Transform,
+    page: usize,
+    visit: &mut dyn FnMut(usize, Span, u16, &dyn Fn() -> Aabb),
+) {
+    for (pos, item) in frame.items() {
+        match item {
+            FrameItem::Group(group) => {
+                let ts = ts
+                    .pre_concat(Transform::translate(pos.x, pos.y))
+                    .pre_concat(group.transform);
+                walk_items(&group.frame, ts, page, visit);
             }
+            FrameItem::Text(text) => {
+                let bb = text.bbox();
+                let mut cursor = Point::zero();
+                for glyph in &text.glyphs {
+                    let advance =
+                        Point::new(glyph.x_advance.at(text.size), glyph.y_advance.at(text.size));
+                    let offset =
+                        Point::new(glyph.x_offset.at(text.size), glyph.y_offset.at(text.size));
+                    let lo = Point::new(cursor.x + offset.x, cursor.y + bb.min.y);
+                    let hi = Point::new(cursor.x + offset.x + advance.x, cursor.y + bb.max.y);
+                    let p = *pos;
+                    visit(page, glyph.span.0, glyph.span.1, &|| item_aabb(p, lo, hi, ts));
+                    cursor += advance;
+                }
+            }
+            FrameItem::Shape(shape, span) => {
+                let bb = shape.geometry.bbox(shape.stroke.as_ref());
+                let p = *pos;
+                visit(page, *span, 0, &|| item_aabb(p, bb.min, bb.max, ts));
+            }
+            FrameItem::Image(_, size, span) => {
+                let sz = size.to_point();
+                let p = *pos;
+                visit(page, *span, 0, &|| item_aabb(p, Point::zero(), sz, ts));
+            }
+            _ => {}
         }
     }
-    walk(frame, Transform::identity(), page, cls, out);
 }
 
 /// An item box (corners `lo`..`hi` relative to the item anchor `pos`, in local
@@ -560,79 +567,26 @@ struct GlyphHit {
 }
 
 /// Walk one frame collecting a [`GlyphHit`] per window-classified drawn item.
-fn walk_glyphs(
-    frame: &Frame,
-    ts: Transform,
-    page: usize,
-    cls: &mut Classifier,
-    out: &mut Vec<GlyphHit>,
-) {
-    for (pos, item) in frame.items() {
-        match item {
-            FrameItem::Group(group) => {
-                let ts = ts
-                    .pre_concat(Transform::translate(pos.x, pos.y))
-                    .pre_concat(group.transform);
-                walk_glyphs(&group.frame, ts, page, cls, out);
-            }
-            FrameItem::Text(text) => {
-                let bb = text.bbox();
-                let mut cursor = Point::zero();
-                for glyph in &text.glyphs {
-                    let advance =
-                        Point::new(glyph.x_advance.at(text.size), glyph.y_advance.at(text.size));
-                    if let (Some((w, seg)), Some((_, node))) = (
-                        cls.classify_seg(glyph.span.0),
-                        cls.resolve_range(glyph.span.0),
-                    ) {
-                        let offset =
-                            Point::new(glyph.x_offset.at(text.size), glyph.y_offset.at(text.size));
-                        let lo = Point::new(cursor.x + offset.x, cursor.y + bb.min.y);
-                        let hi = Point::new(cursor.x + offset.x + advance.x, cursor.y + bb.max.y);
-                        out.push(GlyphHit {
-                            page,
-                            rect: item_aabb(*pos, lo, hi, ts),
-                            node,
-                            offset: glyph.span.1,
-                            window: w,
-                            seg,
-                        });
-                    }
-                    cursor += advance;
-                }
-            }
-            FrameItem::Shape(shape, span) => {
-                if let (Some((w, seg)), Some((_, node))) =
-                    (cls.classify_seg(*span), cls.resolve_range(*span))
-                {
-                    let bb = shape.geometry.bbox(shape.stroke.as_ref());
-                    out.push(GlyphHit {
-                        page,
-                        rect: item_aabb(*pos, bb.min, bb.max, ts),
-                        node,
-                        offset: 0,
-                        window: w,
-                        seg,
-                    });
-                }
-            }
-            FrameItem::Image(_, size, span) => {
-                if let (Some((w, seg)), Some((_, node))) =
-                    (cls.classify_seg(*span), cls.resolve_range(*span))
-                {
-                    out.push(GlyphHit {
-                        page,
-                        rect: item_aabb(*pos, Point::zero(), size.to_point(), ts),
-                        node,
-                        offset: 0,
-                        window: w,
-                        seg,
-                    });
-                }
-            }
-            _ => {}
+/// Walk one page frame emitting a [`GlyphHit`] for each item that classifies to
+/// a content window *and* resolves to a node range — the corpus-position twin of
+/// [`collect_page_hits`], sharing [`walk_items`]' geometry. Foreign and
+/// unresolvable ink is skipped (no corpus address), so unlike the region scan
+/// it emits nothing for them.
+fn walk_glyphs(frame: &Frame, page: usize, cls: &mut Classifier, out: &mut Vec<GlyphHit>) {
+    walk_items(frame, Transform::identity(), page, &mut |page, span, offset, aabb| {
+        if let (Some((w, seg)), Some((_, node))) =
+            (cls.classify_seg(span), cls.resolve_range(span))
+        {
+            out.push(GlyphHit {
+                page,
+                rect: aabb(),
+                node,
+                offset,
+                window: w,
+                seg,
+            });
         }
-    }
+    });
 }
 
 /// A point → **corpus position** in a content field. Hit the later-painted
@@ -661,7 +615,7 @@ pub(crate) fn position_at(
 
     let mut cls = Classifier::new(world, helper, windows);
     let mut hits = Vec::new();
-    walk_glyphs(frame, Transform::identity(), page, &mut cls, &mut hits);
+    walk_glyphs(frame, page, &mut cls, &mut hits);
 
     // Later-painted content ink wins; scalar/structural ink (no segment) has no
     // corpus position to report.
@@ -730,7 +684,7 @@ pub(crate) fn locate(
     let mut cls = Classifier::new(world, helper, windows);
     let mut hits = Vec::new();
     for (page, p) in doc.pages().iter().enumerate() {
-        walk_glyphs(&p.frame, Transform::identity(), page, &mut cls, &mut hits);
+        walk_glyphs(&p.frame, page, &mut cls, &mut hits);
     }
 
     // The glyph of this segment whose node covers `target_gen`, its caret byte
