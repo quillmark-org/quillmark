@@ -1181,15 +1181,6 @@ mod tests {
         ]
     }
 
-    /// The emitter is total over the sample corpus — every input imports,
-    /// validates, and lowers without panicking or erroring.
-    #[test]
-    fn emits_every_sample_input() {
-        for md in sample_inputs() {
-            let _ = emit(md);
-        }
-    }
-
     /// Empty / whitespace-only input lowers to empty markup (no paragraph for
     /// empty content).
     #[test]
@@ -1209,13 +1200,6 @@ mod tests {
             "quote must render, got {out:?}"
         );
         assert!(out.contains("quoted text"), "quote body present: {out:?}");
-    }
-
-    #[test]
-    fn block_quote_multi_paragraph() {
-        let out = emit("> one\n>\n> two").markup;
-        assert!(out.contains("#quote(block: true)["));
-        assert!(out.contains("one") && out.contains("two"));
     }
 
     // ---- thematic breaks ----

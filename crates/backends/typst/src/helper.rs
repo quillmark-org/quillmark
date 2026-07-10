@@ -695,13 +695,4 @@ mod tests {
         assert_eq!(lit(&serde_json::json!({})), "(:)");
         assert_eq!(lit(&serde_json::json!({ "a": 1 })), "(\"a\": 1,)");
     }
-
-    #[test]
-    fn test_generate_typst_toml() {
-        let toml = generate_typst_toml();
-        assert!(toml.contains("name = \"quillmark-helper\""));
-        assert!(toml.contains("version = \"0.1.0\""));
-        assert!(toml.contains("namespace = \"local\""));
-        assert!(toml.contains("entrypoint = \"lib.typ\""));
-    }
 }

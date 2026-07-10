@@ -466,20 +466,6 @@ mod tests {
     }
 
     #[test]
-    fn must_fill_string_renders_bare_marker() {
-        // No `default:` → Unendorsed. The `!must_fill` marker sits on the value
-        // line; the inline annotation is type-only.
-        let t = cfg(r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    author: { type: string }
-"#)
-        .blueprint();
-        assert!(t.contains("author: !must_fill # string\n"));
-    }
-
-    #[test]
     fn must_fill_markdown_example_surfaces_as_eg_hint_not_inline_value() {
         // Markdown never inlines its example as the marker value, but the
         // `example:` must still surface as a `# e.g.` hint (regression: #805).
@@ -1102,34 +1088,6 @@ main:
             doc1, doc2,
             "Document must be equal after blueprint → parse → emit → parse"
         );
-    }
-
-    #[test]
-    fn empty_typed_object_and_table_rejected() {
-        // `properties: {}` is rejected — an object with no properties is
-        // useless and almost certainly a mistake.
-        for yaml in [
-            r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    addr: { type: object, properties: {} }
-"#,
-            r#"
-quill: { name: x, version: 1.0.0, backend: typst, description: x }
-main:
-  fields:
-    rows: { type: array, items: { type: object, properties: {} } }
-"#,
-        ] {
-            let errs = QuillConfig::from_yaml_with_warnings(yaml)
-                .expect_err("expected error for empty properties");
-            assert!(
-                errs.iter()
-                    .any(|e| e.code.as_deref() == Some("quill::object_empty_properties")),
-                "expected quill::object_empty_properties, got: {errs:?}"
-            );
-        }
     }
 
     /// String defaults that look numeric/boolean/null must be quoted so

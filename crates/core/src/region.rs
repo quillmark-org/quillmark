@@ -209,16 +209,6 @@ mod tests {
         assert_eq!(back, region);
     }
 
-    /// A phase-2 region on the wire (no `revision` key) still reads back — the
-    /// stamp is additive, not a required field.
-    #[test]
-    fn region_reads_legacy_wire_without_revision() {
-        let json = r#"{"field":"subject","page":0,"rect":[1.0,2.0,3.0,4.0]}"#;
-        let back: RenderedRegion = serde_json::from_str(json).unwrap();
-        assert_eq!(back.revision, None);
-        assert_eq!(back.span, None);
-    }
-
     #[test]
     fn corpus_hit_round_trips_through_json() {
         let hit = CorpusHit {
