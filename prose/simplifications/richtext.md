@@ -27,14 +27,18 @@ keystroke on any corpus containing a table. Fix: skip the island pass unless
 islands were touched (dirty flag on island-mutating paths), or verify-sorted
 before rebuilding.
 
-### model.rs:334, model.rs:448 — `island_type == "table"` string dispatch in three places
+### island_type mark dispatch — normalize/validate consolidated; emit sites remain
 
-`normalize` and `validate` each string-match `"table"` to reach into props via
-`serial`, and export's `emit_island` dispatches on the same tag independently.
-Islands are an open set: a new mark-carrying island type requires coordinated
-edits in three files, and missing one silently voids the canonical-bytes
-guarantee for that type. Fix: one island-type dispatch table in `serial.rs`
-exposing per-type normalize/validate/emit hooks.
+`normalize` and `validate` no longer string-match `"table"`: both route through
+`serial::normalize_island_cell_marks` / `serial::island_cell_marks`, which share
+a single `island_is_mark_carrying` predicate — a new mark-carrying island type
+is one edit in `serial.rs`, and neither pass can silently skip it (voiding the
+canonical-bytes guarantee). Left as-is: richtext export's `emit_island`
+(export.rs:318) and the typst backend's `island_markup` (emit.rs) each dispatch
+`island_type → renderer` independently. These are HTML/Typst emit sites, not
+codec logic; folding rendering into `serial.rs` would cross a layer. A full
+per-type hook registry is deferred until a second mark-carrying type exists —
+at cardinality one it is machinery without payoff.
 
 ### ops.rs:111, delta.rs:99 — short-delta leniency lives at the wrong altitude
 

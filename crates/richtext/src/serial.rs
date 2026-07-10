@@ -382,11 +382,41 @@ pub(crate) fn table_cells(props: &Value) -> Vec<(String, Vec<Mark>)> {
     out
 }
 
+/// Islands whose props carry inline `{text, marks}` cells — the set that
+/// participates in mark normalization and cell-mark validation. Adding a
+/// mark-carrying island type is a single edit here;
+/// [`normalize_island_cell_marks`] and [`island_cell_marks`] both route through
+/// it, so neither `normalize` nor `validate` can silently skip a new type
+/// (which would void the canonical-bytes guarantee for its cells).
+fn island_is_mark_carrying(island_type: &str) -> bool {
+    matches!(island_type, "table")
+}
+
+/// Canonicalize a mark-carrying island's cell marks in place (a no-op for a
+/// non-mark-carrying type) — the normalize-side island-type dispatch, kept
+/// beside the table codec rather than as a bare `"table"` match in `model`.
+pub(crate) fn normalize_island_cell_marks(island: &mut Island) {
+    if island_is_mark_carrying(&island.island_type) {
+        normalize_table_cell_marks(&mut island.props);
+    }
+}
+
+/// A mark-carrying island's `(text, marks)` cells for validation (empty for a
+/// non-mark-carrying type) — the validate-side twin of
+/// [`normalize_island_cell_marks`].
+pub(crate) fn island_cell_marks(island: &Island) -> Vec<(String, Vec<Mark>)> {
+    if island_is_mark_carrying(&island.island_type) {
+        table_cells(&island.props)
+    } else {
+        Vec::new()
+    }
+}
+
 /// Canonicalize a table island's cell marks in place: re-run mark normalization
 /// (sort, same-kind union, drop zero-width) on each cell so equal cells
 /// serialize to equal bytes. Cells hold no `\n`, so there is no line-boundary
-/// edge-trim. Called by [`RichText::normalize`] for `type=="table"` islands.
-pub(crate) fn normalize_table_cell_marks(props: &mut Value) {
+/// edge-trim. Reached via [`normalize_island_cell_marks`].
+fn normalize_table_cell_marks(props: &mut Value) {
     fn canon(cell: &mut Value) {
         let (text, marks) = parse_cell(cell);
         *cell = cell_to_value(&text, &crate::model::normalize_marks(marks));

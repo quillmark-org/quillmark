@@ -359,9 +359,7 @@ impl RichText {
         // drop zero-width) first so equal cells serialize to equal bytes — the
         // props are otherwise opaque here.
         for island in &mut self.islands {
-            if island.island_type == "table" {
-                crate::serial::normalize_table_cell_marks(&mut island.props);
-            }
+            crate::serial::normalize_island_cell_marks(island);
             island.props = sorted_value(&island.props);
         }
         for mark in &mut self.marks {
@@ -473,10 +471,7 @@ impl RichText {
         // but each mark is bounded by its own cell's text length (in USV). Cells
         // hold no `\n`, so the edge-on-newline rule does not apply.
         for island in &self.islands {
-            if island.island_type != "table" {
-                continue;
-            }
-            for (text, marks) in crate::serial::table_cells(&island.props) {
+            for (text, marks) in crate::serial::island_cell_marks(island) {
                 let clen = text.chars().count();
                 for m in &marks {
                     if m.start > m.end || m.end > clen {
