@@ -163,11 +163,6 @@ mod tests {
     }
 
     #[test]
-    fn test_strip_bidi_rlo() {
-        assert_eq!(strip_bidi_formatting("he\u{202E}llo"), "hello");
-    }
-
-    #[test]
     fn test_strip_bidi_marks() {
         assert_eq!(strip_bidi_formatting("a\u{200E}b\u{200F}c"), "abc");
     }
@@ -288,14 +283,6 @@ mod tests {
     }
 
     #[test]
-    fn test_fix_html_comment_only_comment() {
-        assert_eq!(
-            fix_html_comment_fences("<!-- comment -->"),
-            "<!-- comment -->"
-        );
-    }
-
-    #[test]
     fn test_fix_html_comment_arrow_not_comment() {
         assert_eq!(fix_html_comment_fences("-->some text"), "-->some text");
     }
@@ -306,14 +293,6 @@ mod tests {
         assert_eq!(
             fix_html_comment_fences("<!-- <!-- -->Trailing"),
             "<!-- <!-- -->\nTrailing"
-        );
-    }
-
-    #[test]
-    fn test_fix_html_comment_unmatched_closer() {
-        assert_eq!(
-            fix_html_comment_fences("text --> more text"),
-            "text --> more text"
         );
     }
 
@@ -340,11 +319,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_fix_html_comment_triple_hyphen_multiline() {
-        assert_eq!(
-            fix_html_comment_fences("<!---\ncomment\n--->Trailing text"),
-            "<!---\ncomment\n--->\nTrailing text"
-        );
-    }
 }

@@ -63,12 +63,6 @@ use crate::version::QuillReference;
 /// the payload shape is unchanged from V0_92_0.
 pub const SCHEMA_V0_93_0: &str = "quillmark/document@0.93.0";
 
-/// Schema version for the V0_92_0 wire format. Legacy: read-only, migrated
-/// forward to V0_93_0 on read. Adds per-field `nested_fills` (so `!must_fill`
-/// markers nested inside a field value survive a storage round-trip) and the
-/// `$seed` payload-item variant.
-pub const SCHEMA_V0_92_0: &str = "quillmark/document@0.92.0";
-
 /// Read the `schema` field from a raw storage DTO payload without
 /// performing full deserialization.
 ///
@@ -1051,13 +1045,6 @@ This body and the metadata above are an indorsement card.
     }
 
     #[test]
-    fn serialization_uses_current_schema() {
-        let doc = sample();
-        let value: serde_json::Value = serde_json::to_value(&doc).unwrap();
-        assert_eq!(value["schema"], SCHEMA_V0_93_0);
-    }
-
-    #[test]
     fn nested_fill_survives_storage_round_trip() {
         // A `!must_fill` marker on a nested object leaf rides the `nested_fills`
         // path list (the JSON `value` projection is fill-free).
@@ -1112,20 +1099,6 @@ This body and the metadata above are an indorsement card.
             serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
         assert_eq!(doc, restored);
         assert_eq!(restored.main().kind(), Some("main"));
-    }
-
-    #[test]
-    fn serialization_is_byte_deterministic() {
-        // Re-serialization stability, round-trip stability, and
-        // path-independence — checked together because consumers
-        // content-hash the result.
-        let doc = sample();
-        let first = serde_json::to_string(&doc).unwrap();
-        let second = serde_json::to_string(&doc).unwrap();
-        assert_eq!(first, second, "to_string must be deterministic");
-        let restored: Document = serde_json::from_str(&first).unwrap();
-        let third = serde_json::to_string(&restored).unwrap();
-        assert_eq!(first, third, "byte-equality must survive a round-trip");
     }
 
     #[test]

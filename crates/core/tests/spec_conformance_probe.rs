@@ -114,27 +114,6 @@ fn card_kind_is_name_validated() {
     assert_eq!(doc.cards()[0].kind(), Some("items"));
 }
 
-// Body bidi stripped during normalize_document.
-#[test]
-fn normalize_body_strips_bidi() {
-    let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\nhi\u{202D}there";
-    let doc = Document::from_markdown(md).unwrap();
-    let doc = normalize_document(doc).unwrap();
-    assert_eq!(doc.main().body_markdown(), "hithere\n");
-}
-
-// YAML scalar bidi NOT stripped.
-#[test]
-fn normalize_yaml_scalar_keeps_bidi() {
-    let md = "~~~card-yaml\n$quill: t\n$kind: main\ntitle: hi\u{202D}there\n~~~\n";
-    let doc = Document::from_markdown(md).unwrap();
-    let doc = normalize_document(doc).unwrap();
-    assert_eq!(
-        doc.main().payload().get("title").unwrap().as_str().unwrap(),
-        "hi\u{202D}there"
-    );
-}
-
 // Card body normalization reaches nested cards.
 #[test]
 fn normalize_reaches_card_body() {

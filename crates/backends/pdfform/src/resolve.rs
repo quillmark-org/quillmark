@@ -147,13 +147,11 @@ where
 /// integral float renders without the trailing `.0`. Mirror that: float-backed
 /// numbers go through `f64` `Display`; integer-backed ones are already aligned.
 fn number_to_string(n: &serde_json::Number) -> String {
-    if n.is_f64() {
-        match n.as_f64() {
-            Some(f) => f.to_string(),
-            None => n.to_string(),
-        }
-    } else {
-        n.to_string()
+    // `as_f64()` is always `Some` for a float-backed `Number`; the guard picks
+    // the `f64` `Display` path for those and leaves integers on the JSON literal.
+    match n.as_f64() {
+        Some(f) if n.is_f64() => f.to_string(),
+        _ => n.to_string(),
     }
 }
 

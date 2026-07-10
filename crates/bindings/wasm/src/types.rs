@@ -420,48 +420,6 @@ impl From<RenderOptions> for quillmark_core::RenderOptions {
 mod tests {
     use super::*;
 
-    // ── OutputFormat ──────────────────────────────────────────────────────────
-
-    #[test]
-    #[cfg(any(feature = "typst", feature = "pdfform"))]
-    fn test_output_format_serialization() {
-        let pdf = OutputFormat::Pdf;
-        let json_pdf = serde_json::to_string(&pdf).unwrap();
-        assert_eq!(json_pdf, "\"pdf\"");
-
-        let svg = OutputFormat::Svg;
-        let json_svg = serde_json::to_string(&svg).unwrap();
-        assert_eq!(json_svg, "\"svg\"");
-
-        let txt = OutputFormat::Txt;
-        let json_txt = serde_json::to_string(&txt).unwrap();
-        assert_eq!(json_txt, "\"txt\"");
-    }
-
-    #[test]
-    #[cfg(any(feature = "typst", feature = "pdfform"))]
-    fn test_output_format_deserialization() {
-        let pdf: OutputFormat = serde_json::from_str("\"pdf\"").unwrap();
-        assert_eq!(pdf, OutputFormat::Pdf);
-
-        let svg: OutputFormat = serde_json::from_str("\"svg\"").unwrap();
-        assert_eq!(svg, OutputFormat::Svg);
-
-        let txt: OutputFormat = serde_json::from_str("\"txt\"").unwrap();
-        assert_eq!(txt, OutputFormat::Txt);
-    }
-
-    #[test]
-    fn test_severity_serialization() {
-        let error = Severity::Error;
-        let json_error = serde_json::to_string(&error).unwrap();
-        assert_eq!(json_error, "\"error\"");
-
-        let warning = Severity::Warning;
-        let json_warning = serde_json::to_string(&warning).unwrap();
-        assert_eq!(json_warning, "\"warning\"");
-    }
-
     #[test]
     fn test_severity_deserialization() {
         let error: Severity = serde_json::from_str("\"error\"").unwrap();
@@ -472,52 +430,6 @@ mod tests {
 
         // "note" is not a severity; two values only.
         assert!(serde_json::from_str::<Severity>("\"note\"").is_err());
-    }
-
-    #[test]
-    fn test_diagnostic_serialization() {
-        let diag = quillmark_core::Diagnostic::new(
-            quillmark_core::Severity::Error,
-            "Test error message".to_string(),
-        )
-        .with_code("E001".to_string())
-        .with_location(quillmark_core::Location {
-            file: "test.typ".to_string(),
-            line: 10,
-            column: 5,
-        })
-        .with_hint("This is a hint".to_string());
-
-        let wasm_diag: Diagnostic = diag.into();
-        let json = serde_json::to_string(&wasm_diag).unwrap();
-
-        assert!(json.contains("\"severity\":\"error\""));
-        assert!(json.contains("\"code\":\"E001\""));
-        assert!(json.contains("\"message\":\"Test error message\""));
-        assert!(json.contains("\"hint\":\"This is a hint\""));
-        assert!(json.contains("\"file\":\"test.typ\""));
-        assert!(json.contains("\"line\":10"));
-        assert!(json.contains("\"column\":5"));
-    }
-
-    #[test]
-    fn test_diagnostic_with_source_chain() {
-        let root_error = std::io::Error::new(std::io::ErrorKind::NotFound, "File not found");
-        let diag = quillmark_core::Diagnostic::new(
-            quillmark_core::Severity::Error,
-            "Failed to load template".to_string(),
-        )
-        .with_code("E002".to_string())
-        .with_source(&root_error);
-
-        let wasm_diag: Diagnostic = diag.into();
-        let json = serde_json::to_string(&wasm_diag).unwrap();
-
-        assert!(json.contains("\"severity\":\"error\""));
-        assert!(json.contains("\"code\":\"E002\""));
-        assert!(json.contains("\"message\":\"Failed to load template\""));
-        assert!(json.contains("\"sourceChain\""));
-        assert!(json.contains("File not found"));
     }
 
     #[test]

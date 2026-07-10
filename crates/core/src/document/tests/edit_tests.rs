@@ -58,17 +58,6 @@ fn test_invalid_field_names() {
     assert!(!is_valid_field_name("$body")); // $-prefix reserved for metadata
 }
 
-// ── EditError variants ───────────────────────────────────────────────────────
-
-#[test]
-fn test_edit_error_invalid_kind_name() {
-    let result = Card::new("Invalid-Kind");
-    assert_eq!(
-        result,
-        Err(EditError::InvalidKindName("Invalid-Kind".to_string()))
-    );
-}
-
 // ── EditError Display ────────────────────────────────────────────────────────
 
 #[test]

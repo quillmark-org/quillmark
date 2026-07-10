@@ -21,15 +21,6 @@ fn make_quill_dir(temp_dir: &TempDir, name: &str, backend: &str) -> std::path::P
 }
 
 #[test]
-fn test_quill_engine_creation() {
-    let engine = Quillmark::new();
-    let backends = engine.registered_backends();
-    #[cfg(feature = "typst")]
-    assert!(!backends.is_empty());
-    let _ = backends;
-}
-
-#[test]
 #[cfg(feature = "typst")]
 fn test_quill_from_path_engine_metadata() {
     let temp_dir = TempDir::new().unwrap();

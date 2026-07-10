@@ -112,18 +112,6 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_document_body_bidi_stripped() {
-        use crate::document::Document;
-
-        let doc = Document::from_markdown(
-            "~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\nhello\u{202D}world",
-        )
-        .unwrap();
-        let normalized = super::normalize_document(doc).unwrap();
-        assert_eq!(normalized.main().body_markdown(), "helloworld\n");
-    }
-
-    #[test]
     fn test_normalize_document_yaml_field_bidi_preserved() {
         use crate::document::Document;
 

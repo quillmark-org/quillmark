@@ -76,15 +76,6 @@ impl From<OutputFormat> for PyOutputFormat {
     }
 }
 
-impl From<PySeverity> for Severity {
-    fn from(val: PySeverity) -> Self {
-        match val {
-            PySeverity::ERROR => Severity::Error,
-            PySeverity::WARNING => Severity::Warning,
-        }
-    }
-}
-
 impl From<Severity> for PySeverity {
     fn from(val: Severity) -> Self {
         match val {

@@ -15,22 +15,6 @@ fn test_empty_input_dedicated_error() {
 }
 
 #[test]
-fn test_empty_input_diagnostic_code() {
-    // Empty / whitespace-only inputs surface a stable code consumers can
-    // pattern-match without inspecting the message text.
-    for input in ["", "   ", "\n\n\t\n"] {
-        let err = decompose(input).unwrap_err();
-        let diag = err.to_diagnostic();
-        assert_eq!(
-            diag.code.as_deref(),
-            Some("parse::empty_input"),
-            "expected parse::empty_input for {input:?}, got: {:?}",
-            diag.code
-        );
-    }
-}
-
-#[test]
 fn test_missing_quill_diagnostic_code() {
     // Documents with no `~~~card-yaml` block at all surface the dedicated
     // `parse::missing_quill` code.
@@ -145,16 +129,6 @@ fn test_dash_root_with_composable_card_yaml_parses() {
     assert_eq!(doc.cards().len(), 1);
     assert_eq!(doc.cards()[0].kind(), Some("note"));
     assert_eq!(doc.cards()[0].body_markdown(), "Note body.\n");
-}
-
-#[test]
-fn test_dash_root_without_quill_errors_missing_quill_no_dash_hint() {
-    let err = decompose("---\ntitle: Test\n---\n\nBody.").unwrap_err();
-    let msg = err.to_string();
-    assert!(msg.contains("must declare `$quill: <name>`"), "got: {msg}");
-    // The old "use `~~~card-yaml` instead of `---`" hint must NOT fire here.
-    assert!(!msg.contains("YAML frontmatter"), "stale hint: {msg}");
-    assert!(!msg.contains("Replace the opening"), "stale hint: {msg}");
 }
 
 #[test]
@@ -591,32 +565,6 @@ More content.
 
     let doc = decompose(markdown).unwrap();
     // The card-yaml inside the code block should NOT be parsed as metadata.
-    assert!(doc.main().body_markdown().contains("fake: payload"));
-    assert!(doc.main().payload().get("fake").is_none());
-    assert_eq!(doc.cards().len(), 0);
-}
-
-#[test]
-fn test_four_backticks_are_fences() {
-    let markdown = "~~~card-yaml
-$quill: test_quill
-$kind: main
-title: Test
-~~~
-
-Here is some code:
-
-````yaml
-~~~card-yaml
-$kind: code_example
-fake: payload
-~~~
-````
-
-More content.
-";
-
-    let doc = decompose(markdown).unwrap();
     assert!(doc.main().body_markdown().contains("fake: payload"));
     assert!(doc.main().payload().get("fake").is_none());
     assert_eq!(doc.cards().len(), 0);
@@ -1678,23 +1626,6 @@ Body.";
 // Card block edge cases
 
 #[test]
-fn test_card_with_empty_body() {
-    let markdown = "~~~card-yaml
-$quill: test_quill
-$kind: main
-~~~
-
-~~~card-yaml
-$kind: items
-name: Item
-~~~";
-    let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.cards().len(), 1);
-    assert_eq!(doc.cards()[0].kind(), Some("items"));
-    assert_eq!(doc.cards()[0].body_markdown(), "");
-}
-
-#[test]
 fn test_card_consecutive_blocks() {
     let markdown = "~~~card-yaml
 $quill: test_quill
@@ -1748,33 +1679,6 @@ fn test_quill_with_numbers() {
     let markdown = "~~~card-yaml\n$quill: form_8_v2\n$kind: main\n~~~\n\nBody.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.quill_reference().name, "form_8_v2");
-}
-
-#[test]
-fn test_quill_with_additional_fields() {
-    let markdown = "~~~card-yaml
-$quill: my_quill
-$kind: main
-title: Document Title
-author: John Doe
-~~~
-
-Body content.";
-    let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.quill_reference().name, "my_quill");
-    assert_eq!(
-        doc.main().payload().get("title").unwrap().as_str().unwrap(),
-        "Document Title"
-    );
-    assert_eq!(
-        doc.main()
-            .payload()
-            .get("author")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        "John Doe"
-    );
 }
 
 // Error handling

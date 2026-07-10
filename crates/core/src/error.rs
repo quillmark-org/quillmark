@@ -192,16 +192,6 @@ impl Diagnostic {
         result
     }
 
-    /// Format diagnostic with source chain for debugging.
-    pub fn fmt_pretty_with_source(&self) -> String {
-        let mut result = self.fmt_pretty();
-
-        for (i, cause) in self.source_chain.iter().enumerate() {
-            result.push_str(&format!("\n  cause {}: {}", i + 1, cause));
-        }
-
-        result
-    }
 }
 
 impl std::fmt::Display for Diagnostic {
@@ -506,24 +496,4 @@ mod tests {
         assert!(pretty.contains("at cards.indorsement[0].signature_block"));
     }
 
-    #[test]
-    fn test_diagnostic_path_omitted_when_none() {
-        let diag = Diagnostic::new(Severity::Error, "No path".to_string());
-        let json = serde_json::to_string(&diag).unwrap();
-        assert!(!json.contains("\"path\""));
-    }
-
-    #[test]
-    fn test_diagnostic_fmt_pretty_with_source() {
-        let root_err = std::io::Error::other("Underlying error");
-        let diag = Diagnostic::new(Severity::Error, "Top-level error".to_string())
-            .with_code("E002".to_string())
-            .with_source(&root_err);
-
-        let output = diag.fmt_pretty_with_source();
-        assert!(output.contains("[ERROR]"));
-        assert!(output.contains("Top-level error"));
-        assert!(output.contains("cause 1:"));
-        assert!(output.contains("Underlying error"));
-    }
 }

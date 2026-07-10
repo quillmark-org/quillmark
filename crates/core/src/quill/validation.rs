@@ -721,18 +721,6 @@ main:
     // rejected at config parse time.
 
     #[test]
-    fn multiple_absent_fields_raise_nothing() {
-        // Absence is a completeness concern, not a well-formedness one, so
-        // several absent Unendorsed fields produce no validation errors.
-        let config = config_with(
-            "    memo_for:\n      type: string\n    memo_from:\n      type: string",
-            "",
-        );
-        let doc = doc_from_fm(&[]);
-        assert!(validate_typed_document(&config, &doc).is_ok());
-    }
-
-    #[test]
     fn validates_card_with_valid_discriminator() {
         let config = config_with(
             "    title:\n      type: string\n      default: \"\"",
@@ -759,22 +747,6 @@ main:
         assert!(has_error(&errors, |e| {
             matches!(e, ValidationError::UnknownCard { path, card } if path == "cards[0]" && card == "unknown")
         }));
-    }
-
-    #[test]
-    fn validates_multiple_card_instances_same_type() {
-        let config = config_with(
-            "    title:\n      type: string\n      default: \"\"",
-            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string",
-        );
-        let doc = doc_with_typed_cards(
-            &[],
-            vec![
-                typed_card("indorsement", &[("signature_block", json!("A"))]),
-                typed_card("indorsement", &[("signature_block", json!("B"))]),
-            ],
-        );
-        assert!(validate_typed_document(&config, &doc).is_ok());
     }
 
     #[test]

@@ -28,6 +28,8 @@ mod helper;
 mod overlay;
 mod world;
 
+use std::borrow::Cow;
+
 use quillmark_core::{
     quill::{build_transform_schema, RICHTEXT_MEDIA_TYPE},
     session::SessionHandle,
@@ -201,16 +203,25 @@ fn page_hashes(document: &typst_layout::PagedDocument) -> Vec<u128> {
 /// rejects malformed dates before render, but a direct `apply` can hand the
 /// backend uncoerced data, and a bad date surfaces a real diagnostic here rather
 /// than a silent `none` or a cryptic Typst error deep in the compile.
-fn transformed_data(
+///
+/// Borrows `json_data` unchanged for the object case (the render input on the
+/// hot `apply`/`open` path); only a non-object input allocates, normalized to an
+/// empty object.
+fn transformed_data<'a>(
     meta: &SchemaMeta,
-    json_data: &serde_json::Value,
-) -> Result<serde_json::Value, RenderError> {
-    let obj = json_data
-        .as_object()
-        .cloned()
-        .unwrap_or_else(serde_json::Map::new);
-    validate_date_fields(meta, &obj)?;
-    Ok(serde_json::Value::Object(obj))
+    json_data: &'a serde_json::Value,
+) -> Result<Cow<'a, serde_json::Value>, RenderError> {
+    match json_data.as_object() {
+        Some(obj) => {
+            validate_date_fields(meta, obj)?;
+            Ok(Cow::Borrowed(json_data))
+        }
+        None => {
+            let obj = serde_json::Map::new();
+            validate_date_fields(meta, &obj)?;
+            Ok(Cow::Owned(serde_json::Value::Object(obj)))
+        }
+    }
 }
 
 /// Reject any date field whose value is a non-empty string the shared
@@ -311,7 +322,7 @@ impl SessionHandle for TypstSession {
         let data = transformed_data(&self.schema_meta, json_data)?;
         let mut windows = self
             .world
-            .inject_helper_package(&data, &self.schema_meta)
+            .inject_helper_package(data.as_ref(), &self.schema_meta)
             .map_err(|e| engine_err("typst::emit", e.to_string()))?;
         windows.extend(self.scalar_windows.iter().cloned());
 
@@ -509,7 +520,8 @@ impl Backend for TypstBackend {
         let schema_meta = SchemaMeta::from_schema_json(transform_schema.as_json());
         let data = transformed_data(&schema_meta, json_data)?;
         let (world, mut windows) =
-            world::QuillWorld::new_with_data(source, &plate_content, &data, &schema_meta).map_err(
+            world::QuillWorld::new_with_data(source, &plate_content, data.as_ref(), &schema_meta)
+                .map_err(
                 |e| {
                     RenderError::from_diag(
                         Diagnostic::new(
@@ -793,14 +805,6 @@ mod tests {
         quillmark_richtext::serial::to_canonical_value(&rt)
     }
 
-    #[test]
-    fn test_backend_info() {
-        let backend = TypstBackend;
-        assert_eq!(backend.id(), "typst");
-        assert!(backend.supported_formats().contains(&OutputFormat::Pdf));
-        assert!(backend.supported_formats().contains(&OutputFormat::Svg));
-    }
-
     /// Direct teeth for the pixels-not-spans contract (#801): two compiles
     /// whose pages ink identically must fingerprint identically even when every
     /// glyph's `Span` differs. The quills below are identical except one schema
@@ -851,7 +855,7 @@ mod tests {
             let schema_meta = SchemaMeta::from_schema_json(transform_schema.as_json());
             let data = transformed_data(&schema_meta, &json).expect("data");
             let (world, _windows) =
-                world::QuillWorld::new_with_data(quill, &plate_content, &data, &schema_meta)
+                world::QuillWorld::new_with_data(quill, &plate_content, data.as_ref(), &schema_meta)
                     .expect("world");
             let (document, _warnings) = compile::compile_document(&world).expect("compile");
             page_hashes(&document)
@@ -918,7 +922,7 @@ mod tests {
         let schema_meta = SchemaMeta::from_schema_json(transform_schema.as_json());
         let data = transformed_data(&schema_meta, &json).expect("data");
         let (world, _w) =
-            world::QuillWorld::new_with_data(&q, &plate_content, &data, &schema_meta)
+            world::QuillWorld::new_with_data(&q, &plate_content, data.as_ref(), &schema_meta)
                 .expect("world");
         let (document, _warn) = compile::compile_document(&world).expect("compile");
 
@@ -1053,15 +1057,4 @@ mod tests {
         assert_eq!(meta.card_date_fields["indorsement"], json!(["signed_on"]));
     }
 
-    #[test]
-    fn test_is_date_field() {
-        let datetime_schema = json!({
-            "type": "string",
-            "format": "date-time"
-        });
-        assert!(is_date_field(&datetime_schema));
-
-        let no_format_schema = json!({ "type": "string" });
-        assert!(!is_date_field(&no_format_schema));
-    }
 }

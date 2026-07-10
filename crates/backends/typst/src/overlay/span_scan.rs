@@ -979,7 +979,7 @@ main:
         let transformed = crate::transformed_data(&meta, &data).expect("transform");
         let mut world = QuillWorld::new(&q, &plate).expect("world");
         let windows = world
-            .inject_helper_package(&transformed, &meta)
+            .inject_helper_package(transformed.as_ref(), &meta)
             .expect("inject");
         let (doc, _) = compile_document(&world).expect("compile");
         let helper = world
@@ -1133,7 +1133,7 @@ main:
         let transformed = crate::transformed_data(&meta, &data).expect("transform");
         let mut world = QuillWorld::new(&q, &plate).expect("world");
         let windows = world
-            .inject_helper_package(&transformed, &meta)
+            .inject_helper_package(transformed.as_ref(), &meta)
             .expect("inject");
         let (doc, _) = compile_document(&world).expect("compile");
         let helper = world
@@ -1228,7 +1228,7 @@ main:
         let transformed = crate::transformed_data(&meta, &data).expect("transform");
         let mut world = QuillWorld::new(&q, &plate).expect("world");
         let windows = world
-            .inject_helper_package(&transformed, &meta)
+            .inject_helper_package(transformed.as_ref(), &meta)
             .expect("inject");
         let (doc, _) = compile_document(&world).expect("compile");
         let helper = world
@@ -1566,7 +1566,7 @@ main:
         let transformed = crate::transformed_data(&meta, &data).expect("transform");
         let mut world = QuillWorld::new(&q, &plate).expect("world");
         let windows = world
-            .inject_helper_package(&transformed, &meta)
+            .inject_helper_package(transformed.as_ref(), &meta)
             .expect("inject");
         let (doc, _) = compile_document(&world).expect("compile");
         let helper = world

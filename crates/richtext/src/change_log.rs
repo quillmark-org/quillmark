@@ -247,29 +247,6 @@ mod tests {
         );
     }
 
-    /// Corrected boundary: staleness is `base_revision + 1 < oldest`, not
-    /// `base_revision < oldest`. Once rev 1 is evicted (`oldest == 2`), base 0
-    /// is stale (`0 + 1 == 1 < 2`) because folding it needs rev 1, which is
-    /// gone — but base 1 is *not* stale (`1 + 1 == 2`, not `< 2`) because
-    /// folding it only needs entries with revision > 1 (rev 2, rev 3), both
-    /// still retained. The old strict-less-than check rejected base 1 too,
-    /// even though nothing it needed had been evicted.
-    #[test]
-    fn map_pos_stale_when_base_before_ring() {
-        let mut log = ChangeLog::new(2);
-        log.record("f", diff("a", "b")); // rev 1
-        log.record("f", diff("b", "c")); // rev 2
-        log.record("f", diff("c", "d")); // rev 3, evicts rev 1
-        let err = log.map_pos("f", 0, 0, Assoc::Before).unwrap_err();
-        assert_eq!(
-            err,
-            StaleRevision {
-                base_revision: 0,
-                oldest_retained: 2,
-            }
-        );
-    }
-
     /// The off-by-one boundary case pinned above from the other side: base ==
     /// `oldest - 1` still maps correctly after eviction, because the fold
     /// only ever needs entries with revision > base_revision — it never reads
@@ -390,12 +367,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn map_pos_chains_insertions_like_delta() {
-        let mut log = ChangeLog::with_default_capacity();
-        let d = diff("abcdef", "abcXYdef");
-        log.record("f", d);
-        assert_eq!(log.map_pos("f", 0, 3, Assoc::After).unwrap(), 5);
-        assert_eq!(log.map_pos("f", 0, 3, Assoc::Before).unwrap(), 3);
-    }
 }

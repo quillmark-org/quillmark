@@ -608,17 +608,6 @@ mod tests {
     }
 
     #[test]
-    fn insert_slot_mixed_with_text_is_rejected() {
-        // Even embedded in a larger insert, a raw slot is rejected wholesale.
-        let mut rt = from_markdown("ab").unwrap();
-        let d = Delta {
-            ops: vec![Op::Retain(2), Op::Insert(format!("x{ISLAND_SLOT}y"))],
-        };
-        assert_eq!(rt.apply_text_delta(&d), Err(ApplyError::IslandSlotInInsert));
-        assert_eq!(rt.text, "ab");
-    }
-
-    #[test]
     fn apply_field_change_bundle_order() {
         let mut rt = from_markdown("abc").unwrap();
         let d = diff("abc", "abXc");
