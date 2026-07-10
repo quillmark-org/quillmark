@@ -24,13 +24,3 @@ re-export to keep semver-stable for a client that does not exist. Fix: keep
 only the used surface; add record/bundle variants when a consumer appears.
 Possibly deliberate forward surface — decide, then either wire a consumer or
 cut.
-
-### document/edit.rs:448 — `Card::set_body_corpus` is a public alias of `overwrite_body`
-
-One line, a second public write path to the body corpus. No longer dead: the
-`ab082e8` rollback rewrite made the wasm binding call it as the body-restore
-step (`wasm/src/engine.rs`), so it now has exactly one production consumer —
-the original "no consumer outside unit tests" premise is void. Residual: the
-rollback could call `overwrite_body` directly; whether the alias earns its
-public surface is now a question about the rollback path, better framed by the
-"transactionality is the caller's job" seam entry than as dead code.
