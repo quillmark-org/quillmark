@@ -48,7 +48,7 @@ export interface QuillCardBody {
  * zero-fills the field). There is no separate `required` axis.
  */
 export interface QuillFieldSchema {
-    type: "string" | "number" | "integer" | "boolean" | "array" | "object" | "datetime" | "markdown";
+    type: "string" | "number" | "integer" | "boolean" | "array" | "object" | "datetime" | "richtext";
     description?: string;
     default?: unknown;
     example?: unknown;
@@ -176,6 +176,7 @@ export type RichTextLine = {
     | { kind: "heading"; level: number }
     | { kind: "code"; lang?: string }
     | { kind: "island" }
+    | { kind: "rule" }
 );
 
 /** An ancestor block a line nests inside, outermost first. */

@@ -18,7 +18,9 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
-use crate::emit::{emit_richtext, escape_string, EmitError, EmittedContent, SegmentMap};
+use crate::emit::{
+    emit_richtext, emit_richtext_inline, escape_string, EmitError, EmittedContent, SegmentMap,
+};
 use crate::SchemaMeta;
 use quillmark_richtext::serial::from_canonical_value;
 
@@ -176,9 +178,18 @@ impl<'m> Codegen<'m> {
     /// is not a valid corpus (never produced by the seam) degrades to its value
     /// literal; no render path re-parses markdown. A nesting-bound violation is
     /// recorded on `self.emit_error` and surfaced by `generate_lib_typ`.
-    fn content_field(&mut self, path: &str, value: &serde_json::Value) -> String {
+    ///
+    /// `inline` selects the lowering: an `inline` field (`richtext(inline)`)
+    /// lowers to pure inline markup (no trailing `parbreak`, #872) via
+    /// [`emit_richtext_inline`]; every other field keeps the block lowering.
+    fn content_field(&mut self, path: &str, value: &serde_json::Value, inline: bool) -> String {
+        let emit = if inline {
+            emit_richtext_inline
+        } else {
+            emit_richtext
+        };
         match from_canonical_value(value) {
-            Ok(rt) if !rt.is_blank() => match emit_richtext(&rt) {
+            Ok(rt) if !rt.is_blank() => match emit(&rt) {
                 Ok(ec) => self.content_block(path, ec),
                 Err(e) => {
                     self.emit_error.get_or_insert(e);
@@ -207,7 +218,8 @@ impl<'m> Codegen<'m> {
             }
             let is_content = self.meta.content_fields.iter().any(|f| f == key);
             let is_date = self.meta.date_fields.iter().any(|f| f == key);
-            let expr = self.emit_field(key, value, is_content, is_date);
+            let is_inline = self.meta.inline_fields.iter().any(|f| f == key);
+            let expr = self.emit_field(key, value, is_content, is_date, is_inline);
             items.push(format!("\"{}\": {}", escape_string(key), expr));
         }
         wrap_dict(items)
@@ -251,6 +263,7 @@ impl<'m> Codegen<'m> {
     ) -> String {
         let content = card_names(&self.meta.card_content_fields, kind);
         let dates = card_names(&self.meta.card_date_fields, kind);
+        let inlines = card_names(&self.meta.card_inline_fields, kind);
         let mut items = Vec::with_capacity(obj.len() + 1);
         // The card's canonical address prefix, so plates compose schema-field
         // addresses — `form-field(.., field: card.at("$path") + "from")` —
@@ -263,8 +276,9 @@ impl<'m> Codegen<'m> {
             }
             let is_content = content.iter().any(|f| f == key);
             let is_date = dates.iter().any(|f| f == key);
+            let is_inline = inlines.iter().any(|f| f == key);
             let path = format!("{prefix}{key}");
-            let expr = self.emit_field(&path, value, is_content, is_date);
+            let expr = self.emit_field(&path, value, is_content, is_date, is_inline);
             items.push(format!("\"{}\": {}", escape_string(key), expr));
         }
         wrap_dict(items)
@@ -273,6 +287,8 @@ impl<'m> Codegen<'m> {
     /// A single field's value literal. Content (richtext) fields — a corpus
     /// object, or an array of them — lower to `#let` content blocks via
     /// [`Self::content_field`]; a blank corpus stays an empty string literal.
+    /// `is_inline` picks pure-inline lowering (no `parbreak`) for a
+    /// `richtext(inline)` field, per element for an `array<richtext(inline)>`.
     /// Date fields become `datetime(..)` constructors (or `none`). Everything
     /// else is a plain value literal.
     fn emit_field(
@@ -281,20 +297,21 @@ impl<'m> Codegen<'m> {
         value: &serde_json::Value,
         is_content: bool,
         is_date: bool,
+        is_inline: bool,
     ) -> String {
         if is_content {
             match value {
                 // A richtext field crosses the seam as canonical corpus JSON (an
                 // object); an `array<richtext>` as an array of them. Lower each
                 // corpus to a content block here.
-                serde_json::Value::Object(_) => self.content_field(path, value),
+                serde_json::Value::Object(_) => self.content_field(path, value, is_inline),
                 serde_json::Value::Array(arr) => {
                     let items = arr
                         .iter()
                         .enumerate()
                         .map(|(i, elem)| match elem {
                             serde_json::Value::Object(_) => {
-                                self.content_field(&format!("{path}.{i}"), elem)
+                                self.content_field(&format!("{path}.{i}"), elem, is_inline)
                             }
                             other => lit(other),
                         })
@@ -465,6 +482,54 @@ mod tests {
     /// A schema descriptor for a scalar richtext field.
     fn richtext_field() -> serde_json::Value {
         serde_json::json!({ "type": "object", "contentMediaType": RICHTEXT_MEDIA_TYPE })
+    }
+
+    /// A schema descriptor for a scalar `richtext(inline)` field.
+    fn inline_richtext_field() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "contentMediaType": RICHTEXT_MEDIA_TYPE,
+            "quillmark:inline": true
+        })
+    }
+
+    /// An `inline` richtext field's block carries pure inline markup (no
+    /// `parbreak`), while a plain richtext field keeps its `\n\n` terminator —
+    /// so the inline value composes in `par(..)` without warning (#872).
+    #[test]
+    fn inline_field_lowers_without_parbreak() {
+        let meta = meta_from(serde_json::json!({ "properties": {
+            "subject": inline_richtext_field(),
+            "intro": richtext_field(),
+        }}));
+        let data = serde_json::json!({
+            "subject": corpus("A **bold** subject"),
+            "intro": corpus("An intro."),
+        });
+        let (lib, _) = generate_lib_typ(&data, &meta).unwrap();
+        // Inline: no parbreak inside the block.
+        assert!(
+            lib.contains("[\nA #strong[bold] subject\n]"),
+            "inline block should carry no parbreak: {lib}"
+        );
+        // Block: the paragraph still terminates with `\n\n`.
+        assert!(
+            lib.contains("[\nAn intro.\n\n\n]"),
+            "block field keeps its terminator: {lib}"
+        );
+    }
+
+    /// Each element of an `array<richtext(inline)>` lowers inline (per the
+    /// `quillmark:inline` flag on `items`), so no element carries a parbreak.
+    #[test]
+    fn inline_array_lowers_each_element_without_parbreak() {
+        let meta = meta_from(serde_json::json!({ "properties": {
+            "cc": { "type": "array", "items": inline_richtext_field() }
+        }}));
+        let data = serde_json::json!({ "cc": [corpus("First"), corpus("Second **bold**")] });
+        let (lib, _) = generate_lib_typ(&data, &meta).unwrap();
+        assert!(lib.contains("[\nFirst\n]"), "{lib}");
+        assert!(lib.contains("[\nSecond #strong[bold]\n]"), "{lib}");
     }
 
     /// A richtext field's corpus lowers to a `#let _qm_cN = [ .. ]` block,

@@ -277,6 +277,35 @@ pub fn emit_richtext(rt: &RichText) -> Result<EmittedContent, EmitError> {
     })
 }
 
+/// Lower a `richtext(inline)` corpus — the [`is_inline`] shape: exactly one
+/// `Para`, in no container, with no islands — to **pure inline** Typst markup,
+/// omitting the block terminator [`emit_block_level`] appends (`\n\n`, a
+/// `parbreak()`). So the field composes in an inline slot (`par(..)`, a signature
+/// line, a grid cell, `measure`) without emitting Typst's non-fatal "parbreak may
+/// not occur inside of a paragraph" warning (#872). The single segment's source
+/// map is identical to the block path's — only the trailing separator differs.
+///
+/// A corpus that is *not* [`is_inline`] (never produced for an inline field once
+/// coercion has run, but reachable from a hand-built corpus) falls back to block
+/// [`emit_richtext`], so it still renders rather than silently dropping structure.
+///
+/// [`is_inline`]: quillmark_richtext::RichText::is_inline
+/// [`emit_block_level`]: Emit::emit_block_level
+pub fn emit_richtext_inline(rt: &RichText) -> Result<EmittedContent, EmitError> {
+    if !rt.is_inline() {
+        return emit_richtext(rt);
+    }
+    // `is_inline` guarantees one `Para` in no container, so nesting is depth 0 —
+    // the depth guard `emit_richtext` runs is trivially satisfied here. Emit that
+    // one segment's inline content and stop: no block terminator, no `parbreak`.
+    let mut e = Emit::new(rt);
+    e.emit_segment(0..rt.lines.len());
+    Ok(EmittedContent {
+        markup: e.out,
+        segments: e.segments,
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Emitter
 // ---------------------------------------------------------------------------
@@ -1170,6 +1199,52 @@ mod tests {
     fn empty_and_blank_emit_nothing() {
         for md in ["", "   ", "\n\n\n", "   \n   \n   "] {
             assert_eq!(emit(md).markup, "", "for {md:?}");
+        }
+    }
+
+    // ---- inline lowering (richtext(inline), #872) ----
+
+    /// A `richtext(inline)` corpus (one `Para`) lowers to pure inline markup —
+    /// no trailing `\n\n` (a `parbreak`) — while the block path terminates the
+    /// same paragraph with `\n\n`. The inline markup is exactly the paragraph's
+    /// content, so it composes in `par(..)` / a grid cell without warning.
+    #[test]
+    fn inline_emits_no_block_terminator() {
+        let rt = from_markdown("A **bold** subject").expect("import");
+        assert!(rt.is_inline());
+        let inline = emit_richtext_inline(&rt).expect("emit").markup;
+        assert_eq!(inline, "A #strong[bold] subject");
+        assert!(!inline.contains("\n\n"), "no parbreak in {inline:?}");
+        let block = emit_richtext(&rt).expect("emit").markup;
+        assert!(block.ends_with("\n\n"), "block path keeps its terminator");
+    }
+
+    /// The inline path records the same single-segment source map the block path
+    /// does, minus the terminator: one segment spanning the whole corpus, whose
+    /// generated window slices the markup exactly.
+    #[test]
+    fn inline_records_one_segment_over_the_markup() {
+        let rt = from_markdown("Hello **bold**.").expect("import");
+        let ec = emit_richtext_inline(&rt).expect("emit");
+        assert_eq!(ec.segments.len(), 1);
+        let seg = &ec.segments[0];
+        assert_eq!(seg.corpus, 0..rt.len_usv());
+        assert_eq!(seg.gen, 0..ec.markup.len());
+    }
+
+    /// A corpus that is not `is_inline` (a heading, a list, multiple paragraphs)
+    /// falls back to the block lowering rather than dropping structure — the
+    /// defensive path for a hand-built corpus on an inline field.
+    #[test]
+    fn inline_falls_back_to_block_for_non_inline_corpus() {
+        for md in ["# Heading", "one\n\ntwo", "- item"] {
+            let rt = from_markdown(md).expect("import");
+            assert!(!rt.is_inline(), "{md:?} is not inline");
+            assert_eq!(
+                emit_richtext_inline(&rt).expect("emit").markup,
+                emit_richtext(&rt).expect("emit").markup,
+                "non-inline {md:?} must fall back to block lowering"
+            );
         }
     }
 
