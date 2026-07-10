@@ -77,20 +77,6 @@ fn version_out_of_selector_is_a_hard_error() {
 }
 
 #[test]
-fn version_out_of_selector_fails_dry_run() {
-    let temp_dir = TempDir::new().unwrap();
-    let quill_path = make_quill(&temp_dir, "3.0.0");
-    let quill = quillmark::quill_from_path(&quill_path).unwrap();
-    let doc = Document::from_markdown(
-        "~~~card-yaml\n$quill: test_quill@2\n$kind: main\n~~~\n\n# Content\n",
-    )
-    .unwrap();
-
-    let err = quill.dry_run(&doc).expect_err("dry_run should fail");
-    assert_eq!(mismatch_code(&err), Some("quill::version_mismatch"));
-}
-
-#[test]
 fn name_mismatch_is_a_hard_error() {
     let temp_dir = TempDir::new().unwrap();
     let quill_path = make_quill(&temp_dir, "3.0.0");

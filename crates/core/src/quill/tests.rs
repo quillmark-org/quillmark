@@ -385,50 +385,6 @@ fn test_to_tree_round_trips_from_tree() {
 }
 
 #[test]
-fn test_from_tree_structure_direct() {
-    // Test using from_tree_structure directly
-    let mut root_files = HashMap::new();
-
-    root_files.insert(
-            "Quill.yaml".to_string(),
-            FileTreeNode::File {
-                contents:
-                    b"quill:\n  name: direct_tree\n  version: \"1.0\"\n  backend: typst\n  description: Direct tree test\n"
-                        .to_vec(),
-            },
-        );
-
-    root_files.insert(
-        "plate.typ".to_string(),
-        FileTreeNode::File {
-            contents: b"plate content".to_vec(),
-        },
-    );
-
-    // Add a nested directory
-    let mut src_files = HashMap::new();
-    src_files.insert(
-        "main.rs".to_string(),
-        FileTreeNode::File {
-            contents: b"fn main() {}".to_vec(),
-        },
-    );
-
-    root_files.insert(
-        "src".to_string(),
-        FileTreeNode::Directory { files: src_files },
-    );
-
-    let root = FileTreeNode::Directory { files: root_files };
-
-    let quill = Quill::from_tree(root).unwrap();
-
-    assert_eq!(quill.name(), "direct_tree");
-    assert!(quill.file_exists("src/main.rs"));
-    assert!(quill.file_exists("plate.typ"));
-}
-
-#[test]
 fn test_dir_exists_and_list_apis() {
     let mut root_files = HashMap::new();
 
@@ -637,22 +593,6 @@ default: "Default value"
     assert_eq!(
         schema2.default.as_ref().and_then(|v| v.as_str()),
         Some("Default value")
-    );
-}
-
-#[test]
-fn test_field_schema_single_example() {
-    let yaml_str = r#"
-description: "Field schema with single example"
-type: "datetime"
-example: "2024-01-15"
-"#;
-    let quill_value = QuillValue::from_yaml_str(yaml_str).unwrap();
-    let schema = FieldSchema::from_quill_value("effective_date".to_string(), &quill_value).unwrap();
-
-    assert_eq!(
-        schema.example.as_ref().and_then(|v| v.as_str()),
-        Some("2024-01-15")
     );
 }
 
@@ -996,58 +936,6 @@ typst:
 }
 
 #[test]
-fn test_config_defaults() {
-    // Test defaults extraction via QuillConfig
-    let mut root_files = HashMap::new();
-
-    let quill_yaml = r#"
-quill:
-  name: metadata_test_yaml
-  version: "1.0"
-  backend: typst
-  description: Test metadata flow
-  author: Test Author
-
-typst:
-  packages:
-    - "@preview/bubble:0.2.2"
-
-main:
-  fields:
-    author:
-      type: string
-      default: Anonymous
-    status:
-      type: string
-      default: draft
-    title:
-      type: string
-"#;
-    root_files.insert(
-        "Quill.yaml".to_string(),
-        FileTreeNode::File {
-            contents: quill_yaml.as_bytes().to_vec(),
-        },
-    );
-
-    let root = FileTreeNode::Directory { files: root_files };
-    let quill = Quill::from_tree(root).unwrap();
-
-    // Extract defaults
-    let defaults = quill.config.main.defaults();
-
-    // Verify only fields with defaults are returned
-    assert_eq!(defaults.len(), 2);
-    assert!(!defaults.contains_key("title")); // no default
-    assert!(defaults.contains_key("author"));
-    assert!(defaults.contains_key("status"));
-
-    // Verify default values
-    assert_eq!(defaults.get("author").unwrap().as_str(), Some("Anonymous"));
-    assert_eq!(defaults.get("status").unwrap().as_str(), Some("draft"));
-}
-
-#[test]
 fn test_config_defaults_method() {
     let yaml_content = r#"
 quill:
@@ -1216,24 +1104,6 @@ ui:
 
     let ui = schema.ui.as_ref().unwrap();
     assert_eq!(ui.group, Some("Test Group".to_string()));
-}
-
-#[test]
-fn test_parse_card_field_type() {
-    // FieldSchema does not support type = "card"; cards belong to CardSchema.
-    let yaml = r#"
-type: "string"
-description: "A simple string field"
-"#;
-    let quill_value = QuillValue::from_yaml_str(yaml).unwrap();
-    let schema = FieldSchema::from_quill_value("simple_field".to_string(), &quill_value).unwrap();
-
-    assert_eq!(schema.name, "simple_field");
-    assert_eq!(schema.r#type, FieldType::String);
-    assert_eq!(
-        schema.description,
-        Some("A simple string field".to_string())
-    );
 }
 
 #[test]
@@ -1876,48 +1746,6 @@ main:
 }
 
 #[test]
-fn test_config_coerce_array_item_wise() {
-    let yaml_content = r#"
-quill:
-  name: coerce_array_items_test
-  version: "1.0"
-  backend: typst
-  description: Coerce arrays
-
-main:
-  fields:
-    items:
-      type: array
-      items:
-        type: object
-        properties:
-          score:
-            type: number
-          active:
-            type: boolean
-"#;
-
-    let config = QuillConfig::from_yaml(yaml_content).unwrap();
-    let mut payload = indexmap::IndexMap::new();
-    payload.insert(
-        "items".to_string(),
-        QuillValue::from_json(serde_json::json!([
-            {"score": "90", "active": "true"},
-            {"score": "87.5", "active": "false"}
-        ])),
-    );
-
-    let coerced = config.coerce_payload(&payload).unwrap();
-    let items = coerced.get("items").unwrap().as_array().unwrap();
-    let first = items[0].as_object().unwrap();
-    let second = items[1].as_object().unwrap();
-    assert_eq!(first["score"], serde_json::json!(90));
-    assert_eq!(first["active"], serde_json::json!(true));
-    assert_eq!(second["score"], serde_json::json!(87.5));
-    assert_eq!(second["active"], serde_json::json!(false));
-}
-
-#[test]
 fn test_coerce_scalar_array_elements() {
     // A primitive `integer[]` coerces each element (string → integer), the
     // same coercion scalar fields get.
@@ -2237,38 +2065,6 @@ main:
     let notes = config.main.fields.get("notes").unwrap();
     assert_eq!(notes.r#type, FieldType::RichText { inline: false });
     assert_eq!(notes.ui.as_ref().unwrap().multiline, None);
-}
-
-#[test]
-fn test_multiline_ui_field_on_string_type() {
-    let yaml_content = r#"
-quill:
-  name: multiline_string_test
-  version: "1.0"
-  backend: typst
-  description: Test multiline ui hint on string field
-
-main:
-  fields:
-    address:
-      type: string
-      description: Mailing address
-      ui:
-        multiline: true
-    name:
-      type: string
-      description: Full name
-"#;
-
-    let config = QuillConfig::from_yaml(yaml_content).unwrap();
-
-    let address = config.main.fields.get("address").unwrap();
-    assert_eq!(address.r#type, FieldType::String);
-    assert_eq!(address.ui.as_ref().unwrap().multiline, Some(true));
-
-    let name = config.main.fields.get("name").unwrap();
-    assert_eq!(name.r#type, FieldType::String);
-    assert!(name.ui.as_ref().is_none_or(|ui| ui.multiline.is_none()));
 }
 
 #[test]

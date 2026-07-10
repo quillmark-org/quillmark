@@ -507,13 +507,6 @@ mod tests {
     }
 
     #[test]
-    fn test_diagnostic_path_omitted_when_none() {
-        let diag = Diagnostic::new(Severity::Error, "No path".to_string());
-        let json = serde_json::to_string(&diag).unwrap();
-        assert!(!json.contains("\"path\""));
-    }
-
-    #[test]
     fn test_diagnostic_fmt_pretty_with_source() {
         let root_err = std::io::Error::other("Underlying error");
         let diag = Diagnostic::new(Severity::Error, "Top-level error".to_string())

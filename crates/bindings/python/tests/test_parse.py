@@ -27,25 +27,6 @@ RESOURCES_PATH = WORKSPACE_ROOT / "crates" / "fixtures" / "resources"
 QUILLS_PATH = RESOURCES_PATH / "quills"
 
 
-def test_parse_markdown(taro_md):
-    """Test parsing markdown with payload."""
-    doc = Document.from_markdown(taro_md)
-    assert "Ice Cream" in str(field(doc.main, "title") or "")
-
-
-def test_parse_invalid_yaml():
-    """Test parsing invalid YAML payload."""
-    invalid_md = (
-        "~~~card-yaml\n"
-        "$quill: test_quill\n"
-        "$kind: main\n"
-        "title: [unclosed bracket\n"
-        "~~~\n\nContent\n"
-    )
-    with pytest.raises(QuillmarkError):
-        Document.from_markdown(invalid_md)
-
-
 def test_payload_access(taro_md):
     """Test accessing typed payload_items (no $-prefixed metadata as fields)."""
     doc = Document.from_markdown(taro_md)

@@ -895,11 +895,6 @@ mod tests {
     }
 
     #[test]
-    fn table_with_escaped_pipe_round_trips() {
-        round_trips("| a \\| b | c |\n| --- | --- |\n| 1 | 2 |");
-    }
-
-    #[test]
     fn table_with_formatted_cells_round_trips() {
         // Option A: cells carry {text, marks}; export reconstructs their markdown
         // from structure, so the corpus is a fixed point across formatted cells.

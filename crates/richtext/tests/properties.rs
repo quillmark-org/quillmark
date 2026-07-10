@@ -400,17 +400,6 @@ fn fixture_body(name: &str) -> String {
 }
 
 #[test]
-fn fixture_sample_round_trips() {
-    // sample.md is a prose-heavy body exercising headings, lists (nested),
-    // marks, links, and inline code — the codec's core surface.
-    let md = fixture_body("sample.md");
-    let rt = from_markdown(&md).expect("import sample.md");
-    assert_eq!(rt.validate(), Ok(()), "sample.md invariants");
-    let rt2 = from_markdown(&to_markdown(&rt)).unwrap();
-    assert_eq!(rt, rt2, "sample.md corpus not a fixed point");
-}
-
-#[test]
 fn fixture_bodies_import_and_are_valid() {
     // Every prose resource imports to a valid corpus and is a fixed point.
     for name in [

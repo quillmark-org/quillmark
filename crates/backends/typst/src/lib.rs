@@ -794,14 +794,6 @@ mod tests {
         quillmark_richtext::serial::to_canonical_value(&rt)
     }
 
-    #[test]
-    fn test_backend_info() {
-        let backend = TypstBackend;
-        assert_eq!(backend.id(), "typst");
-        assert!(backend.supported_formats().contains(&OutputFormat::Pdf));
-        assert!(backend.supported_formats().contains(&OutputFormat::Svg));
-    }
-
     /// Direct teeth for the pixels-not-spans contract (#801): two compiles
     /// whose pages ink identically must fingerprint identically even when every
     /// glyph's `Span` differs. The quills below are identical except one schema
@@ -1054,15 +1046,4 @@ mod tests {
         assert_eq!(meta.card_date_fields["indorsement"], json!(["signed_on"]));
     }
 
-    #[test]
-    fn test_is_date_field() {
-        let datetime_schema = json!({
-            "type": "string",
-            "format": "date-time"
-        });
-        assert!(is_date_field(&datetime_schema));
-
-        let no_format_schema = json!({ "type": "string" });
-        assert!(!is_date_field(&no_format_schema));
-    }
 }

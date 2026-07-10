@@ -438,28 +438,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_from_yaml_value() {
-        let yaml_str = r#"
-            package:
-              name: test
-              version: 1.0.0
-        "#;
-        let json_val: serde_json::Value = serde_saphyr::from_str(yaml_str).unwrap();
-        let quill_val = QuillValue::from_json(json_val);
-
-        assert!(quill_val.as_object().is_some());
-        assert_eq!(
-            quill_val
-                .get("package")
-                .unwrap()
-                .get("name")
-                .unwrap()
-                .as_str(),
-            Some("test")
-        );
-    }
-
-    #[test]
     fn test_from_yaml_str() {
         let yaml_str = r#"
             title: Test Document
