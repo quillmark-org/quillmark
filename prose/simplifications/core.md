@@ -1,28 +1,5 @@
 # crates/core
 
-## Low risk
-
-### quill/types.rs:344 — dead binding in `resolve_richtext_inline`
-
-The `(other, Some(_))` arm binds `other` only to discard it with
-`let _ = other;`. Fix: `(_, Some(_)) => Err(...)`.
-
-### quill/config.rs:396 — the RichText coercion branch re-implements the String leniency cascade
-
-Bare string → length-1 array unwrap → `scalar_as_string` appears in the String
-branch (config.rs:337) and again in a slightly different shape in the RichText
-branch — two copies of the "reduce a lenient value to a string" rule that can
-drift. Fix: a shared `lenient_string(&Value) -> Option<String>` used by both,
-error construction staying at the call sites.
-
-### quill/config.rs:964 — `field_parse_hint` duplicates the deserializer's migration message
-
-The hint string-matches raw YAML for `type: "richtext(inline)"` and re-emits
-verbatim the message `FieldType`'s custom `Deserialize` already produces
-(types.rs:676), so the diagnostic carries the text twice and the pattern
-invites a third copy for the next retired token. Fix: let the deserializer's
-error be the single source, or share one `const`.
-
 ## Needs judgment
 
 ### quill/types.rs:117, quill/types.rs:228 — the richtext `inline` flag has two carriers

@@ -288,6 +288,9 @@ struct Emit<'a> {
     /// Per line: its `[start, end)` USV range (text only, excluding the `\n`
     /// separators, which sit at each non-last line's `end`).
     line_usv: Vec<(usize, usize)>,
+    /// USV positions of every [`ISLAND_SLOT`] char, ascending — so an island
+    /// slot maps to its island index by a binary search, not a corpus rescan.
+    slot_offsets: Vec<usize>,
     out: String,
     segments: Vec<SegmentMap>,
     /// Whether `out` currently ends at a fresh line, tracked so block
@@ -298,23 +301,22 @@ struct Emit<'a> {
 impl<'a> Emit<'a> {
     fn new(rt: &'a RichText) -> Self {
         let chars: Vec<char> = rt.text.chars().collect();
-        let mut line_usv = Vec::with_capacity(rt.lines.len());
-        let mut start = 0usize;
-        for (i, c) in chars.iter().enumerate() {
-            if *c == '\n' {
-                line_usv.push((start, i));
-                start = i + 1;
-            }
-        }
-        line_usv.push((start, chars.len()));
-        // Defensive: a malformed corpus (lines.len() != segments) still indexes.
-        while line_usv.len() < rt.lines.len() {
-            line_usv.push((chars.len(), chars.len()));
-        }
+        // Per-line USV `[start, end)` from the shared segmentation — including
+        // the malformed-corpus padding — so the two crates cannot drift.
+        let line_usv: Vec<(usize, usize)> = quillmark_richtext::export::line_segments(rt)
+            .iter()
+            .map(|s| (s.start, s.end))
+            .collect();
+        let slot_offsets: Vec<usize> = chars
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &c)| (c == ISLAND_SLOT).then_some(i))
+            .collect();
         Emit {
             rt,
             chars,
             line_usv,
+            slot_offsets,
             out: String::new(),
             segments: Vec::new(),
             end_newline: true,
@@ -344,7 +346,7 @@ impl<'a> Emit<'a> {
                 }
                 None => {
                     let j = self.segment_end(range.clone(), depth, i);
-                    self.emit_leaf_terminated(i..j, depth);
+                    self.emit_leaf_terminated(i..j);
                     i = j;
                 }
             }
@@ -409,14 +411,14 @@ impl<'a> Emit<'a> {
     /// A leaf block terminated with `\n\n`. An empty paragraph emits nothing;
     /// every other block — including an empty heading (`= `) or empty code
     /// fence — still renders.
-    fn emit_leaf_terminated(&mut self, range: Range<usize>, depth: usize) {
+    fn emit_leaf_terminated(&mut self, range: Range<usize>) {
         let first = &self.rt.lines[range.start];
         let (lo, _) = self.line_usv[range.start];
         let (_, hi) = self.line_usv[range.end - 1];
         if matches!(first.kind, LineKind::Para) && lo == hi {
             return;
         }
-        self.emit_segment(range, depth);
+        self.emit_segment(range);
         self.out.push_str("\n\n");
         self.end_newline = true;
     }
@@ -511,7 +513,7 @@ impl<'a> Emit<'a> {
                         self.out.push_str(&cont_indent);
                         self.end_newline = false;
                     }
-                    self.emit_segment(i..j, content_depth);
+                    self.emit_segment(i..j);
                     if !self.end_newline {
                         self.out.push('\n');
                         self.end_newline = true;
@@ -542,45 +544,43 @@ impl<'a> Emit<'a> {
 
     /// Emit one leaf segment's markup and record its [`SegmentMap`]. Leaves
     /// `end_newline` false — the caller owns the terminator.
-    fn emit_segment(&mut self, range: Range<usize>, _depth: usize) {
+    fn emit_segment(&mut self, range: Range<usize>) {
         let kind = self.rt.lines[range.start].kind.clone();
         let (lo, _) = self.line_usv[range.start];
         let (_, hi) = self.line_usv[range.end - 1];
-        match kind {
+        // A code fence buffers all its lines into one `#raw(...)` and records its
+        // own window/runs; the remaining kinds share the record-and-push tail.
+        if let LineKind::Code { lang } = &kind {
+            self.emit_code(range, lang.as_deref(), lo, hi);
+            self.end_newline = false;
+            return;
+        }
+        // Each kind emits its prefix (heading marker, rule glyph, or nothing) and
+        // its content runs; `g0` opens the recorded window after any prefix.
+        let (g0, runs) = match kind {
             LineKind::Heading { level } => {
                 self.out.push_str(&"=".repeat(level as usize));
                 self.out.push(' ');
                 let g0 = self.out.len();
-                let runs = self.emit_inline(lo, hi);
-                let g1 = self.out.len();
-                self.segments.push(SegmentMap {
-                    corpus: lo..hi,
-                    gen: g0..g1,
-                    runs,
-                });
+                (g0, self.emit_inline(lo, hi))
             }
-            LineKind::Code { lang } => self.emit_code(range, lang.as_deref(), lo, hi),
             LineKind::Island | LineKind::Para => {
                 let g0 = self.out.len();
-                let runs = self.emit_inline(lo, hi);
-                let g1 = self.out.len();
-                self.segments.push(SegmentMap {
-                    corpus: lo..hi,
-                    gen: g0..g1,
-                    runs,
-                });
+                (g0, self.emit_inline(lo, hi))
             }
             LineKind::Rule => {
                 let g0 = self.out.len();
                 self.out.push_str("#line(length: 100%)");
-                let g1 = self.out.len();
-                self.segments.push(SegmentMap {
-                    corpus: lo..hi,
-                    gen: g0..g1,
-                    runs: Vec::new(),
-                });
+                (g0, Vec::new())
             }
-        }
+            LineKind::Code { .. } => unreachable!("code handled by early return"),
+        };
+        let g1 = self.out.len();
+        self.segments.push(SegmentMap {
+            corpus: lo..hi,
+            gen: g0..g1,
+            runs,
+        });
         self.end_newline = false;
     }
 
@@ -728,10 +728,7 @@ impl<'a> Emit<'a> {
 
     /// The island backing the slot at USV position `pos`, rendered to Typst.
     fn island_markup(&self, pos: usize) -> String {
-        let idx = self.chars[..pos]
-            .iter()
-            .filter(|c| **c == ISLAND_SLOT)
-            .count();
+        let idx = self.slot_offsets.partition_point(|&p| p < pos);
         let Some(isl) = self.rt.islands.get(idx) else {
             return String::new();
         };

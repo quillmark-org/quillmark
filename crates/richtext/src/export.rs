@@ -27,7 +27,7 @@
 //! markdown or a form editor. Hardening them is deferred until a live editor
 //! defines what it can even produce.
 
-use crate::model::{Container, Island, LineKind, Loss, MarkKind, RichText, ISLAND_SLOT};
+use crate::model::{Container, Island, LineKind, MarkKind, RichText, ISLAND_SLOT};
 
 /// Render a corpus to markdown. Lossless/degraded islands emit their markdown;
 /// unrepresentable islands emit a placeholder comment.
@@ -64,30 +64,66 @@ struct Ctx<'a> {
     segments: &'a [Segment],
 }
 
-/// One line's char range `[start, end)` into the corpus.
-struct Segment {
-    start: usize,
-    end: usize,
+/// One line's char range `[start, end)` into the corpus, with the matching byte
+/// range and the count of island slots before the line — so a caller indexes
+/// the corpus text and the island list in O(1) without rescanning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Segment {
+    /// USV index of the line's first char.
+    pub start: usize,
+    /// USV index one past the line's last char (its `\n`, or the corpus end).
+    pub end: usize,
+    /// Byte offset of `start` in the corpus text.
+    pub byte_start: usize,
+    /// Byte offset of `end` in the corpus text.
+    pub byte_end: usize,
+    /// Count of [`ISLAND_SLOT`] chars before `start`.
+    pub slots_before: usize,
 }
 
-fn line_segments(rt: &RichText) -> Vec<Segment> {
+/// Per-line char/byte ranges and slot prefixes over a corpus, in line order.
+pub fn line_segments(rt: &RichText) -> Vec<Segment> {
     let mut segs = Vec::with_capacity(rt.lines.len());
     let mut start = 0usize;
+    let mut byte_start = 0usize;
+    let mut slots_before = 0usize;
+    let mut line_slots = 0usize;
     let mut pos = 0usize;
-    for c in rt.text.chars() {
+    for (b, c) in rt.text.char_indices() {
         if c == '\n' {
-            segs.push(Segment { start, end: pos });
+            segs.push(Segment {
+                start,
+                end: pos,
+                byte_start,
+                byte_end: b,
+                slots_before,
+            });
             start = pos + 1;
+            byte_start = b + 1; // `\n` is one byte
+            slots_before += line_slots;
+            line_slots = 0;
+        } else if c == ISLAND_SLOT {
+            line_slots += 1;
         }
         pos += 1;
     }
-    segs.push(Segment { start, end: pos });
+    segs.push(Segment {
+        start,
+        end: pos,
+        byte_start,
+        byte_end: rt.text.len(),
+        slots_before,
+    });
     // Defensive: a malformed corpus (lines.len() != segments) still gets one
     // segment per line so indexing never panics.
+    let total_slots = slots_before + line_slots;
     while segs.len() < rt.lines.len() {
         segs.push(Segment {
             start: pos,
             end: pos,
+            byte_start: rt.text.len(),
+            byte_end: rt.text.len(),
+            slots_before: total_slots,
         });
     }
     segs
@@ -211,16 +247,7 @@ fn emit_code(ctx: &Ctx, range: std::ops::Range<usize>, lang: Option<&str>, out: 
     // Choose a fence long enough to not collide with backtick runs in content.
     let mut max_ticks = 0usize;
     for i in range.clone() {
-        let s = seg_str(ctx, i);
-        let mut run = 0usize;
-        for c in s.chars() {
-            if c == '`' {
-                run += 1;
-                max_ticks = max_ticks.max(run);
-            } else {
-                run = 0;
-            }
-        }
+        max_ticks = max_ticks.max(longest_backtick_run(seg_str(ctx, i)));
     }
     let fence = "`".repeat(max_ticks.max(2) + 1);
     out.push_str(&fence);
@@ -279,30 +306,19 @@ fn emit_leaf_block(ctx: &Ctx, range: std::ops::Range<usize>, out: &mut String) {
 
 fn seg_str<'a>(ctx: &'a Ctx, i: usize) -> &'a str {
     let seg = &ctx.segments[i];
-    let bstart = crate::usv::char_to_byte(&ctx.rt.text, seg.start);
-    let bend = crate::usv::char_to_byte(&ctx.rt.text, seg.end);
-    &ctx.rt.text[bstart..bend]
+    &ctx.rt.text[seg.byte_start..seg.byte_end]
 }
 
 /// The island backing the single slot on a block-island line `i`.
 fn slot_island<'a>(ctx: &'a Ctx, i: usize) -> Option<&'a Island> {
-    // Count slots before this line to find the island index.
-    let seg = &ctx.segments[i];
-    let before = ctx
-        .rt
-        .text
-        .chars()
-        .take(seg.start)
-        .filter(|c| *c == ISLAND_SLOT)
-        .count();
-    ctx.rt.islands.get(before)
+    ctx.rt.islands.get(ctx.segments[i].slots_before)
 }
 
 fn emit_island(isl: &Island, out: &mut String) {
-    match (isl.island_type.as_str(), isl.loss) {
-        ("table", _) => emit_table(isl, out),
-        ("image", _) => emit_image(isl, out),
-        (_, Loss::Unrepresentable) | (_, _) => {
+    match isl.island_type.as_str() {
+        "table" => emit_table(isl, out),
+        "image" => emit_image(isl, out),
+        _ => {
             // Unknown island / unrepresentable: a comment placeholder that
             // survives round-trip as no corpus text (HTML comments are stripped
             // on re-import). The island itself is preserved via storage, not the
@@ -402,6 +418,7 @@ fn render_inline(ctx: &Ctx, i: usize, escape_leading_block: bool) -> String {
         None
     };
 
+    let slots_before_line = seg.slots_before;
     render_marked_core(
         &chars,
         &code_ranges,
@@ -411,14 +428,13 @@ fn render_inline(ctx: &Ctx, i: usize, escape_leading_block: bool) -> String {
         escape_leading_block,
         false, // prose text does not escape `|`
         |pos_local| {
-            let global = line_start + pos_local;
-            let before = ctx
-                .rt
-                .text
-                .chars()
-                .take(global)
-                .filter(|c| *c == ISLAND_SLOT)
-                .count();
+            // Segment prefix + slots earlier on this line: the island index for
+            // the slot at `pos_local`, without rescanning the whole corpus.
+            let before = slots_before_line
+                + chars[..pos_local]
+                    .iter()
+                    .filter(|&&c| c == ISLAND_SLOT)
+                    .count();
             ctx.rt.islands.get(before).map(|isl| {
                 let mut tmp = String::new();
                 emit_island(isl, &mut tmp);
@@ -536,11 +552,7 @@ fn render_marked_core(
                 out.push('\\');
                 out.push(c);
             } else {
-                out.push_str(&escape_char(
-                    c,
-                    pos == 0 && escape_leading_block,
-                    escape_pipe,
-                ));
+                escape_char_into(c, pos == 0 && escape_leading_block, escape_pipe, &mut out);
             }
         }
         pos += 1;
@@ -671,37 +683,42 @@ fn delim_close(kind: &MarkKind) -> String {
 fn escape_run(chars: &[char], escape_pipe: bool) -> String {
     let mut s = String::new();
     for (i, c) in chars.iter().enumerate() {
-        s.push_str(&escape_char(*c, i == 0, escape_pipe));
+        escape_char_into(*c, i == 0, escape_pipe, &mut s);
     }
     s
 }
 
-/// Escape a char so it re-imports as literal text. `leading` also escapes
-/// block-starter chars that would otherwise open a heading/list/quote;
-/// `escape_pipe` adds `|`→`\|`, so a table cell survives `pulldown`'s pipe split.
-fn escape_char(c: char, leading: bool, escape_pipe: bool) -> String {
-    match c {
-        '\\' => "\\\\".into(),
-        '*' => "\\*".into(),
-        '_' => "\\_".into(),
-        '`' => "\\`".into(),
-        '[' => "\\[".into(),
-        ']' => "\\]".into(),
-        '<' => "\\<".into(),
-        '~' => "\\~".into(),
+/// Push `c` into `out` escaped so it re-imports as literal text: the char
+/// verbatim, or a `&'static str` escape. `leading` also escapes block-starter
+/// chars that would otherwise open a heading/list/quote; `escape_pipe` adds
+/// `|`→`\|`, so a table cell survives `pulldown`'s pipe split.
+fn escape_char_into(c: char, leading: bool, escape_pipe: bool, out: &mut String) {
+    let esc: &str = match c {
+        '\\' => "\\\\",
+        '*' => "\\*",
+        '_' => "\\_",
+        '`' => "\\`",
+        '[' => "\\[",
+        ']' => "\\]",
+        '<' => "\\<",
+        '~' => "\\~",
         // `&` starts a CommonMark entity/numeric reference (`&amp;`, `&#38;`),
         // decoded on re-import — an unescaped `&` in `&word;`-shaped text would
         // silently collapse to the entity's character. Always escaped (a bare `&`
         // is harmless, but detecting "would form an entity" is not worth the
         // fragility); `\&` re-imports as a literal `&`.
-        '&' => "\\&".into(),
-        '|' if escape_pipe => "\\|".into(),
-        '#' if leading => "\\#".into(),
-        '>' if leading => "\\>".into(),
-        '-' if leading => "\\-".into(),
-        '+' if leading => "\\+".into(),
-        other => other.to_string(),
-    }
+        '&' => "\\&",
+        '|' if escape_pipe => "\\|",
+        '#' if leading => "\\#",
+        '>' if leading => "\\>",
+        '-' if leading => "\\-",
+        '+' if leading => "\\+",
+        other => {
+            out.push(other);
+            return;
+        }
+    };
+    out.push_str(esc);
 }
 
 fn longest_backtick_run(s: &str) -> usize {
@@ -722,7 +739,7 @@ fn longest_backtick_run(s: &str) -> usize {
 mod tests {
     use super::*;
     use crate::import::from_markdown;
-    use crate::model::{Line, Mark};
+    use crate::model::{Line, Loss, Mark};
 
     /// The contract: export∘import is the identity on the corpus (modulo
     /// island loss class, which our test islands don't trigger).

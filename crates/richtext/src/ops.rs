@@ -128,14 +128,15 @@ impl RichText {
                 m.end = delta.map_pos(m.end, Assoc::Before);
             }
         }
+        let new_len = new_text.chars().count();
         self.marks.retain(|m| {
             m.start <= m.end
-                && m.end <= new_text.chars().count()
+                && m.end <= new_len
                 && (m.start < m.end || !m.kind.is_formatting())
         });
 
         self.text = new_text;
-        self.lines = sync_lines_for_delta(&old_chars, &old_lines, delta)?;
+        self.lines = sync_lines_for_delta(&old_chars, old_lines, delta);
         let old_islands = std::mem::take(&mut self.islands);
         self.islands = sync_islands_for_delta(&old_chars, old_islands, delta);
         if self.lines.len() != self.segment_count() {
@@ -183,8 +184,7 @@ impl RichText {
                         });
                     }
                     self.marks.retain(|m| {
-                        !same_mark_kind(&m.kind, kind)
-                            || !ranges_overlap(m.start, m.end, *start, *end)
+                        m.kind != *kind || !ranges_overlap(m.start, m.end, *start, *end)
                     });
                 }
                 MarkOp::RemoveAnchor { id } => {
@@ -306,33 +306,13 @@ fn default_para_line() -> Line {
     }
 }
 
-fn same_mark_kind(a: &MarkKind, b: &MarkKind) -> bool {
-    match (a, b) {
-        (MarkKind::Strong, MarkKind::Strong)
-        | (MarkKind::Emph, MarkKind::Emph)
-        | (MarkKind::Underline, MarkKind::Underline)
-        | (MarkKind::Strike, MarkKind::Strike)
-        | (MarkKind::Code, MarkKind::Code) => true,
-        (MarkKind::Link { url: u1 }, MarkKind::Link { url: u2 }) => u1 == u2,
-        (MarkKind::Anchor { id: i1 }, MarkKind::Anchor { id: i2 }) => i1 == i2,
-        (MarkKind::Unknown { tag: t1, attrs: a1 }, MarkKind::Unknown { tag: t2, attrs: a2 }) => {
-            t1 == t2 && a1 == a2
-        }
-        _ => false,
-    }
-}
-
 fn ranges_overlap(a0: Usv, a1: Usv, b0: Usv, b1: Usv) -> bool {
     a0 < b1 && b0 < a1
 }
 
 /// Walk `delta` over `old_chars` and mirror `\n` insert/delete in `lines`.
-fn sync_lines_for_delta(
-    old_chars: &[char],
-    old_lines: &[Line],
-    delta: &Delta,
-) -> Result<Vec<Line>, ApplyError> {
-    let mut lines = old_lines.to_vec();
+fn sync_lines_for_delta(old_chars: &[char], old_lines: Vec<Line>, delta: &Delta) -> Vec<Line> {
+    let mut lines = old_lines;
     let mut old = 0usize;
     let mut line_idx = 0usize;
 
@@ -380,7 +360,7 @@ fn sync_lines_for_delta(
             }
         }
     }
-    Ok(lines)
+    lines
 }
 
 /// Walk `delta` over `old_chars` and drop any island whose [`ISLAND_SLOT`] char

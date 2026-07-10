@@ -217,9 +217,8 @@ fn transformed_data<'a>(
             Ok(Cow::Borrowed(json_data))
         }
         None => {
-            let obj = serde_json::Map::new();
-            validate_date_fields(meta, &obj)?;
-            Ok(Cow::Owned(serde_json::Value::Object(obj)))
+            // An empty object has no date fields to validate — return it directly.
+            Ok(Cow::Owned(serde_json::Value::Object(serde_json::Map::new())))
         }
     }
 }

@@ -162,14 +162,17 @@ impl Serialize for FieldType {
     }
 }
 
+/// Migration message for the retired `type: richtext(inline)` token — the
+/// single source of truth shared by this deserializer's error and
+/// `QuillConfig::field_parse_hint`'s hint text, so the two can't drift.
+pub(crate) const RICHTEXT_INLINE_TOKEN_MSG: &str =
+    "richtext(inline) is no longer accepted as a type token; use type: richtext with inline: true";
+
 impl<'de> Deserialize<'de> for FieldType {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
         if s.trim() == "richtext(inline)" {
-            return Err(serde::de::Error::custom(
-                "richtext(inline) is no longer accepted as a type token; \
-                 use type: richtext with inline: true",
-            ));
+            return Err(serde::de::Error::custom(RICHTEXT_INLINE_TOKEN_MSG));
         }
         FieldType::from_str(&s)
             .ok_or_else(|| serde::de::Error::custom(format!("unknown field type: {s:?}")))
@@ -341,13 +344,10 @@ impl FieldSchema {
             (FieldType::RichText { .. }, Some(false) | None) => {
                 Ok(FieldType::RichText { inline: false })
             }
-            (other, Some(_)) => {
-                let _ = other;
-                Err(
+            (_, Some(_)) => Err(
                 "inline is only valid on type: richtext fields; omit inline or declare type: richtext"
                     .to_string(),
-            )
-            }
+            ),
             (other, None) => Ok(other),
         }
     }

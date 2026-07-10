@@ -137,6 +137,17 @@ impl Aabb {
     }
 }
 
+/// Flip a page-space (top-left origin) box to a PDF-space (bottom-left origin)
+/// `[min_x, min_y, max_x, max_y]` rect, given the page height in pt.
+fn pdf_rect(b: &Aabb, page_h: f64) -> [f32; 4] {
+    [
+        b.min_x as f32,
+        (page_h - b.max_y) as f32,
+        b.max_x as f32,
+        (page_h - b.min_y) as f32,
+    ]
+}
+
 /// One drawn frame item, classified into the two-tier key space, plus — for
 /// window-classified ink — its page-space box.
 struct Hit {
@@ -393,12 +404,7 @@ pub(crate) fn scan(
                 RenderedRegion {
                     field: window.path.clone(),
                     page: *page,
-                    rect: [
-                        b.min_x as f32,
-                        (page_h - b.max_y) as f32,
-                        b.max_x as f32,
-                        (page_h - b.min_y) as f32,
-                    ],
+                    rect: pdf_rect(b, page_h),
                     span,
                     // The session wrapper stamps the revision; the backend has none.
                     revision: None,
@@ -729,45 +735,25 @@ pub(crate) fn locate(
 
     // The glyph of this segment whose node covers `target_gen`, its caret byte
     // (`node.start + span.1`) the greatest value ≤ `target_gen`; a covering
-    // glyph always wins a non-covering one, so a caret near a run edge still
-    // resolves.
-    let mut best: Option<(&GlyphHit, bool, (bool, usize))> = None;
-    for g in &hits {
-        if g.window != wi || g.seg != Some(seg_idx) {
-            continue;
-        }
-        let covers = g.node.start <= target_gen && target_gen < g.node.end;
-        let caret = g.node.start + g.offset as usize;
-        let key = (
-            caret > target_gen,
-            (caret as isize - target_gen as isize).unsigned_abs(),
-        );
-        let better = match best {
-            None => true,
-            Some((_, bc, bk)) => {
-                if covers != bc {
-                    covers
-                } else {
-                    key < bk
-                }
-            }
-        };
-        if better {
-            best = Some((g, covers, key));
-        }
-    }
-    let (g, _, _) = best?;
+    // glyph always wins a non-covering one (`!covers` sorts first), so a caret
+    // near a run edge still resolves. `min_by_key` keeps the first on ties.
+    let g = hits
+        .iter()
+        .filter(|g| g.window == wi && g.seg == Some(seg_idx))
+        .min_by_key(|g| {
+            let covers = g.node.start <= target_gen && target_gen < g.node.end;
+            let caret = g.node.start + g.offset as usize;
+            (
+                !covers,
+                caret > target_gen,
+                (caret as isize - target_gen as isize).unsigned_abs(),
+            )
+        })?;
     let page_h = doc.pages().get(g.page)?.frame.size().y.to_pt();
-    let b = g.rect;
     Some(RenderedRegion {
         field: field.to_string(),
         page: g.page,
-        rect: [
-            b.min_x as f32,
-            (page_h - b.max_y) as f32,
-            b.max_x as f32,
-            (page_h - b.min_y) as f32,
-        ],
+        rect: pdf_rect(&g.rect, page_h),
         span: Some([pos, pos]),
         // The session wrapper stamps the revision; the backend has none.
         revision: None,

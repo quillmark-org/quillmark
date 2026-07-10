@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
+use super::types::RICHTEXT_INLINE_TOKEN_MSG;
 use super::{BodyCardSchema, CardSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
 
 /// Canonical string text for a bare scalar unambiguously representable as a
@@ -24,6 +25,29 @@ pub(crate) fn scalar_as_string(value: &serde_json::Value) -> Option<String> {
         serde_json::Value::Number(n) => Some(n.to_string()),
         _ => None,
     }
+}
+
+/// Reduce a lenient value to its authored-string form: a bare string, the
+/// sole element of a length-1 array when that element is a string (the
+/// array-unwrap leniency), or a bare scalar's canonical text (via
+/// [`scalar_as_string`]). `None` for anything else (a multi-element array, an
+/// object, null), leaving the caller's own fallback to apply.
+///
+/// Shared by the `String` and `RichText` coercion branches, which both reduce
+/// a lenient value to a string before adopting it (as the field value itself,
+/// or as markdown to import).
+fn lenient_string(value: &serde_json::Value) -> Option<String> {
+    if let Some(s) = value.as_str() {
+        return Some(s.to_string());
+    }
+    if let Some(s) = value
+        .as_array()
+        .filter(|a| a.len() == 1)
+        .and_then(|a| a[0].as_str())
+    {
+        return Some(s.to_string());
+    }
+    scalar_as_string(value)
 }
 
 /// Top-level configuration for a Quillmark project
@@ -338,20 +362,12 @@ impl QuillConfig {
                 if json_value.is_string() {
                     return Ok(value.clone());
                 }
-                if let Some(arr) = json_value.as_array() {
-                    if arr.len() == 1 {
-                        if let Some(s) = arr[0].as_str() {
-                            return Ok(QuillValue::from_json(serde_json::Value::String(
-                                s.to_string(),
-                            )));
-                        }
-                    }
-                }
-                // Gracious scalar→string: adopt a bare bool/number's canonical
-                // text rather than reject it (an author writing `verified: true`
-                // for a `string` field). Null is handled above; collections fall
+                // Gracious leniency: unwrap a length-1 array's sole string
+                // element, or adopt a bare bool/number's canonical text (an
+                // author writing `verified: true` for a `string` field), rather
+                // than reject it. Null is handled above; other collections fall
                 // through.
-                if let Some(text) = scalar_as_string(json_value) {
+                if let Some(text) = lenient_string(json_value) {
                     return Ok(QuillValue::from_json(serde_json::Value::String(text)));
                 }
                 Ok(value.clone())
@@ -393,21 +409,10 @@ impl QuillConfig {
                         quillmark_richtext::serial::to_canonical_value(&rt),
                     ));
                 }
-                // Reduce to the authored markdown string — a bare string, a
-                // length-1 array of one (the shared array-unwrap leniency), or a
-                // bare scalar (the shared scalar→string leniency) — then import.
-                let markdown = if let Some(s) = json_value.as_str() {
-                    Some(s.to_string())
-                } else if let Some(s) = json_value
-                    .as_array()
-                    .filter(|a| a.len() == 1)
-                    .and_then(|a| a[0].as_str())
-                {
-                    Some(s.to_string())
-                } else {
-                    scalar_as_string(json_value)
-                };
-                let Some(markdown) = markdown else {
+                // Reduce to the authored markdown string via the shared
+                // leniency cascade (bare string, length-1 array unwrap, or bare
+                // scalar), then import.
+                let Some(markdown) = lenient_string(json_value) else {
                     // A shape that is neither corpus nor stringifiable (e.g. a
                     // multi-element array): leave it for the validation layer to
                     // report, matching the String branch's fall-through.
@@ -962,11 +967,7 @@ impl QuillConfig {
                 );
             }
             if obj.get("type").and_then(|v| v.as_str()) == Some("richtext(inline)") {
-                return Some(
-                    "richtext(inline) is no longer accepted as a type token; \
-                     use type: richtext with inline: true."
-                        .to_string(),
-                );
+                return Some(format!("{RICHTEXT_INLINE_TOKEN_MSG}."));
             }
         }
         None

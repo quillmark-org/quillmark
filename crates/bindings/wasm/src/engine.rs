@@ -3,7 +3,9 @@
 use crate::error::WasmError;
 use crate::types::Diagnostic;
 #[cfg(any(feature = "typst", feature = "pdfform"))]
-use crate::types::{ChangeSet, CorpusHit, Delta, FieldRegion, RenderOptions, RenderResult};
+use crate::types::{
+    revision_u32, ChangeSet, CorpusHit, Delta, FieldRegion, RenderOptions, RenderResult,
+};
 use js_sys::{Array, Uint8Array};
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 use serde::Deserialize;
@@ -1471,13 +1473,7 @@ impl LiveSession {
     /// resolving against text this rewrite may have replaced.
     #[wasm_bindgen(js_name = apply)]
     pub fn apply(&mut self, doc: &Document) -> Result<ChangeSet, JsValue> {
-        self.config
-            .check_quill_reference(&doc.inner)
-            .map_err(|e| WasmError::from(e).to_js_value())?;
-        let json_data = self
-            .config
-            .compile_data(&doc.inner)
-            .map_err(|e| WasmError::from(e).to_js_value())?;
+        let json_data = self.compile_checked(&doc.inner)?;
         let cs = self
             .inner
             .apply(&json_data)
@@ -1498,7 +1494,7 @@ impl LiveSession {
     /// through per-field deltas that no longer describe the rewritten text.
     #[wasm_bindgen(getter, js_name = revision)]
     pub fn revision(&self) -> u32 {
-        self.inner.revision().try_into().unwrap_or(u32::MAX)
+        revision_u32(self.inner.revision())
     }
 
     /// Commit a native form-editor edit to a content field: splice `delta` into
@@ -1548,46 +1544,39 @@ impl LiveSession {
                 .to_js_value()
             })?;
 
-        // Snapshot the pre-edit card: a failed splice or recompile below must
-        // leave `doc` exactly as it was, or a caller's retry double-applies the
+        // Snapshot the pre-edit body: the fallible steps below mutate only the
+        // main body corpus (`apply_body_change`), so restoring it leaves `doc`
+        // exactly as it was — a caller's retry then never double-applies the
         // delta onto an already-mutated document.
-        let pre_edit_main = doc.inner.main().clone();
+        let pre_edit_body = doc.inner.main().body().clone();
 
-        // Native writer: splice the main body corpus (text delta only).
-        if let Err(e) = doc.inner.main_mut().apply_body_change(&core_delta, &[], &[]) {
-            *doc.inner.main_mut() = pre_edit_main;
-            return Err(edit_error_to_js(&e));
-        }
-
-        // Recompile from the mutated document and record the delta atomically,
-        // transactional on the compile — and, via the snapshot above, on `doc`
-        // itself. The seam recompiles *without* invalidating the change log
-        // (unlike whole-document `apply`) and records the delta against the
-        // guarded base in one step: the revision advances to `base_revision + 1`
-        // in lockstep with the preview, or nothing changes and `doc` rolls back.
-        let recompiled = self
-            .config
-            .check_quill_reference(&doc.inner)
-            .map_err(|e| WasmError::from(e).to_js_value())
-            .and_then(|()| {
-                self.config
-                    .compile_data(&doc.inner)
-                    .map_err(|e| WasmError::from(e).to_js_value())
-            })
-            .and_then(|json_data| {
-                self.inner
-                    .apply_for_field_delta(
-                        field.to_string(),
-                        base_revision as u64,
-                        core_delta,
-                        &json_data,
-                    )
-                    .map_err(|e| WasmError::from(e).to_js_value())
-            });
-        let cs = match recompiled {
+        // Splice the main body corpus (text delta only), then recompile from the
+        // mutated document and record the delta atomically — transactional on the
+        // compile and, via the snapshot above, on `doc` itself. The seam
+        // recompiles *without* invalidating the change log (unlike whole-document
+        // `apply`) and records the delta against the guarded base in one step:
+        // the revision advances to `base_revision + 1` in lockstep with the
+        // preview, or nothing changes and `doc` rolls back. On any failure the
+        // single site below restores the body and returns the step's error.
+        let spliced = (|| -> Result<quillmark_core::ChangeSet, JsValue> {
+            doc.inner
+                .main_mut()
+                .apply_body_change(&core_delta, &[], &[])
+                .map_err(|e| edit_error_to_js(&e))?;
+            let json_data = self.compile_checked(&doc.inner)?;
+            self.inner
+                .apply_for_field_delta(
+                    field.to_string(),
+                    base_revision as u64,
+                    core_delta,
+                    &json_data,
+                )
+                .map_err(|e| WasmError::from(e).to_js_value())
+        })();
+        let cs = match spliced {
             Ok(cs) => cs,
             Err(e) => {
-                *doc.inner.main_mut() = pre_edit_main;
+                doc.inner.main_mut().set_body_corpus(pre_edit_body);
                 return Err(e);
             }
         };
@@ -1881,6 +1870,19 @@ impl LiveSession {
             self.inner.page_count()
         ))
         .to_js_value()
+    }
+
+    /// The compile preamble shared by `apply` and `applyFieldDelta`: verify
+    /// `doc` still references this session's quill, then compile it to plate
+    /// data through the same schema pipeline as `open`. Errors map to JS via
+    /// `WasmError`, as the render path does.
+    fn compile_checked(&self, doc: &quillmark_core::Document) -> Result<serde_json::Value, JsValue> {
+        self.config
+            .check_quill_reference(doc)
+            .map_err(|e| WasmError::from(e).to_js_value())?;
+        self.config
+            .compile_data(doc)
+            .map_err(|e| WasmError::from(e).to_js_value())
     }
 }
 

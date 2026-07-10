@@ -1,44 +1,5 @@
 # crates/bindings/wasm, crates/backends/pdfform
 
-## Low risk
-
-### wasm/src/engine.rs:1501, wasm/src/types.rs:279, wasm/src/types.rs:310 — the u64→u32 revision narrow is written three times
-
-`.try_into().unwrap_or(u32::MAX)` with a duplicated rationale comment in the
-`revision` getter, `FieldRegion::from`, and `CorpusHit::from`. Fix: one
-`pub(crate) fn revision_u32(v: u64) -> u32` in types.rs carrying the comment
-once.
-
-### wasm/src/engine.rs:1557, wasm/src/engine.rs:1587 — two copy-pasted rollback sites in `applyFieldDelta`
-
-Both exits repeat `*doc.inner.main_mut() = pre_edit_main; return Err(...)`; a
-third fallible step needs a third rollback and the sites can drift. Fix: run
-splice + recompile chain in one fallible block with a single
-rollback-and-return on `Err`. Superseded if the transactional-callee fix in
-`seams.md` lands.
-
-### wasm/src/engine.rs:1553 — `applyFieldDelta` snapshots the whole main card
-
-`doc.inner.main().clone()` copies the full payload + body corpus per
-keystroke-level delta although only the body is mutated by the fallible steps.
-Fix: snapshot the body alone and restore via the body setter — after verifying
-`apply_body_change` touches nothing else on the card. Also superseded by the
-transactional-callee fix.
-
-### wasm/src/engine.rs:1474 vs wasm/src/engine.rs:1568 — the compile preamble exists twice
-
-`applyFieldDelta` repeats `apply`'s `check_quill_reference` → `compile_data`
-sequence with the same `WasmError`→JS mapping, once as `?`-statements and once
-as an `and_then` chain. Fix: a private `compile_checked` helper used by both
-verbs.
-
-### pdfform/src/resolve.rs:160 — `coerce_text` copies `element_text`'s scalar arms
-
-The String/Number/Bool/Object arms are verbatim copies differing only in
-`Option` wrapping, so the scalar-to-text rule lives twice (top-level vs array
-path). Fix: delegate every non-array value to `element_text`; keep only the
-array-join + emptiness handling.
-
 ## Needs judgment
 
 ### wasm/src/engine.rs:1240 — `js_to_card`'s `ALLOWED` list shadows `CardWire`'s field set

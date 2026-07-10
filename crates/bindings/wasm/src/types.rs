@@ -264,6 +264,15 @@ pub struct FieldRegion {
     pub revision: Option<u32>,
 }
 
+/// Narrow a session revision to the JS-number-friendly `u32` at the boundary.
+/// A session revision is a small monotonic counter, so `u32` avoids a BigInt.
+/// Saturate rather than wrap so an implausible overflow reads as "very large,"
+/// not as a small stale-looking value.
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+pub(crate) fn revision_u32(v: u64) -> u32 {
+    v.try_into().unwrap_or(u32::MAX)
+}
+
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 impl From<quillmark_core::RenderedRegion> for FieldRegion {
     fn from(r: quillmark_core::RenderedRegion) -> Self {
@@ -272,11 +281,7 @@ impl From<quillmark_core::RenderedRegion> for FieldRegion {
             page: r.page,
             rect: r.rect,
             span: r.span,
-            // A session revision is a small monotonic counter; narrowing to the
-            // JS-number-friendly u32 at the boundary avoids a BigInt. Saturate
-            // rather than wrap so an implausible overflow reads as "very large,"
-            // not as a small stale-looking value.
-            revision: r.revision.map(|v| v.try_into().unwrap_or(u32::MAX)),
+            revision: r.revision.map(revision_u32),
         }
     }
 }
@@ -307,7 +312,7 @@ impl From<quillmark_core::CorpusHit> for CorpusHit {
         CorpusHit {
             field: h.field,
             pos: h.pos,
-            revision: h.revision.map(|v| v.try_into().unwrap_or(u32::MAX)),
+            revision: h.revision.map(revision_u32),
         }
     }
 }

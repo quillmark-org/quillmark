@@ -218,6 +218,20 @@ fn align_str(a: &pulldown_cmark::Alignment) -> &'static str {
     }
 }
 
+/// Recover the `<u>`-vs-`Strong` distinction the fixer collapses: it rewrites
+/// `<u>`/`</u>` to `Strong` events, so a `Strong` whose source starts `<u`
+/// (case-insensitive) is really an underline.
+fn strong_or_underline(source: &str, range: &Range<usize>) -> MarkKind {
+    if source
+        .get(range.start..range.start + 2)
+        .is_some_and(|s| s.eq_ignore_ascii_case("<u"))
+    {
+        MarkKind::Underline
+    } else {
+        MarkKind::Strong
+    }
+}
+
 impl<'a> Builder<'a> {
     fn new(source: &'a str) -> Self {
         Builder {
@@ -509,17 +523,7 @@ impl<'a> Builder<'a> {
                 self.check_depth()?;
             }
             Tag::Strong => {
-                // The fixer rewrites `<u>` to Start(Strong); distinguish it by
-                // peeking the source (parity with the typst backend).
-                let kind = if self
-                    .source
-                    .get(range.start..range.start + 2)
-                    .is_some_and(|s| s.eq_ignore_ascii_case("<u"))
-                {
-                    MarkKind::Underline
-                } else {
-                    MarkKind::Strong
-                };
+                let kind = strong_or_underline(self.source, &range);
                 self.open_mark(kind);
                 self.check_depth()?;
             }
@@ -682,17 +686,7 @@ impl<'a> Builder<'a> {
                 }
             }
             Event::Start(Tag::Strong) => {
-                // `<u>` is rewritten to Start(Strong) by the fixer; distinguish it
-                // by peeking the source, exactly as the prose path does.
-                let kind = if self
-                    .source
-                    .get(range.start..range.start + 2)
-                    .is_some_and(|s| s.eq_ignore_ascii_case("<u"))
-                {
-                    MarkKind::Underline
-                } else {
-                    MarkKind::Strong
-                };
+                let kind = strong_or_underline(self.source, range);
                 if let Some(c) = self.cell_mut() {
                     c.open_mark(kind);
                 }

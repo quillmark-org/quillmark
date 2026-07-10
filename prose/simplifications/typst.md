@@ -1,56 +1,5 @@
 # crates/backends/typst
 
-## Low risk
-
-### emit.rs:301 — `Emit::new` re-implements `line_segments`
-
-The `line_usv` build duplicates the per-line USV `[start, end)` segmentation
-in `richtext/src/export.rs:73`, identical down to the defensive padding for a
-malformed corpus. Two copies of the line-range computation in two crates can
-drift on the malformed-corpus edge. Fix: promote `line_segments` to a public
-`RichText` method and call it from both.
-
-### emit.rs:730 — `island_markup` counts slots by scanning the corpus prefix
-
-`self.chars[..pos].iter().filter(..).count()` per island slot is O(corpus) per
-island per emit; `emit_richtext` runs for every content field on every apply —
-quadratic with many islands on the per-keystroke preview path. Fix: precompute
-slot offsets once in `Emit::new` (a `Vec<usize>`; running index or binary
-search).
-
-### emit.rs:545, emit.rs:412 — phantom `depth` parameter
-
-`emit_segment`'s `_depth` is unused, and `emit_leaf_terminated`'s `depth`
-exists only to forward it — the signature implies depth-dependent emission
-that does not exist. Fix: remove both.
-
-### emit.rs:549 — three copies of the segment record-and-push tail
-
-The `Heading`, `Island | Para`, and `Rule` arms each repeat
-`let g0 = out.len(); …; segments.push(SegmentMap { corpus, gen, runs })` —
-three push sites to keep field-consistent when `SegmentMap` changes. Fix:
-early-return the `Code` arm, emit each kind's prefix in the match, one shared
-tail.
-
-### span_scan.rs:396, span_scan.rs:765 — coordinate flip duplicated
-
-`scan` and `locate` both hand-write the top-left→PDF-bottom-left rect flip
-(`[min_x, page_h - max_y, max_x, page_h - min_y]` with four casts). Fix: one
-`pdf_rect(bbox, page_h) -> [f32; 4]` helper.
-
-### span_scan.rs:734 — `locate`'s selection loop re-implements `min_by_key`
-
-~20 lines of manual `best`/`better` state over
-`Option<(&GlyphHit, bool, (bool, usize))>` where
-`filter(...).min_by_key(|g| (…))` states the ordering directly; `min_by_key`'s
-first-wins tie-break matches the loop.
-
-### lib.rs:219 — dead date validation on the empty-input branch
-
-The non-object branch of `transformed_data` calls `validate_date_fields` on a
-freshly built empty map; the function only errors on present-and-bad values,
-so the call is unconditionally `Ok`. Fix: return the empty object directly.
-
 ## Needs judgment
 
 ### emit.rs:637 vs emit.rs:882 — `emit_inline` re-implements `wraps_and_codes`

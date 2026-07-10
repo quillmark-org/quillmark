@@ -158,30 +158,30 @@ fn number_to_string(n: &serde_json::Number) -> String {
 /// Coerce a JSON value to display text. Empty results (empty string, all-null
 /// array) become `None` so the widget carries no `/V`.
 fn coerce_text(v: &Value) -> Option<String> {
-    let s = match v {
-        Value::String(s) => s.clone(),
-        Value::Number(n) => number_to_string(n),
-        Value::Bool(b) => b.to_string(),
-        // A richtext field crosses the seam as canonical corpus JSON. pdfform has
-        // no rich-text form field (Adobe-only `/RV` is deferred), so it lowers to
-        // plaintext: the corpus text minus island slots (tables/images have no
-        // plaintext form). A non-corpus object binds nothing.
-        Value::Object(_) => return richtext_plaintext(v),
+    match v {
         // An array (e.g. an `array<richtext>`, richtext-corpus elements, or a
         // `string[]` field) joins its element texts with newlines — the
         // multiline text fill.
-        Value::Array(arr) => arr
-            .iter()
-            .filter_map(element_text)
-            .collect::<Vec<_>>()
-            .join("\n"),
-        Value::Null => return None,
-    };
-    (!s.is_empty()).then_some(s)
+        Value::Array(arr) => {
+            let s = arr
+                .iter()
+                .filter_map(element_text)
+                .collect::<Vec<_>>()
+                .join("\n");
+            (!s.is_empty()).then_some(s)
+        }
+        // Every other shape is one scalar or richtext object: the same rule
+        // an array element follows, with an empty result blanked out too.
+        _ => element_text(v).filter(|s| !s.is_empty()),
+    }
 }
 
-/// One array element's display text: a scalar directly, or a richtext corpus via
-/// its plaintext. `None` elements (and non-corpus objects) drop out.
+/// A scalar's (or richtext object's) display text: a string/number/bool
+/// directly, or a richtext corpus via its plaintext — the corpus text minus
+/// island slots (tables/images have no plaintext form; a non-corpus object
+/// binds nothing). Shared by top-level scalar coercion and per-element array
+/// joining, which is why an empty string survives here and is blanked by the
+/// caller instead.
 fn element_text(e: &Value) -> Option<String> {
     match e {
         Value::String(s) => Some(s.clone()),

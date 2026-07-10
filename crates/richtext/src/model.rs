@@ -528,14 +528,9 @@ pub(crate) fn normalize_marks(marks: Vec<Mark>) -> Vec<Mark> {
     }
     out.extend(passthrough);
 
-    // Canonical sort: (start, end, kind-ord, attrs).
-    out.sort_by(|a, b| {
-        a.start
-            .cmp(&b.start)
-            .then(a.end.cmp(&b.end))
-            .then(a.kind.ord().cmp(&b.kind.ord()))
-            .then(a.kind.attrs_key().cmp(&b.kind.attrs_key()))
-    });
+    // Canonical sort: (start, end, kind-ord, attrs). Key cached per mark so
+    // `attrs_key`'s allocation runs once each, not once per comparison.
+    out.sort_by_cached_key(|m| (m.start, m.end, m.kind.ord(), m.kind.attrs_key()));
     out
 }
 
