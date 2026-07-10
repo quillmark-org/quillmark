@@ -285,7 +285,7 @@ fn collect_page_hits(frame: &Frame, page: usize, cls: &mut Classifier, out: &mut
         let class = hit_class(cls.classify_seg(span), cls.windows);
         // Boxes are computed for classified ink only; foreign ink still emits a
         // (rect-less) Hit so the run machine sees the full ink sequence.
-        let rect = class.window().is_some().then(|| aabb());
+        let rect = class.window().is_some().then(aabb);
         out.push(Hit { page, class, rect });
     });
 }
@@ -299,12 +299,11 @@ fn collect_page_hits(frame: &Frame, page: usize, cls: &mut Classifier, out: &mut
 /// geometry (group transform recursion, per-glyph cursor/advance/bbox,
 /// shape/image extents) shared by the region scan ([`collect_page_hits`]) and
 /// the corpus-position walk ([`walk_glyphs`]).
-fn walk_items(
-    frame: &Frame,
-    ts: Transform,
-    page: usize,
-    visit: &mut dyn FnMut(usize, Span, u16, &dyn Fn() -> Aabb),
-) {
+/// Per-item callback for [`walk_items`]: `(page, span, intra-node byte offset,
+/// thunk computing the page-space box on demand)`.
+type ItemVisitor<'a> = dyn FnMut(usize, Span, u16, &dyn Fn() -> Aabb) + 'a;
+
+fn walk_items(frame: &Frame, ts: Transform, page: usize, visit: &mut ItemVisitor) {
     for (pos, item) in frame.items() {
         match item {
             FrameItem::Group(group) => {
@@ -588,7 +587,7 @@ fn walk_glyphs(
         let Some((w, seg)) = cls.classify_seg(span) else {
             return;
         };
-        if only.map_or(false, |t| t != (w, seg)) {
+        if only.is_some_and(|t| t != (w, seg)) {
             return;
         }
         if let Some((_, node)) = cls.resolve_range(span) {
