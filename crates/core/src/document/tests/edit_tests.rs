@@ -557,6 +557,60 @@ fn test_set_body_corpus_sets_directly() {
     assert_eq!(card.body_markdown(), "**bold** body\n");
 }
 
+/// `set_body_value` accepts a **canonical corpus object** and installs it
+/// verbatim — the corpus-native write path, lossless for corpus-only marks.
+#[test]
+fn test_set_body_value_accepts_corpus_object() {
+    use quillmark_richtext::model::{Mark, MarkKind};
+
+    let mut corpus = quillmark_richtext::import::from_markdown("underlined body").unwrap();
+    // An `underline` mark has no markdown projection — the corpus path must keep it.
+    corpus.marks.push(Mark {
+        start: 0,
+        end: 10,
+        kind: MarkKind::Underline,
+    });
+    corpus.normalize();
+    let json = quillmark_richtext::serial::to_canonical_value(&corpus);
+
+    let mut card = Card::new("note").unwrap();
+    card.set_body_value(&json).unwrap();
+    assert_eq!(card.body(), &corpus);
+    assert!(card
+        .body()
+        .marks
+        .iter()
+        .any(|m| matches!(m.kind, MarkKind::Underline)));
+}
+
+/// `set_body_value` also accepts a **markdown string** (imported) and clears
+/// the body on `null` — the whole `Card.body` read shape (`RichText | string`)
+/// as a write. A non-corpus object / other shape is `EditError::BodyDecode`.
+#[test]
+fn test_set_body_value_accepts_markdown_and_null_and_rejects_bad() {
+    let mut card = Card::new("note").unwrap();
+
+    card.set_body_value(&serde_json::json!("**bold** body")).unwrap();
+    assert_eq!(card.body_markdown(), "**bold** body\n");
+
+    card.set_body_value(&serde_json::Value::Null).unwrap();
+    assert!(card.body().is_blank());
+
+    // An object that is not a canonical corpus, and a bare number, both fail.
+    assert_eq!(
+        card.set_body_value(&serde_json::json!({ "not": "a corpus" }))
+            .unwrap_err()
+            .variant_name(),
+        "BodyDecode"
+    );
+    assert_eq!(
+        card.set_body_value(&serde_json::json!(42))
+            .unwrap_err()
+            .variant_name(),
+        "BodyDecode"
+    );
+}
+
 /// `import_body_delta` updates the body and returns the text delta from the
 /// old body to the new — the recordable whole-document (stale-text) writer.
 #[test]

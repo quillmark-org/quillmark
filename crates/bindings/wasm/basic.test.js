@@ -584,6 +584,35 @@ describe('Document editor surface — setQuillRef / replaceBody', () => {
     doc.replaceBody('Brand new body.')
     expect(doc.main.bodyMarkdown).toBe('Brand new body.\n')
   })
+
+  it('setBody accepts a markdown string', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setBody('Body from **markdown**.')
+    expect(doc.main.bodyMarkdown).toBe('Body from **markdown**.\n')
+  })
+
+  it('setBody accepts a corpus object round-tripped from doc.main.body', () => {
+    // The corpus is the source-of-truth shape doc.main.body reads back; writing
+    // it straight through is the read/write symmetry #874 closes.
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    const src = Document.fromMarkdown('~~~card-yaml\n$quill: q@1.0.0\n~~~\n\nCorpus **body** here.')
+    const corpus = src.main.body
+    expect(typeof corpus).toBe('object')
+    doc.setBody(corpus)
+    expect(doc.main.body.text).toBe('Corpus body here.')
+    expect(doc.main.bodyMarkdown).toBe('Corpus **body** here.\n')
+  })
+
+  it('setBody(null) clears the body', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setBody(null)
+    expect(doc.main.bodyMarkdown).toBe('')
+  })
+
+  it('setBody throws BodyDecode on a non-corpus object', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    expect(() => doc.setBody({ not: 'a corpus' })).toThrow(/BodyDecode/)
+  })
 })
 
 describe('Document editor surface — card mutations', () => {

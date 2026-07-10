@@ -952,6 +952,29 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
+    /// Set the main card's body from a **corpus object** (canonical
+    /// RichText-JSON) or a markdown string — the corpus-native counterpart to
+    /// [`replaceBody`](Document::replace_body), which accepts markdown only.
+    /// `body` is the same `RichText | string` shape `Document.main.body` reads
+    /// back, so a corpus-native editor writes the body straight through with no
+    /// lossy markdown round-trip (a corpus-only mark such as `underline`
+    /// survives). `null` clears the body to empty. Closes the read/write
+    /// asymmetry `doc.main.body` (corpus in, corpus out) otherwise had.
+    ///
+    /// Throws `[EditError::BodyDecode]` if `body` is neither a valid corpus
+    /// object, an importable markdown string, nor `null`.
+    #[wasm_bindgen(js_name = setBody)]
+    pub fn set_body(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "RichText | string")] body: JsValue,
+    ) -> Result<(), JsValue> {
+        let json = js_value_to_json(body, "setBody")?;
+        self.inner
+            .main_mut()
+            .set_body_value(&json)
+            .map_err(|e| edit_error_to_js(&e))
+    }
+
     /// Build a fresh `Card` from a kind and a flat field map — the ergonomic
     /// constructor for `pushCard` / `insertCard`. `fields` is an optional
     /// `Record<string, unknown>` (each entry becomes a card field, in

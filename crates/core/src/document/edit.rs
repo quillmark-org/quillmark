@@ -74,6 +74,13 @@ pub enum EditError {
     #[error("body import failed: {0}")]
     BodyImport(ImportError),
 
+    /// A body value in the corpus-or-markdown encoding could not be decoded: a
+    /// JSON object that is not a canonical richtext corpus, a markdown string
+    /// that failed to import, or a shape that is neither object, string, nor
+    /// null. Returned by [`Card::set_body_value`](Card::set_body_value).
+    #[error("body decode failed: {0}")]
+    BodyDecode(String),
+
     /// A corpus field-change bundle (text delta, line ops, mark ops) applied
     /// out of bounds or broke an invariant normalization could not repair.
     #[error("corpus apply failed: {0:?}")]
@@ -93,6 +100,7 @@ impl EditError {
             EditError::IndexOutOfRange { .. } => "IndexOutOfRange",
             EditError::ValueTooDeep { .. } => "ValueTooDeep",
             EditError::BodyImport(_) => "BodyImport",
+            EditError::BodyDecode(_) => "BodyDecode",
             EditError::CorpusApply(_) => "CorpusApply",
         }
     }
@@ -454,6 +462,45 @@ impl Card {
     /// to import from an authored markdown string instead.
     pub fn set_body_corpus(&mut self, corpus: RichText) {
         self.overwrite_body(corpus);
+    }
+
+    /// Set the body from either accepted richtext encoding — a canonical corpus
+    /// **object** (decoded and validated) or an authored markdown **string**
+    /// (imported) — the write twin of the `Card.body` read shape
+    /// (`RichText | string`). `null` installs the empty corpus. Routes through
+    /// the one object-vs-string dispatch ([`decode_richtext_value`]), so it
+    /// stays lossless for corpus-only marks a markdown projection cannot carry
+    /// (e.g. `underline`), unlike serializing to markdown and calling
+    /// [`replace_body`](Self::replace_body). Prefer the typed
+    /// [`set_body_corpus`](Self::set_body_corpus) when the caller already holds a
+    /// [`RichText`]; this is for a JSON-valued body crossing a binding boundary.
+    ///
+    /// [`decode_richtext_value`]: crate::document::decode_richtext_value
+    pub fn set_body_value(&mut self, value: &serde_json::Value) -> Result<(), EditError> {
+        match crate::document::decode_richtext_value(value) {
+            Some(result) => {
+                let corpus = result.map_err(|e| EditError::BodyDecode(e.into_message()))?;
+                self.overwrite_body(corpus);
+                Ok(())
+            }
+            // Neither object nor string: `null` is the empty corpus; anything
+            // else is an invalid body value.
+            None => match value {
+                serde_json::Value::Null => {
+                    self.overwrite_body(RichText::empty());
+                    Ok(())
+                }
+                other => Err(EditError::BodyDecode(format!(
+                    "expected a richtext corpus object or a markdown string, got {}",
+                    match other {
+                        serde_json::Value::Bool(_) => "a boolean",
+                        serde_json::Value::Number(_) => "a number",
+                        serde_json::Value::Array(_) => "an array",
+                        _ => "an unsupported value",
+                    }
+                ))),
+            },
+        }
     }
 
     /// Replace the body from an authored markdown string — the whole-document
