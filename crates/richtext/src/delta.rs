@@ -14,15 +14,15 @@
 //! map and cannot represent overlapping same-kind marks or two distinct
 //! identity anchors over one range, the exact algebra the corpus model keeps
 //! (Peritext free overlap + identity handles). Editing marks and line/block
-//! attributes are their own op channels (phase 3), not attributes on this delta.
-//! The positional channel stays isomorphic to a text CRDT's op stream (the
-//! phase-4 collab target).
+//! attributes are their own op channels, not attributes on this delta. The
+//! positional channel stays isomorphic to a text CRDT's op stream — the shape
+//! real-time collaborative editing would need.
 //!
-//! Phase 1 delivered diff + rebase + a **move detector**; phase 3 PR-B tightens
-//! [`diff`] to a Myers/LCS minimal edit script. The live delta transport
-//! (revision, bounded change log) is phase 3 PR-C — see [`crate::change_log`].
-//! Position mapping follows CodeMirror's `ChangeDesc.mapPos` / ProseMirror
-//! mapping semantics.
+//! [`diff`] computes a Myers/LCS minimal edit script and pairs it with a
+//! **move detector** that re-homes an anchor across a verbatim block move. The
+//! live delta transport — a monotonic revision plus a bounded change log —
+//! lives in [`crate::change_log`]. Position mapping follows CodeMirror's
+//! `ChangeDesc.mapPos` / ProseMirror mapping semantics.
 //!
 //! ## The move weak spot (documented limit)
 //!
@@ -225,9 +225,9 @@ const MIN_MOVE: usize = 4;
 const CHAR_DIFF_LIMIT: usize = 5_000;
 
 /// Char-level Myers/LCS diff over USV: a minimal `Retain` / `Delete` / `Insert`
-/// script. Disjoint edits no longer collapse the span between them into one
-/// delete+insert, so anchors sitting in unchanged middle text survive rebase
-/// without relying on the move detector.
+/// script. Disjoint edits stay separate ops rather than collapsing the span
+/// between them into one delete+insert, so anchors sitting in unchanged middle
+/// text survive rebase without relying on the move detector.
 ///
 /// Single-line text diffs at char granularity; multi-line text diffs at line
 /// granularity so a paragraph reorder surfaces as whole-line insert spans the
@@ -326,8 +326,8 @@ fn push_insert(ops: &mut Vec<Op>, s: &str) {
 /// the diff (re-homing verbatim block moves). The returned corpus is `new_rt`
 /// (structure/marks/islands from the fresh import) plus the surviving anchors.
 ///
-/// Returns the new corpus and the [`Delta`] used (the change log entry a phase-3
-/// revision would record).
+/// Returns the new corpus and the [`Delta`] used — the entry
+/// [`crate::change_log::ChangeLog::record`] would log for this edit.
 pub fn diff_import(
     base: &RichText,
     new_markdown: &str,

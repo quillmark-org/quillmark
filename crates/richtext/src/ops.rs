@@ -1,7 +1,7 @@
 //! Mark and line op channels — structural edits separate from text splices.
 //!
-//! Phase 3 PR-D: [`MarkOp`] and [`LineOp`] apply after [`RichText::apply_text_delta`]
-//! in one bundle; mark ranges are in post-delta coordinates. Line split/join
+//! [`MarkOp`] and [`LineOp`] apply after [`RichText::apply_text_delta`] in one
+//! bundle; mark ranges are in post-delta coordinates. Line split/join
 //! also splice `\n` in `text`; position mapping through the change log still
 //! composes [`Delta::map_pos`](crate::delta::Delta::map_pos) on the text delta
 //! channel — record `\n` edits there when mapping stale positions.

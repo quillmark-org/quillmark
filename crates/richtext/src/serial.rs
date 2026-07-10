@@ -1,4 +1,4 @@
-//! Canonical JSON serialization — the phase-1 freeze.
+//! Canonical JSON serialization — the freeze.
 //!
 //! Byte-deterministic within this schema: equal [`RichText`] values (by
 //! `PartialEq` after [`RichText::normalize`]) serialize to byte-equal JSON,
@@ -449,8 +449,8 @@ fn loss_from_str(s: &str) -> Loss {
     }
 }
 
-/// Content-hash key: the canonical JSON, byte-for-byte. Exposed so a phase-2
-/// storage layer hashes the same bytes it serializes. `_` prefix-free name kept
+/// Content-hash key: the canonical JSON, byte-for-byte. Exposed so a storage
+/// layer hashes the same bytes it serializes. `_` prefix-free name kept
 /// stable — part of the determinism contract.
 pub fn content_key(rt: &RichText) -> String {
     rt.to_canonical_json()
