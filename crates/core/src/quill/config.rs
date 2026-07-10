@@ -562,15 +562,9 @@ impl QuillConfig {
                 ),
             );
         }
-        if schema.inline.is_some() && !matches!(schema.r#type, FieldType::RichText { .. }) {
-            return err(
-                "quill::inline_not_supported",
-                format!(
-                    "Field '{owner}' declares 'inline' but is not type: richtext. \
-                     'inline' is only valid on richtext fields."
-                ),
-            );
-        }
+        // `inline` on a non-richtext field is rejected earlier and once, when
+        // `from_quill_value` folds the wire key into the `FieldType` enum
+        // (`resolve_richtext_inline`); no second check belongs here.
 
         match schema.r#type {
             FieldType::Object => {
