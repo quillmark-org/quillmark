@@ -572,11 +572,26 @@ struct GlyphHit {
 /// [`collect_page_hits`], sharing [`walk_items`]' geometry. Foreign and
 /// unresolvable ink is skipped (no corpus address), so unlike the region scan
 /// it emits nothing for them.
-fn walk_glyphs(frame: &Frame, page: usize, cls: &mut Classifier, out: &mut Vec<GlyphHit>) {
+///
+/// `only` restricts emission to a single `(window, seg)` — the caret path knows
+/// its target segment up front, so it skips the box arithmetic and the
+/// `GlyphHit` allocation for every other glyph in the document. `None` emits all
+/// classified+resolved ink (the point-hit path needs the full set).
+fn walk_glyphs(
+    frame: &Frame,
+    page: usize,
+    cls: &mut Classifier,
+    only: Option<(usize, Option<usize>)>,
+    out: &mut Vec<GlyphHit>,
+) {
     walk_items(frame, Transform::identity(), page, &mut |page, span, offset, aabb| {
-        if let (Some((w, seg)), Some((_, node))) =
-            (cls.classify_seg(span), cls.resolve_range(span))
-        {
+        let Some((w, seg)) = cls.classify_seg(span) else {
+            return;
+        };
+        if only.map_or(false, |t| t != (w, seg)) {
+            return;
+        }
+        if let Some((_, node)) = cls.resolve_range(span) {
             out.push(GlyphHit {
                 page,
                 rect: aabb(),
@@ -615,7 +630,7 @@ pub(crate) fn position_at(
 
     let mut cls = Classifier::new(world, helper, windows);
     let mut hits = Vec::new();
-    walk_glyphs(frame, page, &mut cls, &mut hits);
+    walk_glyphs(frame, page, &mut cls, None, &mut hits);
 
     // Later-painted content ink wins; scalar/structural ink (no segment) has no
     // corpus position to report.
@@ -684,7 +699,9 @@ pub(crate) fn locate(
     let mut cls = Classifier::new(world, helper, windows);
     let mut hits = Vec::new();
     for (page, p) in doc.pages().iter().enumerate() {
-        walk_glyphs(&p.frame, page, &mut cls, &mut hits);
+        // Only this field's target segment allocates a hit — the caret needs no
+        // other ink.
+        walk_glyphs(&p.frame, page, &mut cls, Some((wi, Some(seg_idx))), &mut hits);
     }
 
     // The glyph of this segment whose node covers `target_gen`, its caret byte
@@ -693,7 +710,6 @@ pub(crate) fn locate(
     // near a run edge still resolves. `min_by_key` keeps the first on ties.
     let g = hits
         .iter()
-        .filter(|g| g.window == wi && g.seg == Some(seg_idx))
         .min_by_key(|g| {
             let covers = g.node.start <= target_gen && target_gen < g.node.end;
             let caret = g.node.start + g.offset as usize;
