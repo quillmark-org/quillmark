@@ -20,14 +20,14 @@
 //!   and for storage.
 //! - [`import`] — markdown → corpus (normalize → pulldown → corpus).
 //! - [`export`] — corpus → markdown, per island loss class.
-//! - [`change_log`] — monotonic revision + bounded per-field delta ring
-//!   (phase 3 PR-C); composed [`change_log::ChangeLog::map_pos`].
+//! - [`change_log`] — monotonic revision + bounded per-field delta ring;
+//!   composed [`change_log::ChangeLog::map_pos`].
 //! - [`delta`] — the per-field edit surface: a text-splice change set
 //!   (`retain`/`insert`/`delete`, CodeMirror `ChangeSet` semantics) plus the
 //!   cold-parse + corpus-diff stale-text writer with a block-move detector. The
 //!   text-splice channel is the positional core; mark and line-attribute edits
-//!   are separate op channels (phase 3), not op attributes — see [`delta`].
-//! - [`ops`] — mark and line op channels (phase 3 PR-D):
+//!   are separate op channels, not op attributes — see [`delta`].
+//! - [`ops`] — mark and line op channels:
 //!   [`RichText::apply_text_delta`], [`apply_mark_ops`](RichText::apply_mark_ops),
 //!   [`apply_line_ops`](RichText::apply_line_ops).
 //! - [`normalize`] — the markdown-string input primitive (line endings, bidi

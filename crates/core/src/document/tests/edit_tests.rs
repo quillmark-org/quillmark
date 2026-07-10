@@ -525,7 +525,7 @@ fn test_card_set_body() {
     assert_eq!(card.body_markdown(), "Card body text.\n");
 }
 
-// ── Card richtext body writers (PR-E) ────────────────────────────────────────
+// ── Card richtext body writers ───────────────────────────────────────────────
 
 /// A body markdown import past the container-nesting limit now returns
 /// `EditError::BodyImport` instead of silently degrading to the empty corpus.

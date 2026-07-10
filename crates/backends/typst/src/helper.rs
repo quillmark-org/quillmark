@@ -34,8 +34,7 @@ const LIB_TYP_TEMPLATE: &str = include_str!("lib.typ.template");
 /// the emitter's per-segment [`SegmentMap`]s rebased so every `gen` range
 /// indexes the returned `lib.typ` directly. Every glyph the block places carries
 /// a span that resolves into `block`; the world layer pairs it with the helper's
-/// `FileId` for the span scan, and (from Phase 3) the segments key regions to
-/// corpus ranges.
+/// `FileId` for the span scan, and the segments key regions to corpus ranges.
 pub struct ContentMap {
     pub path: String,
     pub block: Range<usize>,
@@ -173,8 +172,7 @@ impl<'m> Codegen<'m> {
     }
 
     /// Lower one richtext field's corpus JSON to a `#let` content block, or an
-    /// empty string literal for a blank corpus (matching the pre-corpus empty-
-    /// content behavior — an empty field emitted `""`, not a block). A value that
+    /// empty string literal (`""`, not a block) for a blank corpus. A value that
     /// is not a valid corpus (never produced by the seam) degrades to its value
     /// literal; no render path re-parses markdown. A nesting-bound violation is
     /// recorded on `self.emit_error` and surfaced by `generate_lib_typ`.
@@ -217,8 +215,8 @@ impl<'m> Codegen<'m> {
 
     /// The `$cards` array literal. Each card of a string `$kind` gets its
     /// per-kind ordinal `$path` prefix injected and its content/date fields
-    /// transformed; a card with no string `$kind` passes through as a value
-    /// literal (matching the template's former card loop, which skipped it).
+    /// transformed; a card with no string `$kind` passes through untouched as
+    /// a value literal, assigned no ordinal or `$path`.
     fn emit_cards(&mut self, cards: &[serde_json::Value]) -> String {
         let mut ordinals: HashMap<String, usize> = HashMap::new();
         let mut out = Vec::with_capacity(cards.len());
@@ -494,10 +492,10 @@ mod tests {
         assert_eq!(&lib[windows[0].block.clone()], block);
     }
 
-    /// The mandated segment-map offset check (PR-E step 4): every recorded
-    /// `segment.gen` indexes the generated `lib.typ`, and every run's `gen`
-    /// slices the escape of its corpus substring — the source map is byte-
-    /// accurate against the emitted source, not just the emitter's own markup.
+    /// The segment-map offset check: every recorded `segment.gen` indexes the
+    /// generated `lib.typ`, and every run's `gen` slices the escape of its
+    /// corpus substring — the source map is byte-accurate against the emitted
+    /// source, not just the emitter's own markup.
     #[test]
     fn segment_maps_index_the_generated_lib_typ() {
         let meta = meta_from(serde_json::json!({ "properties": { "intro": richtext_field() } }));

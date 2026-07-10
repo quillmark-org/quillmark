@@ -167,8 +167,7 @@ pub type PayloadV0_93_0 = PayloadV0_92_0;
 
 /// A card body embedded as the **canonical richtext corpus**. Its serde *is* the
 /// frozen canonical serializer (`quillmark_richtext::serial`), delegated to — not
-/// a hand-mirrored DTO tree that could drift from the phase-1 golden-bytes
-/// freeze:
+/// a hand-mirrored DTO tree that could drift from the frozen wire format:
 ///
 /// - `Serialize` emits the recursively key-sorted structure byte-identical to
 ///   `content_key(&self.0)` as a **nested JSON object**, never an escaped string.

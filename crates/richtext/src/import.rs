@@ -7,7 +7,7 @@
 //! parsed with `pulldown_cmark` (CommonMark + strikethrough + pipe tables) and
 //! walked into a [`RichText`].
 //!
-//! ## Phase-1 canonicalizations (documented, not bugs)
+//! ## Canonicalizations (documented, not bugs)
 //!
 //! Import maps some distinct markdown to one canonical corpus. All of them, in
 //! one place:
@@ -27,8 +27,8 @@
 //!   line so the structure survives, rather than vanishing.
 //! - **Island ids are minted sequentially** (`isl-0`, `isl-1`, …) so import is a
 //!   pure, deterministic function. Real minting (the hash-nondeterminism source)
-//!   is phase 4; sequential ids round-trip (export drops them, re-import
-//!   re-mints the same sequence).
+//!   is not yet implemented; sequential ids round-trip (export drops them,
+//!   re-import re-mints the same sequence).
 //! - **Tables and images are islands.** Tables are block islands (their own
 //!   `Island` line); images are inline island slots. Both `Lossless` — pipe
 //!   tables and `![alt](url)` carry them faithfully.
@@ -46,8 +46,8 @@ use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 use serde_json::json;
 use std::ops::Range;
 
-/// Import errors. Phase-1 surface is just the nesting guard (mirrors the typst
-/// backend's `ConversionError::NestingTooDeep`).
+/// Import errors: just the nesting guard (mirrors the typst backend's
+/// `ConversionError::NestingTooDeep`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportError {
     /// Container nesting exceeded [`MAX_NESTING_DEPTH`].

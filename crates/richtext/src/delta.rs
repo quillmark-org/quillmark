@@ -14,15 +14,15 @@
 //! map and cannot represent overlapping same-kind marks or two distinct
 //! identity anchors over one range, the exact algebra the corpus model keeps
 //! (Peritext free overlap + identity handles). Editing marks and line/block
-//! attributes are their own op channels (phase 3), not attributes on this delta.
-//! The positional channel stays isomorphic to a text CRDT's op stream (the
-//! phase-4 collab target).
+//! attributes are their own op channels, not attributes on this delta. The
+//! positional channel stays isomorphic to a text CRDT's op stream — the shape
+//! real-time collaborative editing would need.
 //!
-//! Phase 1 delivered diff + rebase + a **move detector**; phase 3 PR-B tightens
-//! [`diff`] to a Myers/LCS minimal edit script. The live delta transport
-//! (revision, bounded change log) is phase 3 PR-C — see [`crate::change_log`].
-//! Position mapping follows CodeMirror's `ChangeDesc.mapPos` / ProseMirror
-//! mapping semantics.
+//! [`diff`] computes a Myers/LCS minimal edit script and pairs it with a
+//! **move detector** that re-homes an anchor across a verbatim block move. The
+//! live delta transport — a monotonic revision plus a bounded change log —
+//! lives in [`crate::change_log`]. Position mapping follows CodeMirror's
+//! `ChangeDesc.mapPos` / ProseMirror mapping semantics.
 //!
 //! ## The move weak spot (documented limit)
 //!
@@ -36,6 +36,7 @@
 
 use crate::model::{Mark, MarkKind, RichText};
 use similar::{ChangeTag, TextDiff};
+use std::borrow::Cow;
 
 /// A per-field edit against a base corpus. Ops apply left-to-right, consuming
 /// base positions; `Retain`/`Delete` advance the base cursor, `Insert` adds new
@@ -84,6 +85,26 @@ impl Delta {
                 Op::Insert(_) => 0,
             })
             .sum()
+    }
+
+    /// Pad a *short* delta — one whose ops consume less base than `base_len` —
+    /// with a trailing [`Op::Retain`] over the untouched remainder, so a splice
+    /// that names only the region it changes (a bare prepend of a single
+    /// `Insert`, an edit near the start) applies against the whole base instead
+    /// of tripping [`try_apply`](Self::try_apply)'s base-length check. A delta
+    /// that already covers the base is returned unchanged; one that *overruns*
+    /// it (`expected_base_len() > base_len`) is left to fail as a genuine
+    /// [`BaseLengthMismatch`], since a delta consuming more base than exists is
+    /// built against the wrong revision, not merely abbreviated.
+    pub fn extend_to_base(&self, base_len: usize) -> Cow<'_, Delta> {
+        let consumed = self.expected_base_len();
+        if consumed < base_len {
+            let mut ops = self.ops.clone();
+            ops.push(Op::Retain(base_len - consumed));
+            Cow::Owned(Delta { ops })
+        } else {
+            Cow::Borrowed(self)
+        }
     }
 
     /// Apply to `base`, producing the new text. Ignores over-long
@@ -225,9 +246,9 @@ const MIN_MOVE: usize = 4;
 const CHAR_DIFF_LIMIT: usize = 5_000;
 
 /// Char-level Myers/LCS diff over USV: a minimal `Retain` / `Delete` / `Insert`
-/// script. Disjoint edits no longer collapse the span between them into one
-/// delete+insert, so anchors sitting in unchanged middle text survive rebase
-/// without relying on the move detector.
+/// script. Disjoint edits stay separate ops rather than collapsing the span
+/// between them into one delete+insert, so anchors sitting in unchanged middle
+/// text survive rebase without relying on the move detector.
 ///
 /// Single-line text diffs at char granularity; multi-line text diffs at line
 /// granularity so a paragraph reorder surfaces as whole-line insert spans the
@@ -326,8 +347,8 @@ fn push_insert(ops: &mut Vec<Op>, s: &str) {
 /// the diff (re-homing verbatim block moves). The returned corpus is `new_rt`
 /// (structure/marks/islands from the fresh import) plus the surviving anchors.
 ///
-/// Returns the new corpus and the [`Delta`] used (the change log entry a phase-3
-/// revision would record).
+/// Returns the new corpus and the [`Delta`] used — the entry
+/// [`crate::change_log::ChangeLog::record`] would log for this edit.
 pub fn diff_import(
     base: &RichText,
     new_markdown: &str,
@@ -466,6 +487,30 @@ mod tests {
         // A point before the insert is unmoved; after it shifts by 2.
         assert_eq!(d.map_pos(2, Assoc::After), 2);
         assert_eq!(d.map_pos(4, Assoc::Before), 6);
+    }
+
+    #[test]
+    fn extend_to_base_pads_short_delta() {
+        // A bare prepend gains a trailing retain over the untouched remainder.
+        let short = Delta {
+            ops: vec![Op::Insert("NEW ".into())],
+        };
+        let padded = short.extend_to_base(5);
+        assert!(matches!(padded, Cow::Owned(_)));
+        assert_eq!(padded.expected_base_len(), 5);
+        assert_eq!(padded.apply("hello"), "NEW hello");
+
+        // A base-covering delta is returned untouched, no clone.
+        let full = Delta {
+            ops: vec![Op::Retain(5)],
+        };
+        assert!(matches!(full.extend_to_base(5), Cow::Borrowed(_)));
+
+        // An over-long delta is left alone to fail at `try_apply`.
+        let over = Delta {
+            ops: vec![Op::Retain(9)],
+        };
+        assert!(matches!(over.extend_to_base(5), Cow::Borrowed(_)));
     }
 
     #[test]

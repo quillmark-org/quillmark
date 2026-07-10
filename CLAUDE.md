@@ -1,6 +1,6 @@
 # Quillmark
 
-Schema-driven document engine: Markdown + YAML card metadata → a fully typeset PDF/SVG/PNG via a Typst backend. Crates: `core` (parsing/schema/traits), `quillmark` (orchestration), `backends/typst`, `bindings/{python,wasm,cli}`, `fixtures` (test Quills).
+Schema-driven document engine: Markdown + YAML card metadata → a rendered PDF/SVG/PNG via a Typst or PDF-form backend. Crates: `core` (parsing/schema/traits), `quillmark` (orchestration), `richtext` (the `RichText` corpus content model + the workspace's only markdown parser), `backends/typst`, `backends/pdfform`, `quillmark-pdf` (Typst-free AcroForm stamp spine), `bindings/{python,wasm,cli}`, `fixtures` (test Quills), `fuzz` (property-based tests).
 
 Design docs: [`prose/canon/INDEX.md`](prose/canon/INDEX.md)
 

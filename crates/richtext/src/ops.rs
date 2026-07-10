@@ -1,7 +1,7 @@
 //! Mark and line op channels — structural edits separate from text splices.
 //!
-//! Phase 3 PR-D: [`MarkOp`] and [`LineOp`] apply after [`RichText::apply_text_delta`]
-//! in one bundle; mark ranges are in post-delta coordinates. Line split/join
+//! [`MarkOp`] and [`LineOp`] apply after [`RichText::apply_text_delta`] in one
+//! bundle; mark ranges are in post-delta coordinates. Line split/join
 //! also splice `\n` in `text`; position mapping through the change log still
 //! composes [`Delta::map_pos`](crate::delta::Delta::map_pos) on the text delta
 //! channel — record `\n` edits there when mapping stale positions.
@@ -105,6 +105,11 @@ impl RichText {
         }
 
         let old_chars: Vec<char> = self.text.chars().collect();
+        // A splice may name only the region it changes: pad a short delta with a
+        // trailing retain over the untouched remainder so a bare prepend applies
+        // against the whole corpus. An over-long delta still fails the check.
+        let extended = delta.extend_to_base(old_chars.len());
+        let delta = extended.as_ref();
         let old_lines = self.lines.clone();
         let new_text = delta
             .try_apply(&self.text)
@@ -472,6 +477,33 @@ mod tests {
             .unwrap();
         assert_eq!((strong.start, strong.end), (2, 5));
         assert_eq!(rt.text, "hXello");
+    }
+
+    #[test]
+    fn apply_text_delta_pads_short_prepend() {
+        // A bare prepend names only its inserted text (no trailing retain); it
+        // still splices against the whole corpus rather than failing the base
+        // check (regression for the `applyFieldDelta` delta-path).
+        let mut rt = from_markdown("hello").unwrap();
+        rt.apply_text_delta(&Delta {
+            ops: vec![Op::Insert("NEW ".into())],
+        })
+        .unwrap();
+        assert_eq!(rt.text, "NEW hello");
+    }
+
+    #[test]
+    fn apply_text_delta_rejects_over_long_delta() {
+        // Consuming more base than exists is a wrong-revision delta, not an
+        // abbreviated one — it still fails closed.
+        let mut rt = from_markdown("hi").unwrap();
+        assert!(matches!(
+            rt.apply_text_delta(&Delta {
+                ops: vec![Op::Retain(99)],
+            }),
+            Err(ApplyError::DeltaBaseMismatch { .. })
+        ));
+        assert_eq!(rt.text, "hi");
     }
 
     #[test]

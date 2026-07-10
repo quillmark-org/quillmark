@@ -6,7 +6,7 @@
 //! § Codecs). Anchors carry no markdown encoding, so dropping them here is by
 //! design, not loss.
 //!
-//! The contract phase 1 pins is the **corpus fixed point**: for a corpus `rt`
+//! The contract this crate pins is the **corpus fixed point**: for a corpus `rt`
 //! obtained from [`crate::import::from_markdown`],
 //! `from_markdown(to_markdown(rt)) == rt` modulo island loss class — markdown
 //! source is not canonical, but the corpus is, so round-trip is defined at the
@@ -24,8 +24,8 @@
 //!   blank-then-forced-break syntax, so the leading empty line is dropped.
 //!
 //! Both arise only from adversarial delimiter/break placement, never from clean
-//! markdown or a form editor. Hardening them is deferred (a phase-3 concern once
-//! a live editor defines what it can even produce).
+//! markdown or a form editor. Hardening them is deferred until a live editor
+//! defines what it can even produce.
 
 use crate::model::{Container, Island, LineKind, Loss, MarkKind, RichText, ISLAND_SLOT};
 
@@ -505,7 +505,7 @@ fn render_marked_core(
             stack.push(fi);
         }
         // A link is emitted atomically as [text](url); its display text carries
-        // plain content (nested marks in link text are out of scope for phase 1).
+        // plain content (nested marks in link text are not supported).
         if let Some(&(ls, le, url)) = links.iter().find(|(s, _, _)| *s == pos) {
             out.push('[');
             out.push_str(&escape_run(&chars[ls..le], escape_pipe));
@@ -724,7 +724,7 @@ mod tests {
     use crate::import::from_markdown;
     use crate::model::{Line, Mark};
 
-    /// The phase-1 contract: export∘import is the identity on the corpus (modulo
+    /// The contract: export∘import is the identity on the corpus (modulo
     /// island loss class, which our test islands don't trigger).
     fn round_trips(md: &str) {
         let rt = from_markdown(md).unwrap();
@@ -952,10 +952,10 @@ mod tests {
     // Issue #848: markdown export fixed-point violations.
     // ---------------------------------------------------------------------
 
-    /// The exact #848 repro: `strong[0,4)` + `emph[2,6)` over "abcdef" used to
-    /// export as `**ab*cdef*`, which re-imports as LITERAL `**abcdef` text — a
-    /// silent content change. It must now export balanced markdown that preserves
-    /// the text. The two marks share the `*` delimiter character, so their
+    /// The exact #848 repro: `strong[0,4)` + `emph[2,6)` over "abcdef" must
+    /// export balanced markdown that preserves the text, not `**ab*cdef*`,
+    /// which re-imports as LITERAL `**abcdef` text (a silent content change).
+    /// The two marks share the `*` delimiter character, so their
     /// overlap is unrepresentable in CommonMark (a reopened `*` abutting `**`
     /// merges into `***`); the export nests them by truncation, a documented
     /// codec limit — text intact, the crossing tail of the inner mark dropped.
@@ -1060,7 +1060,7 @@ mod tests {
 
     /// Issue #848 part 2: a literal `&` (or an entity-shaped `&amp;`) must not
     /// re-import as the decoded entity. `from_markdown("\\&amp;")` yields corpus
-    /// text "&amp;"; exporting it unescaped as `&amp;` used to re-import as "&".
+    /// text "&amp;"; exporting it unescaped as `&amp;` would re-import as "&".
     #[test]
     fn ampersand_and_entities_round_trip() {
         // A bare `&` and an entity-shaped run both survive.
@@ -1078,7 +1078,7 @@ mod tests {
 
     /// Issue #848 part 3: heading text ending in a `#` run must not re-import as
     /// an ATX closing sequence. `from_markdown("# a \\#")` yields heading text
-    /// "a #"; exporting it as `# a #` used to re-import as "a", dropping the `#`.
+    /// "a #"; exporting it as `# a #` would re-import as "a", dropping the `#`.
     #[test]
     fn heading_trailing_hash_round_trips() {
         let rt = from_markdown("# a \\#").unwrap();

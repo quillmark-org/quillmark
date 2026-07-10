@@ -1,10 +1,10 @@
 //! Bounded per-field change log with monotonic revision and composed
 //! [`Delta::map_pos`](crate::delta::Delta::map_pos).
 //!
-//! Phase 3 PR-C/D: the live session records text splices, mark ops, and line ops
-//! per schema field. Consumers map a position captured at revision *N* forward
-//! through edits *N+1…*; entries older than the ring buffer are dropped —
-//! callers that fall behind re-read at [`ChangeLog::revision`].
+//! The live session records text splices, mark ops, and line ops per schema
+//! field. Consumers map a position captured at revision *N* forward through
+//! edits *N+1…*; entries older than the ring buffer are dropped — callers that
+//! fall behind re-read at [`ChangeLog::revision`].
 
 use std::collections::VecDeque;
 

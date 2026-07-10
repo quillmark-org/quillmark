@@ -64,7 +64,7 @@ typst:
 
 ## `main` Section
 
-The main document card holds **root-block field schemas** under `main.fields`. Optional `main.description` describes the schema itself (independent of `quill.description`, which describes the quill package). Optional `main.ui` sets container-level UI for that card. `quill.ui` is merged with `main.ui` when building the main card.
+The main document card holds **root-block field schemas** under `main.fields`. Optional `main.description` describes the schema itself (independent of `quill.description`, which describes the quill package). Optional `main.ui` sets container-level UI for that card. `quill.ui` is a fallback for `main.ui`, not a merge: any `main.ui` — even an empty `ui: {}` — wins wholesale, and `quill.ui` applies only when `main.ui` is absent.
 
 Field order under `main.fields` determines display order in UIs — the first field gets `order: 0`, the second gets `order: 1`, and so on.
 
@@ -90,6 +90,7 @@ main:
 | `ui`          | object            | no       | UI rendering hints (see [UI Properties](#ui-properties)) |
 | `items`       | object            | for `array` | Element schema for an `array` field (a nested field schema). Required on every array. |
 | `properties`  | object            | for `object` | Nested field schemas for an `object` typed dictionary (or an array's `object`-typed `items`). Required on every `object` field. |
+| `inline`      | boolean           | no       | For `richtext` only: constrain the corpus to a single paragraph (a one-line editor surface). |
 
 ### Field Types
 
@@ -101,7 +102,7 @@ main:
 | `boolean`  | `true` or `false` |
 | `array`    | Ordered list; requires an `items:` element schema |
 | `datetime` | Bare `YYYY-MM-DD` through full RFC 3339 with offset |
-| `markdown` | Rich text; backends convert to target format |
+| `richtext` | Rich prose over a canonical corpus; backends lower it to the target format. Markdown is its import/export projection. Add `inline: true` for the single-paragraph variant |
 | `object`   | Structured map; requires a `properties:` map |
 
 ### Enum Constraints
@@ -139,7 +140,7 @@ main:
     sections:
       type: array
       items:
-        type: markdown   # each element is converted to backend markup
+        type: richtext   # each element's corpus is lowered to backend markup
 ```
 
 For a **typed table** — a list of structured rows — give `items` an `object` type with its own `properties:`. Coercion recurses into each element and converts property values to their declared types:
@@ -253,13 +254,13 @@ main:
 
 ### `multiline`
 
-Controls the initial size of the text input for `string` and `markdown` fields. When `true`, the UI starts with a larger text box instead of a single-line input:
+Controls the initial size of the text input for `string` and `richtext` fields. When `true`, the UI starts with a larger text box instead of a single-line input:
 
 ```yaml
 main:
   fields:
     summary:
-      type: markdown
+      type: richtext
       description: Executive summary
       ui:
         multiline: true   # start as a larger text box
@@ -271,12 +272,12 @@ main:
         multiline: true
 
     tagline:
-      type: markdown
+      type: richtext
       description: One-sentence tagline
       # no multiline — single-line input that expands on demand
 ```
 
-Meaningful on `string` and `markdown` fields; ignored on other types.
+Meaningful on `string` and `richtext` fields; ignored on other types.
 
 ---
 

@@ -115,7 +115,7 @@ pub struct RenderedRegion {
     /// region produced outside a live session (a one-shot
     /// [`RenderOptions::regions`](crate::RenderOptions) sidecar) or straight
     /// from a backend. Additive-optional: omitted from the wire when `None`, so
-    /// this stamp does not break the phase-2 region shape.
+    /// a region lacking `revision` still deserializes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision: Option<u64>,
 }
@@ -187,9 +187,10 @@ mod tests {
     }
 
     /// `span` and `revision` are both omitted when `None` and default back on
-    /// read — the additive-optional discipline that let Phase 3 append
-    /// `revision` without a wire break, and that keeps a backend-emitted region
-    /// (no session, no revision) parsing as a phase-2 region did.
+    /// read — the additive-optional discipline that lets a new field append
+    /// without a wire break, and that keeps a backend-emitted region (no
+    /// session, no revision) parsing the same as the earlier region shape
+    /// lacking `span`/`revision`.
     #[test]
     fn optional_fields_omitted_when_none() {
         let region = RenderedRegion {

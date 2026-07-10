@@ -2,7 +2,7 @@
 //! attributes, anchored marks, and embedded islands, over a single coordinate
 //! space of Unicode scalar values (Rust `char`).
 //!
-//! This is the phase-1 freeze (issue #831): the mark set, the three
+//! This is the freeze (issue #831): the mark set, the three
 //! normalization rules, and the invariants are what canonical serialization
 //! commits to. Everything an editor disagrees on (edge-expand,
 //! adjacent-merge-at-insertion) is *not* encoded — the model only ever stores
@@ -105,8 +105,8 @@ pub enum Container {
         ordinal: u64,
     },
     /// A block quote. Adjacent lines sharing `[Quote]` are one multi-paragraph
-    /// quote; phase 1 does not distinguish two adjacent separate quotes (they
-    /// merge on round-trip — a documented canonicalization).
+    /// quote; two adjacent separate quotes are not distinguished (they merge on
+    /// round-trip — a documented canonicalization).
     Quote,
 }
 
@@ -152,8 +152,8 @@ pub enum MarkKind {
 /// embed — occupying one [`ISLAND_SLOT`] in the corpus.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Island {
-    /// Minted, `$id`-style stable id. The single source of hash
-    /// nondeterminism once islands mint (phase 4); text stays deterministic.
+    /// Minted, `$id`-style stable id — once islands mint their own ids, this
+    /// becomes the sole source of hash nondeterminism; text stays deterministic.
     pub id: String,
     /// Island type discriminator (`"table"`, `"image"`, …). Unknown types
     /// round-trip opaque.

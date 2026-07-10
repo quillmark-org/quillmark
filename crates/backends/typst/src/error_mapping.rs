@@ -137,9 +137,9 @@ mod tests {
         Some(Quill::from_tree(tree).expect("load source"))
     }
 
-    /// An unresolvable span with no Typst-supplied hint carries none — the
-    /// former eval-specific synthetic hint is retired now that content rides
-    /// resolvable markup blocks rather than an ephemeral eval source.
+    /// An unresolvable span with no Typst-supplied hint carries none — content
+    /// rides resolvable markup blocks rather than an ephemeral eval source, so
+    /// there is no synthetic hint to fall back to.
     #[test]
     fn unresolvable_span_without_typst_hint_carries_no_hint() {
         let Some(world) = fixture_world() else {
@@ -187,7 +187,7 @@ mod tests {
 
     /// A resolvable eval error keeps its real source location: the error
     /// resolves to the call site, so the mapped diagnostic carries a location.
-    /// (Issue #745; moved here from the retired `eval_error_hint.rs`.)
+    /// (Issue #745.)
     #[test]
     fn resolvable_eval_error_is_unchanged() {
         let Some(source) = source_with_plate(EVAL_ERROR_PLATE) else {
