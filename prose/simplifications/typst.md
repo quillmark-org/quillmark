@@ -13,16 +13,6 @@ delimiter change must land twice. Fix: give `wraps_and_codes` the clip bounds
 mark ranges to the segment window — parameterize carefully and pin with the
 round-trip tests.
 
-### emit.rs:139 — `gen_cluster` re-derives escape structure from generated text
-
-The scan re-parses the backend's own output (`\/\/` coupling, `\X`, `\u{..}`),
-duplicating knowledge encoded in `escape_markup`/`escape_string`; agreement is
-maintained only by the `escape_tripwire` tests, and
-`invert_gen_offset`/`forward_corpus_offset` correctness rides on the pairing.
-Deeper form: the emitter records the cluster table (corpus-chars, byte-len
-pairs) at generation time so the scan reads structure. The no-stored-table
-design is a documented deliberate tradeoff — weigh the memory cost first.
-
 ### span_scan.rs:557 vs span_scan.rs:272 — `walk_glyphs` duplicates `collect_page_hits`
 
 ~60 lines of identical frame-walk geometry (`Group` transform recursion,

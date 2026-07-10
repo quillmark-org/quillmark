@@ -10,20 +10,6 @@ single-pass cursor rewrite is possible but the interleaving of retain/insert
 with the template-clone rule has edge cases on malformed corpora; semantics
 need pinning by tests before restructuring.
 
-### ops.rs:330, ops.rs:391 — `sync_lines_for_delta` / `sync_islands_for_delta` are twins
-
-The same Retain/Delete char-walk over `old_chars`, differing only in sentinel
-(`\n` vs `ISLAND_SLOT`) and action. A fix to the walk must land twice. Fix: one
-shared walk parameterized by sentinel handler — mechanical but restructures the
-delta-apply path.
-
-_Assessed and deferred (2026-07):_ the genuinely shared skeleton is only the
-bounded per-char advance (`for op … if old >= len break`), ~10 lines; the
-per-op actions diverge hard (lines rebuild structure on `Insert`; islands
-ignore it), and the two closures both mutate captured state, so sharing needs a
-`trait DeltaWalk` + generic walker whose cost exceeds the dedup. Revisit only if
-a third consumer of the same walk appears.
-
 ### ops.rs:221 — `apply_field_change` normalizes three times
 
 `apply_text_delta`, `apply_line_ops`, and `apply_mark_ops` each end with
@@ -64,13 +50,17 @@ implicit trailing retain the documented contract of `try_apply` itself.
 
 ### import.rs:512 — the `MarkdownFixer` erases the `<u>`/`Strong` distinction it owns
 
-The fixer rewrites `<u>`/`</u>` into `Strong` events; both downstream
-consumers then sniff raw source bytes to recover the distinction, and the two
-peeks already disagree with the fixer's `is_u_open_tag` whitespace handling
-(`< u >` classifies as Strong at the peek, Underline at the fixer). Fix: the
-fixer emits the distinction explicitly (wrapper event or `MarkKind`), deleting
-both peeks. The low-risk helper extraction above narrows the drift but not the
-altitude.
+The fixer rewrites `<u>`/`</u>` into `Strong` events; both downstream consumers
+(`Tag::Strong` at import.rs:526 and the table-cell path at import.rs:689) then
+re-sniff raw source bytes via `strong_or_underline` to recover the distinction.
+That peek's 2-byte `<u`-prefix test and the fixer's `is_u_open_tag` (trim +
+inner `== "u"`) are two hand-synced encodings of one rule that classify a tag
+like `<ul>` oppositely; only the fixer's gate — which never converts `<ul>` to
+`Strong` — keeps that divergence from reaching the peek today. Fix: the fixer
+emits the distinction explicitly (wrapper event or `MarkKind`), deleting both
+peeks. The shared `strong_or_underline` helper already narrows the drift but not
+the altitude — the distinction is still recovered from source bytes rather than
+carried.
 
 ### change_log.rs:77, change_log.rs:169 — unused `ChangeLog` surface
 

@@ -4,11 +4,11 @@ All entries need judgment — each spans crates or changes a contract.
 
 ### Every apply round-trips each richtext value through the canonical codec three times
 
-Per `apply`/`applyFieldDelta`: `to_data_json` serializes the
+Per `apply`/`applyFieldDelta`: `to_plate_json` serializes the
 already-normalized body via `to_canonical_value` (clone + normalize + build
-tree + `sorted_value` rebuild — `core/src/document/mod.rs:346`), coercion
+tree + `sorted_value` rebuild — `core/src/document/mod.rs:382`), coercion
 re-parses with `from_canonical_value` and re-serializes
-(`core/src/quill/config.rs:382`), and backend codegen parses a third time
+(`core/src/quill/config.rs:405`), and backend codegen parses a third time
 before `emit_richtext` (`backends/typst/src/helper.rs:180`). ~3 full
 parse/serialize + normalize passes over every corpus per keystroke preview
 recompile. Fix: treat a corpus emitted by `to_canonical_value` as already
