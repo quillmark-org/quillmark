@@ -32,6 +32,50 @@ pub(crate) fn import_body(md: &str) -> Result<RichText, ImportError> {
     }
 }
 
+/// Which encoding a [`decode_richtext_value`] failure came from, so a call site
+/// can prefix its diagnostic per encoding without re-deriving the dispatch.
+pub(crate) enum RichtextDecodeError {
+    /// A JSON object that is not a valid canonical corpus.
+    NotCorpus(String),
+    /// A markdown string that failed to import.
+    BadMarkdown(String),
+}
+
+impl RichtextDecodeError {
+    /// The inner failure message, without an encoding-specific prefix.
+    pub(crate) fn into_message(self) -> String {
+        match self {
+            RichtextDecodeError::NotCorpus(m) | RichtextDecodeError::BadMarkdown(m) => m,
+        }
+    }
+}
+
+/// Decode a JSON value in either accepted richtext encoding: a canonical corpus
+/// **object** ([`from_canonical_value`](quillmark_richtext::serial::from_canonical_value))
+/// or an authored markdown **string** (via [`import_body`], the single markdown
+/// boundary). The one place the object-vs-string dispatch lives; a call site
+/// handles the shapes that are neither — `null`, array, scalar — and maps the
+/// error into its own type.
+///
+/// - `Some(Ok(rt))` — decoded.
+/// - `Some(Err(e))` — an object that is not a corpus, or a string that failed
+///   to import; `e` names the encoding so the caller can prefix its message.
+/// - `None` — the value is neither an object nor a string.
+pub(crate) fn decode_richtext_value(
+    value: &serde_json::Value,
+) -> Option<Result<RichText, RichtextDecodeError>> {
+    match value {
+        serde_json::Value::Object(_) => Some(
+            quillmark_richtext::serial::from_canonical_value(value)
+                .map_err(|e| RichtextDecodeError::NotCorpus(e.to_string())),
+        ),
+        serde_json::Value::String(md) => {
+            Some(import_body(md).map_err(|e| RichtextDecodeError::BadMarkdown(e.to_string())))
+        }
+        _ => None,
+    }
+}
+
 pub mod assemble;
 pub mod dto;
 pub mod edit;
@@ -344,7 +388,7 @@ impl Document {
         );
 
         // The seam carries the body as canonical RichText-JSON (Option A): a
-        // nested corpus object, byte-identical to `content_key`, never a lossy
+        // nested corpus object, byte-identical to `to_canonical_json`, never a lossy
         // markdown string. Backends lower the corpus (typst → markup + source
         // map; pdfform → `.text`); the markdown projection is `body_markdown`.
         map.insert(

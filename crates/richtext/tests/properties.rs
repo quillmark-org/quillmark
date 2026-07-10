@@ -10,15 +10,12 @@
 //!    insensitive to mark/island discovery order.
 //! 3. **Diff-import preserves identity marks** — an anchor over text that
 //!    survives a rewrite is carried forward.
-//! 4. **USV boundary** — char↔UTF-16 round-trips at char boundaries; a
-//!    mid-surrogate index rounds down.
 
 use proptest::prelude::*;
 use quillmark_richtext::delta::diff_import;
 use quillmark_richtext::export::to_markdown;
 use quillmark_richtext::import::from_markdown;
 use quillmark_richtext::model::{Line, Mark, MarkKind};
-use quillmark_richtext::usv::{char_to_utf16, utf16_to_char};
 use quillmark_richtext::{Delta, LineKind, LineOp, MarkOp, Op, RichText};
 
 // ---------------------------------------------------------------------------
@@ -260,27 +257,6 @@ proptest! {
         prop_assert_eq!(&new_rt.text[anchor.start..anchor.end], a.as_str());
     }
 
-    /// Property 4a: char↔UTF-16 round-trips at every char boundary.
-    #[test]
-    fn usv_round_trip(s in ".{0,64}") {
-        let n = s.chars().count();
-        for i in 0..=n {
-            let u = char_to_utf16(&s, i);
-            prop_assert_eq!(utf16_to_char(&s, u), i, "char {} of {:?}", i, s);
-        }
-    }
-
-    /// Property 4b: a mid-surrogate UTF-16 index rounds down to its owning char.
-    #[test]
-    fn usv_mid_surrogate_rounds_down(prefix in "[a-z]{0,8}") {
-        // 😀 is a surrogate pair; the index just after its first unit must round
-        // down to the emoji's char index.
-        let s = format!("{prefix}😀x");
-        let emoji_char = prefix.chars().count();
-        let u_before = char_to_utf16(&s, emoji_char);
-        // u_before + 1 lands mid-pair.
-        prop_assert_eq!(utf16_to_char(&s, u_before + 1), emoji_char);
-    }
 }
 
 // ---------------------------------------------------------------------------

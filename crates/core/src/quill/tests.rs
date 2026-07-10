@@ -2939,7 +2939,6 @@ fn inline_richtext_single_line_example_loads_and_caches_corpus() {
     .expect("single-line inline example loads");
     let field = config.main.fields.get("tag").unwrap();
     assert_eq!(field.r#type, FieldType::RichText { inline: true });
-    assert_eq!(field.inline, Some(true));
     // The load pass imports the markdown example into its corpus companion; the
     // authored `example` string is retained untouched (Alternative A).
     let corpus = field

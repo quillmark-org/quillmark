@@ -381,6 +381,12 @@ impl QuillConfig {
                 // be single-`Para` (`richtext(inline)`): editors mount a one-line
                 // surface, so multi-block content is a coercion error here, in
                 // lockstep with the validation-layer `richtext::not_inline` check.
+                //
+                // This is the deliberately-lenient sibling of
+                // `document::decode_richtext_value` (used by the strict wire /
+                // literal / validation sites): the string branch below reduces a
+                // bare scalar or length-1 array to text before importing, which
+                // the strict decoder must not do, so it stays open-coded here.
                 let inline_check =
                     |rt: &quillmark_richtext::RichText| -> Result<(), CoercionError> {
                         if inline && !rt.is_inline() {
@@ -562,15 +568,9 @@ impl QuillConfig {
                 ),
             );
         }
-        if schema.inline.is_some() && !matches!(schema.r#type, FieldType::RichText { .. }) {
-            return err(
-                "quill::inline_not_supported",
-                format!(
-                    "Field '{owner}' declares 'inline' but is not type: richtext. \
-                     'inline' is only valid on richtext fields."
-                ),
-            );
-        }
+        // `inline` on a non-richtext field is rejected earlier and once, when
+        // `from_quill_value` folds the wire key into the `FieldType` enum
+        // (`resolve_richtext_inline`); no second check belongs here.
 
         match schema.r#type {
             FieldType::Object => {
@@ -1645,19 +1645,25 @@ fn literal_corpus(
     }
     match &field.r#type {
         FieldType::RichText { inline } => {
-            let rt = if let Some(s) = json.as_str() {
-                quillmark_richtext::import::from_markdown(s).map_err(|e| {
-                    richtext_literal_error(label, &format!("markdown import failed: {e}"))
-                })?
-            } else if json.is_object() {
-                quillmark_richtext::serial::from_canonical_value(json).map_err(|e| {
-                    richtext_literal_error(label, &format!("not a valid richtext corpus: {e}"))
-                })?
-            } else {
-                return Err(richtext_literal_error(
-                    label,
-                    "expected a markdown string (richtext literals are authored as markdown)",
-                ));
+            let rt = match crate::document::decode_richtext_value(json) {
+                Some(Ok(rt)) => rt,
+                Some(Err(e)) => {
+                    let reason = match e {
+                        crate::document::RichtextDecodeError::BadMarkdown(m) => {
+                            format!("markdown import failed: {m}")
+                        }
+                        crate::document::RichtextDecodeError::NotCorpus(m) => {
+                            format!("not a valid richtext corpus: {m}")
+                        }
+                    };
+                    return Err(richtext_literal_error(label, &reason));
+                }
+                None => {
+                    return Err(richtext_literal_error(
+                        label,
+                        "expected a markdown string (richtext literals are authored as markdown)",
+                    ));
+                }
             };
             if *inline && !rt.is_inline() {
                 return Err(richtext_inline_error(label));

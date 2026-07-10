@@ -492,9 +492,10 @@ impl Card {
     /// session change log passes the same `text_delta`, `line_ops`, and
     /// `mark_ops` to
     /// [`record_field_change_at`](crate::LiveSession::record_field_change_at).
-    /// Returns [`EditError::CorpusApply`] when an op is out of bounds; the body
-    /// is unchanged on error only up to the failing op — apply the bundle
-    /// against a body at the delta's base revision.
+    /// Returns [`EditError::CorpusApply`] when an op is out of bounds; the apply
+    /// is all-or-nothing ([`RichText::apply_field_change`]), so the body is
+    /// unchanged on error — apply the bundle against a body at the delta's base
+    /// revision.
     pub fn apply_body_change(
         &mut self,
         text_delta: &Delta,

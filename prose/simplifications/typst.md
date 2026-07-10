@@ -13,23 +13,6 @@ delimiter change must land twice. Fix: give `wraps_and_codes` the clip bounds
 mark ranges to the segment window — parameterize carefully and pin with the
 round-trip tests.
 
-### emit.rs:776 — `clip_wraps_to_codes` duplicates `clip_fmt_to_atomic`
-
-Same edge-pull rule and swallowed-mark drop as
-`richtext/src/export.rs:563` — the #846-class balance invariant enforced by
-two hand-kept copies in two crates. Fix: one range-based clip helper in
-`quillmark-richtext` taking the atomic span set as a parameter (export clips
-against codes+links, emit against codes only); pin behavior with the existing
-round-trip tests.
-
-### emit.rs:330 vs emit.rs:488 — container dispatch duplicated across the two walkers
-
-`emit_block_level` and `emit_item_body` carry byte-identical
-`Container::ListItem`/`Container::Quote` arms (run-end computation +
-recursion); only the leaf arm differs. A new `Container` variant must be
-mirrored in both. Fix: a shared `try_emit_container(range, depth, i)` helper
-both loops call before their own leaf arm — restructures a recursive emitter.
-
 ### emit.rs:139 — `gen_cluster` re-derives escape structure from generated text
 
 The scan re-parses the backend's own output (`\/\/` coupling, `\X`, `\u{..}`),

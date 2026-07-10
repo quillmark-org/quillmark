@@ -316,20 +316,22 @@ fn body_from_wire(body: &JsonValue) -> Result<RichText, WireError> {
         key: "$body".to_string(),
         reason,
     };
-    match body {
-        JsonValue::String(md) => super::import_body(md).map_err(|e| invalid(e.to_string())),
-        JsonValue::Object(_) => quillmark_richtext::serial::from_canonical_value(body)
-            .map_err(|e| invalid(e.to_string())),
-        JsonValue::Null => Ok(RichText::empty()),
-        other => Err(invalid(format!(
-            "expected a richtext corpus object or a markdown string, got {}",
-            match other {
-                JsonValue::Bool(_) => "a boolean",
-                JsonValue::Number(_) => "a number",
-                JsonValue::Array(_) => "an array",
-                _ => "an unsupported value",
-            }
-        ))),
+    match super::decode_richtext_value(body) {
+        Some(result) => result.map_err(|e| invalid(e.into_message())),
+        // `null`/absent is the empty corpus; every other non-decodable shape is
+        // an invalid `$body`.
+        None => match body {
+            JsonValue::Null => Ok(RichText::empty()),
+            other => Err(invalid(format!(
+                "expected a richtext corpus object or a markdown string, got {}",
+                match other {
+                    JsonValue::Bool(_) => "a boolean",
+                    JsonValue::Number(_) => "a number",
+                    JsonValue::Array(_) => "an array",
+                    _ => "an unsupported value",
+                }
+            ))),
+        },
     }
 }
 

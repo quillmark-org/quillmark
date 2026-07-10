@@ -332,24 +332,34 @@ impl<'a> Emit<'a> {
     fn emit_block_level(&mut self, range: Range<usize>, depth: usize) {
         let mut i = range.start;
         while i < range.end {
-            let cont = self.rt.lines[i].containers.get(depth).cloned();
-            match cont {
-                Some(Container::ListItem { ordered, start, .. }) => {
-                    let j = self.list_run_end(range.clone(), depth, ordered, start, i);
-                    self.emit_list(i..j, depth, ordered, start);
-                    i = j;
-                }
-                Some(Container::Quote) => {
-                    let j = self.quote_run_end(range.clone(), depth, i);
-                    self.emit_quote(i..j, depth);
-                    i = j;
-                }
-                None => {
-                    let j = self.segment_end(range.clone(), depth, i);
-                    self.emit_leaf_terminated(i..j);
-                    i = j;
-                }
+            if let Some(j) = self.try_emit_container(range.clone(), depth, i) {
+                i = j;
+                continue;
             }
+            let j = self.segment_end(range.clone(), depth, i);
+            self.emit_leaf_terminated(i..j);
+            i = j;
+        }
+    }
+
+    /// If the block at `i` opens a list or quote container at `depth`, emit the
+    /// whole run and return its end index; return `None` for a leaf, leaving the
+    /// caller to emit it under its own discipline (top-level terminated vs list
+    /// item body). The container dispatch shared by [`Self::emit_block_level`]
+    /// and [`Self::emit_item_body`].
+    fn try_emit_container(&mut self, range: Range<usize>, depth: usize, i: usize) -> Option<usize> {
+        match self.rt.lines[i].containers.get(depth).cloned() {
+            Some(Container::ListItem { ordered, start, .. }) => {
+                let j = self.list_run_end(range.clone(), depth, ordered, start, i);
+                self.emit_list(i..j, depth, ordered, start);
+                Some(j)
+            }
+            Some(Container::Quote) => {
+                let j = self.quote_run_end(range.clone(), depth, i);
+                self.emit_quote(i..j, depth);
+                Some(j)
+            }
+            _ => None,
         }
     }
 
@@ -492,35 +502,25 @@ impl<'a> Emit<'a> {
         let mut first_block = true;
         let mut i = range.start;
         while i < range.end {
-            let cont = self.rt.lines[i].containers.get(content_depth).cloned();
-            match cont {
-                Some(Container::ListItem { ordered, start, .. }) => {
-                    let j = self.list_run_end(range.clone(), content_depth, ordered, start, i);
-                    self.emit_list(i..j, content_depth, ordered, start);
-                    i = j;
-                }
-                Some(Container::Quote) => {
-                    let j = self.quote_run_end(range.clone(), content_depth, i);
-                    self.emit_quote(i..j, content_depth);
-                    i = j;
-                }
-                None => {
-                    let j = self.segment_end(range.clone(), content_depth, i);
-                    if !first_block {
-                        // Continuation block: the previous block left one `\n`;
-                        // this adds a second plus the indent → blank line + indent.
-                        self.out.push('\n');
-                        self.out.push_str(&cont_indent);
-                        self.end_newline = false;
-                    }
-                    self.emit_segment(i..j);
-                    if !self.end_newline {
-                        self.out.push('\n');
-                        self.end_newline = true;
-                    }
-                    i = j;
-                }
+            if let Some(j) = self.try_emit_container(range.clone(), content_depth, i) {
+                i = j;
+                first_block = false;
+                continue;
             }
+            let j = self.segment_end(range.clone(), content_depth, i);
+            if !first_block {
+                // Continuation block: the previous block left one `\n`; this adds
+                // a second plus the indent → blank line + indent.
+                self.out.push('\n');
+                self.out.push_str(&cont_indent);
+                self.end_newline = false;
+            }
+            self.emit_segment(i..j);
+            if !self.end_newline {
+                self.out.push('\n');
+                self.end_newline = true;
+            }
+            i = j;
             first_block = false;
         }
     }
@@ -760,26 +760,15 @@ fn wrap_open(kind: &MarkKind) -> String {
     }
 }
 
-/// Clip wrapping marks so none crosses the interior of an atomic code span. A
-/// wrap edge landing strictly inside a `[cs, ce)` code span is pulled to that
-/// span's boundary (`start`→`ce`, `end`→`cs`); a wrap swallowed whole by a code
-/// span collapses and drops. `#raw(...)` is atomic and cannot carry partial
-/// styling, so a partial wrap/code overlap becomes the wrap over the text
-/// *outside* the code — and, crucially, no wrap `end` is left hiding inside a
-/// code span the sweep's cursor jumps over (start→end atomically), which is what
-/// produced unbalanced markup for `strong[0,4)` + `code[2,6)`. A wrap whose
-/// range strictly contains a code span keeps both edges (neither is interior),
-/// so the code nests inside it as before.
+/// Clip wrapping marks so none crosses the interior of an atomic `#raw(...)`
+/// code span (`start`→`ce`, `end`→`cs`), then drop any wrap a span swallowed
+/// whole. Enforces the #846 balance via the shared
+/// [`clip_range_to_atomic`](quillmark_richtext::export::clip_range_to_atomic) —
+/// the same rule this crate's inline emitter and richtext's export both apply,
+/// here against code spans only (export also clips against link text).
 fn clip_wraps_to_codes(wraps: &mut Vec<Wrap>, codes: &[(usize, usize)]) {
-    for &(cs, ce) in codes {
-        for w in wraps.iter_mut() {
-            if cs < w.start && w.start < ce {
-                w.start = ce;
-            }
-            if cs < w.end && w.end < ce {
-                w.end = cs;
-            }
-        }
+    for w in wraps.iter_mut() {
+        quillmark_richtext::export::clip_range_to_atomic(&mut w.start, &mut w.end, codes);
     }
     wraps.retain(|w| w.start < w.end);
 }

@@ -466,14 +466,11 @@ fn validate_value(
     // bypassed coercion (e.g. a direct `validate_document`) is still caught.
     if type_valid {
         if let FieldType::RichText { inline: true } = field.r#type {
-            let json = value.as_json();
-            let parsed = if json.is_object() {
-                quillmark_richtext::serial::from_canonical_value(json).ok()
-            } else if let Some(s) = json.as_str() {
-                quillmark_richtext::import::from_markdown(s).ok()
-            } else {
-                None
-            };
+            // A decode failure here is not this layer's error to report (a
+            // mistyped value already raised TypeMismatch); swallow it and only
+            // flag a well-formed corpus that is not single-`Para`.
+            let parsed = crate::document::decode_richtext_value(value.as_json())
+                .and_then(Result::ok);
             if let Some(rt) = parsed {
                 if !rt.is_inline() {
                     errors.push(ValidationError::NotInline {

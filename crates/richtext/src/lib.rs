@@ -32,7 +32,7 @@
 //!   [`apply_line_ops`](RichText::apply_line_ops).
 //! - [`normalize`] — the markdown-string input primitive (line endings, bidi
 //!   strip, HTML-comment fence repair), applied at the import boundary.
-//! - [`usv`] — coordinate conversions across the UTF-8 / UTF-16 / USV boundary.
+//! - [`usv`] — USV → UTF-8 byte-offset conversion for slicing the corpus.
 
 pub mod change_log;
 pub mod delta;

@@ -573,17 +573,32 @@ fn render_marked_core(
 /// would be missed and left unbalanced (the #846 shape). A wrap that strictly
 /// *contains* a span keeps both edges, so the span still nests inside it.
 fn clip_fmt_to_atomic(fmt: &mut Vec<(usize, usize, &MarkKind)>, atomics: &[(usize, usize)]) {
-    for &(cs, ce) in atomics {
-        for m in fmt.iter_mut() {
-            if cs < m.0 && m.0 < ce {
-                m.0 = ce;
-            }
-            if cs < m.1 && m.1 < ce {
-                m.1 = cs;
-            }
-        }
+    for m in fmt.iter_mut() {
+        clip_range_to_atomic(&mut m.0, &mut m.1, atomics);
     }
     fmt.retain(|m| m.0 < m.1);
+}
+
+/// The #846 balance rule for a single `[*start, *end)` range against a set of
+/// atomic spans. A range edge landing strictly inside an atomic `[cs, ce)` span
+/// is pulled to that span's boundary (`start`→`ce`, `end`→`cs`); an edge outside
+/// every span is untouched. An atomic span can't carry partial styling, and a
+/// mark-sweep cursor jumps a span's interior start→end, so an edge left hiding
+/// inside would be missed and render unbalanced. A range that strictly *contains*
+/// a span keeps both edges, so the span still nests inside it. Applying the spans
+/// in sequence is order-independent across ranges, so a caller may loop ranges
+/// or spans on the outside — a range whose edges cross after clipping (swallowed
+/// whole) is left empty for the caller to drop. Shared by this crate's export
+/// and the Typst backend's inline emitter, the two sites that enforce #846.
+pub fn clip_range_to_atomic(start: &mut usize, end: &mut usize, atomics: &[(usize, usize)]) {
+    for &(cs, ce) in atomics {
+        if cs < *start && *start < ce {
+            *start = ce;
+        }
+        if cs < *end && *end < ce {
+            *end = cs;
+        }
+    }
 }
 
 /// Nest `strong`/`emph` marks that partially overlap, by truncating the

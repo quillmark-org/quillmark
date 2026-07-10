@@ -106,12 +106,12 @@ impl RichText {
 }
 
 /// The canonical richtext form as a structural [`Value`] — the recursively
-/// key-sorted tree [`content_key`] renders to bytes. A storage layer embeds
-/// this as a nested object (never an escaped string): serializing the returned
-/// value with `serde_json` is byte-identical to [`content_key`]
-/// (`to_canonical_value(rt).to_string() == content_key(rt)`), independent of the
-/// consumer's `preserve_order` feature. Normalizes a copy first, so the value is
-/// canonical whatever the caller's mark/island order.
+/// key-sorted tree [`RichText::to_canonical_json`] renders to bytes. A storage
+/// layer embeds this as a nested object (never an escaped string): serializing
+/// the returned value with `serde_json` is byte-identical to that JSON
+/// (`to_canonical_value(rt).to_string() == rt.to_canonical_json()`), independent
+/// of the consumer's `preserve_order` feature. Normalizes a copy first, so the
+/// value is canonical whatever the caller's mark/island order.
 pub fn to_canonical_value(rt: &RichText) -> Value {
     let mut rt = rt.clone();
     rt.normalize();
@@ -447,13 +447,6 @@ fn loss_from_str(s: &str) -> Loss {
         // value the reader can't interpret "carries faithfully".
         _ => Loss::Unrepresentable,
     }
-}
-
-/// Content-hash key: the canonical JSON, byte-for-byte. Exposed so a storage
-/// layer hashes the same bytes it serializes. `_` prefix-free name kept
-/// stable — part of the determinism contract.
-pub fn content_key(rt: &RichText) -> String {
-    rt.to_canonical_json()
 }
 
 #[cfg(test)]
