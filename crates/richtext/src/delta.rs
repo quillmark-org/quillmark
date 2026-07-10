@@ -36,6 +36,7 @@
 
 use crate::model::{Mark, MarkKind, RichText};
 use similar::{ChangeTag, TextDiff};
+use std::borrow::Cow;
 
 /// A per-field edit against a base corpus. Ops apply left-to-right, consuming
 /// base positions; `Retain`/`Delete` advance the base cursor, `Insert` adds new
@@ -84,6 +85,26 @@ impl Delta {
                 Op::Insert(_) => 0,
             })
             .sum()
+    }
+
+    /// Pad a *short* delta — one whose ops consume less base than `base_len` —
+    /// with a trailing [`Op::Retain`] over the untouched remainder, so a splice
+    /// that names only the region it changes (a bare prepend of a single
+    /// `Insert`, an edit near the start) applies against the whole base instead
+    /// of tripping [`try_apply`](Self::try_apply)'s base-length check. A delta
+    /// that already covers the base is returned unchanged; one that *overruns*
+    /// it (`expected_base_len() > base_len`) is left to fail as a genuine
+    /// [`BaseLengthMismatch`], since a delta consuming more base than exists is
+    /// built against the wrong revision, not merely abbreviated.
+    pub fn extend_to_base(&self, base_len: usize) -> Cow<'_, Delta> {
+        let consumed = self.expected_base_len();
+        if consumed < base_len {
+            let mut ops = self.ops.clone();
+            ops.push(Op::Retain(base_len - consumed));
+            Cow::Owned(Delta { ops })
+        } else {
+            Cow::Borrowed(self)
+        }
     }
 
     /// Apply to `base`, producing the new text. Ignores over-long
@@ -466,6 +487,30 @@ mod tests {
         // A point before the insert is unmoved; after it shifts by 2.
         assert_eq!(d.map_pos(2, Assoc::After), 2);
         assert_eq!(d.map_pos(4, Assoc::Before), 6);
+    }
+
+    #[test]
+    fn extend_to_base_pads_short_delta() {
+        // A bare prepend gains a trailing retain over the untouched remainder.
+        let short = Delta {
+            ops: vec![Op::Insert("NEW ".into())],
+        };
+        let padded = short.extend_to_base(5);
+        assert!(matches!(padded, Cow::Owned(_)));
+        assert_eq!(padded.expected_base_len(), 5);
+        assert_eq!(padded.apply("hello"), "NEW hello");
+
+        // A base-covering delta is returned untouched, no clone.
+        let full = Delta {
+            ops: vec![Op::Retain(5)],
+        };
+        assert!(matches!(full.extend_to_base(5), Cow::Borrowed(_)));
+
+        // An over-long delta is left alone to fail at `try_apply`.
+        let over = Delta {
+            ops: vec![Op::Retain(9)],
+        };
+        assert!(matches!(over.extend_to_base(5), Cow::Borrowed(_)));
     }
 
     #[test]
