@@ -201,4 +201,53 @@ describe('spike: corpus-native richtext + bidirectional nav (usaf_memo)', () => 
       session.free()
     }
   })
+
+  it('setBody(corpus) sets the body corpus with no markdown (#874)', async () => {
+    const doc = buildDoc(quill)
+    const NEW = {
+      islands: [],
+      text: 'Replaced body via setBody.',
+      lines: [{ kind: 'para', containers: [] }],
+      marks: [{ start: 0, end: 8, type: 'strong' }]
+    }
+    doc.setBody(NEW)
+    // The mutator commits the corpus in place — read it straight back.
+    expect(doc.main.body.text).toBe('Replaced body via setBody.')
+    const session = await engine.open(quill, doc)
+    try {
+      const body = session.regions().find((r) => r.field === '$body' && r.span)
+      expect(body, 'setBody corpus renders a $body region').toBeTruthy()
+    } finally {
+      session.free()
+    }
+  })
+
+  it('applyFieldDelta / mapFieldPos / revision drive an incremental $body edit (#876)', async () => {
+    const doc = buildDoc(quill)
+    const session = await engine.open(quill, doc)
+    try {
+      expect(session.revision).toBe(0)
+
+      // A form caret sitting at USV 15 (start of "BOLD") before the edit.
+      const caretBefore = 15
+      // Prepend "NEW " with a text-splice delta (CodeMirror ChangeSet semantics).
+      const delta = { ops: [{ insert: 'NEW ' }, { retain: BODY.text.length }] }
+      const cs = session.applyFieldDelta(doc, '$body', 0, delta)
+
+      expect(cs.dirtyPages).toContain(0)
+      expect(session.revision).toBe(1)
+      // doc is mutated in place across the WASM seam.
+      expect(doc.main.body.text.startsWith('NEW ')).toBe(true)
+      // The pre-edit caret maps forward past the 4-char insert.
+      const mapped = session.mapFieldPos('$body', 0, caretBefore, 'after')
+      expect(mapped).toBe(caretBefore + 4)
+      console.log(`[spike] revision ${session.revision}; mapped ${caretBefore} -> ${mapped}`)
+
+      // A stale base revision is rejected transactionally (revision unchanged).
+      expect(() => session.applyFieldDelta(doc, '$body', 0, delta)).toThrow()
+      expect(session.revision).toBe(1)
+    } finally {
+      session.free()
+    }
+  })
 })

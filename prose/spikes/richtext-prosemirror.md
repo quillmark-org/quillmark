@@ -6,6 +6,26 @@ feedback. It wires a **ProseMirror editor directly onto the `RichText` corpus**
 (no markdown transport) with **bidirectional editor⇄preview navigation**, over
 the airmark-quiver `usaf_memo` quill migrated to `richtext`.
 
+## Update — all five filed issues addressed (PR #879)
+
+The friction below drove five issues, all since fixed on `integration/richtext`
+and integrated back into the spike:
+
+| Finding (§) | Issue | Fix |
+| --- | --- | --- |
+| §1 no public delta/position map | #876 | `applyFieldDelta` / `mapFieldPos` / `revision` now on the public `LiveSession` |
+| §2 no body-corpus mutator | #874 | `Document.setBody(corpus)` |
+| §3 richtext flips Typst `str`→`content` | #873 | `plaintext(field)` plate helper + migration-hazard docs |
+| §4 inline richtext → parbreak | #872 | `richtext(inline)` lowers to inline content |
+| §6 stale wasm TS types | #875 | `type: … | richtext` (not `markdown`); `RichTextLine` gains `rule` |
+
+The spike now consumes the new surface: `session.ts` sets the body with
+`setBody` (no DTO round-trip) and forwards `applyFieldDelta`/`mapFieldPos`/
+`revision`; `spike-richtext.test.js` exercises `setBody` (#874) and an
+incremental `$body` delta with forward caret mapping (#876); the `usaf_memo`
+render is now warning-free (#872). The findings below are kept as the original
+report; the table above records their resolution.
+
 ## What was built (and where)
 
 - **quillmark** — WASM built from this branch (`build-wasm.sh --ci`, v0.92.2-dev).
