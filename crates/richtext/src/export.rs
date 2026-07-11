@@ -55,6 +55,13 @@ pub fn to_markdown(rt: &RichText) -> String {
 /// every mark and island (tables, images have no plaintext projection), keeping
 /// only literal text. Callers that want a non-empty result should check for the
 /// empty string themselves.
+///
+/// Tables (and images) having no plaintext form is a **decided limitation**, not
+/// an oversight (issue #880): the pdfform backend fills a form field from this
+/// projection, so a field bound to a table-bearing corpus renders the surrounding
+/// text and silently omits the table. A degraded row/tab dump was rejected — it
+/// would read as a faithful table and mislead — so the projection drops the
+/// island outright. Revisit only if a form field ever needs tabular fill.
 pub fn to_plaintext(rt: &RichText) -> String {
     rt.text.chars().filter(|&c| c != ISLAND_SLOT).collect()
 }
