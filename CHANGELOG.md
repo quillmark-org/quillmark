@@ -22,6 +22,29 @@
   fence's interior), so a caret UI trusts a `cluster` offset for the caret and
   treats a `segment` one as a segment selection instead of guessing. Additive-
   optional, omitted from the wire when the backend does not report it (#884)
+- fix(wasm): `LiveSession.applyFieldDelta`'s `field` param gains a named
+  `DeltaFieldAddress` alias documenting its actual domain (`"$body"` or a
+  richtext field on the main card — dynamic, not a finite literal set) instead
+  of a bare `string` the doc prose alone explained. `Engine.supportsCanvas` and
+  `LiveSession.supportsCanvas` gain doc comments cross-referencing each other:
+  the two are spelled identically but answer different questions (a
+  pre-session backend estimate vs. this compile's authoritative answer, which
+  can diverge — e.g. a 0-page document) — the divergence is now visible where
+  each is used instead of only discoverable at runtime (#883)
+- fix(core): drop two rustdoc intra-doc links from public items
+  (`RichtextDecodeError`, `Card::set_field_richtext`) to the private
+  `decode_richtext_value`, which `-D rustdoc::private-intra-doc-links` (part of
+  the lint gate) rejects since the link can never resolve for a doc reader;
+  reworded to a plain code span, matching the existing convention elsewhere in
+  the same file for referencing a private helper from public docs
+- test(wasm): fix two `applyFieldDelta` tests left stale by the #881 un-gate.
+  `canvas.test.js` still asserted the old hard `$body`-only rejection message;
+  updated to the current `FieldRichtextDecode` error. `runtime.test.js`
+  asserted that targeting a plain-string field (`title`) throws — but
+  `field_richtext` decodes any string as authored markdown regardless of
+  intent (`Document` carries no schema to tell richtext from string), so that
+  call actually succeeds; switched the probe to an absent field, which does
+  exercise the rejection
 - fix(wasm): drop the `revision?` field from the public `CorpusHit`/`FieldRegion`
   types and the broken `{@link LiveSession.mapFieldPos}` / `.revision` references
   in `runtime.d.ts`. The delta API (`applyFieldDelta`/`revision`/`mapFieldPos`) is

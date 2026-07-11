@@ -511,11 +511,17 @@ describe('LiveSession revision stamp + applyFieldDelta (PR-F/PR-G)', () => {
     session.free()
   })
 
-  it('rejects a non-body field as a delta-path target', () => {
+  it('rejects a delta-path target with no richtext field to splice into', () => {
     const { engine, quill } = openQuill()
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const session = engine.open(quill, doc)
-    expect(() => session.applyFieldDelta(doc, 'subject', 0, prepend('x'))).toThrow(/\$body/)
+    // `subject` un-gated to the richtext-field path (#881), but TEST_MARKDOWN's
+    // payload carries no such field, so it still throws — now via
+    // FieldRichtextDecode ("field is absent") rather than the old hard
+    // "$body only" gate.
+    expect(() => session.applyFieldDelta(doc, 'subject', 0, prepend('x'))).toThrow(
+      /FieldRichtextDecode/,
+    )
     session.free()
   })
 

@@ -388,6 +388,38 @@ mod tests {
         assert_eq!(back, card, "nested fill must survive Card → wire → Card");
     }
 
+    /// A richtext field stored as a canonical corpus object rides the wire
+    /// **structurally and losslessly** — the same opaque-JSON `Field` carrier as
+    /// any object value, so identity marks (an `underline` with no markdown
+    /// projection) survive Card → wire → Card. This is the lossless carrier the
+    /// card-yaml markdown projection (emit) deliberately is not.
+    #[test]
+    fn card_wire_round_trips_corpus_field_losslessly() {
+        use quillmark_richtext::model::{Mark, MarkKind};
+
+        let mut card = Card::new("note").unwrap();
+        let mut corpus = quillmark_richtext::import::from_markdown("underlined intro").unwrap();
+        corpus.marks.push(Mark {
+            start: 0,
+            end: 10,
+            kind: MarkKind::Underline,
+        });
+        corpus.normalize();
+        let json = quillmark_richtext::serial::to_canonical_value(&corpus);
+        card.set_field_richtext("intro", &json, false).unwrap();
+
+        let wire = CardWire::from(&card);
+        // Carried as the corpus object, verbatim — not a markdown projection.
+        let as_json = serde_json::to_value(&wire).unwrap();
+        assert!(as_json["payloadItems"][0]["value"].is_object());
+
+        let back = Card::try_from(wire).expect("wire → card");
+        assert_eq!(back, card, "corpus field must survive Card → wire → Card");
+        // Underline (corpus-only, no markdown form) is intact after the round-trip.
+        let read = back.field_richtext("intro").unwrap().unwrap();
+        assert!(read.marks.iter().any(|m| matches!(m.kind, MarkKind::Underline)));
+    }
+
     /// A field-and-comment card with `$kind` round-trips Card → wire → Card.
     #[test]
     fn card_wire_round_trips_fields_and_comment() {

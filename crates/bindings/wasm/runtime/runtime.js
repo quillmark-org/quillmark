@@ -339,9 +339,13 @@ export class Engine {
 	}
 
 	/**
-	 * Whether `quill`'s backend can paint sessions to a canvas. Same ALWAYS-free
-	 * probe as `supportedFormats`: answered from the descriptor's required
-	 * `canvas` manifest, no load and no clone.
+	 * Whether `quill`'s BACKEND can paint sessions to a canvas — a pre-session
+	 * ESTIMATE, not a fact about any particular compile. Same ALWAYS-free probe
+	 * as `supportedFormats`: answered from the descriptor's required `canvas`
+	 * manifest, no load and no clone. A specific compile can still refuse to
+	 * paint (e.g. a 0-page document), so this can answer `true` while the
+	 * resulting `LiveSession.supportsCanvas` answers `false` — gate mounting a
+	 * canvas UI on this, gate the actual `paint` call on the session's getter.
 	 * @param {Quill} quill
 	 * @returns {Promise<boolean>}
 	 */
@@ -420,9 +424,10 @@ export class LiveSession {
 	 * `doc` is mutated **in place** to carry the edit (the same contract the
 	 * native path has), bridged across the WASM linear-memory seam: the splice
 	 * runs on a transient backend-memory clone, and on success the mutated state
-	 * is written back into the canonical `doc` (via `Document.loadJson`). This
-	 * phase targets the main body only (`field === "$body"`); any other address
-	 * throws — use `apply(doc)` for those.
+	 * is written back into the canonical `doc` (via `Document.loadJson`). `field`
+	 * is typed to what this phase actually accepts — see
+	 * `import('./runtime.d.ts').DeltaFieldAddress` — use `apply(doc)` for any
+	 * other address.
 	 *
 	 * `baseRevision` must equal the current `revision`; a mismatch throws
 	 * `session::revision_mismatch` and changes nothing (neither the preview nor
@@ -433,7 +438,7 @@ export class LiveSession {
 	 * production consumer; the shape may change in any 0.x release. `apply(doc)`
 	 * is the stable edit path.
 	 * @param {Document} doc
-	 * @param {string} field
+	 * @param {import('./runtime.d.ts').DeltaFieldAddress} field
 	 * @param {number} baseRevision
 	 * @param {import('./runtime.d.ts').Delta} delta
 	 * @returns {import('./runtime.d.ts').ChangeSet}
@@ -480,6 +485,16 @@ export class LiveSession {
 	get backendId() {
 		return this.#inner.backendId;
 	}
+	/**
+	 * `true` iff `paint`/`pageSize` will succeed for THIS compile — the
+	 * authoritative answer, derived from the session's canvas seam, so it can
+	 * never disagree with what `paint` actually does. This can be `false` even
+	 * when `Engine.supportsCanvas` answered `true` for the same `quill` (that
+	 * probe is a pre-session backend estimate; e.g. a canvas-capable backend
+	 * compiled to a 0-page document has nothing to paint). Re-check this getter
+	 * after `open()` rather than relying on the engine hint alone.
+	 * @returns {boolean}
+	 */
 	get supportsCanvas() {
 		return this.#inner.supportsCanvas;
 	}
