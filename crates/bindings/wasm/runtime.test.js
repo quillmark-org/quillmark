@@ -11,7 +11,14 @@
  * Aliased to pkg/runtime/runtime.js in vitest.config.js.
  */
 import { describe, it, expect, beforeAll } from 'vitest'
-import { Quill, Document, Engine, isQuillmarkError } from '@quillmark-wasm/runtime'
+import {
+  Quill,
+  Document,
+  Engine,
+  DocumentEditor,
+  CardEditor,
+  isQuillmarkError,
+} from '@quillmark-wasm/runtime'
 // Pin that the runtime's Quill IS the internal core build's class (re-export,
 // not a parallel wrapper). This imports the internal core artifact directly —
 // `pkg/core` is NOT a public package subpath, it is the build the root
@@ -100,6 +107,68 @@ describe('@quillmark/wasm/runtime — surface', () => {
     // regardless of which build or WASM instance constructed it
     const foreign = Object.assign(new Error('x'), { diagnostics: [] })
     expect(isQuillmarkError(foreign)).toBe(true)
+  })
+})
+
+// The typed-editor sugar binds a quill to a document once, so writes are bare
+// `set` / `setAll` / `card(i).set` — the JS twin of Rust's `quill.editor(doc)`,
+// forwarding to the `commit*` verbs (typed for a schema field, opaque otherwise).
+describe('@quillmark/wasm/runtime — DocumentEditor / CardEditor (bind the quill once)', () => {
+  const EDITOR_QUILL_YAML = `quill:
+  name: editor_test
+  version: "1.0"
+  backend: typst
+  description: Typed editor sugar test
+
+main:
+  fields:
+    subject:
+      type: richtext
+      inline: true
+    qty:
+      type: integer
+
+card_kinds:
+  note:
+    fields:
+      body:
+        type: richtext
+`
+  const buildQuill = () =>
+    Quill.fromTree(makeQuill({ name: 'editor_test', plate: TEST_PLATE, quillYaml: EDITOR_QUILL_YAML }))
+  const blankDoc = () => Document.fromMarkdown('~~~card-yaml\n$quill: editor_test\n~~~\n\nBody.')
+  const fieldOf = (card, key) =>
+    card.payloadItems.find((i) => i.type === 'field' && i.key === key)?.value
+
+  it('set binds the quill once and routes typed vs opaque', () => {
+    const ed = new DocumentEditor(buildQuill(), blankDoc())
+    expect(ed.set('qty', '3')).toBe('typed') // schema field → strict coerce
+    expect(ed.set('stray', 'x')).toBe('opaque') // unknown → verbatim store
+    expect(fieldOf(ed.document.main, 'qty')).toBe(3)
+    expect(fieldOf(ed.document.main, 'stray')).toBe('x')
+  })
+
+  it('setAll returns the per-field routing record, flagging a typo as opaque', () => {
+    const ed = new DocumentEditor(buildQuill(), blankDoc())
+    const routing = ed.setAll({ qty: '5', titel: 'oops' })
+    expect(routing).toEqual({ qty: 'typed', titel: 'opaque' })
+    expect(fieldOf(ed.document.main, 'qty')).toBe(5)
+  })
+
+  it('card(i).set targets the composable card via its kind schema', () => {
+    const doc = Document.fromMarkdown(
+      '~~~card-yaml\n$quill: editor_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
+    )
+    const ed = new DocumentEditor(buildQuill(), doc)
+    expect(ed.card(0).set('body', 'Card **body**.')).toBe('typed')
+    expect(doc.cardFieldMarkdown(0, 'body')).toBe('Card **body**.\n')
+  })
+
+  it('a bad card index throws at write time, not at card()', () => {
+    const ed = new DocumentEditor(buildQuill(), blankDoc())
+    const cardEd = ed.card(9) // lazy: constructing the CardEditor never throws
+    expect(cardEd).toBeInstanceOf(CardEditor)
+    expect(() => cardEd.set('body', 'x')).toThrow(/IndexOutOfRange/)
   })
 })
 

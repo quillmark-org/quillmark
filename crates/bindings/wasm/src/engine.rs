@@ -1027,6 +1027,33 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
+    /// Batched twin of [`commitField`](Document::commit_field): typed-commit
+    /// several main-card fields atomically, resolving each field's schema `type`
+    /// from `quill`. All-or-nothing with the same per-field-diagnostic error
+    /// contract as [`setFields`](Document::set_fields) — nothing is applied on
+    /// error and the thrown error's `diagnostics` carry one entry per offending
+    /// field.
+    ///
+    /// On success returns a `Record<string, "typed" | "opaque">` keyed by the
+    /// input field names, in input order — the batch form of `commitField`'s
+    /// scalar return, so a whole-form submit still sees which names fell to the
+    /// opaque store (a likely typo) instead of losing that signal to the batch,
+    /// the way [`setFields`](Document::set_fields) does.
+    #[wasm_bindgen(js_name = commitFields, unchecked_return_type = "Record<string, \"typed\" | \"opaque\">")]
+    pub fn commit_fields(
+        &mut self,
+        quill: &Quill,
+        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let batch = js_value_to_field_batch(&fields, "commitFields")?;
+        let routing = quill
+            .inner
+            .editor(&mut self.inner)
+            .set_all(batch)
+            .map_err(edit_errors_to_js)?;
+        committed_batch_to_js(routing, "commitFields")
+    }
+
     /// The markdown projection of a richtext field on the main card
     /// (`export ∘ decode`) — the field-level twin of `main.bodyMarkdown`.
     /// Returns `undefined` when the field is absent or does not decode as
@@ -1190,6 +1217,30 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
+    /// Batched twin of [`commitCardField`](Document::commit_card_field):
+    /// typed-commit several fields on the card at `index` atomically, resolving
+    /// each field's type from the card's `$kind` schema in `quill`. All-or-nothing
+    /// with the same per-field-diagnostic contract as
+    /// [`commitFields`](Document::commit_fields), whose `Record<string, "typed" |
+    /// "opaque">` success shape it mirrors. Throws `[EditError::IndexOutOfRange]`
+    /// when `index` is out of range.
+    #[wasm_bindgen(js_name = commitCardFields, unchecked_return_type = "Record<string, \"typed\" | \"opaque\">")]
+    pub fn commit_card_fields(
+        &mut self,
+        quill: &Quill,
+        index: usize,
+        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let batch = js_value_to_field_batch(&fields, "commitCardFields")?;
+        let mut editor = quill.inner.editor(&mut self.inner);
+        let routing = editor
+            .card(index)
+            .map_err(|e| edit_error_to_js(&e))?
+            .set_all(batch)
+            .map_err(edit_errors_to_js)?;
+        committed_batch_to_js(routing, "commitCardFields")
+    }
+
     /// The markdown projection of a richtext field on the card at `index` — the
     /// card-indexed twin of [`fieldMarkdown`](Document::field_markdown). Returns
     /// `undefined` when `index` is out of range, the field is absent, or it does
@@ -1312,6 +1363,22 @@ fn edit_errors_to_js(errors: Vec<(String, quillmark_core::EditError)>) -> JsValu
         })
         .collect();
     WasmError { diagnostics }.to_js_value()
+}
+
+/// Serialize a batched typed-write routing — one `(name, `[`Committed`]`)` per
+/// field, in input order — to a JS `Record<string, "typed" | "opaque">`. The
+/// batch form of `commitField`'s scalar return: object key order follows the
+/// input (`preserve_order` is on workspace-wide), so a caller reads which names
+/// fell to the opaque store straight off the object.
+fn committed_batch_to_js(
+    routing: Vec<(String, quillmark_core::Committed)>,
+    ctx: &str,
+) -> Result<JsValue, JsValue> {
+    let map: serde_json::Map<String, serde_json::Value> = routing
+        .into_iter()
+        .map(|(name, c)| (name, serde_json::Value::String(c.as_str().to_string())))
+        .collect();
+    serialize_or_throw(&map, ctx)
 }
 
 /// Deserialize a plain JS object into the `(name, value)` batch

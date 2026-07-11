@@ -250,6 +250,58 @@ apply a whole object atomically — on any invalid field nothing is applied and
 the thrown error carries one diagnostic per offending field (`path` = field
 name).
 
+### Typed writes: `commit*` is the default, `set*` is the quill-free primitive
+
+A `Document` holds only a `$quill` *reference*, not the resolved schema, so it
+mutates through two layers:
+
+- **`commit*` — the schema-bound default whenever a quill is in hand.**
+  `doc.commitField(quill, name, value)` / `doc.commitFields(quill, {...})` (and
+  the `commitCard*` twins) resolve each field's schema `type`, coerce the value
+  to its canonical form (`"3"` → `3`, a markdown string → a richtext corpus),
+  and **fail now** on a mismatch instead of at render. The return value reports
+  where the value landed: `"typed"` for a schema field, `"opaque"` for one the
+  schema does not own. The batch form returns that per field —
+  `Record<string, "typed" | "opaque">`, in input order — so a whole-form submit
+  still sees which names fell through to the opaque store (a likely typo), the
+  signal `setFields` discards.
+
+- **`set*` — the deliberate quill-free primitive.** `doc.setField(name, value)`
+  / `doc.setFields({...})` (and the `setCard*` twins) validate only the field
+  name/depth/kind and store the value verbatim, no quill required. Reach for it
+  on purpose when you *want* the opaque store: quill-agnostic storage/migration
+  infra that has no bundle and must write regardless of a drifted schema;
+  store-now-validate-later editors holding in-progress input that `commit`
+  would reject; or verbatim passthrough of fields the schema doesn't own. It is
+  the lower layer, not a lighter `commit` — a typo'd field name stores silently
+  and only surfaces at `quill.validate` / render.
+
+Per-keystroke cost is the same either way (both mutate the in-memory `Document`
+in place; no seam is crossed), so steering to `commit*` buys the type check for
+free.
+
+#### `DocumentEditor` / `CardEditor` — bind the quill once
+
+The `commit*` verbs take the `quill` handle per call (the document carries no
+schema). When you hold both a quill and a document — a form editor, an MCP
+writer — bind them once with the editor sugar and issue bare verbs:
+
+```ts
+import { DocumentEditor } from "@quillmark/wasm";
+
+const ed = new DocumentEditor(quill, doc);          // JS twin of Rust `quill.editor(doc)`
+ed.set("subject", "Q3 results");                    // → "typed"
+const routing = ed.setAll({ qty: "3", titel: "x" }); // → { qty: "typed", titel: "opaque" }
+const typos = Object.entries(routing)
+  .filter(([, r]) => r === "opaque").map(([k]) => k); // ["titel"] — flag in the UI
+ed.card(2).set("body", "**note**");                 // composable card, resolved by its $kind
+```
+
+`DocumentEditor` / `CardEditor` are pure JS holding references to your existing
+`quill` and `doc` — no WASM handle of their own, nothing to `free()`. `card(i)`
+is lazy: it never throws; an out-of-range index throws `IndexOutOfRange` at the
+write.
+
 ### `engine.render(quill, parsed, opts?)` vs. `engine.open(quill, parsed)`
 
 > **Experimental:** the entire session surface — `engine.open`,

@@ -103,7 +103,16 @@ impl<'a> TypedEditor<'a> {
     /// (typed conform or opaque store) before any is applied; on any violation
     /// nothing is written and every offending field is returned as a
     /// `(name, error)` pair.
-    pub fn set_all<K, V, I>(&mut self, fields: I) -> Result<(), Vec<(String, EditError)>>
+    ///
+    /// On success returns one `(name, `[`Committed`]`)` pair per field, in input
+    /// order — the batch form of [`set`](Self::set)'s scalar return, so a caller
+    /// submitting a whole form sees which names fell to the opaque store (a
+    /// likely typo) instead of losing that signal to the batch, the way
+    /// [`Card::set_fields`](crate::Card::set_fields) does.
+    pub fn set_all<K, V, I>(
+        &mut self,
+        fields: I,
+    ) -> Result<Vec<(String, Committed)>, Vec<(String, EditError)>>
     where
         K: Into<String>,
         V: Into<QuillValue>,
@@ -163,8 +172,12 @@ impl CardEditor<'_> {
     }
 
     /// Write several fields on this card atomically — see
-    /// [`TypedEditor::set_all`].
-    pub fn set_all<K, V, I>(&mut self, fields: I) -> Result<(), Vec<(String, EditError)>>
+    /// [`TypedEditor::set_all`], including the per-field [`Committed`] routing
+    /// returned on success.
+    pub fn set_all<K, V, I>(
+        &mut self,
+        fields: I,
+    ) -> Result<Vec<(String, Committed)>, Vec<(String, EditError)>>
     where
         K: Into<String>,
         V: Into<QuillValue>,
@@ -176,12 +189,15 @@ impl CardEditor<'_> {
 
 /// All-or-nothing batched write shared by [`TypedEditor::set_all`] and
 /// [`CardEditor::set_all`]: resolve every field first (collecting every error),
-/// apply none on failure, apply all on success.
+/// apply none on failure, apply all on success. Each field's routing — typed
+/// when it is in `fields_schema`, opaque when it is not — is the same decision
+/// the scalar `set` makes, recorded here so the batch can hand it back rather
+/// than swallow it.
 fn set_all_impl<K, V, I>(
     card: &mut Card,
     fields_schema: Option<&BTreeMap<String, FieldSchema>>,
     fields: I,
-) -> Result<(), Vec<(String, EditError)>>
+) -> Result<Vec<(String, Committed)>, Vec<(String, EditError)>>
 where
     K: Into<String>,
     V: Into<QuillValue>,
@@ -192,22 +208,29 @@ where
         .map(|(k, v)| (k.into(), v.into()))
         .collect();
 
-    let mut resolved: Vec<(String, QuillValue)> = Vec::with_capacity(fields.len());
+    let mut resolved: Vec<(String, QuillValue, Committed)> = Vec::with_capacity(fields.len());
     let mut errors: Vec<(String, EditError)> = Vec::new();
     for (name, value) in fields {
         let schema = fields_schema.and_then(|m| m.get(&name));
+        let routed = if schema.is_some() {
+            Committed::Typed
+        } else {
+            Committed::Opaque
+        };
         match resolve_field_write(&name, value, schema) {
-            Ok(stored) => resolved.push((name, stored)),
+            Ok(stored) => resolved.push((name, stored, routed)),
             Err(e) => errors.push((name, e)),
         }
     }
     if !errors.is_empty() {
         return Err(errors);
     }
-    for (name, stored) in resolved {
-        card.payload_mut().insert(name, stored);
+    let mut routing = Vec::with_capacity(resolved.len());
+    for (name, stored, routed) in resolved {
+        card.payload_mut().insert(name.clone(), stored);
+        routing.push((name, routed));
     }
-    Ok(())
+    Ok(routing)
 }
 
 #[cfg(test)]
@@ -299,13 +322,45 @@ card_kinds:
         assert_eq!(errs[0].0, "subject");
         assert!(doc.main().payload().get("qty").is_none());
 
-        // A clean batch applies every field.
+        // A clean batch applies every field and reports each field's routing
+        // in input order.
         let mut ed = TypedEditor::new(&config, &mut doc);
-        ed.set_all([("qty", "5"), ("subject", "ok")]).unwrap();
+        let routing = ed.set_all([("qty", "5"), ("subject", "ok")]).unwrap();
+        assert_eq!(
+            routing,
+            vec![
+                ("qty".to_string(), Committed::Typed),
+                ("subject".to_string(), Committed::Typed),
+            ]
+        );
         assert_eq!(
             doc.main().payload().get("qty").unwrap().as_json(),
             &serde_json::json!(5)
         );
+    }
+
+    #[test]
+    fn set_all_reports_opaque_fields_on_success() {
+        let config = config();
+        let mut doc = blank_doc();
+        let mut ed = TypedEditor::new(&config, &mut doc);
+        // A whole-form submit with a typo'd name: `qty` is a schema field (typed),
+        // `titel` is not (opaque). The batch succeeds — the opaque field is the
+        // signal a caller uses to flag the probable typo, not lost to the batch.
+        let routing = ed.set_all([("qty", "3"), ("titel", "oops")]).unwrap();
+        assert_eq!(
+            routing,
+            vec![
+                ("qty".to_string(), Committed::Typed),
+                ("titel".to_string(), Committed::Opaque),
+            ]
+        );
+        let opaque: Vec<&str> = routing
+            .iter()
+            .filter(|(_, c)| !c.is_typed())
+            .map(|(n, _)| n.as_str())
+            .collect();
+        assert_eq!(opaque, vec!["titel"]);
     }
 
     #[test]

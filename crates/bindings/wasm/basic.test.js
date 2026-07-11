@@ -684,6 +684,51 @@ card_kinds:
     expect(doc.cardFieldMarkdown(0, 'body')).toBe('Card **body**.\n')
     expect(() => doc.commitCardField(quill, 9, 'body', 'x')).toThrow(/IndexOutOfRange/)
   })
+
+  it('commitFields typed-commits a batch and reports per-field routing', () => {
+    const quill = buildQuill()
+    const doc = blankDoc()
+    const routing = doc.commitFields(quill, { intro: 'A **bold** intro.', qty: '3' })
+    // Both are schema fields → typed, keyed by field name.
+    expect(routing).toEqual({ intro: 'typed', qty: 'typed' })
+    // And the values were coerced, not stored verbatim.
+    expect(doc.fieldMarkdown('intro')).toBe('A **bold** intro.\n')
+    expect(field(doc.main, 'qty')).toBe(3)
+  })
+
+  it('commitFields reports an opaque field on success, so a typo is visible', () => {
+    const quill = buildQuill()
+    const doc = blankDoc()
+    // `qty` is a schema field; `titel` is a typo the schema does not own — it
+    // still stores (opaque), and the routing record surfaces which one, instead
+    // of losing the signal to the batch the way setFields does.
+    const routing = doc.commitFields(quill, { qty: '5', titel: 'oops' })
+    expect(routing).toEqual({ qty: 'typed', titel: 'opaque' })
+    expect(field(doc.main, 'qty')).toBe(5)
+    const opaque = Object.entries(routing).filter(([, r]) => r === 'opaque').map(([n]) => n)
+    expect(opaque).toEqual(['titel'])
+  })
+
+  it('commitFields is all-or-nothing: a bad field aborts the whole batch', () => {
+    const quill = buildQuill()
+    const doc = blankDoc()
+    // `subject` is richtext(inline); a multi-block value violates it, so nothing
+    // is applied — `qty` must not linger.
+    expect(() => doc.commitFields(quill, { qty: '5', subject: 'line one\n\nline two' }))
+      .toThrow(/FieldRichtextNotInline/)
+    expect(hasField(doc.main, 'qty')).toBe(false)
+  })
+
+  it('commitCardFields typed-commits card fields and errors on a bad index', () => {
+    const quill = buildQuill()
+    const doc = Document.fromMarkdown(
+      '~~~card-yaml\n$quill: commit_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
+    )
+    const routing = doc.commitCardFields(quill, 0, { body: 'Card **body**.', stray: 'x' })
+    expect(routing).toEqual({ body: 'typed', stray: 'opaque' })
+    expect(doc.cardFieldMarkdown(0, 'body')).toBe('Card **body**.\n')
+    expect(() => doc.commitCardFields(quill, 9, { body: 'x' })).toThrow(/IndexOutOfRange/)
+  })
 })
 
 describe('Document editor surface — card mutations', () => {

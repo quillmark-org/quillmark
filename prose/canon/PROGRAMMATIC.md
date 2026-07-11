@@ -62,8 +62,32 @@ enforced per mutator call. `set_fields` validates its whole batch before
 applying any of it: on violation nothing is applied and the single error
 carries one diagnostic per offending field with `path` set to the field name —
 externally sourced names (database columns, form keys) surface every violation
-in one pass. Schema validation (types, enums, constraints) is a separate,
-also-batched pass at `Quill::validate` / render.
+in one pass. Schema validation (types, enums, constraints) is a separate pass:
+deferred to `Quill::validate` / render for the opaque store, or pulled forward
+to the write by typed commit (below).
+
+## Two write disciplines: opaque store vs typed commit
+
+Document mutation is a data primitive that never requires a Quill. `set_field` /
+`set_fields` hold only a `$quill` *reference*, enforce the structural invariants
+above, and store the value verbatim — coercion is deferred to render. Typed
+commit is a schema-bound layer over that primitive: `Quill::editor(&mut doc)`
+binds the resolved schema, and its `set` / `set_all` resolve each field's `type`,
+coerce to the canonical form (`"3"` → `3`, a markdown string → a richtext
+corpus), and fail at the write on a mismatch — the default whenever a Quill is
+in hand. Each write reports where it landed (`Committed::{Typed, Opaque}`): a
+schema field commits typed, an unknown name falls to the opaque store, so a typo
+is visible at the write rather than at validation. `set_all` returns that
+decision per field, so a whole-form batch keeps the signal instead of swallowing
+it.
+
+The primitive stays load-bearing — it is what lets a `Document` be constructed
+and `from_json`'d with no bundle (standalone data), what quill-agnostic
+storage/migration infra writes through, and what a store-now-validate-later
+editor uses to hold not-yet-conforming input. Reach for the opaque `set_*` on
+purpose for those; reach for the editor / `commit` by default. The bindings
+mirror this: `commitField` / `commitFields` (+ `commitCard*`) and the JS
+`DocumentEditor` / `CardEditor` sugar over `set*`'s quill-free store.
 
 ## Addressing cards for re-render
 

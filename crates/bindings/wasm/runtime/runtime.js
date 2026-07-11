@@ -509,3 +509,121 @@ export class LiveSession {
 		this.#inner.free();
 	}
 }
+
+// ── Typed-editor sugar: bind the quill once ─────────────────────────────────
+// Rust exposes `quill.editor(&mut doc)` so a caller issues bare `set` / `set_all`
+// without threading the schema per write. The WASM `commit*` verbs can't borrow
+// like that — a `Document` carries only a `$quill` REFERENCE, not the resolved
+// schema, so each `commit*` method takes the `quill` handle as its first
+// argument. These pure-JS classes restore the Rust ergonomics: bind `quill` +
+// `doc` once, then issue `set` / `setAll` / `card(i).set`.
+//
+// They hold JS references to the caller's EXISTING handles — no WASM object of
+// their own, no `free()` burden, no second owner of either handle — and every
+// write delegates straight to the underlying `commit*` verb: a schema field is
+// typed-committed (coerced to canonical form, mismatch throws now), an unknown
+// field falls to the opaque store, and the return value says which (`"typed"` /
+// `"opaque"`, or the per-field record for the batch) so a typo'd name is visible
+// at the write, not buried until validation.
+
+/**
+ * A {@link Document} bound to its {@link Quill} for typed writes — the JS twin
+ * of Rust's `quill.editor(&mut doc)`. Writes target the main card; use
+ * {@link card} for a composable card. Holds both handles by reference and owns
+ * neither, so there is nothing to `free()`.
+ */
+export class DocumentEditor {
+	#quill;
+	#doc;
+	/**
+	 * @param {Quill} quill the schema source for typed commits
+	 * @param {Document} doc the document to mutate, held by reference (not owned)
+	 */
+	constructor(quill, doc) {
+		this.#quill = quill;
+		this.#doc = doc;
+	}
+	/** The bound document — the same instance passed in, mutated in place. */
+	get document() {
+		return this.#doc;
+	}
+	/**
+	 * Typed-commit one main-card field. Returns `"typed"` when the field is in
+	 * the schema (strict coerce, mismatch throws now) or `"opaque"` when it is
+	 * not (stored verbatim). See `Document.commitField`.
+	 * @param {string} name
+	 * @param {unknown} value
+	 * @returns {import('./runtime.d.ts').Committed}
+	 */
+	set(name, value) {
+		return this.#doc.commitField(this.#quill, name, value);
+	}
+	/**
+	 * Typed-commit several main-card fields atomically — nothing is applied on
+	 * error. On success returns the per-field routing
+	 * `Record<string, "typed" | "opaque">`, so a whole-form submit still sees
+	 * which names fell to the opaque store (a likely typo). See
+	 * `Document.commitFields`.
+	 * @param {Record<string, unknown>} fields
+	 * @returns {Record<string, import('./runtime.d.ts').Committed>}
+	 */
+	setAll(fields) {
+		return this.#doc.commitFields(this.#quill, fields);
+	}
+	/**
+	 * A {@link CardEditor} bound to the composable card at `index`. Index
+	 * validity is checked lazily by the underlying write (it throws
+	 * `IndexOutOfRange` at commit time), so constructing one never throws.
+	 * @param {number} index
+	 * @returns {CardEditor}
+	 */
+	card(index) {
+		return new CardEditor(this.#quill, this.#doc, index);
+	}
+}
+
+/**
+ * A single composable card bound to its {@link Quill} for typed writes, from
+ * {@link DocumentEditor.card}. Same `set` / `setAll` verbs as
+ * {@link DocumentEditor}, targeting the card at its bound index.
+ */
+export class CardEditor {
+	#quill;
+	#doc;
+	#index;
+	/**
+	 * @param {Quill} quill the schema source
+	 * @param {Document} doc the document to mutate, held by reference (not owned)
+	 * @param {number} index the composable card's index
+	 */
+	constructor(quill, doc, index) {
+		this.#quill = quill;
+		this.#doc = doc;
+		this.#index = index;
+	}
+	/** The bound card index. */
+	get index() {
+		return this.#index;
+	}
+	/**
+	 * Typed-commit one field on this card. `"typed"` / `"opaque"` per
+	 * `Document.commitCardField`. Throws `IndexOutOfRange` if the bound index
+	 * is out of range.
+	 * @param {string} name
+	 * @param {unknown} value
+	 * @returns {import('./runtime.d.ts').Committed}
+	 */
+	set(name, value) {
+		return this.#doc.commitCardField(this.#quill, this.#index, name, value);
+	}
+	/**
+	 * Typed-commit several fields on this card atomically. Per-field routing
+	 * record on success, per `Document.commitCardFields`. Throws
+	 * `IndexOutOfRange` if the bound index is out of range.
+	 * @param {Record<string, unknown>} fields
+	 * @returns {Record<string, import('./runtime.d.ts').Committed>}
+	 */
+	setAll(fields) {
+		return this.#doc.commitCardFields(this.#quill, this.#index, fields);
+	}
+}
