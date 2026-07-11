@@ -493,6 +493,19 @@ A single line of body ink.`
       expect(chit.field).toBe('$body')
       expect(chit.granularity).toBe('cluster')
 
+      // locate — the corpus-position → caret-rect reverse of positionAt, and the
+      // one documented member this every-member smoke test had been skipping (so
+      // a dropped `locate` delegation would have sailed through it — the exact
+      // #801 bug class). Round-trip the offset positionAt just resolved: locating
+      // $body at that USV position returns a caret rect on the same field/page.
+      expect(typeof session.locate).toBe('function')
+      const caret = session.locate('$body', chit.pos)
+      expect(caret.field).toBe('$body')
+      expect(caret.page).toBe(body.page)
+      expect(caret.rect).toHaveLength(4)
+      // A field that places no tracked content resolves nowhere.
+      expect(session.locate('does_not_exist', 0)).toBeUndefined()
+
       // paint.
       expect(typeof session.paint).toBe('function')
       const ctx = new FakeCanvasRenderingContext2D()
