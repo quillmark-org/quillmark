@@ -16,7 +16,8 @@ use quillmark_richtext::delta::diff_import;
 use quillmark_richtext::export::to_markdown;
 use quillmark_richtext::import::from_markdown;
 use quillmark_richtext::model::{Line, Mark, MarkKind};
-use quillmark_richtext::{Delta, LineKind, LineOp, MarkOp, Op, RichText};
+use quillmark_richtext::{Delta, Island, LineKind, LineOp, Loss, MarkOp, Op, RichText};
+use serde_json::{json, Value};
 
 // ---------------------------------------------------------------------------
 // A constrained markdown generator: combinations of the phase-1 constructs,
@@ -373,6 +374,120 @@ proptest! {
 fn fixture_body(name: &str) -> String {
     let path = quillmark_fixtures::resource_path(name);
     std::fs::read_to_string(path).unwrap()
+}
+
+// ---------------------------------------------------------------------------
+// Structured-table property (issue #880): an editor-built table island — one
+// whose shape markdown import never produces (ragged rows, an empty/short
+// header, an `aligns` array out of sync with the columns) — is a fixed point of
+// export∘import *after normalization*, and normalization always yields a corpus
+// that `validate()` accepts. Cell content is drawn from import-produced cells
+// (so representability and canonical marks are guaranteed by construction);
+// the generator's entropy is the table *shape* plus in-cell literal specials
+// (`|`, backtick, backslash) and unicode, which the codec must escape.
+// ---------------------------------------------------------------------------
+
+/// A cell's markdown content: clean words, formatted spans, and words carrying
+/// literal specials that must escape to survive a pipe cell and round-trip.
+fn cell_token() -> impl Strategy<Value = String> {
+    prop_oneof![
+        clean_word(),
+        clean_word().prop_map(|w| format!("{w}\\|{w}")), // literal pipe
+        clean_word().prop_map(|w| format!("{w}\\`{w}")), // literal backtick
+        clean_word().prop_map(|w| format!("{w}\\\\{w}")), // literal backslash
+        clean_word().prop_map(|w| format!("{w}你{w}")),  // BMP unicode
+        clean_word().prop_map(|w| format!("{w}😀")),     // astral unicode
+        clean_word().prop_map(|w| format!("**{w}**")),
+        clean_word().prop_map(|w| format!("*{w}*")),
+        clean_word().prop_map(|w| format!("~~{w}~~")),
+        clean_word().prop_map(|w| format!("`{w}`")),
+        (clean_word(), clean_word()).prop_map(|(t, u)| format!("[{t}](https://ex.com/{u})")),
+    ]
+}
+
+fn cell_content() -> impl Strategy<Value = String> {
+    prop::collection::vec(cell_token(), 1..3).prop_map(|toks| toks.join(" "))
+}
+
+fn alignment() -> impl Strategy<Value = &'static str> {
+    prop_oneof![Just("none"), Just("left"), Just("center"), Just("right")]
+}
+
+/// The canonical `{text, marks}` cells for a row of markdown contents, obtained
+/// by importing a header-only table — so each cell is representable and its
+/// marks are canonical by construction. `contents` must be non-empty.
+fn import_row(contents: &[String]) -> Vec<Value> {
+    let cols = contents.len();
+    let header = contents.join(" | ");
+    let delim = vec!["---"; cols].join(" | ");
+    let body = vec!["x"; cols].join(" | ");
+    let md = format!("| {header} |\n| {delim} |\n| {body} |");
+    let rt = from_markdown(&md).unwrap();
+    rt.islands[0].props["header"].as_array().unwrap().clone()
+}
+
+/// A single-table corpus with the given (possibly ill-shaped) props. `id` is the
+/// first-island id import mints (`isl-0`), so a re-imported table compares equal.
+fn table_corpus(aligns: Vec<&str>, header: Vec<Value>, rows: Vec<Vec<Value>>) -> RichText {
+    RichText {
+        text: "\u{FFFC}".into(),
+        lines: vec![Line {
+            kind: LineKind::Island,
+            containers: vec![],
+            continues: false,
+        }],
+        marks: vec![],
+        islands: vec![Island {
+            id: "isl-0".into(),
+            island_type: "table".into(),
+            props: json!({ "aligns": aligns, "header": header, "rows": rows }),
+            loss: Loss::Lossless,
+        }],
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(200))]
+
+    /// A structurally ill-shaped table island normalizes to a valid corpus and
+    /// is a fixed point of export∘import.
+    #[test]
+    fn table_island_normalizes_and_round_trips(
+        header in prop::collection::vec(cell_content(), 0..4),
+        rows in prop::collection::vec(prop::collection::vec(cell_content(), 0..4), 0..4),
+        aligns in prop::collection::vec(alignment(), 0..5),
+    ) {
+        let header_cells = if header.is_empty() { vec![] } else { import_row(&header) };
+        let row_cells: Vec<Vec<Value>> = rows
+            .iter()
+            .map(|r| if r.is_empty() { vec![] } else { import_row(r) })
+            .collect();
+
+        // The widest column count drives normalization. A fully empty table (all
+        // widths zero) has no markdown projection — export drops it, so it cannot
+        // round-trip; skip it (a contentless table is out of the fixed-point
+        // contract, like the documented hard-break limits).
+        let cols = header_cells.len()
+            .max(aligns.len())
+            .max(row_cells.iter().map(Vec::len).max().unwrap_or(0));
+        prop_assume!(cols >= 1);
+
+        let mut rt = table_corpus(aligns.clone(), header_cells, row_cells);
+        rt.normalize();
+        prop_assert_eq!(rt.validate(), Ok(()), "normalized table invalid");
+
+        // Post-normalize shape: one column count across header, aligns, rows.
+        let props = &rt.islands[0].props;
+        prop_assert_eq!(props["header"].as_array().unwrap().len(), cols);
+        prop_assert_eq!(props["aligns"].as_array().unwrap().len(), cols);
+        for row in props["rows"].as_array().unwrap() {
+            prop_assert_eq!(row.as_array().unwrap().len(), cols);
+        }
+
+        let md = to_markdown(&rt);
+        let rt2 = from_markdown(&md).unwrap();
+        prop_assert_eq!(&rt, &rt2, "table not a fixed point.\n  md: {:?}", md);
+    }
 }
 
 #[test]

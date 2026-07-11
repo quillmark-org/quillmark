@@ -1,0 +1,14 @@
+quill:
+  name: table_demo
+  version: 0.1.0
+  backend: typst
+  description: Exercises a GFM table through the full markdown -> RichText -> Typst pipeline
+
+typst:
+  plate_file: plate.typ
+
+main:
+  fields:
+    title:
+      description: title of document
+      type: string

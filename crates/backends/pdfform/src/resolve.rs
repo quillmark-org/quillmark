@@ -194,6 +194,10 @@ fn element_text(e: &Value) -> Option<String> {
 
 /// A richtext corpus's plaintext, via [`quillmark_richtext::export::to_plaintext`]
 /// (island slots stripped). `None` for a non-corpus object or an empty result.
+///
+/// Tables and images carry no plaintext, so a corpus whose content is only a
+/// table binds nothing here — the field renders blank, no diagnostic. This is
+/// the decided pdfform limitation (issue #880); see `to_plaintext`.
 fn richtext_plaintext(v: &Value) -> Option<String> {
     let rt = quillmark_richtext::serial::from_canonical_value(v).ok()?;
     let text = quillmark_richtext::export::to_plaintext(&rt);

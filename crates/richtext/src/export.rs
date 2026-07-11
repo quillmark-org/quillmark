@@ -55,6 +55,13 @@ pub fn to_markdown(rt: &RichText) -> String {
 /// every mark and island (tables, images have no plaintext projection), keeping
 /// only literal text. Callers that want a non-empty result should check for the
 /// empty string themselves.
+///
+/// Tables (and images) having no plaintext form is a **decided limitation**, not
+/// an oversight (issue #880): the pdfform backend fills a form field from this
+/// projection, so a field bound to a table-bearing corpus renders the surrounding
+/// text and silently omits the table. A degraded row/tab dump was rejected — it
+/// would read as a faithful table and mislead — so the projection drops the
+/// island outright. Revisit only if a form field ever needs tabular fill.
 pub fn to_plaintext(rt: &RichText) -> String {
     rt.text.chars().filter(|&c| c != ISLAND_SLOT).collect()
 }
@@ -360,8 +367,13 @@ fn emit_table(isl: &Island, out: &mut String) {
     if let Some(rs) = rows {
         for row in rs {
             if let Some(r) = row.as_array() {
+                // Pad/truncate to the header's column count so a ragged island
+                // (one that skipped normalization) still emits a rectangular
+                // table — the same count the Typst projection uses post-normalize.
+                let mut cells: Vec<String> = r.iter().map(render_cell_md).collect();
+                cells.resize(cols, String::new());
                 out.push_str("\n| ");
-                out.push_str(&r.iter().map(render_cell_md).collect::<Vec<_>>().join(" | "));
+                out.push_str(&cells.join(" | "));
                 out.push_str(" |");
             }
         }

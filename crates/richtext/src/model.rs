@@ -317,6 +317,16 @@ pub enum Invariant {
     /// A formatting mark edge sits on a `\n` (normalization should have trimmed
     /// it) — a hand-built corpus that skipped `normalize`.
     MarkEdgeOnNewline { at: Usv },
+    /// A table island's `aligns` length differs from its column count (the
+    /// header width). `normalize` syncs `aligns` to the column count.
+    TableAlignsMismatch { aligns: usize, cols: usize },
+    /// A table island body row's width differs from the column count (the header
+    /// width). `normalize` pads short rows (and the header) to the widest.
+    TableRaggedRow { row: usize, width: usize, cols: usize },
+    /// A table cell's text carries a `\n` — cells are single-line (a newline
+    /// would break the exported table). `cell` is the flat header-then-rows
+    /// index; `normalize` rewrites the newline to a space.
+    TableCellNewline { cell: usize },
 }
 
 impl RichText {
@@ -371,11 +381,13 @@ impl RichText {
     /// the fixed point the canonical serialization commits to.
     pub fn normalize(&mut self) {
         // Islands: canonicalize props key order. A table island's cells carry
-        // inline `{text, marks}`; canonicalize each cell's marks (sort, union,
-        // drop zero-width) first so equal cells serialize to equal bytes — the
-        // props are otherwise opaque here.
+        // inline `{text, marks}`; repair its shape (pad the header/rows/aligns to
+        // one column count, rewrite any cell `\n` to a space) and canonicalize
+        // each cell's marks (sort, union, drop zero-width) first so equal cells
+        // serialize to equal bytes and `validate` holds — the props are
+        // otherwise opaque here.
         for island in &mut self.islands {
-            crate::serial::normalize_island_cell_marks(island);
+            crate::serial::normalize_island_structure(island);
             // Rebuild props only when a key is actually out of order — an
             // untouched island (a pure text splice) stays sorted, so this skips
             // the deep clone on the common per-keystroke path.
@@ -494,6 +506,12 @@ impl RichText {
         // but each mark is bounded by its own cell's text length (in USV). Cells
         // hold no `\n`, so the edge-on-newline rule does not apply.
         for island in &self.islands {
+            // Structural shape (table column/row/aligns consistency, `\n`-free
+            // cells) before the per-cell mark ranges — a ragged island is
+            // ill-formed regardless of its marks.
+            if let Some(e) = crate::serial::island_shape_error(island) {
+                return Err(e);
+            }
             for (text, marks) in crate::serial::island_cell_marks(island) {
                 let clen = text.chars().count();
                 for m in &marks {
@@ -831,5 +849,118 @@ mod tests {
                 len: 2
             })
         );
+    }
+
+    /// A `RichText` holding a single table island with the given props — the
+    /// shared fixture for the table-shape invariant tests.
+    fn table_rt(props: serde_json::Value) -> RichText {
+        let mut rt = RichText::empty();
+        rt.text = ISLAND_SLOT.to_string();
+        rt.lines = vec![Line {
+            kind: LineKind::Island,
+            containers: vec![],
+            continues: false,
+        }];
+        rt.islands = vec![Island {
+            id: "i".into(),
+            island_type: "table".into(),
+            props,
+            loss: Loss::Lossless,
+        }];
+        rt
+    }
+
+    fn cell(t: &str) -> serde_json::Value {
+        serde_json::json!({ "text": t, "marks": [] })
+    }
+
+    /// `validate` rejects a ragged body row, an `aligns`/column mismatch, and a
+    /// cell carrying a `\n` — the three table-shape invariants.
+    #[test]
+    fn validate_catches_table_shape() {
+        // Ragged row: header has 2 columns, the row has 3.
+        let rt = table_rt(serde_json::json!({
+            "aligns": ["none", "none"],
+            "header": [cell("a"), cell("b")],
+            "rows": [[cell("1"), cell("2"), cell("3")]],
+        }));
+        assert_eq!(
+            rt.validate(),
+            Err(Invariant::TableRaggedRow {
+                row: 0,
+                width: 3,
+                cols: 2
+            })
+        );
+
+        // aligns length differs from the column count.
+        let rt = table_rt(serde_json::json!({
+            "aligns": ["none"],
+            "header": [cell("a"), cell("b")],
+            "rows": [],
+        }));
+        assert_eq!(
+            rt.validate(),
+            Err(Invariant::TableAlignsMismatch { aligns: 1, cols: 2 })
+        );
+
+        // A `\n` in a cell (flat header-then-rows index 1 = the second header cell).
+        let rt = table_rt(serde_json::json!({
+            "aligns": ["none", "none"],
+            "header": [cell("a"), cell("b\nc")],
+            "rows": [],
+        }));
+        assert_eq!(rt.validate(), Err(Invariant::TableCellNewline { cell: 1 }));
+    }
+
+    /// `normalize` repairs every table-shape violation — pads the header and
+    /// short rows to the widest column count, syncs `aligns`, and rewrites a
+    /// cell `\n` to a space — so the result validates and is idempotent. This is
+    /// also the one-column-count unification: the widest row (3) drives the
+    /// header width, so the markdown (header-derived) and Typst (widest-row)
+    /// projections agree.
+    #[test]
+    fn normalize_repairs_table_shape() {
+        let mut rt = table_rt(serde_json::json!({
+            "aligns": ["none"],
+            "header": [cell("h")],
+            "rows": [
+                [cell("a"), cell("b"), cell("c")],
+                [cell("d\ne")],
+            ],
+        }));
+        rt.normalize();
+        assert_eq!(rt.validate(), Ok(()));
+
+        let props = &rt.islands[0].props;
+        assert_eq!(props["header"].as_array().unwrap().len(), 3);
+        assert_eq!(props["aligns"].as_array().unwrap().len(), 3);
+        for row in props["rows"].as_array().unwrap() {
+            assert_eq!(row.as_array().unwrap().len(), 3);
+        }
+        // Padded aligns default to "none"; the padded cells are empty.
+        assert_eq!(props["aligns"][2], serde_json::json!("none"));
+        assert_eq!(props["header"][1]["text"], serde_json::json!(""));
+        // The `\n` in "d\ne" became a space, preserving char count.
+        assert_eq!(props["rows"][1][0]["text"], serde_json::json!("d e"));
+
+        // Idempotent on canonical bytes.
+        let once = rt.to_canonical_json();
+        rt.normalize();
+        assert_eq!(rt.to_canonical_json(), once);
+    }
+
+    /// An empty table (no header, no rows) is trivially well-formed: every width
+    /// is zero, so no shape invariant fires and `normalize` leaves it alone.
+    #[test]
+    fn empty_table_is_valid() {
+        let mut rt = table_rt(serde_json::json!({
+            "aligns": [],
+            "header": [],
+            "rows": [],
+        }));
+        assert_eq!(rt.validate(), Ok(()));
+        rt.normalize();
+        assert_eq!(rt.validate(), Ok(()));
     }
 }

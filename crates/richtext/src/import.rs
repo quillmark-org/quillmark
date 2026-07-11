@@ -225,6 +225,15 @@ struct TableAcc {
     /// The cell currently open (between `Tag::TableCell` start/end), building its
     /// inline text + marks with the same [`Inline`] machinery prose uses.
     cell: Option<Inline>,
+    /// Open-image nesting inside the current cell. GFM permits inline images in
+    /// cells, but a cell has no island slot to carry one; while `> 0` the image's
+    /// alt flows into the cell as plain text (the degraded projection) and its
+    /// url is dropped. Mirrors the top-level `image_depth` interception.
+    img_depth: usize,
+    /// Whether any cell dropped an image's url — the island is then minted
+    /// [`Loss::Degraded`], not `Lossless`: the markdown/Typst projection carries
+    /// the alt text but not the image.
+    degraded: bool,
 }
 
 fn align_str(a: &pulldown_cmark::Alignment) -> &'static str {
@@ -531,6 +540,8 @@ impl Builder {
                     cur_row: Vec::new(),
                     in_head: false,
                     cell: None,
+                    img_depth: 0,
+                    degraded: false,
                 });
             }
             Tag::Emphasis => {
@@ -635,7 +646,43 @@ impl Builder {
     /// the SAME [`Inline`] machinery prose uses — a cell is flat inline (no lines,
     /// no nested islands), so its marks are USV offsets into its own text.
     fn table_event(&mut self, event: &Event, range: &Range<usize>) {
+        // An image open inside the current cell intercepts everything until it
+        // closes: the alt text lands in the cell as plain text (marks flattened,
+        // like the top-level image path), the url is dropped, and the island is
+        // flagged degraded. A cell has no island slot to carry a real image.
+        if self.table.as_ref().is_some_and(|a| a.img_depth > 0) {
+            match event {
+                Event::Start(Tag::Image { .. }) => {
+                    if let Some(a) = self.table.as_mut() {
+                        a.img_depth += 1;
+                    }
+                }
+                Event::End(TagEnd::Image) => {
+                    if let Some(a) = self.table.as_mut() {
+                        a.img_depth -= 1;
+                    }
+                }
+                Event::Text(t) | Event::Code(t) => {
+                    if let Some(c) = self.cell_mut() {
+                        c.push_text(t);
+                    }
+                }
+                Event::SoftBreak | Event::HardBreak => {
+                    if let Some(c) = self.cell_mut() {
+                        c.push_text(" ");
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
         match event {
+            Event::Start(Tag::Image { .. }) => {
+                if let Some(a) = self.table.as_mut() {
+                    a.img_depth += 1;
+                    a.degraded = true;
+                }
+            }
             Event::Start(Tag::TableHead) => {
                 if let Some(a) = self.table.as_mut() {
                     a.in_head = true;
@@ -736,7 +783,14 @@ impl Builder {
                 "header": acc.header,
                 "rows": acc.rows,
             });
-            self.mint_island("table", props, Loss::Lossless);
+            // Degraded when a cell dropped an inline image's url — the projection
+            // then carries the alt text but not the image (not a fixed point).
+            let loss = if acc.degraded {
+                Loss::Degraded
+            } else {
+                Loss::Lossless
+            };
+            self.mint_island("table", props, loss);
         }
     }
 
@@ -1246,6 +1300,22 @@ mod tests {
         assert_eq!(rt.islands.len(), 1);
         assert_eq!(rt.islands[0].island_type, "table");
         assert_eq!(rt.islands[0].loss, Loss::Lossless);
+    }
+
+    #[test]
+    fn table_with_cell_image_degrades() {
+        // GFM permits an inline image in a cell; the cell has no island slot to
+        // carry it, so the alt text lands as plain cell text, the url is dropped,
+        // and the island is Degraded (not the silent-Lossless lie).
+        let rt = imp("| a | b |\n|---|---|\n| ![a cat](cat.png) | 2 |");
+        assert_eq!(rt.islands.len(), 1);
+        assert_eq!(rt.islands[0].island_type, "table");
+        assert_eq!(rt.islands[0].loss, Loss::Degraded);
+        // The dropped image left no nested island; alt survived as cell text.
+        assert_eq!(rt.islands[0].props["rows"][0][0]["text"], "a cat");
+        // A table with no cell image stays Lossless (regression guard).
+        let plain = imp("| a | b |\n|---|---|\n| 1 | 2 |");
+        assert_eq!(plain.islands[0].loss, Loss::Lossless);
     }
 
     #[test]

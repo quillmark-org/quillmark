@@ -12,8 +12,8 @@
 //! canonical form — one serializer, not two to keep aligned.
 
 use crate::model::{
-    sort_keys_owned, sorted_value, Container, Island, Line, LineKind, Loss, Mark, MarkKind,
-    RichText,
+    sort_keys_owned, sorted_value, Container, Invariant, Island, Line, LineKind, Loss, Mark,
+    MarkKind, RichText,
 };
 use serde_json::{Map, Value};
 
@@ -392,18 +392,18 @@ fn island_is_mark_carrying(island_type: &str) -> bool {
     matches!(island_type, "table")
 }
 
-/// Canonicalize a mark-carrying island's cell marks in place (a no-op for a
+/// Repair a mark-carrying island's structure in place (a no-op for a
 /// non-mark-carrying type) — the normalize-side island-type dispatch, kept
 /// beside the table codec rather than as a bare `"table"` match in `model`.
-pub(crate) fn normalize_island_cell_marks(island: &mut Island) {
+pub(crate) fn normalize_island_structure(island: &mut Island) {
     if island_is_mark_carrying(&island.island_type) {
-        normalize_table_cell_marks(&mut island.props);
+        normalize_table_props(&mut island.props);
     }
 }
 
 /// A mark-carrying island's `(text, marks)` cells for validation (empty for a
 /// non-mark-carrying type) — the validate-side twin of
-/// [`normalize_island_cell_marks`].
+/// [`normalize_island_structure`].
 pub(crate) fn island_cell_marks(island: &Island) -> Vec<(String, Vec<Mark>)> {
     if island_is_mark_carrying(&island.island_type) {
         table_cells(&island.props)
@@ -412,25 +412,131 @@ pub(crate) fn island_cell_marks(island: &Island) -> Vec<(String, Vec<Mark>)> {
     }
 }
 
-/// Canonicalize a table island's cell marks in place: re-run mark normalization
-/// (sort, same-kind union, drop zero-width) on each cell so equal cells
-/// serialize to equal bytes. Cells hold no `\n`, so there is no line-boundary
-/// edge-trim. Reached via [`normalize_island_cell_marks`].
-fn normalize_table_cell_marks(props: &mut Value) {
-    fn canon(cell: &mut Value) {
-        let (text, marks) = parse_cell(cell);
-        *cell = cell_to_value(&text, &crate::model::normalize_marks(marks));
+/// A mark-carrying island's shape violation, if any (`None` for a well-formed
+/// or non-mark-carrying island) — the validate-side twin of the shape repair in
+/// [`normalize_island_structure`]. `normalize` guarantees this returns `None`.
+pub(crate) fn island_shape_error(island: &Island) -> Option<Invariant> {
+    if island_is_mark_carrying(&island.island_type) {
+        table_shape_error(&island.props)
+    } else {
+        None
     }
-    if let Some(h) = props.get_mut("header").and_then(Value::as_array_mut) {
-        h.iter_mut().for_each(canon);
+}
+
+/// Repair a table island's props in place to the canonical shape:
+///
+/// - **One column count.** `cols` is the widest of the header, any body row, and
+///   `aligns`; the header, each row, and `aligns` are padded up to it (padding
+///   only grows — no cell is ever truncated). Materializing the count into the
+///   header means the markdown projection (header-derived) and the Typst
+///   projection (widest-row) agree on one number.
+/// - **Single-line cells.** Any `\n`/`\r` in a cell's text becomes a space (the
+///   same rule import applies to soft/hard breaks). A 1:1 replacement keeps char
+///   offsets stable, so the cell's marks stay in range.
+/// - **Canonical cell marks.** Each cell's marks are re-normalized (sort,
+///   same-kind union, drop zero-width) so equal cells serialize to equal bytes.
+fn normalize_table_props(props: &mut Value) {
+    let cols = table_cols(props);
+    let Some(obj) = props.as_object_mut() else {
+        return;
+    };
+    let header = obj.entry("header").or_insert_with(|| Value::Array(vec![]));
+    pad_row(header, cols);
+    if let Some(h) = header.as_array_mut() {
+        h.iter_mut().for_each(canon_cell);
     }
-    if let Some(rows) = props.get_mut("rows").and_then(Value::as_array_mut) {
+    let aligns = obj.entry("aligns").or_insert_with(|| Value::Array(vec![]));
+    if let Some(a) = aligns.as_array_mut() {
+        while a.len() < cols {
+            a.push(Value::String("none".into()));
+        }
+    }
+    if let Some(rows) = obj.get_mut("rows").and_then(Value::as_array_mut) {
         for row in rows.iter_mut() {
+            pad_row(row, cols);
             if let Some(r) = row.as_array_mut() {
-                r.iter_mut().for_each(canon);
+                r.iter_mut().for_each(canon_cell);
             }
         }
     }
+}
+
+/// A table's canonical column count: the widest of its header, any body row, and
+/// its `aligns` array. Padding (never truncation) brings every part up to it.
+fn table_cols(props: &Value) -> usize {
+    let arr_len = |k: &str| props.get(k).and_then(Value::as_array).map(|a| a.len());
+    let header = arr_len("header").unwrap_or(0);
+    let aligns = arr_len("aligns").unwrap_or(0);
+    let widest_row = props
+        .get("rows")
+        .and_then(Value::as_array)
+        .map(|rows| {
+            rows.iter()
+                .map(|r| r.as_array().map(|a| a.len()).unwrap_or(0))
+                .max()
+                .unwrap_or(0)
+        })
+        .unwrap_or(0);
+    header.max(aligns).max(widest_row)
+}
+
+/// Pad a cell array (header or body row) up to `cols` with empty cells. Never
+/// shrinks — `cols` is the widest, so a shorter array only grows.
+fn pad_row(v: &mut Value, cols: usize) {
+    if let Some(arr) = v.as_array_mut() {
+        while arr.len() < cols {
+            arr.push(cell_to_value("", &[]));
+        }
+    }
+}
+
+/// De-newline a cell's text (each `\n`/`\r` → a space, 1:1 so mark offsets hold)
+/// and re-normalize its marks. Reached per-cell from [`normalize_table_props`].
+fn canon_cell(cell: &mut Value) {
+    let (text, marks) = parse_cell(cell);
+    let text = if text.contains(['\n', '\r']) {
+        text.replace(['\n', '\r'], " ")
+    } else {
+        text
+    };
+    *cell = cell_to_value(&text, &crate::model::normalize_marks(marks));
+}
+
+/// A table island's shape violation, if any — the widths the header, `aligns`,
+/// and each body row must share (the header width), plus the `\n`-free-cell rule.
+/// The validate-side twin of [`normalize_table_props`].
+fn table_shape_error(props: &Value) -> Option<Invariant> {
+    let cols = props
+        .get("header")
+        .and_then(Value::as_array)
+        .map(|a| a.len())
+        .unwrap_or(0);
+    let aligns = props
+        .get("aligns")
+        .and_then(Value::as_array)
+        .map(|a| a.len())
+        .unwrap_or(0);
+    if aligns != cols {
+        return Some(Invariant::TableAlignsMismatch { aligns, cols });
+    }
+    if let Some(rows) = props.get("rows").and_then(Value::as_array) {
+        for (i, row) in rows.iter().enumerate() {
+            let width = row.as_array().map(|a| a.len()).unwrap_or(0);
+            if width != cols {
+                return Some(Invariant::TableRaggedRow {
+                    row: i,
+                    width,
+                    cols,
+                });
+            }
+        }
+    }
+    for (i, (text, _)) in table_cells(props).iter().enumerate() {
+        if text.contains('\n') || text.contains('\r') {
+            return Some(Invariant::TableCellNewline { cell: i });
+        }
+    }
+    None
 }
 
 // ---- Island ----
