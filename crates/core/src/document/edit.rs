@@ -81,6 +81,22 @@ pub enum EditError {
     #[error("body decode failed: {0}")]
     BodyDecode(String),
 
+    /// A richtext field value in the corpus-or-markdown encoding could not be
+    /// decoded: a JSON object that is not a canonical richtext corpus, a
+    /// markdown string that failed to import, or a shape that is neither
+    /// object, string, nor null. The field-level twin of [`BodyDecode`](Self::BodyDecode);
+    /// returned by [`Card::set_field_richtext`](Card::set_field_richtext).
+    #[error("richtext field '{field}' decode failed: {message}")]
+    FieldRichtextDecode { field: String, message: String },
+
+    /// A richtext field written under the `richtext(inline)` constraint decoded
+    /// to a multi-block corpus (more than one line, a container, or an island).
+    /// The write-time counterpart of the coercion/validation `richtext(inline)`
+    /// check; returned by [`Card::set_field_richtext`](Card::set_field_richtext)
+    /// when its `inline` argument is set.
+    #[error("richtext field '{0}' is not inline: richtext(inline) requires a single paragraph line with no list/quote container and no islands")]
+    FieldRichtextNotInline(String),
+
     /// A corpus field-change bundle (text delta, line ops, mark ops) applied
     /// out of bounds or broke an invariant normalization could not repair.
     #[error("corpus apply failed: {0:?}")]
@@ -101,6 +117,8 @@ impl EditError {
             EditError::ValueTooDeep { .. } => "ValueTooDeep",
             EditError::BodyImport(_) => "BodyImport",
             EditError::BodyDecode(_) => "BodyDecode",
+            EditError::FieldRichtextDecode { .. } => "FieldRichtextDecode",
+            EditError::FieldRichtextNotInline(_) => "FieldRichtextNotInline",
             EditError::CorpusApply(_) => "CorpusApply",
         }
     }
@@ -501,6 +519,82 @@ impl Card {
         }
     }
 
+    /// Set a payload field to a **richtext corpus**, committing the corpus form
+    /// at write — the field-level twin of [`set_body_value`](Self::set_body_value),
+    /// and the writer that makes a schema-richtext field corpus-from-write-onward
+    /// (`$body` is corpus by construction; a field is corpus *iff* the caller
+    /// picks this method over the string-storing [`set_field`](Self::set_field)).
+    ///
+    /// Accepts either encoding the seam carries — a canonical corpus **object**
+    /// (decoded and validated) or an authored markdown **string** (imported) —
+    /// and stores the canonical corpus JSON, so identity marks (anchors, island
+    /// ids) live on the stored value and persist across compiles and DTO
+    /// round-trips. `null` stores the empty corpus. Routes through the one
+    /// object-vs-string dispatch ([`decode_richtext_value`](crate::document::decode_richtext_value)),
+    /// so it stays lossless for corpus-only marks a markdown projection cannot
+    /// carry (e.g. `underline`); a Markdown (`.qmd`) save projects the field back
+    /// to a string ([`Card::field_markdown`]) and re-imports a fresh corpus on
+    /// reload, so on-disk persistence is markdown-lossy by design — identity
+    /// survives the live/DTO carriers, not a card-yaml round-trip.
+    ///
+    /// `inline` mirrors the schema's `richtext(inline)` constraint: when set, a
+    /// decoded multi-block corpus is rejected here with
+    /// [`EditError::FieldRichtextNotInline`], in lockstep with the coercion- and
+    /// validation-layer `richtext(inline)` checks — so the write is the strict
+    /// commit (fail at write, not at a later render). The caller supplies it
+    /// because a [`Document`] holds only a `$quill` *reference*, not the resolved
+    /// [`FieldType`](crate::quill::FieldType); an editor holds the schema and
+    /// knows whether the target field is `richtext(inline)`.
+    ///
+    /// Returns [`EditError::InvalidFieldName`] for a malformed name and
+    /// [`EditError::FieldRichtextDecode`] for a value that is neither a corpus
+    /// object, an importable markdown string, nor `null`.
+    pub fn set_field_richtext(
+        &mut self,
+        name: &str,
+        value: &serde_json::Value,
+        inline: bool,
+    ) -> Result<(), EditError> {
+        if !is_valid_field_name(name) {
+            return Err(EditError::InvalidFieldName(name.to_string()));
+        }
+        let corpus = match crate::document::decode_richtext_value(value) {
+            Some(result) => result.map_err(|e| EditError::FieldRichtextDecode {
+                field: name.to_string(),
+                message: e.into_message(),
+            })?,
+            // Neither object nor string: `null` is the empty corpus; anything
+            // else is an invalid richtext value.
+            None => match value {
+                serde_json::Value::Null => RichText::empty(),
+                other => {
+                    return Err(EditError::FieldRichtextDecode {
+                        field: name.to_string(),
+                        message: format!(
+                            "expected a richtext corpus object or a markdown string, got {}",
+                            match other {
+                                serde_json::Value::Bool(_) => "a boolean",
+                                serde_json::Value::Number(_) => "a number",
+                                serde_json::Value::Array(_) => "an array",
+                                _ => "an unsupported value",
+                            }
+                        ),
+                    })
+                }
+            },
+        };
+        if inline && !corpus.is_inline() {
+            return Err(EditError::FieldRichtextNotInline(name.to_string()));
+        }
+        // Store the canonical corpus object. Depth-checking is unnecessary: a
+        // corpus nests a fixed handful of levels (well under `MAX_YAML_DEPTH`),
+        // and `decode_richtext_value` already validated it.
+        let canonical = quillmark_richtext::serial::to_canonical_value(&corpus);
+        self.payload_mut()
+            .insert(name.to_string(), QuillValue::from_json(canonical));
+        Ok(())
+    }
+
     /// Replace the body from an authored markdown string — the whole-document
     /// (stale-text / LLM / MCP) writer. Imports the markdown, diffs it against
     /// the current body, and rebases surviving identity anchors onto the new
@@ -550,5 +644,47 @@ impl Card {
         self.body_mut()
             .apply_field_change(text_delta, line_ops, mark_ops)
             .map_err(EditError::CorpusApply)
+    }
+
+    /// Splice a corpus field-change bundle into a **richtext-valued field**'s
+    /// stored corpus — the field-path twin of [`apply_body_change`](Self::apply_body_change),
+    /// and what lets identity marks (anchors, island ids) persist on field
+    /// content across incremental edits. Decodes the field's canonical corpus,
+    /// applies the text delta plus any line/mark ops in the same all-or-nothing
+    /// bundle, and re-stores the canonical result.
+    ///
+    /// Returns [`EditError::FieldRichtextDecode`] when the field is absent or its
+    /// stored value is not a richtext corpus (the caller addresses a field it
+    /// knows is richtext, exactly as when writing it), and
+    /// [`EditError::CorpusApply`] when the bundle applies out of bounds.
+    pub fn apply_field_richtext_change(
+        &mut self,
+        name: &str,
+        text_delta: &Delta,
+        line_ops: &[LineOp],
+        mark_ops: &[MarkOp],
+    ) -> Result<(), EditError> {
+        let mut corpus = match self.field_richtext(name) {
+            Some(Ok(rt)) => rt,
+            Some(Err(e)) => {
+                return Err(EditError::FieldRichtextDecode {
+                    field: name.to_string(),
+                    message: e.into_message(),
+                })
+            }
+            None => {
+                return Err(EditError::FieldRichtextDecode {
+                    field: name.to_string(),
+                    message: "field is absent".to_string(),
+                })
+            }
+        };
+        corpus
+            .apply_field_change(text_delta, line_ops, mark_ops)
+            .map_err(EditError::CorpusApply)?;
+        let canonical = quillmark_richtext::serial::to_canonical_value(&corpus);
+        self.payload_mut()
+            .insert(name.to_string(), QuillValue::from_json(canonical));
+        Ok(())
     }
 }

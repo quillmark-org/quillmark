@@ -85,3 +85,63 @@ fn richtext_fields_lower_to_plaintext_field_values() {
         "A bold claim and emphasis."
     );
 }
+
+/// Same render, but the richtext fields are written via `set_field_richtext`, so
+/// each is **stored as a canonical corpus object** rather than an authored
+/// markdown string. This exercises coercion's object branch (re-validate +
+/// re-canonicalize) end-to-end and proves it lowers identically to the
+/// string-authored path — the corpus-from-write form renders the same PDF.
+#[test]
+fn richtext_fields_written_as_corpus_render_identically() {
+    let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("richtext_form"))
+        .expect("load richtext_form quill");
+    let engine = Quillmark::new();
+
+    // Start from the string-authored doc, then re-write each field through the
+    // corpus writer: passing markdown still stores the *canonical corpus object*
+    // (decode → canonicalize), so the payload now carries corpus objects.
+    let mut doc = Document::from_markdown(FILLED).expect("parse markdown");
+    let main = doc.main_mut();
+    main.set_field_richtext("headline", &serde_json::json!("The **headline**"), true)
+        .expect("inline richtext write");
+    main.set_field_richtext(
+        "bio",
+        &serde_json::json!("A **bold** claim and _emphasis_."),
+        false,
+    )
+    .expect("block richtext write");
+    // Precondition: the fields are stored structurally as corpus objects now.
+    assert!(main.payload().get("headline").unwrap().as_json().is_object());
+    assert!(main.payload().get("bio").unwrap().as_json().is_object());
+
+    let result = engine
+        .render(
+            &quill,
+            &doc,
+            &RenderOptions {
+                output_format: Some(OutputFormat::Pdf),
+                ..Default::default()
+            },
+        )
+        .expect("render ok");
+
+    let pdf = &result.artifacts[0].bytes;
+    let doc = PdfDoc::load_mem(pdf).expect("lopdf reparse — structurally valid");
+    let cat = doc.catalog().expect("catalog");
+    let af = doc
+        .get_object(cat.get(b"AcroForm").unwrap().as_reference().unwrap())
+        .unwrap()
+        .as_dict()
+        .unwrap();
+
+    let headline = widget(&doc, af, "FullName");
+    assert_eq!(
+        decode_pdf_text(headline.get(b"V").unwrap().as_str().unwrap()),
+        "The headline"
+    );
+    let bio = widget(&doc, af, "Comments");
+    assert_eq!(
+        decode_pdf_text(bio.get(b"V").unwrap().as_str().unwrap()),
+        "A bold claim and emphasis."
+    );
+}
