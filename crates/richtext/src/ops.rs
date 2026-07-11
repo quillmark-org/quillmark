@@ -8,7 +8,9 @@
 
 use crate::delta::{Assoc, Delta, Op};
 use crate::model::{Container, Island, Line, LineKind, Mark, MarkKind, RichText, Usv, ISLAND_SLOT};
+use crate::normalize::is_bidi_char;
 use crate::usv::char_to_byte;
+use std::borrow::Cow;
 
 /// A mark edit in post-text-delta coordinates.
 #[derive(Debug, Clone, PartialEq)]
@@ -92,6 +94,13 @@ impl RichText {
     /// away with its slot); a delta that *inserts* a raw slot is rejected
     /// ([`ApplyError::IslandSlotInInsert`]) — islands are created through their
     /// own channel, never a text splice, so a slot arriving here would orphan.
+    ///
+    /// Inserted text is sanitized first: `\r` and Unicode bidi controls — the
+    /// chars [`RichText::validate`] forbids — are stripped, mirroring the
+    /// normalization `import` applies at the string boundary. The text-delta
+    /// channel is the *other* way text enters the corpus, so without this an
+    /// insert of `\r` or a bidi control returned `Ok` while leaving a corpus
+    /// that fails `validate()` (see issue #899).
     pub fn apply_text_delta(&mut self, delta: &Delta) -> Result<(), ApplyError> {
         // Reject before mutating: a raw slot in an insert would create a slot
         // with no backing island. Checked up front so the corpus is untouched
@@ -103,6 +112,16 @@ impl RichText {
                 }
             }
         }
+
+        // Strip the chars `validate()` forbids (`\r`, bidi controls) from every
+        // insert before they reach the corpus. Stripping — not rejecting —
+        // mirrors `import`: these are content to normalize away, unlike a raw
+        // slot, which has no backing island and must be refused. Sanitizing the
+        // whole delta up front keeps `try_apply` / `map_pos` / line+island sync
+        // in agreement on one cleaned op stream; a clean delta (every keystroke)
+        // is borrowed through untouched, so the hot path skips the clone.
+        let sanitized = sanitize_inserts(delta);
+        let delta = sanitized.as_ref();
 
         let old_chars: Vec<char> = self.text.chars().collect();
         // A splice may name only the region it changes: pad a short delta with a
@@ -323,6 +342,37 @@ fn default_para_line() -> Line {
 
 fn ranges_overlap(a0: Usv, a1: Usv, b0: Usv, b1: Usv) -> bool {
     a0 < b1 && b0 < a1
+}
+
+/// A char the corpus text may not carry (`validate()` rejects it): a bare `\r`
+/// or a Unicode bidi formatting control. `\n` is a real line boundary and a raw
+/// [`ISLAND_SLOT`] is refused separately, so neither belongs here.
+fn insert_forbidden(c: char) -> bool {
+    c == '\r' || is_bidi_char(c)
+}
+
+/// Drop [`insert_forbidden`] chars from every `Op::Insert`, returning the delta
+/// borrowed untouched when no insert carries one (the common keystroke). Mirrors
+/// the forbidden-char stripping `import` applies (`push_text`, `strip_bidi_
+/// formatting`); a raw `\r`/bidi arriving through the text-delta channel would
+/// otherwise persist a corpus that fails `validate()`.
+fn sanitize_inserts(delta: &Delta) -> Cow<'_, Delta> {
+    let needs_cleaning = delta
+        .ops
+        .iter()
+        .any(|op| matches!(op, Op::Insert(s) if s.chars().any(insert_forbidden)));
+    if !needs_cleaning {
+        return Cow::Borrowed(delta);
+    }
+    let ops = delta
+        .ops
+        .iter()
+        .map(|op| match op {
+            Op::Insert(s) => Op::Insert(s.chars().filter(|c| !insert_forbidden(*c)).collect()),
+            other => other.clone(),
+        })
+        .collect();
+    Cow::Owned(Delta { ops })
 }
 
 /// Walk `delta` over `old_chars` and mirror `\n` insert/delete in `lines`.
@@ -632,6 +682,61 @@ mod tests {
         assert_eq!(rt.text, "ab");
         assert!(rt.islands.is_empty());
         assert_eq!(rt.validate(), Ok(()));
+    }
+
+    #[test]
+    fn insert_carriage_return_is_stripped() {
+        // A `\r` in an insert is dropped, not persisted — the corpus stays
+        // valid instead of the op returning Ok over a `CarriageReturn`
+        // violation (issue #899). `\r\n` still yields the line-boundary `\n`.
+        let mut rt = from_markdown("ab").unwrap();
+        let d = Delta {
+            ops: vec![Op::Retain(1), Op::Insert("\r".into()), Op::Retain(1)],
+        };
+        rt.apply_text_delta(&d).unwrap();
+        assert_eq!(rt.text, "ab");
+        assert_eq!(rt.validate(), Ok(()));
+    }
+
+    #[test]
+    fn insert_bidi_control_is_stripped() {
+        // A bidi override (U+202E) in an insert is dropped — the corpus stays
+        // valid and import's Trojan-source defense is not bypassed (issue #899).
+        let mut rt = from_markdown("ab").unwrap();
+        let d = Delta {
+            ops: vec![
+                Op::Retain(1),
+                Op::Insert("\u{202E}".into()),
+                Op::Retain(1),
+            ],
+        };
+        rt.apply_text_delta(&d).unwrap();
+        assert_eq!(rt.text, "ab");
+        assert_eq!(rt.validate(), Ok(()));
+    }
+
+    #[test]
+    fn insert_crlf_keeps_the_newline_and_splits() {
+        // Stripping only the `\r` of a `\r\n` leaves a real line boundary: the
+        // insert still splits the line, and slot/line sync stays intact.
+        let mut rt = from_markdown("ab").unwrap();
+        let d = Delta {
+            ops: vec![Op::Retain(1), Op::Insert("\r\n".into()), Op::Retain(1)],
+        };
+        rt.apply_text_delta(&d).unwrap();
+        assert_eq!(rt.text, "a\nb");
+        assert_eq!(rt.lines.len(), 2);
+        assert_eq!(rt.validate(), Ok(()));
+    }
+
+    #[test]
+    fn insert_of_clean_text_is_not_reallocated() {
+        // The hot path: a delta whose inserts carry no forbidden char borrows
+        // through `sanitize_inserts` unchanged.
+        let d = Delta {
+            ops: vec![Op::Retain(1), Op::Insert("clean\n".into()), Op::Retain(1)],
+        };
+        assert!(matches!(sanitize_inserts(&d), Cow::Borrowed(_)));
     }
 
     #[test]

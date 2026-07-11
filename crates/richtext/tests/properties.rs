@@ -284,12 +284,14 @@ proptest! {
     /// (insert clean text — including `\n` — or delete a range). A deletion can
     /// span an island slot; the cascade must drop the backing island so the
     /// slot/island counts stay in sync (the #847 corruption, now caught here).
-    /// Inserted text excludes U+FFFC, `\r`, and bidi controls — a real editor
-    /// never types them through this channel, and a raw slot insert is rejected.
+    /// The insert charset includes `\r` and bidi controls (U+202E, U+2069):
+    /// `apply_text_delta` strips them, so the apply still leaves a valid corpus
+    /// (issue #899 — before the fix these returned Ok over a broken invariant).
+    /// U+FFFC (a raw slot) is excluded — that insert is rejected outright.
     #[test]
     fn apply_text_delta_preserves_validate(
         md in document(),
-        ins in "[a-z0-9 \n]{0,10}",
+        ins in "[a-z0-9 \n\r\u{202E}\u{2069}]{0,10}",
         pos_seed in 0usize..4096,
         del_seed in 0usize..4096,
         is_delete in any::<bool>(),
