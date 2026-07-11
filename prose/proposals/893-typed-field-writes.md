@@ -19,9 +19,11 @@ type at the write site, via three layers:
    resolves field types itself, so editors and MCP servers call one verb,
    `set`, and never pass `inline` or a type token.
 
-The write surface stays **O(1) in corpus-backed types**: a new content model
-(e.g. `Plaintext`) touches the `FieldType` enum and one dispatch arm — no new
-methods in core, wasm, or Python. `QuillValue` stays JSON-shaped; the wire is
+The **write-method surface** stays **O(1) in corpus-backed types**: a new
+content model (e.g. `Plaintext`) adds no writer in core, wasm, or Python. The
+type is not otherwise free — it still touches the `FieldType` enum, the
+`commit_value` arm, the separate `validate_value` dispatch, and its corpus
+caches (see Growth story). `QuillValue` stays JSON-shaped; the wire is
 unchanged.
 
 ## The observation
@@ -42,7 +44,7 @@ heuristic (shape detection).
 Extract the per-type logic into a single function beside the coercion code:
 
 ```rust
-enum Leniency { Render, Write }   // Render = today's lenient cascade; Write = strict
+enum Leniency { Render, Write }   // richtext-decode mode; today only that arm reads it
 
 /// The one encoding of "what a type accepts and what gets stored".
 fn commit_value(value: &QuillValue, schema: &FieldSchema, mode: Leniency)
@@ -56,7 +58,9 @@ fn commit_value(value: &QuillValue, schema: &FieldSchema, mode: Leniency)
   `coerce_value_strict`) becomes an explicit `mode` branch **inside one
   richtext arm**, replacing the two open-coded sites that today encode "what
   a richtext value accepts" (`config.rs` coercion vs `edit.rs`
-  `set_field_richtext`).
+  `set_field_richtext`). Scalar arms ignore `mode` — `ed.set("qty", "3")`
+  stores `3` either way — so `Leniency` is a per-arm knob, not a global
+  strictness dial.
 - Each `FieldType` arm declares a **storage policy**: *canonical-at-write*
   (richtext and future corpus models — the committed form carries identity
   marks) vs *coerce-at-render* (scalars — a typed write stores the coerced
@@ -74,10 +78,12 @@ impl Card {
 }
 ```
 
-- `set_field_richtext(name, value, inline)` reduces to a deprecated one-line
-  wrapper (builds a `richtext { inline }` `FieldSchema`, delegates). Its
-  `inline: bool` parameter disappears from the API: the schema *is* the
-  parameter.
+- `set_field_richtext(name, value, inline)` deprecates to a wrapper (builds a
+  `richtext { inline }` `FieldSchema`, delegates) — not quite one line: it
+  remaps the unified `CommitError` back onto
+  `EditError::FieldRichtext{Decode,NotInline}`, whose names cross the binding
+  boundary (`EditError::variant_name`) and must not drift. Its `inline: bool`
+  parameter disappears from the API: the schema *is* the parameter.
 - The verb `commit` matches the issue's vocabulary ("write-time commit") and
   names the two write disciplines: **`set_field` = store opaque, coerce at
   render** (keystroke-level state, data-in-flight) vs **`commit_field` =
@@ -119,7 +125,9 @@ ed.set_all([...])?;                    // batched, all-or-nothing, mirrors set_f
   markdown string | scalar) — no new envelope.
 - **Python** — `card.commit_field(name, value, schema)`, or the bound
   `quill.editor(doc)` mirroring Rust; slots into the
-  [PROGRAMMATIC.md](../canon/PROGRAMMATIC.md) flow.
+  [PROGRAMMATIC.md](../canon/PROGRAMMATIC.md) flow. Net-new, not a migration:
+  Python has `set_field` / `set_fields` but no richtext field writer today, so
+  it currently has no corpus-field write path at all.
 - **MCP servers / LLM agents** — an LLM patches a field with a markdown
   string; the commit imports it to corpus at write, so identity marks live on
   the stored value from that moment, with no per-type tool schema. The MCP
@@ -128,8 +136,11 @@ ed.set_all([...])?;                    // batched, all-or-nothing, mirrors set_f
 - **Batch generators (DB row → PDF)** — unchanged: opaque `set_field` +
   render coercion; they never pay the typed path.
 - **Storage / diff / sync tooling** — commit-at-write makes the stored form
-  canonical and stable, so DTO diffs are semantic rather than encoding noise,
-  and patch/CRDT layers converge on one representation.
+  canonical, so DTO diffs over committed fields are semantic rather than
+  encoding noise, and patch/CRDT layers converge on one representation.
+  Conditional on discipline: `set_field` (opaque) and `commit_field`
+  (canonical) both write the same field, so a scalar stores as `"3"` or `3` by
+  write path, not type — mixed paths add variance, not remove it.
 - **Read-back parity** — the same dispatch can later grow a `project`
   operation (richtext → markdown string, plaintext → text), generalizing
   `field_markdown` into one schema-keyed `ed.get(name)` instead of per-type
@@ -153,10 +164,14 @@ ed.set_all([...])?;                    // batched, all-or-nothing, mirrors set_f
 
 ## Growth story (the acceptance test)
 
-Adding a `Plaintext` corpus type = one `FieldType` variant + one
-`commit_value` arm (+ optionally one `project` arm; + its own delta ops if
-incremental editing is wanted). No new methods on `Card`, `Document`, the
-wasm surface, the Python surface, or any MCP tool schema.
+On the **write surface** it holds: adding a `Plaintext` corpus type adds no
+method on `Card`, `Document`, the wasm surface, the Python surface, or any MCP
+tool schema. The type is not otherwise O(1): it still adds one `FieldType`
+variant, one `commit_value` arm, one `validate_value` arm (a second per-type
+dispatch this proposal does *not* merge), and — if it carries schema literals —
+its own corpus caching and render-floor commit (+ optionally a `project` arm
+and delta ops). The claim earned is a flat write surface, not a flat per-type
+cost.
 
 ## Migration
 
@@ -179,3 +194,11 @@ wasm surface, the Python surface, or any MCP tool schema.
 - Whether the wasm surface should also offer engine-side resolution from the
   `$quill` reference (`engine.commitField(doc, …)`) in addition to the
   explicit quill handle.
+- `Leniency` placement: a whole-`commit_value` parameter, or a field on the
+  richtext codec (`RichtextDecodeMode`) — since only that arm reads it.
+- Whether `validate_value` (`validation.rs`) folds into the same dispatch, or
+  stays a third, separately-drifting encoding of "what a type accepts."
+- Error taxonomy: one `CommitError` remapped per caller (`EditError` /
+  `CoercionError`), or a shared error both paths surface directly.
+- Whether the editor routes *all* scalar writes through commit, so stored form
+  is path-independent and the diff-stability claim holds.
