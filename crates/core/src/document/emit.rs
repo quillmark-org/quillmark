@@ -222,7 +222,7 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
                 nested_comments,
             } => {
                 // A richtext field stores its value as a canonical corpus
-                // object (via `set_field_richtext`); card-yaml is the
+                // object (via `commit_field`); card-yaml is the
                 // human-authored surface, so it projects back to a markdown
                 // string here — the field-level twin of the `$body` projection,
                 // lossy per the corpus's island loss class (the DTO stays the
@@ -278,7 +278,7 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
 /// The markdown projection of a richtext-valued field, or `None` when `value` is
 /// not a canonical corpus object.
 ///
-/// A richtext field written via [`Card::set_field_richtext`](super::Card::set_field_richtext)
+/// A richtext field written via [`Card::commit_field`](super::Card::commit_field)
 /// stores the canonical corpus object; emit projects it to a markdown string so
 /// card-yaml — the human-authored surface — stays markdown-clean rather than
 /// carrying a nested `{text, lines, marks, islands}` tree. Projection is lossy

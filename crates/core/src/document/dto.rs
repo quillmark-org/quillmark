@@ -1045,7 +1045,6 @@ This body and the metadata above are an indorsement card.
     }
 
     #[test]
-    #[allow(deprecated)] // exercises the deprecated `set_field_richtext` wrapper
     fn corpus_field_survives_storage_round_trip_losslessly() {
         // A richtext field stored as a canonical corpus object is the case the
         // card-yaml markdown projection is lossy for; the storage DTO is the
@@ -1062,7 +1061,14 @@ This body and the metadata above are an indorsement card.
         });
         corpus.normalize();
         let json = quillmark_richtext::serial::to_canonical_value(&corpus);
-        doc.main_mut().set_field_richtext("intro", &json, false).unwrap();
+        let schema = crate::quill::FieldSchema::new(
+            "intro".to_string(),
+            crate::quill::FieldType::RichText { inline: false },
+            None,
+        );
+        doc.main_mut()
+            .commit_field("intro", crate::QuillValue::from_json(json), &schema)
+            .unwrap();
 
         let stored = serde_json::to_string(&doc).unwrap();
         let restored: Document = serde_json::from_str(&stored).unwrap();

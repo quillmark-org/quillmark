@@ -394,7 +394,6 @@ mod tests {
     /// projection) survive Card → wire → Card. This is the lossless carrier the
     /// card-yaml markdown projection (emit) deliberately is not.
     #[test]
-    #[allow(deprecated)] // exercises the deprecated `set_field_richtext` wrapper
     fn card_wire_round_trips_corpus_field_losslessly() {
         use quillmark_richtext::model::{Mark, MarkKind};
 
@@ -407,7 +406,13 @@ mod tests {
         });
         corpus.normalize();
         let json = quillmark_richtext::serial::to_canonical_value(&corpus);
-        card.set_field_richtext("intro", &json, false).unwrap();
+        let schema = crate::quill::FieldSchema::new(
+            "intro".to_string(),
+            crate::quill::FieldType::RichText { inline: false },
+            None,
+        );
+        card.commit_field("intro", crate::QuillValue::from_json(json), &schema)
+            .unwrap();
 
         let wire = CardWire::from(&card);
         // Carried as the corpus object, verbatim — not a markdown projection.

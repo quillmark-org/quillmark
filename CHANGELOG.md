@@ -8,21 +8,22 @@
 
 ## Unreleased
 
-- feat(core,wasm,python): typed field writes via schema-carried types. One
+- feat(core,wasm,python)!: typed field writes via schema-carried types. One
   per-type write dispatch (`conform_value(value, schema, mode)`) unifies the
   render floor's coercion with a strict-write mode behind a `Leniency` flag; one
   typed writer per address, `Card::commit_field(name, value, &FieldSchema)`,
-  dispatches on the schema and subsumes `set_field_richtext` (now a deprecated
-  wrapper) — the write surface stays O(1) in field types. Adds
+  dispatches on the schema — the write surface stays O(1) in field types. Adds
   `EditError::FieldConform` for non-richtext mismatches (richtext keeps
   `FieldRichtextDecode` / `FieldRichtextNotInline`). A schema-bound
   `TypedEditor` (`Quill::editor(&mut doc)`) is the front door: `set` / `set_all`
   resolve field types and report `Committed::{Typed,Opaque}`. Bindings gain
   `commitField` / `commitCardField` (wasm) and `commit_field` /
-  `commit_card_field` (Python, net-new — Python had no richtext field writer);
-  `setRichtextField` / `updateCardRichtextField` deprecate into them. Strict
-  writes drop the render floor's cross-type `Boolean`↔`Number` coercions and
-  fail a shape mismatch at the write, not at a later render (#893)
+  `commit_card_field` (Python, net-new — Python had no richtext field writer).
+  The pre-release richtext-specific writers are removed in the same cycle:
+  `Card::set_field_richtext`, wasm `setRichtextField` / `updateCardRichtextField`
+  — use the typed writer, which carries the `inline` constraint in the schema.
+  Strict writes drop the render floor's cross-type `Boolean`↔`Number` coercions
+  and fail a shape mismatch at the write, not at a later render (#893)
 - remove(core,richtext,wasm)!: delete the incremental-edit surface — the
   per-field change log and everything layered on it: `richtext::ChangeLog` /
   `FieldChange` / `StaleRevision`; `LiveSession::revision` /

@@ -86,15 +86,16 @@ pub enum EditError {
     /// decoded: a JSON object that is not a canonical richtext corpus, a
     /// markdown string that failed to import, or a shape that is neither
     /// object, string, nor null. The field-level twin of [`BodyDecode`](Self::BodyDecode);
-    /// returned by [`Card::set_field_richtext`](Card::set_field_richtext).
+    /// returned by [`Card::commit_field`](Card::commit_field) on a richtext field
+    /// and by [`Card::apply_field_richtext_change`](Card::apply_field_richtext_change).
     #[error("richtext field '{field}' decode failed: {message}")]
     FieldRichtextDecode { field: String, message: String },
 
     /// A richtext field written under the `richtext(inline)` constraint decoded
     /// to a multi-block corpus (more than one line, a container, or an island).
     /// The write-time counterpart of the coercion/validation `richtext(inline)`
-    /// check; returned by [`Card::set_field_richtext`](Card::set_field_richtext)
-    /// when its `inline` argument is set.
+    /// check; returned by [`Card::commit_field`](Card::commit_field) when the
+    /// field's schema is `richtext` with `inline: true`.
     #[error("richtext field '{0}' is not inline: richtext(inline) requires a single paragraph line with no list/quote container and no islands")]
     FieldRichtextNotInline(String),
 
@@ -189,10 +190,9 @@ pub fn validate_field(key: &str, value: &serde_json::Value) -> Result<(), FieldV
 /// Map a strict-write [`CoercionError`] to the field-write [`EditError`] surface.
 ///
 /// A richtext field routes to the dedicated `FieldRichtext*` variants — the
-/// same surface [`Card::apply_field_richtext_change`] and the deprecated
-/// [`Card::set_field_richtext`] produce, and the one the wasm/Python error
-/// mappers (and their tests) key on; the inline violation is distinguished by
-/// the coercion `target`. Every other type uses the general
+/// same surface [`Card::apply_field_richtext_change`] produces, and the one the
+/// wasm/Python error mappers (and their tests) key on; the inline violation is
+/// distinguished by the coercion `target`. Every other type uses the general
 /// [`EditError::FieldConform`].
 fn conform_error_to_edit(name: &str, schema: &FieldSchema, err: CoercionError) -> EditError {
     let CoercionError::Uncoercible { target, reason, .. } = err;
@@ -607,8 +607,8 @@ impl Card {
     /// - **array** / **object** — coerces each element/property against the
     ///   element/property schema.
     /// - **null** — passes through unchanged (the null ≡ absent rule); nothing
-    ///   is coerced. (The deprecated [`set_field_richtext`](Self::set_field_richtext)
-    ///   pins the older null → empty-corpus behavior instead.)
+    ///   is coerced (a richtext `null` reads back as the empty corpus via
+    ///   [`field_richtext`](Self::field_richtext)).
     ///
     /// The caller supplies the `schema` because a [`Document`] holds only a
     /// `$quill` *reference*, not the resolved schema; an editor holds it (see
@@ -629,49 +629,6 @@ impl Card {
         let stored = resolve_field_write(name, value.into(), Some(schema))?;
         self.payload_mut().insert(name.to_string(), stored);
         Ok(())
-    }
-
-    /// Set a payload field to a **richtext corpus**, committing the corpus form
-    /// at write.
-    ///
-    /// **Deprecated**: use [`commit_field`](Self::commit_field) with a
-    /// `FieldSchema` of `type: richtext` — the schema carries the `inline`
-    /// constraint, so the `inline: bool` parameter is subsumed. This wrapper
-    /// delegates to `commit_field`, keeping one behavior pin: `null` stores the
-    /// empty corpus (where `commit_field` passes null through).
-    ///
-    /// Accepts either encoding the seam carries — a canonical corpus **object**
-    /// (decoded and validated) or an authored markdown **string** (imported) —
-    /// and stores the canonical corpus JSON, so identity marks (anchors, island
-    /// ids) live on the stored value and persist across compiles and DTO
-    /// round-trips. `null` stores the empty corpus.
-    ///
-    /// Returns [`EditError::InvalidFieldName`] for a malformed name and
-    /// [`EditError::FieldRichtextDecode`] for a value that is neither a corpus
-    /// object, an importable markdown string, nor `null`.
-    #[deprecated(
-        since = "0.94.0",
-        note = "use `commit_field` with a richtext `FieldSchema`; the schema carries the inline constraint"
-    )]
-    pub fn set_field_richtext(
-        &mut self,
-        name: &str,
-        value: &serde_json::Value,
-        inline: bool,
-    ) -> Result<(), EditError> {
-        if !is_valid_field_name(name) {
-            return Err(EditError::InvalidFieldName(name.to_string()));
-        }
-        // Behavior pin: `null` stores the empty corpus, where `commit_field`
-        // passes null through (the null ≡ absent rule).
-        if value.is_null() {
-            let canonical = quillmark_richtext::serial::to_canonical_value(&RichText::empty());
-            self.payload_mut()
-                .insert(name.to_string(), QuillValue::from_json(canonical));
-            return Ok(());
-        }
-        let schema = FieldSchema::new(name.to_string(), FieldType::RichText { inline }, None);
-        self.commit_field(name, QuillValue::from_json(value.clone()), &schema)
     }
 
     /// Replace the body from an authored markdown string — the whole-document

@@ -209,7 +209,7 @@ impl Card {
     /// Read a richtext-valued user field back as a [`RichText`] corpus — the
     /// field-level twin of [`Card::body`]. Decodes the stored value through the
     /// same object-or-markdown dispatch the writer
-    /// ([`set_field_richtext`](Card::set_field_richtext)) commits, so a field
+    /// ([`commit_field`](Card::commit_field)) commits, so a field
     /// stored as a canonical corpus reads back losslessly (identity marks
     /// intact) and a still-authored markdown string imports.
     ///

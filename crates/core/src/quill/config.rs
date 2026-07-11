@@ -458,8 +458,8 @@ impl QuillConfig {
                 // canonical corpus object or a markdown string, nothing else. No
                 // scalar→string reduction (the render floor's lenient cascade
                 // below): a bare scalar for a richtext field fails the write. The
-                // messages mirror the deprecated `Card::set_field_richtext`, whose
-                // error variants the bindings still key on.
+                // messages mirror `Card::commit_field`'s richtext error variants,
+                // which the bindings key on.
                 if mode == Leniency::Write {
                     let corpus = match crate::document::decode_richtext_value(json_value) {
                         Some(result) => result.map_err(|e| CoercionError::Uncoercible {

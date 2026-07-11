@@ -86,32 +86,31 @@ fn richtext_fields_lower_to_plaintext_field_values() {
     );
 }
 
-/// Same render, but the richtext fields are written via `set_field_richtext`, so
+/// Same render, but the richtext fields are written via the typed editor, so
 /// each is **stored as a canonical corpus object** rather than an authored
 /// markdown string. This exercises coercion's object branch (re-validate +
 /// re-canonicalize) end-to-end and proves it lowers identically to the
 /// string-authored path — the corpus-from-write form renders the same PDF.
 #[test]
-#[allow(deprecated)] // exercises the deprecated `set_field_richtext` wrapper
 fn richtext_fields_written_as_corpus_render_identically() {
     let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("richtext_form"))
         .expect("load richtext_form quill");
     let engine = Quillmark::new();
 
     // Start from the string-authored doc, then re-write each field through the
-    // corpus writer: passing markdown still stores the *canonical corpus object*
-    // (decode → canonicalize), so the payload now carries corpus objects.
+    // schema-bound typed editor: `commit_field` stores the *canonical corpus
+    // object* (decode → canonicalize) for a richtext-typed field, so the payload
+    // now carries corpus objects.
     let mut doc = Document::from_markdown(FILLED).expect("parse markdown");
-    let main = doc.main_mut();
-    main.set_field_richtext("headline", &serde_json::json!("The **headline**"), true)
-        .expect("inline richtext write");
-    main.set_field_richtext(
-        "bio",
-        &serde_json::json!("A **bold** claim and _emphasis_."),
-        false,
-    )
-    .expect("block richtext write");
+    {
+        let mut ed = quill.editor(&mut doc);
+        ed.set("headline", "The **headline**")
+            .expect("inline richtext write");
+        ed.set("bio", "A **bold** claim and _emphasis_.")
+            .expect("block richtext write");
+    }
     // Precondition: the fields are stored structurally as corpus objects now.
+    let main = doc.main();
     assert!(main.payload().get("headline").unwrap().as_json().is_object());
     assert!(main.payload().get("bio").unwrap().as_json().is_object());
 
