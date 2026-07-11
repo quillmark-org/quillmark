@@ -175,6 +175,10 @@ describe('LiveSession canvas preview', () => {
     expect(result.pixelWidth).toBe(Math.round(widthPt * layoutScale * densityScale))
     expect(result.pixelHeight).toBe(Math.round(heightPt * layoutScale * densityScale))
 
+    // No clamp on this modest density: reported honestly on the result.
+    expect(result.clamped).toBe(false)
+    expect(result.effectiveDensityScale).toBeCloseTo(densityScale, 6)
+
     // Painter owns canvas.width/height — they must equal the reported
     // pixel dimensions.
     expect(ctx.canvas.width).toBe(result.pixelWidth)
@@ -245,6 +249,14 @@ describe('LiveSession canvas preview', () => {
     expect(result.layoutHeight).toBeCloseTo(heightPt, 4)
     // Detect-clamp contract: pixelWidth < round(layoutWidth * densityScale).
     expect(result.pixelWidth).toBeLessThan(Math.round(result.layoutWidth * densityScale))
+    // The clamp is reported on the result, not just derivable from the dims.
+    expect(result.clamped).toBe(true)
+    // effectiveDensityScale is the reduced density; layoutScale defaults to 1,
+    // so pixelWidth == round(layoutWidth * effectiveDensityScale).
+    expect(result.effectiveDensityScale).toBeLessThan(densityScale)
+    expect(result.pixelWidth).toBe(
+      Math.round(result.layoutWidth * result.effectiveDensityScale),
+    )
   })
 
   it('paint throws on non-finite or non-positive layoutScale / densityScale', () => {

@@ -207,9 +207,9 @@ export interface RichTextIsland {
 /// 16k on Safari, lower on memory-constrained devices); 16384 is the
 /// floor that works everywhere we ship to. When a requested
 /// `layoutScale * densityScale` would exceed this, the painter clamps
-/// `densityScale` proportionally and surfaces the actual backing
-/// dimensions in the returned `PaintResult` so consumers can detect the
-/// clamp.
+/// `densityScale` proportionally and reports it on the returned
+/// `PaintResult` (`clamped` / `effectiveDensityScale`, plus the actual
+/// backing dimensions).
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 const MAX_BACKING_DIMENSION: u32 = 16384;
 
@@ -1530,12 +1530,22 @@ export interface PaintOptions {
  *   Equal to `round(layoutWidth * densityScale)` ×
  *   `round(layoutHeight * densityScale)` *unless* the requested backing
  *   exceeded the painter's safe maximum (16384 px per side), in which
- *   case `densityScale` was clamped to fit. Detect clamping via
- *   `pixelWidth < round(layoutWidth * densityScale)`.
+ *   case `densityScale` was clamped to fit.
+ * - `clamped` — `true` when that 16384-px clamp fired, so the page is
+ *   painted at fewer device pixels than requested and renders soft at the
+ *   same `canvas.style` size. Reads the clamp off the return value instead
+ *   of the `pixelWidth < round(layoutWidth * densityScale)` derivation.
+ * - `effectiveDensityScale` — the `densityScale` actually applied: the
+ *   requested value unless `clamped`, then reduced proportionally.
+ *   `layoutScale * effectiveDensityScale` is the scale the backing store
+ *   was rasterized at.
  *
  * The painter owns `canvas.width` / `canvas.height`; consumers must not
  * write to them. The painter does **not** touch `canvas.style.*`;
- * consumers own layout.
+ * consumers own layout. The write is a whole-backing-store `putImageData`,
+ * which bypasses the 2D context transform, `globalAlpha`, and clip: give
+ * each visible page its own `` — you cannot composite two pages, a
+ * sub-rect, or a context transform through `paint`.
  *
  * For `OffscreenCanvasRenderingContext2D` (Worker rasterization, no
  * DOM), `layoutWidth` / `layoutHeight` are informational — there's no
@@ -1546,6 +1556,8 @@ export interface PaintResult {
     layoutHeight: number;
     pixelWidth: number;
     pixelHeight: number;
+    clamped: boolean;
+    effectiveDensityScale: number;
 }
 "#;
 
@@ -1906,7 +1918,13 @@ impl LiveSession {
     /// `OffscreenCanvasRenderingContext2D`. The painter owns
     /// `canvas.width`/`height` (no `clearRect` needed); consumers own
     /// `canvas.style.*`. If `layoutScale * densityScale` exceeds 16384 px
-    /// per side, `densityScale` is clamped — detect via `PaintResult.pixelWidth`.
+    /// per side, `densityScale` is clamped — `PaintResult.clamped` reports it and
+    /// `PaintResult.effectiveDensityScale` carries the density actually applied.
+    ///
+    /// `put_image_data` writes the whole backing store, bypassing the 2D
+    /// context's transform, `globalAlpha`, and clip: the painter owns the entire
+    /// canvas, so each visible page needs its own `` — you cannot composite
+    /// two pages, a sub-rect, or a context transform through this call.
     ///
     /// Throws if the backend has no canvas painter, `page` is out of range,
     /// `ctx` is the wrong type, or either scale is non-finite or `<= 0`.
@@ -1959,7 +1977,8 @@ impl LiveSession {
         let desired_h = (layout_height * requested_density as f64).round();
         let max_dim = desired_w.max(desired_h);
 
-        let effective_density = if max_dim > MAX_BACKING_DIMENSION as f64 {
+        let clamped = max_dim > MAX_BACKING_DIMENSION as f64;
+        let effective_density = if clamped {
             (requested_density as f64) * (MAX_BACKING_DIMENSION as f64 / max_dim)
         } else {
             requested_density as f64
@@ -2011,6 +2030,8 @@ impl LiveSession {
             layout_height,
             pixel_width: pixel_w,
             pixel_height: pixel_h,
+            clamped,
+            effective_density_scale: effective_density,
         };
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         result
@@ -2134,4 +2155,13 @@ struct PaintResult {
     layout_height: f64,
     pixel_width: u32,
     pixel_height: u32,
+    /// True when `MAX_BACKING_DIMENSION` forced `densityScale` down: the page is
+    /// painted at fewer device pixels than requested, so it renders soft at the
+    /// same `canvas.style` size. The honest form of the pixel-dim derivation
+    /// consumers would otherwise reinvent.
+    clamped: bool,
+    /// The `densityScale` actually applied — equal to the requested value unless
+    /// `clamped`, then reduced proportionally. `layoutScale × effectiveDensityScale`
+    /// is the scale the backing store was rasterized at.
+    effective_density_scale: f64,
 }

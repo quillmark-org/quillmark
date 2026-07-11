@@ -136,6 +136,23 @@ compositing of its own. Backends satisfy it differently:
   flat PDF via hayro — so field values appear in the raster on their own, with
   no regions-compositing by the caller.
 
+### Painter owns the canvas
+
+`paint` writes the whole backing store with `put_image_data`, which bypasses
+the 2D context transform, `globalAlpha`, and clip. The painter therefore owns
+the entire canvas: **give each visible page its own `` element.** You
+cannot paint two pages into one canvas, paint into a sub-rect, or push a page
+through a context transform — the raster is complete precisely so you never
+need to composite, and the write ignores context state so you could not if you
+tried.
+
+Because every `paint` re-rasterizes from scratch (no per-page raster cache on
+the session — a deliberate omission, § Decisions), keep a page's canvas alive
+while it stays near the viewport rather than pooling one canvas across pages: an
+idle canvas retains its pixels for free, whereas reusing a canvas on scroll
+re-runs a full render. This keeps memory bounded to *visible + margin* without
+paying re-rasterization on every scroll reversal.
+
 Field geometry is primarily a **session-level query**, `LiveSession::regions()`
 (see the region type in `crates/core/src/region.rs`): the interactive-preview
 path holds a session and reads geometry off the current compile with no render
@@ -300,6 +317,8 @@ interface PaintResult {
   layoutHeight: number;
   pixelWidth: number;     // canvas.width the painter wrote (clamped at 16384)
   pixelHeight: number;
+  clamped: boolean;       // MAX_BACKING_DIMENSION forced densityScale down
+  effectiveDensityScale: number;  // densityScale actually applied (== requested unless clamped)
 }
 
 interface FieldRegion {
@@ -331,11 +350,12 @@ Fold `window.devicePixelRatio`, in-app zoom, and `visualViewport.scale` into
 **`MAX_BACKING_DIMENSION` (16384 px per side)** — the floor that works across
 browsers (Chrome/Firefox ~32k, Safari 16k, lower on memory-constrained mobile)
 — the painter clamps `densityScale` proportionally and reports the actual
-backing dimensions. Detect a clamp via:
-
-```
-pixelWidth < round(layoutWidth × densityScale)
-```
+backing dimensions. `clamped` and `effectiveDensityScale` carry the fact and
+the applied density on the result, so the consumer reads the clamp off the
+return value rather than reconstructing it from
+`pixelWidth < round(layoutWidth × densityScale)`. A clamped page renders soft
+at the same `canvas.style` size; compare `effectiveDensityScale` to the
+requested `densityScale` to know by how much.
 
 Each `paint` resets the backing store (writing `canvas.width` clears it), so
 paint is always a full repaint — consumers never call `clearRect`.
@@ -424,6 +444,16 @@ by `runtime.test.js`.
   finished page (Typst natively, pdfform by pre-flattening values into content
   streams before rasterizing). Regions are an overlay sidecar, not a
   compositing input — the painter stays a dumb blit.
+- **No session raster cache — re-rasterize per `paint`.** Caching the last
+  raster per `(page, renderScale)` and blitting on scroll-back would skip
+  re-rasterizing unchanged pages (`ChangeSet` already names dirty pages to
+  invalidate), but it stays unbuilt: the surface ships ahead of its first
+  consumer, the megabyte-scale per-page buffers reintroduce the unbounded
+  memory the viewport-bounded design set out to avoid, and any `renderScale`
+  change (DPR / zoom) rotates the key and voids the cache. Consumer-side canvas
+  liveness (keep the visible page's canvas alive rather than pooling) covers the
+  common scroll case without that trade-off; a real consumer's profile is what
+  should justify the cache and its eviction policy, not speculation.
 - **Method on `LiveSession`, not a sub-handle.** Even with click resolution
   shipped (`fieldAt`), it shares no state with `paint` beyond the compile the
   whole session already owns — a `Preview` sub-handle grouping them is

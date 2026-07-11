@@ -256,10 +256,23 @@ export interface PaintOptions {
  * @experimental Part of the iterative-session/canvas surface — see {@link LiveSession}.
  */
 export interface PaintResult {
-	layoutWidth: number;
+	layoutWidth: number;      // canvas.style.width target; independent of densityScale
 	layoutHeight: number;
-	pixelWidth: number;
+	pixelWidth: number;       // canvas.width the painter wrote (clamped at 16384)
 	pixelHeight: number;
+	/**
+	 * True when `MAX_BACKING_DIMENSION` forced `densityScale` down: the page is
+	 * painted at fewer device pixels than requested and renders soft at the same
+	 * `canvas.style` size. Reads the clamp off the return value instead of the
+	 * `pixelWidth < round(layoutWidth × densityScale)` derivation.
+	 */
+	clamped: boolean;
+	/**
+	 * The `densityScale` actually applied — equal to the requested value unless
+	 * `clamped`, then reduced proportionally. `layoutScale × effectiveDensityScale`
+	 * is the scale the backing store was rasterized at.
+	 */
+	effectiveDensityScale: number;
 }
 
 /**
@@ -491,7 +504,18 @@ export declare class LiveSession {
 	 * compositing (Typst rasterizes natively; pdfform rasterizes its
 	 * pre-flattened page). Effective rasterization scale is
 	 * `layoutScale × densityScale`, clamped so neither backing dimension exceeds
-	 * 16384 px — detect a clamp via {@link PaintResult.pixelWidth}.
+	 * 16384 px — {@link PaintResult.clamped} reports the clamp and
+	 * {@link PaintResult.effectiveDensityScale} the density actually applied.
+	 *
+	 * The write is a whole-backing-store `putImageData`, which bypasses the 2D
+	 * context transform, `globalAlpha`, and clip: the painter owns the entire
+	 * canvas, so give each visible page its own `` element. You cannot
+	 * paint two pages into one canvas, paint into a sub-rect, or apply a context
+	 * transform through this call — the raster is complete precisely so you never
+	 * need to. Keep the per-page canvases alive while their pages stay near the
+	 * viewport: each `paint` re-rasterizes from scratch, so reusing (pooling) a
+	 * canvas across pages on scroll re-runs a full render, whereas an idle canvas
+	 * retains its pixels for free.
 	 */
 	paint(
 		ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
