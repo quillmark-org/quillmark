@@ -415,6 +415,16 @@ A single line of body ink.`
       expect(typeof session.mapFieldPos).toBe('function')
       expect(session.mapFieldPos('$body', 0, 0, 'after')).toBe(4)
 
+      // applyFieldDelta un-gate (#881): a non-`$body` address now dispatches to
+      // the richtext-field path instead of the old hard "only $body in this
+      // phase" rejection. `title` is a plain string field, so the field path
+      // rejects it with FieldRichtextDecode (not the removed gate error), and
+      // the session is untouched — the revision does not advance on failure.
+      expect(() =>
+        session.applyFieldDelta(doc, 'title', session.revision, { ops: [{ insert: 'X' }] }),
+      ).toThrow(/FieldRichtextDecode/)
+      expect(session.revision).toBe(1)
+
       // apply — recompile in place.
       expect(typeof session.apply).toBe('function')
       const cs = session.apply(Document.fromMarkdown(SMOKE_MARKDOWN))

@@ -1633,14 +1633,24 @@ impl LiveSession {
     /// and changes nothing, so a stale delta is never spliced onto the wrong
     /// base — re-read and recompute instead.
     ///
-    /// This phase targets the **main body** corpus only (`field === "$body"`);
-    /// any other address throws (use `apply(doc)` for those). Transactional on
-    /// the compile *and* on `doc`: a failed splice or recompile leaves both the
-    /// preview and `doc` byte-identical to before the call (the splice is
-    /// rolled back), so a caller's natural retry with the same arguments is
-    /// safe rather than double-applying the delta. `revision` does not advance
-    /// on failure either. On success `doc`'s body carries the edit, the
-    /// preview reflects it, and `revision` is `baseRevision + 1`.
+    /// The address is either the **main body** (`field === "$body"`) or a
+    /// **richtext field** on the main card by name (its stored value must be a
+    /// corpus — i.e. written via [`setRichtextField`](Document::set_richtext_field));
+    /// any other address throws (use `apply(doc)` for those). Field deltas
+    /// record and map under the field path, so a position captured on a field
+    /// stays anchored across edits ([`mapFieldPos`](Session::map_field_pos)).
+    /// Transactional on the compile *and* on `doc`: a failed splice or recompile
+    /// leaves both the preview and `doc` byte-identical to before the call (the
+    /// splice is rolled back), so a caller's natural retry with the same
+    /// arguments is safe rather than double-applying the delta. `revision` does
+    /// not advance on failure either. On success the addressed corpus carries
+    /// the edit, the preview reflects it, and `revision` is `baseRevision + 1`.
+    ///
+    /// Only the text `Delta` rides this path; mark/line op channels
+    /// (`apply_mark_ops` / `apply_line_ops`) are not yet exposed over the seam,
+    /// so a formatting toggle or block split still falls back to whole-document
+    /// `setBody` + `apply(doc)`. Exposing those channels is the follow-up that
+    /// makes formatting and block edits ride the non-invalidating path too.
     #[wasm_bindgen(js_name = applyFieldDelta)]
     pub fn apply_field_delta(
         &mut self,
@@ -1649,13 +1659,6 @@ impl LiveSession {
         base_revision: u32,
         delta: Delta,
     ) -> Result<ChangeSet, JsValue> {
-        if field != "$body" {
-            return Err(WasmError::from(format!(
-                "applyFieldDelta: '{field}' is not a delta-path target; only the main body \
-                 '$body' is supported in this phase — use apply(doc) for whole-document edits"
-            ))
-            .to_js_value());
-        }
         let core_delta: quillmark_core::Delta = delta.into();
 
         // Guard the base revision before touching anything: a stale delta is
@@ -1669,28 +1672,37 @@ impl LiveSession {
                 .to_js_value()
             })?;
 
-        // Snapshot the pre-edit body: `apply_body_change` is itself atomic, but
-        // the compile and record steps that follow it can fail *after* the body
-        // has changed, so restoring the snapshot on any failure leaves `doc`
-        // exactly as it was — a caller's retry then never double-applies the
-        // delta onto an already-mutated document. This snapshot is the
-        // compile/record transaction boundary, not a guard against a
-        // half-applied body.
-        let pre_edit_body = doc.inner.main().body().clone();
+        // Snapshot the pre-edit corpus for the addressed target: the splice is
+        // itself atomic, but the compile and record steps that follow can fail
+        // *after* the corpus has changed, so restoring the snapshot on any
+        // failure leaves `doc` exactly as it was — a caller's retry then never
+        // double-applies the delta onto an already-mutated document. `$body`
+        // snapshots the body corpus; a field snapshots its stored value.
+        let is_body = field == "$body";
+        let pre_edit_body = is_body.then(|| doc.inner.main().body().clone());
+        let pre_edit_field =
+            (!is_body).then(|| doc.inner.main().payload().get(field).cloned());
 
-        // Splice the main body corpus (text delta only), then recompile from the
+        // Splice the addressed corpus (text delta only), then recompile from the
         // mutated document and record the delta atomically — transactional on the
         // compile and, via the snapshot above, on `doc` itself. The seam
         // recompiles *without* invalidating the change log (unlike whole-document
         // `apply`) and records the delta against the guarded base in one step:
         // the revision advances to `base_revision + 1` in lockstep with the
         // preview, or nothing changes and `doc` rolls back. On any failure the
-        // single site below restores the body and returns the step's error.
+        // single site below restores the corpus and returns the step's error.
         let spliced = (|| -> Result<quillmark_core::ChangeSet, JsValue> {
-            doc.inner
-                .main_mut()
-                .apply_body_change(&core_delta, &[], &[])
-                .map_err(|e| edit_error_to_js(&e))?;
+            if is_body {
+                doc.inner
+                    .main_mut()
+                    .apply_body_change(&core_delta, &[], &[])
+                    .map_err(|e| edit_error_to_js(&e))?;
+            } else {
+                doc.inner
+                    .main_mut()
+                    .apply_field_richtext_change(field, &core_delta, &[], &[])
+                    .map_err(|e| edit_error_to_js(&e))?;
+            }
             let json_data = self.compile_checked(&doc.inner)?;
             self.inner
                 .apply_for_field_delta(
@@ -1704,7 +1716,20 @@ impl LiveSession {
         let cs = match spliced {
             Ok(cs) => cs,
             Err(e) => {
-                doc.inner.main_mut().set_body_corpus(pre_edit_body);
+                if let Some(body) = pre_edit_body {
+                    doc.inner.main_mut().set_body_corpus(body);
+                } else if let Some(field_value) = pre_edit_field {
+                    // Restore the field's prior value (or remove it if it was
+                    // absent), undoing any splice that landed before the failure.
+                    match field_value {
+                        Some(v) => {
+                            doc.inner.main_mut().payload_mut().insert(field, v);
+                        }
+                        None => {
+                            let _ = doc.inner.main_mut().remove_field(field);
+                        }
+                    }
+                }
                 return Err(e);
             }
         };

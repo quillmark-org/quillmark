@@ -851,6 +851,64 @@ fn test_apply_body_change_reports_out_of_range() {
     }
 }
 
+/// `apply_field_richtext_change` splices a bundle into a richtext field's stored
+/// corpus and re-stores it — the field-path twin of `apply_body_change`.
+/// Identity marks (a strong span applied post-delta) survive on the re-stored
+/// corpus, which is what makes anchors persist on field content across edits.
+#[test]
+fn test_apply_field_richtext_change_splices_and_persists() {
+    use crate::MarkOp;
+    use quillmark_richtext::delta::diff;
+    use quillmark_richtext::model::MarkKind;
+
+    let mut card = Card::new("note").unwrap();
+    card.set_field_richtext("intro", &serde_json::json!("abc"), false)
+        .unwrap();
+    let d = diff("abc", "abXc");
+    card.apply_field_richtext_change(
+        "intro",
+        &d,
+        &[],
+        &[MarkOp::Add {
+            start: 3,
+            end: 4,
+            kind: MarkKind::Strong,
+        }],
+    )
+    .unwrap();
+
+    // The stored value is still a canonical corpus object carrying the edit.
+    assert!(card.payload().get("intro").unwrap().as_json().is_object());
+    let rt = card.field_richtext("intro").unwrap().unwrap();
+    assert_eq!(rt.text, "abXc");
+    assert!(rt.marks.iter().any(|m| matches!(m.kind, MarkKind::Strong)));
+}
+
+/// `apply_field_richtext_change` on an absent or non-richtext field is a
+/// `FieldRichtextDecode` error, not a panic — the caller must address a field it
+/// knows is richtext.
+#[test]
+fn test_apply_field_richtext_change_rejects_non_richtext() {
+    use quillmark_richtext::delta::diff;
+
+    let mut card = Card::new("note").unwrap();
+    let identity = diff("", "");
+    assert_eq!(
+        card.apply_field_richtext_change("missing", &identity, &[], &[])
+            .unwrap_err()
+            .variant_name(),
+        "FieldRichtextDecode"
+    );
+
+    card.set_field("count", 3).unwrap();
+    assert_eq!(
+        card.apply_field_richtext_change("count", &identity, &[], &[])
+            .unwrap_err()
+            .variant_name(),
+        "FieldRichtextDecode"
+    );
+}
+
 // ── Invariant check: sequence of mutations ───────────────────────────────────
 
 /// After a deterministic sequence of mutations, the document must satisfy:

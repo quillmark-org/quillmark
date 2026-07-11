@@ -645,4 +645,46 @@ impl Card {
             .apply_field_change(text_delta, line_ops, mark_ops)
             .map_err(EditError::CorpusApply)
     }
+
+    /// Splice a corpus field-change bundle into a **richtext-valued field**'s
+    /// stored corpus — the field-path twin of [`apply_body_change`](Self::apply_body_change),
+    /// and what lets identity marks (anchors, island ids) persist on field
+    /// content across incremental edits. Decodes the field's canonical corpus,
+    /// applies the text delta plus any line/mark ops in the same all-or-nothing
+    /// bundle, and re-stores the canonical result.
+    ///
+    /// Returns [`EditError::FieldRichtextDecode`] when the field is absent or its
+    /// stored value is not a richtext corpus (the caller addresses a field it
+    /// knows is richtext, exactly as when writing it), and
+    /// [`EditError::CorpusApply`] when the bundle applies out of bounds.
+    pub fn apply_field_richtext_change(
+        &mut self,
+        name: &str,
+        text_delta: &Delta,
+        line_ops: &[LineOp],
+        mark_ops: &[MarkOp],
+    ) -> Result<(), EditError> {
+        let mut corpus = match self.field_richtext(name) {
+            Some(Ok(rt)) => rt,
+            Some(Err(e)) => {
+                return Err(EditError::FieldRichtextDecode {
+                    field: name.to_string(),
+                    message: e.into_message(),
+                })
+            }
+            None => {
+                return Err(EditError::FieldRichtextDecode {
+                    field: name.to_string(),
+                    message: "field is absent".to_string(),
+                })
+            }
+        };
+        corpus
+            .apply_field_change(text_delta, line_ops, mark_ops)
+            .map_err(EditError::CorpusApply)?;
+        let canonical = quillmark_richtext::serial::to_canonical_value(&corpus);
+        self.payload_mut()
+            .insert(name.to_string(), QuillValue::from_json(canonical));
+        Ok(())
+    }
 }
