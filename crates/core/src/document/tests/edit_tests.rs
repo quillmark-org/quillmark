@@ -1,4 +1,7 @@
 //! Unit tests for the document editor surface.
+// The `set_field_richtext` tests below are kept as regression guards for the
+// deprecated wrapper's preserved behavior; allow the deprecation here.
+#![allow(deprecated)]
 
 use crate::document::edit::{is_valid_field_name, EditError};
 use crate::document::meta::is_valid_kind_name;
@@ -687,6 +690,130 @@ fn test_set_field_richtext_inline_enforced_at_write() {
         .unwrap_err();
     assert_eq!(err.variant_name(), "FieldRichtextNotInline");
     assert_eq!(card.field_markdown("title").unwrap(), "A single line\n");
+}
+
+// ── commit_field (typed write) ───────────────────────────────────────────────
+
+/// `commit_field` on a scalar schema stores the coerced canonical (`"3"` → `3`);
+/// a strict write drops the render floor's cross-type coercions (a `bool` for an
+/// `integer` field) and fails a shape mismatch with `EditError::FieldConform`.
+#[test]
+fn test_commit_field_scalar_strict() {
+    use crate::quill::{FieldSchema, FieldType};
+
+    let mut card = Card::new("note").unwrap();
+    let int_schema = FieldSchema::new("qty".to_string(), FieldType::Integer, None);
+
+    // Value-parsing normalization survives: "3" → 3.
+    card.commit_field("qty", QuillValue::from_json(serde_json::json!("3")), &int_schema)
+        .unwrap();
+    assert_eq!(
+        card.payload().get("qty").unwrap().as_json(),
+        &serde_json::json!(3)
+    );
+
+    // Cross-type boolean→integer is a render-floor leniency, dropped on write.
+    let err = card
+        .commit_field("qty", QuillValue::from_json(serde_json::json!(true)), &int_schema)
+        .unwrap_err();
+    assert_eq!(err.variant_name(), "FieldConform");
+
+    // A non-numeric string is a mismatch and fails now, not at render.
+    assert_eq!(
+        card.commit_field("qty", QuillValue::from_json(serde_json::json!("x")), &int_schema)
+            .unwrap_err()
+            .variant_name(),
+        "FieldConform"
+    );
+    // The good value is untouched by the failed writes.
+    assert_eq!(
+        card.payload().get("qty").unwrap().as_json(),
+        &serde_json::json!(3)
+    );
+}
+
+/// `commit_field` on an `object` schema fails a non-object value with
+/// `FieldConform`, where the render floor would defer to validation.
+#[test]
+fn test_commit_field_object_rejects_non_object() {
+    use crate::quill::{FieldSchema, FieldType};
+
+    let mut card = Card::new("note").unwrap();
+    let schema = FieldSchema::new("meta".to_string(), FieldType::Object, None);
+    assert_eq!(
+        card.commit_field("meta", QuillValue::from_json(serde_json::json!(42)), &schema)
+            .unwrap_err()
+            .variant_name(),
+        "FieldConform"
+    );
+}
+
+/// `commit_field` on a richtext schema commits the corpus and reports through
+/// the richtext-specific error variants (decode / inline), matching the
+/// deprecated `set_field_richtext` surface the bindings key on.
+#[test]
+fn test_commit_field_richtext_variants() {
+    use crate::quill::{FieldSchema, FieldType};
+
+    let mut card = Card::new("note").unwrap();
+    let block = FieldSchema::new("intro".to_string(), FieldType::RichText { inline: false }, None);
+    let inline = FieldSchema::new("title".to_string(), FieldType::RichText { inline: true }, None);
+
+    // Markdown string imports to corpus.
+    card.commit_field(
+        "intro",
+        QuillValue::from_json(serde_json::json!("**bold** intro")),
+        &block,
+    )
+    .unwrap();
+    assert_eq!(card.field_markdown("intro").unwrap(), "**bold** intro\n");
+
+    // A bare scalar is not a richtext write (no scalar→markdown reduction).
+    assert_eq!(
+        card.commit_field("intro", QuillValue::from_json(serde_json::json!(42)), &block)
+            .unwrap_err()
+            .variant_name(),
+        "FieldRichtextDecode"
+    );
+
+    // Multi-block into a richtext(inline) field fails at write.
+    assert_eq!(
+        card.commit_field(
+            "title",
+            QuillValue::from_json(serde_json::json!("line one\n\nline two")),
+            &inline,
+        )
+        .unwrap_err()
+        .variant_name(),
+        "FieldRichtextNotInline"
+    );
+}
+
+/// `commit_field` passes `null` through (the null ≡ absent rule) — a divergence
+/// from the deprecated `set_field_richtext`, which stores the empty corpus.
+#[test]
+fn test_commit_field_null_passes_through() {
+    use crate::quill::{FieldSchema, FieldType};
+
+    let mut card = Card::new("note").unwrap();
+    let schema = FieldSchema::new("intro".to_string(), FieldType::RichText { inline: false }, None);
+    card.commit_field("intro", QuillValue::null(), &schema).unwrap();
+    assert!(card.payload().get("intro").unwrap().as_json().is_null());
+}
+
+/// A malformed field name fails with `InvalidFieldName` before any coercion.
+#[test]
+fn test_commit_field_rejects_bad_name() {
+    use crate::quill::{FieldSchema, FieldType};
+
+    let mut card = Card::new("note").unwrap();
+    let schema = FieldSchema::new("$bad".to_string(), FieldType::Integer, None);
+    assert_eq!(
+        card.commit_field("$bad", QuillValue::from_json(serde_json::json!(1)), &schema)
+            .unwrap_err()
+            .variant_name(),
+        "InvalidFieldName"
+    );
 }
 
 /// `field_richtext` on an absent field is `None`; on a plain non-richtext field

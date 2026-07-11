@@ -30,6 +30,9 @@ pub use document::{
     RichtextDecodeError, SeedOverlay, WireError,
 };
 
+pub mod editor;
+pub use editor::{CardEditor, Committed, TypedEditor};
+
 pub mod backend;
 pub use backend::{formats_support_canvas, Backend};
 

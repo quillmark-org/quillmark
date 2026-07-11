@@ -16,6 +16,7 @@ mod types;
 pub(crate) mod validation;
 
 pub use config::{CoercionError, QuillConfig};
+pub(crate) use config::Leniency;
 pub use fill::zero_value;
 pub use formats::parse_date_ymd;
 pub use ignore::QuillIgnore;
@@ -68,6 +69,14 @@ impl Quill {
     /// The parsed schema configuration.
     pub fn config(&self) -> &QuillConfig {
         &self.config
+    }
+
+    /// A schema-bound [`TypedEditor`](crate::TypedEditor) over `doc`. The front
+    /// door for typed field writes: it resolves each field's type from this
+    /// quill's schema, so callers issue one verb (`set`) with no type token or
+    /// `inline` flag. See the [`editor`](crate::editor) module.
+    pub fn editor<'a>(&'a self, doc: &'a mut crate::document::Document) -> crate::TypedEditor<'a> {
+        crate::TypedEditor::new(&self.config, doc)
     }
 
     /// The in-memory file tree for this quill.

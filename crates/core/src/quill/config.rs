@@ -112,6 +112,28 @@ pub enum CoercionError {
     },
 }
 
+/// Write-side leniency mode for [`QuillConfig::conform_value`] — the one axis
+/// that separates the render floor's forgiving coercion from a strict typed
+/// write.
+///
+/// The dispatch is shared; only the arms that *defer to the validation layer*
+/// or *cross type boundaries* branch on this. See `conform_value`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Leniency {
+    /// The render floor's forgiving cascade (today's `coerce_value_strict`
+    /// behavior, unchanged): cross-type scalar coercions apply and a shape a
+    /// type cannot adopt falls through unchanged for the validation layer to
+    /// report.
+    Render,
+    /// A strict typed write ([`Card::commit_field`](crate::document::Card::commit_field)):
+    /// value-parsing normalizations still apply (`"3"` → `3`, a bare scalar
+    /// wraps into a singleton array, richtext markdown imports to corpus), but
+    /// cross-type `Boolean`↔`Number` coercions are dropped and every
+    /// defer-to-validation fall-through becomes a `CoercionError` — so a
+    /// mismatched value fails at the write, not silently at a later render.
+    Write,
+}
+
 impl QuillConfig {
     /// Returns a named card-kind schema by name.
     pub fn card_kind(&self, name: &str) -> Option<&CardSchema> {
@@ -161,7 +183,7 @@ impl QuillConfig {
                 let path = field_name.as_str();
                 coerced.insert(
                     field_name.clone(),
-                    Self::coerce_value_strict(field_value, field_schema, path)?,
+                    Self::conform_value(field_value, field_schema, path, Leniency::Render)?,
                 );
             } else {
                 coerced.insert(field_name.clone(), field_value.clone());
@@ -187,7 +209,7 @@ impl QuillConfig {
                 let path = format!("card_kinds.{card_kind}.{field_name}");
                 coerced.insert(
                     field_name.clone(),
-                    Self::coerce_value_strict(field_value, field_schema, &path)?,
+                    Self::conform_value(field_value, field_schema, &path, Leniency::Render)?,
                 );
             } else {
                 coerced.insert(field_name.clone(), field_value.clone());
@@ -204,10 +226,20 @@ impl QuillConfig {
         super::validation::validate_typed_document(self, doc)
     }
 
-    fn coerce_value_strict(
+    /// The one write-side per-type dispatch: given a value, a field's schema,
+    /// and a [`Leniency`] mode, validate/normalize the value to the canonical
+    /// form the type stores. `Render` is the render floor's forgiving coercion
+    /// (the former `coerce_value_strict`, behavior-preserving); `Write` is the
+    /// strict typed-write commit driving [`Card::commit_field`](crate::document::Card::commit_field).
+    ///
+    /// Validation keeps its own read-only dispatch (`validation::validate_value`),
+    /// synced with this via the shared helpers `scalar_as_string` /
+    /// `decode_richtext_value`.
+    pub(crate) fn conform_value(
         value: &QuillValue,
         field_schema: &super::FieldSchema,
         path: &str,
+        mode: Leniency,
     ) -> Result<QuillValue, CoercionError> {
         use super::FieldType;
 
@@ -238,10 +270,11 @@ impl QuillConfig {
                 if let Some(items) = &field_schema.items {
                     let mut out = Vec::with_capacity(arr.len());
                     for (idx, elem) in arr.iter().enumerate() {
-                        let coerced = Self::coerce_value_strict(
+                        let coerced = Self::conform_value(
                             &QuillValue::from_json(elem.clone()),
                             items,
                             &format!("{path}[{idx}]"),
+                            mode,
                         )?;
                         out.push(coerced.into_json());
                     }
@@ -265,16 +298,20 @@ impl QuillConfig {
                         return Ok(QuillValue::from_json(serde_json::Value::Bool(false)));
                     }
                 }
-                if let Some(n) = json_value.as_i64() {
-                    return Ok(QuillValue::from_json(serde_json::Value::Bool(n != 0)));
-                }
-                if let Some(n) = json_value.as_f64() {
-                    if n.is_nan() {
-                        return Ok(QuillValue::from_json(serde_json::Value::Bool(false)));
+                // Cross-type number→boolean is a render-floor leniency; a strict
+                // write requires an actual boolean or its `"true"`/`"false"` text.
+                if mode == Leniency::Render {
+                    if let Some(n) = json_value.as_i64() {
+                        return Ok(QuillValue::from_json(serde_json::Value::Bool(n != 0)));
                     }
-                    return Ok(QuillValue::from_json(serde_json::Value::Bool(
-                        n.abs() > f64::EPSILON,
-                    )));
+                    if let Some(n) = json_value.as_f64() {
+                        if n.is_nan() {
+                            return Ok(QuillValue::from_json(serde_json::Value::Bool(false)));
+                        }
+                        return Ok(QuillValue::from_json(serde_json::Value::Bool(
+                            n.abs() > f64::EPSILON,
+                        )));
+                    }
                 }
 
                 Err(CoercionError::Uncoercible {
@@ -304,11 +341,14 @@ impl QuillConfig {
                         reason: "string is not a valid number".to_string(),
                     });
                 }
-                if let Some(b) = json_value.as_bool() {
-                    let n = if b { 1 } else { 0 };
-                    return Ok(QuillValue::from_json(serde_json::Value::Number(
-                        serde_json::Number::from(n),
-                    )));
+                // Cross-type boolean→number is a render-floor leniency only.
+                if mode == Leniency::Render {
+                    if let Some(b) = json_value.as_bool() {
+                        let n = if b { 1 } else { 0 };
+                        return Ok(QuillValue::from_json(serde_json::Value::Number(
+                            serde_json::Number::from(n),
+                        )));
+                    }
                 }
 
                 Err(CoercionError::Uncoercible {
@@ -344,11 +384,14 @@ impl QuillConfig {
                         reason: "string is not a valid integer".to_string(),
                     });
                 }
-                if let Some(b) = json_value.as_bool() {
-                    let n = if b { 1 } else { 0 };
-                    return Ok(QuillValue::from_json(serde_json::Value::Number(
-                        serde_json::Number::from(n),
-                    )));
+                // Cross-type boolean→integer is a render-floor leniency only.
+                if mode == Leniency::Render {
+                    if let Some(b) = json_value.as_bool() {
+                        let n = if b { 1 } else { 0 };
+                        return Ok(QuillValue::from_json(serde_json::Value::Number(
+                            serde_json::Number::from(n),
+                        )));
+                    }
                 }
 
                 Err(CoercionError::Uncoercible {
@@ -370,7 +413,17 @@ impl QuillConfig {
                 if let Some(text) = lenient_string(json_value) {
                     return Ok(QuillValue::from_json(serde_json::Value::String(text)));
                 }
-                Ok(value.clone())
+                // A non-stringifiable shape (object, multi-element array): the
+                // render floor defers to validation, a strict write fails now.
+                match mode {
+                    Leniency::Render => Ok(value.clone()),
+                    Leniency::Write => Err(CoercionError::Uncoercible {
+                        path: path.to_string(),
+                        value: json_value.to_string(),
+                        target: "string".to_string(),
+                        reason: "value is not a string".to_string(),
+                    }),
+                }
             }
             FieldType::RichText { inline } => {
                 // The seam carries the corpus, so coercion commits the corpus
@@ -401,6 +454,42 @@ impl QuillConfig {
                         }
                         Ok(())
                     };
+                // A strict write uses `decode_richtext_value` semantics — a
+                // canonical corpus object or a markdown string, nothing else. No
+                // scalar→string reduction (the render floor's lenient cascade
+                // below): a bare scalar for a richtext field fails the write. The
+                // messages mirror the deprecated `Card::set_field_richtext`, whose
+                // error variants the bindings still key on.
+                if mode == Leniency::Write {
+                    let corpus = match crate::document::decode_richtext_value(json_value) {
+                        Some(result) => result.map_err(|e| CoercionError::Uncoercible {
+                            path: path.to_string(),
+                            value: "<richtext>".to_string(),
+                            target: "richtext".to_string(),
+                            reason: e.into_message(),
+                        })?,
+                        None => {
+                            return Err(CoercionError::Uncoercible {
+                                path: path.to_string(),
+                                value: json_value.to_string(),
+                                target: "richtext".to_string(),
+                                reason: format!(
+                                    "expected a richtext corpus object or a markdown string, got {}",
+                                    match json_value {
+                                        serde_json::Value::Bool(_) => "a boolean",
+                                        serde_json::Value::Number(_) => "a number",
+                                        serde_json::Value::Array(_) => "an array",
+                                        _ => "an unsupported value",
+                                    }
+                                ),
+                            })
+                        }
+                    };
+                    inline_check(&corpus)?;
+                    return Ok(QuillValue::from_json(
+                        quillmark_richtext::serial::to_canonical_value(&corpus),
+                    ));
+                }
                 if json_value.is_object() {
                     let rt = quillmark_richtext::serial::from_canonical_value(json_value).map_err(
                         |e| CoercionError::Uncoercible {
@@ -489,7 +578,7 @@ impl QuillConfig {
             FieldType::Object => {
                 if let Some(obj) = json_value.as_object() {
                     if let Some(props) = &field_schema.properties {
-                        let coerced_obj = Self::coerce_object_props(obj, props, path)?;
+                        let coerced_obj = Self::coerce_object_props(obj, props, path, mode)?;
                         Ok(QuillValue::from_json(serde_json::Value::Object(
                             coerced_obj,
                         )))
@@ -497,7 +586,17 @@ impl QuillConfig {
                         Ok(value.clone())
                     }
                 } else {
-                    Ok(value.clone())
+                    // A non-object value: the render floor defers to validation,
+                    // a strict write fails now.
+                    match mode {
+                        Leniency::Render => Ok(value.clone()),
+                        Leniency::Write => Err(CoercionError::Uncoercible {
+                            path: path.to_string(),
+                            value: json_value.to_string(),
+                            target: "object".to_string(),
+                            reason: "value is not an object".to_string(),
+                        }),
+                    }
                 }
             }
         }
@@ -511,6 +610,7 @@ impl QuillConfig {
         obj: &serde_json::Map<String, serde_json::Value>,
         props: &std::collections::BTreeMap<String, Box<super::FieldSchema>>,
         parent_path: &str,
+        mode: Leniency,
     ) -> Result<serde_json::Map<String, serde_json::Value>, CoercionError> {
         let mut out = serde_json::Map::new();
         for (k, v) in obj {
@@ -518,10 +618,11 @@ impl QuillConfig {
                 let child_path = format!("{parent_path}.{k}");
                 out.insert(
                     k.clone(),
-                    Self::coerce_value_strict(
+                    Self::conform_value(
                         &QuillValue::from_json(v.clone()),
                         prop_schema,
                         &child_path,
+                        mode,
                     )?
                     .into_json(),
                 );

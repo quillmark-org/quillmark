@@ -394,6 +394,7 @@ mod tests {
     /// projection) survive Card → wire → Card. This is the lossless carrier the
     /// card-yaml markdown projection (emit) deliberately is not.
     #[test]
+    #[allow(deprecated)] // exercises the deprecated `set_field_richtext` wrapper
     fn card_wire_round_trips_corpus_field_losslessly() {
         use quillmark_richtext::model::{Mark, MarkKind};
 

@@ -1045,6 +1045,7 @@ This body and the metadata above are an indorsement card.
     }
 
     #[test]
+    #[allow(deprecated)] // exercises the deprecated `set_field_richtext` wrapper
     fn corpus_field_survives_storage_round_trip_losslessly() {
         // A richtext field stored as a canonical corpus object is the case the
         // card-yaml markdown projection is lossy for; the storage DTO is the

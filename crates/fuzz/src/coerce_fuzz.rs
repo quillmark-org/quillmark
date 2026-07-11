@@ -16,13 +16,24 @@
 //!   `root_field` are drawn from the generator's character set.
 //! - **T3 (idempotence):** for any input where `coerce_payload` returns
 //!   `Ok(x)`, `coerce_payload(x) == Ok(x)`.
+//!
+//! The strict *write* side of the same dispatch (`conform_value` under
+//! `Leniency::Write`, reached through the public `Card::commit_field`) carries
+//! the parallel guarantees:
+//!
+//! - **W1 (no-panic):** `commit_field` returns `Ok | Err(_)` for any pair.
+//! - **W2 (typed error):** a failure is one of the typed-write `EditError`
+//!   variants (`FieldConform`, `FieldRichtext*`, `ValueTooDeep`,
+//!   `InvalidFieldName`), never a panic or an unrelated variant.
+//! - **W3 (commit ∘ commit = commit):** a committed value is a fixed point —
+//!   re-committing it yields the same stored value.
 
 use std::collections::{BTreeMap, HashMap};
 
 use indexmap::IndexMap;
 use proptest::prelude::*;
 use quillmark_core::quill::{CardSchema, CoercionError, FieldSchema, FieldType, QuillConfig};
-use quillmark_core::QuillValue;
+use quillmark_core::{Card, EditError, QuillValue};
 
 // -- Generators ---------------------------------------------------------------
 
@@ -219,6 +230,61 @@ proptest! {
                 .coerce_payload(&first)
                 .expect("second coerce must succeed when first did");
             prop_assert_eq!(first, second);
+        }
+    }
+}
+
+// -- Write-mode (strict commit) properties ------------------------------------
+
+/// Commit `value` to a single field `f` of the given `schema` via the public
+/// `Card::commit_field` (strict `Leniency::Write`) and return the stored form.
+fn commit_once(schema: &FieldSchema, value: serde_json::Value) -> Result<QuillValue, EditError> {
+    let mut card = Card::new("note").expect("valid card kind");
+    card.commit_field("f", QuillValue::from_json(value), schema)?;
+    Ok(card.payload().get("f").expect("field stored").clone())
+}
+
+proptest! {
+    // W1 — never panic, however adversarial the (schema, value) pair.
+    #[test]
+    fn commit_never_panics(
+        schema in arb_field_schema(4),
+        value in arb_json_value(4),
+    ) {
+        let _ = commit_once(&schema, value);
+    }
+
+    // W2 — a commit failure is one of the typed-write EditError variants.
+    #[test]
+    fn commit_error_is_typed(
+        schema in arb_field_schema(4),
+        value in arb_json_value(4),
+    ) {
+        if let Err(e) = commit_once(&schema, value) {
+            prop_assert!(
+                matches!(
+                    e,
+                    EditError::FieldConform { .. }
+                        | EditError::FieldRichtextDecode { .. }
+                        | EditError::FieldRichtextNotInline(_)
+                        | EditError::ValueTooDeep { .. }
+                        | EditError::InvalidFieldName(_)
+                ),
+                "unexpected commit error variant: {e:?}"
+            );
+        }
+    }
+
+    // W3 — commit ∘ commit = commit: re-committing a committed value is stable.
+    #[test]
+    fn commit_is_idempotent(
+        schema in arb_field_schema(4),
+        value in arb_json_value(4),
+    ) {
+        if let Ok(first) = commit_once(&schema, value) {
+            let second = commit_once(&schema, first.as_json().clone())
+                .expect("re-commit of a committed value must succeed");
+            prop_assert_eq!(first.as_json(), second.as_json());
         }
     }
 }
