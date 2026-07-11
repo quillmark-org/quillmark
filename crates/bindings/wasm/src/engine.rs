@@ -1232,6 +1232,36 @@ impl Document {
             .replace_body(body)
             .map_err(|e| edit_error_to_js(&e))
     }
+
+    /// Set the body of the card at `index` from a **corpus object** (canonical
+    /// RichText-JSON) or a markdown string — the card-indexed twin of
+    /// [`setBody`](Document::set_body), and the corpus-native counterpart to
+    /// [`updateCardBody`](Document::update_card_body), which accepts markdown
+    /// only. `body` is the same `RichText | string` shape `Document.cards[i].body`
+    /// reads back, so a corpus-native editor writes a card body straight through
+    /// with no lossy markdown round-trip — a corpus-only mark such as `underline`,
+    /// and anchor/island identity ids, survive. `null` clears the body to empty.
+    ///
+    /// A card body is reachable only here: `$body` is rejected by
+    /// [`updateCardRichtextField`](Document::update_card_richtext_field) (the
+    /// reserved `$`-prefix fails the field-name check), so the field channel
+    /// cannot address it. This closes the last markdown-forced write in the
+    /// corpus surface — a non-main card body (issue #892).
+    ///
+    /// Throws `[EditError::BodyDecode]` if `body` is neither a valid corpus
+    /// object, an importable markdown string, nor `null`, and
+    /// `[EditError::IndexOutOfRange]` when the card is absent.
+    #[wasm_bindgen(js_name = setCardBody)]
+    pub fn set_card_body(
+        &mut self,
+        index: usize,
+        #[wasm_bindgen(unchecked_param_type = "RichText | string")] body: JsValue,
+    ) -> Result<(), JsValue> {
+        let json = js_value_to_json(body, "setCardBody")?;
+        self.card_mut_or_throw(index)?
+            .set_body_value(&json)
+            .map_err(|e| edit_error_to_js(&e))
+    }
 }
 
 impl Document {

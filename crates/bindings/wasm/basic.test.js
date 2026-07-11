@@ -923,6 +923,38 @@ Card body.
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
     expect(() => doc.updateCardBody(0, 'x')).toThrow(/IndexOutOfRange/)
   })
+
+  it('setCardBody accepts a markdown string', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARD)
+    doc.setCardBody(0, 'Card body from **markdown**.')
+    expect(doc.cards[0].bodyMarkdown).toBe('Card body from **markdown**.\n')
+  })
+
+  it('setCardBody accepts a corpus object round-tripped from a card body', () => {
+    // The corpus is the shape doc.cards[i].body reads back; writing it straight
+    // through must round-trip, the card-indexed twin of the setBody corpus path.
+    const src = Document.fromMarkdown(MD_WITH_CARD)
+    const corpus = src.cards[0].body
+    const doc = Document.fromMarkdown(MD_WITH_CARD)
+    doc.setCardBody(0, corpus)
+    expect(doc.cards[0].body.text).toBe(corpus.text)
+  })
+
+  it('setCardBody(null) clears the card body', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARD)
+    doc.setCardBody(0, null)
+    expect(doc.cards[0].body.text).toBe('')
+  })
+
+  it('setCardBody throws BodyDecode on a non-corpus object', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARD)
+    expect(() => doc.setCardBody(0, { not: 'a corpus' })).toThrow(/BodyDecode/)
+  })
+
+  it('setCardBody throws IndexOutOfRange when card absent', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
+    expect(() => doc.setCardBody(0, 'x')).toThrow(/IndexOutOfRange/)
+  })
 })
 
 describe('Document editor surface — parse→mutate→read round-trip', () => {
