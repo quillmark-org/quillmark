@@ -383,7 +383,60 @@ fn emit_table(isl: &Island, out: &mut String) {
 fn emit_image(isl: &Island, out: &mut String) {
     let url = isl.props.get("url").and_then(|v| v.as_str()).unwrap_or("");
     let alt = isl.props.get("alt").and_then(|v| v.as_str()).unwrap_or("");
-    out.push_str(&format!("![{}]({})", alt, url));
+    // Alt is inline content of `![…]`: escape it like a link's display text so a
+    // `]`/`\`/`&`/delimiter can't terminate the markup or decode on re-import.
+    // Url goes through `emit_url` (bare when safe, else angle-wrapped + escaped).
+    out.push_str("![");
+    out.push_str(&escape_run(&alt.chars().collect::<Vec<_>>(), false));
+    out.push_str("](");
+    emit_url(url, out);
+    out.push(')');
+}
+
+/// Emit a link/image destination that re-imports to `url` verbatim. A bare
+/// (unbracketed) destination round-trips only for a URL with no whitespace,
+/// control char, `<`, `>`, `\`, or `&`, and balanced parentheses — CommonMark's
+/// unbracketed form. Anything else is angle-wrapped, with `<`, `>`, `\`, and `&`
+/// backslash-escaped so the sequence re-parses to the exact URL: unescaped `<`/`>`
+/// are illegal even inside the wrap, and `\`/`&` would otherwise be consumed as an
+/// escape or entity reference on re-import (the same `&`-always-escaped rule
+/// [`escape_char_into`] applies to prose). Spaces and parentheses need no escape
+/// inside the wrap, so a spaced or unbalanced-paren URL wraps without further work.
+fn emit_url(url: &str, out: &mut String) {
+    if url_is_bare_safe(url) {
+        out.push_str(url);
+        return;
+    }
+    out.push('<');
+    for c in url.chars() {
+        if matches!(c, '<' | '>' | '\\' | '&') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('>');
+}
+
+/// Whether `url` re-imports verbatim as a bare (unbracketed) link destination:
+/// no whitespace/control/`<`/`>`/`\`/`&`, and balanced parentheses. A `false`
+/// routes the URL through [`emit_url`]'s angle-wrapped, escaped form.
+fn url_is_bare_safe(url: &str) -> bool {
+    let mut depth: i32 = 0;
+    for c in url.chars() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth < 0 {
+                    return false;
+                }
+            }
+            '<' | '>' | '\\' | '&' => return false,
+            c if c.is_whitespace() || c.is_control() => return false,
+            _ => {}
+        }
+    }
+    depth == 0
 }
 
 // ---------------------------------------------------------------------------
@@ -538,7 +591,7 @@ fn render_marked_core(
             out.push('[');
             out.push_str(&escape_run(&chars[ls..le], escape_pipe));
             out.push_str("](");
-            out.push_str(url);
+            emit_url(url, &mut out);
             out.push(')');
             pos = le;
             continue;
@@ -1135,5 +1188,77 @@ mod tests {
         // A multi-`#` trailing run and a no-space `#` both round-trip.
         round_trips("# heading \\#\\#");
         round_trips("## title\\#");
+    }
+
+    // ---------------------------------------------------------------------
+    // Issue #900: unescaped image alt/URL and link URL cause silent content
+    // loss on round-trip (a special char terminates the markup early).
+    // ---------------------------------------------------------------------
+
+    /// The exact #900 image repro: an alt with `\]` imports to alt text "a]b";
+    /// exporting it unescaped as `![a]b](x.png)` re-imports as prose with the
+    /// image gone. The alt must be escaped so the island survives.
+    #[test]
+    fn image_alt_specials_round_trip() {
+        // `]`, `\`, `&`, and emphasis delimiters in alt all survive.
+        round_trips("see ![a\\]b](x.png) here");
+        round_trips("see ![a\\\\b](x.png) here");
+        round_trips("see ![a&b](x.png) here");
+        round_trips("see ![a\\*b\\_c](x.png) here");
+        // The pinned repro: the image is not lost.
+        let rt = from_markdown("see ![a\\]b](x.png) here").unwrap();
+        assert_eq!(rt.islands.len(), 1, "one image island");
+        assert_eq!(rt.islands[0].props["alt"], "a]b");
+        let md = to_markdown(&rt);
+        let rt2 = from_markdown(&md).unwrap();
+        assert_eq!(rt2.islands.len(), 1, "image survived, got md {md:?}");
+        assert_eq!(rt2.islands[0].props["alt"], "a]b");
+    }
+
+    /// The exact #900 link repro: a URL with a space imports to link url
+    /// "foo bar"; exporting it unescaped as `[t](foo bar)` re-imports as prose
+    /// with the link gone. The URL must be angle-wrapped.
+    #[test]
+    fn link_url_with_space_round_trips() {
+        round_trips("a [t](<foo bar>) b");
+        let rt = from_markdown("a [t](<foo bar>) b").unwrap();
+        assert!(
+            rt.marks
+                .iter()
+                .any(|m| matches!(&m.kind, MarkKind::Link { url } if url == "foo bar")),
+            "link url with space imported"
+        );
+        let md = to_markdown(&rt);
+        assert!(md.contains("<foo bar>"), "url angle-wrapped, got {md:?}");
+        let rt2 = from_markdown(&md).unwrap();
+        assert_eq!(rt, rt2);
+    }
+
+    /// Image and link URLs carrying the destination-terminating specials —
+    /// unbalanced parens, `&`, `<`/`>`, backslash — all round-trip.
+    #[test]
+    fn url_specials_round_trip() {
+        // Balanced parens stay bare (CommonMark permits them); the others wrap.
+        round_trips("see [t](https://en.wikipedia.org/wiki/Rust_(programming_language)) x");
+        round_trips("see ![a](<x y.png>) here");
+        round_trips("see [t](<a )b>) x");
+        round_trips("see [t](<a&b>) x");
+        round_trips("see [t](<a\\<b\\>c>) x");
+        round_trips("see [t](<a\\\\b>) x");
+    }
+
+    /// `emit_url` chooses bare for a clean URL and angle-wraps only when a
+    /// special forces it — the aesthetic contract (common URLs stay unbracketed).
+    #[test]
+    fn emit_url_bare_when_safe() {
+        let mut bare = String::new();
+        emit_url("https://ex.com/a(b)c", &mut bare);
+        assert_eq!(bare, "https://ex.com/a(b)c", "balanced parens stay bare");
+        let mut wrapped = String::new();
+        emit_url("a b", &mut wrapped);
+        assert_eq!(wrapped, "<a b>", "space forces the wrap");
+        let mut esc = String::new();
+        emit_url("a&<\\b", &mut esc);
+        assert_eq!(esc, "<a\\&\\<\\\\b>", "specials escaped inside the wrap");
     }
 }

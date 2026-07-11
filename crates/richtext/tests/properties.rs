@@ -43,6 +43,20 @@ fn plain_word() -> impl Strategy<Value = String> {
     r"[a-z0-9][a-z0-9*_~\\&#>.+😀你-]{0,5}"
 }
 
+// `special_alt`/`special_url` carry the destination- and markup-terminating
+// chars #900 exposed, in *markdown source* form: a raw `]`/`[`/`\` would break
+// the markup at the source level (those live only in the direct-corpus
+// `image_and_link_specials_round_trip` property), so alt carries `&` and inline
+// delimiters as literal text, and the url is angle-wrapped in source so a space,
+// paren, or `&` reaches the corpus intact — the escape paths `clean_word` missed.
+fn special_alt() -> impl Strategy<Value = String> {
+    (clean_word(), r"[a-z0-9&*_~#.+]{0,4}").prop_map(|(a, b)| format!("{a}{b}"))
+}
+
+fn special_url() -> impl Strategy<Value = String> {
+    (clean_word(), r"[a-z0-9 ()&]{1,5}").prop_map(|(a, b)| format!("ex.com/{a}{b}"))
+}
+
 fn inline_token() -> impl Strategy<Value = String> {
     prop_oneof![
         plain_word(),
@@ -52,6 +66,11 @@ fn inline_token() -> impl Strategy<Value = String> {
         clean_word().prop_map(|w| format!("`{w}`")),
         clean_word().prop_map(|w| format!("<u>{w}</u>")),
         (clean_word(), clean_word()).prop_map(|(t, u)| format!("[{t}](https://ex.com/{u})")),
+        // #900: a link/image whose url and alt carry specials the escaper must
+        // neutralize (space/paren/`&` in the angle-wrapped url; `&`/delimiters
+        // in the alt), exercised in prose context (marks, lists, hard breaks).
+        (clean_word(), special_url()).prop_map(|(t, u)| format!("[{t}](<{u}>)")),
+        (special_alt(), special_url()).prop_map(|(a, u)| format!("![{a}](<{u}>)")),
     ]
 }
 
@@ -212,6 +231,42 @@ proptest! {
         // point (it lives in the `from_markdown` domain the contract covers).
         prop_assert_eq!(&rt2, &from_markdown(&to_markdown(&rt2)).unwrap(),
             "re-imported overlap corpus not a fixed point: {:?}", md);
+    }
+
+    /// Issue #900: image alt and image/link URLs carry the markup- and
+    /// destination-terminating specials — `]`/`[`/`\` in alt, spaces, unbalanced
+    /// parens, `&`, `<`/`>`/`\` in a url — that the codec must escape so the
+    /// island/link survives export∘import. The `clean_word` alt/url generator
+    /// never emitted them (the gap the issue found); the corpus is built directly
+    /// in the shape import produces (alt trimmed, no newline) to hit the escaper
+    /// without fighting source-level markdown quirks.
+    #[test]
+    fn image_and_link_specials_round_trip(
+        alt in r"[a-z0-9\]\[\\&<>*_~#().+ -]{0,10}",
+        img_url in r"[a-z0-9 ()&<>\\]{0,10}",
+        link_url in r"[a-z0-9 ()&<>\\]{0,10}",
+    ) {
+        // Import trims alt and never yields a leading/trailing-space alt; match
+        // that so the hand-built corpus stays inside the fixed-point domain.
+        let alt = alt.trim().to_string();
+        let text = "lnk\u{FFFC}".to_string(); // link over "lnk", image slot after
+        let mut rt = RichText {
+            text,
+            lines: vec![Line { kind: LineKind::Para, containers: vec![], continues: false }],
+            marks: vec![Mark { start: 0, end: 3, kind: MarkKind::Link { url: link_url } }],
+            islands: vec![Island {
+                // The id import mints for the first island, so re-import compares equal.
+                id: "isl-0".into(),
+                island_type: "image".into(),
+                props: json!({ "alt": alt, "url": img_url }),
+                loss: Loss::Lossless,
+            }],
+        };
+        rt.normalize();
+        prop_assert_eq!(rt.validate(), Ok(()), "hand-built corpus invalid");
+        let md = to_markdown(&rt);
+        let rt2 = from_markdown(&md).unwrap();
+        prop_assert_eq!(&rt, &rt2, "alt/url specials not a fixed point.\n  md: {:?}", md);
     }
 
     /// Property 2a: canonical JSON is a fixed point.
