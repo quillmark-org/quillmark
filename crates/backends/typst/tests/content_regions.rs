@@ -929,6 +929,13 @@ main:
         "pos {} within span {span:?}",
         hit.pos
     );
+    // A hit on prose ink resolves through an owning run — cluster-exact, the
+    // signal a caret UI trusts.
+    assert_eq!(
+        hit.granularity,
+        Some(quillmark_core::HitGranularity::Cluster),
+        "a prose hit is cluster-exact: {hit:?}"
+    );
 
     // Locating that position returns a caret rect on the same page, inside the
     // field's region, with `span` collapsed to the caret point.
@@ -1011,6 +1018,14 @@ main:
         top.pos, bottom.pos,
         "different fence lines both degrade to the one code-segment start: {top:?} {bottom:?}"
     );
+    // The degrade is signalled: a caret UI reads `Segment` and treats `pos` as
+    // the selected segment, not a within-segment caret.
+    assert_eq!(
+        top.granularity,
+        Some(quillmark_core::HitGranularity::Segment),
+        "a multi-line fence hit floors to the segment: {top:?}"
+    );
+    assert_eq!(bottom.granularity, Some(quillmark_core::HitGranularity::Segment));
     // The fence's segment start is distinct from the prose paragraph's content.
     let prose_hit = session
         .position_at(prose.page, prose.rect[0] + 5.0, prose.rect[3] - 3.0)

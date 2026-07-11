@@ -27,7 +27,7 @@
 pub mod document;
 pub use document::{
     Card, CardWire, Document, EditError, ParseOutput, Payload, PayloadItem, PayloadItemWire,
-    SeedOverlay, WireError,
+    RichtextDecodeError, SeedOverlay, WireError,
 };
 
 pub mod backend;
@@ -40,7 +40,7 @@ pub mod types;
 pub use types::{Artifact, OutputFormat, RenderOptions};
 
 pub mod region;
-pub use region::{CorpusHit, RenderedRegion};
+pub use region::{field_boxes, CorpusHit, HitGranularity, RenderedRegion};
 
 pub mod session;
 pub use session::{ApplyError, Assoc, ChangeSet, Delta, LineOp, LiveSession, MarkOp, Op};

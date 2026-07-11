@@ -240,6 +240,19 @@ impl LiveSession {
         self.inner.regions()
     }
 
+    /// The whole-field highlight boxes for `field` — one union rect per page,
+    /// over the field's `span`-bearing content segments (the "highlight the
+    /// focused field" quantity). The convenience that owns the union
+    /// [`regions`](Self::regions) leaves derived: it keeps `regions()` as the
+    /// low-level disjoint truth (#829) and folds the span-filter + per-page
+    /// union here so no consumer reimplements it. Content only — a field placed
+    /// solely as a scalar reference or a bound widget carries no `span` and
+    /// yields nothing here; its box is a single [`regions`](Self::regions) rect.
+    /// Reflects the current compile, like `regions`. See [`crate::field_boxes`].
+    pub fn field_boxes(&self, field: &str) -> Vec<RenderedRegion> {
+        crate::field_boxes(&self.regions(), field)
+    }
+
     /// The schema field whose content is under a point on `page` — the
     /// forward (click → field) direction: hit-test a click against the
     /// compiled document and get back the field address to focus in the
@@ -394,6 +407,53 @@ mod tests {
 
         let result = session.render(&RenderOptions::default()).unwrap();
         assert_eq!(result.warnings[0].message, "warning of compile 1");
+    }
+
+    /// A handle that surfaces one content region, one hit, and one caret rect —
+    /// the geometry the wrapper passes straight through.
+    struct RegionHandle;
+    impl SessionHandle for RegionHandle {
+        fn render(&self, _: &RenderOptions) -> Result<RenderResult, RenderError> {
+            unimplemented!("render is not exercised by geometry tests")
+        }
+        fn page_count(&self) -> usize {
+            1
+        }
+        fn regions(&self) -> Vec<RenderedRegion> {
+            vec![RenderedRegion {
+                field: "subject".to_string(),
+                page: 0,
+                rect: [1.0, 2.0, 3.0, 4.0],
+                span: Some([0, 3]),
+            }]
+        }
+        fn position_at(&self, _: usize, _: f32, _: f32) -> Option<CorpusHit> {
+            Some(CorpusHit {
+                field: "subject".to_string(),
+                pos: 2,
+                granularity: Some(crate::HitGranularity::Cluster),
+            })
+        }
+        fn locate(&self, field: &str, pos: usize) -> Option<RenderedRegion> {
+            Some(RenderedRegion {
+                field: field.to_string(),
+                page: 0,
+                rect: [1.0, 2.0, 1.0, 4.0],
+                span: Some([pos, pos]),
+            })
+        }
+    }
+
+    /// `field_boxes` derives the whole-field box off the session's own
+    /// `regions()`.
+    #[test]
+    fn field_boxes_derives_off_regions() {
+        let session = LiveSession::new(Box::new(RegionHandle));
+        let boxes = session.field_boxes("subject");
+        assert_eq!(boxes.len(), 1, "one span-bearing region → one box");
+        assert_eq!(boxes[0].field, "subject");
+        // A field with no span-bearing region has no derived content box.
+        assert!(session.field_boxes("nope").is_empty());
     }
 
     #[test]

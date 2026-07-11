@@ -205,9 +205,9 @@ export interface RichTextIsland {
 /// 16k on Safari, lower on memory-constrained devices); 16384 is the
 /// floor that works everywhere we ship to. When a requested
 /// `layoutScale * densityScale` would exceed this, the painter clamps
-/// `densityScale` proportionally and surfaces the actual backing
-/// dimensions in the returned `PaintResult` so consumers can detect the
-/// clamp.
+/// `densityScale` proportionally and reports it on the returned
+/// `PaintResult` (`clamped` / `effectiveDensityScale`, plus the actual
+/// backing dimensions).
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 const MAX_BACKING_DIMENSION: u32 = 16384;
 
@@ -988,6 +988,51 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
+    /// Set a **richtext** field on the main card from a corpus object (canonical
+    /// RichText-JSON) or a markdown string — the field-level twin of
+    /// [`setBody`](Document::set_body), and the corpus-native counterpart to
+    /// [`setField`](Document::set_field) (which stores an opaque value). The
+    /// field is stored as the canonical corpus, so identity marks (anchors,
+    /// island ids) live on it and survive compiles and the storage DTO; a
+    /// corpus-only mark such as `underline` round-trips losslessly, unlike the
+    /// card-yaml markdown projection. `null` stores the empty corpus.
+    ///
+    /// `inline` (default `false`) mirrors the schema's `richtext(inline)`
+    /// constraint: when `true`, a multi-block value throws
+    /// `[EditError::FieldRichtextNotInline]` here at write rather than at a later
+    /// render. The caller supplies it because a `Document` carries only a
+    /// `$quill` reference, not the resolved field type — an editor holds the
+    /// schema and knows whether the target is `richtext(inline)`.
+    ///
+    /// Throws `[EditError::FieldRichtextDecode]` if `value` is neither a valid
+    /// corpus object, an importable markdown string, nor `null`, and
+    /// `[EditError::InvalidFieldName]` on a malformed name.
+    #[wasm_bindgen(js_name = setRichtextField)]
+    pub fn set_richtext_field(
+        &mut self,
+        name: &str,
+        #[wasm_bindgen(unchecked_param_type = "RichText | string")] value: JsValue,
+        #[wasm_bindgen(unchecked_optional_param_type = "boolean")] inline: Option<bool>,
+    ) -> Result<(), JsValue> {
+        let json = js_value_to_json(value, "setRichtextField")?;
+        self.inner
+            .main_mut()
+            .set_field_richtext(name, &json, inline.unwrap_or(false))
+            .map_err(|e| edit_error_to_js(&e))
+    }
+
+    /// The markdown projection of a richtext field on the main card
+    /// (`export ∘ decode`) — the field-level twin of `main.bodyMarkdown`.
+    /// Returns `undefined` when the field is absent or does not decode as
+    /// richtext (e.g. a plain scalar written via [`setField`](Document::set_field)).
+    #[wasm_bindgen(js_name = fieldMarkdown, unchecked_return_type = "string | undefined")]
+    pub fn field_markdown(&self, name: &str) -> JsValue {
+        match self.inner.main().field_markdown(name) {
+            Some(md) => JsValue::from_str(&md),
+            None => JsValue::UNDEFINED,
+        }
+    }
+
     /// Build a fresh `Card` from a kind and a flat field map — the ergonomic
     /// constructor for `pushCard` / `insertCard`. `fields` is an optional
     /// `Record<string, unknown>` (each entry becomes a card field, in
@@ -1112,6 +1157,42 @@ impl Document {
         self.card_mut_or_throw(index)?
             .set_field(name, qv)
             .map_err(|e| edit_error_to_js(&e))
+    }
+
+    /// Set a **richtext** field on the card at `index` — the card-indexed twin of
+    /// [`setRichtextField`](Document::set_richtext_field). Stores the canonical
+    /// corpus; `inline` (default `false`) enforces `richtext(inline)` at write.
+    /// Throws if `index` is out of range, on a malformed name, or on a value that
+    /// is neither a corpus object, an importable markdown string, nor `null`.
+    #[wasm_bindgen(js_name = updateCardRichtextField)]
+    pub fn update_card_richtext_field(
+        &mut self,
+        index: usize,
+        name: &str,
+        #[wasm_bindgen(unchecked_param_type = "RichText | string")] value: JsValue,
+        #[wasm_bindgen(unchecked_optional_param_type = "boolean")] inline: Option<bool>,
+    ) -> Result<(), JsValue> {
+        let json = js_value_to_json(value, "updateCardRichtextField")?;
+        self.card_mut_or_throw(index)?
+            .set_field_richtext(name, &json, inline.unwrap_or(false))
+            .map_err(|e| edit_error_to_js(&e))
+    }
+
+    /// The markdown projection of a richtext field on the card at `index` — the
+    /// card-indexed twin of [`fieldMarkdown`](Document::field_markdown). Returns
+    /// `undefined` when `index` is out of range, the field is absent, or it does
+    /// not decode as richtext.
+    #[wasm_bindgen(js_name = cardFieldMarkdown, unchecked_return_type = "string | undefined")]
+    pub fn card_field_markdown(&self, index: usize, name: &str) -> JsValue {
+        match self
+            .inner
+            .cards()
+            .get(index)
+            .and_then(|c| c.field_markdown(name))
+        {
+            Some(md) => JsValue::from_str(&md),
+            None => JsValue::UNDEFINED,
+        }
     }
 
     /// Batched twin of [`updateCardField`](Document::update_card_field): set
@@ -1442,12 +1523,22 @@ export interface PaintOptions {
  *   Equal to `round(layoutWidth * densityScale)` ×
  *   `round(layoutHeight * densityScale)` *unless* the requested backing
  *   exceeded the painter's safe maximum (16384 px per side), in which
- *   case `densityScale` was clamped to fit. Detect clamping via
- *   `pixelWidth < round(layoutWidth * densityScale)`.
+ *   case `densityScale` was clamped to fit.
+ * - `clamped` — `true` when that 16384-px clamp fired, so the page is
+ *   painted at fewer device pixels than requested and renders soft at the
+ *   same `canvas.style` size. Reads the clamp off the return value instead
+ *   of the `pixelWidth < round(layoutWidth * densityScale)` derivation.
+ * - `effectiveDensityScale` — the `densityScale` actually applied: the
+ *   requested value unless `clamped`, then reduced proportionally.
+ *   `layoutScale * effectiveDensityScale` is the scale the backing store
+ *   was rasterized at.
  *
  * The painter owns `canvas.width` / `canvas.height`; consumers must not
  * write to them. The painter does **not** touch `canvas.style.*`;
- * consumers own layout.
+ * consumers own layout. The write is a whole-backing-store `putImageData`,
+ * which bypasses the 2D context transform, `globalAlpha`, and clip: give
+ * each visible page its own `` — you cannot composite two pages, a
+ * sub-rect, or a context transform through `paint`.
  *
  * For `OffscreenCanvasRenderingContext2D` (Worker rasterization, no
  * DOM), `layoutWidth` / `layoutHeight` are informational — there's no
@@ -1458,6 +1549,8 @@ export interface PaintResult {
     layoutHeight: number;
     pixelWidth: number;
     pixelHeight: number;
+    clamped: boolean;
+    effectiveDensityScale: number;
 }
 "#;
 
@@ -1551,6 +1644,26 @@ impl LiveSession {
         serialize_or_throw(&regions, "regions")
     }
 
+    /// The whole-field highlight boxes for `field` — one union rect per page,
+    /// over the field's `span`-bearing content segments. The convenience that
+    /// owns the union `regions()` leaves derived: it keeps `regions()` the
+    /// low-level disjoint truth (#829) and folds the span-filter + per-page
+    /// union here, so a "highlight the focused field" consumer stops
+    /// reimplementing it. **Content only** — a field placed solely as a scalar
+    /// reference or a bound widget carries no `span` and returns `[]`; its box
+    /// is a single `regions()` rect. Reflects the current compile, like
+    /// `regions()`.
+    #[wasm_bindgen(js_name = fieldBoxes, unchecked_return_type = "FieldRegion[]")]
+    pub fn field_boxes(&self, field: &str) -> Result<JsValue, JsValue> {
+        let boxes: Vec<FieldRegion> = self
+            .inner
+            .field_boxes(field)
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        serialize_or_throw(&boxes, "fieldBoxes")
+    }
+
     /// The schema field whose content is under a point on `page` — the
     /// forward (click → field) direction: hit-test a click against the
     /// compiled document and get back the field address to focus in the
@@ -1610,7 +1723,13 @@ impl LiveSession {
     /// `OffscreenCanvasRenderingContext2D`. The painter owns
     /// `canvas.width`/`height` (no `clearRect` needed); consumers own
     /// `canvas.style.*`. If `layoutScale * densityScale` exceeds 16384 px
-    /// per side, `densityScale` is clamped — detect via `PaintResult.pixelWidth`.
+    /// per side, `densityScale` is clamped — `PaintResult.clamped` reports it and
+    /// `PaintResult.effectiveDensityScale` carries the density actually applied.
+    ///
+    /// `put_image_data` writes the whole backing store, bypassing the 2D
+    /// context's transform, `globalAlpha`, and clip: the painter owns the entire
+    /// canvas, so each visible page needs its own `` — you cannot composite
+    /// two pages, a sub-rect, or a context transform through this call.
     ///
     /// Throws if the backend has no canvas painter, `page` is out of range,
     /// `ctx` is the wrong type, or either scale is non-finite or `<= 0`.
@@ -1663,7 +1782,8 @@ impl LiveSession {
         let desired_h = (layout_height * requested_density as f64).round();
         let max_dim = desired_w.max(desired_h);
 
-        let effective_density = if max_dim > MAX_BACKING_DIMENSION as f64 {
+        let clamped = max_dim > MAX_BACKING_DIMENSION as f64;
+        let effective_density = if clamped {
             (requested_density as f64) * (MAX_BACKING_DIMENSION as f64 / max_dim)
         } else {
             requested_density as f64
@@ -1715,6 +1835,8 @@ impl LiveSession {
             layout_height,
             pixel_width: pixel_w,
             pixel_height: pixel_h,
+            clamped,
+            effective_density_scale: effective_density,
         };
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         result
@@ -1838,4 +1960,13 @@ struct PaintResult {
     layout_height: f64,
     pixel_width: u32,
     pixel_height: u32,
+    /// True when `MAX_BACKING_DIMENSION` forced `densityScale` down: the page is
+    /// painted at fewer device pixels than requested, so it renders soft at the
+    /// same `canvas.style` size. The honest form of the pixel-dim derivation
+    /// consumers would otherwise reinvent.
+    clamped: bool,
+    /// The `densityScale` actually applied — equal to the requested value unless
+    /// `clamped`, then reduced proportionally. `layoutScale × effectiveDensityScale`
+    /// is the scale the backing store was rasterized at.
+    effective_density_scale: f64,
 }

@@ -317,10 +317,19 @@ canvas.style.height = `${result.layoutHeight}px`;
   crisp output on high-DPI displays.
 - The effective rasterization scale is `layoutScale * densityScale`. If
   that would exceed the safe maximum (16384 px per side), `densityScale`
-  is clamped proportionally; compare `result.pixelWidth` against
-  `Math.round(result.layoutWidth * densityScale)` to detect.
+  is clamped proportionally; `result.clamped` reports it and
+  `result.effectiveDensityScale` is the density actually applied. A
+  clamped page renders soft at the same `canvas.style` size.
+- `paint` writes the whole backing store with `putImageData`, which
+  ignores the 2D context transform, `globalAlpha`, and clip. Give each
+  visible page its own `` element — you cannot composite two pages,
+  a sub-rect, or a context transform through `paint`.
 - `paint` is always a full repaint — setting the backing-store width /
-  height clears it. No `clearRect` required.
+  height clears it. No `clearRect` required. Each call re-rasterizes from
+  scratch (no per-page raster cache), so keep a page's canvas alive while
+  it stays near the viewport rather than pooling one canvas across pages:
+  an idle canvas retains its pixels for free, whereas reusing a canvas on
+  scroll re-runs a full render.
 - `pageCount` and `pageSize(page)` are stable for the session's
   lifetime (immutable snapshot) — cache them.
 - Worker support: pass an `OffscreenCanvasRenderingContext2D` and the

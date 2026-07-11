@@ -1045,6 +1045,35 @@ This body and the metadata above are an indorsement card.
     }
 
     #[test]
+    fn corpus_field_survives_storage_round_trip_losslessly() {
+        // A richtext field stored as a canonical corpus object is the case the
+        // card-yaml markdown projection is lossy for; the storage DTO is the
+        // lossless carrier, so identity marks (an `underline` with no markdown
+        // form) survive a serde-JSON round-trip that a `.qmd` save would drop.
+        use quillmark_richtext::model::{Mark, MarkKind};
+
+        let mut doc = sample();
+        let mut corpus = quillmark_richtext::import::from_markdown("underlined intro").unwrap();
+        corpus.marks.push(Mark {
+            start: 0,
+            end: 10,
+            kind: MarkKind::Underline,
+        });
+        corpus.normalize();
+        let json = quillmark_richtext::serial::to_canonical_value(&corpus);
+        doc.main_mut().set_field_richtext("intro", &json, false).unwrap();
+
+        let stored = serde_json::to_string(&doc).unwrap();
+        let restored: Document = serde_json::from_str(&stored).unwrap();
+        assert_eq!(doc, restored, "corpus field must survive storage round-trip");
+        let read = restored.main().field_richtext("intro").unwrap().unwrap();
+        assert!(
+            read.marks.iter().any(|m| matches!(m.kind, MarkKind::Underline)),
+            "underline (corpus-only) must survive the DTO carrier"
+        );
+    }
+
+    #[test]
     fn nested_fill_survives_storage_round_trip() {
         // A `!must_fill` marker on a nested object leaf rides the `nested_fills`
         // path list (the JSON `value` projection is fill-free).

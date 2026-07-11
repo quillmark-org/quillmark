@@ -93,10 +93,29 @@ export interface RenderOptions {
 	regions?: boolean;
 }
 
+/**
+ * How precisely a {@link CorpusHit.pos} resolved — the marker a caret UI reads
+ * to decide whether to trust the offset. Never sub-cluster: `'cluster'` is the
+ * finest, `'segment'` the floor it degrades to on origin-less ink.
+ *
+ * - `'cluster'` — `pos` is the first corpus char of the cluster under the point
+ *   (an escaped/CJK/shaping cluster floors to its first char). Place the caret
+ *   at `pos` directly.
+ * - `'segment'` — the point hit origin-less ink (list markers, numbering, a
+ *   multi-line code fence's interior), so `pos` degraded to the containing
+ *   segment's start. Treat `pos` as the selected segment, not a caret.
+ */
+export type HitGranularity = 'cluster' | 'segment';
+
 /** A click resolved to a field and USV offset into its RichText. */
 export interface CorpusHit {
 	field: string;
 	pos: number;
+	/**
+	 * Whether {@link pos} is cluster-exact or floored to the segment start
+	 * ({@link HitGranularity}). Absent when the backend does not report it.
+	 */
+	granularity?: HitGranularity;
 }
 
 /**
@@ -146,8 +165,9 @@ export interface FieldRegion {
 	/**
 	 * The corpus slice this box covers — USV `[start, end)` into the field's
 	 * `RichText` for content ink (one segment), absent for a scalar reference
-	 * site or widget. Consumers key segment highlights on it and union same-page
-	 * segments for the whole-field box.
+	 * site or widget. Consumers key segment highlights on it;
+	 * {@link LiveSession.fieldBoxes} unions same-page segments for the
+	 * whole-field box.
 	 */
 	span?: [number, number];
 }
@@ -194,10 +214,23 @@ export interface PaintOptions {
  * @experimental Part of the iterative-session/canvas surface — see {@link LiveSession}.
  */
 export interface PaintResult {
-	layoutWidth: number;
+	layoutWidth: number;      // canvas.style.width target; independent of densityScale
 	layoutHeight: number;
-	pixelWidth: number;
+	pixelWidth: number;       // canvas.width the painter wrote (clamped at 16384)
 	pixelHeight: number;
+	/**
+	 * True when `MAX_BACKING_DIMENSION` forced `densityScale` down: the page is
+	 * painted at fewer device pixels than requested and renders soft at the same
+	 * `canvas.style` size. Reads the clamp off the return value instead of the
+	 * `pixelWidth < round(layoutWidth × densityScale)` derivation.
+	 */
+	clamped: boolean;
+	/**
+	 * The `densityScale` actually applied — equal to the requested value unless
+	 * `clamped`, then reduced proportionally. `layoutScale × effectiveDensityScale`
+	 * is the scale the backing store was rasterized at.
+	 */
+	effectiveDensityScale: number;
 }
 
 /**
@@ -273,11 +306,16 @@ export declare class Engine {
 	supportedFormats(quill: Quill): Promise<OutputFormat[]>;
 
 	/**
-	 * Whether `quill`'s backend can paint sessions to a canvas. Same always-free
-	 * probe as `supportedFormats`: answered from the descriptor's required
-	 * `canvas` manifest, no binary load and no quill clone. Both the Typst and
-	 * pdfform backends report `true`; each paints a complete page raster (see
-	 * {@link LiveSession.paint}).
+	 * Whether `quill`'s BACKEND can paint sessions to a canvas — a pre-session
+	 * ESTIMATE, not a fact about any particular compile. Same always-free probe
+	 * as `supportedFormats`: answered from the descriptor's required `canvas`
+	 * manifest, no binary load and no quill clone. Both the Typst and pdfform
+	 * backends report `true` here unconditionally; each paints a complete page
+	 * raster (see {@link LiveSession.paint}) — but a specific compile can still
+	 * refuse to paint (e.g. a 0-page document), so this can answer `true` while
+	 * the resulting {@link LiveSession.supportsCanvas} answers `false`. Gate
+	 * mounting a canvas UI on this; gate the actual `paint` call on the session's
+	 * getter once `open()` has run.
 	 * @experimental Probes the experimental session/canvas surface — see {@link LiveSession}.
 	 */
 	supportsCanvas(quill: Quill): Promise<boolean>;
@@ -305,6 +343,15 @@ export declare class LiveSession {
 	private constructor();
 	readonly pageCount: number;
 	readonly backendId: string;
+	/**
+	 * `true` iff `paint`/`pageSize` will succeed for THIS compile — the
+	 * authoritative answer, derived from the session's canvas seam, so it can
+	 * never disagree with what `paint` actually does. This can be `false` even
+	 * when {@link Engine.supportsCanvas} answered `true` for the same `quill`
+	 * (that probe is a pre-session backend estimate; e.g. a canvas-capable
+	 * backend compiled to a 0-page document has nothing to paint). Re-check
+	 * this getter after `open()` rather than relying on the engine hint alone.
+	 */
 	readonly supportsCanvas: boolean;
 	readonly warnings: Diagnostic[];
 	/**
@@ -334,6 +381,17 @@ export declare class LiveSession {
 	 */
 	regions(): FieldRegion[];
 	/**
+	 * The whole-field highlight boxes for `field` — one union rect per page,
+	 * over the field's `span`-bearing content segments (the "highlight the
+	 * focused field" quantity). Owns the union {@link regions} leaves derived
+	 * (span-filter + per-page union), keeping `regions()` the low-level disjoint
+	 * truth, so a consumer stops reimplementing it. **Content only** — a field
+	 * placed solely as a scalar reference or a bound widget carries no `span`
+	 * and returns `[]`; its box is a single {@link regions} rect. Reflects the
+	 * current compile, like `regions()`.
+	 */
+	fieldBoxes(field: string): FieldRegion[];
+	/**
 	 * The schema field whose content is under a point on `page` — the forward
 	 * (click → field) direction: hit-test a click against the compiled
 	 * document and get back the field address to focus in the editor, or
@@ -361,7 +419,18 @@ export declare class LiveSession {
 	 * compositing (Typst rasterizes natively; pdfform rasterizes its
 	 * pre-flattened page). Effective rasterization scale is
 	 * `layoutScale × densityScale`, clamped so neither backing dimension exceeds
-	 * 16384 px — detect a clamp via {@link PaintResult.pixelWidth}.
+	 * 16384 px — {@link PaintResult.clamped} reports the clamp and
+	 * {@link PaintResult.effectiveDensityScale} the density actually applied.
+	 *
+	 * The write is a whole-backing-store `putImageData`, which bypasses the 2D
+	 * context transform, `globalAlpha`, and clip: the painter owns the entire
+	 * canvas, so give each visible page its own `` element. You cannot
+	 * paint two pages into one canvas, paint into a sub-rect, or apply a context
+	 * transform through this call — the raster is complete precisely so you never
+	 * need to. Keep the per-page canvases alive while their pages stay near the
+	 * viewport: each `paint` re-rasterizes from scratch, so reusing (pooling) a
+	 * canvas across pages on scroll re-runs a full render, whereas an idle canvas
+	 * retains its pixels for free.
 	 */
 	paint(
 		ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,

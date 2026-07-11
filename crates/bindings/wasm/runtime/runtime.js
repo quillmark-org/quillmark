@@ -339,9 +339,13 @@ export class Engine {
 	}
 
 	/**
-	 * Whether `quill`'s backend can paint sessions to a canvas. Same ALWAYS-free
-	 * probe as `supportedFormats`: answered from the descriptor's required
-	 * `canvas` manifest, no load and no clone.
+	 * Whether `quill`'s BACKEND can paint sessions to a canvas — a pre-session
+	 * ESTIMATE, not a fact about any particular compile. Same ALWAYS-free probe
+	 * as `supportedFormats`: answered from the descriptor's required `canvas`
+	 * manifest, no load and no clone. A specific compile can still refuse to
+	 * paint (e.g. a 0-page document), so this can answer `true` while the
+	 * resulting `LiveSession.supportsCanvas` answers `false` — gate mounting a
+	 * canvas UI on this, gate the actual `paint` call on the session's getter.
 	 * @param {Quill} quill
 	 * @returns {Promise<boolean>}
 	 */
@@ -396,13 +400,22 @@ export class LiveSession {
 		}
 	}
 
-
 	get pageCount() {
 		return this.#inner.pageCount;
 	}
 	get backendId() {
 		return this.#inner.backendId;
 	}
+	/**
+	 * `true` iff `paint`/`pageSize` will succeed for THIS compile — the
+	 * authoritative answer, derived from the session's canvas seam, so it can
+	 * never disagree with what `paint` actually does. This can be `false` even
+	 * when `Engine.supportsCanvas` answered `true` for the same `quill` (that
+	 * probe is a pre-session backend estimate; e.g. a canvas-capable backend
+	 * compiled to a 0-page document has nothing to paint). Re-check this getter
+	 * after `open()` rather than relying on the engine hint alone.
+	 * @returns {boolean}
+	 */
 	get supportsCanvas() {
 		return this.#inner.supportsCanvas;
 	}
@@ -424,6 +437,20 @@ export class LiveSession {
 	 */
 	regions() {
 		return this.#inner.regions();
+	}
+
+	/**
+	 * The whole-field highlight boxes for `field` — one union rect per page,
+	 * over the field's `span`-bearing content segments. Owns the union
+	 * `regions()` leaves derived (span-filter + per-page union), so a "highlight
+	 * the focused field" consumer stops reimplementing it. Content only: a field
+	 * placed solely as a scalar reference or a bound widget returns `[]` — its
+	 * box is a single `regions()` rect.
+	 * @param {string} field
+	 * @returns {import('./runtime.d.ts').FieldRegion[]}
+	 */
+	fieldBoxes(field) {
+		return this.#inner.fieldBoxes(field);
 	}
 
 	/**

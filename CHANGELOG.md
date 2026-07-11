@@ -25,6 +25,32 @@
   `diff` / `diff_import` / the mark & line op channels remain as the corpus
   writers' substrate (`replace_body`, `import_body_delta`, `apply_body_change`)
   (#886)
+- feat(core,wasm): `field_boxes(field)` / `LiveSession.fieldBoxes(field)` derive
+  the whole-field highlight — one union rect per page over the field's
+  `span`-bearing content segments — so a "highlight the focused field" consumer
+  stops reimplementing the span-filter + per-page union by hand. `regions()`
+  stays the low-level disjoint truth (#829); the helper owns the union, and is
+  content-only (a scalar-reference/widget-only field returns `[]`, its box being
+  a single `regions()` rect). Core `field_boxes(&[RenderedRegion], field)` is a
+  pure function so the one-shot `RenderResult.regions` sidecar gets it too (#884)
+- feat(core,wasm): `CorpusHit.granularity` (`HitGranularity` = `cluster` |
+  `segment`) reports whether `positionAt`'s `pos` resolved cluster-exact or
+  floored to the containing segment's start (origin-less ink, a multi-line code
+  fence's interior), so a caret UI trusts a `cluster` offset for the caret and
+  treats a `segment` one as a segment selection instead of guessing. Additive-
+  optional, omitted from the wire when the backend does not report it (#884)
+- fix(wasm): `Engine.supportsCanvas` and `LiveSession.supportsCanvas` gain doc
+  comments cross-referencing each other: the two are spelled identically but
+  answer different questions (a pre-session backend estimate vs. this compile's
+  authoritative answer, which can diverge — e.g. a 0-page document) — the
+  divergence is now visible where each is used instead of only discoverable at
+  runtime (#883)
+- fix(core): drop two rustdoc intra-doc links from public items
+  (`RichtextDecodeError`, `Card::set_field_richtext`) to the private
+  `decode_richtext_value`, which `-D rustdoc::private-intra-doc-links` (part of
+  the lint gate) rejects since the link can never resolve for a doc reader;
+  reworded to a plain code span, matching the existing convention elsewhere in
+  the same file for referencing a private helper from public docs
 - fix(wasm): drop the `revision?` field from the public `CorpusHit`/`FieldRegion`
   types and the broken `{@link LiveSession.mapFieldPos}` / `.revision` references
   in `runtime.d.ts`. The delta API (`applyFieldDelta`/`revision`/`mapFieldPos`) is

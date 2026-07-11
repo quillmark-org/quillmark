@@ -234,8 +234,9 @@ pub struct ChangeSet {
 /// plus a `field:`-bound widget yields both. Group by `field` — every entry
 /// routes to that field. The whole-field highlight is the **union of a page's
 /// `span`-bearing segment rects**, so inter-paragraph whitespace stays
-/// uncovered (#829). Later placements of one content value are not enumerated;
-/// `fieldAt` / `positionAt` still resolve clicks on them.
+/// uncovered (#829); `LiveSession.fieldBoxes(field)` owns that union so
+/// consumers need not derive it. Later placements of one content value are not
+/// enumerated; `fieldAt` / `positionAt` still resolve clicks on them.
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
@@ -251,8 +252,8 @@ pub struct FieldRegion {
     pub rect: [f32; 4],
     /// The corpus slice this box covers — USV `[start, end)` into the field's
     /// `RichText` for content ink (one segment), `undefined` for a scalar
-    /// reference site or widget. Consumers key segment highlights on it and
-    /// union same-page segments for the whole-field box.
+    /// reference site or widget. Consumers key segment highlights on it;
+    /// `fieldBoxes(field)` unions same-page segments for the whole-field box.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span: Option<[usize; 2]>,
 }
@@ -269,10 +270,40 @@ impl From<quillmark_core::RenderedRegion> for FieldRegion {
     }
 }
 
+/// How precisely a `CorpusHit.pos` resolved — the marker a caret UI reads to
+/// decide whether to trust the offset. Never sub-cluster: `cluster` is the
+/// finest this API offers, `segment` the floor it degrades to on origin-less
+/// ink.
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+#[serde(rename_all = "camelCase")]
+pub enum HitGranularity {
+    /// Cluster-exact — `pos` is the first corpus char of the cluster under the
+    /// point (an escaped/CJK/shaping cluster floors to its first char, so not
+    /// sub-character). Place the caret at `pos` directly.
+    Cluster,
+    /// Segment-floored — the point hit origin-less ink (list markers, numbering,
+    /// a multi-line code fence's interior), so `pos` degraded to the containing
+    /// segment's start. Treat `pos` as the selected segment, not a caret.
+    Segment,
+}
+
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+impl From<quillmark_core::HitGranularity> for HitGranularity {
+    fn from(g: quillmark_core::HitGranularity) -> Self {
+        match g {
+            quillmark_core::HitGranularity::Cluster => HitGranularity::Cluster,
+            quillmark_core::HitGranularity::Segment => HitGranularity::Segment,
+        }
+    }
+}
+
 /// A resolved point → corpus position: the field a click landed in and the USV
 /// offset into its `RichText`. The `LiveSession.positionAt` result, paired with
 /// `locate` (corpus position → caret rect). `pos` is cluster-exact and degrades
-/// to the containing segment's start on origin-less ink.
+/// to the containing segment's start on origin-less ink; `granularity` reports
+/// which happened so a caret UI need not guess.
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
@@ -282,6 +313,11 @@ pub struct CorpusHit {
     pub field: String,
     /// USV offset into the field's `RichText`.
     pub pos: usize,
+    /// Whether `pos` is cluster-exact or floored to the segment start
+    /// (`HitGranularity`). `undefined` when the backend does not report it.
+    /// Additive-optional.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub granularity: Option<HitGranularity>,
 }
 
 #[cfg(any(feature = "typst", feature = "pdfform"))]
@@ -290,6 +326,7 @@ impl From<quillmark_core::CorpusHit> for CorpusHit {
         CorpusHit {
             field: h.field,
             pos: h.pos,
+            granularity: h.granularity.map(Into::into),
         }
     }
 }

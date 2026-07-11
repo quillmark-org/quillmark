@@ -394,6 +394,23 @@ A single line of body ink.`
       expect(hit).toBe('$body')
       expect(session.fieldAt(body.page, 1, 1)).toBeUndefined()
 
+      // fieldBoxes — the whole-field union helper. A single-line body has one
+      // span-bearing segment, so its box unions to one rect covering that line.
+      expect(typeof session.fieldBoxes).toBe('function')
+      const boxes = session.fieldBoxes('$body')
+      expect(boxes.length).toBe(1)
+      expect(boxes[0].field).toBe('$body')
+      expect(boxes[0].span).toBeDefined()
+      // A field with no span-bearing region has no derived content box.
+      expect(session.fieldBoxes('does_not_exist')).toEqual([])
+
+      // positionAt — the fine-grained click direction, carrying the granularity
+      // signal. A hit on the single line's ink is cluster-exact.
+      expect(typeof session.positionAt).toBe('function')
+      const chit = session.positionAt(body.page, (x0 + x1) / 2, (y0 + y1) / 2)
+      expect(chit.field).toBe('$body')
+      expect(chit.granularity).toBe('cluster')
+
       // paint.
       expect(typeof session.paint).toBe('function')
       const ctx = new FakeCanvasRenderingContext2D()

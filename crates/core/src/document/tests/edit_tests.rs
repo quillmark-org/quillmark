@@ -611,6 +611,143 @@ fn test_set_body_value_accepts_markdown_and_null_and_rejects_bad() {
     );
 }
 
+/// `set_field_richtext` accepts a **canonical corpus object**, stores it as the
+/// field's canonical value (lossless for corpus-only marks), and reads back
+/// through `field_richtext` — the field-level twin of `set_body_value` / `body`.
+#[test]
+fn test_set_field_richtext_accepts_corpus_object_and_reads_back() {
+    use quillmark_richtext::model::{Mark, MarkKind};
+
+    let mut corpus = quillmark_richtext::import::from_markdown("underlined intro").unwrap();
+    // `underline` has no markdown projection — the corpus store must keep it.
+    corpus.marks.push(Mark {
+        start: 0,
+        end: 10,
+        kind: MarkKind::Underline,
+    });
+    corpus.normalize();
+    let json = quillmark_richtext::serial::to_canonical_value(&corpus);
+
+    let mut card = Card::new("note").unwrap();
+    card.set_field_richtext("intro", &json, false).unwrap();
+
+    // Stored structurally as the corpus object, not the authored string.
+    assert!(card.payload().get("intro").unwrap().as_json().is_object());
+    // Reads back losslessly, underline intact.
+    let read = card.field_richtext("intro").unwrap().unwrap();
+    assert_eq!(read, corpus);
+    assert!(read.marks.iter().any(|m| matches!(m.kind, MarkKind::Underline)));
+}
+
+/// `set_field_richtext` also accepts a **markdown string** (imported) and `null`
+/// (empty corpus); `field_markdown` is the projection twin of `body_markdown`.
+/// A non-corpus object / other shape is `EditError::FieldRichtextDecode`.
+#[test]
+fn test_set_field_richtext_accepts_markdown_and_null_and_rejects_bad() {
+    let mut card = Card::new("note").unwrap();
+
+    card.set_field_richtext("intro", &serde_json::json!("**bold** intro"), false)
+        .unwrap();
+    assert_eq!(card.field_markdown("intro").unwrap(), "**bold** intro\n");
+
+    card.set_field_richtext("intro", &serde_json::Value::Null, false)
+        .unwrap();
+    assert!(card.field_richtext("intro").unwrap().unwrap().is_blank());
+
+    assert_eq!(
+        card.set_field_richtext("intro", &serde_json::json!({ "not": "a corpus" }), false)
+            .unwrap_err()
+            .variant_name(),
+        "FieldRichtextDecode"
+    );
+    assert_eq!(
+        card.set_field_richtext("intro", &serde_json::json!(42), false)
+            .unwrap_err()
+            .variant_name(),
+        "FieldRichtextDecode"
+    );
+}
+
+/// `set_field_richtext(inline = true)` commits the `richtext(inline)` check at
+/// write: a single-`Para` corpus stores, a multi-block corpus is
+/// `EditError::FieldRichtextNotInline` — the write is the strict commit, not a
+/// deferred render failure.
+#[test]
+fn test_set_field_richtext_inline_enforced_at_write() {
+    let mut card = Card::new("note").unwrap();
+
+    // One paragraph line: inline, accepted.
+    card.set_field_richtext("title", &serde_json::json!("A single line"), true)
+        .unwrap();
+    assert_eq!(card.field_markdown("title").unwrap(), "A single line\n");
+
+    // Two blocks: rejected at write, and nothing is stored over the good value.
+    let err = card
+        .set_field_richtext("title", &serde_json::json!("line one\n\nline two"), true)
+        .unwrap_err();
+    assert_eq!(err.variant_name(), "FieldRichtextNotInline");
+    assert_eq!(card.field_markdown("title").unwrap(), "A single line\n");
+}
+
+/// `field_richtext` on an absent field is `None`; on a plain non-richtext field
+/// value it is `Some(Err(_))` — the read mirrors the write in needing the caller
+/// to name a field it knows is richtext.
+#[test]
+fn test_field_richtext_absent_and_non_richtext() {
+    let mut card = Card::new("note").unwrap();
+    assert!(card.field_richtext("missing").is_none());
+    assert!(card.field_markdown("missing").is_none());
+
+    card.set_field("count", 3).unwrap();
+    assert!(card.field_richtext("count").unwrap().is_err());
+    assert!(card.field_markdown("count").is_none());
+}
+
+/// A corpus-valued field emits to card-yaml as its **markdown projection**, not
+/// a nested `{text, lines, marks, islands}` object — card-yaml stays
+/// markdown-clean. Re-parsing yields a string field (schema-less parse), the
+/// documented on-disk identity boundary; the corpus survives only via the DTO.
+#[test]
+fn test_corpus_field_emits_as_markdown_projection() {
+    let mut doc = Document::new(QuillReference::from_str("test_quill").unwrap());
+    doc.main_mut()
+        .set_field_richtext("intro", &serde_json::json!("**bold** intro"), false)
+        .unwrap();
+
+    let md = doc.to_markdown();
+    // Projected to a quoted markdown scalar (the `body_markdown` projection,
+    // trailing newline and all), not a block mapping.
+    assert!(
+        md.contains("intro: \"**bold** intro\\n\""),
+        "expected markdown projection, got:\n{md}"
+    );
+    assert!(!md.contains("lines:"), "corpus object leaked into card-yaml:\n{md}");
+
+    // Re-parse: schema-less, so the field is now a plain string (identity lost
+    // on disk — the intended boundary), but the markdown content survives.
+    let reparsed = Document::from_markdown(&md).unwrap();
+    assert_eq!(
+        reparsed.main().payload().get("intro").unwrap().as_str(),
+        Some("**bold** intro\n")
+    );
+}
+
+/// A plain object field that is *not* a canonical corpus emits structurally
+/// (unchanged) — projection fires only on genuine corpus objects.
+#[test]
+fn test_non_corpus_object_field_emits_structurally() {
+    let mut doc = Document::new(QuillReference::from_str("test_quill").unwrap());
+    doc.main_mut()
+        .set_field(
+            "addr",
+            QuillValue::from_json(serde_json::json!({ "city": "Paris" })),
+        )
+        .unwrap();
+    let md = doc.to_markdown();
+    assert!(md.contains("addr:"), "{md}");
+    assert!(md.contains("city: Paris"), "{md}");
+}
+
 /// `import_body_delta` updates the body and returns the text delta from the
 /// old body to the new — the recordable whole-document (stale-text) writer.
 #[test]
@@ -712,6 +849,64 @@ fn test_apply_body_change_reports_out_of_range() {
         Err(EditError::CorpusApply(_)) => {}
         other => panic!("expected CorpusApply, got {other:?}"),
     }
+}
+
+/// `apply_field_richtext_change` splices a bundle into a richtext field's stored
+/// corpus and re-stores it — the field-path twin of `apply_body_change`.
+/// Identity marks (a strong span applied post-delta) survive on the re-stored
+/// corpus, which is what makes anchors persist on field content across edits.
+#[test]
+fn test_apply_field_richtext_change_splices_and_persists() {
+    use crate::MarkOp;
+    use quillmark_richtext::delta::diff;
+    use quillmark_richtext::model::MarkKind;
+
+    let mut card = Card::new("note").unwrap();
+    card.set_field_richtext("intro", &serde_json::json!("abc"), false)
+        .unwrap();
+    let d = diff("abc", "abXc");
+    card.apply_field_richtext_change(
+        "intro",
+        &d,
+        &[],
+        &[MarkOp::Add {
+            start: 3,
+            end: 4,
+            kind: MarkKind::Strong,
+        }],
+    )
+    .unwrap();
+
+    // The stored value is still a canonical corpus object carrying the edit.
+    assert!(card.payload().get("intro").unwrap().as_json().is_object());
+    let rt = card.field_richtext("intro").unwrap().unwrap();
+    assert_eq!(rt.text, "abXc");
+    assert!(rt.marks.iter().any(|m| matches!(m.kind, MarkKind::Strong)));
+}
+
+/// `apply_field_richtext_change` on an absent or non-richtext field is a
+/// `FieldRichtextDecode` error, not a panic — the caller must address a field it
+/// knows is richtext.
+#[test]
+fn test_apply_field_richtext_change_rejects_non_richtext() {
+    use quillmark_richtext::delta::diff;
+
+    let mut card = Card::new("note").unwrap();
+    let identity = diff("", "");
+    assert_eq!(
+        card.apply_field_richtext_change("missing", &identity, &[], &[])
+            .unwrap_err()
+            .variant_name(),
+        "FieldRichtextDecode"
+    );
+
+    card.set_field("count", 3).unwrap();
+    assert_eq!(
+        card.apply_field_richtext_change("count", &identity, &[], &[])
+            .unwrap_err()
+            .variant_name(),
+        "FieldRichtextDecode"
+    );
 }
 
 // ── Invariant check: sequence of mutations ───────────────────────────────────

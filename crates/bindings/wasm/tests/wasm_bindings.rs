@@ -189,6 +189,25 @@ fn test_session_regions_and_navigation() {
         .position_at(page, cx, cy)
         .expect("positionAt inside content resolves");
     assert_eq!(hit.field, "body");
+    // A hit on prose ink is cluster-exact — the signal a caret UI trusts.
+    assert_eq!(
+        hit.granularity,
+        Some(quillmark_wasm::HitGranularity::Cluster)
+    );
+
+    // fieldBoxes unions the two paragraph segments into one whole-field box per
+    // page — the derived highlight, span-filtered and unioned by the helper.
+    let boxes_js = session.field_boxes("body").expect("fieldBoxes");
+    let boxes: Vec<serde_json::Value> =
+        serde_wasm_bindgen::from_value(boxes_js).expect("fieldBoxes deserialize");
+    assert!(
+        !boxes.is_empty() && boxes.len() <= body.len(),
+        "the two segments union into at most one box per page: {boxes:?}"
+    );
+    assert!(
+        boxes.iter().all(|b| b["field"] == "body" && b.get("span").is_some()),
+        "each derived box keeps the field and a union span: {boxes:?}"
+    );
 
     // locate maps that corpus offset back to a caret rect on the same page.
     let caret = session

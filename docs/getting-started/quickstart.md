@@ -111,8 +111,9 @@
     - Fold `devicePixelRatio` and in-app zoom into `densityScale`;
       `layoutScale` controls display size.
     - If `layoutScale * densityScale` would push either dimension past 16384
-      px, `densityScale` is clamped to fit; compare `result.pixelWidth` to
-      `round(result.layoutWidth * densityScale)` to detect the clamp.
+      px, `densityScale` is clamped to fit; `result.clamped` reports it and
+      `result.effectiveDensityScale` is the density actually applied (a clamped
+      page renders soft at the same `canvas.style` size).
     - `pageCount` and `pageSize(page)` reflect the session's current compile:
       stable between edits, but re-read them after a committed `apply(doc)`,
       which recompiles in place and can change the page count

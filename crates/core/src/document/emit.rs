@@ -221,6 +221,31 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
                 fill,
                 nested_comments,
             } => {
+                // A richtext field stores its value as a canonical corpus
+                // object (via `set_field_richtext`); card-yaml is the
+                // human-authored surface, so it projects back to a markdown
+                // string here — the field-level twin of the `$body` projection,
+                // lossy per the corpus's island loss class (the DTO stays the
+                // lossless carrier). A corpus field is never `!must_fill` and
+                // its content carries no user nested-comments/fills, so the
+                // projected scalar routes through the plain string path.
+                if !*fill {
+                    if let Some(markdown) = project_corpus_field(value.as_json()) {
+                        emit_field(
+                            out,
+                            key,
+                            &JsonValue::String(markdown),
+                            0,
+                            false,
+                            &[],
+                            &[],
+                            &[],
+                            trailer,
+                        );
+                        i += if consumed_trailer { 2 } else { 1 };
+                        continue;
+                    }
+                }
                 // Paths in `nested_comments` are relative to this field's
                 // value, so the container path starts empty.
                 let path: Vec<CommentPathSegment> = Vec::new();
@@ -248,6 +273,34 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
         }
         i += if consumed_trailer { 2 } else { 1 };
     }
+}
+
+/// The markdown projection of a richtext-valued field, or `None` when `value` is
+/// not a canonical corpus object.
+///
+/// A richtext field written via [`Card::set_field_richtext`](super::Card::set_field_richtext)
+/// stores the canonical corpus object; emit projects it to a markdown string so
+/// card-yaml — the human-authored surface — stays markdown-clean rather than
+/// carrying a nested `{text, lines, marks, islands}` tree. Projection is lossy
+/// per the corpus's island loss class (the same tradeoff `$body` makes): island
+/// ids and corpus-only marks do not survive a `.qmd` round-trip, so on-disk
+/// identity is markdown-lossy by design; the storage DTO is the lossless carrier.
+///
+/// The guard requires the object to round-trip *byte-for-byte* as a canonical
+/// corpus, so a user object field that merely resembles one (extra keys,
+/// non-canonical shape) stays structural. A corpus object only ever arises from
+/// the programmatic corpus writer — `from_markdown` is schema-less and stores a
+/// richtext field authored as markdown as a plain string — so this never fires
+/// on a parse-originated document, leaving the emit round-trip property intact.
+fn project_corpus_field(value: &JsonValue) -> Option<String> {
+    if !value.is_object() {
+        return None;
+    }
+    let rt = quillmark_richtext::serial::from_canonical_value(value).ok()?;
+    if quillmark_richtext::serial::to_canonical_value(&rt) != *value {
+        return None;
+    }
+    Some(quillmark_richtext::export::to_markdown(&rt))
 }
 
 /// Ensure `out` ends with `\n\n` so the next fence has a blank line above it.
