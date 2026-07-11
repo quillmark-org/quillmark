@@ -34,7 +34,9 @@ pub(crate) fn import_body(md: &str) -> Result<RichText, ImportError> {
 
 /// Which encoding a [`decode_richtext_value`] failure came from, so a call site
 /// can prefix its diagnostic per encoding without re-deriving the dispatch.
-pub(crate) enum RichtextDecodeError {
+/// Surfaced publicly as the error of [`Card::field_richtext`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RichtextDecodeError {
     /// A JSON object that is not a valid canonical corpus.
     NotCorpus(String),
     /// A markdown string that failed to import.
@@ -43,7 +45,7 @@ pub(crate) enum RichtextDecodeError {
 
 impl RichtextDecodeError {
     /// The inner failure message, without an encoding-specific prefix.
-    pub(crate) fn into_message(self) -> String {
+    pub fn into_message(self) -> String {
         match self {
             RichtextDecodeError::NotCorpus(m) | RichtextDecodeError::BadMarkdown(m) => m,
         }
@@ -202,6 +204,45 @@ impl Card {
 
     pub(crate) fn body_mut(&mut self) -> &mut RichText {
         &mut self.body
+    }
+
+    /// Read a richtext-valued user field back as a [`RichText`] corpus — the
+    /// field-level twin of [`Card::body`]. Decodes the stored value through the
+    /// same object-or-markdown dispatch the writer
+    /// ([`set_field_richtext`](Card::set_field_richtext)) commits, so a field
+    /// stored as a canonical corpus reads back losslessly (identity marks
+    /// intact) and a still-authored markdown string imports.
+    ///
+    /// - `None` — the field is absent.
+    /// - `Some(Ok(rt))` — decoded corpus.
+    /// - `Some(Err(_))` — the field is present but neither a corpus object nor
+    ///   an importable markdown string (e.g. a bare number a `set_field` wrote).
+    ///
+    /// A `Document` carries no schema, so this cannot itself tell a richtext
+    /// field from a plain string field; the caller names a field it knows is
+    /// richtext, exactly as it does when writing.
+    pub fn field_richtext(&self, name: &str) -> Option<Result<RichText, RichtextDecodeError>> {
+        let value = self.payload.get(name)?.as_json();
+        Some(match crate::document::decode_richtext_value(value) {
+            Some(result) => result,
+            None => match value {
+                serde_json::Value::Null => Ok(RichText::empty()),
+                _ => Err(RichtextDecodeError::NotCorpus(
+                    "expected a richtext corpus object or a markdown string".to_string(),
+                )),
+            },
+        })
+    }
+
+    /// The markdown projection of a richtext-valued field (`export ∘ decode`) —
+    /// the field-level twin of [`Card::body_markdown`], and the projection an
+    /// emit or a `.qmd` save writes for a corpus-valued field. `None` when the
+    /// field is absent or does not decode as richtext.
+    pub fn field_markdown(&self, name: &str) -> Option<String> {
+        match self.field_richtext(name)? {
+            Ok(rt) => Some(quillmark_richtext::export::to_markdown(&rt)),
+            Err(_) => None,
+        }
     }
 }
 

@@ -615,6 +615,61 @@ describe('Document editor surface — setQuillRef / replaceBody', () => {
   })
 })
 
+describe('Document editor surface — setRichtextField / fieldMarkdown', () => {
+  it('setRichtextField accepts a markdown string and stores a corpus object', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setRichtextField('intro', 'A **bold** intro.')
+    // Stored structurally as the corpus, not the authored string.
+    expect(typeof field(doc.main, 'intro')).toBe('object')
+    expect(field(doc.main, 'intro').text).toBe('A bold intro.')
+    // fieldMarkdown is the projection twin of bodyMarkdown.
+    expect(doc.fieldMarkdown('intro')).toBe('A **bold** intro.\n')
+  })
+
+  it('setRichtextField accepts a corpus object round-tripped from a body', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    const src = Document.fromMarkdown('~~~card-yaml\n$quill: q@1.0.0\n~~~\n\nCorpus **field** here.')
+    const corpus = src.main.body
+    expect(typeof corpus).toBe('object')
+    doc.setRichtextField('intro', corpus)
+    expect(field(doc.main, 'intro').text).toBe('Corpus field here.')
+    expect(doc.fieldMarkdown('intro')).toBe('Corpus **field** here.\n')
+  })
+
+  it('setRichtextField(name, null) stores the empty corpus', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setRichtextField('intro', null)
+    expect(doc.fieldMarkdown('intro')).toBe('')
+  })
+
+  it('setRichtextField(inline=true) throws FieldRichtextNotInline on multi-block', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setRichtextField('title', 'one line', true) // ok
+    expect(() => doc.setRichtextField('title', 'line one\n\nline two', true))
+      .toThrow(/FieldRichtextNotInline/)
+  })
+
+  it('setRichtextField throws FieldRichtextDecode on a non-corpus object', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    expect(() => doc.setRichtextField('intro', { not: 'a corpus' })).toThrow(/FieldRichtextDecode/)
+  })
+
+  it('fieldMarkdown returns undefined for an absent or non-richtext field', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    expect(doc.fieldMarkdown('nonexistent')).toBeUndefined()
+    doc.setField('count', 3)
+    expect(doc.fieldMarkdown('count')).toBeUndefined()
+  })
+
+  it('updateCardRichtextField / cardFieldMarkdown target a card by index', () => {
+    const doc = Document.fromMarkdown(
+      '~~~card-yaml\n$quill: q@1.0.0\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
+    )
+    doc.updateCardRichtextField(0, 'note', 'Card **note**.')
+    expect(doc.cardFieldMarkdown(0, 'note')).toBe('Card **note**.\n')
+  })
+})
+
 describe('Document editor surface — card mutations', () => {
   const MD_WITH_CARDS = `~~~card-yaml
 $quill: test_quill

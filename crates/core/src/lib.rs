@@ -27,7 +27,7 @@
 pub mod document;
 pub use document::{
     Card, CardWire, Document, EditError, ParseOutput, Payload, PayloadItem, PayloadItemWire,
-    SeedOverlay, WireError,
+    RichtextDecodeError, SeedOverlay, WireError,
 };
 
 pub mod backend;
