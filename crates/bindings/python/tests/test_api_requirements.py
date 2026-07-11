@@ -196,14 +196,14 @@ def test_set_fields_reports_every_violation_and_applies_nothing():
     assert not has_field(doc.main, "ok_field")
 
 
-def test_update_card_fields_batch():
-    """update_card_fields is the card-indexed twin of set_fields."""
+def test_set_card_fields_batch():
+    """set_card_fields is the card-indexed twin of set_fields."""
     doc = Document.from_markdown(MD_WITH_CARDS)
-    doc.update_card_fields(0, {"foo": "baz", "extra": 1})
+    doc.set_card_fields(0, {"foo": "baz", "extra": 1})
     assert field(doc.cards[0], "foo") == "baz"
     assert field(doc.cards[0], "extra") == 1
     with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
-        doc.update_card_fields(99, {"foo": "v"})
+        doc.set_card_fields(99, {"foo": "v"})
 
 
 def test_remove_field_existing():
@@ -356,32 +356,32 @@ def test_move_card_out_of_range():
         doc.move_card(10, 0)
 
 
-def test_update_card_field():
-    """update_card_field sets a field on a specific card."""
+def test_set_card_field():
+    """set_card_field sets a field on a specific card."""
     doc = Document.from_markdown(MD_WITH_CARDS)
-    doc.update_card_field(0, "content", "hello")
+    doc.set_card_field(0, "content", "hello")
     assert field(doc.cards[0], "content") == "hello"
 
 
-def test_update_card_field_out_of_range():
-    """update_card_field raises EditError when card index is out of range."""
+def test_set_card_field_out_of_range():
+    """set_card_field raises EditError when card index is out of range."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
     with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
-        doc.update_card_field(0, "title", "x")
+        doc.set_card_field(0, "title", "x")
 
 
-def test_update_card_body():
-    """update_card_body replaces the card body."""
+def test_replace_card_body():
+    """replace_card_body replaces the card body."""
     doc = Document.from_markdown(MD_WITH_CARDS)
-    doc.update_card_body(0, "New card body.")
+    doc.replace_card_body(0, "New card body.")
     assert doc.cards[0]["body_markdown"] == "New card body.\n"
 
 
-def test_update_card_body_out_of_range():
-    """update_card_body raises EditError when card index is out of range."""
+def test_replace_card_body_out_of_range():
+    """replace_card_body raises EditError when card index is out of range."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
     with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
-        doc.update_card_body(0, "x")
+        doc.replace_card_body(0, "x")
 
 
 def test_set_ext_adds_map():

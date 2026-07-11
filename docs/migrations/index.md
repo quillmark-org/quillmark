@@ -20,8 +20,10 @@ guides in order.
   every field type, plus the schema-bound `TypedEditor`; strict writes fail a
   mismatch at the write, not at render (#893). Live field edits go through the
   writer + `apply(doc)` (the experimental `applyFieldDelta` / change-log surface
-  was removed, #886). On-disk (`.qmd`) identity stays markdown-lossy — the
-  storage DTO is the lossless carrier.
+  was removed, #886). Card-write verbs become mechanical twins of their
+  main-card names — `updateCardField`/`updateCardFields`/`updateCardBody` rename
+  to `setCardField`/`setCardFields`/`replaceCardBody` (#895). On-disk (`.qmd`)
+  identity stays markdown-lossy — the storage DTO is the lossless carrier.
 - [0.92 → 0.93](0.92-to-0.93.md) — the blueprint placeholder is rebuilt on two
   orthogonal axes (value and marker): blueprints now stamp the `!must_fill` tag
   instead of the `<must-fill>` string sentinel, and bare-null / `field:` now

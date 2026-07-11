@@ -738,7 +738,7 @@ impl PyDocument {
             .map_err(convert_edit_error)
     }
 
-    fn update_card_field(
+    fn set_card_field(
         &mut self,
         index: usize,
         name: &str,
@@ -750,10 +750,10 @@ impl PyDocument {
             .map_err(convert_edit_error)
     }
 
-    /// Batched twin of `update_card_field`: set several fields on the
+    /// Batched twin of `set_card_field`: set several fields on the
     /// composable card at `index` atomically. Same all-or-nothing,
     /// one-diagnostic-per-field contract as `set_fields`.
-    fn update_card_fields(&mut self, index: usize, fields: Bound<'_, PyDict>) -> PyResult<()> {
+    fn set_card_fields(&mut self, index: usize, fields: Bound<'_, PyDict>) -> PyResult<()> {
         let batch = pydict_to_field_batch(&fields)?;
         self.card_mut_or_raise(index)?
             .set_fields(batch)
@@ -776,7 +776,7 @@ impl PyDocument {
         }
     }
 
-    fn update_card_body(&mut self, index: usize, body: &str) -> PyResult<()> {
+    fn replace_card_body(&mut self, index: usize, body: &str) -> PyResult<()> {
         self.card_mut_or_raise(index)?
             .replace_body(body)
             .map_err(convert_edit_error)

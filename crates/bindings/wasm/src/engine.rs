@@ -1145,16 +1145,17 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Update a field on the card at `index`.
+    /// Set a field on the card at `index` — the card-indexed twin of
+    /// [`setField`](Document::set_field). Stores the value opaquely.
     /// Throws if `index` is out of range, `name` is reserved or invalid.
-    #[wasm_bindgen(js_name = updateCardField)]
-    pub fn update_card_field(
+    #[wasm_bindgen(js_name = setCardField)]
+    pub fn set_card_field(
         &mut self,
         index: usize,
         name: &str,
         value: JsValue,
     ) -> Result<(), JsValue> {
-        let json = js_value_to_json(value, "updateCardField")?;
+        let json = js_value_to_json(value, "setCardField")?;
         let qv = quillmark_core::QuillValue::from_json(json);
         self.card_mut_or_throw(index)?
             .set_field(name, qv)
@@ -1202,17 +1203,17 @@ impl Document {
         }
     }
 
-    /// Batched twin of [`updateCardField`](Document::update_card_field): set
+    /// Batched twin of [`setCardField`](Document::set_card_field): set
     /// several fields on the card at `index` atomically. Same all-or-nothing,
     /// one-diagnostic-per-field contract as [`setFields`](Document::set_fields).
     /// Throws if `index` is out of range.
-    #[wasm_bindgen(js_name = updateCardFields)]
-    pub fn update_card_fields(
+    #[wasm_bindgen(js_name = setCardFields)]
+    pub fn set_card_fields(
         &mut self,
         index: usize,
         #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: JsValue,
     ) -> Result<(), JsValue> {
-        let batch = js_value_to_field_batch(&fields, "updateCardFields")?;
+        let batch = js_value_to_field_batch(&fields, "setCardFields")?;
         self.card_mut_or_throw(index)?
             .set_fields(batch)
             .map_err(edit_errors_to_js)
@@ -1232,9 +1233,11 @@ impl Document {
         })
     }
 
-    /// Replace the body of the card at `index`. Throws if out of range.
-    #[wasm_bindgen(js_name = updateCardBody)]
-    pub fn update_card_body(&mut self, index: usize, body: &str) -> Result<(), JsValue> {
+    /// Replace the body of the card at `index` from a markdown string — the
+    /// card-indexed twin of [`replaceBody`](Document::replace_body). Throws if
+    /// out of range.
+    #[wasm_bindgen(js_name = replaceCardBody)]
+    pub fn replace_card_body(&mut self, index: usize, body: &str) -> Result<(), JsValue> {
         self.card_mut_or_throw(index)?
             .replace_body(body)
             .map_err(|e| edit_error_to_js(&e))
@@ -1243,7 +1246,7 @@ impl Document {
     /// Set the body of the card at `index` from a **corpus object** (canonical
     /// RichText-JSON) or a markdown string — the card-indexed twin of
     /// [`setBody`](Document::set_body), and the corpus-native counterpart to
-    /// [`updateCardBody`](Document::update_card_body), which accepts markdown
+    /// [`replaceCardBody`](Document::replace_card_body), which accepts markdown
     /// only. `body` is the same `RichText | string` shape `Document.cards[i].body`
     /// reads back, so a corpus-native editor writes a card body straight through
     /// with no lossy markdown round-trip — a corpus-only mark such as `underline`,

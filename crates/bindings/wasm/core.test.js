@@ -155,7 +155,7 @@ title: Draft
     expect(doc.cardCount).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
 
-    doc.updateCardField(0, 'author', 'Bob')
+    doc.setCardField(0, 'author', 'Bob')
     expect(field(doc.cards[0], 'author')).toBe('Bob')
 
     // Storage DTO round-trips losslessly — the editor's persistence path.

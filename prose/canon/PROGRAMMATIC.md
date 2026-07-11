@@ -73,7 +73,7 @@ the index when patching:
 
 ```python
 idx = next(i for i, c in enumerate(doc.cards) if c["id"] == row_id)
-doc.update_card_fields(idx, {"qty": new_qty})
+doc.set_card_fields(idx, {"qty": new_qty})
 ```
 
 `$id` is optional and opaque; the model imposes no uniqueness on it.

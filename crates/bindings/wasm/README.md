@@ -197,7 +197,7 @@ and compare instead of re-parsing on every keystroke.
 ### `doc.cardCount`
 O(1) getter for the number of composable cards (excluding the main card).
 Use this to validate indices before calling card mutators (`removeCard`,
-`updateCardField`, etc.) without allocating the full `cards` array.
+`setCardField`, etc.) without allocating the full `cards` array.
 
 ### `quill.validate(doc)`
 
@@ -245,7 +245,7 @@ There is one `Card` shape in both directions — `pushCard` / `insertCard` take
 exactly what `cards` / `removeCard` / `seedCard` return. Build a fresh card
 from a flat field map with `Document.makeCard(kind, fields?, body?)`.
 
-Batch mutation: `doc.setFields({...})` / `doc.updateCardFields(index, {...})`
+Batch mutation: `doc.setFields({...})` / `doc.setCardFields(index, {...})`
 apply a whole object atomically — on any invalid field nothing is applied and
 the thrown error carries one diagnostic per offending field (`path` = field
 name).
@@ -395,7 +395,7 @@ compilation failures. The same shape applies to every throw site:
 
 - `Document.fromMarkdown` — parse errors (missing root `$quill` metadata, YAML
   errors, `parse::input_too_large` for inputs > 10 MB).
-- `Document` mutators (`setField`, `updateCardField`, etc.) — `EditError`
+- `Document` mutators (`setField`, `setCardField`, etc.) — `EditError`
   variants (`InvalidFieldName`, `InvalidKindName`, `ReservedKind`,
   `IndexOutOfRange`, `ValueTooDeep`) appear in `diagnostics[0].message` with
   the `[EditError::<Variant>]` prefix.

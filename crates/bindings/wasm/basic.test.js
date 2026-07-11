@@ -532,7 +532,7 @@ describe('Document blank-canvas constructor', () => {
   })
 })
 
-describe('Document editor surface — setFields / updateCardFields', () => {
+describe('Document editor surface — setFields / setCardFields', () => {
   it('setFields applies every entry, in object order', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.setFields({ subtitle: 'A subtitle', pages: 3 })
@@ -557,13 +557,13 @@ describe('Document editor surface — setFields / updateCardFields', () => {
     expect(() => doc.setFields('not an object')).toThrow(/plain object/)
   })
 
-  it('updateCardFields is the card-indexed twin of setFields', () => {
+  it('setCardFields is the card-indexed twin of setFields', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.pushCard(Document.makeCard('note', { foo: 'bar' }))
-    doc.updateCardFields(0, { foo: 'baz', extra: 1 })
+    doc.setCardFields(0, { foo: 'baz', extra: 1 })
     expect(field(doc.cards[0], 'foo')).toBe('baz')
     expect(field(doc.cards[0], 'extra')).toBe(1)
-    expect(() => doc.updateCardFields(99, { foo: 'v' })).toThrow(/IndexOutOfRange/)
+    expect(() => doc.setCardFields(99, { foo: 'v' })).toThrow(/IndexOutOfRange/)
   })
 })
 
@@ -879,7 +879,7 @@ describe('Document.equals', () => {
   })
 })
 
-describe('Document editor surface — updateCardField / updateCardBody', () => {
+describe('Document editor surface — setCardField / replaceCardBody', () => {
   const MD_WITH_CARD = `~~~card-yaml
 $quill: test_quill
 $kind: main
@@ -895,21 +895,21 @@ foo: bar
 Card body.
 `
 
-  it('updateCardField sets a field on a card', () => {
+  it('setCardField sets a field on a card', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
-    doc.updateCardField(0, 'content', 'hello')
+    doc.setCardField(0, 'content', 'hello')
     expect(field(doc.cards[0], 'content')).toBe('hello')
   })
 
-  it('updateCardField accepts uppercase names verbatim', () => {
+  it('setCardField accepts uppercase names verbatim', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
-    doc.updateCardField(0, 'BODY', 'x')
+    doc.setCardField(0, 'BODY', 'x')
     expect(field(doc.cards[0], 'BODY')).toBe('x')
   })
 
-  it('updateCardField throws IndexOutOfRange when card absent', () => {
+  it('setCardField throws IndexOutOfRange when card absent', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.updateCardField(0, 'title', 'x')).toThrow(/IndexOutOfRange/)
+    expect(() => doc.setCardField(0, 'title', 'x')).toThrow(/IndexOutOfRange/)
   })
 
   it('removeCardField returns the removed value and deletes the key', () => {
@@ -929,15 +929,15 @@ Card body.
     expect(() => doc.removeCardField(0, 'foo')).toThrow(/IndexOutOfRange/)
   })
 
-  it('updateCardBody replaces card body', () => {
+  it('replaceCardBody replaces card body', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
-    doc.updateCardBody(0, 'New card body.')
+    doc.replaceCardBody(0, 'New card body.')
     expect(doc.cards[0].bodyMarkdown).toBe('New card body.\n')
   })
 
-  it('updateCardBody throws IndexOutOfRange when card absent', () => {
+  it('replaceCardBody throws IndexOutOfRange when card absent', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.updateCardBody(0, 'x')).toThrow(/IndexOutOfRange/)
+    expect(() => doc.replaceCardBody(0, 'x')).toThrow(/IndexOutOfRange/)
   })
 
   it('setCardBody accepts a markdown string', () => {
