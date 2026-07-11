@@ -878,19 +878,30 @@ mod tests {
         rt
     }
 
+    /// One deterministic fixed-point smoke per block/inline construct. Each is
+    /// a `document()` generator arm that `properties.rs` fuzzes; kept as a
+    /// labeled table so a break localizes to the exact construct without a
+    /// proptest seed. Constructs with NO generator coverage (nested_marks,
+    /// code_block, thematic_break, hard breaks) stay as their own tests below.
     #[test]
-    fn paragraph() {
-        round_trips("Hello world");
-    }
-
-    #[test]
-    fn two_paragraphs() {
-        round_trips("one\n\ntwo");
-    }
-
-    #[test]
-    fn marks() {
-        round_trips("a **b** _c_ ~~d~~ <u>e</u>");
+    fn single_constructs_round_trip() {
+        for (label, md) in [
+            ("paragraph", "Hello world"),
+            ("two_paragraphs", "one\n\ntwo"),
+            ("marks", "a **b** _c_ ~~d~~ <u>e</u>"),
+            ("heading", "## Title here"),
+            ("inline_code", "run `cargo test` now"),
+            ("bullet_list", "- a\n- b\n- c"),
+            ("ordered_list", "3. a\n4. b"),
+            ("multi_paragraph_item", "- first\n\n  second"),
+            ("blockquote", "> quoted text"),
+            ("link", "see [our site](https://example.com) now"),
+            ("table", "| a | b |\n| --- | --- |\n| 1 | 2 |"),
+            ("image", "see ![a cat](cat.png) here"),
+        ] {
+            println!("construct: {label}");
+            round_trips(md);
+        }
     }
 
     #[test]
@@ -899,48 +910,8 @@ mod tests {
     }
 
     #[test]
-    fn heading() {
-        round_trips("## Title here");
-    }
-
-    #[test]
-    fn inline_code() {
-        round_trips("run `cargo test` now");
-    }
-
-    #[test]
     fn code_block() {
         round_trips("```rust\nfn a() {}\nfn b() {}\n```");
-    }
-
-    #[test]
-    fn bullet_list() {
-        round_trips("- a\n- b\n- c");
-    }
-
-    #[test]
-    fn ordered_list() {
-        round_trips("3. a\n4. b");
-    }
-
-    #[test]
-    fn multi_paragraph_item() {
-        round_trips("- first\n\n  second");
-    }
-
-    #[test]
-    fn blockquote() {
-        round_trips("> quoted text");
-    }
-
-    #[test]
-    fn link() {
-        round_trips("see [our site](https://example.com) now");
-    }
-
-    #[test]
-    fn table() {
-        round_trips("| a | b |\n| --- | --- |\n| 1 | 2 |");
     }
 
     #[test]
@@ -957,11 +928,6 @@ mod tests {
             let md = to_markdown(&rt);
             assert!(md.contains("\n\n---\n\n"), "source: {src}, got: {md:?}");
         }
-    }
-
-    #[test]
-    fn image() {
-        round_trips("see ![a cat](cat.png) here");
     }
 
     #[test]
