@@ -327,6 +327,15 @@ pub enum Invariant {
     /// would break the exported table). `cell` is the flat header-then-rows
     /// index; `normalize` rewrites the newline to a space.
     TableCellNewline { cell: usize },
+    /// Two islands share an `id`. Ids are a minted, stable identity (the sole
+    /// source of hash nondeterminism); import mints them by index so they never
+    /// collide, but a hand-built or round-tripped corpus can. Downstream code
+    /// that keys islands by id would otherwise silently pick the wrong one.
+    IslandIdCollision { id: String },
+    /// A table island's `header` prop is present but not a JSON array — it
+    /// cannot carry column cells. `normalize` rewrites a non-array header to an
+    /// empty array (a zero-column, content-free table).
+    TableHeaderNotArray,
 }
 
 impl RichText {
@@ -505,7 +514,15 @@ impl RichText {
         // Table-cell marks: the prose range/zero-width/reserved-tag rules again,
         // but each mark is bounded by its own cell's text length (in USV). Cells
         // hold no `\n`, so the edge-on-newline rule does not apply.
+        let mut seen_ids = std::collections::HashSet::with_capacity(self.islands.len());
         for island in &self.islands {
+            // Ids are a minted, stable identity — the sole source of hash
+            // nondeterminism — so two islands may not share one.
+            if !seen_ids.insert(island.id.as_str()) {
+                return Err(Invariant::IslandIdCollision {
+                    id: island.id.clone(),
+                });
+            }
             // Structural shape (table column/row/aligns consistency, `\n`-free
             // cells) before the per-cell mark ranges — a ragged island is
             // ill-formed regardless of its marks.
@@ -595,6 +612,12 @@ pub(crate) fn normalize_marks(marks: Vec<Mark>) -> Vec<Mark> {
     // Canonical sort: (start, end, kind-ord, attrs). Key cached per mark so
     // `attrs_key`'s allocation runs once each, not once per comparison.
     out.sort_by_cached_key(|m| (m.start, m.end, m.kind.ord(), m.kind.attrs_key()));
+    // Drop byte-identical duplicates. Identity/unknown handles never *merge*
+    // (Spike-A rule 3), but two marks equal in range, kind, and attrs are the
+    // same handle recorded twice — redundant bytes, not two handles. The sort
+    // above makes any such pair adjacent, so `dedup` (structural `PartialEq`,
+    // order-independent for `Unknown` attrs under `preserve_order`) removes it.
+    out.dedup();
     out
 }
 
@@ -962,5 +985,77 @@ mod tests {
         assert_eq!(rt.validate(), Ok(()));
         rt.normalize();
         assert_eq!(rt.validate(), Ok(()));
+    }
+
+    /// A non-array `header` carries no cells: `validate` rejects it and
+    /// `normalize` repairs it to an empty array (a zero-column table that then
+    /// validates). Issue #904.
+    #[test]
+    fn non_array_table_header_is_rejected_then_repaired() {
+        let mut rt = table_rt(serde_json::json!({
+            "header": "oops",
+            "aligns": [],
+            "rows": [],
+        }));
+        assert_eq!(rt.validate(), Err(Invariant::TableHeaderNotArray));
+        rt.normalize();
+        assert_eq!(rt.validate(), Ok(()));
+        assert_eq!(rt.islands[0].props["header"], serde_json::json!([]));
+    }
+
+    /// Two islands sharing an `id` violate the minted-identity invariant.
+    /// Import mints ids by index so never collides; a hand-built corpus can.
+    /// Issue #903.
+    #[test]
+    fn duplicate_island_id_is_rejected() {
+        let mut rt = RichText::empty();
+        rt.text = format!("{ISLAND_SLOT}\n{ISLAND_SLOT}");
+        rt.lines = vec![
+            Line {
+                kind: LineKind::Island,
+                containers: vec![],
+                continues: false,
+            },
+            Line {
+                kind: LineKind::Island,
+                containers: vec![],
+                continues: false,
+            },
+        ];
+        let table = |id: &str| Island {
+            id: id.into(),
+            island_type: "table".into(),
+            props: serde_json::json!({ "header": [cell("h")], "aligns": ["none"], "rows": [] }),
+            loss: Loss::Lossless,
+        };
+        rt.islands = vec![table("dup"), table("dup")];
+        assert_eq!(
+            rt.validate(),
+            Err(Invariant::IslandIdCollision { id: "dup".into() })
+        );
+        // Distinct ids validate.
+        rt.islands = vec![table("a"), table("b")];
+        assert_eq!(rt.validate(), Ok(()));
+    }
+
+    /// `normalize` drops a byte-identical duplicate identity mark (same range,
+    /// same id) — the same handle recorded twice is redundant, not two handles.
+    /// Distinct-id anchors over the same range are kept. Issue #906.
+    #[test]
+    fn normalize_dedupes_identical_identity_marks() {
+        let mut rt = RichText::empty();
+        rt.text = "abcd".into();
+        let anchor = |id: &str| Mark {
+            start: 0,
+            end: 4,
+            kind: MarkKind::Anchor { id: id.into() },
+        };
+        rt.marks = vec![anchor("x"), anchor("x")];
+        rt.normalize();
+        assert_eq!(rt.marks, vec![anchor("x")]);
+        // Different ids over the same range are distinct handles — both survive.
+        rt.marks = vec![anchor("x"), anchor("y")];
+        rt.normalize();
+        assert_eq!(rt.marks.len(), 2);
     }
 }

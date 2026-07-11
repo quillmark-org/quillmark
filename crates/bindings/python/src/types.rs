@@ -421,6 +421,29 @@ impl PyDocument {
         self.inner.main().body_markdown()
     }
 
+    /// Corpus-native body writer on the main card — the write twin of the
+    /// [`body`](Self::body) getter, so a body read as a corpus dict writes back
+    /// losslessly (identity marks, island ids, corpus-only formatting intact).
+    /// `body` is a corpus dict (`{text, lines, marks, islands}`), an importable
+    /// markdown string, or `None`; unlike [`replace_body`](Self::replace_body)
+    /// (markdown only) this does not drop corpus-only formatting. Raises
+    /// `QuillmarkError` if `body` is none of those. Mirrors WASM `setBody`.
+    fn set_body(&mut self, body: Bound<'_, PyAny>) -> PyResult<()> {
+        let json = py_to_json(&body)?;
+        self.inner
+            .main_mut()
+            .set_body_value(&json)
+            .map_err(convert_edit_error)
+    }
+
+    /// The markdown projection of a richtext-valued field on the main card
+    /// (`export ∘ decode`) — the field-level twin of `body_markdown`. Returns
+    /// `None` when the field is absent or does not decode as richtext (e.g. a
+    /// plain scalar written via `set_field`). Mirrors WASM `fieldMarkdown`.
+    fn field_markdown(&self, name: &str) -> Option<String> {
+        self.inner.main().field_markdown(name)
+    }
+
     /// Main (entry) card as a dict with `kind`, `quill`, `id`, `payload_items`,
     /// `ext`, `seed`, and `body`.
     #[getter]
@@ -780,6 +803,30 @@ impl PyDocument {
         self.card_mut_or_raise(index)?
             .replace_body(body)
             .map_err(convert_edit_error)
+    }
+
+    /// Corpus-native body writer on the composable card at `index` — the
+    /// card-indexed twin of [`set_body`](Self::set_body), and the corpus
+    /// counterpart to [`replace_card_body`](Self::replace_card_body) (markdown
+    /// only). `body` is a corpus dict, an importable markdown string, or `None`.
+    /// Raises `QuillmarkError` on an out-of-range index or a body that is none of
+    /// those. Mirrors WASM `setCardBody`.
+    fn set_card_body(&mut self, index: usize, body: Bound<'_, PyAny>) -> PyResult<()> {
+        let json = py_to_json(&body)?;
+        self.card_mut_or_raise(index)?
+            .set_body_value(&json)
+            .map_err(convert_edit_error)
+    }
+
+    /// The markdown projection of a richtext-valued field on the composable card
+    /// at `index` — the card-indexed twin of [`field_markdown`](Self::field_markdown).
+    /// Returns `None` when `index` is out of range, the field is absent, or it
+    /// does not decode as richtext. Mirrors WASM `cardFieldMarkdown`.
+    fn card_field_markdown(&self, index: usize, name: &str) -> Option<String> {
+        self.inner
+            .cards()
+            .get(index)
+            .and_then(|c| c.field_markdown(name))
     }
 }
 

@@ -441,6 +441,12 @@ fn normalize_table_props(props: &mut Value) {
         return;
     };
     let header = obj.entry("header").or_insert_with(|| Value::Array(vec![]));
+    // A non-array header (a bare string, say) carries no cells; rewrite it to an
+    // empty array so it canonicalizes to a zero-column, content-free table
+    // rather than retaining opaque garbage that `validate` would then reject.
+    if !header.is_array() {
+        *header = Value::Array(vec![]);
+    }
     pad_row(header, cols);
     if let Some(h) = header.as_array_mut() {
         h.iter_mut().for_each(canon_cell);
@@ -506,6 +512,13 @@ fn canon_cell(cell: &mut Value) {
 /// and each body row must share (the header width), plus the `\n`-free-cell rule.
 /// The validate-side twin of [`normalize_table_props`].
 fn table_shape_error(props: &Value) -> Option<Invariant> {
+    // A present-but-non-array header can't carry column cells — `normalize`
+    // rewrites it to an empty array, so an un-normalized one is a hand-built
+    // degenerate island. (An absent header is a zero-column table, which is
+    // well-formed: `empty_table_is_valid`.)
+    if props.get("header").is_some_and(|h| !h.is_array()) {
+        return Some(Invariant::TableHeaderNotArray);
+    }
     let cols = props
         .get("header")
         .and_then(Value::as_array)

@@ -707,6 +707,42 @@ fn test_commit_field_richtext_inline_enforced_at_write() {
     assert_eq!(card.field_markdown("title").unwrap(), "A single line\n");
 }
 
+/// A multi-block element committed to an `array` of `richtext(inline)` items
+/// classifies as `FieldRichtextNotInline`, not the generic `FieldConform`: the
+/// mapper keys on the coercion target (`richtext(inline)`), so the richtext
+/// constraint is honored even when it is nested under an array. Issue #906.
+#[test]
+fn test_commit_field_array_of_inline_richtext_reports_not_inline() {
+    use crate::quill::{FieldSchema, FieldType};
+
+    let mut card = Card::new("note").unwrap();
+    let mut schema = FieldSchema::new("refs".to_string(), FieldType::Array, None);
+    schema.items = Some(Box::new(FieldSchema::new(
+        "refs".to_string(),
+        FieldType::RichText { inline: true },
+        None,
+    )));
+
+    // A single-line element coerces to a corpus and the array commits.
+    card.commit_field(
+        "refs",
+        QuillValue::from_json(serde_json::json!(["one line"])),
+        &schema,
+    )
+    .unwrap();
+
+    // A two-block element fails the inline check, surfaced as the richtext
+    // variant (not FieldConform) despite the field's own type being Array.
+    let err = card
+        .commit_field(
+            "refs",
+            QuillValue::from_json(serde_json::json!(["line one\n\nline two"])),
+            &schema,
+        )
+        .unwrap_err();
+    assert_eq!(err.variant_name(), "FieldRichtextNotInline");
+}
+
 // ── commit_field (typed write) ───────────────────────────────────────────────
 
 /// `commit_field` on a scalar schema stores the coerced canonical (`"3"` → `3`);
@@ -839,6 +875,38 @@ fn test_non_corpus_object_field_emits_structurally() {
     let md = doc.to_markdown();
     assert!(md.contains("addr:"), "{md}");
     assert!(md.contains("city: Paris"), "{md}");
+}
+
+/// A content-canonical corpus whose top-level keys are in NON-canonical order
+/// stays structural — the projection guard is byte-exact (canonical-string
+/// equality), not the order-independent `Value` compare it used to be. Under
+/// the old guard this projected to a flattened markdown scalar, breaking the
+/// field's round-trip. Issue #905.
+#[test]
+fn test_noncanonical_order_corpus_field_stays_structural() {
+    // A real corpus, then its top-level keys rebuilt in reverse (same content,
+    // non-canonical bytes).
+    let rt = quillmark_richtext::import::from_markdown("**bold**").unwrap();
+    let canonical = quillmark_richtext::serial::to_canonical_value(&rt);
+    let obj = canonical.as_object().unwrap();
+    let mut scrambled = serde_json::Map::new();
+    for k in obj.keys().rev() {
+        scrambled.insert(k.clone(), obj[k].clone());
+    }
+
+    let mut doc = Document::new(QuillReference::from_str("test_quill").unwrap());
+    doc.main_mut()
+        .set_field(
+            "intro",
+            QuillValue::from_json(serde_json::Value::Object(scrambled)),
+        )
+        .unwrap();
+    let md = doc.to_markdown();
+    // Structural: the corpus keys survive; it did not collapse to `intro: "..."`.
+    assert!(
+        md.contains("marks:") && md.contains("lines:"),
+        "non-canonical-order corpus should stay structural, got:\n{md}"
+    );
 }
 
 /// `import_body_delta` updates the body and returns the text delta from the

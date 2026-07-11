@@ -131,6 +131,14 @@ pub(crate) enum Leniency {
     /// cross-type `Boolean`↔`Number` coercions are dropped and every
     /// defer-to-validation fall-through becomes a `CoercionError` — so a
     /// mismatched value fails at the write, not silently at a later render.
+    ///
+    /// "Strict" is asymmetric by target, not absolute: `string` and `array` are
+    /// universal sinks, so a scalar→`string` (`true` → `"true"`) and a
+    /// scalar→singleton-`array` wrap stay lenient even here (both are lossless,
+    /// unambiguous, and author-intended); only the lossy/ambiguous crossings —
+    /// scalar→`object`, `String`→`number`/`bool`, `Boolean`↔`Number` — are
+    /// rejected. A strict write thus still reshapes toward `string`/`array`
+    /// while refusing to invent structure or reinterpret a scalar's type.
     Write,
 }
 

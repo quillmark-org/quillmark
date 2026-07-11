@@ -23,7 +23,7 @@ use quillmark_richtext::{ApplyError, Delta, LineOp, MarkOp, RichText};
 
 use crate::document::meta::{validate_composable_kind, CardKindError};
 use crate::document::{Card, Document, Payload};
-use crate::quill::{CoercionError, FieldSchema, FieldType, Leniency, QuillConfig};
+use crate::quill::{CoercionError, FieldSchema, Leniency, QuillConfig};
 use crate::value::QuillValue;
 use crate::version::QuillReference;
 
@@ -189,27 +189,27 @@ pub fn validate_field(key: &str, value: &serde_json::Value) -> Result<(), FieldV
 
 /// Map a strict-write [`CoercionError`] to the field-write [`EditError`] surface.
 ///
-/// A richtext field routes to the dedicated `FieldRichtext*` variants — the
-/// same surface [`Card::apply_field_richtext_change`] produces, and the one the
-/// wasm/Python error mappers (and their tests) key on; the inline violation is
-/// distinguished by the coercion `target`. Every other type uses the general
+/// A failed richtext coercion routes to the dedicated `FieldRichtext*` variants
+/// — the same surface [`Card::apply_field_richtext_change`] produces, and the
+/// one the wasm/Python error mappers (and their tests) key on. This keys on the
+/// coercion `target`, not the top-level field type, because the richtext
+/// constraint can be **nested**: an `array` of `richtext(inline)` items fails
+/// with `target == "richtext(inline)"` while the field's own type is `Array`.
+/// The richtext coercion emits exactly `"richtext"` / `"richtext(inline)"`
+/// (see `QuillConfig::conform_value`); every other target uses the general
 /// [`EditError::FieldConform`].
-fn conform_error_to_edit(name: &str, schema: &FieldSchema, err: CoercionError) -> EditError {
+fn conform_error_to_edit(name: &str, err: CoercionError) -> EditError {
     let CoercionError::Uncoercible { target, reason, .. } = err;
-    if matches!(schema.r#type, FieldType::RichText { .. }) {
-        if target == "richtext(inline)" {
-            EditError::FieldRichtextNotInline(name.to_string())
-        } else {
-            EditError::FieldRichtextDecode {
-                field: name.to_string(),
-                message: reason,
-            }
-        }
-    } else {
-        EditError::FieldConform {
+    match target.as_str() {
+        "richtext(inline)" => EditError::FieldRichtextNotInline(name.to_string()),
+        "richtext" => EditError::FieldRichtextDecode {
             field: name.to_string(),
             message: reason,
-        }
+        },
+        _ => EditError::FieldConform {
+            field: name.to_string(),
+            message: reason,
+        },
     }
 }
 
@@ -231,7 +231,7 @@ pub(crate) fn resolve_field_write(
     }
     let stored = match schema {
         Some(schema) => QuillConfig::conform_value(&value, schema, name, Leniency::Write)
-            .map_err(|e| conform_error_to_edit(name, schema, e))?,
+            .map_err(|e| conform_error_to_edit(name, e))?,
         None => value,
     };
     // Depth-bound the stored form (name already validated above).

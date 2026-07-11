@@ -958,6 +958,13 @@ fn table_markup(props: &serde_json::Value) -> String {
             }
         }
     }
+    // A zero-column (empty) table has no renderable content and `columns: 0`
+    // would fail to compile; emit nothing, matching the markdown export path
+    // (`export::emit_table` early-returns on `cols == 0`). An empty table island
+    // is well-formed (`RichText::validate` accepts it), so this is reachable.
+    if cols == 0 {
+        return String::new();
+    }
 
     let cell = |v: &serde_json::Value| {
         let (text, marks) = quillmark_richtext::serial::parse_cell(v);
@@ -1661,6 +1668,14 @@ mod tests {
         });
         let out = table_markup(&props);
         assert!(out.contains("columns: 2,"), "got {out:?}");
+    }
+
+    /// A zero-column (empty) table emits nothing rather than `#table(columns: 0)`
+    /// (which fails to compile), matching the markdown export path. Issue #904.
+    #[test]
+    fn empty_table_emits_nothing() {
+        let props = serde_json::json!({ "header": [], "aligns": [], "rows": [] });
+        assert_eq!(table_markup(&props), "");
     }
 
     /// A paragraph is one segment even across a hard break; a heading and a code

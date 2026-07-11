@@ -54,6 +54,10 @@ export interface QuillFieldSchema {
     ui?: QuillFieldUi;
     properties?: Record<string, QuillFieldSchema>;
     items?: QuillFieldSchema;
+    /** Present (and `true`) only on a `richtext` field declared `richtext(inline)`
+     *  — the single-paragraph, container-free, island-free constraint. Core
+     *  serializes `inline: true` into the schema JSON; absent otherwise. */
+    inline?: boolean;
 }
 
 /** Schema entry for the main card or a named card kind. */

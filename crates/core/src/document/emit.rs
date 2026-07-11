@@ -41,6 +41,15 @@ impl Document {
     ///    `QuillValue::String("01234")` round-trips as a string, never as an
     ///    integer.  This guarantee is the whole point of owning emission.
     ///
+    ///    **Corpus-field carve-out.** A richtext field committed as a canonical
+    ///    corpus object (and the card `$body`) is *intentionally* markdown-lossy
+    ///    on `.qmd` emit: it projects to its markdown form (`project_corpus_field`),
+    ///    so identity marks (anchors, island ids) and corpus-only marks
+    ///    (`underline`) do not survive a `to_markdown`→`from_markdown` round-trip.
+    ///    On-disk identity is markdown-lossy by design; the storage DTO is the
+    ///    lossless carrier. The value-equality guarantee above holds for every
+    ///    field the writer did not commit as canonical corpus.
+    ///
     /// 2. **Emit-idempotent.** `to_markdown` is a pure function of `doc`; two
     ///    calls on the same `doc` return byte-equal strings.
     ///
@@ -286,18 +295,29 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
 /// ids and corpus-only marks do not survive a `.qmd` round-trip, so on-disk
 /// identity is markdown-lossy by design; the storage DTO is the lossless carrier.
 ///
-/// The guard requires the object to round-trip *byte-for-byte* as a canonical
-/// corpus, so a user object field that merely resembles one (extra keys,
-/// non-canonical shape) stays structural. A corpus object only ever arises from
-/// the programmatic corpus writer — `from_markdown` is schema-less and stores a
-/// richtext field authored as markdown as a plain string — so this never fires
-/// on a parse-originated document, leaving the emit round-trip property intact.
+/// The guard requires the object to serialize back to a **byte-identical**
+/// canonical corpus, so a user object field that merely resembles one (extra
+/// keys, non-canonical shape, or non-canonical key order) stays structural. The
+/// comparison is on the serialized *strings*, not the `serde_json::Value`s: with
+/// `serde_json/preserve_order` on (it is in this workspace), `Value`'s `PartialEq`
+/// is an order-independent `IndexMap` compare, so a `Value != Value` guard would
+/// also accept a content-canonical object whose keys are in non-canonical order —
+/// projecting (and thus markdown-flattening) it. String equality pins key order.
+///
+/// A corpus object normally only arises from the programmatic corpus writer
+/// (`from_markdown` is schema-less and stores a markdown-authored richtext field
+/// as a plain string), so on a parse-originated document this projects only the
+/// fields the writer deliberately committed as corpus.
 fn project_corpus_field(value: &JsonValue) -> Option<String> {
     if !value.is_object() {
         return None;
     }
     let rt = quillmark_richtext::serial::from_canonical_value(value).ok()?;
-    if quillmark_richtext::serial::to_canonical_value(&rt) != *value {
+    // Byte-exact: canonical-string equality, not `Value` equality (which is
+    // order-independent under `preserve_order`). Only a corpus in canonical key
+    // order projects; anything else stays a structural field.
+    let canonical = quillmark_richtext::serial::to_canonical_value(&rt);
+    if serde_json::to_string(&canonical).ok()? != serde_json::to_string(value).ok()? {
         return None;
     }
     Some(quillmark_richtext::export::to_markdown(&rt))

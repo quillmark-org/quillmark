@@ -309,6 +309,40 @@ def test_document_authoring_text_helpers():
     assert isinstance(instr, str) and "taro" in instr
 
 
+def test_set_body_corpus_round_trip():
+    """`set_body` accepts the corpus dict `body` reads back — the corpus-native
+    writer closing the read/write asymmetry (WASM `setBody` parity). Issue #902."""
+    doc = Document.from_markdown(
+        "~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: T\n~~~\n\n**bold** body\n"
+    )
+    corpus = doc.body
+    assert isinstance(corpus, dict)
+    # Write the read-back corpus to a fresh doc: lossless (not markdown-forced).
+    doc2 = Document.from_markdown("~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: T\n~~~\n")
+    doc2.set_body(corpus)
+    assert doc2.body == corpus
+    # A markdown string and None are also accepted.
+    doc2.set_body("plain text")
+    assert "plain text" in doc2.body_markdown
+    doc2.set_body(None)
+    assert doc2.body_markdown == ""
+
+
+def test_set_card_body_and_field_markdown_parity():
+    """`set_card_body` writes a composable card's corpus body; `field_markdown`
+    / `card_field_markdown` project a richtext field to markdown (WASM parity)."""
+    md = (
+        "~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: Main\n~~~\n\nMain body.\n\n"
+        "~~~card-yaml\n$kind: note\nfoo: bar\n~~~\n\nCard body.\n"
+    )
+    doc = Document.from_markdown(md)
+    doc.set_card_body(0, "**new** card body")
+    assert "**new** card body" in doc.cards[0]["body_markdown"]
+    # field_markdown returns None for a non-richtext / absent field.
+    assert doc.field_markdown("missing") is None
+    assert doc.card_field_markdown(0, "missing") is None
+
+
 def test_nested_fill_exposed_as_nested_fills():
     """A nested !must_fill marker is exposed as `nestedFills` on the field item
     and survives the storage round-trip (binding parity for nested fills)."""

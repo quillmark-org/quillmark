@@ -120,6 +120,12 @@ impl Inline {
     /// Append inline text, stripping characters the corpus forbids: `\r` and a
     /// stray [`ISLAND_SLOT`] are dropped; a stray `\n` becomes a space (inline
     /// text carries no line boundary — real ones go through [`Self::push_raw`]).
+    ///
+    /// A literal [`ISLAND_SLOT`] (U+FFFC) in source markdown is dropped
+    /// *silently and by design*: the slot char is the reserved island sentinel,
+    /// so admitting a bare one would break the slot-count invariant. Such a char
+    /// in prose is a paste/render artifact, never authored content, so its loss
+    /// carries no signal — this is a fixed point, not lossy round-tripping.
     fn push_text(&mut self, s: &str) {
         for c in s.chars() {
             let c = match c {
