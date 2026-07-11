@@ -8,6 +8,15 @@
 
 ## Unreleased
 
+- fix(wasm): `LiveSession.applyFieldDelta`'s `field` param narrows from `string`
+  to the new `DeltaFieldAddress` (`'$body'` today) so the published `.d.ts`
+  stops advertising a general field address when the implementation throws on
+  anything but the main body. `Engine.supportsCanvas` and
+  `LiveSession.supportsCanvas` gain doc comments cross-referencing each other:
+  the two are spelled identically but answer different questions (a
+  pre-session backend estimate vs. this compile's authoritative answer, which
+  can diverge — e.g. a 0-page document) — the divergence is now visible where
+  each is used instead of only discoverable at runtime (#883)
 - fix(wasm): drop the `revision?` field from the public `CorpusHit`/`FieldRegion`
   types and the broken `{@link LiveSession.mapFieldPos}` / `.revision` references
   in `runtime.d.ts`. The delta API (`applyFieldDelta`/`revision`/`mapFieldPos`) is

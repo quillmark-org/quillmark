@@ -123,6 +123,14 @@ export interface Delta {
 export type DeltaOp = { retain: number } | { insert: string } | { delete: number };
 
 /**
+ * A field address {@link LiveSession.applyFieldDelta} accepts. Exactly the
+ * main body for now — the delta-path seam targets only `$body`; any other
+ * address throws. Widens as card/other content fields land on the delta path.
+ * @experimental Part of the incremental-edit surface — see {@link LiveSession}.
+ */
+export type DeltaFieldAddress = '$body';
+
+/**
  * A rendered field region: the quill schema field address (`field`) plus its
  * geometry (`rect`) on the page. Emitted by backends that place schema fields
  * (`pdfform` AcroForm widgets; Typst form-fields and span-tracked content —
@@ -305,11 +313,16 @@ export declare class Engine {
 	supportedFormats(quill: Quill): Promise<OutputFormat[]>;
 
 	/**
-	 * Whether `quill`'s backend can paint sessions to a canvas. Same always-free
-	 * probe as `supportedFormats`: answered from the descriptor's required
-	 * `canvas` manifest, no binary load and no quill clone. Both the Typst and
-	 * pdfform backends report `true`; each paints a complete page raster (see
-	 * {@link LiveSession.paint}).
+	 * Whether `quill`'s BACKEND can paint sessions to a canvas — a pre-session
+	 * ESTIMATE, not a fact about any particular compile. Same always-free probe
+	 * as `supportedFormats`: answered from the descriptor's required `canvas`
+	 * manifest, no binary load and no quill clone. Both the Typst and pdfform
+	 * backends report `true` here unconditionally; each paints a complete page
+	 * raster (see {@link LiveSession.paint}) — but a specific compile can still
+	 * refuse to paint (e.g. a 0-page document), so this can answer `true` while
+	 * the resulting {@link LiveSession.supportsCanvas} answers `false`. Gate
+	 * mounting a canvas UI on this; gate the actual `paint` call on the session's
+	 * getter once `open()` has run.
 	 * @experimental Probes the experimental session/canvas surface — see {@link LiveSession}.
 	 */
 	supportsCanvas(quill: Quill): Promise<boolean>;
@@ -337,6 +350,15 @@ export declare class LiveSession {
 	private constructor();
 	readonly pageCount: number;
 	readonly backendId: string;
+	/**
+	 * `true` iff `paint`/`pageSize` will succeed for THIS compile — the
+	 * authoritative answer, derived from the session's canvas seam, so it can
+	 * never disagree with what `paint` actually does. This can be `false` even
+	 * when {@link Engine.supportsCanvas} answered `true` for the same `quill`
+	 * (that probe is a pre-session backend estimate; e.g. a canvas-capable
+	 * backend compiled to a 0-page document has nothing to paint). Re-check
+	 * this getter after `open()` rather than relying on the engine hint alone.
+	 */
 	readonly supportsCanvas: boolean;
 	readonly warnings: Diagnostic[];
 	/**
@@ -366,8 +388,8 @@ export declare class LiveSession {
 	 * `doc` is mutated **in place** to carry the edit (the native-path contract),
 	 * bridged across the WASM linear-memory seam: the splice runs on a transient
 	 * backend clone and, on success, is written back into the canonical `doc`.
-	 * This phase targets the main body only (`field === "$body"`); any other
-	 * address throws — use {@link apply} for those.
+	 * `field` is typed to what this phase actually accepts — see
+	 * {@link DeltaFieldAddress} — use {@link apply} for any other address.
 	 *
 	 * `baseRevision` must equal the current {@link revision}; a mismatch throws
 	 * `session::revision_mismatch` and changes nothing (preview and `doc` both
@@ -378,7 +400,7 @@ export declare class LiveSession {
 	 * production consumer and may change shape in any 0.x release; {@link apply}
 	 * is the stable edit path.
 	 */
-	applyFieldDelta(doc: Document, field: string, baseRevision: number, delta: Delta): ChangeSet;
+	applyFieldDelta(doc: Document, field: DeltaFieldAddress, baseRevision: number, delta: Delta): ChangeSet;
 	/**
 	 * Map a USV `pos` in `field`, captured at `baseRevision`, forward through the
 	 * field's recorded deltas to its position in the current {@link revision} —
