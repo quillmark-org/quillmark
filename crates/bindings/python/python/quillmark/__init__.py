@@ -11,6 +11,10 @@ from ._quillmark import (
     QuillmarkError,
     RenderResult,
     Severity,
+    import_markdown,
+    export_markdown,
+    rebase,
+    map_pos,
 )
 
 __all__ = [
@@ -24,6 +28,10 @@ __all__ = [
     "QuillmarkError",
     "RenderResult",
     "Severity",
+    "import_markdown",
+    "export_markdown",
+    "rebase",
+    "map_pos",
 ]
 
 __version__ = "0.1.0"

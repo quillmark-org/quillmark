@@ -3,7 +3,17 @@
 import re
 
 import pytest
-from quillmark import Quillmark, Quill, Document, OutputFormat, QuillmarkError
+from quillmark import (
+    Quillmark,
+    Quill,
+    Document,
+    OutputFormat,
+    QuillmarkError,
+    import_markdown,
+    export_markdown,
+    rebase,
+    map_pos,
+)
 from conftest import QUILLS_PATH, _latest_version
 
 
@@ -86,7 +96,7 @@ def test_blank_document_constructor():
     doc = Document("test_quill")
     assert doc.quill_ref == "test_quill"
     assert doc.card_count == 0
-    assert doc.body_markdown == ""
+    assert export_markdown(doc.body) == ""
     assert field_keys(doc.main) == []
     doc.set_fields({"title": "Hello"})
     assert field(doc.main, "title") == "Hello"
@@ -231,7 +241,7 @@ def test_replace_body():
     """replace_body replaces the global Markdown body."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.replace_body("New body content.")
-    assert doc.body_markdown == "New body content.\n"
+    assert export_markdown(doc.body) == "New body content.\n"
 
 
 def test_push_card():
@@ -240,7 +250,7 @@ def test_push_card():
     doc.push_card({"kind": "note", "body": "Card body."})
     assert len(doc.cards) == 1
     assert doc.cards[0]["kind"] == "note"
-    assert doc.cards[0]["body_markdown"] == "Card body.\n"
+    assert export_markdown(doc.cards[0]["body"]) == "Card body.\n"
 
 
 def test_push_card_invalid_kind():
@@ -266,7 +276,7 @@ def test_remove_card_then_push_card_round_trips_fields():
     assert len(doc.cards) == 1
     assert doc.cards[0]["kind"] == "note"
     assert field(doc.cards[0], "author") == "Alice"  # field survived the round-trip
-    assert doc.cards[0]["body_markdown"] == "Body\n"
+    assert export_markdown(doc.cards[0]["body"]) == "Body\n"
 
 
 def test_push_card_accepts_corpus_dict_body():
@@ -279,7 +289,7 @@ def test_push_card_accepts_corpus_dict_body():
     assert isinstance(corpus_body, dict)
 
     doc.push_card({"kind": "note", "body": corpus_body})
-    assert doc.cards[1]["body_markdown"] == doc.cards[0]["body_markdown"]
+    assert export_markdown(doc.cards[1]["body"]) == export_markdown(doc.cards[0]["body"])
 
 
 def test_make_card_accepts_any_kind_push_card_is_the_gate():
@@ -370,18 +380,26 @@ def test_set_card_field_out_of_range():
         doc.set_card_field(0, "title", "x")
 
 
-def test_replace_card_body():
-    """replace_card_body replaces the card body."""
+def test_revise_card_body():
+    """revise(md, card=i) revises a card body and returns the text delta."""
     doc = Document.from_markdown(MD_WITH_CARDS)
-    doc.replace_card_body(0, "New card body.")
-    assert doc.cards[0]["body_markdown"] == "New card body.\n"
+    delta = doc.revise("New card body.", card=0)
+    assert export_markdown(doc.cards[0]["body"]) == "New card body.\n"
+    assert isinstance(delta["ops"], list)
 
 
-def test_replace_card_body_out_of_range():
-    """replace_card_body raises EditError when card index is out of range."""
+def test_revise_card_body_out_of_range():
+    """revise(md, card=i) raises EditError when card index is out of range."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
     with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
-        doc.replace_card_body(0, "x")
+        doc.revise("x", card=0)
+
+
+def test_update_card_body_deprecated_alias():
+    """update_card_body (deprecated alias for revise(md, card=i)) still works."""
+    doc = Document.from_markdown(MD_WITH_CARDS)
+    doc.update_card_body(0, "New card body.")
+    assert export_markdown(doc.cards[0]["body"]) == "New card body.\n"
 
 
 def test_set_ext_adds_map():
@@ -538,11 +556,11 @@ def test_to_markdown_general_round_trip():
     # Re-parse and assert structure survives
     doc2 = Document.from_markdown(emitted)
     assert field(doc2.main, "title") == "New Title"
-    assert doc2.body_markdown.rstrip("\n") == "Updated body"
+    assert export_markdown(doc2.body).rstrip("\n") == "Updated body"
     assert len(doc2.cards) == original_card_count + 1
     assert doc2.cards[0]["kind"] == "note"
     assert field(doc2.cards[0], "author") == "Alice"
-    assert doc2.cards[0]["body_markdown"] == "Hello\n"
+    assert export_markdown(doc2.cards[0]["body"]) == "Hello\n"
 
 
 def test_to_markdown_ambiguous_string_survival():
@@ -623,6 +641,45 @@ def test_commit_card_field_index_out_of_range():
     doc = Document("richtext_form@0.1.0")
     with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
         doc.commit_card_field(quill, 0, "body", "x")
+
+
+# ── Addressed content verbs — commit / revise / apply_change ──────────────────
+
+
+def test_commit_addressed_typed_door():
+    """commit(value, quill, field=...) is the addressed typed door; the body has
+    no schema type so a field is required, and a typo raises UnknownField."""
+    quill = _richtext_form_quill()
+    doc = Document("richtext_form@0.1.0")
+    doc.commit("A **bold** intro.", quill, field="bio")
+    assert isinstance(field(doc.main, "bio"), dict)
+    with pytest.raises(QuillmarkError, match="UnknownField"):
+        doc.commit("x", quill, field="stray")
+    with pytest.raises(TypeError):
+        doc.commit("x", quill)  # field is a required keyword
+
+
+def test_revise_field_and_apply_change_splice():
+    """revise({field}) diff-imports a richtext field; apply_change splices marks."""
+    quill = _richtext_form_quill()
+    doc = Document("richtext_form@0.1.0")
+    doc.revise("make it bold here", field="bio")
+    doc.apply_change(
+        {"mark_ops": [{"op": "add", "start": 8, "end": 12, "type": "strong"}]},
+        field="bio",
+    )
+    assert export_markdown(field(doc.main, "bio")) == "make it **bold** here\n"
+
+
+def test_corpus_codec_rebase_and_map_pos():
+    """The document-free codec round-trips and maps a position through a rebase."""
+    rt = import_markdown("hello world")
+    assert rt["text"] == "hello world"
+    assert export_markdown(rt) == "hello world\n"
+    out = rebase(rt, "hello brave world")
+    assert out["corpus"]["text"] == "hello brave world"
+    assert map_pos(out["delta"], 6, "before") == 6
+    assert map_pos(out["delta"], 11, "after") == 17
 
 
 # ── Typed batched writes — commit_fields / commit_card_fields ─────────────────
