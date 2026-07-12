@@ -29,24 +29,6 @@ impl Quill {
         self.files.list_subdirectories(path)
     }
 
-    /// List all files in a directory (returns paths relative to quill root)
-    pub fn list_directory<P: AsRef<Path>>(&self, dir_path: P) -> Vec<PathBuf> {
-        let dir_path = dir_path.as_ref();
-        let filenames = self.files.list_files(dir_path);
-
-        // Convert filenames to full paths
-        filenames
-            .iter()
-            .map(|name| {
-                if dir_path == Path::new("") {
-                    PathBuf::from(name)
-                } else {
-                    dir_path.join(name)
-                }
-            })
-            .collect()
-    }
-
     /// List all directories in a directory (returns paths relative to quill root)
     pub fn list_directories<P: AsRef<Path>>(&self, dir_path: P) -> Vec<PathBuf> {
         let dir_path = dir_path.as_ref();

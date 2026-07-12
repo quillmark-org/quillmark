@@ -255,7 +255,7 @@ pub fn prescan_fence_content(content: &str) -> PreScan {
             // A sequence item whose value is itself a block scalar (`- |-`):
             // content lines are indented past the dash, so the dash line's
             // indent is the boundary. Without this, headings / bullets / `key:`
-            // lines inside a `markdown[]` item would be mis-parsed as structure.
+            // lines inside a `richtext[]` item would be mis-parsed as structure.
             if is_block_scalar_header(after_dash_trimmed) {
                 block_scalar_indent = Some(indent);
             }
@@ -1046,7 +1046,7 @@ mod tests {
 
     #[test]
     fn sequence_item_block_scalar_content_is_not_parsed_as_structure() {
-        // A `markdown[]` array authored as `- |-` block-scalar items. Content
+        // A `richtext[]` array authored as `- |-` block-scalar items. Content
         // lines (heading, bullet, `key:`) must survive verbatim, and the next
         // item at the dash indent must still parse as a sequence item.
         let input = "items:\n  - |-\n    ## Heading\n    - inner bullet\n    role: x\n  - second\n";

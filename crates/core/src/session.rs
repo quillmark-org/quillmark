@@ -1,4 +1,7 @@
-use crate::{Diagnostic, RenderError, RenderOptions, RenderResult, RenderedRegion, Severity};
+use crate::{
+    CorpusHit, Diagnostic, RenderError, RenderOptions, RenderResult, RenderedRegion, Severity,
+};
+pub use quillmark_richtext::{ApplyError, Assoc, Delta, LineOp, MarkOp, Op};
 
 /// What a committed [`LiveSession::apply`] changed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -125,6 +128,28 @@ pub trait SessionHandle: Send + Sync + 'static {
             .map(|r| r.field)
     }
 
+    /// A point → **corpus position** in a content field — the fine-grained
+    /// twin of [`field_at`](Self::field_at) (which answers with the field
+    /// alone). `x`/`y` are PDF points, bottom-left origin on `page`. Returns
+    /// the field plus a USV offset into its `RichText`, cluster-exact and
+    /// degrading to the containing segment's start on origin-less ink (see
+    /// [`CorpusHit`]). `None` off all content ink, on a scalar/widget (no
+    /// corpus address), or when the backend maps no corpus. Default `None` —
+    /// a backend that carries a per-segment source map overrides this.
+    fn position_at(&self, _page: usize, _x: f32, _y: f32) -> Option<CorpusHit> {
+        None
+    }
+
+    /// A corpus position → **caret rect** in a content field — the reverse of
+    /// [`position_at`](Self::position_at). `pos` is a USV offset into `field`'s
+    /// `RichText`; the returned [`RenderedRegion`] is the box of the glyph the
+    /// caret sits at, page-indexed, with `span` collapsed to `[pos, pos]`.
+    /// `None` when `field` places no tracked content or `pos` maps to no drawn
+    /// glyph. Default `None` — overridden by a backend with a source map.
+    fn locate(&self, _field: &str, _pos: usize) -> Option<RenderedRegion> {
+        None
+    }
+
     /// Non-fatal diagnostics of the **current compile**. A backend whose
     /// compile emits warnings (Typst: font fallback, overfull pages, …)
     /// overrides this to expose them; they swap with the compile on each
@@ -141,6 +166,12 @@ pub trait SessionHandle: Send + Sync + 'static {
 /// and takes edits via [`apply`](LiveSession::apply). Reads between edits see
 /// a stable document — `apply` is transactional, swapping the compile only on
 /// success — so immutability is an invariant between commits, not a type.
+///
+/// Geometry reads (`regions`, `position_at`, `locate`) resolve against the
+/// current compile. Anchoring a caret or selection across edits is the editor's
+/// job (its own transaction mapping) — the session holds no change log and maps
+/// no positions forward; a consumer re-reads geometry after each committed
+/// [`apply`](Self::apply).
 pub struct LiveSession {
     inner: Box<dyn SessionHandle>,
 }
@@ -202,8 +233,24 @@ impl LiveSession {
     /// placements of one content value are **not** enumerated — for
     /// point-driven lookup over any placement, use
     /// [`field_at`](Self::field_at).
+    ///
+    /// Reflects the current compile; re-read after each committed
+    /// [`apply`](Self::apply) to pair a highlight box with the edit it shows.
     pub fn regions(&self) -> Vec<RenderedRegion> {
         self.inner.regions()
+    }
+
+    /// The whole-field highlight boxes for `field` — one union rect per page,
+    /// over the field's `span`-bearing content segments (the "highlight the
+    /// focused field" quantity). The convenience that owns the union
+    /// [`regions`](Self::regions) leaves derived: it keeps `regions()` as the
+    /// low-level disjoint truth (#829) and folds the span-filter + per-page
+    /// union here so no consumer reimplements it. Content only — a field placed
+    /// solely as a scalar reference or a bound widget carries no `span` and
+    /// yields nothing here; its box is a single [`regions`](Self::regions) rect.
+    /// Reflects the current compile, like `regions`. See [`crate::field_boxes`].
+    pub fn field_boxes(&self, field: &str) -> Vec<RenderedRegion> {
+        crate::field_boxes(&self.regions(), field)
     }
 
     /// The schema field whose content is under a point on `page` — the
@@ -219,6 +266,30 @@ impl LiveSession {
         self.inner.field_at(page, x, y)
     }
 
+    /// A point → **corpus position** — the fine-grained click direction:
+    /// hit-test a point and get back the field *and* a USV offset into its
+    /// `RichText`, for placing a caret or mapping a selection into the content
+    /// model. `x`/`y` are PDF points, bottom-left origin, the same convention
+    /// as [`field_at`](Self::field_at). The offset is cluster-exact and
+    /// degrades to the containing segment's start on origin-less ink (list
+    /// markers, a code fence's interior). `None` off all content ink, on a
+    /// scalar/widget, or for backends with no corpus map. See [`CorpusHit`].
+    ///
+    /// Resolves against the current compile; the editor owns the caret it
+    /// places and anchors it across later edits itself.
+    pub fn position_at(&self, page: usize, x: f32, y: f32) -> Option<CorpusHit> {
+        self.inner.position_at(page, x, y)
+    }
+
+    /// A corpus position → **caret rect** — the reverse of
+    /// [`position_at`](Self::position_at): given a field and a USV offset into
+    /// its `RichText`, return the box (page-indexed) to draw a caret at. `None`
+    /// when the field places no tracked content or the offset maps to no drawn
+    /// glyph. Resolves against the current compile.
+    pub fn locate(&self, field: &str, pos: usize) -> Option<RenderedRegion> {
+        self.inner.locate(field, pos)
+    }
+
     /// Non-fatal diagnostics of the session's **current compile** — set at
     /// `Backend::open` and refreshed by each committed [`apply`](Self::apply);
     /// a failed apply keeps the last-good compile *and* its warnings. Also
@@ -231,7 +302,9 @@ impl LiveSession {
 
     pub fn render(&self, opts: &RenderOptions) -> Result<RenderResult, RenderError> {
         let mut result = self.inner.render(opts)?;
-        result.warnings.extend(self.inner.warnings().iter().cloned());
+        result
+            .warnings
+            .extend(self.inner.warnings().iter().cloned());
         // The regions sidecar is attached here, at the wrapper, so every
         // backend's one-shot render carries it without implementing anything
         // beyond the `regions` accessor it already has.
@@ -334,6 +407,53 @@ mod tests {
 
         let result = session.render(&RenderOptions::default()).unwrap();
         assert_eq!(result.warnings[0].message, "warning of compile 1");
+    }
+
+    /// A handle that surfaces one content region, one hit, and one caret rect —
+    /// the geometry the wrapper passes straight through.
+    struct RegionHandle;
+    impl SessionHandle for RegionHandle {
+        fn render(&self, _: &RenderOptions) -> Result<RenderResult, RenderError> {
+            unimplemented!("render is not exercised by geometry tests")
+        }
+        fn page_count(&self) -> usize {
+            1
+        }
+        fn regions(&self) -> Vec<RenderedRegion> {
+            vec![RenderedRegion {
+                field: "subject".to_string(),
+                page: 0,
+                rect: [1.0, 2.0, 3.0, 4.0],
+                span: Some([0, 3]),
+            }]
+        }
+        fn position_at(&self, _: usize, _: f32, _: f32) -> Option<CorpusHit> {
+            Some(CorpusHit {
+                field: "subject".to_string(),
+                pos: 2,
+                granularity: Some(crate::HitGranularity::Cluster),
+            })
+        }
+        fn locate(&self, field: &str, pos: usize) -> Option<RenderedRegion> {
+            Some(RenderedRegion {
+                field: field.to_string(),
+                page: 0,
+                rect: [1.0, 2.0, 1.0, 4.0],
+                span: Some([pos, pos]),
+            })
+        }
+    }
+
+    /// `field_boxes` derives the whole-field box off the session's own
+    /// `regions()`.
+    #[test]
+    fn field_boxes_derives_off_regions() {
+        let session = LiveSession::new(Box::new(RegionHandle));
+        let boxes = session.field_boxes("subject");
+        assert_eq!(boxes.len(), 1, "one span-bearing region → one box");
+        assert_eq!(boxes[0].field, "subject");
+        // A field with no span-bearing region has no derived content box.
+        assert!(session.field_boxes("nope").is_empty());
     }
 
     #[test]

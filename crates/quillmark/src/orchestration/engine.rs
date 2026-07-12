@@ -58,21 +58,19 @@ impl Quillmark {
     /// validate quills.
     fn resolve_backend(&self, quill: &Quill) -> Result<&Arc<dyn Backend>, RenderError> {
         let backend_id = quill.backend_id();
-        self.backends
-            .get(backend_id)
-            .ok_or_else(|| {
-                RenderError::from_diag(
-                    Diagnostic::new(
-                        Severity::Error,
-                        format!("Backend '{}' not registered or not enabled", backend_id),
-                    )
-                    .with_code("engine::backend_not_found".to_string())
-                    .with_hint(format!(
-                        "Available backends: {}",
-                        self.backends.keys().cloned().collect::<Vec<_>>().join(", ")
-                    )),
+        self.backends.get(backend_id).ok_or_else(|| {
+            RenderError::from_diag(
+                Diagnostic::new(
+                    Severity::Error,
+                    format!("Backend '{}' not registered or not enabled", backend_id),
                 )
-            })
+                .with_code("engine::backend_not_found".to_string())
+                .with_hint(format!(
+                    "Available backends: {}",
+                    self.backends.keys().cloned().collect::<Vec<_>>().join(", ")
+                )),
+            )
+        })
     }
 
     /// Open a live render session for `doc` against `quill`'s backend.

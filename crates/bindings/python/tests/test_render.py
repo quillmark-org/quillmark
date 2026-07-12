@@ -102,8 +102,9 @@ def test_engine_render_regions_sidecar(engine, taro_quill_dir, taro_md):
     """render(.., regions=True) populates the schema-field geometry sidecar.
 
     Mirrors the WASM regions contract: each entry is a dict carrying `field`,
-    `page`, and `rect`. The taro plate interpolates `$body`, so the markdown
-    body auto-tags at least one region keyed `$body`.
+    `page`, `rect`, and `span` (the covered USV corpus range for content ink,
+    `None` for a scalar/widget). The taro plate interpolates `$body`, so the
+    markdown body auto-tags at least one `$body` segment region carrying a span.
     """
     quill = Quill.from_path(str(taro_quill_dir))
     parsed = Document.from_markdown(taro_md)
@@ -113,12 +114,17 @@ def test_engine_render_regions_sidecar(engine, taro_quill_dir, taro_md):
     regions = result.regions
     assert isinstance(regions, list) and len(regions) > 0
     for r in regions:
-        assert set(("field", "page", "rect")).issubset(r.keys())
+        assert set(("field", "page", "rect", "span")).issubset(r.keys())
         assert isinstance(r["field"], str)
         assert isinstance(r["page"], int)
         assert isinstance(r["rect"], list) and len(r["rect"]) == 4
-    assert any(r["field"] == "$body" for r in regions), (
+        assert r["span"] is None or (isinstance(r["span"], list) and len(r["span"]) == 2)
+    body_segments = [r for r in regions if r["field"] == "$body"]
+    assert body_segments, (
         f"expected a `$body` region; got: {[r['field'] for r in regions]}"
+    )
+    assert any(r["span"] is not None for r in body_segments), (
+        "a `$body` content segment carries a corpus span"
     )
 
 

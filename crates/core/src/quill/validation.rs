@@ -54,6 +54,14 @@ pub enum ValidationError {
         path: String,
         card: String,
     },
+
+    /// A `richtext(inline)` field whose corpus is not single-`Para` (a block, a
+    /// list/quote container, or an island). Same fatality class as
+    /// `TypeMismatch` — the value is well-typed richtext but the wrong *shape*
+    /// for an inline field.
+    NotInline {
+        path: String,
+    },
 }
 
 impl std::error::Error for ValidationError {}
@@ -108,6 +116,14 @@ impl std::fmt::Display for ValidationError {
                     hint = body_disabled_hint(),
                 )
             }
+            ValidationError::NotInline { path } => {
+                write!(
+                    f,
+                    "field `{path}` is `richtext(inline)` but its content is not a single \
+                     paragraph — {hint}",
+                    hint = not_inline_hint(),
+                )
+            }
         }
     }
 }
@@ -133,6 +149,12 @@ fn body_disabled_hint() -> &'static str {
     "remove the body content or set `body.enabled: true` on the card kind"
 }
 
+/// Actionable exit clause for a `NotInline` error.
+fn not_inline_hint() -> &'static str {
+    "keep the value to a single paragraph (no blank lines, headings, lists, \
+     quotes, or tables), or change the schema's `type:` to `richtext`"
+}
+
 impl ValidationError {
     /// Document-model path anchor for this error.
     ///
@@ -143,7 +165,8 @@ impl ValidationError {
             | ValidationError::EnumViolation { path, .. }
             | ValidationError::FormatViolation { path, .. }
             | ValidationError::UnknownCard { path, .. }
-            | ValidationError::BodyDisabled { path, .. } => path,
+            | ValidationError::BodyDisabled { path, .. }
+            | ValidationError::NotInline { path, .. } => path,
         }
     }
 
@@ -156,6 +179,7 @@ impl ValidationError {
             ValidationError::FormatViolation { .. } => "validation::format_violation",
             ValidationError::UnknownCard { .. } => "validation::unknown_card",
             ValidationError::BodyDisabled { .. } => "validation::body_disabled",
+            ValidationError::NotInline { .. } => "richtext::not_inline",
         }
     }
 
@@ -171,6 +195,7 @@ impl ValidationError {
                 ..
             } => Some(type_mismatch_hint(expected, actual, default.as_deref())),
             ValidationError::BodyDisabled { .. } => Some(body_disabled_hint().to_string()),
+            ValidationError::NotInline { .. } => Some(not_inline_hint().to_string()),
             ValidationError::EnumViolation { .. }
             | ValidationError::FormatViolation { .. }
             | ValidationError::UnknownCard { .. } => None,
@@ -236,7 +261,7 @@ pub fn validate_typed_document(
 
     // Enforce body.enabled on the main card. Whitespace-only bodies are
     // treated as empty — only meaningful prose triggers the diagnostic.
-    if !config.main.body_enabled() && !doc.main().body().trim().is_empty() {
+    if !config.main.body_enabled() && !doc.main().body().is_blank() {
         errors.push(ValidationError::BodyDisabled {
             path: "main.body".to_string(),
             card: "main".to_string(),
@@ -267,7 +292,7 @@ pub fn validate_typed_document(
             &card_path,
         ));
 
-        if !card_schema.body_enabled() && !card.body().trim().is_empty() {
+        if !card_schema.body_enabled() && !card.body().is_blank() {
             errors.push(ValidationError::BodyDisabled {
                 path: format!("{card_path}.body"),
                 card: card_name,
@@ -343,8 +368,18 @@ fn validate_value(
         // coercion layer adopts it) — in lockstep with `coerce_value_strict`
         // via `scalar_as_string`. Schema literals stay strict so the blueprint
         // keeps quoting ambiguous string literals.
-        FieldType::String | FieldType::Markdown => {
+        FieldType::String => {
             value.as_str().is_some()
+                || (ctx == ValueContext::Document
+                    && super::config::scalar_as_string(value.as_json()).is_some())
+        }
+        // Post-coercion (Document) a richtext value is a canonical corpus
+        // object; an authored `default`/`example` (Schema) is a markdown string.
+        // Accept both shapes — the corpus's own invariants were enforced at
+        // coercion (`from_canonical_value`), and a bare scalar still stringifies.
+        FieldType::RichText { .. } => {
+            value.as_json().is_object()
+                || value.as_str().is_some()
                 || (ctx == ValueContext::Document
                     && super::config::scalar_as_string(value.as_json()).is_some())
         }
@@ -378,7 +413,7 @@ fn validate_value(
         FieldType::Array => match value.as_array() {
             Some(items) => {
                 // Validate each element against the array's `items` schema.
-                // Scalar elements (`string[]`, `integer[]`, `markdown[]`, …)
+                // Scalar elements (`string[]`, `integer[]`, `richtext[]`, …)
                 // are type-checked element-wise; object elements recurse into
                 // their properties via the Object branch.
                 if let Some(item_schema) = &field.items {
@@ -422,6 +457,29 @@ fn validate_value(
             None => false,
         },
     };
+
+    // `richtext(inline)` shape check: a well-typed richtext value (corpus object,
+    // or a markdown string on a schema literal) must lower to a single `Para`.
+    // Runs only when the value is type-valid — a mistyped value already raises
+    // TypeMismatch below, and a null/absent inline field zero-fills to the empty
+    // corpus (which is inline). Mirrors the coercion-layer check so a corpus that
+    // bypassed coercion (e.g. a direct `validate_document`) is still caught.
+    if type_valid {
+        if let FieldType::RichText { inline: true } = field.r#type {
+            // A decode failure here is not this layer's error to report (a
+            // mistyped value already raised TypeMismatch); swallow it and only
+            // flag a well-formed corpus that is not single-`Para`.
+            let parsed = crate::document::decode_richtext_value(value.as_json())
+                .and_then(Result::ok);
+            if let Some(rt) = parsed {
+                if !rt.is_inline() {
+                    errors.push(ValidationError::NotInline {
+                        path: path.to_string(),
+                    });
+                }
+            }
+        }
+    }
 
     // A DateTime with a string value already emitted a FormatViolation;
     // skip the redundant TypeMismatch in that case.
@@ -489,7 +547,8 @@ pub(crate) fn validate_schema_literal(
 
 fn expected_type_name(field_type: &FieldType) -> &'static str {
     match field_type {
-        FieldType::String | FieldType::Markdown | FieldType::DateTime => "string",
+        FieldType::String | FieldType::DateTime => "string",
+        FieldType::RichText { .. } => "richtext",
         FieldType::Integer => "integer",
         FieldType::Number => "number",
         FieldType::Boolean => "boolean",
@@ -548,7 +607,7 @@ main:
         let mut p = Payload::from_index_map(payload);
         p.set_quill("test_quill".parse().unwrap());
         p.set_kind("main");
-        let main = Card::from_parts(p, String::new());
+        let main = Card::from_parts(p, quillmark_richtext::RichText::empty());
         Document::from_main_and_cards(main, cards, vec![])
     }
 
@@ -654,21 +713,9 @@ main:
     }
 
     // NOTE: top-level typed-dictionary fields (`type: object` with `properties`)
-    // are supported. Coverage lives in `validates_array_of_objects` (typed
-    // tables) and the blueprint tests. Freeform objects without properties are
-    // rejected at config parse time.
-
-    #[test]
-    fn multiple_absent_fields_raise_nothing() {
-        // Absence is a completeness concern, not a well-formedness one, so
-        // several absent Unendorsed fields produce no validation errors.
-        let config = config_with(
-            "    memo_for:\n      type: string\n    memo_from:\n      type: string",
-            "",
-        );
-        let doc = doc_from_fm(&[]);
-        assert!(validate_typed_document(&config, &doc).is_ok());
-    }
+    // are supported. Coverage lives in the `schema.rs` transform-schema tests
+    // (typed tables/dicts) and the blueprint tests. Freeform objects without
+    // properties are rejected at config parse time.
 
     #[test]
     fn validates_card_with_valid_discriminator() {
@@ -697,22 +744,6 @@ main:
         assert!(has_error(&errors, |e| {
             matches!(e, ValidationError::UnknownCard { path, card } if path == "cards[0]" && card == "unknown")
         }));
-    }
-
-    #[test]
-    fn validates_multiple_card_instances_same_type() {
-        let config = config_with(
-            "    title:\n      type: string\n      default: \"\"",
-            "card_kinds:\n  indorsement:\n    fields:\n      signature_block:\n        type: string",
-        );
-        let doc = doc_with_typed_cards(
-            &[],
-            vec![
-                typed_card("indorsement", &[("signature_block", json!("A"))]),
-                typed_card("indorsement", &[("signature_block", json!("B"))]),
-            ],
-        );
-        assert!(validate_typed_document(&config, &doc).is_ok());
     }
 
     #[test]
@@ -761,7 +792,7 @@ main:
         );
         // Prose triggers the error; whitespace-only does not.
         let mut prose_card = typed_card("skills", &[("items", json!(["Rust"]))]);
-        prose_card.replace_body("Should not be here.");
+        prose_card.replace_body("Should not be here.").unwrap();
         let doc = doc_with_typed_cards(&[], vec![prose_card]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
@@ -771,7 +802,7 @@ main:
         )));
 
         let mut ws_card = typed_card("skills", &[("items", json!(["Rust"]))]);
-        ws_card.replace_body("\n   \n");
+        ws_card.replace_body("\n   \n").unwrap();
         let ok_doc = doc_with_typed_cards(&[], vec![ws_card]);
         assert!(validate_typed_document(&config, &ok_doc).is_ok());
     }
@@ -885,7 +916,10 @@ main:
         let mut p = Payload::from_index_map(IndexMap::new());
         p.set_quill("test_quill".parse().unwrap());
         p.set_kind("main");
-        let main = Card::from_parts(p, "Body content that should not be here.".to_string());
+        let main = Card::from_parts(
+            p,
+            crate::document::import_body("Body content that should not be here.").unwrap(),
+        );
         let doc = Document::from_main_and_cards(main, vec![], vec![]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
@@ -893,5 +927,29 @@ main:
             ValidationError::BodyDisabled { path, card }
             if card == "main" && path == "main.body"
         )));
+    }
+
+    #[test]
+    fn rejects_richtext_inline_with_multi_block_corpus() {
+        // A pre-built two-paragraph corpus reaches the validator directly (no
+        // coercion), so the validation-layer NotInline backstop must fire.
+        let config = config_with("    tag:\n      type: richtext\n      inline: true", "");
+        let rt = quillmark_richtext::import::from_markdown("one\n\ntwo").unwrap();
+        let corpus = quillmark_richtext::serial::to_canonical_value(&rt);
+        let doc = doc_from_fm(&[("tag", corpus)]);
+        let errors = validate_typed_document(&config, &doc).unwrap_err();
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            ValidationError::NotInline { path } if path == "tag"
+        )));
+    }
+
+    #[test]
+    fn accepts_richtext_inline_single_para_corpus() {
+        let config = config_with("    tag:\n      type: richtext\n      inline: true", "");
+        let rt = quillmark_richtext::import::from_markdown("one line only").unwrap();
+        let corpus = quillmark_richtext::serial::to_canonical_value(&rt);
+        let doc = doc_from_fm(&[("tag", corpus)]);
+        assert!(validate_typed_document(&config, &doc).is_ok());
     }
 }

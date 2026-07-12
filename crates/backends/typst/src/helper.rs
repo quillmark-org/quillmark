@@ -2,13 +2,16 @@
 //! document data to Typst plates.
 //!
 //! The backend regenerates `lib.typ` per render as pure source text — no
-//! runtime data processing. Content fields become markup **block bindings**
-//! (`#let _qm_cN = [ .. ]`); the document data is a Typst **literal**
+//! runtime data processing. Richtext fields carry canonical corpus JSON, lowered
+//! here to markup **block bindings** (`#let _qm_cN = [ .. ]`) via
+//! [`emit_richtext`]; the document data is a Typst **literal**
 //! (`#let data = ( .. )`) whose content fields reference those blocks, date
 //! fields are `datetime(..)` constructors, `$cards` carry a per-kind-ordinal
 //! `$path`, and everything else is a value literal Typst judges equal to the
 //! former `json()` parse; the schema address tables are a generated literal
-//! `_qm-meta`. See [`generate_lib_typ`].
+//! `_qm-meta`, and each content field's plaintext projection a generated literal
+//! `_qm-plaintext` (backing the `plaintext(field)` helper, #873). See
+//! [`generate_lib_typ`].
 //!
 //! Output is **canonical**: dict keys emit in sorted order at every level (via
 //! [`sorted`]), so equal data produces byte-equal source regardless of the
@@ -17,8 +20,11 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
-use crate::convert::escape_string;
+use crate::emit::{
+    emit_richtext, emit_richtext_inline, escape_string, EmitError, EmittedContent, SegmentMap,
+};
 use crate::SchemaMeta;
+use quillmark_richtext::serial::from_canonical_value;
 
 pub const HELPER_VERSION: &str = "0.1.0";
 pub const HELPER_NAMESPACE: &str = "local";
@@ -26,36 +32,50 @@ pub const HELPER_NAME: &str = "quillmark-helper";
 
 const LIB_TYP_TEMPLATE: &str = include_str!("lib.typ.template");
 
-/// A generated content block's byte window in the produced `lib.typ`: the
-/// bracketed range (`[ .. ]`, brackets included) of a `#let _qm_cN = [ .. ]`
-/// binding, keyed by the schema address of the content it carries. Every glyph
-/// the block places carries a span that resolves into this window; the world
-/// layer pairs it with the helper's `FileId` for the span scan.
-pub struct ContentWindow {
+/// A generated content block's source map in the produced `lib.typ`: the
+/// bracketed `block` range (`[ .. ]`, brackets included) of a `#let _qm_cN = [
+/// .. ]` binding, keyed by the schema address of the content it carries, plus
+/// the emitter's per-segment [`SegmentMap`]s rebased so every `gen` range
+/// indexes the returned `lib.typ` directly. Every glyph the block places carries
+/// a span that resolves into `block`; the world layer pairs it with the helper's
+/// `FileId` for the span scan, and the segments key regions to corpus ranges.
+pub struct ContentMap {
     pub path: String,
-    pub range: Range<usize>,
+    pub block: Range<usize>,
+    pub segments: Vec<SegmentMap>,
 }
 
 /// Generate `lib.typ` for the quillmark-helper package from the transformed
-/// document data (markdown fields already converted to Typst markup; no
-/// `__meta__` sentinel) plus the session's [`SchemaMeta`]. Returns the source
-/// and each content block's byte window.
+/// document data (richtext fields carry canonical corpus JSON; no `__meta__`
+/// sentinel) plus the session's [`SchemaMeta`]. Content fields are lowered to
+/// Typst markup here via [`emit_richtext`] — the codegen tier of the seam, the
+/// one place a source map can be produced. Returns the source and each content
+/// block's [`ContentMap`]; `Err` only when a corpus exceeds the nesting bound
+/// (import capped it, so this fires only on a hand-built corpus).
 pub fn generate_lib_typ(
     data: &serde_json::Value,
     meta: &SchemaMeta,
-) -> (String, Vec<ContentWindow>) {
+) -> Result<(String, Vec<ContentMap>), EmitError> {
     let mut cg = Codegen::new(meta);
     let empty = serde_json::Map::new();
     let data_obj = data.as_object().unwrap_or(&empty);
     let data_literal = cg.emit_data(data_obj);
+    // Surface any lowering failure the recursive (infallible-returning) walk
+    // recorded, before assembling the output.
+    if let Some(e) = cg.emit_error.take() {
+        return Err(e);
+    }
     let meta_literal = meta_literal(meta);
+    let plaintext_literal = plaintext_literal(&cg.plaintext);
 
     // Every placeholder is located in the *raw template* — trusted static text
     // — never in already-substituted output, so document data containing the
     // literal placeholder text cannot hijack a splice point (the #795 hygiene
     // fix, carried over). Slots are unique and ordered; each `find` starts
     // after the previous slot, scanning only the static template.
-    let mut out = String::with_capacity(LIB_TYP_TEMPLATE.len() + cg.blocks.len() + data_literal.len());
+    let mut out = String::with_capacity(
+        LIB_TYP_TEMPLATE.len() + cg.blocks.len() + data_literal.len() + plaintext_literal.len(),
+    );
     let mut cursor = 0usize;
     let mut blocks_at = 0usize;
     for (slot, value) in [
@@ -63,6 +83,7 @@ pub fn generate_lib_typ(
         ("{meta_literal}", meta_literal.as_str()),
         ("{content_blocks}", cg.blocks.as_str()),
         ("{data_literal}", data_literal.as_str()),
+        ("{plaintext_literal}", plaintext_literal.as_str()),
     ] {
         let rel = LIB_TYP_TEMPLATE[cursor..]
             .find(slot)
@@ -77,25 +98,49 @@ pub fn generate_lib_typ(
     }
     out.push_str(&LIB_TYP_TEMPLATE[cursor..]);
 
+    // Rebase every recorded window (block + its segments' `gen`/run ranges) from
+    // block-section-relative to `lib.typ`-relative by the block section's start.
     let windows = cg
         .windows
         .into_iter()
-        .map(|(path, r)| ContentWindow {
+        .map(|(path, block, segments)| ContentMap {
             path,
-            range: (r.start + blocks_at)..(r.end + blocks_at),
+            block: (block.start + blocks_at)..(block.end + blocks_at),
+            segments: segments
+                .into_iter()
+                .map(|s| rebase_segment(s, blocks_at))
+                .collect(),
         })
         .collect();
-    (out, windows)
+    Ok((out, windows))
+}
+
+/// Shift a [`SegmentMap`]'s generated byte offsets (the segment window and each
+/// run's `gen` range) by `shift`; corpus (USV) offsets are unaffected.
+fn rebase_segment(mut s: SegmentMap, shift: usize) -> SegmentMap {
+    s.gen = (s.gen.start + shift)..(s.gen.end + shift);
+    for run in &mut s.runs {
+        run.1 = (run.1.start + shift)..(run.1.end + shift);
+    }
+    s
 }
 
 /// Accumulates the generated helper across one render: the content block
-/// bindings, their brackets-included windows (relative to the block section),
-/// and the `_qm_cN` counter.
+/// bindings, their brackets-included windows + rebased segment maps (relative to
+/// the block section), the `_qm_cN` counter, the first content-lowering error (a
+/// corpus over the nesting bound; import normally prevents it), and each content
+/// field's plaintext projection (for the `plaintext(field)` helper, #873).
 struct Codegen<'m> {
     meta: &'m SchemaMeta,
     blocks: String,
-    windows: Vec<(String, Range<usize>)>,
+    windows: Vec<(String, Range<usize>, Vec<SegmentMap>)>,
     counter: usize,
+    emit_error: Option<EmitError>,
+    /// `(schema address, plaintext)` per non-blank content field — the corpus
+    /// text with island slots stripped and marks dropped, keyed by the same
+    /// address the content-block window uses (`subject`, `refs.2`,
+    /// `$cards.note.0.$body`). Backs the generated `_qm-plaintext` table.
+    plaintext: Vec<(String, String)>,
 }
 
 impl<'m> Codegen<'m> {
@@ -105,14 +150,18 @@ impl<'m> Codegen<'m> {
             blocks: String::new(),
             windows: Vec::new(),
             counter: 0,
+            emit_error: None,
+            plaintext: Vec::new(),
         }
     }
 
-    /// Bind `markup` as a `#let _qm_cN = [\n{markup}\n]` block and return the
-    /// binding's identifier. The `\n` wrap opens the block at a line boundary
-    /// so line-anchored markup (headings, list items) parses. Records the
-    /// bracketed byte window (brackets included) keyed by `path`.
-    fn content_block(&mut self, path: &str, markup: &str) -> String {
+    /// Bind an emitted corpus (`ec`) as a `#let _qm_cN = [\n{markup}\n]` block and
+    /// return the binding's identifier. The `\n` wrap opens the block at a line
+    /// boundary so line-anchored markup (headings, list items) parses. Records
+    /// the bracketed byte window (brackets included) plus the emitter's segment
+    /// maps, both rebased into `self.blocks` coordinates (`generate_lib_typ`
+    /// shifts them once more by the block section's start).
+    fn content_block(&mut self, path: &str, ec: EmittedContent) -> String {
         let id = format!("_qm_c{}", self.counter);
         self.counter += 1;
         self.blocks.push_str("#let ");
@@ -120,12 +169,58 @@ impl<'m> Codegen<'m> {
         self.blocks.push_str(" = ");
         let start = self.blocks.len();
         self.blocks.push_str("[\n");
-        self.blocks.push_str(markup);
+        // The markup body opens after `[\n`; the emitter's `gen` offsets are
+        // relative to it, so rebase by this position.
+        let markup_at = self.blocks.len();
+        self.blocks.push_str(&ec.markup);
         self.blocks.push_str("\n]");
         let end = self.blocks.len();
         self.blocks.push('\n');
-        self.windows.push((path.to_string(), start..end));
+        let segments = ec
+            .segments
+            .into_iter()
+            .map(|s| rebase_segment(s, markup_at))
+            .collect();
+        self.windows.push((path.to_string(), start..end, segments));
         id
+    }
+
+    /// Lower one richtext field's corpus JSON to a `#let` content block, or an
+    /// empty string literal (`""`, not a block) for a blank corpus. A value that
+    /// is not a valid corpus (never produced by the seam) degrades to its value
+    /// literal; no render path re-parses markdown. A nesting-bound violation is
+    /// recorded on `self.emit_error` and surfaced by `generate_lib_typ`.
+    ///
+    /// `inline` selects the lowering: an `inline` field (`richtext(inline)`)
+    /// lowers to pure inline markup (no trailing `parbreak`, #872) via
+    /// [`emit_richtext_inline`]; every other field keeps the block lowering.
+    fn content_field(&mut self, path: &str, value: &serde_json::Value, inline: bool) -> String {
+        let emit = if inline {
+            emit_richtext_inline
+        } else {
+            emit_richtext
+        };
+        match from_canonical_value(value) {
+            Ok(rt) if !rt.is_blank() => {
+                // Record the plaintext projection (corpus text minus island
+                // slots, marks dropped) for `plaintext(field)`, keyed by the same
+                // address the content block windows on. Blank corpora are skipped
+                // — `plaintext` defaults them to `""`.
+                let plain = quillmark_richtext::export::to_plaintext(&rt);
+                if !plain.is_empty() {
+                    self.plaintext.push((path.to_string(), plain));
+                }
+                match emit(&rt) {
+                    Ok(ec) => self.content_block(path, ec),
+                    Err(e) => {
+                        self.emit_error.get_or_insert(e);
+                        "\"\"".to_string()
+                    }
+                }
+            }
+            Ok(_) => "\"\"".to_string(),
+            Err(_) => lit(value),
+        }
     }
 
     /// The top-level `data` dict literal. Content and date fields are emitted
@@ -145,7 +240,8 @@ impl<'m> Codegen<'m> {
             }
             let is_content = self.meta.content_fields.iter().any(|f| f == key);
             let is_date = self.meta.date_fields.iter().any(|f| f == key);
-            let expr = self.emit_field(key, value, is_content, is_date);
+            let is_inline = self.meta.inline_fields.iter().any(|f| f == key);
+            let expr = self.emit_field(key, value, is_content, is_date, is_inline);
             items.push(format!("\"{}\": {}", escape_string(key), expr));
         }
         wrap_dict(items)
@@ -153,8 +249,8 @@ impl<'m> Codegen<'m> {
 
     /// The `$cards` array literal. Each card of a string `$kind` gets its
     /// per-kind ordinal `$path` prefix injected and its content/date fields
-    /// transformed; a card with no string `$kind` passes through as a value
-    /// literal (matching the template's former card loop, which skipped it).
+    /// transformed; a card with no string `$kind` passes through untouched as
+    /// a value literal, assigned no ordinal or `$path`.
     fn emit_cards(&mut self, cards: &[serde_json::Value]) -> String {
         let mut ordinals: HashMap<String, usize> = HashMap::new();
         let mut out = Vec::with_capacity(cards.len());
@@ -189,6 +285,7 @@ impl<'m> Codegen<'m> {
     ) -> String {
         let content = card_names(&self.meta.card_content_fields, kind);
         let dates = card_names(&self.meta.card_date_fields, kind);
+        let inlines = card_names(&self.meta.card_inline_fields, kind);
         let mut items = Vec::with_capacity(obj.len() + 1);
         // The card's canonical address prefix, so plates compose schema-field
         // addresses — `form-field(.., field: card.at("$path") + "from")` —
@@ -201,35 +298,42 @@ impl<'m> Codegen<'m> {
             }
             let is_content = content.iter().any(|f| f == key);
             let is_date = dates.iter().any(|f| f == key);
+            let is_inline = inlines.iter().any(|f| f == key);
             let path = format!("{prefix}{key}");
-            let expr = self.emit_field(&path, value, is_content, is_date);
+            let expr = self.emit_field(&path, value, is_content, is_date, is_inline);
             items.push(format!("\"{}\": {}", escape_string(key), expr));
         }
         wrap_dict(items)
     }
 
-    /// A single field's value literal. Content fields (non-empty strings, or
-    /// arrays of them) become block references; empty/non-string content stays
-    /// a value literal, matching the former non-empty-string guard. Date fields
-    /// become `datetime(..)` constructors (or `none`). Everything else is a
-    /// plain value literal.
+    /// A single field's value literal. Content (richtext) fields — a corpus
+    /// object, or an array of them — lower to `#let` content blocks via
+    /// [`Self::content_field`]; a blank corpus stays an empty string literal.
+    /// `is_inline` picks pure-inline lowering (no `parbreak`) for a
+    /// `richtext(inline)` field, per element for an `array<richtext(inline)>`.
+    /// Date fields become `datetime(..)` constructors (or `none`). Everything
+    /// else is a plain value literal.
     fn emit_field(
         &mut self,
         path: &str,
         value: &serde_json::Value,
         is_content: bool,
         is_date: bool,
+        is_inline: bool,
     ) -> String {
         if is_content {
             match value {
-                serde_json::Value::String(s) if !s.is_empty() => self.content_block(path, s),
+                // A richtext field crosses the seam as canonical corpus JSON (an
+                // object); an `array<richtext>` as an array of them. Lower each
+                // corpus to a content block here.
+                serde_json::Value::Object(_) => self.content_field(path, value, is_inline),
                 serde_json::Value::Array(arr) => {
                     let items = arr
                         .iter()
                         .enumerate()
                         .map(|(i, elem)| match elem {
-                            serde_json::Value::String(s) if !s.is_empty() => {
-                                self.content_block(&format!("{path}.{i}"), s)
+                            serde_json::Value::Object(_) => {
+                                self.content_field(&format!("{path}.{i}"), elem, is_inline)
                             }
                             other => lit(other),
                         })
@@ -255,7 +359,11 @@ fn card_names(table: &serde_json::Map<String, serde_json::Value>, kind: &str) ->
     table
         .get(kind)
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|s| s.as_str().map(str::to_string)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|s| s.as_str().map(str::to_string))
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -269,6 +377,25 @@ fn meta_literal(meta: &SchemaMeta) -> String {
         "card_array_fields": meta.card_array_fields,
     });
     lit(&tables)
+}
+
+/// The `_qm-plaintext` literal: each content field's plaintext projection
+/// (island slots stripped, marks dropped) keyed by schema address, emitted as a
+/// Typst dict literal for the `plaintext(field)` helper (#873). Keys are sorted
+/// so the output is a pure function of the data's values — a reorder-only
+/// `apply` still produces byte-identical source (same #801 invariant as the
+/// content blocks). Content addresses are unique, so no key collides.
+fn plaintext_literal(entries: &[(String, String)]) -> String {
+    let mut sorted: Vec<&(String, String)> = entries.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    wrap_dict(
+        sorted
+            .into_iter()
+            .map(|(path, text)| {
+                format!("\"{}\": \"{}\"", escape_string(path), escape_string(text))
+            })
+            .collect(),
+    )
 }
 
 /// A coerced datetime string as a Typst `datetime(year:, month:, day:)`
@@ -379,25 +506,86 @@ entrypoint = "lib.typ"
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::emit::escape_markup;
+    use crate::emit::EscapeCtx;
+    use quillmark_core::quill::RICHTEXT_MEDIA_TYPE;
 
     fn meta_from(schema: serde_json::Value) -> SchemaMeta {
         SchemaMeta::from_schema_json(&schema)
     }
 
-    /// A content field with markdown becomes a `#let _qm_cN = [ .. ]` block,
+    /// The canonical corpus JSON the seam carries for a richtext field.
+    fn corpus(markdown: &str) -> serde_json::Value {
+        let rt = quillmark_richtext::import::from_markdown(markdown).expect("import");
+        quillmark_richtext::serial::to_canonical_value(&rt)
+    }
+
+    /// A schema descriptor for a scalar richtext field.
+    fn richtext_field() -> serde_json::Value {
+        serde_json::json!({ "type": "object", "contentMediaType": RICHTEXT_MEDIA_TYPE })
+    }
+
+    /// A schema descriptor for a scalar `richtext(inline)` field.
+    fn inline_richtext_field() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "contentMediaType": RICHTEXT_MEDIA_TYPE,
+            "quillmark:inline": true
+        })
+    }
+
+    /// An `inline` richtext field's block carries pure inline markup (no
+    /// `parbreak`), while a plain richtext field keeps its `\n\n` terminator —
+    /// so the inline value composes in `par(..)` without warning (#872).
+    #[test]
+    fn inline_field_lowers_without_parbreak() {
+        let meta = meta_from(serde_json::json!({ "properties": {
+            "subject": inline_richtext_field(),
+            "intro": richtext_field(),
+        }}));
+        let data = serde_json::json!({
+            "subject": corpus("A **bold** subject"),
+            "intro": corpus("An intro."),
+        });
+        let (lib, _) = generate_lib_typ(&data, &meta).unwrap();
+        // Inline: no parbreak inside the block.
+        assert!(
+            lib.contains("[\nA #strong[bold] subject\n]"),
+            "inline block should carry no parbreak: {lib}"
+        );
+        // Block: the paragraph still terminates with `\n\n`.
+        assert!(
+            lib.contains("[\nAn intro.\n\n\n]"),
+            "block field keeps its terminator: {lib}"
+        );
+    }
+
+    /// Each element of an `array<richtext(inline)>` lowers inline (per the
+    /// `quillmark:inline` flag on `items`), so no element carries a parbreak.
+    #[test]
+    fn inline_array_lowers_each_element_without_parbreak() {
+        let meta = meta_from(serde_json::json!({ "properties": {
+            "cc": { "type": "array", "items": inline_richtext_field() }
+        }}));
+        let data = serde_json::json!({ "cc": [corpus("First"), corpus("Second **bold**")] });
+        let (lib, _) = generate_lib_typ(&data, &meta).unwrap();
+        assert!(lib.contains("[\nFirst\n]"), "{lib}");
+        assert!(lib.contains("[\nSecond #strong[bold]\n]"), "{lib}");
+    }
+
+    /// A richtext field's corpus lowers to a `#let _qm_cN = [ .. ]` block,
     /// referenced from `data`, with the recorded window covering exactly its
     /// bracketed range.
     #[test]
     fn content_field_becomes_a_referenced_block_with_a_bracket_window() {
-        let meta = meta_from(serde_json::json!({
-            "properties": {
-                "intro": { "type": "string", "contentMediaType": "text/markdown" }
-            }
-        }));
-        let data = serde_json::json!({ "intro": "A #strong[bold] intro." });
-        let (lib, windows) = generate_lib_typ(&data, &meta);
+        let meta = meta_from(serde_json::json!({ "properties": { "intro": richtext_field() } }));
+        let data = serde_json::json!({ "intro": corpus("A **bold** intro.") });
+        let (lib, windows) = generate_lib_typ(&data, &meta).unwrap();
 
-        assert!(lib.contains("#let _qm_c0 = [\nA #strong[bold] intro.\n]"));
+        // The emitter terminates the paragraph with `\n\n` (as the markdown
+        // lowering always did); the block wraps that in `[\n .. \n]`.
+        let block = "[\nA #strong[bold] intro.\n\n\n]";
+        assert!(lib.contains(&format!("#let _qm_c0 = {block}")));
         assert!(lib.contains("\"intro\": _qm_c0"));
         // No eval, no json() blob, no runtime assembly survive.
         assert!(!lib.contains("eval("));
@@ -407,27 +595,147 @@ mod tests {
 
         assert_eq!(windows.len(), 1);
         assert_eq!(windows[0].path, "intro");
-        assert_eq!(&lib[windows[0].range.clone()], "[\nA #strong[bold] intro.\n]");
+        assert_eq!(&lib[windows[0].block.clone()], block);
     }
 
-    /// A `markdown[]` field emits one block per non-empty string element,
-    /// windowed as `<field>.<i>`; empty elements stay literals.
+    /// The segment-map offset check: every recorded `segment.gen` indexes the
+    /// generated `lib.typ`, and every run's `gen` slices the escape of its
+    /// corpus substring — the source map is byte-accurate against the emitted
+    /// source, not just the emitter's own markup.
     #[test]
-    fn markdown_array_emits_a_block_per_nonempty_element() {
+    fn segment_maps_index_the_generated_lib_typ() {
+        let meta = meta_from(serde_json::json!({ "properties": { "intro": richtext_field() } }));
+        let rt = quillmark_richtext::import::from_markdown("Hello **bold**.\n\nSecond para.")
+            .expect("import");
+        let data =
+            serde_json::json!({ "intro": quillmark_richtext::serial::to_canonical_value(&rt) });
+        let (lib, windows) = generate_lib_typ(&data, &meta).unwrap();
+
+        assert_eq!(windows.len(), 1);
+        let cm = &windows[0];
+        // Two paragraphs → two segments.
+        assert_eq!(cm.segments.len(), 2);
+        let chars: Vec<char> = rt.text.chars().collect();
+        let mut saw_bold = false;
+        for seg in &cm.segments {
+            assert!(seg.gen.start <= seg.gen.end && seg.gen.end <= lib.len());
+            for (corpus_range, gen, ctx) in &seg.runs {
+                // The run's generated bytes equal the escape of its corpus slice.
+                let src: String = chars[corpus_range.clone()].iter().collect();
+                let expect = match ctx {
+                    EscapeCtx::Markup => escape_markup(&src),
+                    EscapeCtx::StringLit => crate::emit::escape_string(&src),
+                };
+                assert_eq!(&lib[gen.clone()], expect, "run inverts to its corpus slice");
+                // The run sits inside its segment's window.
+                assert!(gen.start >= seg.gen.start && gen.end <= seg.gen.end);
+                if src == "bold" {
+                    saw_bold = true;
+                }
+            }
+        }
+        assert!(saw_bold, "the strong-wrapped run maps back to \"bold\"");
+    }
+
+    /// An `array<richtext>` field lowers one block per non-blank element,
+    /// windowed as `<field>.<i>`; a blank corpus stays an empty-string literal.
+    #[test]
+    fn richtext_array_emits_a_block_per_nonblank_element() {
         let meta = meta_from(serde_json::json!({
             "properties": {
                 "sections": {
                     "type": "array",
-                    "items": { "type": "string", "contentMediaType": "text/markdown" }
+                    "items": richtext_field()
                 }
             }
         }));
-        let data = serde_json::json!({ "sections": ["one", "", "three"] });
-        let (lib, windows) = generate_lib_typ(&data, &meta);
+        let data = serde_json::json!({
+            "sections": [corpus("one"), corpus(""), corpus("three")]
+        });
+        let (lib, windows) = generate_lib_typ(&data, &meta).unwrap();
 
         let paths: Vec<&str> = windows.iter().map(|w| w.path.as_str()).collect();
         assert_eq!(paths, vec!["sections.0", "sections.2"]);
         assert!(lib.contains("\"sections\": (_qm_c0, \"\", _qm_c1,)"));
+    }
+
+    /// Every non-blank content field gets a `_qm-plaintext` entry keyed by its
+    /// schema address — the corpus text with marks dropped and island slots
+    /// stripped — so `plaintext(field)` returns the field's string (#873). A
+    /// blank field is absent (it defaults to `""`).
+    #[test]
+    fn content_fields_populate_the_plaintext_table() {
+        let meta = meta_from(serde_json::json!({ "properties": {
+            "subject": richtext_field(),
+            "refs": { "type": "array", "items": richtext_field() },
+            "blank": richtext_field(),
+        }}));
+        let data = serde_json::json!({
+            "subject": corpus("A **bold** subject"),
+            "refs": [corpus("first ref"), corpus("second _ref_")],
+            "blank": corpus("   "),
+        });
+        let (lib, _) = generate_lib_typ(&data, &meta).unwrap();
+        // Scope to the `_qm-plaintext` table: `data` also carries these keys
+        // (bound to content blocks / the empty-string literal), so match the
+        // table, not the whole file.
+        let table = plaintext_table(&lib);
+        // Marks are dropped: the plaintext is the corpus text, not the markup.
+        assert!(table.contains(r#""subject": "A bold subject""#), "{table}");
+        assert!(table.contains(r#""refs.0": "first ref""#), "{table}");
+        assert!(table.contains(r#""refs.1": "second ref""#), "{table}");
+        // The blank field carries no entry in the table.
+        assert!(!table.contains("blank"), "{table}");
+        assert!(lib.contains("#let plaintext(field) = _qm-plaintext.at(field"));
+    }
+
+    /// An image/table island contributes no plaintext: `to_plaintext` strips the
+    /// island slot, so a field that is only an island yields no entry — the
+    /// table is empty (`(:)`).
+    #[test]
+    fn island_only_content_has_no_plaintext_entry() {
+        let meta = meta_from(serde_json::json!({ "properties": { "fig": richtext_field() } }));
+        let data = serde_json::json!({ "fig": corpus("![alt](x.png)") });
+        let (lib, _) = generate_lib_typ(&data, &meta).unwrap();
+        assert_eq!(
+            plaintext_table(&lib),
+            "(:)",
+            "island-only field yields an empty plaintext table"
+        );
+    }
+
+    /// A card content field's plaintext is keyed by the full card address
+    /// (`$cards.<kind>.<n>.<field>`), so a plate composes it from the card's
+    /// `$path` prefix — `plaintext(card.at("$path") + "$body")`.
+    #[test]
+    fn card_content_plaintext_keyed_by_card_address() {
+        let meta = meta_from(serde_json::json!({
+            "properties": {},
+            "$defs": { "note_card": { "properties": { "$body": richtext_field() } } }
+        }));
+        let data = serde_json::json!({
+            "$cards": [ { "$kind": "note", "$body": corpus("Note **body**") } ]
+        });
+        let (lib, _) = generate_lib_typ(&data, &meta).unwrap();
+        assert!(
+            plaintext_table(&lib).contains(r#""$cards.note.0.$body": "Note body""#),
+            "{lib}"
+        );
+    }
+
+    /// The `_qm-plaintext = ( .. )` dict literal, sliced out of a generated
+    /// `lib.typ` so plaintext assertions don't collide with the `data` dict
+    /// (which reuses the same keys, bound to content blocks) or the following
+    /// `plaintext` helper's doc comment. The literal is single-line (`\n`s in
+    /// values are escaped), so it ends at the first newline.
+    fn plaintext_table(lib: &str) -> &str {
+        let start = lib
+            .find("#let _qm-plaintext = ")
+            .expect("plaintext table present")
+            + "#let _qm-plaintext = ".len();
+        let rest = &lib[start..];
+        let end = rest.find('\n').unwrap_or(rest.len());
+        &rest[..end]
     }
 
     /// A date field becomes a date-only `datetime(..)` constructor; null stays
@@ -441,7 +749,7 @@ mod tests {
             }
         }));
         let data = serde_json::json!({ "issued": "2026-07-03T09:30:00Z", "signed": null });
-        let (lib, _) = generate_lib_typ(&data, &meta);
+        let (lib, _) = generate_lib_typ(&data, &meta).unwrap();
         assert!(lib.contains("\"issued\": datetime(year: 2026, month: 7, day: 3)"));
         assert!(lib.contains("\"signed\": none"));
     }
@@ -456,7 +764,7 @@ mod tests {
             "$defs": {
                 "note_card": {
                     "properties": {
-                        "$body": { "type": "string", "contentMediaType": "text/markdown" },
+                        "$body": richtext_field(),
                         "on": { "type": "string", "format": "date-time" }
                     }
                 }
@@ -464,11 +772,11 @@ mod tests {
         }));
         let data = serde_json::json!({
             "$cards": [
-                { "$kind": "note", "$body": "First body", "on": "2026-01-02" },
-                { "$kind": "note", "$body": "Second body" }
+                { "$kind": "note", "$body": corpus("First body"), "on": "2026-01-02" },
+                { "$kind": "note", "$body": corpus("Second body") }
             ]
         });
-        let (lib, windows) = generate_lib_typ(&data, &meta);
+        let (lib, windows) = generate_lib_typ(&data, &meta).unwrap();
         let paths: Vec<&str> = windows.iter().map(|w| w.path.as_str()).collect();
         assert_eq!(paths, vec!["$cards.note.0.$body", "$cards.note.1.$body"]);
         assert!(lib.contains("\"$path\": \"$cards.note.0.\""));
@@ -485,7 +793,7 @@ mod tests {
                 "refs": { "type": "array", "items": { "type": "string" } }
             }
         }));
-        let (lib, _) = generate_lib_typ(&serde_json::json!({}), &meta);
+        let (lib, _) = generate_lib_typ(&serde_json::json!({}), &meta).unwrap();
         assert!(lib.contains("#let _qm-meta = ("));
         assert!(lib.contains("\"fields\": ("));
         assert!(lib.contains("\"subject\""));
@@ -500,7 +808,7 @@ mod tests {
         let data = serde_json::json!({
             "note": "quoting the template: {content_blocks} and {data_literal}"
         });
-        let (lib, _) = generate_lib_typ(&data, &meta);
+        let (lib, _) = generate_lib_typ(&data, &meta).unwrap();
         let payload = lib.find("quoting the template").expect("payload present");
         let data_binding = lib.find("#let data =").expect("data binding present");
         assert!(
@@ -517,42 +825,38 @@ mod tests {
     fn reordered_input_emits_byte_identical_source() {
         let meta = meta_from(serde_json::json!({
             "properties": {
-                "body": { "type": "string", "contentMediaType": "text/markdown" },
-                "note": { "type": "string", "contentMediaType": "text/markdown" },
+                "body": richtext_field(),
+                "note": richtext_field(),
                 "extra": { "type": "object" }
             },
             "$defs": {
                 "note_card": {
                     "properties": {
-                        "$body": { "type": "string", "contentMediaType": "text/markdown" }
+                        "$body": richtext_field()
                     }
                 }
             }
         }));
-        let a: serde_json::Value = serde_json::from_str(
-            r#"{
-                "body": "The body.",
-                "note": "The note.",
-                "extra": { "x": 1, "y": 2 },
-                "$cards": [ { "$kind": "note", "$body": "Card body", "tag": "t" } ]
-            }"#,
-        )
-        .unwrap();
-        let b: serde_json::Value = serde_json::from_str(
-            r#"{
-                "$cards": [ { "tag": "t", "$body": "Card body", "$kind": "note" } ],
-                "extra": { "y": 2, "x": 1 },
-                "note": "The note.",
-                "body": "The body."
-            }"#,
-        )
-        .unwrap();
+        // `corpus` is a pure function, so inlining it in both orderings yields
+        // the same corpus values — the point is the *key* order differs.
+        let a = serde_json::json!({
+            "body": corpus("The body."),
+            "note": corpus("The note."),
+            "extra": { "x": 1, "y": 2 },
+            "$cards": [ { "$kind": "note", "$body": corpus("Card body"), "tag": "t" } ]
+        });
+        let b = serde_json::json!({
+            "$cards": [ { "tag": "t", "$body": corpus("Card body"), "$kind": "note" } ],
+            "extra": { "y": 2, "x": 1 },
+            "note": corpus("The note."),
+            "body": corpus("The body.")
+        });
 
-        let (lib_a, win_a) = generate_lib_typ(&a, &meta);
-        let (lib_b, win_b) = generate_lib_typ(&b, &meta);
+        let (lib_a, win_a) = generate_lib_typ(&a, &meta).unwrap();
+        let (lib_b, win_b) = generate_lib_typ(&b, &meta).unwrap();
         assert_eq!(lib_a, lib_b, "reordered input must emit identical source");
-        let wa: Vec<_> = win_a.iter().map(|w| (&w.path, w.range.clone())).collect();
-        let wb: Vec<_> = win_b.iter().map(|w| (&w.path, w.range.clone())).collect();
+        let wa: Vec<_> = win_a.iter().map(|w| (&w.path, w.block.clone())).collect();
+        let wb: Vec<_> = win_b.iter().map(|w| (&w.path, w.block.clone())).collect();
         assert_eq!(wa, wb, "windows must be identical too");
     }
 
@@ -563,21 +867,15 @@ mod tests {
         assert_eq!(lit(&serde_json::json!(42)), "42");
         // i64::MIN cannot be a Typst literal (its magnitude overflows i64);
         // it is emitted as an int-typed expression instead.
-        assert_eq!(lit(&serde_json::json!(i64::MIN)), "(-9223372036854775807 - 1)");
+        assert_eq!(
+            lit(&serde_json::json!(i64::MIN)),
+            "(-9223372036854775807 - 1)"
+        );
         assert_eq!(lit(&serde_json::json!(1.5)), "float(\"1.5\")");
         assert_eq!(lit(&serde_json::json!("hi")), "\"hi\"");
         assert_eq!(lit(&serde_json::json!([])), "()");
         assert_eq!(lit(&serde_json::json!([1])), "(1,)");
         assert_eq!(lit(&serde_json::json!({})), "(:)");
         assert_eq!(lit(&serde_json::json!({ "a": 1 })), "(\"a\": 1,)");
-    }
-
-    #[test]
-    fn test_generate_typst_toml() {
-        let toml = generate_typst_toml();
-        assert!(toml.contains("name = \"quillmark-helper\""));
-        assert!(toml.contains("version = \"0.1.0\""));
-        assert!(toml.contains("namespace = \"local\""));
-        assert!(toml.contains("entrypoint = \"lib.typ\""));
     }
 }

@@ -124,6 +124,40 @@ describe('LiveSession canvas preview', () => {
     expect(size.heightPt).toBeGreaterThan(0)
   })
 
+  it('positionAt resolves content ink to a corpus position and locate reverses it (#829)', () => {
+    const session = openSession()
+
+    // A content field surfaces one span-bearing region per segment (#829); the
+    // body's heading is one.
+    const bodyRegion = session.regions().find((r) => r.field === '$body' && r.span)
+    expect(bodyRegion, 'a $body segment region carries a span').toBeTruthy()
+    const [x0, y0, x1, y1] = bodyRegion.rect
+    const cy = (y0 + y1) / 2
+
+    // Forward: scan across the segment's ink until a point resolves (glyph
+    // layout decides which x lands on ink), then assert the CorpusHit crosses
+    // the JS boundary with the right shape.
+    let hit = null
+    for (let f = 0.1; f <= 0.9 && !hit; f += 0.1) {
+      hit = session.positionAt(bodyRegion.page, x0 + (x1 - x0) * f, cy)
+    }
+    expect(hit, 'positionAt resolves a point on the body ink').toBeTruthy()
+    expect(hit.field).toBe('$body')
+    expect(typeof hit.pos).toBe('number')
+    const [start, end] = bodyRegion.span
+    expect(hit.pos).toBeGreaterThanOrEqual(start)
+    expect(hit.pos).toBeLessThanOrEqual(end)
+
+    // Reverse: corpus position → caret rect on the same field.
+    const caret = session.locate('$body', hit.pos)
+    expect(caret, 'locate reverses positionAt').toBeTruthy()
+    expect(caret.field).toBe('$body')
+    expect(caret.rect[2]).toBeGreaterThanOrEqual(caret.rect[0])
+
+    // A click far off any ink resolves to nothing (wasm maps `None` to undefined).
+    expect(session.positionAt(bodyRegion.page, 2, 2)).toBeFalsy()
+  })
+
   it('paint sizes the canvas backing store and returns layout + pixel dimensions', () => {
     const session = openSession()
     const { widthPt, heightPt } = session.pageSize(0)
@@ -140,6 +174,10 @@ describe('LiveSession canvas preview', () => {
     // Pixel dimensions reflect layoutScale * densityScale, rounded.
     expect(result.pixelWidth).toBe(Math.round(widthPt * layoutScale * densityScale))
     expect(result.pixelHeight).toBe(Math.round(heightPt * layoutScale * densityScale))
+
+    // No clamp on this modest density: reported honestly on the result.
+    expect(result.clamped).toBe(false)
+    expect(result.effectiveDensityScale).toBeCloseTo(densityScale, 6)
 
     // Painter owns canvas.width/height — they must equal the reported
     // pixel dimensions.
@@ -211,6 +249,14 @@ describe('LiveSession canvas preview', () => {
     expect(result.layoutHeight).toBeCloseTo(heightPt, 4)
     // Detect-clamp contract: pixelWidth < round(layoutWidth * densityScale).
     expect(result.pixelWidth).toBeLessThan(Math.round(result.layoutWidth * densityScale))
+    // The clamp is reported on the result, not just derivable from the dims.
+    expect(result.clamped).toBe(true)
+    // effectiveDensityScale is the reduced density; layoutScale defaults to 1,
+    // so pixelWidth == round(layoutWidth * effectiveDensityScale).
+    expect(result.effectiveDensityScale).toBeLessThan(densityScale)
+    expect(result.pixelWidth).toBe(
+      Math.round(result.layoutWidth * result.effectiveDensityScale),
+    )
   })
 
   it('paint throws on non-finite or non-positive layoutScale / densityScale', () => {

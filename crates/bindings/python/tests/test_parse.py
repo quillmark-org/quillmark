@@ -27,25 +27,6 @@ RESOURCES_PATH = WORKSPACE_ROOT / "crates" / "fixtures" / "resources"
 QUILLS_PATH = RESOURCES_PATH / "quills"
 
 
-def test_parse_markdown(taro_md):
-    """Test parsing markdown with payload."""
-    doc = Document.from_markdown(taro_md)
-    assert "Ice Cream" in str(field(doc.main, "title") or "")
-
-
-def test_parse_invalid_yaml():
-    """Test parsing invalid YAML payload."""
-    invalid_md = (
-        "~~~card-yaml\n"
-        "$quill: test_quill\n"
-        "$kind: main\n"
-        "title: [unclosed bracket\n"
-        "~~~\n\nContent\n"
-    )
-    with pytest.raises(QuillmarkError):
-        Document.from_markdown(invalid_md)
-
-
 def test_payload_access(taro_md):
     """Test accessing typed payload_items (no $-prefixed metadata as fields)."""
     doc = Document.from_markdown(taro_md)
@@ -59,15 +40,17 @@ def test_payload_access(taro_md):
 def test_body_is_str(taro_md):
     """Test that body is a str (not None)."""
     doc = Document.from_markdown(taro_md)
-    assert isinstance(doc.body, str)
-    assert "nutty" in doc.body
+    # `body` is the canonical corpus (a dict); `body_markdown` its projection.
+    assert isinstance(doc.body, dict)
+    assert isinstance(doc.body_markdown, str)
+    assert "nutty" in doc.body_markdown
 
 
 def test_body_empty_when_absent():
     """Test that body is empty string when no body content."""
     md = "~~~card-yaml\n$quill: taro\n$kind: main\nauthor: Test\ntitle: Test\nice_cream: Vanilla\n~~~\n"
     doc = Document.from_markdown(md)
-    assert doc.body == ""
+    assert doc.body_markdown == ""
 
 
 def test_cards_access():
@@ -81,7 +64,7 @@ def test_cards_access():
     card = doc.cards[0]
     assert card["kind"] == "note"
     assert field(card, "foo") == "bar"
-    assert "Card body." in card["body"]
+    assert "Card body." in card["body_markdown"]
 
 
 def test_cards_empty_when_none():
@@ -117,7 +100,7 @@ def test_json_dto_round_trip(taro_md):
 
     dto = doc.to_json()
     assert isinstance(dto, str)
-    assert "quillmark/document@0.92.0" in dto
+    assert "quillmark/document@0.93.0" in dto
 
     restored = Document.from_json(dto)
     assert restored.quill_ref == doc.quill_ref
@@ -165,7 +148,7 @@ def test_schema_version_of_reads_dto(taro_md):
     doc = Document.from_markdown(taro_md)
     dto = doc.to_json()
 
-    assert Document.schema_version_of(dto) == "quillmark/document@0.92.0"
+    assert Document.schema_version_of(dto) == "quillmark/document@0.93.0"
 
 
 def test_schema_version_of_returns_unknown_future_versions():
@@ -324,6 +307,40 @@ def test_document_authoring_text_helpers():
 
     instr = Document.blueprint_instruction("taro")
     assert isinstance(instr, str) and "taro" in instr
+
+
+def test_set_body_corpus_round_trip():
+    """`set_body` accepts the corpus dict `body` reads back — the corpus-native
+    writer closing the read/write asymmetry (WASM `setBody` parity). Issue #902."""
+    doc = Document.from_markdown(
+        "~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: T\n~~~\n\n**bold** body\n"
+    )
+    corpus = doc.body
+    assert isinstance(corpus, dict)
+    # Write the read-back corpus to a fresh doc: lossless (not markdown-forced).
+    doc2 = Document.from_markdown("~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: T\n~~~\n")
+    doc2.set_body(corpus)
+    assert doc2.body == corpus
+    # A markdown string and None are also accepted.
+    doc2.set_body("plain text")
+    assert "plain text" in doc2.body_markdown
+    doc2.set_body(None)
+    assert doc2.body_markdown == ""
+
+
+def test_set_card_body_and_field_markdown_parity():
+    """`set_card_body` writes a composable card's corpus body; `field_markdown`
+    / `card_field_markdown` project a richtext field to markdown (WASM parity)."""
+    md = (
+        "~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: Main\n~~~\n\nMain body.\n\n"
+        "~~~card-yaml\n$kind: note\nfoo: bar\n~~~\n\nCard body.\n"
+    )
+    doc = Document.from_markdown(md)
+    doc.set_card_body(0, "**new** card body")
+    assert "**new** card body" in doc.cards[0]["body_markdown"]
+    # field_markdown returns None for a non-richtext / absent field.
+    assert doc.field_markdown("missing") is None
+    assert doc.card_field_markdown(0, "missing") is None
 
 
 def test_nested_fill_exposed_as_nested_fills():

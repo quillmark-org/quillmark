@@ -7,9 +7,9 @@
 The preview surface is two verbs: `render(quill, doc, opts)` — stateless
 one-shot bytes for CLI / server / export — and `open(quill, doc)` →
 **`LiveSession`**, a persistent, incremental compiler that owns preview. Reads
-(`render`, `paint`, `pageSize`, `regions`, `fieldAt`) serve the session's current
-compile; `apply(doc)` recompiles in place and returns a `ChangeSet` naming the
-dirty pages. `paint` writes a rasterized page directly into a
+(`render`, `paint`, `pageSize`, `regions`, `fieldAt`, `positionAt`, `locate`)
+serve the session's current compile; `apply(doc)` recompiles in place and
+returns a `ChangeSet` naming the dirty pages. `paint` writes a rasterized page directly into a
 `CanvasRenderingContext2d`; each paint is a **complete** raster — every piece
 of page content already visible — so the consumer never composites. It is
 multi-backend: any backend whose session can rasterize a page (Typst, pdfform)
@@ -113,6 +113,17 @@ consumer there is no cross-edit reader to protect. If a long-lived read-only
 viewer ever needs to shed the retained world, a `freeze()` that drops it and
 keeps the pageable document is a *mode* to add, not a second type.
 
+`apply` is the only edit verb — a whole-document recompile. Anchoring a caret
+or selection across edits is the **editor's** job: its own transaction mapping
+(a ProseMirror / CodeMirror `StepMap`) carries positions through local edits, so
+the session holds no change log, no revision stamp, and no per-field delta path
+(#886 removed them; `FieldRegion` / `CorpusHit` carry no `revision`). Geometry
+(`regions`, `positionAt`, `locate`) is read against the current compile and
+re-read after each committed `apply`. `positionAt` (point → corpus position) and
+`locate` (corpus position → caret rect) are exact inverses over that compile —
+that pair *is* the bidirectional preview↔editor cursor bridge, and it needs no
+forward-mapping because the editor owns the live position it feeds in.
+
 ### Complete-raster contract
 
 `render_rgba` returning `Some` guarantees a **complete** page raster: all
@@ -126,6 +137,23 @@ compositing of its own. Backends satisfy it differently:
   flat PDF via hayro — so field values appear in the raster on their own, with
   no regions-compositing by the caller.
 
+### Painter owns the canvas
+
+`paint` writes the whole backing store with `put_image_data`, which bypasses
+the 2D context transform, `globalAlpha`, and clip. The painter therefore owns
+the entire canvas: **give each visible page its own `` element.** You
+cannot paint two pages into one canvas, paint into a sub-rect, or push a page
+through a context transform — the raster is complete precisely so you never
+need to composite, and the write ignores context state so you could not if you
+tried.
+
+Because every `paint` re-rasterizes from scratch (no per-page raster cache on
+the session — a deliberate omission, § Decisions), keep a page's canvas alive
+while it stays near the viewport rather than pooling one canvas across pages: an
+idle canvas retains its pixels for free, whereas reusing a canvas on scroll
+re-runs a full render. This keeps memory bounded to *visible + margin* without
+paying re-rasterization on every scroll reversal.
+
 Field geometry is primarily a **session-level query**, `LiveSession::regions()`
 (see the region type in `crates/core/src/region.rs`): the interactive-preview
 path holds a session and reads geometry off the current compile with no render
@@ -135,14 +163,24 @@ for consumers without a live session — static overlays over an exported SVG,
 PDF post-processing, CI coverage probes. The sidecar always describes the
 whole document: page indices are document-space even under a `pages` subset
 render. Each region carries per-field geometry keyed on the **quill schema
-field path** — the address the editor uses. The two navigation directions get
-two queries: `regions()` answers *field → rectangle* (scroll to / highlight
-the focused field); `fieldAt(page, x, y)` answers *point → field* (click a
-rendered field → focus it in the editor), hit-testing the compiled document
-directly so **every** placement resolves, not just the ones `regions()`
-surfaces.
+field path** — the address the editor uses — plus, for content ink, the
+**corpus span** it covers (§ Segments and the striped union). Navigation is
+four queries, two coarse and two fine:
 
-Three producers: **content fields** (a markdown body, a `markdown[]` element,
+- `regions()` answers *field → rectangles* (scroll to / highlight a field),
+  one box per content **segment** it draws. `fieldBoxes(field)` derives the
+  whole-field highlight from it — one union rect per page over the field's
+  `span`-bearing segments — so consumers do not reimplement the union.
+- `fieldAt(page, x, y)` answers *point → field* (click → focus in the editor),
+  hit-testing the compiled document directly so **every** placement resolves,
+  not just the ones `regions()` surfaces.
+- `positionAt(page, x, y)` answers *point → corpus position* — the field
+  *and* a USV offset into its `RichText`, cluster-exact, for placing a caret
+  or mapping a selection into the content model.
+- `locate(field, pos)` answers *corpus position → caret rect* — the reverse of
+  `positionAt`, the box to draw a caret at.
+
+Three producers: **content fields** (a richtext body, a `richtext[]` element,
 a card's content field) are tracked by the spans their glyphs carry — the
 backend evaluates each value at its own generated call site and records the
 site's byte window, so the rendered ink resolves back to its field through
@@ -164,21 +202,69 @@ card addresses without reimplementing the kind+ordinal grammar) and surface a
 region only when they bind one — a widget with no schema field is a backend
 artifact, not a routable field.
 
-`regions()` returns each content field's **first placement** — one region per
+### Segments and the striped union
+
+A content field is not one box. The backend records a per-**segment** source
+map (a segment is one paragraph, heading, or whole code fence — the corpus's
+`continues`-joined line run), and `regions()` returns one region per
+`(segment, page)`, each carrying `span: [start, end)` — the USV range of the
+field's `RichText` that box covers. A scalar reference site and a widget carry
+no `span` (`undefined`): geometry with no corpus address.
+
+The whole-field highlight is **derived, not emitted**: per `(field, page)`,
+union the `span`-bearing segment rects. That is the point of #829 — the union
+is *striped*, leaving inter-paragraph whitespace uncovered, where the old
+single box painted over it. Emitting a field-level union from the *backend*
+would reintroduce the lie the disjointness invariant exists to prevent, so the
+union stays out of `regions()`. But the derivation itself is subtle (which
+rects carry spans, first-placement-only, widget-vs-content), so a **convenience
+owns it** rather than every consumer: `fieldBoxes(field)` (on `LiveSession`,
+core `field_boxes(regions, field)` for the one-shot sidecar) folds the
+span-filter + per-page union, leaving `regions()` the low-level disjoint truth.
+It is content-only — a field placed solely as a scalar reference or a bound
+widget carries no `span` and yields nothing, its box being a single `regions()`
+rect. Equivalent to the union a consumer would write by hand:
+
+```ts
+const boxes = session.fieldBoxes(field);        // one union rect per page
+
+// …which is exactly this, per page, now owned by the helper:
+const box = regions()
+  .filter(r => r.field === field && r.page === page && r.span)
+  .reduce(unionRect, undefined);
+```
+
+Each `(segment, page)` key surfaces its **first placement** — one region per
 page it touches, so highlighting covers continuation pages (page marginals
 between one page's body and the next's do not end a placement; a same-page
 interruption does) — not every placement: span data cannot distinguish
 package chrome interrupting one placement from a second placement of the same
-value, and a spanning union would claim the ink between them. Foreign ink
-interrupting the first placement within a page (a rebuild's numbering chrome)
-shrinks the region to the placement's true start rather than lying about
-extent. `field` is still not
-unique in the result — page fragments, several scalar sites, or content plus
-a bound widget each surface independently; consumers group by `field`. Later
-placements of one content value stay reachable through `fieldAt`, where a
-concrete point identifies one drawn item unambiguously. A blank field (empty
-or whitespace-only body) draws nothing and surfaces no region. Geometry only,
-never a value, and never needed to complete the picture.
+value, and a spanning union would claim the ink between them. A field's own
+ink *between* its segments (brackets, container-open syntax — usually inkless)
+is transparent: it neither accrues a box nor breaks a run. `field` is still
+not unique — segment fragments, page fragments, several scalar sites, or
+content plus a bound widget each surface independently; consumers group by
+`field`. Later placements stay reachable through `fieldAt` / `positionAt`,
+where a concrete point identifies one drawn item unambiguously. A blank field
+draws nothing and surfaces no region. Geometry only, never a value, and never
+needed to complete the picture.
+
+`positionAt` reads the same map the other way: the hit glyph's resolved node
+range plus `glyph.span.1` gives an exact generated byte, which inverts through
+the owning run's escape scan to a cluster-exact corpus offset. It is
+**cluster-exact, not sub-character** — a hit inside a char that escaped to
+several bytes floors to that cluster's first char — and degrades to the
+containing segment's start on origin-less ink: a list marker or numbering
+(detached-span decoration, attributable to no field — like clicking page
+chrome, it resolves to nothing) and, inside a multi-line code fence, every
+line sharing one resolved node wider than any per-line run, so per-line
+precision collapses to the fence's corpus start (segment-level correctness
+kept). Which of the two happened rides the hit as `granularity`
+(`'cluster'` when an owning run resolved the offset, `'segment'` when it floored
+to the segment start), so a caret UI trusts a `cluster` offset for the caret
+and treats a `segment` one as a segment selection rather than guessing from the
+value. `locate` forward-maps a corpus offset to a generated byte and returns
+the covering glyph's box.
 
 ## TypeScript surface
 
@@ -201,9 +287,14 @@ class LiveSession {
 
   apply(doc: Document): ChangeSet;      // in-place recompile; transactional
   render(opts?: RenderOptions): RenderResult;
-  regions(): FieldRegion[];             // field → rects; session query, no render
+  regions(): FieldRegion[];             // field → rects (one per segment); session query, no render
+  fieldBoxes(field: string): FieldRegion[];  // derived whole-field box: one union rect per page (content only)
   fieldAt(page: number, x: number, y: number): string | undefined;
                                         // point → field; PDF pt, bottom-left
+  positionAt(page: number, x: number, y: number): CorpusHit | undefined;
+                                        // point → { field, pos }; cluster-exact USV offset
+  locate(field: string, pos: number): FieldRegion | undefined;
+                                        // corpus pos → caret rect
   pageSize(page: number): PageSize;     // { widthPt, heightPt } in pt; report-only
   paint(
     ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
@@ -227,6 +318,21 @@ interface PaintResult {
   layoutHeight: number;
   pixelWidth: number;     // canvas.width the painter wrote (clamped at 16384)
   pixelHeight: number;
+  clamped: boolean;       // MAX_BACKING_DIMENSION forced densityScale down
+  effectiveDensityScale: number;  // densityScale actually applied (== requested unless clamped)
+}
+
+interface FieldRegion {
+  field: string;          // quill schema field path, not a widget name
+  page: number;           // 0-based
+  rect: [number, number, number, number];   // [x0,y0,x1,y1] PDF pt, bottom-left
+  span?: [number, number];// USV [start,end) of the covered corpus; absent for scalar/widget
+}
+
+interface CorpusHit {
+  field: string;
+  pos: number;            // USV offset into the field's RichText (cluster floor)
+  granularity?: 'cluster' | 'segment';  // was pos cluster-exact or floored to the segment start?
 }
 ```
 
@@ -245,11 +351,12 @@ Fold `window.devicePixelRatio`, in-app zoom, and `visualViewport.scale` into
 **`MAX_BACKING_DIMENSION` (16384 px per side)** — the floor that works across
 browsers (Chrome/Firefox ~32k, Safari 16k, lower on memory-constrained mobile)
 — the painter clamps `densityScale` proportionally and reports the actual
-backing dimensions. Detect a clamp via:
-
-```
-pixelWidth < round(layoutWidth × densityScale)
-```
+backing dimensions. `clamped` and `effectiveDensityScale` carry the fact and
+the applied density on the result, so the consumer reads the clamp off the
+return value rather than reconstructing it from
+`pixelWidth < round(layoutWidth × densityScale)`. A clamped page renders soft
+at the same `canvas.style` size; compare `effectiveDensityScale` to the
+requested `densityScale` to know by how much.
 
 Each `paint` resets the backing store (writing `canvas.width` clears it), so
 paint is always a full repaint — consumers never call `clearRect`.
@@ -292,17 +399,16 @@ painter cannot disagree:
 | ----------------------------------------- | -------- | ------ | -------------------------------------------------------- |
 | `pkg/core/` (no features)                 | —        | no     | `Document` + `Quill` only; no engine, no Typst           |
 | `pkg/backends/typst/` (`typst`)           | typst    | yes    | native page raster                                       |
-| `pkg/backends/pdfform/` (`pdfform-preview`) | pdfform | yes    | pre-flatten + hayro raster/SVG/PNG; adds the `web-sys` painter |
-| (`pdfform`, no `web-sys`)                 | pdfform  | no     | renders PDF + SVG + PNG, but no canvas painter           |
+| `pkg/backends/pdfform/` (`pdfform`)       | pdfform  | yes    | pre-flatten + hayro raster/SVG/PNG; `web-sys` canvas painter |
 
 The pdfform backend always links its hayro raster seam, so it renders PDF, SVG,
-and PNG without any preview feature (`supports_canvas() == true`). The wasm `pdfform-preview`
-feature is a strict superset of `pdfform` that only adds the `web-sys` canvas
-*painter*, so the in-browser `paint()` surface ships; a `pdfform` build without
-`web-sys` still renders SVG/PNG but carries no painter. `build-wasm.sh` builds
-the three artifacts (core, typst, pdfform — the last with `pdfform-preview`)
-sequentially; `runtime/runtime.js` maps each backend id to its build with a
-`{ formats, canvas }` manifest, drift-guarded by `runtime.test.js`.
+and PNG (`supports_canvas() == true`). The wasm `pdfform` feature pulls in
+`web-sys` unconditionally, so the pdfform build also ships the generic canvas
+*painter* (`page_size` / `paint`, dispatching through the core `SessionHandle`
+seam) — there is no painterless pdfform variant. `build-wasm.sh` builds the
+three artifacts (core, typst, pdfform) sequentially; `runtime/runtime.js` maps
+each backend id to its build with a `{ formats, canvas }` manifest, drift-guarded
+by `runtime.test.js`.
 
 ## Non-goals
 
@@ -339,6 +445,16 @@ sequentially; `runtime/runtime.js` maps each backend id to its build with a
   finished page (Typst natively, pdfform by pre-flattening values into content
   streams before rasterizing). Regions are an overlay sidecar, not a
   compositing input — the painter stays a dumb blit.
+- **No session raster cache — re-rasterize per `paint`.** Caching the last
+  raster per `(page, renderScale)` and blitting on scroll-back would skip
+  re-rasterizing unchanged pages (`ChangeSet` already names dirty pages to
+  invalidate), but it stays unbuilt: the surface ships ahead of its first
+  consumer, the megabyte-scale per-page buffers reintroduce the unbounded
+  memory the viewport-bounded design set out to avoid, and any `renderScale`
+  change (DPR / zoom) rotates the key and voids the cache. Consumer-side canvas
+  liveness (keep the visible page's canvas alive rather than pooling) covers the
+  common scroll case without that trade-off; a real consumer's profile is what
+  should justify the cache and its eviction policy, not speculation.
 - **Method on `LiveSession`, not a sub-handle.** Even with click resolution
   shipped (`fieldAt`), it shares no state with `paint` beyond the compile the
   whole session already owns — a `Preview` sub-handle grouping them is

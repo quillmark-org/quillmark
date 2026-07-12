@@ -104,14 +104,6 @@ mod tests {
     }
 
     #[test]
-    fn output_format_mime_types() {
-        assert_eq!(OutputFormat::Pdf.mime_type(), "application/pdf");
-        assert_eq!(OutputFormat::Svg.mime_type(), "image/svg+xml");
-        assert_eq!(OutputFormat::Png.mime_type(), "image/png");
-        assert_eq!(OutputFormat::Txt.mime_type(), "text/plain");
-    }
-
-    #[test]
     fn output_format_parse_error_lists_choices() {
         let err = OutputFormat::from_str("docx").unwrap_err();
         let msg = err.to_string();

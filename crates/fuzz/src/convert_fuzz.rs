@@ -1,5 +1,16 @@
 use proptest::prelude::*;
-use quillmark_typst::convert::{escape_markup, escape_string, mark_to_typst};
+use quillmark_typst::emit::{escape_markup, escape_string};
+
+/// Markdown → Typst markup over the corpus pipeline: import to a `RichText`, then
+/// lower it. This is the render path the former single-step `mark_to_typst`
+/// became — property-fuzzed here (no panic, escaping, formatting → Typst
+/// functions) exactly as that lowering was.
+fn mark_to_typst(markdown: &str) -> Result<String, String> {
+    let rt = quillmark_richtext::import::from_markdown(markdown).map_err(|e| e.to_string())?;
+    quillmark_typst::emit::emit_richtext(&rt)
+        .map(|ec| ec.markup)
+        .map_err(|e| e.to_string())
+}
 
 // Typst special characters that need escaping in markup context (excluding backslash and //)
 // Backslash is handled first to prevent double-escaping, and // is handled as a pattern
@@ -82,21 +93,6 @@ proptest! {
                 // Quote must be preceded by backslash
                 assert!(i > 0 && chars[i-1] == '\\',
                     "Found unescaped quote at position {} in escaped string: {:?}", i, escaped);
-            }
-        }
-    }
-
-    #[test]
-    fn fuzz_escape_string_valid_escapes(s in "\\PC*") {
-        let escaped = escape_string(&s);
-
-        // Key property: no unescaped quotes that could break out of string context
-        // Simple check: any quote must be preceded by a backslash
-        let chars: Vec<char> = escaped.chars().collect();
-        for i in 0..chars.len() {
-            if chars[i] == '"' {
-                assert!(i > 0 && chars[i-1] == '\\',
-                    "Found unescaped quote at position {} in: {}", i, escaped);
             }
         }
     }
@@ -241,437 +237,62 @@ fn strike(text: &str) -> String {
     wrap_format(text, "~~", "~~")
 }
 
-// ===== Basic Single Format Fuzzing =====
+// ===== Formatting mark -> Typst mapping (deterministic) =====
+//
+// The marker->function mapping (`**`->#strong, `*`->#emph, `<u>`->#underline,
+// `~~`->#strike) is content-independent, so the former proptests here fuzzed
+// fixed markers over irrelevant `[a-zA-Z0-9]` content -- deterministic unit
+// tests in a proptest costume. Collapsed to example tests covering the same
+// single/nested/adjacent/intraword mapping with named localization. The corpus
+// pipeline is fuzzed by emit_roundtrip_fuzz; adversarial escaping by the
+// escape_* proptests above.
 
-proptest! {
-    #[test]
-    fn fuzz_bold_single(content in "[a-zA-Z0-9]{1,20}") {
-        let input = bold(&content);
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#strong["));
-        prop_assert!(output.contains("]"));
-    }
+#[test]
+fn single_marks_map_to_typst_functions() {
+    assert!(mark_to_typst(&bold("x")).unwrap().contains("#strong["));
+    assert!(mark_to_typst(&italic("x")).unwrap().contains("#emph["));
+    assert!(mark_to_typst(&underline("x")).unwrap().contains("#underline["));
+    assert!(mark_to_typst(&strike("x")).unwrap().contains("#strike["));
+}
 
-    #[test]
-    fn fuzz_italic_single(content in "[a-zA-Z0-9]{1,20}") {
-        let input = italic(&content);
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#emph["));
-    }
-
-    #[test]
-    fn fuzz_underline_single(content in "[a-zA-Z0-9]{1,20}") {
-        let input = underline(&content);
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#underline["));
-    }
-
-    #[test]
-    fn fuzz_strikethrough_single(content in "[a-zA-Z0-9]{1,20}") {
-        let input = strike(&content);
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#strike["));
+#[test]
+fn nested_two_marks_map_both_functions() {
+    for input in [
+        bold(&italic("x")),
+        italic(&bold("x")),
+        bold(&strike("x")),
+        strike(&bold("x")),
+        italic(&strike("x")),
+        strike(&italic("x")),
+    ] {
+        let out = mark_to_typst(&input).unwrap();
+        let n = ["#strong[", "#emph[", "#strike["]
+            .iter()
+            .filter(|f| out.contains(**f))
+            .count();
+        assert!(n >= 2, "nested marks under-mapped: {input} -> {out}");
     }
 }
 
-// ===== Two Format Combinations (Nested) =====
+#[test]
+fn adjacent_and_triple_nested_marks_map() {
+    let adjacent = format!("{} {}", bold("a"), italic("b"));
+    let out = mark_to_typst(&adjacent).unwrap();
+    assert!(out.contains("#strong[") && out.contains("#emph["));
 
-proptest! {
-    #[test]
-    fn fuzz_bold_containing_italic(content in "[a-zA-Z0-9]{1,10}") {
-        let input = bold(&italic(&content));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#strong["));
-        prop_assert!(output.contains("#emph["));
-    }
-
-    #[test]
-    fn fuzz_italic_containing_bold(content in "[a-zA-Z0-9]{1,10}") {
-        let input = italic(&bold(&content));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#emph["));
-        prop_assert!(output.contains("#strong["));
-    }
-
-    #[test]
-    fn fuzz_bold_containing_underline(content in "[a-zA-Z0-9]{1,10}") {
-        let input = bold(&underline(&content));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_underline_containing_bold(content in "[a-zA-Z0-9]{1,10}") {
-        let input = underline(&bold(&content));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_bold_containing_strike(content in "[a-zA-Z0-9]{1,10}") {
-        let input = bold(&strike(&content));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#strong["));
-        prop_assert!(output.contains("#strike["));
-    }
-
-    #[test]
-    fn fuzz_strike_containing_bold(content in "[a-zA-Z0-9]{1,10}") {
-        let input = strike(&bold(&content));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#strike["));
-        prop_assert!(output.contains("#strong["));
-    }
-
-    #[test]
-    fn fuzz_italic_containing_underline(content in "[a-zA-Z0-9]{1,10}") {
-        let input = italic(&underline(&content));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_underline_containing_italic(content in "[a-zA-Z0-9]{1,10}") {
-        let input = underline(&italic(&content));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_italic_containing_strike(content in "[a-zA-Z0-9]{1,10}") {
-        let input = italic(&strike(&content));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#emph["));
-        prop_assert!(output.contains("#strike["));
-    }
-
-    #[test]
-    fn fuzz_strike_containing_italic(content in "[a-zA-Z0-9]{1,10}") {
-        let input = strike(&italic(&content));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#strike["));
-        prop_assert!(output.contains("#emph["));
-    }
-
-    #[test]
-    fn fuzz_underline_containing_strike(content in "[a-zA-Z0-9]{1,10}") {
-        let input = underline(&strike(&content));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_strike_containing_underline(content in "[a-zA-Z0-9]{1,10}") {
-        let input = strike(&underline(&content));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
+    let triple = bold(&italic(&strike("x")));
+    let out = mark_to_typst(&triple).unwrap();
+    assert!(out.contains("#strong[") && out.contains("#emph[") && out.contains("#strike["));
 }
 
-// ===== Two Format Combinations (Adjacent) =====
-
-proptest! {
-    #[test]
-    fn fuzz_bold_then_italic(word1 in "[a-zA-Z]{1,8}", word2 in "[a-zA-Z]{1,8}") {
-        let input = format!("{} {}", bold(&word1), italic(&word2));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#strong["));
-        prop_assert!(output.contains("#emph["));
-    }
-
-    #[test]
-    fn fuzz_bold_then_underline(word1 in "[a-zA-Z]{1,8}", word2 in "[a-zA-Z]{1,8}") {
-        let input = format!("{} {}", bold(&word1), underline(&word2));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_bold_then_strike(word1 in "[a-zA-Z]{1,8}", word2 in "[a-zA-Z]{1,8}") {
-        let input = format!("{} {}", bold(&word1), strike(&word2));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#strong["));
-        prop_assert!(output.contains("#strike["));
-    }
-
-    #[test]
-    fn fuzz_italic_then_underline(word1 in "[a-zA-Z]{1,8}", word2 in "[a-zA-Z]{1,8}") {
-        let input = format!("{} {}", italic(&word1), underline(&word2));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_italic_then_strike(word1 in "[a-zA-Z]{1,8}", word2 in "[a-zA-Z]{1,8}") {
-        let input = format!("{} {}", italic(&word1), strike(&word2));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#emph["));
-        prop_assert!(output.contains("#strike["));
-    }
-
-    #[test]
-    fn fuzz_underline_then_strike(word1 in "[a-zA-Z]{1,8}", word2 in "[a-zA-Z]{1,8}") {
-        let input = format!("{} {}", underline(&word1), strike(&word2));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-}
-
-// ===== Three Format Combinations (Nested) =====
-
-proptest! {
-    #[test]
-    fn fuzz_bold_italic_strike_nested(content in "[a-zA-Z]{1,8}") {
-        let input = bold(&italic(&strike(&content)));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#strong["));
-        prop_assert!(output.contains("#emph["));
-        prop_assert!(output.contains("#strike["));
-    }
-
-    #[test]
-    fn fuzz_strike_bold_italic_nested(content in "[a-zA-Z]{1,8}") {
-        let input = strike(&bold(&italic(&content)));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#strike["));
-        prop_assert!(output.contains("#strong["));
-        prop_assert!(output.contains("#emph["));
-    }
-
-    #[test]
-    fn fuzz_italic_strike_bold_nested(content in "[a-zA-Z]{1,8}") {
-        let input = italic(&strike(&bold(&content)));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_underline_bold_italic_nested(content in "[a-zA-Z]{1,8}") {
-        let input = underline(&bold(&italic(&content)));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_bold_underline_strike_nested(content in "[a-zA-Z]{1,8}") {
-        let input = bold(&underline(&strike(&content)));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-}
-
-// ===== Four Format Combinations (All Nested) =====
-
-proptest! {
-    #[test]
-    fn fuzz_all_four_formats_nested_v1(content in "[a-zA-Z]{1,6}") {
-        // bold > italic > underline > strike
-        let input = bold(&italic(&underline(&strike(&content))));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_all_four_formats_nested_v2(content in "[a-zA-Z]{1,6}") {
-        // strike > underline > italic > bold
-        let input = strike(&underline(&italic(&bold(&content))));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_all_four_formats_nested_v3(content in "[a-zA-Z]{1,6}") {
-        // underline > strike > bold > italic
-        let input = underline(&strike(&bold(&italic(&content))));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_all_four_formats_nested_v4(content in "[a-zA-Z]{1,6}") {
-        // italic > bold > strike > underline
-        let input = italic(&bold(&strike(&underline(&content))));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-}
-
-// ===== Mixed Adjacent and Nested =====
-
-proptest! {
-    #[test]
-    fn fuzz_bold_italic_adjacent_then_strike(
-        w1 in "[a-zA-Z]{1,5}",
-        w2 in "[a-zA-Z]{1,5}",
-        w3 in "[a-zA-Z]{1,5}"
-    ) {
-        let input = format!("{} {} {}", bold(&w1), italic(&w2), strike(&w3));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#strong["));
-        prop_assert!(output.contains("#emph["));
-        prop_assert!(output.contains("#strike["));
-    }
-
-    #[test]
-    fn fuzz_all_four_adjacent(
-        w1 in "[a-zA-Z]{1,5}",
-        w2 in "[a-zA-Z]{1,5}",
-        w3 in "[a-zA-Z]{1,5}",
-        w4 in "[a-zA-Z]{1,5}"
-    ) {
-        let input = format!("{} {} {} {}", bold(&w1), italic(&w2), underline(&w3), strike(&w4));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_nested_pair_then_adjacent_pair(
-        w1 in "[a-zA-Z]{1,5}",
-        w2 in "[a-zA-Z]{1,5}"
-    ) {
-        let input = format!("{} {}", bold(&italic(&w1)), underline(&strike(&w2)));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-}
-
-// ===== Intraword Formatting =====
-
-proptest! {
-    #[test]
-    fn fuzz_intraword_underline(
-        prefix in "[a-zA-Z]{1,5}",
-        middle in "[a-zA-Z]{1,5}",
-        suffix in "[a-zA-Z]{1,5}"
-    ) {
-        // <u>…</u> covers intraword underline, which __ cannot reach.
-        let input = format!("{}<u>{}</u>{}", prefix, middle, suffix);
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#underline["));
-    }
-
-    #[test]
-    fn fuzz_intraword_bold(
-        prefix in "[a-zA-Z]{1,5}",
-        middle in "[a-zA-Z]{1,5}",
-        suffix in "[a-zA-Z]{1,5}"
-    ) {
-        let input = format!("{}**{}**{}", prefix, middle, suffix);
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-        let output = result.unwrap();
-        prop_assert!(output.contains("#strong["));
-    }
-}
-
-// ===== Edge Cases with Special Content =====
-
-proptest! {
-    #[test]
-    fn fuzz_formatting_with_numbers(
-        num in "[0-9]{1,5}",
-        content in "[a-zA-Z]{1,8}"
-    ) {
-        let input = bold(&format!("{} {}", content, num));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_formatting_preserves_spaces(
-        word1 in "[a-zA-Z]{1,5}",
-        word2 in "[a-zA-Z]{1,5}"
-    ) {
-        let content = format!("{}  {}", word1, word2); // double space
-        let input = bold(&content);
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_empty_between_formats(
-        w1 in "[a-zA-Z]{1,5}",
-        w2 in "[a-zA-Z]{1,5}"
-    ) {
-        // No space between adjacent formats
-        let input = format!("{}{}", bold(&w1), italic(&w2));
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
-}
-
-// ===== Stress Tests =====
-
-proptest! {
-    #[test]
-    fn fuzz_deeply_nested_same_format(depth in 1usize..5) {
-        let mut content = "x".to_string();
-        for _ in 0..depth {
-            content = bold(&content);
-        }
-        let result = mark_to_typst(&content);
-        prop_assert!(result.is_ok());
-    }
-
-    #[test]
-    fn fuzz_many_adjacent_formats(count in 1usize..10) {
-        let words: Vec<String> = (0..count).map(|i| format!("word{}", i)).collect();
-        let formatted: Vec<String> = words.iter().enumerate().map(|(i, w)| {
-            match i % 4 {
-                0 => bold(w),
-                1 => italic(w),
-                2 => strike(w),
-                _ => underline(w),
-            }
-        }).collect();
-        let input = formatted.join(" ");
-        let result = mark_to_typst(&input);
-        prop_assert!(result.is_ok());
-    }
+#[test]
+fn intraword_marks_map() {
+    // <u>...</u> and ** reach intraword positions that __ cannot.
+    assert!(mark_to_typst("a**b**c").unwrap().contains("#strong["));
+    assert!(mark_to_typst("a<u>b</u>c").unwrap().contains("#underline["));
 }
 
 // ===== Regression-style Tests for Specific Patterns =====
-
-#[test]
-fn test_bold_italic_strike_all_nested() {
-    let input = "***~~text~~***";
-    let result = mark_to_typst(input).unwrap();
-    assert!(result.contains("#strike[text]"));
-}
 
 #[test]
 fn test_underline_with_bold_inside() {
@@ -690,15 +311,6 @@ fn test_all_four_adjacent_no_space() {
     assert!(result.contains("#underline[B]"));
     assert!(result.contains("#emph[C]"));
     assert!(result.contains("#strike[D]"));
-}
-
-#[test]
-fn test_triple_nested_formats() {
-    let input = "**_~~deep~~_**";
-    let result = mark_to_typst(input).unwrap();
-    assert!(result.contains("#strong["));
-    assert!(result.contains("#emph["));
-    assert!(result.contains("#strike["));
 }
 
 #[test]

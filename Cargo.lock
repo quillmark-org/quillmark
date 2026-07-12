@@ -2286,6 +2286,7 @@ dependencies = [
  "quillmark-core",
  "quillmark-fixtures",
  "quillmark-pdfform",
+ "quillmark-richtext",
  "quillmark-typst",
  "serde_json",
  "tempfile",
@@ -2309,6 +2310,7 @@ dependencies = [
  "indexmap",
  "pulldown-cmark",
  "quillmark-fixtures",
+ "quillmark-richtext",
  "serde",
  "serde-saphyr",
  "serde_json",
@@ -2329,6 +2331,7 @@ dependencies = [
  "indexmap",
  "proptest",
  "quillmark-core",
+ "quillmark-richtext",
  "quillmark-typst",
  "serde_json",
 ]
@@ -2354,6 +2357,7 @@ dependencies = [
  "quillmark-core",
  "quillmark-fixtures",
  "quillmark-pdf",
+ "quillmark-richtext",
  "serde",
  "serde_json",
 ]
@@ -2369,15 +2373,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "quillmark-richtext"
+version = "0.92.1"
+dependencies = [
+ "proptest",
+ "pulldown-cmark",
+ "quillmark-fixtures",
+ "serde_json",
+ "similar",
+]
+
+[[package]]
 name = "quillmark-typst"
 version = "0.92.1"
 dependencies = [
  "comemo",
  "js-sys",
  "lopdf",
- "pulldown-cmark",
  "quillmark-core",
  "quillmark-pdf",
+ "quillmark-richtext",
  "serde_json",
  "tempfile",
  "thiserror",
@@ -2878,6 +2893,12 @@ name = "simd-adler32"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214"
+
+[[package]]
+name = "similar"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
 
 [[package]]
 name = "simplecss"

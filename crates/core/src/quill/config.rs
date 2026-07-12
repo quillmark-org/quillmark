@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
+use super::types::RICHTEXT_INLINE_TOKEN_MSG;
 use super::{BodyCardSchema, CardSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
 
 /// Canonical string text for a bare scalar unambiguously representable as a
@@ -24,6 +25,29 @@ pub(crate) fn scalar_as_string(value: &serde_json::Value) -> Option<String> {
         serde_json::Value::Number(n) => Some(n.to_string()),
         _ => None,
     }
+}
+
+/// Reduce a lenient value to its authored-string form: a bare string, the
+/// sole element of a length-1 array when that element is a string (the
+/// array-unwrap leniency), or a bare scalar's canonical text (via
+/// [`scalar_as_string`]). `None` for anything else (a multi-element array, an
+/// object, null), leaving the caller's own fallback to apply.
+///
+/// Shared by the `String` and `RichText` coercion branches, which both reduce
+/// a lenient value to a string before adopting it (as the field value itself,
+/// or as markdown to import).
+fn lenient_string(value: &serde_json::Value) -> Option<String> {
+    if let Some(s) = value.as_str() {
+        return Some(s.to_string());
+    }
+    if let Some(s) = value
+        .as_array()
+        .filter(|a| a.len() == 1)
+        .and_then(|a| a[0].as_str())
+    {
+        return Some(s.to_string());
+    }
+    scalar_as_string(value)
 }
 
 /// Top-level configuration for a Quillmark project
@@ -88,6 +112,36 @@ pub enum CoercionError {
     },
 }
 
+/// Write-side leniency mode for [`QuillConfig::conform_value`] — the one axis
+/// that separates the render floor's forgiving coercion from a strict typed
+/// write.
+///
+/// The dispatch is shared; only the arms that *defer to the validation layer*
+/// or *cross type boundaries* branch on this. See `conform_value`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Leniency {
+    /// The render floor's forgiving cascade (today's `coerce_value_strict`
+    /// behavior, unchanged): cross-type scalar coercions apply and a shape a
+    /// type cannot adopt falls through unchanged for the validation layer to
+    /// report.
+    Render,
+    /// A strict typed write ([`Card::commit_field`](crate::document::Card::commit_field)):
+    /// value-parsing normalizations still apply (`"3"` → `3`, a bare scalar
+    /// wraps into a singleton array, richtext markdown imports to corpus), but
+    /// cross-type `Boolean`↔`Number` coercions are dropped and every
+    /// defer-to-validation fall-through becomes a `CoercionError` — so a
+    /// mismatched value fails at the write, not silently at a later render.
+    ///
+    /// "Strict" is asymmetric by target, not absolute: `string` and `array` are
+    /// universal sinks, so a scalar→`string` (`true` → `"true"`) and a
+    /// scalar→singleton-`array` wrap stay lenient even here (both are lossless,
+    /// unambiguous, and author-intended); only the lossy/ambiguous crossings —
+    /// scalar→`object`, `String`→`number`/`bool`, `Boolean`↔`Number` — are
+    /// rejected. A strict write thus still reshapes toward `string`/`array`
+    /// while refusing to invent structure or reinterpret a scalar's type.
+    Write,
+}
+
 impl QuillConfig {
     /// Returns a named card-kind schema by name.
     pub fn card_kind(&self, name: &str) -> Option<&CardSchema> {
@@ -137,7 +191,7 @@ impl QuillConfig {
                 let path = field_name.as_str();
                 coerced.insert(
                     field_name.clone(),
-                    Self::coerce_value_strict(field_value, field_schema, path)?,
+                    Self::conform_value(field_value, field_schema, path, Leniency::Render)?,
                 );
             } else {
                 coerced.insert(field_name.clone(), field_value.clone());
@@ -163,7 +217,7 @@ impl QuillConfig {
                 let path = format!("card_kinds.{card_kind}.{field_name}");
                 coerced.insert(
                     field_name.clone(),
-                    Self::coerce_value_strict(field_value, field_schema, &path)?,
+                    Self::conform_value(field_value, field_schema, &path, Leniency::Render)?,
                 );
             } else {
                 coerced.insert(field_name.clone(), field_value.clone());
@@ -180,10 +234,20 @@ impl QuillConfig {
         super::validation::validate_typed_document(self, doc)
     }
 
-    fn coerce_value_strict(
+    /// The one write-side per-type dispatch: given a value, a field's schema,
+    /// and a [`Leniency`] mode, validate/normalize the value to the canonical
+    /// form the type stores. `Render` is the render floor's forgiving coercion
+    /// (the former `coerce_value_strict`, behavior-preserving); `Write` is the
+    /// strict typed-write commit driving [`Card::commit_field`](crate::document::Card::commit_field).
+    ///
+    /// Validation keeps its own read-only dispatch (`validation::validate_value`),
+    /// synced with this via the shared helpers `scalar_as_string` /
+    /// `decode_richtext_value`.
+    pub(crate) fn conform_value(
         value: &QuillValue,
         field_schema: &super::FieldSchema,
         path: &str,
+        mode: Leniency,
     ) -> Result<QuillValue, CoercionError> {
         use super::FieldType;
 
@@ -209,15 +273,16 @@ impl QuillConfig {
 
                 // Every array carries an element schema (`items`). Coerce each
                 // element against it: scalar items (`string[]`, `integer[]`,
-                // `markdown[]`) coerce element-wise; object items recurse into
+                // `richtext[]`) coerce element-wise; object items recurse into
                 // the element's `properties` via the Object branch.
                 if let Some(items) = &field_schema.items {
                     let mut out = Vec::with_capacity(arr.len());
                     for (idx, elem) in arr.iter().enumerate() {
-                        let coerced = Self::coerce_value_strict(
+                        let coerced = Self::conform_value(
                             &QuillValue::from_json(elem.clone()),
                             items,
                             &format!("{path}[{idx}]"),
+                            mode,
                         )?;
                         out.push(coerced.into_json());
                     }
@@ -241,16 +306,20 @@ impl QuillConfig {
                         return Ok(QuillValue::from_json(serde_json::Value::Bool(false)));
                     }
                 }
-                if let Some(n) = json_value.as_i64() {
-                    return Ok(QuillValue::from_json(serde_json::Value::Bool(n != 0)));
-                }
-                if let Some(n) = json_value.as_f64() {
-                    if n.is_nan() {
-                        return Ok(QuillValue::from_json(serde_json::Value::Bool(false)));
+                // Cross-type number→boolean is a render-floor leniency; a strict
+                // write requires an actual boolean or its `"true"`/`"false"` text.
+                if mode == Leniency::Render {
+                    if let Some(n) = json_value.as_i64() {
+                        return Ok(QuillValue::from_json(serde_json::Value::Bool(n != 0)));
                     }
-                    return Ok(QuillValue::from_json(serde_json::Value::Bool(
-                        n.abs() > f64::EPSILON,
-                    )));
+                    if let Some(n) = json_value.as_f64() {
+                        if n.is_nan() {
+                            return Ok(QuillValue::from_json(serde_json::Value::Bool(false)));
+                        }
+                        return Ok(QuillValue::from_json(serde_json::Value::Bool(
+                            n.abs() > f64::EPSILON,
+                        )));
+                    }
                 }
 
                 Err(CoercionError::Uncoercible {
@@ -280,11 +349,14 @@ impl QuillConfig {
                         reason: "string is not a valid number".to_string(),
                     });
                 }
-                if let Some(b) = json_value.as_bool() {
-                    let n = if b { 1 } else { 0 };
-                    return Ok(QuillValue::from_json(serde_json::Value::Number(
-                        serde_json::Number::from(n),
-                    )));
+                // Cross-type boolean→number is a render-floor leniency only.
+                if mode == Leniency::Render {
+                    if let Some(b) = json_value.as_bool() {
+                        let n = if b { 1 } else { 0 };
+                        return Ok(QuillValue::from_json(serde_json::Value::Number(
+                            serde_json::Number::from(n),
+                        )));
+                    }
                 }
 
                 Err(CoercionError::Uncoercible {
@@ -320,11 +392,14 @@ impl QuillConfig {
                         reason: "string is not a valid integer".to_string(),
                     });
                 }
-                if let Some(b) = json_value.as_bool() {
-                    let n = if b { 1 } else { 0 };
-                    return Ok(QuillValue::from_json(serde_json::Value::Number(
-                        serde_json::Number::from(n),
-                    )));
+                // Cross-type boolean→integer is a render-floor leniency only.
+                if mode == Leniency::Render {
+                    if let Some(b) = json_value.as_bool() {
+                        let n = if b { 1 } else { 0 };
+                        return Ok(QuillValue::from_json(serde_json::Value::Number(
+                            serde_json::Number::from(n),
+                        )));
+                    }
                 }
 
                 Err(CoercionError::Uncoercible {
@@ -334,27 +409,130 @@ impl QuillConfig {
                     reason: "value is not coercible to integer".to_string(),
                 })
             }
-            FieldType::String | FieldType::Markdown => {
+            FieldType::String => {
                 if json_value.is_string() {
                     return Ok(value.clone());
                 }
-                if let Some(arr) = json_value.as_array() {
-                    if arr.len() == 1 {
-                        if let Some(s) = arr[0].as_str() {
-                            return Ok(QuillValue::from_json(serde_json::Value::String(
-                                s.to_string(),
-                            )));
-                        }
-                    }
-                }
-                // Gracious scalar→string: adopt a bare bool/number's canonical
-                // text rather than reject it (an author writing `verified: true`
-                // for a `string` field). Null is handled above; collections fall
+                // Gracious leniency: unwrap a length-1 array's sole string
+                // element, or adopt a bare bool/number's canonical text (an
+                // author writing `verified: true` for a `string` field), rather
+                // than reject it. Null is handled above; other collections fall
                 // through.
-                if let Some(text) = scalar_as_string(json_value) {
+                if let Some(text) = lenient_string(json_value) {
                     return Ok(QuillValue::from_json(serde_json::Value::String(text)));
                 }
-                Ok(value.clone())
+                // A non-stringifiable shape (object, multi-element array): the
+                // render floor defers to validation, a strict write fails now.
+                match mode {
+                    Leniency::Render => Ok(value.clone()),
+                    Leniency::Write => Err(CoercionError::Uncoercible {
+                        path: path.to_string(),
+                        value: json_value.to_string(),
+                        target: "string".to_string(),
+                        reason: "value is not a string".to_string(),
+                    }),
+                }
+            }
+            FieldType::RichText { inline } => {
+                // The seam carries the corpus, so coercion commits the corpus
+                // form: an already-structured value (editor / re-render) is
+                // validated and re-canonicalized; an authored markdown string is
+                // imported. Determinism is inherited from `import` being pure.
+                // An `inline` field additionally requires the resulting corpus to
+                // be single-`Para` (`richtext(inline)`): editors mount a one-line
+                // surface, so multi-block content is a coercion error here, in
+                // lockstep with the validation-layer `richtext::not_inline` check.
+                //
+                // This is the deliberately-lenient sibling of
+                // `document::decode_richtext_value` (used by the strict wire /
+                // literal / validation sites): the string branch below reduces a
+                // bare scalar or length-1 array to text before importing, which
+                // the strict decoder must not do, so it stays open-coded here.
+                let inline_check =
+                    |rt: &quillmark_richtext::RichText| -> Result<(), CoercionError> {
+                        if inline && !rt.is_inline() {
+                            return Err(CoercionError::Uncoercible {
+                                path: path.to_string(),
+                                value: "<richtext>".to_string(),
+                                target: "richtext(inline)".to_string(),
+                                reason: "richtext(inline) requires a single paragraph line \
+                                     with no list/quote container and no islands"
+                                    .to_string(),
+                            });
+                        }
+                        Ok(())
+                    };
+                // A strict write uses `decode_richtext_value` semantics — a
+                // canonical corpus object or a markdown string, nothing else. No
+                // scalar→string reduction (the render floor's lenient cascade
+                // below): a bare scalar for a richtext field fails the write. The
+                // messages mirror `Card::commit_field`'s richtext error variants,
+                // which the bindings key on.
+                if mode == Leniency::Write {
+                    let corpus = match crate::document::decode_richtext_value(json_value) {
+                        Some(result) => result.map_err(|e| CoercionError::Uncoercible {
+                            path: path.to_string(),
+                            value: "<richtext>".to_string(),
+                            target: "richtext".to_string(),
+                            reason: e.into_message(),
+                        })?,
+                        None => {
+                            return Err(CoercionError::Uncoercible {
+                                path: path.to_string(),
+                                value: json_value.to_string(),
+                                target: "richtext".to_string(),
+                                reason: format!(
+                                    "expected a richtext corpus object or a markdown string, got {}",
+                                    match json_value {
+                                        serde_json::Value::Bool(_) => "a boolean",
+                                        serde_json::Value::Number(_) => "a number",
+                                        serde_json::Value::Array(_) => "an array",
+                                        _ => "an unsupported value",
+                                    }
+                                ),
+                            })
+                        }
+                    };
+                    inline_check(&corpus)?;
+                    return Ok(QuillValue::from_json(
+                        quillmark_richtext::serial::to_canonical_value(&corpus),
+                    ));
+                }
+                if json_value.is_object() {
+                    let rt = quillmark_richtext::serial::from_canonical_value(json_value).map_err(
+                        |e| CoercionError::Uncoercible {
+                            path: path.to_string(),
+                            value: "<object>".to_string(),
+                            target: "richtext".to_string(),
+                            reason: format!("not a valid richtext corpus: {e}"),
+                        },
+                    )?;
+                    inline_check(&rt)?;
+                    return Ok(QuillValue::from_json(
+                        quillmark_richtext::serial::to_canonical_value(&rt),
+                    ));
+                }
+                // Reduce to the authored markdown string via the shared
+                // leniency cascade (bare string, length-1 array unwrap, or bare
+                // scalar), then import.
+                let Some(markdown) = lenient_string(json_value) else {
+                    // A shape that is neither corpus nor stringifiable (e.g. a
+                    // multi-element array): leave it for the validation layer to
+                    // report, matching the String branch's fall-through.
+                    return Ok(value.clone());
+                };
+                let rt = quillmark_richtext::import::from_markdown(&markdown).map_err(|e| {
+                    CoercionError::Uncoercible {
+                        path: path.to_string(),
+                        value: markdown.clone(),
+                        target: "richtext".to_string(),
+                        reason: format!("markdown import failed: {e}"),
+                    }
+                })?;
+                inline_check(&rt)?;
+                Ok(QuillValue::from_json(
+                    quillmark_richtext::serial::to_canonical_value(&rt),
+                ))
             }
             FieldType::DateTime => {
                 if json_value.is_null() {
@@ -408,7 +586,7 @@ impl QuillConfig {
             FieldType::Object => {
                 if let Some(obj) = json_value.as_object() {
                     if let Some(props) = &field_schema.properties {
-                        let coerced_obj = Self::coerce_object_props(obj, props, path)?;
+                        let coerced_obj = Self::coerce_object_props(obj, props, path, mode)?;
                         Ok(QuillValue::from_json(serde_json::Value::Object(
                             coerced_obj,
                         )))
@@ -416,7 +594,17 @@ impl QuillConfig {
                         Ok(value.clone())
                     }
                 } else {
-                    Ok(value.clone())
+                    // A non-object value: the render floor defers to validation,
+                    // a strict write fails now.
+                    match mode {
+                        Leniency::Render => Ok(value.clone()),
+                        Leniency::Write => Err(CoercionError::Uncoercible {
+                            path: path.to_string(),
+                            value: json_value.to_string(),
+                            target: "object".to_string(),
+                            reason: "value is not an object".to_string(),
+                        }),
+                    }
                 }
             }
         }
@@ -430,6 +618,7 @@ impl QuillConfig {
         obj: &serde_json::Map<String, serde_json::Value>,
         props: &std::collections::BTreeMap<String, Box<super::FieldSchema>>,
         parent_path: &str,
+        mode: Leniency,
     ) -> Result<serde_json::Map<String, serde_json::Value>, CoercionError> {
         let mut out = serde_json::Map::new();
         for (k, v) in obj {
@@ -437,10 +626,11 @@ impl QuillConfig {
                 let child_path = format!("{parent_path}.{k}");
                 out.insert(
                     k.clone(),
-                    Self::coerce_value_strict(
+                    Self::conform_value(
                         &QuillValue::from_json(v.clone()),
                         prop_schema,
                         &child_path,
+                        mode,
                     )?
                     .into_json(),
                 );
@@ -487,6 +677,9 @@ impl QuillConfig {
                 ),
             );
         }
+        // `inline` on a non-richtext field is rejected earlier and once, when
+        // `from_quill_value` folds the wire key into the `FieldType` enum
+        // (`resolve_richtext_inline`); no second check belongs here.
 
         match schema.r#type {
             FieldType::Object => {
@@ -882,6 +1075,16 @@ impl QuillConfig {
                     "'title' is not a valid field key; use 'description' instead.".to_string(),
                 );
             }
+            if obj.get("type").and_then(|v| v.as_str()) == Some("richtext(inline)") {
+                return Some(format!("{RICHTEXT_INLINE_TOKEN_MSG}."));
+            }
+            if obj.get("type").and_then(|v| v.as_str()) == Some("markdown") {
+                return Some(
+                    "'markdown' is no longer a field type; use type: richtext (block) \
+                     or type: richtext with inline: true."
+                        .to_string(),
+                );
+            }
         }
         None
     }
@@ -1266,7 +1469,7 @@ impl QuillConfig {
         Self::validate_description_singleline(main_description.as_deref(), "main", &mut errors);
 
         // The main entry-point card.
-        let main = CardSchema {
+        let mut main = CardSchema {
             name: "main".to_string(),
             description: main_description,
             fields,
@@ -1424,6 +1627,18 @@ impl QuillConfig {
             }
         }
 
+        // Import every richtext `default` / `example` / `body.example` literal
+        // once into its canonical-corpus companion cache — a pure function of the
+        // Quill.yaml bytes, never serialized. This is where `richtext(inline)`
+        // violations and malformed richtext literals surface as load errors, and
+        // where seeding and the render floor later read a pre-validated corpus
+        // instead of re-importing the markdown per document.
+        populate_card_corpus(&mut main, "main", &mut errors);
+        for card in &mut card_kinds {
+            let label = format!("card_kinds.{}", card.name);
+            populate_card_corpus(card, &label, &mut errors);
+        }
+
         if !errors.is_empty() {
             return Err(errors);
         }
@@ -1459,4 +1674,185 @@ fn example_contains_fence_line(text: &str) -> bool {
         let line = line.strip_suffix('\r').unwrap_or(line);
         crate::document::fences::is_card_yaml_opener_line(line)
     })
+}
+
+/// Whether a field's type tree contains any richtext leaf — the gate for
+/// caching a corpus companion. A scalar (`string`, `integer`, …) never carries
+/// one; an `array<richtext>` or an `object` with a richtext property does.
+fn field_contains_richtext(field: &FieldSchema) -> bool {
+    match &field.r#type {
+        FieldType::RichText { .. } => true,
+        FieldType::Array => field.items.as_deref().is_some_and(field_contains_richtext),
+        FieldType::Object => field
+            .properties
+            .as_ref()
+            .is_some_and(|p| p.values().any(|f| field_contains_richtext(f))),
+        _ => false,
+    }
+}
+
+/// Populate a field's `default_corpus` / `example_corpus` companion caches from
+/// its markdown literals. No-op for a non-richtext field; a failed import or a
+/// `richtext(inline)` violation is appended to `errors` as a load diagnostic.
+fn populate_field_corpus(field: &mut FieldSchema, owner: &str, errors: &mut Vec<Diagnostic>) {
+    if !field_contains_richtext(field) {
+        return;
+    }
+    if let Some(default) = field.default.clone() {
+        match literal_corpus(&default, field, &format!("{owner} `default`")) {
+            Ok(corpus) => field.default_corpus = corpus,
+            Err(d) => errors.push(d),
+        }
+    }
+    if let Some(example) = field.example.clone() {
+        match literal_corpus(&example, field, &format!("{owner} `example`")) {
+            Ok(corpus) => field.example_corpus = corpus,
+            Err(d) => errors.push(d),
+        }
+    }
+}
+
+/// Populate every richtext corpus companion on a card: each field's
+/// `default`/`example`, and the card's `body.example` (block richtext — no
+/// inline constraint; skipped when the body is disabled, since its example is
+/// inert).
+fn populate_card_corpus(card: &mut CardSchema, label: &str, errors: &mut Vec<Diagnostic>) {
+    for (name, field) in card.fields.iter_mut() {
+        populate_field_corpus(field, &format!("{label} field `{name}`"), errors);
+    }
+    let body_enabled = card.body.as_ref().is_none_or(|b| b.enabled != Some(false));
+    if body_enabled {
+        if let Some(body) = card.body.as_mut() {
+            if let Some(example) = body.example.clone() {
+                match crate::document::import_body(&example) {
+                    Ok(rt) => {
+                        body.example_corpus = Some(QuillValue::from_json(
+                            quillmark_richtext::serial::to_canonical_value(&rt),
+                        ));
+                    }
+                    Err(e) => errors.push(
+                        Diagnostic::new(
+                            Severity::Error,
+                            format!("Failed to import {label} `body.example`: {e}"),
+                        )
+                        .with_code("quill::richtext_example_import".to_string()),
+                    ),
+                }
+            }
+        }
+    }
+}
+
+/// Compute the canonical-corpus form of a richtext-bearing schema literal
+/// (`default` / `example`), importing every markdown leaf once and enforcing
+/// `richtext(inline)`. Recurses through `array` / `object` shapes, converting
+/// only their richtext leaves and passing other elements through unchanged.
+/// `Ok(None)` when the literal carries no importable richtext (a null value, or
+/// a field the gate already cleared as non-richtext); `Err` is a load error.
+fn literal_corpus(
+    value: &QuillValue,
+    field: &FieldSchema,
+    label: &str,
+) -> Result<Option<QuillValue>, Diagnostic> {
+    let json = value.as_json();
+    // Null ≡ absent — no data to import, so no companion is cached.
+    if json.is_null() {
+        return Ok(None);
+    }
+    match &field.r#type {
+        FieldType::RichText { inline } => {
+            let rt = match crate::document::decode_richtext_value(json) {
+                Some(Ok(rt)) => rt,
+                Some(Err(e)) => {
+                    let reason = match e {
+                        crate::document::RichtextDecodeError::BadMarkdown(m) => {
+                            format!("markdown import failed: {m}")
+                        }
+                        crate::document::RichtextDecodeError::NotCorpus(m) => {
+                            format!("not a valid richtext corpus: {m}")
+                        }
+                    };
+                    return Err(richtext_literal_error(label, &reason));
+                }
+                None => {
+                    return Err(richtext_literal_error(
+                        label,
+                        "expected a markdown string (richtext literals are authored as markdown)",
+                    ));
+                }
+            };
+            if *inline && !rt.is_inline() {
+                return Err(richtext_inline_error(label));
+            }
+            Ok(Some(QuillValue::from_json(
+                quillmark_richtext::serial::to_canonical_value(&rt),
+            )))
+        }
+        FieldType::Array => {
+            let Some(items) = field.items.as_deref() else {
+                return Ok(None);
+            };
+            if !field_contains_richtext(items) {
+                return Ok(None);
+            }
+            let arr = json.as_array().cloned().unwrap_or_default();
+            let mut out = Vec::with_capacity(arr.len());
+            for (idx, elem) in arr.iter().enumerate() {
+                let elem_v = QuillValue::from_json(elem.clone());
+                let corpus =
+                    literal_corpus(&elem_v, items, &format!("{label}[{idx}]"))?.unwrap_or(elem_v);
+                out.push(corpus.into_json());
+            }
+            Ok(Some(QuillValue::from_json(serde_json::Value::Array(out))))
+        }
+        FieldType::Object => {
+            let Some(props) = field.properties.as_ref() else {
+                return Ok(None);
+            };
+            if !props.values().any(|f| field_contains_richtext(f)) {
+                return Ok(None);
+            }
+            let obj = json.as_object().cloned().unwrap_or_default();
+            let mut out = serde_json::Map::new();
+            for (k, v) in &obj {
+                let converted = match props.get(k) {
+                    Some(pschema) => {
+                        let pv = QuillValue::from_json(v.clone());
+                        literal_corpus(&pv, pschema, &format!("{label}.{k}"))?
+                            .map(QuillValue::into_json)
+                            .unwrap_or_else(|| v.clone())
+                    }
+                    None => v.clone(),
+                };
+                out.insert(k.clone(), converted);
+            }
+            Ok(Some(QuillValue::from_json(serde_json::Value::Object(out))))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// A load diagnostic for a richtext schema literal that failed to import.
+fn richtext_literal_error(label: &str, reason: &str) -> Diagnostic {
+    Diagnostic::new(
+        Severity::Error,
+        format!("Failed to import richtext {label}: {reason}"),
+    )
+    .with_code("quill::richtext_example_import".to_string())
+}
+
+/// A load diagnostic for a `richtext(inline)` schema literal whose corpus spans
+/// more than a single paragraph.
+fn richtext_inline_error(label: &str) -> Diagnostic {
+    Diagnostic::new(
+        Severity::Error,
+        format!(
+            "richtext(inline) {label} must be a single paragraph (no blank lines, \
+             headings, lists, quotes, or tables)"
+        ),
+    )
+    .with_code("richtext::not_inline".to_string())
+    .with_hint(
+        "Reduce the value to one paragraph, or change the field `type:` to `richtext`.".to_string(),
+    )
 }

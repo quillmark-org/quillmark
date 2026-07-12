@@ -119,7 +119,7 @@ impl QuillWorld {
         let mut world = Self::new(source, main)?;
 
         // Inject the quillmark-helper package
-        let windows = world.inject_helper_package(data, meta);
+        let windows = world.inject_helper_package(data, meta)?;
 
         Ok((world, windows))
     }
@@ -134,7 +134,10 @@ impl QuillWorld {
                 .parse()
                 .expect("Invalid helper version"),
         };
-        file_id(Some(spec), VirtualPath::new(rel).expect("valid helper vpath"))
+        file_id(
+            Some(spec),
+            VirtualPath::new(rel).expect("valid helper vpath"),
+        )
     }
 
     /// Replace-or-insert a source. An existing source is edited via
@@ -163,18 +166,19 @@ impl QuillWorld {
         &mut self,
         data: &serde_json::Value,
         meta: &crate::SchemaMeta,
-    ) -> Vec<crate::overlay::FieldWindow> {
+    ) -> Result<Vec<crate::overlay::FieldWindow>, crate::emit::EmitError> {
         let file = Self::helper_fid("lib.typ");
-        let (src, windows) = helper::generate_lib_typ(data, meta);
+        let (src, windows) = helper::generate_lib_typ(data, meta)?;
         self.set_source(file, &src);
-        windows
+        Ok(windows
             .into_iter()
             .map(|w| crate::overlay::FieldWindow {
                 path: w.path,
                 file,
-                range: w.range,
+                range: w.block,
+                segments: w.segments,
             })
-            .collect()
+            .collect())
     }
 
     /// Loads fonts from quill's in-memory file system.

@@ -94,10 +94,35 @@ export interface RenderOptions {
 }
 
 /**
+ * How precisely a {@link CorpusHit.pos} resolved — the marker a caret UI reads
+ * to decide whether to trust the offset. Never sub-cluster: `'cluster'` is the
+ * finest, `'segment'` the floor it degrades to on origin-less ink.
+ *
+ * - `'cluster'` — `pos` is the first corpus char of the cluster under the point
+ *   (an escaped/CJK/shaping cluster floors to its first char). Place the caret
+ *   at `pos` directly.
+ * - `'segment'` — the point hit origin-less ink (list markers, numbering, a
+ *   multi-line code fence's interior), so `pos` degraded to the containing
+ *   segment's start. Treat `pos` as the selected segment, not a caret.
+ */
+export type HitGranularity = 'cluster' | 'segment';
+
+/** A click resolved to a field and USV offset into its RichText. */
+export interface CorpusHit {
+	field: string;
+	pos: number;
+	/**
+	 * Whether {@link pos} is cluster-exact or floored to the segment start
+	 * ({@link HitGranularity}). Absent when the backend does not report it.
+	 */
+	granularity?: HitGranularity;
+}
+
+/**
  * A rendered field region: the quill schema field address (`field`) plus its
  * geometry (`rect`) on the page. Emitted by backends that place schema fields
  * (`pdfform` AcroForm widgets; Typst form-fields and span-tracked content —
- * markdown bodies, `markdown[]` elements, card content fields, direct scalar
+ * richtext bodies, `richtext[]` elements, card content fields, direct scalar
  * references). Only fields with a schema address produce a region — a
  * backend-only widget produces none, and the backend widget name never
  * appears.
@@ -137,6 +162,14 @@ export interface FieldRegion {
 	page: number;
 	/** `[x0, y0, x1, y1]` in PDF points (1/72″), bottom-left origin. */
 	rect: [number, number, number, number];
+	/**
+	 * The corpus slice this box covers — USV `[start, end)` into the field's
+	 * `RichText` for content ink (one segment), absent for a scalar reference
+	 * site or widget. Consumers key segment highlights on it;
+	 * {@link LiveSession.fieldBoxes} unions same-page segments for the
+	 * whole-field box.
+	 */
+	span?: [number, number];
 }
 
 /** Canonical contract every backend build must satisfy. Result of one render. */
@@ -181,10 +214,23 @@ export interface PaintOptions {
  * @experimental Part of the iterative-session/canvas surface — see {@link LiveSession}.
  */
 export interface PaintResult {
-	layoutWidth: number;
+	layoutWidth: number;      // canvas.style.width target; independent of densityScale
 	layoutHeight: number;
-	pixelWidth: number;
+	pixelWidth: number;       // canvas.width the painter wrote (clamped at 16384)
 	pixelHeight: number;
+	/**
+	 * True when `MAX_BACKING_DIMENSION` forced `densityScale` down: the page is
+	 * painted at fewer device pixels than requested and renders soft at the same
+	 * `canvas.style` size. Reads the clamp off the return value instead of the
+	 * `pixelWidth < round(layoutWidth × densityScale)` derivation.
+	 */
+	clamped: boolean;
+	/**
+	 * The `densityScale` actually applied — equal to the requested value unless
+	 * `clamped`, then reduced proportionally. `layoutScale × effectiveDensityScale`
+	 * is the scale the backing store was rasterized at.
+	 */
+	effectiveDensityScale: number;
 }
 
 /**
@@ -260,11 +306,16 @@ export declare class Engine {
 	supportedFormats(quill: Quill): Promise<OutputFormat[]>;
 
 	/**
-	 * Whether `quill`'s backend can paint sessions to a canvas. Same always-free
-	 * probe as `supportedFormats`: answered from the descriptor's required
-	 * `canvas` manifest, no binary load and no quill clone. Both the Typst and
-	 * pdfform backends report `true`; each paints a complete page raster (see
-	 * {@link LiveSession.paint}).
+	 * Whether `quill`'s BACKEND can paint sessions to a canvas — a pre-session
+	 * ESTIMATE, not a fact about any particular compile. Same always-free probe
+	 * as `supportedFormats`: answered from the descriptor's required `canvas`
+	 * manifest, no binary load and no quill clone. Both the Typst and pdfform
+	 * backends report `true` here unconditionally; each paints a complete page
+	 * raster (see {@link LiveSession.paint}) — but a specific compile can still
+	 * refuse to paint (e.g. a 0-page document), so this can answer `true` while
+	 * the resulting {@link LiveSession.supportsCanvas} answers `false`. Gate
+	 * mounting a canvas UI on this; gate the actual `paint` call on the session's
+	 * getter once `open()` has run.
 	 * @experimental Probes the experimental session/canvas surface — see {@link LiveSession}.
 	 */
 	supportsCanvas(quill: Quill): Promise<boolean>;
@@ -292,6 +343,15 @@ export declare class LiveSession {
 	private constructor();
 	readonly pageCount: number;
 	readonly backendId: string;
+	/**
+	 * `true` iff `paint`/`pageSize` will succeed for THIS compile — the
+	 * authoritative answer, derived from the session's canvas seam, so it can
+	 * never disagree with what `paint` actually does. This can be `false` even
+	 * when {@link Engine.supportsCanvas} answered `true` for the same `quill`
+	 * (that probe is a pre-session backend estimate; e.g. a canvas-capable
+	 * backend compiled to a 0-page document has nothing to paint). Re-check
+	 * this getter after `open()` rather than relying on the engine hint alone.
+	 */
 	readonly supportsCanvas: boolean;
 	readonly warnings: Diagnostic[];
 	/**
@@ -321,6 +381,17 @@ export declare class LiveSession {
 	 */
 	regions(): FieldRegion[];
 	/**
+	 * The whole-field highlight boxes for `field` — one union rect per page,
+	 * over the field's `span`-bearing content segments (the "highlight the
+	 * focused field" quantity). Owns the union {@link regions} leaves derived
+	 * (span-filter + per-page union), keeping `regions()` the low-level disjoint
+	 * truth, so a consumer stops reimplementing it. **Content only** — a field
+	 * placed solely as a scalar reference or a bound widget carries no `span`
+	 * and returns `[]`; its box is a single {@link regions} rect. Reflects the
+	 * current compile, like `regions()`.
+	 */
+	fieldBoxes(field: string): FieldRegion[];
+	/**
 	 * The schema field whose content is under a point on `page` — the forward
 	 * (click → field) direction: hit-test a click against the compiled
 	 * document and get back the field address to focus in the editor, or
@@ -332,6 +403,13 @@ export declare class LiveSession {
 	 * *every* placement answers, not just the first.
 	 */
 	fieldAt(page: number, x: number, y: number): string | undefined;
+	/**
+	 * Fine-grained click → corpus position (caret placement). Same PDF-point
+	 * space as {@link fieldAt}; `undefined` off all content ink.
+	 */
+	positionAt(page: number, x: number, y: number): CorpusHit | undefined;
+	/** Corpus position → caret rect — reverse of {@link positionAt}. */
+	locate(field: string, pos: number): FieldRegion | undefined;
 	/** Page geometry in points (1/72″). Report-only; the painter sizes the canvas. */
 	pageSize(page: number): PageSize;
 	/**
@@ -341,7 +419,18 @@ export declare class LiveSession {
 	 * compositing (Typst rasterizes natively; pdfform rasterizes its
 	 * pre-flattened page). Effective rasterization scale is
 	 * `layoutScale × densityScale`, clamped so neither backing dimension exceeds
-	 * 16384 px — detect a clamp via {@link PaintResult.pixelWidth}.
+	 * 16384 px — {@link PaintResult.clamped} reports the clamp and
+	 * {@link PaintResult.effectiveDensityScale} the density actually applied.
+	 *
+	 * The write is a whole-backing-store `putImageData`, which bypasses the 2D
+	 * context transform, `globalAlpha`, and clip: the painter owns the entire
+	 * canvas, so give each visible page its own `` element. You cannot
+	 * paint two pages into one canvas, paint into a sub-rect, or apply a context
+	 * transform through this call — the raster is complete precisely so you never
+	 * need to. Keep the per-page canvases alive while their pages stay near the
+	 * viewport: each `paint` re-rasterizes from scratch, so reusing (pooling) a
+	 * canvas across pages on scroll re-runs a full render, whereas an idle canvas
+	 * retains its pixels for free.
 	 */
 	paint(
 		ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
@@ -349,4 +438,69 @@ export declare class LiveSession {
 		options?: PaintOptions
 	): PaintResult;
 	free(): void;
+}
+
+// ── Typed-editor sugar ──────────────────────────────────────────────────────
+
+/**
+ * Which store a typed write used: `"typed"` when the field is declared in the
+ * quill schema (strict commit — coerced to canonical form, a mismatch throws at
+ * the write) or `"opaque"` when it is not (stored verbatim, like
+ * `Document.setField`). A scalar write ({@link DocumentEditor.set}) returns one;
+ * a batch ({@link DocumentEditor.setAll}) returns a `Record` of them keyed by
+ * field name. The signal exists so a typo'd name silently landing in the opaque
+ * store is visible at the write, not buried until validation.
+ */
+export type Committed = 'typed' | 'opaque';
+
+/**
+ * A `Document` bound to its `Quill` for typed writes — the JS twin of Rust's
+ * `quill.editor(&mut doc)`. Binds the schema source once so writes are bare
+ * `set` / `setAll` / `card(i).set` instead of threading the `quill` handle
+ * through every `commit*` call. Holds both handles by reference and owns
+ * neither — nothing to `free()`.
+ *
+ * `commit*` is the default write path whenever a quill is in hand: it resolves
+ * each field's schema type and typed-commits it, reporting {@link Committed}.
+ * The raw `Document.setField` / `setFields` verbs remain the deliberate
+ * quill-free primitive (standalone data, storage/migration infra, or holding
+ * not-yet-conforming in-progress input) — reach for them only when you
+ * intend the opaque store.
+ */
+export declare class DocumentEditor {
+	constructor(quill: Quill, doc: Document);
+	/** The bound document — the instance passed in, mutated in place. */
+	readonly document: Document;
+	/**
+	 * Typed-commit one main-card field. `"typed"` for a schema field (strict
+	 * coerce, mismatch throws now), `"opaque"` for an unknown one.
+	 */
+	set(name: string, value: unknown): Committed;
+	/**
+	 * Typed-commit several main-card fields atomically — nothing is applied on
+	 * error (throws a {@link QuillmarkError} carrying one diagnostic per
+	 * offending field). On success returns the per-field routing keyed by field
+	 * name, so a whole-form submit still sees which names fell to the opaque
+	 * store.
+	 */
+	setAll(fields: Record<string, unknown>): Record<string, Committed>;
+	/**
+	 * A {@link CardEditor} for the composable card at `index`. Index validity is
+	 * checked lazily at commit time, so this never throws.
+	 */
+	card(index: number): CardEditor;
+}
+
+/**
+ * A composable card bound to its `Quill` for typed writes, from
+ * {@link DocumentEditor.card}. Same verbs as {@link DocumentEditor}, targeting
+ * the card at its bound index; each write throws `IndexOutOfRange` if that index
+ * is out of range.
+ */
+export declare class CardEditor {
+	constructor(quill: Quill, doc: Document, index: number);
+	/** The bound card index. */
+	readonly index: number;
+	set(name: string, value: unknown): Committed;
+	setAll(fields: Record<string, unknown>): Record<string, Committed>;
 }

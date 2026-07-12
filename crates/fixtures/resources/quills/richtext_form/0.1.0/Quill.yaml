@@ -1,0 +1,24 @@
+quill:
+  name: richtext_form
+  version: 0.1.0
+  backend: pdfform
+  description: "PDF form that binds richtext fields, exercising the corpus → plaintext lowering (RichText.text minus island slots)."
+
+main:
+  body:
+    enabled: false
+  fields:
+    headline:
+      type: richtext
+      inline: true
+      default: ""
+      example: "The **headline**"
+      description: "Inline richtext bound to the single-line FullName widget; lowered to plaintext."
+
+    bio:
+      type: richtext
+      default: ""
+      example: "A **bold** claim and _emphasis_, plus a second line."
+      ui:
+        multiline: true
+      description: "Block richtext bound to the multiline Comments widget; lowered to plaintext (markup dropped, islands stripped)."

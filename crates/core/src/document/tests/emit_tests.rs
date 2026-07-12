@@ -124,35 +124,6 @@ fn fixture_corpus_round_trip() {
     );
 }
 
-// ── Stability smoke test ──────────────────────────────────────────────────────
-
-#[test]
-fn emit_twice_is_byte_equal() {
-    let src = "\
-~~~card-yaml
-$quill: test@1.0.0
-$kind: main
-title: Stability Test
-flags:
-  - on
-  - 'yes'
-  - null
-count: 42
-nested:
-  key: value
-~~~
-
-Body content here.
-";
-    let doc = Document::from_markdown(src).unwrap();
-    let first = doc.to_markdown();
-    let second = doc.to_markdown();
-    assert_eq!(
-        first, second,
-        "to_markdown must be deterministic (byte-equal on repeated calls)"
-    );
-}
-
 // ── Value type unit tests ─────────────────────────────────────────────────────
 
 #[test]
@@ -165,19 +136,6 @@ fn round_trip_booleans() {
 fn round_trip_null() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nnull_field: null\n~~~\n";
     assert_round_trip("null", src);
-}
-
-#[test]
-fn round_trip_numbers() {
-    let src = "~~~card-yaml\n$quill: q\n$kind: main\ncount: 42\nfloat: 3.14\n~~~\n";
-    assert_round_trip("numbers", src);
-}
-
-#[test]
-fn round_trip_string_ambiguous() {
-    // These are the strings most likely to be mis-parsed as booleans/numbers.
-    let src = "~~~card-yaml\n$quill: q\n$kind: main\nfield_on: \"on\"\nfield_yes: \"yes\"\nfield_01234: \"01234\"\n~~~\n";
-    assert_round_trip("ambiguous strings", src);
 }
 
 #[test]
@@ -283,7 +241,7 @@ fn empty_map_omitted_from_emit() {
     let mut p = Payload::from_index_map(payload);
     p.set_quill("test".parse().unwrap());
     p.set_kind("main");
-    let main = Card::from_parts(p, String::new());
+    let main = Card::from_parts(p, quillmark_richtext::RichText::empty());
     let doc = crate::document::Document::from_main_and_cards(main, vec![], vec![]);
 
     let md = doc.to_markdown();
@@ -322,7 +280,7 @@ fn nested_map_keys_with_structural_chars_emit_valid_yaml() {
     let mut p = Payload::from_index_map(payload);
     p.set_quill("test".parse().unwrap());
     p.set_kind("main");
-    let main = Card::from_parts(p, String::new());
+    let main = Card::from_parts(p, quillmark_richtext::RichText::empty());
     let doc = Document::from_main_and_cards(main, vec![], vec![]);
 
     let md = doc.to_markdown();

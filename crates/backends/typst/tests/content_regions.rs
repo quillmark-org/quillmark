@@ -35,6 +35,15 @@ fn quill(yaml: &str, plate: &str) -> Quill {
     Quill::from_tree(FileTreeNode::Directory { files }).expect("load quill")
 }
 
+/// The canonical corpus JSON the render seam carries for a richtext field —
+/// these tests drive `Backend::open` directly, so they build the corpus the way
+/// `compile_data` would (`import` then the canonical serializer) rather than
+/// passing a raw markdown string.
+fn corpus(markdown: &str) -> serde_json::Value {
+    let rt = quillmark_richtext::import::from_markdown(markdown).expect("import");
+    quillmark_richtext::serial::to_canonical_value(&rt)
+}
+
 #[test]
 fn content_fields_emit_frame_regions() {
     const YAML: &str = r#"
@@ -48,10 +57,10 @@ typst:
 main:
   fields:
     intro:
-      type: markdown
+      type: richtext
       description: a short intro paragraph
     body:
-      type: markdown
+      type: richtext
       description: a long body that wraps and breaks across pages
 "#;
     const PLATE: &str = r#"
@@ -68,8 +77,8 @@ main:
     // placement should surface one region per page it touches.
     let long = "This is a markdown paragraph that wraps across several lines. ".repeat(200);
     let data = serde_json::json!({
-        "intro": "A **short** intro paragraph on the first page.",
-        "body": long,
+        "intro": corpus("A **short** intro paragraph on the first page."),
+        "body": corpus(&long),
     });
 
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
@@ -129,7 +138,7 @@ typst:
 main:
   fields:
     intro:
-      type: markdown
+      type: richtext
       description: a short paragraph placed twice
 "#;
     const PLATE: &str = r#"
@@ -142,7 +151,7 @@ main:
 
 #data.intro
 "#;
-    let data = serde_json::json!({ "intro": "The same intro, placed twice." });
+    let data = serde_json::json!({ "intro": corpus("The same intro, placed twice.") });
 
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
     let regions = session.regions();
@@ -321,7 +330,7 @@ typst:
 main:
   fields:
     body:
-      type: markdown
+      type: richtext
       description: a body piped through a capture-and-replay package shape
 "#;
     const PLATE: &str = r#"
@@ -345,7 +354,7 @@ main:
   }
 }
 "#;
-    let data = serde_json::json!({ "body": "A body paragraph the package rebuilds." });
+    let data = serde_json::json!({ "body": corpus("A body paragraph the package rebuilds.") });
 
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
     let regions = session.regions();
@@ -362,14 +371,14 @@ quill:
   name: array_regions
   version: 0.1.0
   backend: typst
-  description: markdown[] element region test
+  description: richtext[] element region test
 main:
   fields:
     refs:
       type: array
       items:
-        type: markdown
-      description: a markdown[] field
+        type: richtext
+      description: a richtext[] field
 typst:
   plate_file: plate.typ
 "#;
@@ -381,14 +390,15 @@ typst:
   block(r)
 }
 "#;
-    let data = serde_json::json!({ "refs": ["First reference.", "Second reference."] });
+    let data =
+        serde_json::json!({ "refs": [corpus("First reference."), corpus("Second reference.")] });
 
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
     let regions = session.regions();
     for expected in ["refs.0", "refs.1"] {
         assert!(
             regions.iter().any(|r| r.field == expected),
-            "each markdown[] element gets its own eval site and region {expected:?}: {regions:?}"
+            "each richtext[] element gets its own eval site and region {expected:?}: {regions:?}"
         );
     }
     // Elements are distinct placements, not one unioned `refs` blob.
@@ -414,20 +424,20 @@ typst:
 main:
   fields:
     intro:
-      type: markdown
+      type: richtext
       description: a top-level intro
 card_kinds:
   alpha:
     description: alpha card
     fields:
       note:
-        type: markdown
+        type: richtext
         description: alpha note
   beta:
     description: beta card
     fields:
       note:
-        type: markdown
+        type: richtext
         description: beta note
 "#;
     const PLATE: &str = r#"
@@ -443,11 +453,11 @@ card_kinds:
 }
 "#;
     let data = serde_json::json!({
-        "intro": "Top-level intro.",
+        "intro": corpus("Top-level intro."),
         "$cards": [
-            {"$kind": "alpha", "note": "Alpha one."},
-            {"$kind": "beta",  "note": "Beta one."},
-            {"$kind": "alpha", "note": "Alpha two."},
+            {"$kind": "alpha", "note": corpus("Alpha one.")},
+            {"$kind": "beta",  "note": corpus("Beta one.")},
+            {"$kind": "alpha", "note": corpus("Alpha two.")},
         ],
     });
 
@@ -498,7 +508,10 @@ main:
 #form-field("S", type: "text", value: "x", field: "subjcet")
 "#;
     let err = TypstBackend
-        .open(&quill(YAML, PLATE), &serde_json::json!({ "subject": "typo'd" }))
+        .open(
+            &quill(YAML, PLATE),
+            &serde_json::json!({ "subject": "typo'd" }),
+        )
         .err()
         .expect("a typo'd field binding must fail the compile");
     let msg = format!("{err:?}");
@@ -525,7 +538,7 @@ typst:
 main:
   fields:
     intro:
-      type: markdown
+      type: richtext
       description: a paragraph
     when:
       type: datetime
@@ -538,7 +551,7 @@ main:
 #data.intro
 "#;
     let good = serde_json::json!({
-        "intro": "A stable paragraph the session keeps serving.",
+        "intro": corpus("A stable paragraph the session keeps serving."),
         "when": "2026-07-03",
     });
     let mut session = TypstBackend.open(&quill(YAML, PLATE), &good).expect("open");
@@ -550,8 +563,10 @@ main:
 
     // Shorter content shifts every byte offset in the regenerated helper,
     // and the unparseable date fails the compile at data-assembly time.
-    let bad = serde_json::json!({ "intro": "X", "when": "not-a-date" });
-    session.apply(&bad).expect_err("the bad date must fail the compile");
+    let bad = serde_json::json!({ "intro": corpus("X"), "when": "not-a-date" });
+    session
+        .apply(&bad)
+        .expect_err("the bad date must fail the compile");
 
     assert_eq!(
         session.regions(),
@@ -585,7 +600,7 @@ typst:
 main:
   fields:
     body:
-      type: markdown
+      type: richtext
       description: a long body under headers and footers
 "#;
     const PLATE: &str = r#"
@@ -602,7 +617,7 @@ main:
 #data.body
 "#;
     let long = "A paragraph that wraps and flows across pages. ".repeat(120);
-    let data = serde_json::json!({ "body": long });
+    let data = serde_json::json!({ "body": corpus(&long) });
 
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
     let regions = session.regions();
@@ -715,7 +730,7 @@ typst:
 main:
   fields:
     body:
-      type: markdown
+      type: richtext
       description: a body that may carry malformed inline markup
 "#;
     // The plate proves the int round-tripped: a wrong `i64::MIN` literal makes
@@ -727,7 +742,9 @@ main:
 #data.body
 "#;
     let data = serde_json::json!({
-        "body": "Please <u>sign here",   // unterminated <u>
+        // Import balances the unterminated `<u>` into a closed underline mark, so
+        // the emitter's `#underline[ .. ]` is bracket-balanced by construction.
+        "body": corpus("Please <u>sign here"),
         "n": i64::MIN,
     });
     // Compile success is the assertion: a broken literal or unbalanced block
@@ -789,5 +806,232 @@ main:
         session.field_at(z.page, cx, cy).as_deref(),
         Some("zzz_late"),
         "the later-painted widget wins the click, not the alphabetically-first name"
+    );
+}
+
+#[test]
+fn segment_regions_carry_span_and_field_union_is_striped() {
+    // #829's visible change: a content field breaks into one region **per
+    // paragraph**, each keyed on its corpus span. The whole-field highlight is
+    // the consumer's union of a page's segment rects — so the inter-paragraph
+    // whitespace stays uncovered (striped), unlike the old single solid box.
+    const YAML: &str = r#"
+quill:
+  name: segment_regions
+  version: 0.1.0
+  backend: typst
+  description: per-segment span regions + striped union
+typst:
+  plate_file: plate.typ
+main:
+  fields:
+    body:
+      type: richtext
+      description: a two-paragraph body
+"#;
+    const PLATE: &str = r#"
+#import "@local/quillmark-helper:0.1.0": data
+#set page(width: 612pt, height: 792pt, margin: 72pt)
+#set text(size: 11pt)
+
+#data.body
+"#;
+    let data = serde_json::json!({
+        "body": corpus("First paragraph, alpha.\n\nSecond paragraph, beta."),
+    });
+    let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
+    let body: Vec<_> = session
+        .regions()
+        .into_iter()
+        .filter(|r| r.field == "body")
+        .collect();
+    assert_eq!(
+        body.len(),
+        2,
+        "two paragraphs → two segment regions: {body:?}"
+    );
+    assert!(body.iter().all(|r| r.page == 0), "both on page 0: {body:?}");
+
+    // Each segment carries its own corpus span; the two spans are disjoint and
+    // ordered (segment order is the region sort key).
+    let s0 = body[0].span.expect("segment 0 carries a span");
+    let s1 = body[1].span.expect("segment 1 carries a span");
+    assert!(
+        s0[0] < s0[1] && s1[0] < s1[1],
+        "non-empty spans: {s0:?} {s1:?}"
+    );
+    assert!(s0[1] <= s1[0], "spans disjoint and ordered: {s0:?} {s1:?}");
+
+    // The derived field box (the documented consumer formula — union of a
+    // page's segment rects) leaves the inter-paragraph whitespace uncovered:
+    // the union is taller than the two segment boxes stacked, so a solid
+    // highlight would have to invent the gap between them.
+    let h0 = body[0].rect[3] - body[0].rect[1];
+    let h1 = body[1].rect[3] - body[1].rect[1];
+    let union_lo = body[0].rect[1].min(body[1].rect[1]);
+    let union_hi = body[0].rect[3].max(body[1].rect[3]);
+    assert!(
+        union_hi - union_lo > h0 + h1 + 1.0,
+        "the field union is striped: union {} exceeds segments {h0}+{h1}, so the \
+         blank line between paragraphs is uncovered",
+        union_hi - union_lo
+    );
+}
+
+#[test]
+fn position_at_and_locate_round_trip_a_corpus_offset() {
+    // The two navigation directions compose: a click resolves to a corpus
+    // position inside the field, and locating that position returns a caret
+    // rect back on the same page, inside the field's region. A click off all
+    // content ink resolves to nothing.
+    const YAML: &str = r#"
+quill:
+  name: nav_round_trip
+  version: 0.1.0
+  backend: typst
+  description: position_at / locate round trip
+typst:
+  plate_file: plate.typ
+main:
+  fields:
+    body:
+      type: richtext
+      description: one paragraph
+"#;
+    const PLATE: &str = r#"
+#import "@local/quillmark-helper:0.1.0": data
+#set page(width: 612pt, height: 792pt, margin: 72pt)
+#set text(size: 11pt)
+
+#data.body
+"#;
+    let data = serde_json::json!({ "body": corpus("Alpha beta gamma delta epsilon.") });
+    let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
+    let body: Vec<_> = session
+        .regions()
+        .into_iter()
+        .filter(|r| r.field == "body")
+        .collect();
+    assert_eq!(body.len(), 1, "one paragraph, one region: {body:?}");
+    let region = &body[0];
+    let span = region.span.expect("content region carries a span");
+
+    // A click near the top-left of the paragraph (its first line) resolves to a
+    // corpus position within the segment's span.
+    let cx = region.rect[0] + 5.0;
+    let cy = region.rect[3] - 3.0;
+    let hit = session
+        .position_at(region.page, cx, cy)
+        .expect("a click inside content resolves to a corpus position");
+    assert_eq!(hit.field, "body");
+    assert!(
+        span[0] <= hit.pos && hit.pos <= span[1],
+        "pos {} within span {span:?}",
+        hit.pos
+    );
+    // A hit on prose ink resolves through an owning run — cluster-exact, the
+    // signal a caret UI trusts.
+    assert_eq!(
+        hit.granularity,
+        Some(quillmark_core::HitGranularity::Cluster),
+        "a prose hit is cluster-exact: {hit:?}"
+    );
+
+    // Locating that position returns a caret rect on the same page, inside the
+    // field's region, with `span` collapsed to the caret point.
+    let caret = session
+        .locate("body", hit.pos)
+        .expect("a corpus position locates a caret rect");
+    assert_eq!(caret.page, region.page);
+    assert_eq!(caret.span, Some([hit.pos, hit.pos]));
+    assert!(
+        caret.rect[0] >= region.rect[0] - 1.0
+            && caret.rect[2] <= region.rect[2] + 1.0
+            && caret.rect[1] >= region.rect[1] - 1.0
+            && caret.rect[3] <= region.rect[3] + 1.0,
+        "the caret sits inside the field's region: caret {:?} in {:?}",
+        caret.rect,
+        region.rect
+    );
+
+    // Off all content ink (top-left page corner): nothing.
+    assert_eq!(session.position_at(region.page, 5.0, 5.0), None);
+}
+
+#[test]
+fn position_at_on_a_raw_block_degrades_to_the_segment_start() {
+    // The spike's `#raw` correction: every physical line of a multi-line
+    // `#raw(block: true, "…")` fence shares one resolved node wider than any
+    // per-line run, so per-run inversion cannot pick a line. position_at
+    // degrades to the code **segment's** corpus start — so clicks on different
+    // fence lines resolve to the *same* corpus position (segment-level
+    // correctness kept, per-line precision unavailable), distinct from the
+    // prose paragraph's.
+    const YAML: &str = r#"
+quill:
+  name: raw_degrade
+  version: 0.1.0
+  backend: typst
+  description: raw block segment-start degrade
+typst:
+  plate_file: plate.typ
+main:
+  fields:
+    body:
+      type: richtext
+      description: a paragraph plus a multi-line code fence
+"#;
+    const PLATE: &str = r#"
+#import "@local/quillmark-helper:0.1.0": data
+#set page(width: 612pt, height: 792pt, margin: 72pt)
+#set text(size: 11pt)
+
+#data.body
+"#;
+    let data = serde_json::json!({
+        "body": corpus("Intro prose here.\n\n```\nfirst code line\nsecond code line\nthird code line\n```"),
+    });
+    let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
+    let body: Vec<_> = session
+        .regions()
+        .into_iter()
+        .filter(|r| r.field == "body")
+        .collect();
+    assert_eq!(
+        body.len(),
+        2,
+        "one prose segment, one code segment: {body:?}"
+    );
+    let (prose, code) = (&body[0], &body[1]);
+
+    // Probe a few x offsets so a click reliably lands on a glyph on the target
+    // fence line.
+    let hit_at = |y: f32| {
+        [2.0f32, 6.0, 12.0, 24.0, 48.0]
+            .iter()
+            .find_map(|dx| session.position_at(code.page, code.rect[0] + dx, y))
+    };
+    let top = hit_at(code.rect[3] - 3.0).expect("a click on the first fence line resolves");
+    let bottom = hit_at(code.rect[1] + 3.0).expect("a click on the last fence line resolves");
+    assert_eq!(top.field, "body");
+    assert_eq!(
+        top.pos, bottom.pos,
+        "different fence lines both degrade to the one code-segment start: {top:?} {bottom:?}"
+    );
+    // The degrade is signalled: a caret UI reads `Segment` and treats `pos` as
+    // the selected segment, not a within-segment caret.
+    assert_eq!(
+        top.granularity,
+        Some(quillmark_core::HitGranularity::Segment),
+        "a multi-line fence hit floors to the segment: {top:?}"
+    );
+    assert_eq!(bottom.granularity, Some(quillmark_core::HitGranularity::Segment));
+    // The fence's segment start is distinct from the prose paragraph's content.
+    let prose_hit = session
+        .position_at(prose.page, prose.rect[0] + 5.0, prose.rect[3] - 3.0)
+        .expect("a click in the prose paragraph resolves");
+    assert_ne!(
+        prose_hit.pos, top.pos,
+        "prose and the code fence are different segments: {prose_hit:?} {top:?}"
     );
 }

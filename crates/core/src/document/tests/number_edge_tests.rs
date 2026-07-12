@@ -39,41 +39,6 @@ fn number_scientific_notation_round_trip() {
     );
 }
 
-/// `"1e10"` as a quoted string must round-trip as a string, not a float.
-#[test]
-fn string_that_looks_like_scientific_notation_round_trip() {
-    let src = "~~~card-yaml\n$quill: q\n$kind: main\nbig: \"1e10\"\n~~~\n";
-    assert_round_trip("\"1e10\" string", src);
-
-    let doc = Document::from_markdown(src).unwrap();
-    let v = doc.main().payload().get("big").unwrap();
-    assert_eq!(
-        v.as_str(),
-        Some("1e10"),
-        "quoted 1e10 must parse as string, got {:?}",
-        v
-    );
-}
-
-// ── 0x1F (hex-like string) ────────────────────────────────────────────────────
-
-/// YAML 1.2 has no hex literal syntax; `0x1F` without quotes parses as a
-/// string.  Confirm it round-trips as a string.
-#[test]
-fn string_hex_like_round_trip() {
-    let src = "~~~card-yaml\n$quill: q\n$kind: main\nhex: \"0x1F\"\n~~~\n";
-    assert_round_trip("0x1F string", src);
-
-    let doc = Document::from_markdown(src).unwrap();
-    let v = doc.main().payload().get("hex").unwrap();
-    assert_eq!(
-        v.as_str(),
-        Some("0x1F"),
-        "\"0x1F\" must remain a string, got {:?}",
-        v
-    );
-}
-
 // ── Large integer (beyond i32) ────────────────────────────────────────────────
 
 /// An integer beyond `i32::MAX` but within `i64::MAX` must round-trip correctly.

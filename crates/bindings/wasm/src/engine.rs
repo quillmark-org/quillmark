@@ -3,7 +3,7 @@
 use crate::error::WasmError;
 use crate::types::Diagnostic;
 #[cfg(any(feature = "typst", feature = "pdfform"))]
-use crate::types::{ChangeSet, FieldRegion, RenderOptions, RenderResult};
+use crate::types::{ChangeSet, CorpusHit, FieldRegion, RenderOptions, RenderResult};
 use js_sys::{Array, Uint8Array};
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 use serde::Deserialize;
@@ -46,7 +46,7 @@ export interface QuillCardBody {
  * zero-fills the field). There is no separate `required` axis.
  */
 export interface QuillFieldSchema {
-    type: "string" | "number" | "integer" | "boolean" | "array" | "object" | "datetime" | "markdown";
+    type: "string" | "number" | "integer" | "boolean" | "array" | "object" | "datetime" | "richtext";
     description?: string;
     default?: unknown;
     example?: unknown;
@@ -54,6 +54,10 @@ export interface QuillFieldSchema {
     ui?: QuillFieldUi;
     properties?: Record<string, QuillFieldSchema>;
     items?: QuillFieldSchema;
+    /** Present (and `true`) only on a `richtext` field declared `richtext(inline)`
+     *  — the single-paragraph, container-free, island-free constraint. Core
+     *  serializes `inline: true` into the schema JSON; absent otherwise. */
+    inline?: boolean;
 }
 
 /** Schema entry for the main card or a named card kind. */
@@ -140,7 +144,63 @@ export interface Card {
     ext?: Record<string, unknown>;
     seed?: Record<string, unknown>;
     payloadItems: PayloadItem[];
-    body: string;
+    /**
+     * The card body as canonical RichText-JSON — the source-of-truth content
+     * model. An editor writes this shape back; a markdown string is also accepted
+     * on input (imported). Read `bodyMarkdown` for the markdown projection.
+     */
+    body: RichText | string;
+    /** The body's markdown projection (`export ∘ body`). Read-only; `""` for an empty body. */
+    bodyMarkdown: string;
+}
+
+/**
+ * Canonical richtext corpus — the content model for a card body (and richtext
+ * fields). One text sequence over a single coordinate space (Unicode scalar
+ * values): `text` plus line attributes, anchored `marks`, and embedded
+ * `islands`. Every edit is a splice; markdown is a projection, not the model.
+ * Mirrors `quillmark_richtext::serial`'s canonical JSON encoding.
+ */
+export interface RichText {
+    text: string;
+    lines: RichTextLine[];
+    marks: RichTextMark[];
+    islands: RichTextIsland[];
+}
+
+/** One `\n`-separated segment of `RichText.text`, in order. */
+export type RichTextLine = {
+    containers: RichTextContainer[];
+    /** A within-block hard line break rather than a new block. Omitted (false) in the common case. */
+    continues?: boolean;
+} & (
+    | { kind: "para" }
+    | { kind: "heading"; level: number }
+    | { kind: "code"; lang?: string }
+    | { kind: "island" }
+    | { kind: "rule" }
+);
+
+/** An ancestor block a line nests inside, outermost first. */
+export type RichTextContainer =
+    | { container: "list_item"; ordered: boolean; start: number; ordinal: number }
+    | { container: "quote" };
+
+/** A mark over char range `[start, end)` into `RichText.text`. */
+export type RichTextMark = { start: number; end: number } & (
+    | { type: "strong" | "emph" | "underline" | "strike" | "code" }
+    | { type: "link"; url: string }
+    | { type: "anchor"; id: string }
+    | { type: string; attrs: unknown }
+);
+
+/** A structured object (table, figure, …) occupying one island slot in `RichText.text`. */
+export interface RichTextIsland {
+    id: string;
+    type: string;
+    props: unknown;
+    /** How faithfully the markdown projection can carry this island. */
+    loss: "lossless" | "degraded" | "unrepresentable";
 }
 "#;
 
@@ -149,9 +209,9 @@ export interface Card {
 /// 16k on Safari, lower on memory-constrained devices); 16384 is the
 /// floor that works everywhere we ship to. When a requested
 /// `layoutScale * densityScale` would exceed this, the painter clamps
-/// `densityScale` proportionally and surfaces the actual backing
-/// dimensions in the returned `PaintResult` so consumers can detect the
-/// clamp.
+/// `densityScale` proportionally and reports it on the returned
+/// `PaintResult` (`clamped` / `effectiveDensityScale`, plus the actual
+/// backing dimensions).
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 const MAX_BACKING_DIMENSION: u32 = 16384;
 
@@ -185,9 +245,12 @@ pub struct Quill {
     inner: quillmark::Quill,
 }
 
-/// Live render session: reads (`render`, `paint`, `pageSize`, `regions`, `fieldAt`)
-/// serve the current compile; `apply(doc)` recompiles in place. Apply is
-/// transactional — on throw, every read keeps serving the last-good compile.
+/// Live render session: reads (`render`, `paint`, `pageSize`, `regions`,
+/// `fieldAt`, `positionAt`, `locate`) serve the current compile. `apply(doc)`
+/// recompiles a whole document in place, transactionally (on throw every read
+/// keeps serving the last-good compile). Geometry reads reflect the current
+/// compile; anchoring a caret across edits is the editor's job — re-read
+/// geometry after each committed `apply`.
 ///
 /// **Empty documents.** A zero-page document yields a valid session
 /// (`pageCount === 0`); `paint(ctx, 0)` or `pageSize(0)` throws with
@@ -561,7 +624,7 @@ impl Document {
     /// the tag advances only when the wire format changes, not on every release.
     #[wasm_bindgen(js_name = currentSchemaVersion)]
     pub fn current_schema_version() -> String {
-        quillmark_core::document::SCHEMA_V0_92_0.to_string()
+        quillmark_core::document::SCHEMA_V0_93_0.to_string()
     }
 
     /// Authoring-format rules for the card-yaml markdown surface. The canonical
@@ -631,6 +694,25 @@ impl Document {
             inner: self.inner.clone(),
             parse_warnings: self.parse_warnings.clone(),
         }
+    }
+
+    /// Replace this document's contents **in place** from a versioned storage
+    /// DTO string — the mutating twin of the static
+    /// [`fromJson`](Document::from_json) constructor. Parse-time `warnings` are
+    /// cleared. Throws (leaving the document unchanged) on an invalid DTO.
+    ///
+    /// The cross-WASM-memory `Document` bridge: mutate a document on a
+    /// backend-memory clone, then write the mutated state back into the caller's
+    /// canonical document with this — the one way to update a live handle across
+    /// the linear-memory seam without the caller re-binding its variable.
+    #[wasm_bindgen(js_name = loadJson)]
+    pub fn load_json(&mut self, json: &str) -> Result<(), JsValue> {
+        let inner: quillmark_core::Document = serde_json::from_str(json).map_err(|e| {
+            WasmError::from(format!("loadJson: invalid storage DTO: {e}")).to_js_value()
+        })?;
+        self.inner = inner;
+        self.parse_warnings.clear();
+        Ok(())
     }
 
     #[wasm_bindgen(getter, js_name = quillRef)]
@@ -880,8 +962,108 @@ impl Document {
     }
 
     #[wasm_bindgen(js_name = replaceBody)]
-    pub fn replace_body(&mut self, body: &str) {
-        self.inner.main_mut().replace_body(body);
+    pub fn replace_body(&mut self, body: &str) -> Result<(), JsValue> {
+        self.inner
+            .main_mut()
+            .replace_body(body)
+            .map_err(|e| edit_error_to_js(&e))
+    }
+
+    /// Set the main card's body from a **corpus object** (canonical
+    /// RichText-JSON) or a markdown string — the corpus-native counterpart to
+    /// [`replaceBody`](Document::replace_body), which accepts markdown only.
+    /// `body` is the same `RichText | string` shape `Document.main.body` reads
+    /// back, so a corpus-native editor writes the body straight through with no
+    /// lossy markdown round-trip (a corpus-only mark such as `underline`
+    /// survives). `null` clears the body to empty. Closes the read/write
+    /// asymmetry `doc.main.body` (corpus in, corpus out) otherwise had.
+    ///
+    /// Throws `[EditError::BodyDecode]` if `body` is neither a valid corpus
+    /// object, an importable markdown string, nor `null`.
+    #[wasm_bindgen(js_name = setBody)]
+    pub fn set_body(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "RichText | string")] body: JsValue,
+    ) -> Result<(), JsValue> {
+        let json = js_value_to_json(body, "setBody")?;
+        self.inner
+            .main_mut()
+            .set_body_value(&json)
+            .map_err(|e| edit_error_to_js(&e))
+    }
+
+    /// Typed field write on the main card, resolving the field's schema `type`
+    /// from `quill` — the one write verb for **every** field type (richtext,
+    /// scalar, array, object). The schema carries the `inline` constraint, so no
+    /// type token or flag is passed. A richtext-typed field stores the canonical
+    /// corpus, so identity marks (anchors, island ids) and corpus-only marks
+    /// (e.g. `underline`) live on it and survive compiles and the storage DTO.
+    /// Values use the encoding the seam already speaks: a corpus object
+    /// or markdown string for richtext, a scalar/array/object otherwise.
+    ///
+    /// Returns `"typed"` when the field is declared in the schema (strict
+    /// commit — a mismatch throws now, not at render) or `"opaque"` when it is
+    /// not (stored verbatim, like [`setField`](Document::set_field)). Throws
+    /// `[EditError::FieldConform]` / `[EditError::FieldRichtextDecode]` /
+    /// `[EditError::FieldRichtextNotInline]` on a typed mismatch and
+    /// `[EditError::InvalidFieldName]` on a malformed name.
+    ///
+    /// The `quill` handle is passed per call because a `Document` carries only a
+    /// `$quill` reference, not the resolved schema.
+    #[wasm_bindgen(js_name = commitField, unchecked_return_type = "\"typed\" | \"opaque\"")]
+    pub fn commit_field(
+        &mut self,
+        quill: &Quill,
+        name: &str,
+        value: JsValue,
+    ) -> Result<String, JsValue> {
+        let json = js_value_to_json(value, "commitField")?;
+        let qv = quillmark_core::QuillValue::from_json(json);
+        quill
+            .inner
+            .editor(&mut self.inner)
+            .set(name, qv)
+            .map(|c| c.as_str().to_string())
+            .map_err(|e| edit_error_to_js(&e))
+    }
+
+    /// Batched twin of [`commitField`](Document::commit_field): typed-commit
+    /// several main-card fields atomically, resolving each field's schema `type`
+    /// from `quill`. All-or-nothing with the same per-field-diagnostic error
+    /// contract as [`setFields`](Document::set_fields) — nothing is applied on
+    /// error and the thrown error's `diagnostics` carry one entry per offending
+    /// field.
+    ///
+    /// On success returns a `Record<string, "typed" | "opaque">` keyed by the
+    /// input field names, in input order — the batch form of `commitField`'s
+    /// scalar return, so a whole-form submit still sees which names fell to the
+    /// opaque store (a likely typo) instead of losing that signal to the batch,
+    /// the way [`setFields`](Document::set_fields) does.
+    #[wasm_bindgen(js_name = commitFields, unchecked_return_type = "Record<string, \"typed\" | \"opaque\">")]
+    pub fn commit_fields(
+        &mut self,
+        quill: &Quill,
+        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let batch = js_value_to_field_batch(&fields, "commitFields")?;
+        let routing = quill
+            .inner
+            .editor(&mut self.inner)
+            .set_all(batch)
+            .map_err(edit_errors_to_js)?;
+        committed_batch_to_js(routing, "commitFields")
+    }
+
+    /// The markdown projection of a richtext field on the main card
+    /// (`export ∘ decode`) — the field-level twin of `main.bodyMarkdown`.
+    /// Returns `undefined` when the field is absent or does not decode as
+    /// richtext (e.g. a plain scalar written via [`setField`](Document::set_field)).
+    #[wasm_bindgen(js_name = fieldMarkdown, unchecked_return_type = "string | undefined")]
+    pub fn field_markdown(&self, name: &str) -> JsValue {
+        match self.inner.main().field_markdown(name) {
+            Some(md) => JsValue::from_str(&md),
+            None => JsValue::UNDEFINED,
+        }
     }
 
     /// Build a fresh `Card` from a kind and a flat field map — the ergonomic
@@ -915,15 +1097,24 @@ impl Document {
                 nested_fills: Vec::new(),
             })
             .collect();
-        let wire = quillmark_core::CardWire {
+        let string_wire = quillmark_core::CardWire {
             kind,
             quill: None,
             id: None,
             ext: None,
             seed: None,
             payload_items,
-            body: body.unwrap_or_default(),
+            // The `body` argument is markdown; `Card::try_from` imports it to the
+            // corpus (and validates the fields).
+            body: serde_json::Value::String(body.unwrap_or_default()),
+            body_markdown: String::new(),
         };
+        // Round-trip through `Card` so the emitted card carries the corpus body
+        // (the source-of-truth shape `cards()` returns) plus its markdown
+        // projection, not the raw authored string.
+        let card = quillmark_core::Card::try_from(string_wire)
+            .map_err(|e| WasmError::from(format!("makeCard: {e}")).to_js_value())?;
+        let wire = quillmark_core::CardWire::from(&card);
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         wire.serialize(&serializer).map_err(|e| {
             WasmError::from(format!("makeCard: serialization failed: {e}")).to_js_value()
@@ -985,33 +1176,99 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Update a field on the card at `index`.
+    /// Set a field on the card at `index` — the card-indexed twin of
+    /// [`setField`](Document::set_field). Stores the value opaquely.
     /// Throws if `index` is out of range, `name` is reserved or invalid.
-    #[wasm_bindgen(js_name = updateCardField)]
-    pub fn update_card_field(
+    #[wasm_bindgen(js_name = setCardField)]
+    pub fn set_card_field(
         &mut self,
         index: usize,
         name: &str,
         value: JsValue,
     ) -> Result<(), JsValue> {
-        let json = js_value_to_json(value, "updateCardField")?;
+        let json = js_value_to_json(value, "setCardField")?;
         let qv = quillmark_core::QuillValue::from_json(json);
         self.card_mut_or_throw(index)?
             .set_field(name, qv)
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Batched twin of [`updateCardField`](Document::update_card_field): set
+    /// Typed field write on the composable card at `index` — the card-indexed
+    /// twin of [`commitField`](Document::commit_field). Resolves the field's
+    /// type from the card's `$kind` schema in `quill` and strict-commits it.
+    ///
+    /// Returns `"typed"` / `"opaque"` (see `commitField`). Throws
+    /// `[EditError::IndexOutOfRange]` when `index` is out of range, and the same
+    /// typed-mismatch / name errors as `commitField`.
+    #[wasm_bindgen(js_name = commitCardField, unchecked_return_type = "\"typed\" | \"opaque\"")]
+    pub fn commit_card_field(
+        &mut self,
+        quill: &Quill,
+        index: usize,
+        name: &str,
+        value: JsValue,
+    ) -> Result<String, JsValue> {
+        let json = js_value_to_json(value, "commitCardField")?;
+        let qv = quillmark_core::QuillValue::from_json(json);
+        let mut editor = quill.inner.editor(&mut self.inner);
+        let mut card = editor.card(index).map_err(|e| edit_error_to_js(&e))?;
+        card.set(name, qv)
+            .map(|c| c.as_str().to_string())
+            .map_err(|e| edit_error_to_js(&e))
+    }
+
+    /// Batched twin of [`commitCardField`](Document::commit_card_field):
+    /// typed-commit several fields on the card at `index` atomically, resolving
+    /// each field's type from the card's `$kind` schema in `quill`. All-or-nothing
+    /// with the same per-field-diagnostic contract as
+    /// [`commitFields`](Document::commit_fields), whose `Record<string, "typed" |
+    /// "opaque">` success shape it mirrors. Throws `[EditError::IndexOutOfRange]`
+    /// when `index` is out of range.
+    #[wasm_bindgen(js_name = commitCardFields, unchecked_return_type = "Record<string, \"typed\" | \"opaque\">")]
+    pub fn commit_card_fields(
+        &mut self,
+        quill: &Quill,
+        index: usize,
+        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let batch = js_value_to_field_batch(&fields, "commitCardFields")?;
+        let mut editor = quill.inner.editor(&mut self.inner);
+        let routing = editor
+            .card(index)
+            .map_err(|e| edit_error_to_js(&e))?
+            .set_all(batch)
+            .map_err(edit_errors_to_js)?;
+        committed_batch_to_js(routing, "commitCardFields")
+    }
+
+    /// The markdown projection of a richtext field on the card at `index` — the
+    /// card-indexed twin of [`fieldMarkdown`](Document::field_markdown). Returns
+    /// `undefined` when `index` is out of range, the field is absent, or it does
+    /// not decode as richtext.
+    #[wasm_bindgen(js_name = cardFieldMarkdown, unchecked_return_type = "string | undefined")]
+    pub fn card_field_markdown(&self, index: usize, name: &str) -> JsValue {
+        match self
+            .inner
+            .cards()
+            .get(index)
+            .and_then(|c| c.field_markdown(name))
+        {
+            Some(md) => JsValue::from_str(&md),
+            None => JsValue::UNDEFINED,
+        }
+    }
+
+    /// Batched twin of [`setCardField`](Document::set_card_field): set
     /// several fields on the card at `index` atomically. Same all-or-nothing,
     /// one-diagnostic-per-field contract as [`setFields`](Document::set_fields).
     /// Throws if `index` is out of range.
-    #[wasm_bindgen(js_name = updateCardFields)]
-    pub fn update_card_fields(
+    #[wasm_bindgen(js_name = setCardFields)]
+    pub fn set_card_fields(
         &mut self,
         index: usize,
         #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: JsValue,
     ) -> Result<(), JsValue> {
-        let batch = js_value_to_field_batch(&fields, "updateCardFields")?;
+        let batch = js_value_to_field_batch(&fields, "setCardFields")?;
         self.card_mut_or_throw(index)?
             .set_fields(batch)
             .map_err(edit_errors_to_js)
@@ -1031,11 +1288,44 @@ impl Document {
         })
     }
 
-    /// Replace the body of the card at `index`. Throws if out of range.
-    #[wasm_bindgen(js_name = updateCardBody)]
-    pub fn update_card_body(&mut self, index: usize, body: &str) -> Result<(), JsValue> {
-        self.card_mut_or_throw(index)?.replace_body(body);
-        Ok(())
+    /// Replace the body of the card at `index` from a markdown string — the
+    /// card-indexed twin of [`replaceBody`](Document::replace_body). Throws if
+    /// out of range.
+    #[wasm_bindgen(js_name = replaceCardBody)]
+    pub fn replace_card_body(&mut self, index: usize, body: &str) -> Result<(), JsValue> {
+        self.card_mut_or_throw(index)?
+            .replace_body(body)
+            .map_err(|e| edit_error_to_js(&e))
+    }
+
+    /// Set the body of the card at `index` from a **corpus object** (canonical
+    /// RichText-JSON) or a markdown string — the card-indexed twin of
+    /// [`setBody`](Document::set_body), and the corpus-native counterpart to
+    /// [`replaceCardBody`](Document::replace_card_body), which accepts markdown
+    /// only. `body` is the same `RichText | string` shape `Document.cards[i].body`
+    /// reads back, so a corpus-native editor writes a card body straight through
+    /// with no lossy markdown round-trip — a corpus-only mark such as `underline`,
+    /// and anchor/island identity ids, survive. `null` clears the body to empty.
+    ///
+    /// A card body is reachable only here: `$body` is rejected by
+    /// [`commitCardField`](Document::commit_card_field) (the reserved `$`-prefix
+    /// fails the field-name check), so the field channel cannot address it. This
+    /// closes the last markdown-forced write in the corpus surface — a non-main
+    /// card body (issue #892).
+    ///
+    /// Throws `[EditError::BodyDecode]` if `body` is neither a valid corpus
+    /// object, an importable markdown string, nor `null`, and
+    /// `[EditError::IndexOutOfRange]` when the card is absent.
+    #[wasm_bindgen(js_name = setCardBody)]
+    pub fn set_card_body(
+        &mut self,
+        index: usize,
+        #[wasm_bindgen(unchecked_param_type = "RichText | string")] body: JsValue,
+    ) -> Result<(), JsValue> {
+        let json = js_value_to_json(body, "setCardBody")?;
+        self.card_mut_or_throw(index)?
+            .set_body_value(&json)
+            .map_err(|e| edit_error_to_js(&e))
     }
 }
 
@@ -1073,6 +1363,22 @@ fn edit_errors_to_js(errors: Vec<(String, quillmark_core::EditError)>) -> JsValu
         })
         .collect();
     WasmError { diagnostics }.to_js_value()
+}
+
+/// Serialize a batched typed-write routing — one `(name, `[`Committed`]`)` per
+/// field, in input order — to a JS `Record<string, "typed" | "opaque">`. The
+/// batch form of `commitField`'s scalar return: object key order follows the
+/// input (`preserve_order` is on workspace-wide), so a caller reads which names
+/// fell to the opaque store straight off the object.
+fn committed_batch_to_js(
+    routing: Vec<(String, quillmark_core::Committed)>,
+    ctx: &str,
+) -> Result<JsValue, JsValue> {
+    let map: serde_json::Map<String, serde_json::Value> = routing
+        .into_iter()
+        .map(|(name, c)| (name, serde_json::Value::String(c.as_str().to_string())))
+        .collect();
+    serialize_or_throw(&map, ctx)
 }
 
 /// Deserialize a plain JS object into the `(name, value)` batch
@@ -1162,7 +1468,18 @@ fn js_to_card(value: &JsValue) -> Result<quillmark_core::Card, JsValue> {
     // a flat `{ kind, fields }` object fails loudly instead of yielding a
     // silently-empty card.
     if let Some(obj) = value.dyn_ref::<js_sys::Object>() {
-        const ALLOWED: &[&str] = &["kind", "quill", "id", "ext", "seed", "payloadItems", "body"];
+        const ALLOWED: &[&str] = &[
+            "kind",
+            "quill",
+            "id",
+            "ext",
+            "seed",
+            "payloadItems",
+            "body",
+            // The read-only markdown projection; accepted (and ignored) so a card
+            // returned by `cards()` round-trips back through `pushCard`.
+            "bodyMarkdown",
+        ];
         for key in js_sys::Object::keys(obj).iter() {
             if let Some(k) = key.as_string() {
                 if !ALLOWED.contains(&k.as_str()) {
@@ -1317,12 +1634,22 @@ export interface PaintOptions {
  *   Equal to `round(layoutWidth * densityScale)` ×
  *   `round(layoutHeight * densityScale)` *unless* the requested backing
  *   exceeded the painter's safe maximum (16384 px per side), in which
- *   case `densityScale` was clamped to fit. Detect clamping via
- *   `pixelWidth < round(layoutWidth * densityScale)`.
+ *   case `densityScale` was clamped to fit.
+ * - `clamped` — `true` when that 16384-px clamp fired, so the page is
+ *   painted at fewer device pixels than requested and renders soft at the
+ *   same `canvas.style` size. Reads the clamp off the return value instead
+ *   of the `pixelWidth < round(layoutWidth * densityScale)` derivation.
+ * - `effectiveDensityScale` — the `densityScale` actually applied: the
+ *   requested value unless `clamped`, then reduced proportionally.
+ *   `layoutScale * effectiveDensityScale` is the scale the backing store
+ *   was rasterized at.
  *
  * The painter owns `canvas.width` / `canvas.height`; consumers must not
  * write to them. The painter does **not** touch `canvas.style.*`;
- * consumers own layout.
+ * consumers own layout. The write is a whole-backing-store `putImageData`,
+ * which bypasses the 2D context transform, `globalAlpha`, and clip: give
+ * each visible page its own `` — you cannot composite two pages, a
+ * sub-rect, or a context transform through `paint`.
  *
  * For `OffscreenCanvasRenderingContext2D` (Worker rasterization, no
  * DOM), `layoutWidth` / `layoutHeight` are informational — there's no
@@ -1333,6 +1660,8 @@ export interface PaintResult {
     layoutHeight: number;
     pixelWidth: number;
     pixelHeight: number;
+    clamped: boolean;
+    effectiveDensityScale: number;
 }
 "#;
 
@@ -1382,13 +1711,7 @@ impl LiveSession {
     /// success reads serve the new compile; repaint `dirtyPages ∩ visible`.
     #[wasm_bindgen(js_name = apply)]
     pub fn apply(&mut self, doc: &Document) -> Result<ChangeSet, JsValue> {
-        self.config
-            .check_quill_reference(&doc.inner)
-            .map_err(|e| WasmError::from(e).to_js_value())?;
-        let json_data = self
-            .config
-            .compile_data(&doc.inner)
-            .map_err(|e| WasmError::from(e).to_js_value())?;
+        let json_data = self.compile_checked(&doc.inner)?;
         let cs = self
             .inner
             .apply(&json_data)
@@ -1432,6 +1755,26 @@ impl LiveSession {
         serialize_or_throw(&regions, "regions")
     }
 
+    /// The whole-field highlight boxes for `field` — one union rect per page,
+    /// over the field's `span`-bearing content segments. The convenience that
+    /// owns the union `regions()` leaves derived: it keeps `regions()` the
+    /// low-level disjoint truth (#829) and folds the span-filter + per-page
+    /// union here, so a "highlight the focused field" consumer stops
+    /// reimplementing it. **Content only** — a field placed solely as a scalar
+    /// reference or a bound widget carries no `span` and returns `[]`; its box
+    /// is a single `regions()` rect. Reflects the current compile, like
+    /// `regions()`.
+    #[wasm_bindgen(js_name = fieldBoxes, unchecked_return_type = "FieldRegion[]")]
+    pub fn field_boxes(&self, field: &str) -> Result<JsValue, JsValue> {
+        let boxes: Vec<FieldRegion> = self
+            .inner
+            .field_boxes(field)
+            .into_iter()
+            .map(Into::into)
+            .collect();
+        serialize_or_throw(&boxes, "fieldBoxes")
+    }
+
     /// The schema field whose content is under a point on `page` — the
     /// forward (click → field) direction: hit-test a click against the
     /// compiled document and get back the field address to focus in the
@@ -1444,6 +1787,29 @@ impl LiveSession {
     #[wasm_bindgen(js_name = fieldAt)]
     pub fn field_at(&self, page: usize, x: f32, y: f32) -> Option<String> {
         self.inner.field_at(page, x, y)
+    }
+
+    /// A point → **corpus position** — the fine-grained click direction:
+    /// hit-test a point and get back the field *and* a USV offset into its
+    /// `RichText` (for placing a caret or mapping a selection into the content
+    /// model), or `undefined` off all content ink. `x`/`y` are PDF points,
+    /// bottom-left origin — the same space as `fieldAt`. The offset is
+    /// cluster-exact and degrades to the containing segment's start on
+    /// origin-less ink (list markers, a code fence's interior). See
+    /// `CorpusHit`.
+    #[wasm_bindgen(js_name = positionAt)]
+    pub fn position_at(&self, page: usize, x: f32, y: f32) -> Option<CorpusHit> {
+        self.inner.position_at(page, x, y).map(Into::into)
+    }
+
+    /// A corpus position → **caret rect** — the reverse of `positionAt`: given
+    /// a field and a USV offset into its `RichText`, return the box (in the
+    /// same bottom-left PDF-point space as `FieldRegion.rect`) to draw a caret
+    /// at, its `span` collapsed to `[pos, pos]`; `undefined` when the field
+    /// places no tracked content or the offset maps to no drawn glyph.
+    #[wasm_bindgen(js_name = locate)]
+    pub fn locate(&self, field: &str, pos: usize) -> Option<FieldRegion> {
+        self.inner.locate(field, pos).map(Into::into)
     }
 
     /// Page dimensions in points (1 pt = 1/72 inch).
@@ -1468,7 +1834,13 @@ impl LiveSession {
     /// `OffscreenCanvasRenderingContext2D`. The painter owns
     /// `canvas.width`/`height` (no `clearRect` needed); consumers own
     /// `canvas.style.*`. If `layoutScale * densityScale` exceeds 16384 px
-    /// per side, `densityScale` is clamped — detect via `PaintResult.pixelWidth`.
+    /// per side, `densityScale` is clamped — `PaintResult.clamped` reports it and
+    /// `PaintResult.effectiveDensityScale` carries the density actually applied.
+    ///
+    /// `put_image_data` writes the whole backing store, bypassing the 2D
+    /// context's transform, `globalAlpha`, and clip: the painter owns the entire
+    /// canvas, so each visible page needs its own `` — you cannot composite
+    /// two pages, a sub-rect, or a context transform through this call.
     ///
     /// Throws if the backend has no canvas painter, `page` is out of range,
     /// `ctx` is the wrong type, or either scale is non-finite or `<= 0`.
@@ -1521,7 +1893,8 @@ impl LiveSession {
         let desired_h = (layout_height * requested_density as f64).round();
         let max_dim = desired_w.max(desired_h);
 
-        let effective_density = if max_dim > MAX_BACKING_DIMENSION as f64 {
+        let clamped = max_dim > MAX_BACKING_DIMENSION as f64;
+        let effective_density = if clamped {
             (requested_density as f64) * (MAX_BACKING_DIMENSION as f64 / max_dim)
         } else {
             requested_density as f64
@@ -1573,6 +1946,8 @@ impl LiveSession {
             layout_height,
             pixel_width: pixel_w,
             pixel_height: pixel_h,
+            clamped,
+            effective_density_scale: effective_density,
         };
         let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         result
@@ -1605,6 +1980,19 @@ impl LiveSession {
             self.inner.page_count()
         ))
         .to_js_value()
+    }
+
+    /// The compile preamble used by `apply`: verify
+    /// `doc` still references this session's quill, then compile it to plate
+    /// data through the same schema pipeline as `open`. Errors map to JS via
+    /// `WasmError`, as the render path does.
+    fn compile_checked(&self, doc: &quillmark_core::Document) -> Result<serde_json::Value, JsValue> {
+        self.config
+            .check_quill_reference(doc)
+            .map_err(|e| WasmError::from(e).to_js_value())?;
+        self.config
+            .compile_data(doc)
+            .map_err(|e| WasmError::from(e).to_js_value())
     }
 }
 
@@ -1683,4 +2071,13 @@ struct PaintResult {
     layout_height: f64,
     pixel_width: u32,
     pixel_height: u32,
+    /// True when `MAX_BACKING_DIMENSION` forced `densityScale` down: the page is
+    /// painted at fewer device pixels than requested, so it renders soft at the
+    /// same `canvas.style` size. The honest form of the pixel-dim derivation
+    /// consumers would otherwise reinvent.
+    clamped: bool,
+    /// The `densityScale` actually applied — equal to the requested value unless
+    /// `clamped`, then reduced proportionally. `layoutScale × effectiveDensityScale`
+    /// is the scale the backing store was rasterized at.
+    effective_density_scale: f64,
 }

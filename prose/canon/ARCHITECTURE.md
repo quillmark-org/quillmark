@@ -16,9 +16,22 @@ Quillmark is a schema-driven document engine: it turns Markdown with card-yaml b
 
 ### `quillmark-core`
 
-Foundation types and traits. No backend dependencies; backends depend on this crate.
+Foundation types and traits; depends on `quillmark-richtext` (the leaf rich-text
+primitive one layer below it). No backend dependencies; backends depend on this
+crate.
 
 Key exports: `Backend`, `Artifact`, `OutputFormat`, `RenderOptions`, `LiveSession`, `Document`, `Quill`, `FileTreeNode`, `QuillIgnore`, `RenderError`, `Diagnostic`, `Severity`, `Location`, `RenderResult`, `QuillValue`, `QuillReference`, `Version`, `VersionSelector`. `Quill` is the single quill type — portable, validated data with the pure config-read operations (`validate`, `schema`, `metadata`, `blueprint`, `seed_*`, `compile_data`, `dry_run`); construct it with `Quill::from_tree`.
+
+### `quillmark-richtext`
+
+The leaf rich-text primitive `quillmark-core` depends on: the `RichText` corpus
+model (one USV text with line attributes, anchored marks, embedded islands), its
+canonical byte-deterministic serialization (the frozen wire form storage and the
+render seam share), the markdown⇄corpus import/export codecs, and edit deltas.
+The workspace's only markdown parser (`pulldown-cmark`) lives here, in
+`quillmark-richtext::import`, run once at ingest. **Invariant:** the markdown
+engine appears exactly once in the workspace; no render path parses markdown —
+backends lower the corpus.
 
 ### `quillmark` (orchestration)
 
@@ -26,7 +39,7 @@ High-level API: `Quillmark` (the engine — a backend registry + render dispatch
 
 ### `backends/quillmark-typst`
 
-Implements `Backend` for PDF, SVG, and PNG. Converts Markdown fields to Typst markup inside `open()`. Resolves fonts and assets. See [PLATE_DATA.md](PLATE_DATA.md).
+Implements `Backend` for PDF, SVG, and PNG. Lowers each richtext content field's corpus to Typst markup at codegen (`emit::emit_richtext`), recording a per-segment source map. Resolves fonts and assets. See [CONVERT.md](CONVERT.md) and [PLATE_DATA.md](PLATE_DATA.md).
 
 ### `backends/quillmark-pdfform`
 

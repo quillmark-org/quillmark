@@ -356,7 +356,9 @@ fn default_producer() -> String {
 
 /// Map a stamp-spine [`PdfError`] to the backend's `RenderError` at the boundary.
 fn map_pdf_err(e: PdfError) -> RenderError {
-    RenderError::from_diag(Diagnostic::new(Severity::Error, e.message).with_code(e.code.to_string()))
+    RenderError::from_diag(
+        Diagnostic::new(Severity::Error, e.message).with_code(e.code.to_string()),
+    )
 }
 
 /// A single-diagnostic `RenderError` with `code`.

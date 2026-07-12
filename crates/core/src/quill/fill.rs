@@ -19,12 +19,12 @@ use crate::value::QuillValue;
 /// The type-empty (zero) value for `field`: the leanest value satisfying its
 /// declared type.
 ///
-/// Blank for most types — `""` (string/markdown/datetime), `0`, `false`, `[]`.
-/// `enum` has no empty member, so it zeroes to the first declared variant. An
-/// `object` with `properties` is shape-valid only when every property is
-/// present, so it zeroes (recursively) to an object with every property at its
-/// own zero value, not a bare `{}` (which only a property-less object degrades
-/// to).
+/// Blank for most types — `""` (string/datetime), `0`, `false`, `[]`, and the
+/// empty corpus for richtext. `enum` has no empty member, so it zeroes to the
+/// first declared variant. An `object` with `properties` is shape-valid only
+/// when every property is present, so it zeroes (recursively) to an object with
+/// every property at its own zero value, not a bare `{}` (which only a
+/// property-less object degrades to).
 pub fn zero_value(field: &FieldSchema) -> QuillValue {
     if let Some(values) = &field.enum_values {
         let first = values.first().cloned().unwrap_or_default();
@@ -47,7 +47,14 @@ pub fn zero_value(field: &FieldSchema) -> QuillValue {
         },
         FieldType::Integer | FieldType::Number => json!(0),
         FieldType::Boolean => json!(false),
-        // String / Markdown / DateTime: `""` is schema-valid for all three.
+        // A richtext field's zero is the empty corpus, not `""` — the seam
+        // carries canonical RichText-JSON, so the render floor must zero-fill an
+        // absent richtext field with a corpus the backend can lower. The empty
+        // corpus is single-`Para`, so it satisfies `richtext(inline)` too.
+        FieldType::RichText { .. } => {
+            quillmark_richtext::serial::to_canonical_value(&quillmark_richtext::RichText::empty())
+        }
+        // String / DateTime: `""` is schema-valid for both.
         _ => json!(""),
     };
     QuillValue::from_json(json)

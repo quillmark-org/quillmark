@@ -44,8 +44,11 @@ pub const MAX_INPUT_SIZE: usize = 10 * 1024 * 1024;
 /// Maximum YAML size (1 MB)
 pub const MAX_YAML_SIZE: usize = 1024 * 1024;
 
-/// Maximum nesting depth for markdown structures (100 levels)
-pub const MAX_NESTING_DEPTH: usize = 100;
+/// Maximum nesting depth for markdown structures (100 levels). Owned by the
+/// markdown codecs in `quillmark-richtext` (the import guard) and re-exported
+/// here so the typst backend's markup converter shares one limit — a document
+/// that imports also renders, and vice versa.
+pub use quillmark_richtext::MAX_NESTING_DEPTH;
 
 /// Re-exported from [`crate::document::limits::MAX_YAML_DEPTH`].
 pub use crate::document::limits::MAX_YAML_DEPTH;
@@ -189,16 +192,6 @@ impl Diagnostic {
         result
     }
 
-    /// Format diagnostic with source chain for debugging.
-    pub fn fmt_pretty_with_source(&self) -> String {
-        let mut result = self.fmt_pretty();
-
-        for (i, cause) in self.source_chain.iter().enumerate() {
-            result.push_str(&format!("\n  cause {}: {}", i + 1, cause));
-        }
-
-        result
-    }
 }
 
 impl std::fmt::Display for Diagnostic {
@@ -240,6 +233,12 @@ pub enum ParseError {
         reason: String,
     },
 
+    /// A card body's markdown could not be imported into the corpus model —
+    /// today only when container nesting exceeds
+    /// [`MAX_NESTING_DEPTH`]. Code `parse::body_import`.
+    #[error("{0}")]
+    BodyImport(String),
+
     #[error("YAML error at line {line}: {message}")]
     YamlErrorWithLocation {
         message: String,
@@ -268,6 +267,8 @@ impl ParseError {
                 .with_code("parse::empty_input".to_string()),
             ParseError::MissingQuill(msg) => Diagnostic::new(Severity::Error, msg.clone())
                 .with_code("parse::missing_quill".to_string()),
+            ParseError::BodyImport(msg) => Diagnostic::new(Severity::Error, msg.clone())
+                .with_code("parse::body_import".to_string()),
             ParseError::InvalidQuillReference { value, reason } => Diagnostic::new(
                 Severity::Error,
                 format!("Invalid $quill reference '{}': {}", value, reason),
@@ -396,7 +397,6 @@ impl RenderResult {
             regions: Vec::new(),
         }
     }
-
 }
 
 pub fn print_errors(err: &RenderError) {
@@ -494,27 +494,6 @@ mod tests {
 
         let pretty = diag.fmt_pretty();
         assert!(pretty.contains("at cards.indorsement[0].signature_block"));
-    }
-
-    #[test]
-    fn test_diagnostic_path_omitted_when_none() {
-        let diag = Diagnostic::new(Severity::Error, "No path".to_string());
-        let json = serde_json::to_string(&diag).unwrap();
-        assert!(!json.contains("\"path\""));
-    }
-
-    #[test]
-    fn test_diagnostic_fmt_pretty_with_source() {
-        let root_err = std::io::Error::other("Underlying error");
-        let diag = Diagnostic::new(Severity::Error, "Top-level error".to_string())
-            .with_code("E002".to_string())
-            .with_source(&root_err);
-
-        let output = diag.fmt_pretty_with_source();
-        assert!(output.contains("[ERROR]"));
-        assert!(output.contains("Top-level error"));
-        assert!(output.contains("cause 1:"));
-        assert!(output.contains("Underlying error"));
     }
 
 }

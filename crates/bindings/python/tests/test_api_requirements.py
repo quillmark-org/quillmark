@@ -86,7 +86,7 @@ def test_blank_document_constructor():
     doc = Document("test_quill")
     assert doc.quill_ref == "test_quill"
     assert doc.card_count == 0
-    assert doc.body == ""
+    assert doc.body_markdown == ""
     assert field_keys(doc.main) == []
     doc.set_fields({"title": "Hello"})
     assert field(doc.main, "title") == "Hello"
@@ -196,14 +196,14 @@ def test_set_fields_reports_every_violation_and_applies_nothing():
     assert not has_field(doc.main, "ok_field")
 
 
-def test_update_card_fields_batch():
-    """update_card_fields is the card-indexed twin of set_fields."""
+def test_set_card_fields_batch():
+    """set_card_fields is the card-indexed twin of set_fields."""
     doc = Document.from_markdown(MD_WITH_CARDS)
-    doc.update_card_fields(0, {"foo": "baz", "extra": 1})
+    doc.set_card_fields(0, {"foo": "baz", "extra": 1})
     assert field(doc.cards[0], "foo") == "baz"
     assert field(doc.cards[0], "extra") == 1
     with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
-        doc.update_card_fields(99, {"foo": "v"})
+        doc.set_card_fields(99, {"foo": "v"})
 
 
 def test_remove_field_existing():
@@ -231,7 +231,7 @@ def test_replace_body():
     """replace_body replaces the global Markdown body."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.replace_body("New body content.")
-    assert doc.body == "New body content."
+    assert doc.body_markdown == "New body content.\n"
 
 
 def test_push_card():
@@ -240,7 +240,7 @@ def test_push_card():
     doc.push_card({"kind": "note", "body": "Card body."})
     assert len(doc.cards) == 1
     assert doc.cards[0]["kind"] == "note"
-    assert doc.cards[0]["body"] == "Card body."
+    assert doc.cards[0]["body_markdown"] == "Card body.\n"
 
 
 def test_push_card_invalid_kind():
@@ -266,7 +266,20 @@ def test_remove_card_then_push_card_round_trips_fields():
     assert len(doc.cards) == 1
     assert doc.cards[0]["kind"] == "note"
     assert field(doc.cards[0], "author") == "Alice"  # field survived the round-trip
-    assert doc.cards[0]["body"] == "Body"
+    assert doc.cards[0]["body_markdown"] == "Body\n"
+
+
+def test_push_card_accepts_corpus_dict_body():
+    """`body` on a pushed card may be the canonical corpus dict (the shape
+    `cards()`/`remove_card` emit), not just a markdown string — exercises
+    `py_dict_to_card`'s corpus-dict input path."""
+    doc = Document.from_markdown(SIMPLE_MD)
+    doc.push_card({"kind": "note", "body": "**Bold** body."})
+    corpus_body = doc.cards[0]["body"]
+    assert isinstance(corpus_body, dict)
+
+    doc.push_card({"kind": "note", "body": corpus_body})
+    assert doc.cards[1]["body_markdown"] == doc.cards[0]["body_markdown"]
 
 
 def test_make_card_accepts_any_kind_push_card_is_the_gate():
@@ -343,32 +356,32 @@ def test_move_card_out_of_range():
         doc.move_card(10, 0)
 
 
-def test_update_card_field():
-    """update_card_field sets a field on a specific card."""
+def test_set_card_field():
+    """set_card_field sets a field on a specific card."""
     doc = Document.from_markdown(MD_WITH_CARDS)
-    doc.update_card_field(0, "content", "hello")
+    doc.set_card_field(0, "content", "hello")
     assert field(doc.cards[0], "content") == "hello"
 
 
-def test_update_card_field_out_of_range():
-    """update_card_field raises EditError when card index is out of range."""
+def test_set_card_field_out_of_range():
+    """set_card_field raises EditError when card index is out of range."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
     with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
-        doc.update_card_field(0, "title", "x")
+        doc.set_card_field(0, "title", "x")
 
 
-def test_update_card_body():
-    """update_card_body replaces the card body."""
+def test_replace_card_body():
+    """replace_card_body replaces the card body."""
     doc = Document.from_markdown(MD_WITH_CARDS)
-    doc.update_card_body(0, "New card body.")
-    assert doc.cards[0]["body"] == "New card body."
+    doc.replace_card_body(0, "New card body.")
+    assert doc.cards[0]["body_markdown"] == "New card body.\n"
 
 
-def test_update_card_body_out_of_range():
-    """update_card_body raises EditError when card index is out of range."""
+def test_replace_card_body_out_of_range():
+    """replace_card_body raises EditError when card index is out of range."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
     with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
-        doc.update_card_body(0, "x")
+        doc.replace_card_body(0, "x")
 
 
 def test_set_ext_adds_map():
@@ -525,11 +538,11 @@ def test_to_markdown_general_round_trip():
     # Re-parse and assert structure survives
     doc2 = Document.from_markdown(emitted)
     assert field(doc2.main, "title") == "New Title"
-    assert doc2.body.rstrip("\n") == "Updated body"
+    assert doc2.body_markdown.rstrip("\n") == "Updated body"
     assert len(doc2.cards) == original_card_count + 1
     assert doc2.cards[0]["kind"] == "note"
     assert field(doc2.cards[0], "author") == "Alice"
-    assert doc2.cards[0]["body"] == "Hello"
+    assert doc2.cards[0]["body_markdown"] == "Hello\n"
 
 
 def test_to_markdown_ambiguous_string_survival():
@@ -563,3 +576,104 @@ def test_to_markdown_ambiguous_string_survival():
     assert field(doc2.main, "str_null") == "null"
     assert field(doc2.main, "octal_str") == "01234"
     assert field(doc2.main, "date_str") == "2024-01-15"
+
+
+# ── Typed field writes — commit_field / commit_card_field ─────────────────────
+
+
+def _richtext_form_quill():
+    """The richtext_form fixture quill (headline: richtext inline, bio: richtext)."""
+    return Quill.from_path(str(_latest_version(QUILLS_PATH / "richtext_form")))
+
+
+def test_commit_field_richtext_typed():
+    """commit_field resolves a richtext field's type and stores canonical corpus."""
+    quill = _richtext_form_quill()
+    doc = Document("richtext_form@0.1.0")
+    assert doc.commit_field(quill, "bio", "A **bold** intro.") == "typed"
+    value = field(doc.main, "bio")
+    # Stored structurally as the corpus dict, not the authored markdown string.
+    assert isinstance(value, dict)
+    assert value["text"] == "A bold intro."
+
+
+def test_commit_field_unknown_field_is_opaque():
+    """A field absent from the schema stores opaquely, and the caller is told."""
+    quill = _richtext_form_quill()
+    doc = Document("richtext_form@0.1.0")
+    assert doc.commit_field(quill, "stray", "x") == "opaque"
+    assert field(doc.main, "stray") == "x"
+
+
+def test_commit_field_inline_violation_raises():
+    """A richtext(inline) field rejects multi-block content at the write."""
+    quill = _richtext_form_quill()
+    doc = Document("richtext_form@0.1.0")
+    with pytest.raises(QuillmarkError, match="FieldRichtextNotInline"):
+        doc.commit_field(quill, "headline", "line one\n\nline two")
+
+
+def test_commit_card_field_index_out_of_range():
+    """commit_card_field surfaces IndexOutOfRange for a missing card."""
+    quill = _richtext_form_quill()
+    doc = Document("richtext_form@0.1.0")
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+        doc.commit_card_field(quill, 0, "body", "x")
+
+
+# ── Typed batched writes — commit_fields / commit_card_fields ─────────────────
+
+
+def _taro_quill():
+    """The taro fixture quill (main: string fields; card kind `quotes`)."""
+    return Quill.from_path(str(_latest_version(QUILLS_PATH / "taro")))
+
+
+def test_commit_fields_typed_batch_reports_routing():
+    """commit_fields typed-commits a batch and returns per-field routing."""
+    quill = _richtext_form_quill()
+    doc = Document("richtext_form@0.1.0")
+    routing = doc.commit_fields(quill, {"bio": "A **bold** intro.", "headline": "Hi"})
+    # Both are schema fields → typed, keyed by field name.
+    assert routing == {"bio": "typed", "headline": "typed"}
+    # And the richtext value was coerced to the corpus, not stored verbatim.
+    assert isinstance(field(doc.main, "bio"), dict)
+
+
+def test_commit_fields_reports_opaque_field_on_success():
+    """A typo the schema does not own stores opaquely and shows in the routing."""
+    quill = _richtext_form_quill()
+    doc = Document("richtext_form@0.1.0")
+    routing = doc.commit_fields(quill, {"bio": "hi", "titel": "oops"})
+    assert routing == {"bio": "typed", "titel": "opaque"}
+    # The signal set_fields drops: which names fell to the opaque store.
+    opaque = [n for n, r in routing.items() if r == "opaque"]
+    assert opaque == ["titel"]
+
+
+def test_commit_fields_is_all_or_nothing():
+    """A richtext(inline) violation aborts the whole batch — nothing lingers."""
+    quill = _richtext_form_quill()
+    doc = Document("richtext_form@0.1.0")
+    with pytest.raises(QuillmarkError, match="FieldRichtextNotInline"):
+        doc.commit_fields(quill, {"bio": "ok", "headline": "line one\n\nline two"})
+    assert not has_field(doc.main, "bio")
+
+
+def test_commit_card_fields_typed_batch_reports_routing():
+    """commit_card_fields resolves the card's $kind schema and routes per field."""
+    quill = _taro_quill()
+    doc = Document("taro@0.1.0")
+    doc.push_card(Document.make_card("quotes"))
+    routing = doc.commit_card_fields(quill, 0, {"author": "Ada", "stray": "x"})
+    # `author` is declared on the `quotes` kind; `stray` is not.
+    assert routing == {"author": "typed", "stray": "opaque"}
+    assert field(doc.cards[0], "author") == "Ada"
+
+
+def test_commit_card_fields_index_out_of_range():
+    """commit_card_fields surfaces IndexOutOfRange for a missing card."""
+    quill = _taro_quill()
+    doc = Document("taro@0.1.0")
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+        doc.commit_card_fields(quill, 0, {"author": "x"})

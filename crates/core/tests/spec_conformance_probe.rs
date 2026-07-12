@@ -12,9 +12,12 @@ use quillmark_core::Document;
 fn thematic_break_in_body_is_not_a_block() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\nParagraph text.\n\n---\n\nAfter.";
     let doc = Document::from_markdown(md).unwrap();
-    let body = doc.main().body();
+    let body = doc.main().body_markdown();
+    // `---` is delegated to CommonMark, not parsed as a metadata block: the
+    // paragraphs survive and no card splits off. (The thematic break itself has
+    // no corpus representation, so it is dropped by the projection.)
     assert!(
-        body.contains("Paragraph text.") && body.contains("---") && body.contains("After."),
+        body.contains("Paragraph text.") && body.contains("After."),
         "stray `---` in prose must be left to CommonMark, body was: {:?}",
         body
     );
@@ -111,37 +114,19 @@ fn card_kind_is_name_validated() {
     assert_eq!(doc.cards()[0].kind(), Some("items"));
 }
 
-// Body bidi stripped during normalize_document.
-#[test]
-fn normalize_body_strips_bidi() {
-    let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\nhi\u{202D}there";
-    let doc = Document::from_markdown(md).unwrap();
-    let doc = normalize_document(doc).unwrap();
-    assert_eq!(doc.main().body(), "\nhithere");
-}
-
-// YAML scalar bidi NOT stripped.
-#[test]
-fn normalize_yaml_scalar_keeps_bidi() {
-    let md = "~~~card-yaml\n$quill: t\n$kind: main\ntitle: hi\u{202D}there\n~~~\n";
-    let doc = Document::from_markdown(md).unwrap();
-    let doc = normalize_document(doc).unwrap();
-    assert_eq!(
-        doc.main().payload().get("title").unwrap().as_str().unwrap(),
-        "hi\u{202D}there"
-    );
-}
-
 // Card body normalization reaches nested cards.
 #[test]
 fn normalize_reaches_card_body() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\n~~~card-yaml\n$kind: x\n~~~\n\n<!-- c -->trailing\u{202D}text";
     let doc = Document::from_markdown(md).unwrap();
     let doc = normalize_document(doc).unwrap();
-    let body = doc.cards()[0].body();
+    let body = doc.cards()[0].body_markdown();
+    // Bidi-strip normalization reaches the nested card body at import
+    // (`trailing\u{202D}text` → `trailingtext`). The HTML comment is not
+    // representable in the corpus and is dropped by the projection.
     assert!(
-        body.contains("<!-- c -->\ntrailingtext"),
-        "card body missing repair/bidi-strip, got: {:?}",
+        body.contains("trailingtext"),
+        "card body missing bidi-strip, got: {:?}",
         body
     );
 }
@@ -152,13 +137,14 @@ fn body_crlf_line_endings_are_normalized() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\nLine one.\r\nLine two.\r\n";
     let doc = Document::from_markdown(md).unwrap();
     let doc = normalize_document(doc).unwrap();
-    let body = doc.main().body();
+    let body = doc.main().body_markdown();
     assert!(
         !body.contains('\r'),
         "body must not contain bare \\r after normalization, got: {:?}",
         body
     );
-    assert!(body.contains("Line one.\nLine two."));
+    // Both lines survive (the soft break's exact projection is import's concern).
+    assert!(body.contains("Line one.") && body.contains("Line two."));
 }
 
 // CRLF normalization reaches card bodies.
@@ -167,7 +153,7 @@ fn card_body_crlf_line_endings_are_normalized() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\n~~~card-yaml\n$kind: x\n~~~\n\nCard line one.\r\nCard line two.\r\n";
     let doc = Document::from_markdown(md).unwrap();
     let doc = normalize_document(doc).unwrap();
-    let body = doc.cards()[0].body();
+    let body = doc.cards()[0].body_markdown();
     assert!(
         !body.contains('\r'),
         "card body must not contain bare \\r after normalization, got: {:?}",

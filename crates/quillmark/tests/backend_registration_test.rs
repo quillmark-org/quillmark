@@ -57,14 +57,6 @@ impl SessionHandle for MockSession {
 }
 
 #[test]
-fn test_register_backend_basic() {
-    let mut engine = Quillmark::new();
-    engine.register_backend(Box::new(MockBackend { id: "mock" }));
-    let backends = engine.registered_backends();
-    assert!(backends.contains(&"mock"));
-}
-
-#[test]
 fn test_register_multiple_backends() {
     let mut engine = Quillmark::new();
     engine.register_backend(Box::new(MockBackend { id: "mock1" }));

@@ -87,9 +87,9 @@ Per field, in order:
    **Unendorsed** field there is normally no `# e.g.` line: the example inlines
    directly as the `!must_fill` marker's suggested value (see "Placeholder
    value precedence"), so a separate hint would be redundant. The one exception
-   is `markdown`, which never inlines its example as the value — an Unendorsed
-   markdown field with an `example:` therefore keeps the `# e.g.` line (see
-   "Markdown fields").
+   is `richtext`, which never inlines its example as the value — an Unendorsed
+   richtext field with an `example:` therefore keeps the `# e.g.` line (see
+   "Richtext fields").
 
 That's it. There is no leading `# required`, `# enum:`, `# default:`, or
 `# type:` — those collapse into the inline.
@@ -100,7 +100,7 @@ Form: **`# <type>[<format>]`**
 
 - **Type slot** (mandatory, first): one of
   `string`, `integer`, `number`, `boolean`, `array`, `object`,
-  `markdown`, `datetime`, `enum`.
+  `richtext`, `datetime`, `enum`.
   Every field is labeled — there is no "self-evident" exemption.
   (`object` requires a `properties` map; freeform untyped objects are not
   supported. `object` also appears in the format slot of typed-table fields
@@ -108,10 +108,12 @@ Form: **`# <type>[<format>]`**
 - **Format slot** (optional, in `<…>` angle brackets): refines the type
   when the refinement carries information beyond the type name itself.
   - `datetime<YYYY-MM-DD[Thh:mm:ss]>`
-  - `array<string>`, `array<integer>`, `array<object>`, …
+  - `richtext<markdown>`, `richtext(inline)<markdown>` — the `<markdown>` slot
+    names the surface encoding an author writes over the corpus model
+  - `array<string>`, `array<integer>`, `array<object>`, `array<richtext<markdown>>`, …
   - `enum<a | b | c>`
-  - omitted for `string`, `integer`, `number`, `boolean`, `object`,
-    `markdown` (nothing meaningful to refine).
+  - omitted for `string`, `integer`, `number`, `boolean`, `object`
+    (nothing meaningful to refine).
 
 The inline annotation is **purely structural** — it carries the type (and
 optional format), nothing else. Shippability is conveyed by the **value cell**,
@@ -153,7 +155,7 @@ Examples:
 | `count: 0 # integer` | Endorsed integer (type-empty default, shippable as-is) |
 | `active: false # boolean` | Endorsed boolean (type-empty default, shippable as-is) |
 | `notes: "" # string` | Endorsed empty string (the "skippable" cell, now Endorsed) |
-| `bio: !must_fill # markdown` | Unendorsed markdown — bare marker (see "Markdown fields") |
+| `bio: !must_fill # richtext<markdown>` | Unendorsed richtext — bare marker (see "Richtext fields") |
 | `recipient: !must_fill # array<string>` | Unendorsed array of strings |
 | `date: !must_fill # datetime<YYYY-MM-DD[Thh:mm:ss]>` | Unendorsed datetime |
 | `severity: !must_fill # enum<low \| medium \| high>` | Unendorsed enum |
@@ -182,9 +184,9 @@ signal on its own.
 An `example` on an **Endorsed** field never becomes the rendered value — it
 surfaces in the `# e.g.` leading line instead. Only **Unendorsed** fields
 inline the example as the marker's suggested value. This holds uniformly for
-scalars, arrays, typed tables, and typed dictionaries — **except `markdown`**,
+scalars, arrays, typed tables, and typed dictionaries — **except `richtext`**,
 which never inlines its example as a value in either endorsement state; its
-`example:` always surfaces as the `# e.g.` line (see "Markdown fields").
+`example:` always surfaces as the `# e.g.` line (see "Richtext fields").
 
 All fields render as **live YAML** — no commented-out fields. The `!must_fill`
 marker is the sole "must fill" signal: a reader's mental model is one rule —
@@ -199,29 +201,33 @@ The marker is stamped where the LLM types the value:
 |---|---|---|
 | `string`, `integer`, `number`, `boolean`, `datetime`, `enum` | On the field | `name: !must_fill # string` |
 | `array<scalar>` | On the field | `recipient: !must_fill # array<string>` |
-| `markdown` | On the field (bare; no block scalar) | `bio: !must_fill # markdown` |
+| `richtext` | On the field (bare; no block scalar) | `bio: !must_fill # richtext<markdown>` |
 | `object` (typed dict) | Per-property recursion | leaves carry `!must_fill` |
 | `array<object>` (typed table) | Per-property recursion in one synthetic row | leaves carry `!must_fill` |
 
-### Markdown fields
+### Richtext fields
 
-An **Unendorsed** `markdown` field renders as a bare marker on the field —
+A richtext field's value cell is markdown — the surface projection of the
+corpus model, which `to_markdown` re-emits — carried under a `# richtext<markdown>`
+annotation.
+
+An **Unendorsed** `richtext` field renders as a bare marker on the field —
 no block scalar:
 
 ```
-bio: !must_fill # markdown
+bio: !must_fill # richtext<markdown>
 ```
 
 The LLM replaces the marked field with its markdown content (a quoted scalar
 or a block scalar, the consumer's choice); the marker signals "fill me."
 
-Unlike other scalars, markdown never inlines its `example:` as the marker's
-suggested value (a block-scalar placeholder would be indistinguishable from
-real content). Instead the `example:` surfaces as a `# e.g.` leading hint:
+Unlike other scalars, a richtext field never inlines its `example:` as the
+marker's suggested value (a block-scalar placeholder would be indistinguishable
+from real content). Instead the `example:` surfaces as a `# e.g.` leading hint:
 
 ```
 # e.g. Hello world
-bio: !must_fill # markdown
+bio: !must_fill # richtext<markdown>
 ```
 
 When a `default:` is configured, the field is **Endorsed** and renders its
@@ -229,11 +235,11 @@ default as an **inline double-quoted scalar** with `\n` escapes — the canonica
 `to_markdown` string form (no `|`/`>` block scalars):
 
 ```
-bio: "## About me\n\n<body>" # markdown
+bio: "## About me\n\n<body>" # richtext<markdown>
 ```
 
 If the default is empty (`default: ""`), the cell is the inline empty string
-`bio: "" # markdown` — the "skippable" markdown cell.
+`bio: "" # richtext<markdown>` — the "skippable" richtext cell.
 
 ### Multi-element example arrays
 
@@ -433,7 +439,7 @@ degrades gracefully on every type-valid input shape. The contract
 requires:
 
 - Templates treat type-empty values (`""`, `0`, `false`, `[]`, empty
-  markdown body) as valid *present* input — read via `data.field`,
+  richtext body) as valid *present* input — read via `data.field`,
   `card.at("field", default: …)`, or guarded with `if "field" in data`.
 - No template asserts that an Unendorsed field is *non-empty*. The schema
   guarantees *presence*, not non-emptiness; the `!must_fill` marker

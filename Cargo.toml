@@ -5,6 +5,7 @@ members = [
     "crates/quillmark-pdf",
     "crates/backends/typst",
     "crates/backends/pdfform",
+    "crates/richtext",
     "crates/fixtures",
     "crates/bindings/wasm",
     "crates/fuzz",
@@ -49,6 +50,9 @@ indexmap = { version = "2", features = ["serde"] }
 # Unicode normalization
 unicode-normalization = "0.1"
 
+# Char-level diff (Myers/LCS) for richtext edit deltas
+similar = "2.7"
+
 # Typst backend dependencies
 pulldown-cmark = "0.13.0"
 time = { version = "0.3.44", features = ["formatting", "parsing"] }
@@ -63,6 +67,7 @@ typst-svg = "0.15.0"
 
 # Intra-project dependencies
 quillmark-core = { version = "0.92.1", path = "crates/core" }
+quillmark-richtext = { version = "0.92.1", path = "crates/richtext" }
 quillmark-pdf = { version = "0.92.1", path = "crates/quillmark-pdf" }
 quillmark-typst = { version = "0.92.1", path = "crates/backends/typst", default-features = false }
 quillmark-pdfform = { version = "0.92.1", path = "crates/backends/pdfform", default-features = false }

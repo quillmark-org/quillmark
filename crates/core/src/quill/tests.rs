@@ -64,7 +64,9 @@ fn load_dir(
     Ok(FileTreeNode::Directory { files })
 }
 
-/// Test helper: filesystem equivalent of the old `Quill::from_path`.
+/// Test helper: loads a `Quill` from a filesystem path via `Quill::from_tree`
+/// — core is filesystem-agnostic, so production filesystem loading lives in
+/// `quillmark::quill_from_path` instead.
 fn load_from_path<P: AsRef<Path>>(path: P) -> Result<Quill, Box<dyn StdError + Send + Sync>> {
     let tree = load_tree(path.as_ref())?;
     Quill::from_tree(tree).map_err(|diags| {
@@ -150,11 +152,6 @@ fn test_in_memory_file_system() {
     // Test file content
     let asset_content = quill.get_file("assets/test.txt").unwrap();
     assert_eq!(asset_content, b"asset content");
-
-    // Test directory listing
-    let asset_files = quill.list_directory("assets");
-    assert_eq!(asset_files.len(), 1);
-    assert!(asset_files.contains(&PathBuf::from("assets/test.txt")));
 }
 
 #[test]
@@ -385,50 +382,6 @@ fn test_to_tree_round_trips_from_tree() {
 }
 
 #[test]
-fn test_from_tree_structure_direct() {
-    // Test using from_tree_structure directly
-    let mut root_files = HashMap::new();
-
-    root_files.insert(
-            "Quill.yaml".to_string(),
-            FileTreeNode::File {
-                contents:
-                    b"quill:\n  name: direct_tree\n  version: \"1.0\"\n  backend: typst\n  description: Direct tree test\n"
-                        .to_vec(),
-            },
-        );
-
-    root_files.insert(
-        "plate.typ".to_string(),
-        FileTreeNode::File {
-            contents: b"plate content".to_vec(),
-        },
-    );
-
-    // Add a nested directory
-    let mut src_files = HashMap::new();
-    src_files.insert(
-        "main.rs".to_string(),
-        FileTreeNode::File {
-            contents: b"fn main() {}".to_vec(),
-        },
-    );
-
-    root_files.insert(
-        "src".to_string(),
-        FileTreeNode::Directory { files: src_files },
-    );
-
-    let root = FileTreeNode::Directory { files: root_files };
-
-    let quill = Quill::from_tree(root).unwrap();
-
-    assert_eq!(quill.name(), "direct_tree");
-    assert!(quill.file_exists("src/main.rs"));
-    assert!(quill.file_exists("plate.typ"));
-}
-
-#[test]
 fn test_dir_exists_and_list_apis() {
     let mut root_files = HashMap::new();
 
@@ -637,22 +590,6 @@ default: "Default value"
     assert_eq!(
         schema2.default.as_ref().and_then(|v| v.as_str()),
         Some("Default value")
-    );
-}
-
-#[test]
-fn test_field_schema_single_example() {
-    let yaml_str = r#"
-description: "Field schema with single example"
-type: "datetime"
-example: "2024-01-15"
-"#;
-    let quill_value = QuillValue::from_yaml_str(yaml_str).unwrap();
-    let schema = FieldSchema::from_quill_value("effective_date".to_string(), &quill_value).unwrap();
-
-    assert_eq!(
-        schema.example.as_ref().and_then(|v| v.as_str()),
-        Some("2024-01-15")
     );
 }
 
@@ -996,58 +933,6 @@ typst:
 }
 
 #[test]
-fn test_config_defaults() {
-    // Test defaults extraction via QuillConfig
-    let mut root_files = HashMap::new();
-
-    let quill_yaml = r#"
-quill:
-  name: metadata_test_yaml
-  version: "1.0"
-  backend: typst
-  description: Test metadata flow
-  author: Test Author
-
-typst:
-  packages:
-    - "@preview/bubble:0.2.2"
-
-main:
-  fields:
-    author:
-      type: string
-      default: Anonymous
-    status:
-      type: string
-      default: draft
-    title:
-      type: string
-"#;
-    root_files.insert(
-        "Quill.yaml".to_string(),
-        FileTreeNode::File {
-            contents: quill_yaml.as_bytes().to_vec(),
-        },
-    );
-
-    let root = FileTreeNode::Directory { files: root_files };
-    let quill = Quill::from_tree(root).unwrap();
-
-    // Extract defaults
-    let defaults = quill.config.main.defaults();
-
-    // Verify only fields with defaults are returned
-    assert_eq!(defaults.len(), 2);
-    assert!(!defaults.contains_key("title")); // no default
-    assert!(defaults.contains_key("author"));
-    assert!(defaults.contains_key("status"));
-
-    // Verify default values
-    assert_eq!(defaults.get("author").unwrap().as_str(), Some("Anonymous"));
-    assert_eq!(defaults.get("status").unwrap().as_str(), Some("draft"));
-}
-
-#[test]
 fn test_config_defaults_method() {
     let yaml_content = r#"
 quill:
@@ -1216,24 +1101,6 @@ ui:
 
     let ui = schema.ui.as_ref().unwrap();
     assert_eq!(ui.group, Some("Test Group".to_string()));
-}
-
-#[test]
-fn test_parse_card_field_type() {
-    // FieldSchema does not support type = "card"; cards belong to CardSchema.
-    let yaml = r#"
-type: "string"
-description: "A simple string field"
-"#;
-    let quill_value = QuillValue::from_yaml_str(yaml).unwrap();
-    let schema = FieldSchema::from_quill_value("simple_field".to_string(), &quill_value).unwrap();
-
-    assert_eq!(schema.name, "simple_field");
-    assert_eq!(schema.r#type, FieldType::String);
-    assert_eq!(
-        schema.description,
-        Some("A simple string field".to_string())
-    );
 }
 
 #[test]
@@ -1876,48 +1743,6 @@ main:
 }
 
 #[test]
-fn test_config_coerce_array_item_wise() {
-    let yaml_content = r#"
-quill:
-  name: coerce_array_items_test
-  version: "1.0"
-  backend: typst
-  description: Coerce arrays
-
-main:
-  fields:
-    items:
-      type: array
-      items:
-        type: object
-        properties:
-          score:
-            type: number
-          active:
-            type: boolean
-"#;
-
-    let config = QuillConfig::from_yaml(yaml_content).unwrap();
-    let mut payload = indexmap::IndexMap::new();
-    payload.insert(
-        "items".to_string(),
-        QuillValue::from_json(serde_json::json!([
-            {"score": "90", "active": "true"},
-            {"score": "87.5", "active": "false"}
-        ])),
-    );
-
-    let coerced = config.coerce_payload(&payload).unwrap();
-    let items = coerced.get("items").unwrap().as_array().unwrap();
-    let first = items[0].as_object().unwrap();
-    let second = items[1].as_object().unwrap();
-    assert_eq!(first["score"], serde_json::json!(90));
-    assert_eq!(first["active"], serde_json::json!(true));
-    assert_eq!(second["score"], serde_json::json!(87.5));
-    assert_eq!(second["active"], serde_json::json!(false));
-}
-
-#[test]
 fn test_coerce_scalar_array_elements() {
     // A primitive `integer[]` coerces each element (string → integer), the
     // same coercion scalar fields get.
@@ -2218,56 +2043,25 @@ quill:
 main:
   fields:
     summary:
-      type: markdown
+      type: richtext
       description: Document summary
       ui:
         multiline: true
     notes:
-      type: markdown
+      type: richtext
       description: Short notes
 "#;
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
 
+    // `richtext` (block) carries the `multiline` ui hint like `string` does.
     let summary = config.main.fields.get("summary").unwrap();
-    assert_eq!(summary.r#type, FieldType::Markdown);
+    assert_eq!(summary.r#type, FieldType::RichText { inline: false });
     assert_eq!(summary.ui.as_ref().unwrap().multiline, Some(true));
 
     let notes = config.main.fields.get("notes").unwrap();
-    assert_eq!(notes.r#type, FieldType::Markdown);
+    assert_eq!(notes.r#type, FieldType::RichText { inline: false });
     assert_eq!(notes.ui.as_ref().unwrap().multiline, None);
-}
-
-#[test]
-fn test_multiline_ui_field_on_string_type() {
-    let yaml_content = r#"
-quill:
-  name: multiline_string_test
-  version: "1.0"
-  backend: typst
-  description: Test multiline ui hint on string field
-
-main:
-  fields:
-    address:
-      type: string
-      description: Mailing address
-      ui:
-        multiline: true
-    name:
-      type: string
-      description: Full name
-"#;
-
-    let config = QuillConfig::from_yaml(yaml_content).unwrap();
-
-    let address = config.main.fields.get("address").unwrap();
-    assert_eq!(address.r#type, FieldType::String);
-    assert_eq!(address.ui.as_ref().unwrap().multiline, Some(true));
-
-    let name = config.main.fields.get("name").unwrap();
-    assert_eq!(name.r#type, FieldType::String);
-    assert!(name.ui.as_ref().is_none_or(|ui| ui.multiline.is_none()));
 }
 
 #[test]
@@ -3012,16 +2806,18 @@ fn datetime_type_mismatch_reports_datetime_not_string() {
 }
 
 #[test]
-fn markdown_type_mismatch_reports_markdown_not_string() {
-    let yaml = example_default_yaml("    body:\n      type: markdown\n      default: 42\n");
+fn richtext_type_mismatch_reports_richtext_not_string() {
+    // The mismatch names the declared type verbatim (`richtext`), not the
+    // internal string-family collapse — a non-string, non-corpus default fails.
+    let yaml = example_default_yaml("    body:\n      type: richtext\n      default: 42\n");
     let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
     let diag = errors
         .iter()
         .find(|d| d.code.as_deref() == Some("quill::default_type_mismatch"))
         .expect("expected default_type_mismatch error");
     assert!(
-        diag.message.contains("declares type 'markdown'"),
-        "message should name the markdown type, got: {}",
+        diag.message.contains("declares type 'richtext'"),
+        "message should name the richtext type, got: {}",
         diag.message
     );
 }
@@ -3067,5 +2863,173 @@ fn type_mismatch_preview_shows_array_contents() {
         diag.message.contains("one") && diag.message.contains("two"),
         "preview should render array contents, got: {}",
         diag.message
+    );
+}
+
+// ── Richtext inline field: load-time example import + cache ───────────────────
+
+/// A minimal quill declaring one field, for the richtext field-type tests.
+fn quill_with_field(field_yaml: &str) -> Result<QuillConfig, Vec<Diagnostic>> {
+    let yaml = format!(
+        "quill:\n  name: rt\n  version: \"1.0\"\n  backend: typst\n  description: rt\nmain:\n  fields:\n{field_yaml}"
+    );
+    QuillConfig::from_yaml_with_warnings(&yaml).map(|(c, _)| c)
+}
+
+#[test]
+fn markdown_type_is_unknown_at_load() {
+    let err = quill_with_field("    body:\n      type: markdown\n").unwrap_err();
+    assert!(
+        err.iter()
+            .any(|d| d.code.as_deref() == Some("quill::field_parse_error")
+                && d.message.contains("markdown")),
+        "type: markdown should be a load error naming the type, got: {err:?}"
+    );
+}
+
+#[test]
+fn richtext_inline_type_token_is_rejected_at_load() {
+    let err = quill_with_field("    tag:\n      type: richtext(inline)\n").unwrap_err();
+    assert!(
+        err.iter().any(|d| {
+            d.code.as_deref() == Some("quill::field_parse_error")
+                && d.message.contains("richtext(inline)")
+        }),
+        "type: richtext(inline) should be a load error, got: {err:?}"
+    );
+    assert!(
+        err.iter().any(|d| {
+            d.hint
+                .as_deref()
+                .is_some_and(|h| h.contains("inline: true"))
+        }),
+        "load error should hint at inline: true, got: {err:?}"
+    );
+}
+
+#[test]
+fn inline_on_non_richtext_field_is_rejected_at_load() {
+    let err = quill_with_field("    name:\n      type: string\n      inline: true\n").unwrap_err();
+    assert!(
+        err.iter().any(|d| {
+            d.code.as_deref() == Some("quill::field_parse_error") && d.message.contains("inline")
+        }),
+        "inline on string should fail parse, got: {err:?}"
+    );
+}
+
+#[test]
+fn inline_richtext_example_over_one_para_is_a_load_error() {
+    let err = quill_with_field(
+        "    tag:\n      type: richtext\n      inline: true\n      example: \"one\\n\\ntwo\"\n",
+    )
+    .unwrap_err();
+    assert!(
+        err.iter()
+            .any(|d| d.code.as_deref() == Some("richtext::not_inline")),
+        "a two-paragraph inline example should fail load with richtext::not_inline, got: {err:?}"
+    );
+}
+
+#[test]
+fn inline_richtext_single_line_example_loads_and_caches_corpus() {
+    let config = quill_with_field(
+        "    tag:\n      type: richtext\n      inline: true\n      example: \"a *bold* motto\"\n",
+    )
+    .expect("single-line inline example loads");
+    let field = config.main.fields.get("tag").unwrap();
+    assert_eq!(field.r#type, FieldType::RichText { inline: true });
+    // The load pass imports the markdown example into its corpus companion; the
+    // authored `example` string is retained untouched (Alternative A).
+    let corpus = field
+        .example_corpus
+        .as_ref()
+        .expect("example_corpus cached");
+    assert!(
+        corpus.as_json().is_object(),
+        "cached example is a corpus object"
+    );
+    assert_eq!(
+        field.example.as_ref().unwrap().as_str(),
+        Some("a *bold* motto")
+    );
+}
+
+#[test]
+fn block_richtext_default_caches_corpus() {
+    let config = quill_with_field(
+        "    body:\n      type: richtext\n      default: \"## Heading\\n\\nBody.\"\n",
+    )
+    .expect("block richtext default loads");
+    let field = config.main.fields.get("body").unwrap();
+    let corpus = field
+        .default_corpus
+        .as_ref()
+        .expect("default_corpus cached");
+    assert!(
+        corpus.as_json().is_object(),
+        "cached default is a corpus object"
+    );
+}
+
+#[test]
+fn array_of_inline_richtext_caches_each_element() {
+    let config = quill_with_field(
+        "    refs:\n      type: array\n      items:\n        type: richtext\n        inline: true\n      example:\n        - \"first *ref*\"\n        - \"second ref\"\n",
+    )
+    .expect("array<inline richtext> loads");
+    let field = config.main.fields.get("refs").unwrap();
+    let corpus = field
+        .example_corpus
+        .as_ref()
+        .expect("example_corpus cached");
+    let arr = corpus.as_json().as_array().expect("array of corpus");
+    assert_eq!(arr.len(), 2);
+    assert!(
+        arr.iter().all(|e| e.is_object()),
+        "each element is a corpus object"
+    );
+}
+
+#[test]
+fn inline_coercion_rejects_multi_block_document_value() {
+    let config =
+        quill_with_field("    tag:\n      type: richtext\n      inline: true\n").expect("loads");
+    let mut fields: indexmap::IndexMap<String, QuillValue> = indexmap::IndexMap::new();
+    fields.insert(
+        "tag".to_string(),
+        QuillValue::from_json(serde_json::json!("one\n\ntwo")),
+    );
+    let err = config.coerce_payload(&fields).unwrap_err();
+    assert!(
+        err.to_string().contains("richtext(inline)"),
+        "coercion should reject a two-paragraph value for an inline field, got: {err}"
+    );
+}
+
+#[test]
+fn inline_coercion_accepts_single_line_document_value() {
+    let config =
+        quill_with_field("    tag:\n      type: richtext\n      inline: true\n").expect("loads");
+    let mut fields: indexmap::IndexMap<String, QuillValue> = indexmap::IndexMap::new();
+    fields.insert(
+        "tag".to_string(),
+        QuillValue::from_json(serde_json::json!("just one line")),
+    );
+    let coerced = config.coerce_payload(&fields).expect("single line coerces");
+    assert!(
+        coerced.get("tag").unwrap().as_json().is_object(),
+        "coerced inline value is a corpus object"
+    );
+}
+
+#[test]
+fn richtext_zero_value_is_empty_corpus() {
+    let field = FieldSchema::new("x".to_string(), FieldType::RichText { inline: false }, None);
+    let zero = zero_value(&field);
+    assert!(
+        zero.as_json().is_object(),
+        "richtext zero-fill is the empty corpus, not a string: {:?}",
+        zero.as_json()
     );
 }

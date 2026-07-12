@@ -111,7 +111,7 @@ fn block_scalar_with_markdown_headings_round_trips() {
     assert_eq!(emitted, doc2.to_markdown(), "round-trip must be idempotent");
 }
 
-/// An array authored as `- |` block-scalar items (a `markdown[]` field)
+/// An array authored as `- |` block-scalar items (a `richtext[]` field)
 /// preserves `#` heading / `- ` bullet content per element. Regression for the
 /// sequence-item path of the block-scalar prescan fix.
 #[test]

@@ -134,6 +134,92 @@ fn test_open_session_render() {
     assert!(!result.artifacts.is_empty(), "should produce artifacts");
 }
 
+/// A quill whose plate places a two-paragraph richtext `body` field, for the
+/// region/navigation surface.
+fn region_quill_tree() -> wasm_bindgen::JsValue {
+    common::tree(&[
+        (
+            "Quill.yaml",
+            b"quill:\n  name: region_quill\n  version: 0.1.0\n  backend: typst\n  description: region + navigation wasm surface test\ntypst:\n  plate_file: plate.typ\nmain:\n  fields:\n    body:\n      type: richtext\n      description: a two-paragraph body\n",
+        ),
+        (
+            "plate.typ",
+            b"#import \"@local/quillmark-helper:0.1.0\": data\n#set page(width: 612pt, height: 792pt, margin: 72pt)\n#set text(size: 11pt)\n\n#data.body\n",
+        ),
+    ])
+}
+
+/// The full region + navigation surface through the WASM session: `regions()`
+/// yields per-segment boxes carrying `span`, `fieldAt` resolves a click to the
+/// field, and `positionAt` / `locate` round-trip a corpus offset (#829).
+#[wasm_bindgen_test]
+fn test_session_regions_and_navigation() {
+    let engine = Quillmark::new();
+    let quill = Quill::from_tree(region_quill_tree()).expect("quill failed");
+    let md = "~~~card-yaml\n$quill: region_quill\n$kind: main\nbody: |\n  First paragraph, alpha.\n\n  Second paragraph, beta.\n~~~\n\nignored\n";
+    let doc = Document::from_markdown(md).expect("fromMarkdown failed");
+    let session = engine.open(&quill, &doc).expect("open failed");
+
+    // regions(): two paragraphs → two segment regions, each carrying a `span`.
+    let regions_js = session.regions().expect("regions");
+    let regions: Vec<serde_json::Value> =
+        serde_wasm_bindgen::from_value(regions_js).expect("regions deserialize");
+    let body: Vec<&serde_json::Value> = regions.iter().filter(|r| r["field"] == "body").collect();
+    assert!(
+        body.len() >= 2,
+        "two paragraphs surface two segment regions: {regions:?}"
+    );
+    for r in &body {
+        assert!(
+            r.get("span").and_then(|s| s.as_array()).is_some(),
+            "each segment region carries a span: {r}"
+        );
+    }
+
+    // A click inside the first segment resolves via fieldAt and positionAt.
+    let rect = body[0]["rect"].as_array().expect("rect array");
+    let x0 = rect[0].as_f64().unwrap() as f32;
+    let y1 = rect[3].as_f64().unwrap() as f32;
+    let page = body[0]["page"].as_u64().unwrap() as usize;
+    let (cx, cy) = (x0 + 5.0, y1 - 3.0);
+
+    assert_eq!(session.field_at(page, cx, cy).as_deref(), Some("body"));
+
+    let hit = session
+        .position_at(page, cx, cy)
+        .expect("positionAt inside content resolves");
+    assert_eq!(hit.field, "body");
+    // A hit on prose ink is cluster-exact — the signal a caret UI trusts.
+    assert_eq!(
+        hit.granularity,
+        Some(quillmark_wasm::HitGranularity::Cluster)
+    );
+
+    // fieldBoxes unions the two paragraph segments into one whole-field box per
+    // page — the derived highlight, span-filtered and unioned by the helper.
+    let boxes_js = session.field_boxes("body").expect("fieldBoxes");
+    let boxes: Vec<serde_json::Value> =
+        serde_wasm_bindgen::from_value(boxes_js).expect("fieldBoxes deserialize");
+    assert!(
+        !boxes.is_empty() && boxes.len() <= body.len(),
+        "the two segments union into at most one box per page: {boxes:?}"
+    );
+    assert!(
+        boxes.iter().all(|b| b["field"] == "body" && b.get("span").is_some()),
+        "each derived box keeps the field and a union span: {boxes:?}"
+    );
+
+    // locate maps that corpus offset back to a caret rect on the same page.
+    let caret = session
+        .locate("body", hit.pos)
+        .expect("locate maps the position to a caret rect");
+    assert_eq!(caret.page, page);
+    assert_eq!(caret.span, Some([hit.pos, hit.pos]));
+
+    // A click off all content ink resolves to nothing.
+    assert!(session.position_at(page, 3.0, 3.0).is_none());
+}
+
 /// `toMarkdown` emits canonical Quillmark Markdown and round-trips cleanly.
 #[wasm_bindgen_test]
 fn test_to_markdown_round_trip() {
@@ -163,7 +249,7 @@ fn test_json_dto_round_trip() {
     // toJson yields a string carrying the schema version.
     let dto = doc.to_json();
     assert!(
-        dto.contains("\"quillmark/document@0.92.0\""),
+        dto.contains("\"quillmark/document@0.93.0\""),
         "DTO string must carry the schema version, got: {dto}"
     );
 

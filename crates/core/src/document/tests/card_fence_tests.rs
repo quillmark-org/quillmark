@@ -21,7 +21,7 @@ fn card_fence_parses_kind_fields_and_body() {
     let card = &doc.cards()[0];
     assert_eq!(card.kind(), Some("product"));
     assert_eq!(card.payload().get("name").unwrap().as_str(), Some("Widget"));
-    assert_eq!(card.body(), "\nWidget description.\n");
+    assert_eq!(card.body_markdown(), "Widget description.\n");
 }
 
 #[test]
@@ -30,7 +30,7 @@ fn card_fence_empty_body_has_no_fields() {
     let doc = Document::from_markdown(src).unwrap();
     assert_eq!(doc.cards().len(), 1);
     assert!(doc.cards()[0].payload().is_empty());
-    assert_eq!(doc.cards()[0].body(), "");
+    assert_eq!(doc.cards()[0].body_markdown(), "");
 }
 
 #[test]
@@ -76,8 +76,8 @@ fn card_fence_body_round_trips() {
     let a = Document::from_markdown(src).unwrap();
     let b = Document::from_markdown(&a.to_markdown()).unwrap();
     assert_eq!(a, b);
-    assert_eq!(a.main().body(), "\nMain body.\n");
-    assert_eq!(a.cards()[0].body(), "\nCard body.\n");
+    assert_eq!(a.main().body_markdown(), "Main body.\n");
+    assert_eq!(a.cards()[0].body_markdown(), "Card body.\n");
 }
 
 #[test]
@@ -180,7 +180,7 @@ fn backtick_fence_is_the_code_block_escape_hatch() {
     let src = "~~~\n$quill: q\n$kind: main\n~~~\n\n```\n~~~\nnot a card\n~~~\n```\n";
     let doc = Document::from_markdown(src).unwrap();
     assert_eq!(doc.cards().len(), 0);
-    assert!(doc.main().body().contains("not a card"));
+    assert!(doc.main().body_markdown().contains("not a card"));
 }
 
 #[test]
@@ -190,7 +190,7 @@ fn tilde_fence_with_language_info_is_an_ordinary_code_block() {
     let src = "~~~\n$quill: q\n$kind: main\n~~~\n\n~~~rust\nlet x = 1;\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
     assert_eq!(doc.cards().len(), 0);
-    assert!(doc.main().body().contains("let x = 1;"));
+    assert!(doc.main().body_markdown().contains("let x = 1;"));
 }
 
 #[test]
@@ -201,7 +201,9 @@ fn tilde_code_block_without_blank_line_above_stays_in_body() {
     let src = "~~~\n$quill: q\n$kind: main\n~~~\n\nText line\n~~~\ncode\n~~~\n";
     let doc = Document::from_markdown(src).unwrap();
     assert_eq!(doc.cards().len(), 0);
-    assert!(doc.main().body().contains("~~~\ncode\n~~~"));
+    // The `~~~` block stays in the body as a code block (re-emitted by the
+    // corpus projection); its content survives, the fence syntax may normalize.
+    assert!(doc.main().body_markdown().contains("code"));
 }
 
 #[test]
@@ -212,7 +214,9 @@ fn indented_tilde_opener_is_not_a_card() {
     let src = "~~~\n$quill: q\n$kind: main\n~~~\n\nBody.\n\n   ~~~\n$kind: note\nx: 1\n   ~~~\n";
     let doc = Document::from_markdown(src).unwrap();
     assert_eq!(doc.cards().len(), 0);
-    assert!(doc.main().body().contains("   ~~~"));
+    // The indented `~~~` is a CommonMark code fence, not a card: its content
+    // stays in the body (fence indentation normalizes in the projection).
+    assert!(doc.main().body_markdown().contains("$kind: note"));
 }
 
 #[test]
@@ -224,7 +228,9 @@ fn unclosed_bare_tilde_in_body_falls_through_to_commonmark() {
     let src = "~~~\n$quill: q\n$kind: main\n~~~\n\nIntro.\n\n~~~\nstray\n";
     let out = Document::from_markdown_with_warnings(src).unwrap();
     assert_eq!(out.document.cards().len(), 0);
-    assert!(out.document.main().body().contains("~~~\nstray"));
+    // The unclosed `~~~` runs to EOF as a CommonMark code block; its content
+    // stays in the body (fence syntax normalizes in the projection).
+    assert!(out.document.main().body_markdown().contains("stray"));
     assert!(out
         .warnings
         .iter()
@@ -238,7 +244,7 @@ fn ordinary_code_fence_is_not_a_card() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\n```rust\nlet x = 1;\n```\n";
     let doc = Document::from_markdown(src).unwrap();
     assert_eq!(doc.cards().len(), 0);
-    assert!(doc.main().body().contains("```rust"));
+    assert!(doc.main().body_markdown().contains("```rust"));
 }
 
 #[test]
@@ -289,7 +295,7 @@ The body.
         Some("Here is code:\n~~~\nlet x = 1;\n~~~\ndone\n"),
         "block scalar must keep the embedded tilde fence intact"
     );
-    assert_eq!(doc.main().body(), "\nThe body.\n");
+    assert_eq!(doc.main().body_markdown(), "The body.\n");
 }
 
 #[test]

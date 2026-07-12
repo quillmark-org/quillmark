@@ -41,6 +41,15 @@ impl Document {
     ///    `QuillValue::String("01234")` round-trips as a string, never as an
     ///    integer.  This guarantee is the whole point of owning emission.
     ///
+    ///    **Corpus-field carve-out.** A richtext field committed as a canonical
+    ///    corpus object (and the card `$body`) is *intentionally* markdown-lossy
+    ///    on `.qmd` emit: it projects to its markdown form (`project_corpus_field`),
+    ///    so identity marks (anchors, island ids) and corpus-only marks
+    ///    (`underline`) do not survive a `to_markdown`→`from_markdown` round-trip.
+    ///    On-disk identity is markdown-lossy by design; the storage DTO is the
+    ///    lossless carrier. The value-equality guarantee above holds for every
+    ///    field the writer did not commit as canonical corpus.
+    ///
     /// 2. **Emit-idempotent.** `to_markdown` is a pure function of `doc`; two
     ///    calls on the same `doc` return byte-equal strings.
     ///
@@ -98,8 +107,12 @@ impl Document {
         let mut out = String::new();
 
         // ── Root block (card-yaml fence + global body) ────────────────────────
+        // Bodies are corpora; the markdown surface is their export projection,
+        // so a `Document` → markdown → `Document` round-trip canonicalizes the body markdown (leading blank
+        // lines dropped, a single trailing `\n`). A blank line separates the
+        // closing fence from a non-empty body, the conventional card-yaml shape.
         emit_block(&mut out, self.main());
-        out.push_str(self.main().body());
+        append_body(&mut out, &self.main().body_markdown());
 
         // ── Composable cards ──────────────────────────────────────────────────
         // `ensure_blank_before_fence` normalises the separator before each
@@ -108,12 +121,20 @@ impl Document {
         for card in self.cards() {
             ensure_blank_before_fence(&mut out);
             emit_block(&mut out, card);
-            if !card.body().is_empty() {
-                out.push_str(card.body());
-            }
+            append_body(&mut out, &card.body_markdown());
         }
 
         out
+    }
+}
+
+/// Append a card's markdown body after its closing fence, separated by one
+/// blank line (the conventional card-yaml shape). Empty bodies append nothing —
+/// the fence closes and the next block (or EOF) follows.
+fn append_body(out: &mut String, body: &str) {
+    if !body.is_empty() {
+        out.push('\n');
+        out.push_str(body);
     }
 }
 
@@ -209,6 +230,31 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
                 fill,
                 nested_comments,
             } => {
+                // A richtext field stores its value as a canonical corpus
+                // object (via `commit_field`); card-yaml is the
+                // human-authored surface, so it projects back to a markdown
+                // string here — the field-level twin of the `$body` projection,
+                // lossy per the corpus's island loss class (the DTO stays the
+                // lossless carrier). A corpus field is never `!must_fill` and
+                // its content carries no user nested-comments/fills, so the
+                // projected scalar routes through the plain string path.
+                if !*fill {
+                    if let Some(markdown) = project_corpus_field(value.as_json()) {
+                        emit_field(
+                            out,
+                            key,
+                            &JsonValue::String(markdown),
+                            0,
+                            false,
+                            &[],
+                            &[],
+                            &[],
+                            trailer,
+                        );
+                        i += if consumed_trailer { 2 } else { 1 };
+                        continue;
+                    }
+                }
                 // Paths in `nested_comments` are relative to this field's
                 // value, so the container path starts empty.
                 let path: Vec<CommentPathSegment> = Vec::new();
@@ -236,6 +282,45 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
         }
         i += if consumed_trailer { 2 } else { 1 };
     }
+}
+
+/// The markdown projection of a richtext-valued field, or `None` when `value` is
+/// not a canonical corpus object.
+///
+/// A richtext field written via [`Card::commit_field`](super::Card::commit_field)
+/// stores the canonical corpus object; emit projects it to a markdown string so
+/// card-yaml — the human-authored surface — stays markdown-clean rather than
+/// carrying a nested `{text, lines, marks, islands}` tree. Projection is lossy
+/// per the corpus's island loss class (the same tradeoff `$body` makes): island
+/// ids and corpus-only marks do not survive a `.qmd` round-trip, so on-disk
+/// identity is markdown-lossy by design; the storage DTO is the lossless carrier.
+///
+/// The guard requires the object to serialize back to a **byte-identical**
+/// canonical corpus, so a user object field that merely resembles one (extra
+/// keys, non-canonical shape, or non-canonical key order) stays structural. The
+/// comparison is on the serialized *strings*, not the `serde_json::Value`s: with
+/// `serde_json/preserve_order` on (it is in this workspace), `Value`'s `PartialEq`
+/// is an order-independent `IndexMap` compare, so a `Value != Value` guard would
+/// also accept a content-canonical object whose keys are in non-canonical order —
+/// projecting (and thus markdown-flattening) it. String equality pins key order.
+///
+/// A corpus object normally only arises from the programmatic corpus writer
+/// (`from_markdown` is schema-less and stores a markdown-authored richtext field
+/// as a plain string), so on a parse-originated document this projects only the
+/// fields the writer deliberately committed as corpus.
+fn project_corpus_field(value: &JsonValue) -> Option<String> {
+    if !value.is_object() {
+        return None;
+    }
+    let rt = quillmark_richtext::serial::from_canonical_value(value).ok()?;
+    // Byte-exact: canonical-string equality, not `Value` equality (which is
+    // order-independent under `preserve_order`). Only a corpus in canonical key
+    // order projects; anything else stays a structural field.
+    let canonical = quillmark_richtext::serial::to_canonical_value(&rt);
+    if serde_json::to_string(&canonical).ok()? != serde_json::to_string(value).ok()? {
+        return None;
+    }
+    Some(quillmark_richtext::export::to_markdown(&rt))
 }
 
 /// Ensure `out` ends with `\n\n` so the next fence has a blank line above it.
@@ -687,21 +772,35 @@ pub(crate) fn saphyr_emit_scalar(value: &JsonValue) -> String {
         buf.pop();
     }
 
-    // Saphyr 0.0.23's plain-safety check inspects only the leading byte
-    // as ASCII whitespace, missing strings whose first or last char is
-    // Unicode whitespace (U+2000…) or whose last char is an ASCII space.
-    // YAML strips such whitespace from plain scalars on parse, losing
-    // the data. Detect and emit double-quoted ourselves so the round-
-    // trip is preserved.
+    // Saphyr 0.0.23's emitter and parser disagree about which plain scalars
+    // are string-safe: it emits some `String`s unquoted that its own parser
+    // reads back as a non-string (`_0` → integer 0) or as a different string.
+    // Edge-whitespace strings are one class — the plain-safety check inspects
+    // only the leading ASCII byte, missing a leading/trailing Unicode-
+    // whitespace char (U+2000…) or a trailing ASCII space, and YAML strips
+    // such whitespace from plain scalars on parse. `_0`-style numeric-looking
+    // strings are another. Both lose the original string on round-trip. When
+    // saphyr emits a `String` unquoted, re-parse the emitted plain scalar with
+    // the same library the parser uses and, unless it round-trips to the exact
+    // same string, emit double-quoted ourselves. Edge whitespace stays an
+    // explicit guard: a trailing Unicode-whitespace char survives the isolated
+    // re-parse yet is still stripped in the real block context.
     if let JsonValue::String(s) = value {
         let unquoted = !buf.starts_with('"')
             && !buf.starts_with('\'')
             && !buf.starts_with('|')
             && !buf.starts_with('>');
-        let has_edge_whitespace = !s.is_empty()
-            && (s.starts_with(char::is_whitespace) || s.ends_with(char::is_whitespace));
-        if unquoted && has_edge_whitespace {
-            return double_quote_string(s);
+        if unquoted {
+            let has_edge_whitespace = !s.is_empty()
+                && (s.starts_with(char::is_whitespace) || s.ends_with(char::is_whitespace));
+            // A parse error counts as "must quote", conservatively.
+            let reparses_same = matches!(
+                serde_saphyr::from_str::<JsonValue>(&buf),
+                Ok(JsonValue::String(ref s2)) if s2 == s
+            );
+            if has_edge_whitespace || !reparses_same {
+                return double_quote_string(s);
+            }
         }
     }
     buf
@@ -811,6 +910,42 @@ mod tests {
         ] {
             assert_scalar_round_trips(serde_json::json!(*ambiguous));
         }
+    }
+
+    #[test]
+    fn saphyr_scalar_round_trips_numeric_looking_strings() {
+        // Saphyr's emitter treats a leading-underscore-then-digits scalar as
+        // plain-safe, but its parser reads the plain form back as an integer
+        // (underscores are digit separators, leading ones ignored): `_0` → 0,
+        // `-_0` → 0, `__0` → 0. `_0` is the minimal fuzz-shrunk case. Each is
+        // emitted unquoted and re-parsed as `Number` before the fix; the
+        // general round-trip check must quote every one.
+        for numericish in &["_0", "_1", "-_0", "__0"] {
+            assert_scalar_round_trips(serde_json::json!(*numericish));
+        }
+    }
+
+    #[test]
+    fn string_underscore_zero_round_trips_via_document() {
+        // Full `to_markdown` → `from_markdown` path for the reported bug:
+        // `String("_0")` must return as a `String`, still equal to `"_0"`.
+        let src = "~~~card-yaml\n$quill: q\n$kind: main\na: \"_0\"\n~~~\n\nBody.\n";
+        let doc = crate::document::Document::from_markdown(src).expect("parse src");
+        let emitted = doc.to_markdown();
+        let reparsed =
+            crate::document::Document::from_markdown(&emitted).expect("re-parse emitted markdown");
+        let value = reparsed
+            .main()
+            .payload()
+            .get("a")
+            .expect("field 'a'")
+            .as_json();
+        assert_eq!(
+            value,
+            &serde_json::Value::String("_0".to_string()),
+            "String(\"_0\") must round-trip as a string; emitted:\n{}",
+            emitted
+        );
     }
 
     #[test]

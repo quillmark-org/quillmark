@@ -55,11 +55,11 @@ mod tests {
     #[test]
     fn formats_support_canvas_keys_off_visual_formats() {
         use OutputFormat::*;
-        // A visual-page format present → canvas (Typst, pdfform-preview).
+        // A visual-page format present → canvas (Typst and pdfform both emit Svg/Png).
         assert!(formats_support_canvas(&[Pdf, Svg, Png]));
         assert!(formats_support_canvas(&[Pdf, Svg]));
         assert!(formats_support_canvas(&[Png]));
-        // Document-only / text-only → no canvas (pdfform without preview).
+        // No visual-page format → no canvas.
         assert!(!formats_support_canvas(&[Pdf]));
         assert!(!formats_support_canvas(&[Txt]));
         assert!(!formats_support_canvas(&[]));

@@ -317,7 +317,7 @@ impl PyDocument {
     /// Schema version this build writes.
     #[staticmethod]
     fn current_schema_version() -> &'static str {
-        quillmark_core::document::SCHEMA_V0_92_0
+        quillmark_core::document::SCHEMA_V0_93_0
     }
 
     /// Canonical card-yaml authoring rules — the core text every surface shows.
@@ -405,10 +405,43 @@ impl PyDocument {
             .collect()
     }
 
-    /// Main card's global Markdown body.
+    /// Main card's global body as canonical RichText-JSON — the source-of-truth
+    /// content model (a corpus dict, `{text, lines, marks, islands}`). Use
+    /// [`body_markdown`](Self::body_markdown) for the markdown projection.
     #[getter]
-    fn body(&self) -> &str {
-        self.inner.main().body()
+    fn body<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        let wire = quillmark_core::CardWire::from(self.inner.main());
+        json_to_py(py, &wire.body)
+    }
+
+    /// Main card's global body rendered back to its markdown projection
+    /// (`export ∘ body`).
+    #[getter]
+    fn body_markdown(&self) -> String {
+        self.inner.main().body_markdown()
+    }
+
+    /// Corpus-native body writer on the main card — the write twin of the
+    /// [`body`](Self::body) getter, so a body read as a corpus dict writes back
+    /// losslessly (identity marks, island ids, corpus-only formatting intact).
+    /// `body` is a corpus dict (`{text, lines, marks, islands}`), an importable
+    /// markdown string, or `None`; unlike [`replace_body`](Self::replace_body)
+    /// (markdown only) this does not drop corpus-only formatting. Raises
+    /// `QuillmarkError` if `body` is none of those. Mirrors WASM `setBody`.
+    fn set_body(&mut self, body: Bound<'_, PyAny>) -> PyResult<()> {
+        let json = py_to_json(&body)?;
+        self.inner
+            .main_mut()
+            .set_body_value(&json)
+            .map_err(convert_edit_error)
+    }
+
+    /// The markdown projection of a richtext-valued field on the main card
+    /// (`export ∘ decode`) — the field-level twin of `body_markdown`. Returns
+    /// `None` when the field is absent or does not decode as richtext (e.g. a
+    /// plain scalar written via `set_field`). Mirrors WASM `fieldMarkdown`.
+    fn field_markdown(&self, name: &str) -> Option<String> {
+        self.inner.main().field_markdown(name)
     }
 
     /// Main (entry) card as a dict with `kind`, `quill`, `id`, `payload_items`,
@@ -428,6 +461,14 @@ impl PyDocument {
         Ok(result)
     }
 
+    /// Store an opaque value on a main-card field, clearing any `!must_fill`
+    /// marker. The quill-free primitive: it holds only the `$quill` *reference*,
+    /// stores the value verbatim, and defers coercion/validation to render.
+    /// Reach for it deliberately — standalone data with no quill in hand,
+    /// quill-agnostic storage/migration, or a store-now-validate-later editor
+    /// holding not-yet-conforming input. When a quill *is* in hand, prefer
+    /// `commit_field` (typed commit) so a mismatch surfaces at the write.
+    /// Raises `QuillmarkError` on a malformed name. Mirrors WASM `setField`.
     fn set_field(&mut self, name: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
         let qv = py_to_quillvalue(&value)?;
         self.inner
@@ -449,13 +490,114 @@ impl PyDocument {
     /// error; the raised `QuillmarkError` carries one diagnostic per
     /// offending field (`path` = field name), so externally-sourced names
     /// (database columns, form keys) surface every violation in one pass.
-    /// Mirrors WASM `setFields`.
+    ///
+    /// The batched quill-free primitive (see `set_field`) — stores every value
+    /// opaquely, deferring coercion to render. Prefer `commit_fields` whenever a
+    /// quill is in hand: it typed-commits the batch and reports per-field
+    /// routing, so a form submitting a card is not silently stripped of schema
+    /// typing. Mirrors WASM `setFields`.
     fn set_fields(&mut self, fields: Bound<'_, PyDict>) -> PyResult<()> {
         let batch = pydict_to_field_batch(&fields)?;
         self.inner
             .main_mut()
             .set_fields(batch)
             .map_err(convert_edit_errors)
+    }
+
+    /// Typed field write on the main card, resolving the field's schema `type`
+    /// from `quill` — the one write verb for every field type. Python has no
+    /// richtext field writer otherwise, so a richtext value (a corpus dict or a
+    /// markdown string) commits to the canonical corpus here; scalars coerce to
+    /// their declared type (`"3"` → `3`).
+    ///
+    /// Returns `"typed"` when the field is declared in the schema (strict
+    /// commit — a mismatch raises now) or `"opaque"` when it is not (stored
+    /// verbatim, like `set_field`). Raises `QuillmarkError` on a typed mismatch
+    /// or a malformed name. Mirrors WASM `commitField`.
+    fn commit_field(
+        &mut self,
+        quill: PyRef<'_, PyQuill>,
+        name: &str,
+        value: Bound<'_, PyAny>,
+    ) -> PyResult<String> {
+        let qv = py_to_quillvalue(&value)?;
+        quill
+            .inner
+            .editor(&mut self.inner)
+            .set(name, qv)
+            .map(|c| c.as_str().to_string())
+            .map_err(convert_edit_error)
+    }
+
+    /// Batched twin of `commit_field`: typed-commit several main-card fields
+    /// atomically, resolving each field's schema `type` from `quill`. This is
+    /// the whole-card typed verb — prefer it over `set_fields` whenever a quill
+    /// is in hand, so a form submitting a card gets schema typing instead of the
+    /// opaque store. All-or-nothing with the same per-field-diagnostic error
+    /// contract as `set_fields`: nothing is applied on error and the raised
+    /// `QuillmarkError` carries one diagnostic per offending field (`path` =
+    /// field name).
+    ///
+    /// On success returns a `dict[str, str]` keyed by the input field names, in
+    /// input order — the batch form of `commit_field`'s scalar `"typed"` /
+    /// `"opaque"` return, so a whole-form submit still sees which names fell to
+    /// the opaque store (a likely typo) instead of losing that signal to the
+    /// batch the way `set_fields` does. Mirrors WASM `commitFields`.
+    fn commit_fields<'py>(
+        &mut self,
+        py: Python<'py>,
+        quill: PyRef<'_, PyQuill>,
+        fields: Bound<'_, PyDict>,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let batch = pydict_to_field_batch(&fields)?;
+        let routing = quill
+            .inner
+            .editor(&mut self.inner)
+            .set_all(batch)
+            .map_err(convert_edit_errors)?;
+        committed_routing_to_pydict(py, routing)
+    }
+
+    /// Typed field write on the composable card at `index` — the card-indexed
+    /// twin of `commit_field`, resolving the field's type from the card's
+    /// `$kind` schema in `quill`. Returns `"typed"` / `"opaque"`; raises on an
+    /// out-of-range index or a typed mismatch. Mirrors WASM `commitCardField`.
+    fn commit_card_field(
+        &mut self,
+        quill: PyRef<'_, PyQuill>,
+        index: usize,
+        name: &str,
+        value: Bound<'_, PyAny>,
+    ) -> PyResult<String> {
+        let qv = py_to_quillvalue(&value)?;
+        let mut editor = quill.inner.editor(&mut self.inner);
+        let mut card = editor.card(index).map_err(convert_edit_error)?;
+        card.set(name, qv)
+            .map(|c| c.as_str().to_string())
+            .map_err(convert_edit_error)
+    }
+
+    /// Batched twin of `commit_card_field`: typed-commit several fields on the
+    /// composable card at `index` atomically, resolving each field's type from
+    /// the card's `$kind` schema in `quill`. All-or-nothing with the same
+    /// per-field-diagnostic contract as `commit_fields`, whose `dict[str, str]`
+    /// routing shape it mirrors. Raises on an out-of-range index. Mirrors WASM
+    /// `commitCardFields`.
+    fn commit_card_fields<'py>(
+        &mut self,
+        py: Python<'py>,
+        quill: PyRef<'_, PyQuill>,
+        index: usize,
+        fields: Bound<'_, PyDict>,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let batch = pydict_to_field_batch(&fields)?;
+        let mut editor = quill.inner.editor(&mut self.inner);
+        let routing = editor
+            .card(index)
+            .map_err(convert_edit_error)?
+            .set_all(batch)
+            .map_err(convert_edit_errors)?;
+        committed_routing_to_pydict(py, routing)
     }
 
     fn remove_field<'py>(&mut self, py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
@@ -600,8 +742,11 @@ impl PyDocument {
         Ok(())
     }
 
-    fn replace_body(&mut self, body: &str) {
-        self.inner.main_mut().replace_body(body);
+    fn replace_body(&mut self, body: &str) -> PyResult<()> {
+        self.inner
+            .main_mut()
+            .replace_body(body)
+            .map_err(convert_edit_error)
     }
 
     /// Build a fresh `Card` dict from a kind and a flat field mapping — the
@@ -636,7 +781,10 @@ impl PyDocument {
             ext: None,
             seed: None,
             payload_items,
-            body: body.unwrap_or_default(),
+            // The `body` argument is markdown; `Card::try_from` imports it to the
+            // corpus, and `card_to_pydict` re-emits the corpus + its projection.
+            body: serde_json::Value::String(body.unwrap_or_default()),
+            body_markdown: String::new(),
         };
         let card = quillmark_core::Card::try_from(wire)
             .map_err(|e| PyValueError::new_err(e.to_string()))?;
@@ -678,7 +826,11 @@ impl PyDocument {
             .map_err(convert_edit_error)
     }
 
-    fn update_card_field(
+    /// Store an opaque value on the composable card at `index` — the
+    /// card-indexed twin of `set_field`, and the same quill-free primitive.
+    /// Prefer `commit_card_field` when a quill is in hand. Raises on an
+    /// out-of-range index or a malformed name. Mirrors WASM `setCardField`.
+    fn set_card_field(
         &mut self,
         index: usize,
         name: &str,
@@ -690,10 +842,12 @@ impl PyDocument {
             .map_err(convert_edit_error)
     }
 
-    /// Batched twin of `update_card_field`: set several fields on the
-    /// composable card at `index` atomically. Same all-or-nothing,
-    /// one-diagnostic-per-field contract as `set_fields`.
-    fn update_card_fields(&mut self, index: usize, fields: Bound<'_, PyDict>) -> PyResult<()> {
+    /// Batched twin of `set_card_field`: set several fields on the composable
+    /// card at `index` atomically. Same all-or-nothing, one-diagnostic-per-field
+    /// contract as `set_fields`, and the same quill-free-primitive framing —
+    /// prefer `commit_card_fields` when a quill is in hand. Mirrors WASM
+    /// `setCardFields`.
+    fn set_card_fields(&mut self, index: usize, fields: Bound<'_, PyDict>) -> PyResult<()> {
         let batch = pydict_to_field_batch(&fields)?;
         self.card_mut_or_raise(index)?
             .set_fields(batch)
@@ -716,9 +870,34 @@ impl PyDocument {
         }
     }
 
-    fn update_card_body(&mut self, index: usize, body: &str) -> PyResult<()> {
-        self.card_mut_or_raise(index)?.replace_body(body);
-        Ok(())
+    fn replace_card_body(&mut self, index: usize, body: &str) -> PyResult<()> {
+        self.card_mut_or_raise(index)?
+            .replace_body(body)
+            .map_err(convert_edit_error)
+    }
+
+    /// Corpus-native body writer on the composable card at `index` — the
+    /// card-indexed twin of [`set_body`](Self::set_body), and the corpus
+    /// counterpart to [`replace_card_body`](Self::replace_card_body) (markdown
+    /// only). `body` is a corpus dict, an importable markdown string, or `None`.
+    /// Raises `QuillmarkError` on an out-of-range index or a body that is none of
+    /// those. Mirrors WASM `setCardBody`.
+    fn set_card_body(&mut self, index: usize, body: Bound<'_, PyAny>) -> PyResult<()> {
+        let json = py_to_json(&body)?;
+        self.card_mut_or_raise(index)?
+            .set_body_value(&json)
+            .map_err(convert_edit_error)
+    }
+
+    /// The markdown projection of a richtext-valued field on the composable card
+    /// at `index` — the card-indexed twin of [`field_markdown`](Self::field_markdown).
+    /// Returns `None` when `index` is out of range, the field is absent, or it
+    /// does not decode as richtext. Mirrors WASM `cardFieldMarkdown`.
+    fn card_field_markdown(&self, index: usize, name: &str) -> Option<String> {
+        self.inner
+            .cards()
+            .get(index)
+            .and_then(|c| c.field_markdown(name))
     }
 }
 
@@ -776,11 +955,13 @@ impl PyRenderResult {
 
     /// Schema-field geometry sidecar — populated only when `render(...,
     /// regions=True)` requested it; empty otherwise. One dict per entry:
-    /// `{"field": str, "page": int, "rect": [x0, y0, x1, y1]}` with rect in
-    /// PDF points, bottom-left origin, page indices document-space. Content
-    /// fields carry their **first placement** (one entry per page it
-    /// touches); widgets and scalar reference sites each carry their own
-    /// entry. A field may still appear more than once; group by `field`.
+    /// `{"field": str, "page": int, "rect": [x0, y0, x1, y1], "span":
+    /// [start, end] | None}` with rect in PDF points, bottom-left origin, page
+    /// indices document-space. Content fields carry one entry per **segment**
+    /// (paragraph, heading, code fence) and page, each `span` the covered USV
+    /// corpus range; widgets and scalar reference sites carry `span: None`. A
+    /// field may still appear more than once; group by `field` and union the
+    /// segment rects for the whole-field box.
     #[getter]
     fn regions<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
         self.inner
@@ -791,6 +972,7 @@ impl PyRenderResult {
                 d.set_item("field", &r.field)?;
                 d.set_item("page", r.page)?;
                 d.set_item("rect", r.rect.to_vec())?;
+                d.set_item("span", r.span.map(|s| s.to_vec()))?;
                 Ok(d)
             })
             .collect()
@@ -996,7 +1178,10 @@ fn card_to_pydict<'py>(
         None => d.set_item("seed", py.None())?,
     }
 
-    d.set_item("body", &wire.body)?;
+    // `body` is the canonical corpus (source of truth); `body_markdown` its
+    // read-only projection. The reverse path (`py_dict_to_card`) reads `body`.
+    d.set_item("body", json_to_py(py, &wire.body)?)?;
+    d.set_item("body_markdown", &wire.body_markdown)?;
     Ok(d)
 }
 
@@ -1070,6 +1255,21 @@ fn pydict_to_field_batch(
         return Err(raise_with_diagnostics(diags, message));
     }
     Ok(batch)
+}
+
+/// Project the `(name, `[`Committed`](quillmark_core::Committed)`)` routing a
+/// typed `set_all` returns to the Python `dict[str, str]` (`"typed"` /
+/// `"opaque"`) that `commit_fields` / `commit_card_fields` hand back. Insertion
+/// order follows the input batch (the routing vec preserves it).
+fn committed_routing_to_pydict(
+    py: Python<'_>,
+    routing: Vec<(String, quillmark_core::Committed)>,
+) -> PyResult<Bound<'_, PyDict>> {
+    let dict = PyDict::new(py);
+    for (name, committed) in routing {
+        dict.set_item(name, committed.as_str())?;
+    }
+    Ok(dict)
 }
 
 fn py_to_json(value: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {

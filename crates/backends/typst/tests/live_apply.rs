@@ -101,7 +101,7 @@ typst:
 main:
   fields:
     body:
-      type: markdown
+      type: richtext
       description: a markdown body
 "#;
     const PLATE: &str = r#"#import "@local/quillmark-helper:0.1.0": data
@@ -174,10 +174,10 @@ typst:
 main:
   fields:
     body:
-      type: markdown
+      type: richtext
       description: a markdown body
     note:
-      type: markdown
+      type: richtext
       description: a markdown note
 "#;
     const PLATE: &str = r#"#import "@local/quillmark-helper:0.1.0": data

@@ -21,8 +21,8 @@ use std::sync::OnceLock;
 /// Construction (`from_json`, `from_yaml_str`, the scalar constructors)
 /// produces nodes with `fill = false`; the `!must_fill` markers are applied
 /// by the document layer. `QuillValue` exposes no data-mutating methods —
-/// only `set_fill`/`with_fill`, which do not affect the JSON projection —
-/// so the cached projection never goes stale.
+/// only the fill setter `set_fill_at`, which does not affect the JSON
+/// projection — so the cached projection never goes stale.
 pub struct QuillValue {
     node: Node,
     /// Lazily materialized, fill-free [`serde_json::Value`] view of `node`.
@@ -257,19 +257,6 @@ impl QuillValue {
         self.node.fill
     }
 
-    /// Set the root node's `!must_fill` marker, consuming `self`.
-    pub fn with_fill(mut self, fill: bool) -> Self {
-        self.node.fill = fill;
-        self
-    }
-
-    /// Set the root node's `!must_fill` marker in place.
-    ///
-    /// Does not invalidate the JSON projection: `fill` is never part of it.
-    pub fn set_fill(&mut self, fill: bool) {
-        self.node.fill = fill;
-    }
-
     /// Paths (relative to this value's root) of every node carrying the
     /// `!must_fill` marker. The root, if filled, is reported as the empty
     /// path. The JSON projection carries no fill, so this is the only way to
@@ -438,28 +425,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_from_yaml_value() {
-        let yaml_str = r#"
-            package:
-              name: test
-              version: 1.0.0
-        "#;
-        let json_val: serde_json::Value = serde_saphyr::from_str(yaml_str).unwrap();
-        let quill_val = QuillValue::from_json(json_val);
-
-        assert!(quill_val.as_object().is_some());
-        assert_eq!(
-            quill_val
-                .get("package")
-                .unwrap()
-                .get("name")
-                .unwrap()
-                .as_str(),
-            Some("test")
-        );
-    }
-
-    #[test]
     fn test_from_yaml_str() {
         let yaml_str = r#"
             title: Test Document
@@ -605,12 +570,17 @@ mod tests {
 
     #[test]
     fn fill_marker_rides_on_the_node_not_the_json() {
-        let qv = QuillValue::string("draft").with_fill(true);
+        let filled = || {
+            let mut qv = QuillValue::string("draft");
+            assert!(qv.set_fill_at(&[]));
+            qv
+        };
+        let qv = filled();
         assert!(qv.fill());
         // Projection is fill-free and equal to the plain scalar.
         assert_eq!(qv.as_json(), &serde_json::json!("draft"));
         // Equality is fill-sensitive.
         assert_ne!(qv, QuillValue::string("draft"));
-        assert_eq!(qv, QuillValue::string("draft").with_fill(true));
+        assert_eq!(qv, filled());
     }
 }

@@ -13,6 +13,9 @@ repository = "https://github.com/quillmark-org/quillmark"
 [dependencies]
 quillmark-core = { workspace = true }
 quillmark-pdf = { workspace = true }
+# Lower a richtext field's corpus JSON to plaintext (`RichText.text` minus island
+# slots) for a form-field value; no markdown parser is linked.
+quillmark-richtext = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 # PDF-flatten → hayro raster, backing the SVG and PNG render outputs. Always

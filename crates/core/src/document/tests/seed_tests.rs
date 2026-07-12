@@ -438,13 +438,13 @@ Body.
     assert_eq!(doc, restored);
     assert_eq!(doc.to_markdown(), restored.to_markdown());
 
-    // The DTO carries `"type": "seed"` under the current 0.92.0 schema tag.
+    // The DTO carries `"type": "seed"` under the current 0.93.0 schema tag.
     assert!(
         json.contains("\"type\":\"seed\""),
         "expected seed variant in DTO: {json}"
     );
     assert!(
-        json.contains("quillmark/document@0.92.0"),
-        "expected 0.92.0 schema tag: {json}",
+        json.contains("quillmark/document@0.93.0"),
+        "expected 0.93.0 schema tag: {json}",
     );
 }

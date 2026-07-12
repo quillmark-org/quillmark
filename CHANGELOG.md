@@ -8,6 +8,81 @@
 
 ## Unreleased
 
+- fix(richtext): the markdown-export codec never leaks a delimiter into the
+  corpus. An editor `apply_mark_ops` mark can wrap a span markdown can't
+  represent (a `strong`/`emph`/`strike` edge on punctuation/symbols/whitespace,
+  or abutting a literal `*`) — the run would re-import as literal `**`/`*`/`~~`
+  text (bolding `a.` used to export `**a.**b`). `to_markdown` now verifies each
+  rendered line by re-parse and drops any mark whose emission would alter the
+  text, so the text always round-trips; only the unrepresentable formatting is
+  lost. Import-domain corpora are unaffected (still an exact fixed point).
+- feat(core,wasm,python)!: typed field writes via schema-carried types. One
+  per-type write dispatch (`conform_value(value, schema, mode)`) unifies the
+  render floor's coercion with a strict-write mode behind a `Leniency` flag; one
+  typed writer per address, `Card::commit_field(name, value, &FieldSchema)`,
+  dispatches on the schema — the write surface stays O(1) in field types. Adds
+  `EditError::FieldConform` for non-richtext mismatches (richtext keeps
+  `FieldRichtextDecode` / `FieldRichtextNotInline`). A schema-bound
+  `TypedEditor` (`Quill::editor(&mut doc)`) is the front door: `set` / `set_all`
+  resolve field types and report `Committed::{Typed,Opaque}`. Bindings gain
+  `commitField` / `commitCardField` (wasm) and `commit_field` /
+  `commit_card_field` (Python, net-new — Python had no richtext field writer).
+  The pre-release richtext-specific writers are removed in the same cycle:
+  `Card::set_field_richtext`, wasm `setRichtextField` / `updateCardRichtextField`
+  — use the typed writer, which carries the `inline` constraint in the schema.
+  Strict writes drop the render floor's cross-type `Boolean`↔`Number` coercions
+  and fail a shape mismatch at the write, not at a later render (#893)
+- remove(core,richtext,wasm)!: delete the incremental-edit surface — the
+  per-field change log and everything layered on it: `richtext::ChangeLog` /
+  `FieldChange` / `StaleRevision`; `LiveSession::revision` /
+  `record_field_delta_at` / `record_field_change_at` / `ensure_base_revision` /
+  `map_field_pos` / `apply_for_field_delta`; the WASM `applyFieldDelta` /
+  `mapFieldPos` / `revision` and the `Delta` DTO; and the `revision` stamp on
+  `RenderedRegion` / `CorpusHit` (and `FieldRegion` / `CorpusHit` on the wire).
+  Anchoring a caret or selection across edits belongs to the editor's own
+  transaction mapping (a ProseMirror / CodeMirror `StepMap`), not a parallel
+  core-side position map: the bidirectional preview↔editor cursor bridge is
+  `positionAt` / `locate` over the current compile, exact inverses that never
+  consulted the change log. Whole-document `apply(doc)` stays the one edit verb.
+  This dissolves #886's anchor-stranding half outright and drops the
+  half-built delta path behind its per-keystroke-marshalling half; `Delta` /
+  `diff` / `diff_import` / the mark & line op channels remain as the corpus
+  writers' substrate (`replace_body`, `import_body_delta`, `apply_body_change`)
+  (#886)
+- feat(core,wasm): `field_boxes(field)` / `LiveSession.fieldBoxes(field)` derive
+  the whole-field highlight — one union rect per page over the field's
+  `span`-bearing content segments — so a "highlight the focused field" consumer
+  stops reimplementing the span-filter + per-page union by hand. `regions()`
+  stays the low-level disjoint truth (#829); the helper owns the union, and is
+  content-only (a scalar-reference/widget-only field returns `[]`, its box being
+  a single `regions()` rect). Core `field_boxes(&[RenderedRegion], field)` is a
+  pure function so the one-shot `RenderResult.regions` sidecar gets it too (#884)
+- feat(core,wasm): `CorpusHit.granularity` (`HitGranularity` = `cluster` |
+  `segment`) reports whether `positionAt`'s `pos` resolved cluster-exact or
+  floored to the containing segment's start (origin-less ink, a multi-line code
+  fence's interior), so a caret UI trusts a `cluster` offset for the caret and
+  treats a `segment` one as a segment selection instead of guessing. Additive-
+  optional, omitted from the wire when the backend does not report it (#884)
+- fix(wasm): `Engine.supportsCanvas` and `LiveSession.supportsCanvas` gain doc
+  comments cross-referencing each other: the two are spelled identically but
+  answer different questions (a pre-session backend estimate vs. this compile's
+  authoritative answer, which can diverge — e.g. a 0-page document) — the
+  divergence is now visible where each is used instead of only discoverable at
+  runtime (#883)
+- fix(core): drop two rustdoc intra-doc links from public items
+  (`RichtextDecodeError`, `Card::set_field_richtext`) to the private
+  `decode_richtext_value`, which `-D rustdoc::private-intra-doc-links` (part of
+  the lint gate) rejects since the link can never resolve for a doc reader;
+  reworded to a plain code span, matching the existing convention elsewhere in
+  the same file for referencing a private helper from public docs
+- fix(wasm): drop the `revision?` field from the public `CorpusHit`/`FieldRegion`
+  types and the broken `{@link LiveSession.mapFieldPos}` / `.revision` references
+  in `runtime.d.ts`. The delta API (`applyFieldDelta`/`revision`/`mapFieldPos`) is
+  not forwarded through `runtime.js`, so no published consumer could reach the
+  methods those fields pointed at, and the stamped `revision` was always `0` on
+  the reachable read paths (whole-doc `apply` is revision-neutral). The public
+  types no longer advertise a capability the shipped `LiveSession` doesn't expose
+  (#850)
 - refactor(core)!: `RenderSession` collapses into `LiveSession` — a persistent,
   incremental compiler that owns preview (#778). Reads (`render`, the canvas
   seam, `regions`) serve the session's current compile; the new transactional
@@ -46,13 +121,16 @@
   rasters at `RenderOptions::ppi` (default 144). The `preview` cargo feature is
   removed — the hayro raster/SVG/PNG seam is always linked, so SVG/PNG/canvas
   work out of the box rather than behind a flag. The `quillmark` crate's
-  `pdfform-preview` feature is dropped (folded into `pdfform`); the wasm
-  `pdfform-preview` feature now gates only the `web-sys` canvas painter
+  `pdfform-preview` feature is folded into `pdfform`; in the wasm crate both the
+  `typst` and `pdfform` build variants link the `web-sys` canvas painter directly
 - fix(quillmark-pdf): `find_dict_value` now walks the dict as strict
   key→value pairs, so a Name in *value* position (e.g. `/Subtype /Producer`)
   is no longer mis-matched as a key; the object/dict scanners also skip
   `%`-comments, so `endobj` or a key token inside a comment can't derail
-  parsing of an untrusted base PDF
+  parsing of a base PDF. The `<<…>>`/`[…]` depth walkers (`extract_outer_dict`
+  and `read_value_end`'s nested-dict/array branches) skip `%`-comments and
+  literal `(…)` strings uniformly, so a `>>`/`]` carried inside a comment or
+  string no longer truncates a dict/array and drops the keys after it
 - feat(pdfform): add the Typst-free `pdfform` backend + shared `quillmark-pdf`
   AcroForm stamping spine; rewire Typst signatures onto the spine; thread a
   `regions` sidecar through `RenderResult` and generalize the raster-preview
@@ -79,7 +157,7 @@
   longer disagree with what `paint` does. The engine and WASM `supportsCanvas`
   surfaces are unchanged in shape. See `docs/migrations/0.92-to-0.93.md`
 - build(wasm)!: rename the WASM engine feature `render` → `typst` (now the
-  default) and add `pdfform` / `pdfform-preview` build variants, so a Typst-free
+  default) and add a `pdfform` build variant, so a Typst-free
   PDF-form bundle can ship without Typst. From-source builders pass
   `--features typst` where they used `--features render`; the published JS API is
   unchanged. See `docs/migrations/0.92-to-0.93.md`

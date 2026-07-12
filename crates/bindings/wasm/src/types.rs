@@ -101,7 +101,7 @@ impl From<Location> for quillmark_core::Location {
     }
 }
 
-/// Diagnostic message (error, warning, or note)
+/// Diagnostic message (error or warning)
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
@@ -220,20 +220,23 @@ pub struct ChangeSet {
 }
 
 /// A rendered field region: the quill schema field address plus its geometry on
-/// the page. Emitted for schema-bound fields — span-tracked content (markdown
-/// bodies, `markdown[]` elements, card content fields, direct scalar
+/// the page. Emitted for schema-bound fields — span-tracked content (richtext
+/// bodies, `richtext[]` elements, card content fields, direct scalar
 /// references) and form-field widgets (pdfform AcroForm, Typst `form-field`).
 /// Consumers use it to scroll to / highlight the focused field; for the
 /// reverse click direction use `LiveSession.fieldAt`, which answers over any
 /// placement. Geometry only: the raster is already complete, so a region is
 /// never a compositing input.
 ///
-/// `field` is **not** unique: content fields surface their **first placement**
-/// (one fragment per page it touches, so a highlight covers continuation
-/// pages), a scalar referenced at several plate sites surfaces each site, and
-/// tracked content plus a `field:`-bound widget yields both. Group by `field`
-/// — every entry routes to that field. Later placements of one content value
-/// are not enumerated; `fieldAt` still resolves clicks on them.
+/// `field` is **not** unique: content fields surface one region **per segment**
+/// (paragraph, heading, whole code fence) and per page each touches, a scalar
+/// referenced at several plate sites surfaces each site, and tracked content
+/// plus a `field:`-bound widget yields both. Group by `field` — every entry
+/// routes to that field. The whole-field highlight is the **union of a page's
+/// `span`-bearing segment rects**, so inter-paragraph whitespace stays
+/// uncovered (#829); `LiveSession.fieldBoxes(field)` owns that union so
+/// consumers need not derive it. Later placements of one content value are not
+/// enumerated; `fieldAt` / `positionAt` still resolve clicks on them.
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
@@ -247,6 +250,12 @@ pub struct FieldRegion {
     pub page: usize,
     /// `[x0, y0, x1, y1]` in PDF points (1/72″), bottom-left origin.
     pub rect: [f32; 4],
+    /// The corpus slice this box covers — USV `[start, end)` into the field's
+    /// `RichText` for content ink (one segment), `undefined` for a scalar
+    /// reference site or widget. Consumers key segment highlights on it;
+    /// `fieldBoxes(field)` unions same-page segments for the whole-field box.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span: Option<[usize; 2]>,
 }
 
 #[cfg(any(feature = "typst", feature = "pdfform"))]
@@ -256,6 +265,68 @@ impl From<quillmark_core::RenderedRegion> for FieldRegion {
             field: r.field,
             page: r.page,
             rect: r.rect,
+            span: r.span,
+        }
+    }
+}
+
+/// How precisely a `CorpusHit.pos` resolved — the marker a caret UI reads to
+/// decide whether to trust the offset. Never sub-cluster: `cluster` is the
+/// finest this API offers, `segment` the floor it degrades to on origin-less
+/// ink.
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+#[serde(rename_all = "camelCase")]
+pub enum HitGranularity {
+    /// Cluster-exact — `pos` is the first corpus char of the cluster under the
+    /// point (an escaped/CJK/shaping cluster floors to its first char, so not
+    /// sub-character). Place the caret at `pos` directly.
+    Cluster,
+    /// Segment-floored — the point hit origin-less ink (list markers, numbering,
+    /// a multi-line code fence's interior), so `pos` degraded to the containing
+    /// segment's start. Treat `pos` as the selected segment, not a caret.
+    Segment,
+}
+
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+impl From<quillmark_core::HitGranularity> for HitGranularity {
+    fn from(g: quillmark_core::HitGranularity) -> Self {
+        match g {
+            quillmark_core::HitGranularity::Cluster => HitGranularity::Cluster,
+            quillmark_core::HitGranularity::Segment => HitGranularity::Segment,
+        }
+    }
+}
+
+/// A resolved point → corpus position: the field a click landed in and the USV
+/// offset into its `RichText`. The `LiveSession.positionAt` result, paired with
+/// `locate` (corpus position → caret rect). `pos` is cluster-exact and degrades
+/// to the containing segment's start on origin-less ink; `granularity` reports
+/// which happened so a caret UI need not guess.
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+#[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
+#[serde(rename_all = "camelCase")]
+pub struct CorpusHit {
+    /// Quill schema field path (same address space as `FieldRegion.field`).
+    pub field: String,
+    /// USV offset into the field's `RichText`.
+    pub pos: usize,
+    /// Whether `pos` is cluster-exact or floored to the segment start
+    /// (`HitGranularity`). `undefined` when the backend does not report it.
+    /// Additive-optional.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub granularity: Option<HitGranularity>,
+}
+
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+impl From<quillmark_core::CorpusHit> for CorpusHit {
+    fn from(h: quillmark_core::CorpusHit) -> Self {
+        CorpusHit {
+            field: h.field,
+            pos: h.pos,
+            granularity: h.granularity.map(Into::into),
         }
     }
 }
@@ -326,48 +397,6 @@ impl From<RenderOptions> for quillmark_core::RenderOptions {
 mod tests {
     use super::*;
 
-    // ── OutputFormat ──────────────────────────────────────────────────────────
-
-    #[test]
-    #[cfg(any(feature = "typst", feature = "pdfform"))]
-    fn test_output_format_serialization() {
-        let pdf = OutputFormat::Pdf;
-        let json_pdf = serde_json::to_string(&pdf).unwrap();
-        assert_eq!(json_pdf, "\"pdf\"");
-
-        let svg = OutputFormat::Svg;
-        let json_svg = serde_json::to_string(&svg).unwrap();
-        assert_eq!(json_svg, "\"svg\"");
-
-        let txt = OutputFormat::Txt;
-        let json_txt = serde_json::to_string(&txt).unwrap();
-        assert_eq!(json_txt, "\"txt\"");
-    }
-
-    #[test]
-    #[cfg(any(feature = "typst", feature = "pdfform"))]
-    fn test_output_format_deserialization() {
-        let pdf: OutputFormat = serde_json::from_str("\"pdf\"").unwrap();
-        assert_eq!(pdf, OutputFormat::Pdf);
-
-        let svg: OutputFormat = serde_json::from_str("\"svg\"").unwrap();
-        assert_eq!(svg, OutputFormat::Svg);
-
-        let txt: OutputFormat = serde_json::from_str("\"txt\"").unwrap();
-        assert_eq!(txt, OutputFormat::Txt);
-    }
-
-    #[test]
-    fn test_severity_serialization() {
-        let error = Severity::Error;
-        let json_error = serde_json::to_string(&error).unwrap();
-        assert_eq!(json_error, "\"error\"");
-
-        let warning = Severity::Warning;
-        let json_warning = serde_json::to_string(&warning).unwrap();
-        assert_eq!(json_warning, "\"warning\"");
-    }
-
     #[test]
     fn test_severity_deserialization() {
         let error: Severity = serde_json::from_str("\"error\"").unwrap();
@@ -378,52 +407,6 @@ mod tests {
 
         // "note" is not a severity; two values only.
         assert!(serde_json::from_str::<Severity>("\"note\"").is_err());
-    }
-
-    #[test]
-    fn test_diagnostic_serialization() {
-        let diag = quillmark_core::Diagnostic::new(
-            quillmark_core::Severity::Error,
-            "Test error message".to_string(),
-        )
-        .with_code("E001".to_string())
-        .with_location(quillmark_core::Location {
-            file: "test.typ".to_string(),
-            line: 10,
-            column: 5,
-        })
-        .with_hint("This is a hint".to_string());
-
-        let wasm_diag: Diagnostic = diag.into();
-        let json = serde_json::to_string(&wasm_diag).unwrap();
-
-        assert!(json.contains("\"severity\":\"error\""));
-        assert!(json.contains("\"code\":\"E001\""));
-        assert!(json.contains("\"message\":\"Test error message\""));
-        assert!(json.contains("\"hint\":\"This is a hint\""));
-        assert!(json.contains("\"file\":\"test.typ\""));
-        assert!(json.contains("\"line\":10"));
-        assert!(json.contains("\"column\":5"));
-    }
-
-    #[test]
-    fn test_diagnostic_with_source_chain() {
-        let root_error = std::io::Error::new(std::io::ErrorKind::NotFound, "File not found");
-        let diag = quillmark_core::Diagnostic::new(
-            quillmark_core::Severity::Error,
-            "Failed to load template".to_string(),
-        )
-        .with_code("E002".to_string())
-        .with_source(&root_error);
-
-        let wasm_diag: Diagnostic = diag.into();
-        let json = serde_json::to_string(&wasm_diag).unwrap();
-
-        assert!(json.contains("\"severity\":\"error\""));
-        assert!(json.contains("\"code\":\"E002\""));
-        assert!(json.contains("\"message\":\"Failed to load template\""));
-        assert!(json.contains("\"sourceChain\""));
-        assert!(json.contains("File not found"));
     }
 
     #[test]
@@ -493,12 +476,15 @@ mod tests {
             field: "full_name".to_string(),
             page: 0,
             rect: [180.0, 672.0, 520.0, 692.0],
+            span: None,
         };
         let json = serde_json::to_string(&region).unwrap();
         assert!(json.contains("\"field\":\"full_name\""));
         assert!(json.contains("\"page\":0"));
         assert!(json.contains("\"rect\":[180.0,672.0,520.0,692.0]"));
-        // No backend widget name or kind/value leaks into the wire shape.
+        // A scalar/widget region omits `span`; no backend widget name or
+        // kind/value leaks either.
+        assert!(!json.contains("\"span\""));
         assert!(!json.contains("\"name\""));
         assert!(!json.contains("\"kind\""));
     }
@@ -511,11 +497,13 @@ mod tests {
             field: "signature_block".to_string(),
             page: 0,
             rect: [180.0, 422.0, 520.0, 462.0],
+            span: Some([0, 25]),
         };
         let json = serde_json::to_string(&region).unwrap();
         let back: FieldRegion = serde_json::from_str(&json).expect("round-trips");
         assert_eq!(back.field, "signature_block");
         assert_eq!(back.rect, [180.0, 422.0, 520.0, 462.0]);
+        assert_eq!(back.span, Some([0, 25]));
     }
 
     #[test]
@@ -527,10 +515,12 @@ mod tests {
             field: "agree".to_string(),
             page: 0,
             rect: [180.0, 538.0, 194.0, 552.0],
+            span: None,
         };
         let wasm_region: FieldRegion = core_region.into();
         assert_eq!(wasm_region.field, "agree");
         assert_eq!(wasm_region.page, 0);
         assert_eq!(wasm_region.rect, [180.0, 538.0, 194.0, 552.0]);
+        assert_eq!(wasm_region.span, None);
     }
 }

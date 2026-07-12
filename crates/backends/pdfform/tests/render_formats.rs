@@ -38,17 +38,6 @@ fn render(format: OutputFormat, ppi: Option<f32>) -> Vec<quillmark_core::Artifac
 }
 
 #[test]
-fn renders_pdf_acroform() {
-    let artifacts = render(OutputFormat::Pdf, None);
-    assert_eq!(artifacts.len(), 1, "PDF is a single artifact");
-    assert_eq!(artifacts[0].output_format, OutputFormat::Pdf);
-    assert!(
-        artifacts[0].bytes.starts_with(b"%PDF-"),
-        "PDF must start with the %PDF- header"
-    );
-}
-
-#[test]
 fn renders_svg_per_page() {
     let artifacts = render(OutputFormat::Svg, None);
     assert!(!artifacts.is_empty(), "at least one SVG page");

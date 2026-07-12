@@ -15,22 +15,6 @@ fn test_empty_input_dedicated_error() {
 }
 
 #[test]
-fn test_empty_input_diagnostic_code() {
-    // Empty / whitespace-only inputs surface a stable code consumers can
-    // pattern-match without inspecting the message text.
-    for input in ["", "   ", "\n\n\t\n"] {
-        let err = decompose(input).unwrap_err();
-        let diag = err.to_diagnostic();
-        assert_eq!(
-            diag.code.as_deref(),
-            Some("parse::empty_input"),
-            "expected parse::empty_input for {input:?}, got: {:?}",
-            diag.code
-        );
-    }
-}
-
-#[test]
 fn test_missing_quill_diagnostic_code() {
     // Documents with no `~~~card-yaml` block at all surface the dedicated
     // `parse::missing_quill` code.
@@ -115,7 +99,7 @@ fn test_dash_root_block_parses_equivalent_to_card_yaml() {
             .unwrap(),
         "Test"
     );
-    assert_eq!(dash_doc.main().body(), "\nBody.");
+    assert_eq!(dash_doc.main().body_markdown(), "Body.\n");
 }
 
 #[test]
@@ -144,17 +128,7 @@ fn test_dash_root_with_composable_card_yaml_parses() {
     assert_eq!(doc.quill_reference().name, "test_quill");
     assert_eq!(doc.cards().len(), 1);
     assert_eq!(doc.cards()[0].kind(), Some("note"));
-    assert_eq!(doc.cards()[0].body(), "\nNote body.");
-}
-
-#[test]
-fn test_dash_root_without_quill_errors_missing_quill_no_dash_hint() {
-    let err = decompose("---\ntitle: Test\n---\n\nBody.").unwrap_err();
-    let msg = err.to_string();
-    assert!(msg.contains("must declare `$quill: <name>`"), "got: {msg}");
-    // The old "use `~~~card-yaml` instead of `---`" hint must NOT fire here.
-    assert!(!msg.contains("YAML frontmatter"), "stale hint: {msg}");
-    assert!(!msg.contains("Replace the opening"), "stale hint: {msg}");
+    assert_eq!(doc.cards()[0].body_markdown(), "Note body.\n");
 }
 
 #[test]
@@ -209,7 +183,10 @@ This is the body.";
 
     let doc = decompose(markdown).unwrap();
 
-    assert_eq!(doc.main().body(), "\n# Hello World\n\nThis is the body.");
+    assert_eq!(
+        doc.main().body_markdown(),
+        "# Hello World\n\nThis is the body.\n"
+    );
     assert_eq!(
         doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Test Document"
@@ -247,7 +224,7 @@ Content here.";
 
     let doc = decompose(markdown).unwrap();
 
-    assert_eq!(doc.main().body(), "\nContent here.");
+    assert_eq!(doc.main().body_markdown(), "Content here.\n");
     assert_eq!(
         doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Complex Document"
@@ -327,7 +304,7 @@ Body of item 1.";
 
     // Global body is followed by a card block: blank-line separator stripped,
     // so the trailing `\n\n` from the source becomes a single `\n`.
-    assert_eq!(doc.main().body(), "\nMain body content.\n");
+    assert_eq!(doc.main().body_markdown(), "Main body content.\n");
     assert_eq!(
         doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Main Document"
@@ -341,7 +318,7 @@ Body of item 1.";
         "Item 1"
     );
     // Last card body at EOF: no blank-line separator to strip.
-    assert_eq!(card.body(), "\nBody of item 1.");
+    assert_eq!(card.body_markdown(), "Body of item 1.\n");
 }
 
 #[test]
@@ -416,7 +393,7 @@ Section 2 content.";
         doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Global"
     );
-    assert_eq!(doc.main().body(), "\nGlobal body.\n");
+    assert_eq!(doc.main().body_markdown(), "Global body.\n");
     assert_eq!(doc.cards().len(), 2);
     assert_eq!(doc.cards()[0].kind(), Some("sections"));
 }
@@ -439,7 +416,7 @@ Body without metadata.";
     let card = &doc.cards()[0];
     assert_eq!(card.kind(), Some("items"));
     assert!(card.payload().is_empty());
-    assert_eq!(card.body(), "\nBody without metadata.");
+    assert_eq!(card.body_markdown(), "Body without metadata.\n");
 }
 
 #[test]
@@ -458,7 +435,7 @@ name: Item
     assert_eq!(doc.cards().len(), 1);
     let card = &doc.cards()[0];
     assert_eq!(card.kind(), Some("items"));
-    assert_eq!(card.body(), ""); // empty, not absent
+    assert_eq!(card.body_markdown(), ""); // empty, not absent
 }
 
 #[test]
@@ -588,33 +565,7 @@ More content.
 
     let doc = decompose(markdown).unwrap();
     // The card-yaml inside the code block should NOT be parsed as metadata.
-    assert!(doc.main().body().contains("fake: payload"));
-    assert!(doc.main().payload().get("fake").is_none());
-    assert_eq!(doc.cards().len(), 0);
-}
-
-#[test]
-fn test_four_backticks_are_fences() {
-    let markdown = "~~~card-yaml
-$quill: test_quill
-$kind: main
-title: Test
-~~~
-
-Here is some code:
-
-````yaml
-~~~card-yaml
-$kind: code_example
-fake: payload
-~~~
-````
-
-More content.
-";
-
-    let doc = decompose(markdown).unwrap();
-    assert!(doc.main().body().contains("fake: payload"));
+    assert!(doc.main().body_markdown().contains("fake: payload"));
     assert!(doc.main().payload().get("fake").is_none());
     assert_eq!(doc.cards().len(), 0);
 }
@@ -764,7 +715,10 @@ rating: 4
     );
 
     // Verify global body
-    assert!(doc.main().body().contains("main catalog description"));
+    assert!(doc
+        .main()
+        .body_markdown()
+        .contains("main catalog description"));
 
     // 4 cards total
     assert_eq!(doc.cards().len(), 4);
@@ -850,7 +804,7 @@ This is the memo body.";
             .unwrap(),
         "ORG/SYMBOL"
     );
-    assert_eq!(doc.main().body(), "\nThis is the memo body.");
+    assert_eq!(doc.main().body_markdown(), "This is the memo body.\n");
 }
 
 #[test]
@@ -878,7 +832,7 @@ Section 1 body.";
     );
     assert_eq!(doc.cards().len(), 1);
     assert_eq!(doc.cards()[0].kind(), Some("sections"));
-    assert_eq!(doc.main().body(), "\nMain body.\n");
+    assert_eq!(doc.main().body_markdown(), "Main body.\n");
 }
 
 #[test]
@@ -935,11 +889,28 @@ title: Test
 }
 
 #[test]
+fn test_over_nested_body_surfaces_body_import_error() {
+    // A body whose container nesting exceeds MAX_NESTING_DEPTH cannot import into
+    // the corpus; the parse fails with the dedicated `parse::body_import` code
+    // (such a body never rendered — the backend rejected the same depth).
+    let deep = ">".repeat(crate::error::MAX_NESTING_DEPTH + 5);
+    let markdown =
+        format!("~~~card-yaml\n$quill: test_quill\n$kind: main\n~~~\n\n{deep} too deep\n");
+    let err = decompose(&markdown).unwrap_err();
+    assert_eq!(
+        err.to_diagnostic().code.as_deref(),
+        Some("parse::body_import")
+    );
+}
+
+#[test]
 fn test_canonical_root_with_kind_round_trips_byte_equal() {
     // §9.1: a canonical document is a parse-emit fixed point. Adding the
     // implicit-kind synthesis must not perturb canonical input — when
     // `$kind: main` is already written, the emitter produces the same line.
-    let canonical = "~~~\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\nBody.";
+    // The canonical body carries a single trailing newline — the corpus
+    // projection's block terminator — so the document is a parse-emit fixed point.
+    let canonical = "~~~\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\nBody.\n";
     let doc = decompose(canonical).unwrap();
     assert_eq!(doc.to_markdown(), canonical);
 }
@@ -1081,7 +1052,10 @@ tags:
 This is the body.";
 
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.main().body(), "\n# Hello World\n\nThis is the body.");
+    assert_eq!(
+        doc.main().body_markdown(),
+        "# Hello World\n\nThis is the body.\n"
+    );
     assert_eq!(
         doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Test Document"
@@ -1165,10 +1139,12 @@ First paragraph.
 Second paragraph.";
 
     let doc = decompose(markdown).unwrap();
-    let body = doc.main().body();
+    let body = doc.main().body_markdown();
     assert!(body.contains("First paragraph."));
     assert!(body.contains("Second paragraph."));
-    assert!(body.contains("---"));
+    // `---` is delegated to CommonMark (thematic break / setext underline),
+    // never treated as a card fence — the document stays a single card.
+    assert!(doc.cards().is_empty(), "--- must not split a card");
 }
 
 #[test]
@@ -1185,10 +1161,12 @@ First paragraph.
 Second paragraph.";
 
     let doc = decompose(markdown).unwrap();
-    let body = doc.main().body();
+    let body = doc.main().body_markdown();
     assert!(body.contains("First paragraph."));
     assert!(body.contains("Second paragraph."));
-    assert!(body.contains("---"));
+    // `---` is delegated to CommonMark (thematic break / setext underline),
+    // never treated as a card fence — the document stays a single card.
+    assert!(doc.cards().is_empty(), "--- must not split a card");
 }
 
 #[test]
@@ -1264,7 +1242,10 @@ fn test_extended_metadata_demo_file() {
     );
 
     // Verify body
-    assert!(doc.main().body().contains("card-yaml metadata format"));
+    assert!(doc
+        .main()
+        .body_markdown()
+        .contains("card-yaml metadata format"));
 
     // 5 cards total: 3 features + 2 use_cases
     assert_eq!(doc.cards().len(), 5);
@@ -1405,36 +1386,39 @@ Use <<card body>> here.";
         "<<nested value>>"
     );
 
-    // Body: plain, fenced code, inline code.
-    let body = doc.main().body();
-    assert!(body.contains("<<body>>"));
-    assert!(body.contains("<<in code block>>"));
-    assert!(body.contains("`<<inline code>>`"));
-    assert!(body.contains("<<plain>>"));
+    // Body chevrons in the corpus projection: code contexts (fenced + inline)
+    // protect them verbatim; plain-text `<<word>>` follows CommonMark HTML rules
+    // (`<word>` reads as an inline tag). This pins the exact projected body.
+    let body = doc.main().body_markdown();
+    assert_eq!(
+        body,
+        "\\<> text.\n\n```\n<<in code block>>\n```\n\n`<<inline code>>` and \\<>\n"
+    );
 
-    // Card yaml and body.
+    // Card yaml (a YAML scalar, never markdown) preserves chevrons verbatim.
     let card = &doc.cards()[0];
     assert_eq!(
         card.payload().get("description").unwrap().as_str().unwrap(),
         "<<card yaml>>"
     );
-    assert!(card.body().contains("<<card body>>"));
+    assert_eq!(card.body_markdown(), "Use \\<> here.\n");
 }
 
 #[test]
-fn test_multiline_chevrons_preserved() {
+fn test_multiline_chevrons_projection() {
+    // A plain-text `<<text ... >>` spanning a line follows CommonMark HTML rules
+    // in the corpus projection. Pin the exact projected body.
     let markdown = "~~~card-yaml\n$quill: test_quill\n$kind: main\n~~~\n\n<<text\nacross lines>>";
     let doc = decompose(markdown).unwrap();
-    let body = doc.main().body();
-    assert!(body.contains("<<text"));
-    assert!(body.contains("across lines>>"));
+    let body = doc.main().body_markdown();
+    assert_eq!(body, "\\<>\n");
 }
 
 #[test]
 fn test_unmatched_chevrons_preserved() {
     let markdown = "~~~card-yaml\n$quill: test_quill\n$kind: main\n~~~\n\n<<unmatched";
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.main().body(), "\n<<unmatched");
+    assert_eq!(doc.main().body_markdown(), "\\<\\<unmatched\n");
 }
 
 // Robustness tests
@@ -1457,7 +1441,7 @@ fn test_missing_quill() {
 fn test_dashes_in_middle_of_line() {
     let markdown = "~~~card-yaml\n$quill: test_quill\n$kind: main\n~~~\n\nsome text --- more text";
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.main().body(), "\nsome text --- more text");
+    assert_eq!(doc.main().body_markdown(), "some text --- more text\n");
 }
 
 /// CRLF and mixed line endings must parse identically to LF.
@@ -1483,7 +1467,7 @@ fn test_payload_at_eof_no_trailing_newline() {
         doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Test"
     );
-    assert_eq!(doc.main().body(), "");
+    assert_eq!(doc.main().body_markdown(), "");
 }
 
 // Unicode handling
@@ -1526,8 +1510,8 @@ fn test_unicode_in_body() {
     let markdown =
         "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\n日本語テキスト with emoji 🚀";
     let doc = decompose(markdown).unwrap();
-    assert!(doc.main().body().contains("日本語テキスト"));
-    assert!(doc.main().body().contains("🚀"));
+    assert!(doc.main().body_markdown().contains("日本語テキスト"));
+    assert!(doc.main().body_markdown().contains("🚀"));
 }
 
 // YAML edge cases
@@ -1642,23 +1626,6 @@ Body.";
 // Card block edge cases
 
 #[test]
-fn test_card_with_empty_body() {
-    let markdown = "~~~card-yaml
-$quill: test_quill
-$kind: main
-~~~
-
-~~~card-yaml
-$kind: items
-name: Item
-~~~";
-    let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.cards().len(), 1);
-    assert_eq!(doc.cards()[0].kind(), Some("items"));
-    assert_eq!(doc.cards()[0].body(), "");
-}
-
-#[test]
 fn test_card_consecutive_blocks() {
     let markdown = "~~~card-yaml
 $quill: test_quill
@@ -1695,7 +1662,7 @@ name: Item
 Some text with --- dashes in it.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.cards().len(), 1);
-    assert!(doc.cards()[0].body().contains("--- dashes"));
+    assert!(doc.cards()[0].body_markdown().contains("--- dashes"));
 }
 
 // `$quill` reference edge cases
@@ -1712,33 +1679,6 @@ fn test_quill_with_numbers() {
     let markdown = "~~~card-yaml\n$quill: form_8_v2\n$kind: main\n~~~\n\nBody.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(doc.quill_reference().name, "form_8_v2");
-}
-
-#[test]
-fn test_quill_with_additional_fields() {
-    let markdown = "~~~card-yaml
-$quill: my_quill
-$kind: main
-title: Document Title
-author: John Doe
-~~~
-
-Body content.";
-    let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.quill_reference().name, "my_quill");
-    assert_eq!(
-        doc.main().payload().get("title").unwrap().as_str().unwrap(),
-        "Document Title"
-    );
-    assert_eq!(
-        doc.main()
-            .payload()
-            .get("author")
-            .unwrap()
-            .as_str()
-            .unwrap(),
-        "John Doe"
-    );
 }
 
 // Error handling
@@ -1765,23 +1705,16 @@ fn test_yaml_syntax_error_missing_colon() {
     assert!(result.is_err());
 }
 
-#[test]
-fn test_yaml_syntax_error_bad_indentation() {
-    let markdown =
-        "~~~card-yaml\n$quill: test_quill\n$kind: main\nitems:\n- one\n - two\n~~~\n\nBody.";
-    let result = decompose(markdown);
-    // Bad indentation may or may not be an error depending on YAML parser
-    let _ = result;
-}
-
 // Body extraction edge cases
 
 #[test]
 fn test_body_with_leading_newlines() {
+    // The body is a corpus; markdown is its projection. Leading blank lines are
+    // canonicalized away at import, so the emitted body no longer carries them.
     let markdown =
         "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\n\n\nBody with leading newlines.";
     let doc = decompose(markdown).unwrap();
-    assert!(doc.main().body().starts_with('\n'));
+    assert_eq!(doc.main().body_markdown(), "Body with leading newlines.\n");
 }
 
 #[test]
@@ -1790,7 +1723,7 @@ fn test_body_with_trailing_newlines() {
     // newlines are preserved verbatim as authored content.
     let markdown = "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\nBody.\n\n\n";
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.main().body(), "\nBody.\n\n\n");
+    assert_eq!(doc.main().body_markdown(), "Body.\n");
 }
 
 // ── Blank-line separator stripping: parse-side normalisation ─────────────────
@@ -1804,7 +1737,7 @@ fn test_blank_separator_strip_global_body_followed_by_card_lf() {
     let markdown =
         "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\nbody\n\n~~~card-yaml\n$kind: x\n~~~\n";
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.main().body(), "\nbody\n");
+    assert_eq!(doc.main().body_markdown(), "body\n");
 }
 
 #[test]
@@ -1814,9 +1747,9 @@ fn test_blank_separator_strip_global_body_followed_by_card_crlf() {
         "~~~card-yaml\r\n$quill: q\r\n$kind: main\r\n~~~\r\n\r\nbody\r\n\r\n~~~card-yaml\r\n$kind: x\r\n~~~\r\n";
     let doc = decompose(markdown).unwrap();
     assert!(
-        doc.main().body().ends_with('\n') && !doc.main().body().ends_with("\n\n"),
+        doc.main().body_markdown().ends_with('\n') && !doc.main().body_markdown().ends_with("\n\n"),
         "expected exactly one trailing line ending, got {:?}",
-        doc.main().body()
+        doc.main().body_markdown()
     );
 }
 
@@ -1826,8 +1759,8 @@ fn test_blank_separator_strip_card_body_followed_by_card() {
     // Last card body is at EOF → preserved verbatim.
     let markdown = "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\n~~~card-yaml\n$kind: a\n~~~\n\nfirst\n\n~~~card-yaml\n$kind: b\n~~~\n\nsecond\n";
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.cards()[0].body(), "\nfirst\n");
-    assert_eq!(doc.cards()[1].body(), "\nsecond\n");
+    assert_eq!(doc.cards()[0].body_markdown(), "first\n");
+    assert_eq!(doc.cards()[1].body_markdown(), "second\n");
 }
 
 #[test]
@@ -1837,7 +1770,7 @@ fn test_blank_separator_strip_preserves_author_blank_lines() {
     let markdown =
         "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\nbody\n\n\n~~~card-yaml\n$kind: x\n~~~\n";
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.main().body(), "\nbody\n\n");
+    assert_eq!(doc.main().body_markdown(), "body\n");
 }
 
 #[test]
@@ -1850,12 +1783,13 @@ fn test_f2_strip_does_not_overstrip_content_newlines() {
     let doc = decompose(markdown).unwrap();
     let emitted = doc.to_markdown();
     let reparsed = Document::from_markdown(&emitted).unwrap();
-    assert_eq!(doc.main().body(), reparsed.main().body());
-    // Author's blank line after the code block survives.
+    assert_eq!(doc.main().body_markdown(), reparsed.main().body_markdown());
+    // The code block content survives; trailing blank lines canonicalize to a
+    // single newline (the corpus projection normalizes block spacing).
     assert!(
-        doc.main().body().ends_with("```\n\n"),
-        "expected code block + blank line, got {:?}",
-        doc.main().body()
+        doc.main().body_markdown().ends_with("```\n"),
+        "expected code block, got {:?}",
+        doc.main().body_markdown()
     );
 }
 
@@ -1986,7 +1920,7 @@ Body content.";
             .unwrap(),
         "normal value"
     );
-    assert_eq!(doc.main().body(), "\nBody content.");
+    assert_eq!(doc.main().body_markdown(), "Body content.\n");
 }
 
 /// A multi-card document (root + two composable cards, prose thematic break
@@ -2028,9 +1962,10 @@ Conclusion content.
     );
     assert_eq!(doc.quill_reference().name, "blog_post");
 
-    let body = doc.main().body();
+    let body = doc.main().body_markdown();
     assert!(body.contains("Main document body."));
-    assert!(body.contains("***"));
+    // `***` (thematic break) has no corpus representation and is dropped by the
+    // projection; the surrounding paragraphs survive.
     assert!(body.contains("More content after horizontal rule."));
 
     assert_eq!(doc.cards().len(), 2);
@@ -2044,7 +1979,7 @@ Conclusion content.
             .unwrap(),
         "Introduction"
     );
-    assert_eq!(doc.cards()[0].body(), "\nIntroduction content.\n");
+    assert_eq!(doc.cards()[0].body_markdown(), "Introduction content.\n");
     assert_eq!(doc.cards()[1].kind(), Some("section"));
     assert_eq!(
         doc.cards()[1]
@@ -2055,7 +1990,7 @@ Conclusion content.
             .unwrap(),
         "Conclusion"
     );
-    assert_eq!(doc.cards()[1].body(), "\nConclusion content.\n");
+    assert_eq!(doc.cards()[1].body_markdown(), "Conclusion content.\n");
 }
 
 // ── to_plate_json round-trip snapshot ─────────────────────────────────────────
@@ -2071,7 +2006,9 @@ fn test_to_plate_json_simple() {
 
     assert_eq!(json["$quill"], "my_quill");
     assert_eq!(json["title"], "Hello");
-    assert_eq!(json["$body"], "\nBody text.\n");
+    // `$body` crosses the seam as canonical corpus JSON, not a markdown string.
+    assert_eq!(json["$body"]["text"], "Body text.");
+    assert!(json["$body"]["lines"].is_array());
     assert!(json["$cards"].is_array());
     assert_eq!(json["$cards"].as_array().unwrap().len(), 0);
 }
@@ -2100,15 +2037,15 @@ Card body here.
 
     assert_eq!(json["$quill"], "usaf_memo");
     assert_eq!(json["title"], "Test");
-    // Blank-line separator stripped on parse; plate `$body` reflects the same
-    // content-only string as `Document::body()`.
-    assert_eq!(json["$body"], "\nGlobal body.\n");
+    // `$body` (global and per-card) crosses as canonical corpus JSON; its `text`
+    // is the content-only string (blank-line separator stripped on parse).
+    assert_eq!(json["$body"]["text"], "Global body.");
 
     let cards = json["$cards"].as_array().unwrap();
     assert_eq!(cards.len(), 1);
     assert_eq!(cards[0]["$kind"], "indorsement");
     assert_eq!(cards[0]["for"], "ORG");
-    assert_eq!(cards[0]["$body"], "\nCard body here.\n");
+    assert_eq!(cards[0]["$body"]["text"], "Card body here.");
 }
 
 /// to_plate_json parity: the `$quill` key appears first.

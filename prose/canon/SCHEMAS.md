@@ -25,7 +25,7 @@ Supported field types:
 | `array` | Ordered list; requires an `items:` element schema (e.g. `items: { type: string }` for `string[]`, `items: { type: object, properties: … }` for a typed table) |
 | `object` | Structured map; requires `properties:` |
 | `datetime` | YAML 1.1 timestamp: bare `YYYY-MM-DD` through full RFC 3339 with offset; seconds optional |
-| `markdown` | Rich text; backends handle conversion |
+| `richtext` | Rich prose over a canonical corpus (`RichText`); markdown is a projection of it. Declare `inline: true` for the single-line variant (exactly one `Para` line, no container, no islands). The pre-richtext `markdown` spelling and the retired `type: richtext(inline)` token are schema load errors (`quill::field_parse_error`) |
 
 ## Type coercion
 
@@ -34,16 +34,18 @@ Supported field types:
 - Returns `Result<IndexMap<String, QuillValue>, CoercionError>`
 - Coerces top-level fields and per-card fields to their declared types
 - Fails fast (`Err`) on the first value that cannot be coerced
-- Coercion rules per type: array wrapping plus element-wise coercion against the `items` schema (a bad element fails at its indexed path, e.g. `counts[1]`); boolean from string/int/float; number/integer from string or from boolean (`true→1`, `false→0`); string/markdown unwrap a length-1 string array into the bare string (else identity); date/datetime format validation; object property recursion
+- Coercion rules per type: array wrapping plus element-wise coercion against the `items` schema (a bad element fails at its indexed path, e.g. `counts[1]`); boolean from string/int/float; number/integer from string or from boolean (`true→1`, `false→0`); string unwraps a length-1 string array into the bare string (else identity); richtext commits the canonical corpus form (the model) — an authored markdown string imports (via `quillmark-richtext::import`), an editor-supplied corpus object revalidates and re-canonicalizes, and the length-1-array-unwrap / bare-scalar-stringify leniencies feed the import; date/datetime format validation; object property recursion
+- **`inline` richtext enforcement.** A `richtext` field with `inline: true` requires its corpus to be exactly one `Para` line, in no container, with no islands (`RichText::is_inline`). The empty corpus satisfies it, so a blank or zero-filled inline field passes. The constraint is checked in three places: coercion (`CoercionError` for a document value), validation (`richtext::not_inline`, the `TypeMismatch` fatality class, as a backstop for a corpus that bypassed coercion), and load-time example import (a schema literal that violates it is a load error). Blueprint still annotates inline fields as `richtext(inline)<markdown>`; `build_transform_schema` emits `quillmark:inline: true`
 - **Null short-circuits coercion.** A null value (`field:`, `field: null`,
   `field: ~`) passes coercion unchanged for *every* type — null ≡ absent, so
   it carries no data to coerce. The value reaches the render floor and
   zero-fills (authored › `default:` › type-zero) exactly like an omitted
   field
-- **Bare scalars stringify into `string`/`markdown` fields.** A bare boolean,
+- **Bare scalars stringify into `string`/`richtext` fields.** A bare boolean,
   integer, or number written where a `string` is expected adopts its canonical
   scalar token (`true`, `47`, `1.0`) instead of failing — it is unambiguously
-  text (null and collections are excluded). The leniency is scoped to
+  text (null and collections are excluded); a `richtext` field then imports that
+  token as its markdown source. The leniency is scoped to
   *document* payloads via the shared `scalar_as_string` predicate; a quill
   author's own `default:`/`example:` literals stay strict, so the blueprint
   keeps quoting ambiguous string literals
@@ -169,11 +171,22 @@ seeded documents alike (see [BLUEPRINT.md](BLUEPRINT.md)).
 ## Document seeding
 
 **Seeding** builds a starter `Document` from the schema for editor consumers
-("new document"): each field that declares an `example:` is committed verbatim,
-and **every other field is left absent**. The seeding cascade is therefore
+("new document"): each field that declares an `example:` is committed, and
+**every other field is left absent**. The seeding cascade is therefore
 `example: → absent` — absent fields are never written; they are interpolated at
 the compilation layer by [zero-filled render](#zero-filled-render) (`default:`,
 else type-empty zero), exactly as for any authored document.
+
+**Seed-commits-corpus.** A seeded richtext field (and the body) commits the
+canonical **corpus** form, not the authored markdown string, so a seeded
+document is corpus from birth — matching what an editor round-trip produces and
+what storage embeds. The corpus is imported once at quill load into a
+`#[serde(skip)]` companion cache on the schema (`FieldSchema::default_corpus` /
+`example_corpus`, `BodyCardSchema::example_corpus`), a pure function of the
+`Quill.yaml` bytes; seeding and the render floor read that cache rather than
+re-importing markdown per document. The authored markdown literal is retained
+untouched — it is the source of truth the schema emits and the blueprint prints;
+the corpus is a derived projection of it.
 
 Committing *only* `example` is the whole design. `resolve_fields` already
 produces `default` and `zero` at compile time but **never `example`** (example
@@ -245,7 +258,7 @@ metadata, not schema fields, and do not appear in `fields`.
 
 For LLM/MCP authoring, see [BLUEPRINT.md](BLUEPRINT.md) — `blueprint()` emits a document-shaped, pre-filled Markdown reference that's denser than schema for prompt-time use.
 
-Top-level schema keys: `main`, optional `card_kinds` (map keyed by card name). `main` and each entry in `card_kinds` share the same `CardSchema` shape: `fields` (map keyed by field name), optional `description`, optional `ui`, optional `body`. Each `FieldSchema` includes `type`, optional `description`/`default`/`example`/`enum`/`properties`/`items`/`ui`. `items` (the element schema, itself a `FieldSchema`) is required on `array` fields and rejected elsewhere; `properties` is used by `object` fields (and by an array's `object`-typed `items`).
+Top-level schema keys: `main`, optional `card_kinds` (map keyed by card name). `main` and each entry in `card_kinds` share the same `CardSchema` shape: `fields` (map keyed by field name), optional `description`, optional `ui`, optional `body`. Each `FieldSchema` includes `type`, optional `description`/`default`/`example`/`enum`/`inline`/`properties`/`items`/`ui`. `inline` is valid only on `richtext` fields. `items` (the element schema, itself a `FieldSchema`) is required on `array` fields and rejected elsewhere; `properties` is used by `object` fields (and by an array's `object`-typed `items`).
 
 ### `default` and `example`
 

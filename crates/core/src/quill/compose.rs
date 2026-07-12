@@ -58,16 +58,13 @@ impl QuillConfig {
                     Some(schema) => resolve_fields(&card.payload().to_index_map(), schema),
                     None => card.payload().to_index_map(),
                 };
-                Card::from_parts(
-                    rebuild_payload_with_meta(card, fields),
-                    card.body().to_string(),
-                )
+                Card::from_parts(rebuild_payload_with_meta(card, fields), card.body().clone())
             })
             .collect();
 
         let final_main = Card::from_parts(
             rebuild_payload_with_meta(normalized.main(), main_resolved),
-            normalized.main().body().to_string(),
+            normalized.main().body().clone(),
         );
         let final_doc = Document::from_main_and_cards(final_main, cards_resolved, Vec::new());
 
@@ -92,13 +89,13 @@ impl QuillConfig {
                 .map_err(coercion_error)?;
             coerced_cards.push(Card::from_parts(
                 rebuild_payload_with_meta(card, coerced_fields),
-                card.body().to_string(),
+                card.body().clone(),
             ));
         }
 
         let coerced_main = Card::from_parts(
             rebuild_payload_with_meta(doc.main(), coerced_payload),
-            doc.main().body().to_string(),
+            doc.main().body().clone(),
         );
         let coerced_doc = Document::from_main_and_cards(coerced_main, coerced_cards, Vec::new());
 
@@ -353,6 +350,22 @@ fn resolve_fields(
 fn resolve_value(value: Option<&QuillValue>, field: &FieldSchema) -> QuillValue {
     let present = value.filter(|v| !v.as_json().is_null());
     let Some(v) = present else {
+        // A richtext-bearing field commits the *corpus* form of its default
+        // (`default_corpus`, cached at load by `from_yaml`), so the seam carries
+        // canonical RichText-JSON the backend can classify. It must NOT fall
+        // through to the raw markdown `default`: `resolve_fields` runs after
+        // `coerce_and_validate`, so a bare markdown string injected here would
+        // reach the plate uncoerced and be misread. A richtext field with no
+        // cached `default_corpus` (only reachable via a serde-built
+        // `QuillConfig`, never `from_yaml`) zero-fills to the empty corpus.
+        if matches!(field.r#type, FieldType::RichText { .. }) {
+            return field
+                .default_corpus
+                .clone()
+                .unwrap_or_else(|| zero_value(field));
+        }
+        // Non-richtext: `default_corpus` is always `None`, so use the raw
+        // `default`, then the type-empty zero.
         return field.default.clone().unwrap_or_else(|| zero_value(field));
     };
     match (&field.r#type, &field.properties, &field.items) {

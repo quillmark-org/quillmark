@@ -58,11 +58,16 @@ describe('Document.fromMarkdown', () => {
     expect(hasField(doc.main, '$cards')).toBe(false)
   })
 
-  it('should expose body as a string', () => {
+  it('should expose body as a corpus with a markdown projection', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
-    expect(typeof doc.main.body).toBe('string')
-    expect(doc.main.body).toContain('Hello World')
+    // `body` is the canonical corpus (source-of-truth model); `bodyMarkdown` is
+    // the markdown projection.
+    expect(typeof doc.main.body).toBe('object')
+    expect(typeof doc.main.body.text).toBe('string')
+    expect(doc.main.body.text).toContain('Hello World')
+    expect(typeof doc.main.bodyMarkdown).toBe('string')
+    expect(doc.main.bodyMarkdown).toContain('Hello World')
   })
 
   it('should expose cards as an array', () => {
@@ -92,7 +97,7 @@ Card body.
     expect(doc.cards.length).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
     expect(field(doc.cards[0], 'foo')).toBe('bar')
-    expect(doc.cards[0].body).toContain('Card body.')
+    expect(doc.cards[0].bodyMarkdown).toContain('Card body.')
   })
 
   it('should expose warnings array', () => {
@@ -172,15 +177,15 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
     // Note on trailing newlines: the global body is followed by a card fence,
     // so the wire format inserts a line terminator + F2 blank line between
     // them (`Updated body\n\n~~~card-yaml`). On re-parse the F2 blank is
-    // stripped but the terminator stays, so `doc2.main.body === 'Updated body\n'`. The card
+    // stripped but the terminator stays, so `doc2.main.bodyMarkdown === 'Updated body\n'`. The card
     // body is at EOF and has no F2 separator, so it survives byte-for-byte.
     const doc2 = Document.fromMarkdown(emitted)
     expect(field(doc2.main, 'title')).toBe('New Title')
-    expect(doc2.main.body).toBe('Updated body\n')
+    expect(doc2.main.bodyMarkdown).toBe('Updated body\n')
     expect(doc2.cards.length).toBe(originalCardCount + 1)
     expect(doc2.cards[0].kind).toBe('note')
     expect(field(doc2.cards[0], 'author')).toBe('Alice')
-    expect(doc2.cards[0].body).toBe('Hello')
+    expect(doc2.cards[0].bodyMarkdown).toBe('Hello\n')
   })
 
   it('ambiguous-string survival: YAML-keyword values are preserved as strings', () => {
@@ -223,7 +228,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const dto = doc.toJson()
     expect(typeof dto).toBe('string')
-    expect(dto).toContain('quillmark/document@0.92.0')
+    expect(dto).toContain('quillmark/document@0.93.0')
   })
 
   it('round-trips losslessly: fromJson(toJson(doc)) equals doc', () => {
@@ -243,13 +248,13 @@ describe('Document JSON DTO — toJson / fromJson', () => {
     expect(field(restored.main, 'title')).toBe('New Title')
     expect(restored.cards[0].kind).toBe('note')
     expect(field(restored.cards[0], 'author')).toBe('Alice')
-    expect(restored.cards[0].body).toBe('Hello')
+    expect(restored.cards[0].bodyMarkdown).toBe('Hello\n')
   })
 
   it('toJson output is standard JSON parseable by the JSON global', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const parsed = JSON.parse(doc.toJson())
-    expect(parsed.schema).toBe('quillmark/document@0.92.0')
+    expect(parsed.schema).toBe('quillmark/document@0.93.0')
   })
 
   it('drops parse-time warnings on reconstruction', () => {
@@ -517,7 +522,7 @@ describe('Document blank-canvas constructor', () => {
     const doc = new Document('test_quill')
     expect(doc.quillRef).toBe('test_quill')
     expect(doc.cards.length).toBe(0)
-    expect(doc.main.body).toBe('')
+    expect(doc.main.bodyMarkdown).toBe('')
     doc.setFields({ title: 'Hello' })
     expect(field(doc.main, 'title')).toBe('Hello')
   })
@@ -527,7 +532,7 @@ describe('Document blank-canvas constructor', () => {
   })
 })
 
-describe('Document editor surface — setFields / updateCardFields', () => {
+describe('Document editor surface — setFields / setCardFields', () => {
   it('setFields applies every entry, in object order', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.setFields({ subtitle: 'A subtitle', pages: 3 })
@@ -552,13 +557,13 @@ describe('Document editor surface — setFields / updateCardFields', () => {
     expect(() => doc.setFields('not an object')).toThrow(/plain object/)
   })
 
-  it('updateCardFields is the card-indexed twin of setFields', () => {
+  it('setCardFields is the card-indexed twin of setFields', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.pushCard(Document.makeCard('note', { foo: 'bar' }))
-    doc.updateCardFields(0, { foo: 'baz', extra: 1 })
+    doc.setCardFields(0, { foo: 'baz', extra: 1 })
     expect(field(doc.cards[0], 'foo')).toBe('baz')
     expect(field(doc.cards[0], 'extra')).toBe(1)
-    expect(() => doc.updateCardFields(99, { foo: 'v' })).toThrow(/IndexOutOfRange/)
+    expect(() => doc.setCardFields(99, { foo: 'v' })).toThrow(/IndexOutOfRange/)
   })
 })
 
@@ -577,7 +582,152 @@ describe('Document editor surface — setQuillRef / replaceBody', () => {
   it('replaceBody changes the body', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.replaceBody('Brand new body.')
-    expect(doc.main.body).toBe('Brand new body.')
+    expect(doc.main.bodyMarkdown).toBe('Brand new body.\n')
+  })
+
+  it('setBody accepts a markdown string', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setBody('Body from **markdown**.')
+    expect(doc.main.bodyMarkdown).toBe('Body from **markdown**.\n')
+  })
+
+  it('setBody accepts a corpus object round-tripped from doc.main.body', () => {
+    // The corpus is the source-of-truth shape doc.main.body reads back; writing
+    // it straight through is the read/write symmetry #874 closes.
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    const src = Document.fromMarkdown('~~~card-yaml\n$quill: q@1.0.0\n~~~\n\nCorpus **body** here.')
+    const corpus = src.main.body
+    expect(typeof corpus).toBe('object')
+    doc.setBody(corpus)
+    expect(doc.main.body.text).toBe('Corpus body here.')
+    expect(doc.main.bodyMarkdown).toBe('Corpus **body** here.\n')
+  })
+
+  it('setBody(null) clears the body', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    doc.setBody(null)
+    expect(doc.main.bodyMarkdown).toBe('')
+  })
+
+  it('setBody throws BodyDecode on a non-corpus object', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    expect(() => doc.setBody({ not: 'a corpus' })).toThrow(/BodyDecode/)
+  })
+})
+
+describe('Document editor surface — commitField / commitCardField', () => {
+  const COMMIT_QUILL_YAML = `quill:
+  name: commit_test
+  version: "1.0"
+  backend: typst
+  description: Typed write smoke test
+
+main:
+  fields:
+    subject:
+      type: richtext
+      inline: true
+    intro:
+      type: richtext
+    qty:
+      type: integer
+
+card_kinds:
+  note:
+    fields:
+      body:
+        type: richtext
+`
+  const buildQuill = () =>
+    Quill.fromTree(makeQuill({ name: 'commit_test', plate: TEST_PLATE, quillYaml: COMMIT_QUILL_YAML }))
+  const blankDoc = () => Document.fromMarkdown('~~~card-yaml\n$quill: commit_test\n~~~\n\nBody.')
+
+  it('commitField resolves the schema type: richtext string → corpus, integer "3" → 3', () => {
+    const quill = buildQuill()
+    const doc = blankDoc()
+    expect(doc.commitField(quill, 'intro', 'A **bold** intro.')).toBe('typed')
+    expect(typeof field(doc.main, 'intro')).toBe('object')
+    expect(doc.fieldMarkdown('intro')).toBe('A **bold** intro.\n')
+
+    expect(doc.commitField(quill, 'qty', '3')).toBe('typed')
+    expect(field(doc.main, 'qty')).toBe(3)
+  })
+
+  it('commitField stores an unknown field opaquely and says so', () => {
+    const quill = buildQuill()
+    const doc = blankDoc()
+    expect(doc.commitField(quill, 'stray', 'x')).toBe('opaque')
+    expect(field(doc.main, 'stray')).toBe('x')
+  })
+
+  it('fieldMarkdown returns undefined for an absent or non-richtext field', () => {
+    const doc = blankDoc()
+    expect(doc.fieldMarkdown('nonexistent')).toBeUndefined()
+    doc.setField('count', 3)
+    expect(doc.fieldMarkdown('count')).toBeUndefined()
+  })
+
+  it('commitField fails a strict mismatch and a richtext(inline) violation', () => {
+    const quill = buildQuill()
+    const doc = blankDoc()
+    expect(() => doc.commitField(quill, 'qty', 'not-a-number')).toThrow(/FieldConform/)
+    expect(() => doc.commitField(quill, 'subject', 'line one\n\nline two'))
+      .toThrow(/FieldRichtextNotInline/)
+  })
+
+  it('commitCardField resolves the card-kind schema and errors on a bad index', () => {
+    const quill = buildQuill()
+    const doc = Document.fromMarkdown(
+      '~~~card-yaml\n$quill: commit_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
+    )
+    expect(doc.commitCardField(quill, 0, 'body', 'Card **body**.')).toBe('typed')
+    expect(doc.cardFieldMarkdown(0, 'body')).toBe('Card **body**.\n')
+    expect(() => doc.commitCardField(quill, 9, 'body', 'x')).toThrow(/IndexOutOfRange/)
+  })
+
+  it('commitFields typed-commits a batch and reports per-field routing', () => {
+    const quill = buildQuill()
+    const doc = blankDoc()
+    const routing = doc.commitFields(quill, { intro: 'A **bold** intro.', qty: '3' })
+    // Both are schema fields → typed, keyed by field name.
+    expect(routing).toEqual({ intro: 'typed', qty: 'typed' })
+    // And the values were coerced, not stored verbatim.
+    expect(doc.fieldMarkdown('intro')).toBe('A **bold** intro.\n')
+    expect(field(doc.main, 'qty')).toBe(3)
+  })
+
+  it('commitFields reports an opaque field on success, so a typo is visible', () => {
+    const quill = buildQuill()
+    const doc = blankDoc()
+    // `qty` is a schema field; `titel` is a typo the schema does not own — it
+    // still stores (opaque), and the routing record surfaces which one, instead
+    // of losing the signal to the batch the way setFields does.
+    const routing = doc.commitFields(quill, { qty: '5', titel: 'oops' })
+    expect(routing).toEqual({ qty: 'typed', titel: 'opaque' })
+    expect(field(doc.main, 'qty')).toBe(5)
+    const opaque = Object.entries(routing).filter(([, r]) => r === 'opaque').map(([n]) => n)
+    expect(opaque).toEqual(['titel'])
+  })
+
+  it('commitFields is all-or-nothing: a bad field aborts the whole batch', () => {
+    const quill = buildQuill()
+    const doc = blankDoc()
+    // `subject` is richtext(inline); a multi-block value violates it, so nothing
+    // is applied — `qty` must not linger.
+    expect(() => doc.commitFields(quill, { qty: '5', subject: 'line one\n\nline two' }))
+      .toThrow(/FieldRichtextNotInline/)
+    expect(hasField(doc.main, 'qty')).toBe(false)
+  })
+
+  it('commitCardFields typed-commits card fields and errors on a bad index', () => {
+    const quill = buildQuill()
+    const doc = Document.fromMarkdown(
+      '~~~card-yaml\n$quill: commit_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
+    )
+    const routing = doc.commitCardFields(quill, 0, { body: 'Card **body**.', stray: 'x' })
+    expect(routing).toEqual({ body: 'typed', stray: 'opaque' })
+    expect(doc.cardFieldMarkdown(0, 'body')).toBe('Card **body**.\n')
+    expect(() => doc.commitCardFields(quill, 9, { body: 'x' })).toThrow(/IndexOutOfRange/)
   })
 })
 
@@ -608,7 +758,7 @@ Card two.
     doc.pushCard(Document.makeCard('note', {}, 'My card.'))
     expect(doc.cards.length).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
-    expect(doc.cards[0].body).toBe('My card.')
+    expect(doc.cards[0].bodyMarkdown).toBe('My card.\n')
   })
 
   it('pushCard throws on invalid kind', () => {
@@ -648,7 +798,7 @@ Card two.
     const bare = Document.makeCard('note')
     expect(bare.kind).toBe('note')
     expect(bare.payloadItems).toEqual([])
-    expect(bare.body).toBe('')
+    expect(bare.bodyMarkdown).toBe('')
   })
 
   it('a stale { kind, fields } object is a loud error, not a silent empty card', () => {
@@ -774,7 +924,7 @@ describe('Document.equals', () => {
   })
 })
 
-describe('Document editor surface — updateCardField / updateCardBody', () => {
+describe('Document editor surface — setCardField / replaceCardBody', () => {
   const MD_WITH_CARD = `~~~card-yaml
 $quill: test_quill
 $kind: main
@@ -790,21 +940,21 @@ foo: bar
 Card body.
 `
 
-  it('updateCardField sets a field on a card', () => {
+  it('setCardField sets a field on a card', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
-    doc.updateCardField(0, 'content', 'hello')
+    doc.setCardField(0, 'content', 'hello')
     expect(field(doc.cards[0], 'content')).toBe('hello')
   })
 
-  it('updateCardField accepts uppercase names verbatim', () => {
+  it('setCardField accepts uppercase names verbatim', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
-    doc.updateCardField(0, 'BODY', 'x')
+    doc.setCardField(0, 'BODY', 'x')
     expect(field(doc.cards[0], 'BODY')).toBe('x')
   })
 
-  it('updateCardField throws IndexOutOfRange when card absent', () => {
+  it('setCardField throws IndexOutOfRange when card absent', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.updateCardField(0, 'title', 'x')).toThrow(/IndexOutOfRange/)
+    expect(() => doc.setCardField(0, 'title', 'x')).toThrow(/IndexOutOfRange/)
   })
 
   it('removeCardField returns the removed value and deletes the key', () => {
@@ -824,15 +974,47 @@ Card body.
     expect(() => doc.removeCardField(0, 'foo')).toThrow(/IndexOutOfRange/)
   })
 
-  it('updateCardBody replaces card body', () => {
+  it('replaceCardBody replaces card body', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
-    doc.updateCardBody(0, 'New card body.')
-    expect(doc.cards[0].body).toBe('New card body.')
+    doc.replaceCardBody(0, 'New card body.')
+    expect(doc.cards[0].bodyMarkdown).toBe('New card body.\n')
   })
 
-  it('updateCardBody throws IndexOutOfRange when card absent', () => {
+  it('replaceCardBody throws IndexOutOfRange when card absent', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.updateCardBody(0, 'x')).toThrow(/IndexOutOfRange/)
+    expect(() => doc.replaceCardBody(0, 'x')).toThrow(/IndexOutOfRange/)
+  })
+
+  it('setCardBody accepts a markdown string', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARD)
+    doc.setCardBody(0, 'Card body from **markdown**.')
+    expect(doc.cards[0].bodyMarkdown).toBe('Card body from **markdown**.\n')
+  })
+
+  it('setCardBody accepts a corpus object round-tripped from a card body', () => {
+    // The corpus is the shape doc.cards[i].body reads back; writing it straight
+    // through must round-trip, the card-indexed twin of the setBody corpus path.
+    const src = Document.fromMarkdown(MD_WITH_CARD)
+    const corpus = src.cards[0].body
+    const doc = Document.fromMarkdown(MD_WITH_CARD)
+    doc.setCardBody(0, corpus)
+    expect(doc.cards[0].body.text).toBe(corpus.text)
+  })
+
+  it('setCardBody(null) clears the card body', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARD)
+    doc.setCardBody(0, null)
+    expect(doc.cards[0].body.text).toBe('')
+  })
+
+  it('setCardBody throws BodyDecode on a non-corpus object', () => {
+    const doc = Document.fromMarkdown(MD_WITH_CARD)
+    expect(() => doc.setCardBody(0, { not: 'a corpus' })).toThrow(/BodyDecode/)
+  })
+
+  it('setCardBody throws IndexOutOfRange when card absent', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
+    expect(() => doc.setCardBody(0, 'x')).toThrow(/IndexOutOfRange/)
   })
 })
 
@@ -848,10 +1030,10 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
 
     // Assert state
     expect(field(doc.main, 'author')).toBe('Bob')
-    expect(doc.main.body).toBe('New body text.')
+    expect(doc.main.bodyMarkdown).toBe('New body text.\n')
     expect(doc.cards.length).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
-    expect(doc.cards[0].body).toBe('Card content.')
+    expect(doc.cards[0].bodyMarkdown).toBe('Card content.\n')
     expect(doc.quillRef).toBe('updated_quill')
 
     // Original title still present

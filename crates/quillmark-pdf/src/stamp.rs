@@ -176,6 +176,8 @@ pub fn regions_of(fields: &[FieldSpec]) -> Vec<RenderedRegion> {
                 field: f.schema_field.clone()?,
                 page: f.page,
                 rect: f.rect,
+                // A widget is a fixed box with no corpus address.
+                span: None,
             })
         })
         .collect()

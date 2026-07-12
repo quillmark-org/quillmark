@@ -147,38 +147,61 @@ where
 /// integral float renders without the trailing `.0`. Mirror that: float-backed
 /// numbers go through `f64` `Display`; integer-backed ones are already aligned.
 fn number_to_string(n: &serde_json::Number) -> String {
-    if n.is_f64() {
-        match n.as_f64() {
-            Some(f) => f.to_string(),
-            None => n.to_string(),
-        }
-    } else {
-        n.to_string()
+    // `as_f64()` is always `Some` for a float-backed `Number`; the guard picks
+    // the `f64` `Display` path for those and leaves integers on the JSON literal.
+    match n.as_f64() {
+        Some(f) if n.is_f64() => f.to_string(),
+        _ => n.to_string(),
     }
 }
 
 /// Coerce a JSON value to display text. Empty results (empty string, all-null
 /// array) become `None` so the widget carries no `/V`.
 fn coerce_text(v: &Value) -> Option<String> {
-    let s = match v {
-        Value::String(s) => s.clone(),
-        Value::Number(n) => number_to_string(n),
-        Value::Bool(b) => b.to_string(),
-        // An array (e.g. a `markdown[]` or `string[]` field) joins its string
-        // elements with newlines — the multiline text fill.
-        Value::Array(arr) => arr
-            .iter()
-            .filter_map(|e| match e {
-                Value::String(s) => Some(s.clone()),
-                Value::Number(n) => Some(number_to_string(n)),
-                Value::Bool(b) => Some(b.to_string()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n"),
-        Value::Null | Value::Object(_) => return None,
-    };
-    (!s.is_empty()).then_some(s)
+    match v {
+        // An array (e.g. an `array<richtext>`, richtext-corpus elements, or a
+        // `string[]` field) joins its element texts with newlines — the
+        // multiline text fill.
+        Value::Array(arr) => {
+            let s = arr
+                .iter()
+                .filter_map(element_text)
+                .collect::<Vec<_>>()
+                .join("\n");
+            (!s.is_empty()).then_some(s)
+        }
+        // Every other shape is one scalar or richtext object: the same rule
+        // an array element follows, with an empty result blanked out too.
+        _ => element_text(v).filter(|s| !s.is_empty()),
+    }
+}
+
+/// A scalar's (or richtext object's) display text: a string/number/bool
+/// directly, or a richtext corpus via its plaintext — the corpus text minus
+/// island slots (tables/images have no plaintext form; a non-corpus object
+/// binds nothing). Shared by top-level scalar coercion and per-element array
+/// joining, which is why an empty string survives here and is blanked by the
+/// caller instead.
+fn element_text(e: &Value) -> Option<String> {
+    match e {
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => Some(number_to_string(n)),
+        Value::Bool(b) => Some(b.to_string()),
+        Value::Object(_) => richtext_plaintext(e),
+        _ => None,
+    }
+}
+
+/// A richtext corpus's plaintext, via [`quillmark_richtext::export::to_plaintext`]
+/// (island slots stripped). `None` for a non-corpus object or an empty result.
+///
+/// Tables and images carry no plaintext, so a corpus whose content is only a
+/// table binds nothing here — the field renders blank, no diagnostic. This is
+/// the decided pdfform limitation (issue #880); see `to_plaintext`.
+fn richtext_plaintext(v: &Value) -> Option<String> {
+    let rt = quillmark_richtext::serial::from_canonical_value(v).ok()?;
+    let text = quillmark_richtext::export::to_plaintext(&rt);
+    (!text.is_empty()).then_some(text)
 }
 
 /// Truthiness for a checkbox binding. A boolean schema field coerces to a JSON
@@ -268,6 +291,41 @@ mod tests {
     fn empty_and_absent_are_blank() {
         assert_eq!(text("empty"), None);
         assert_eq!(text("does_not_exist"), None);
+    }
+
+    #[test]
+    fn richtext_corpus_lowers_to_plaintext() {
+        // A richtext field crosses the seam as canonical corpus JSON; the widget
+        // value is its plaintext — markup dropped (marks live off the text),
+        // island slots stripped.
+        let rt =
+            quillmark_richtext::import::from_markdown("A **bold** claim.\n\nSecond line.").unwrap();
+        let corpus = quillmark_richtext::serial::to_canonical_value(&rt);
+        assert_eq!(
+            coerce_text(&corpus).as_deref(),
+            Some("A bold claim.\nSecond line.")
+        );
+        // A blank corpus binds nothing.
+        let blank =
+            quillmark_richtext::serial::to_canonical_value(&quillmark_richtext::RichText::empty());
+        assert_eq!(coerce_text(&blank), None);
+        // A non-corpus object binds nothing.
+        assert_eq!(coerce_text(&json!({ "x": 1 })), None);
+    }
+
+    #[test]
+    fn richtext_array_joins_element_plaintext() {
+        // An `array<richtext>` joins each element's plaintext with newlines.
+        let el = |md: &str| {
+            quillmark_richtext::serial::to_canonical_value(
+                &quillmark_richtext::import::from_markdown(md).unwrap(),
+            )
+        };
+        let arr = Value::Array(vec![el("First **ref**."), el("Second _ref_.")]);
+        assert_eq!(
+            coerce_text(&arr).as_deref(),
+            Some("First ref.\nSecond ref.")
+        );
     }
 
     #[test]

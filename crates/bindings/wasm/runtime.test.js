@@ -10,8 +10,15 @@
  *
  * Aliased to pkg/runtime/runtime.js in vitest.config.js.
  */
-import { describe, it, expect } from 'vitest'
-import { Quill, Document, Engine, isQuillmarkError } from '@quillmark-wasm/runtime'
+import { describe, it, expect, beforeAll } from 'vitest'
+import {
+  Quill,
+  Document,
+  Engine,
+  DocumentEditor,
+  CardEditor,
+  isQuillmarkError,
+} from '@quillmark-wasm/runtime'
 // Pin that the runtime's Quill IS the internal core build's class (re-export,
 // not a parallel wrapper). This imports the internal core artifact directly —
 // `pkg/core` is NOT a public package subpath, it is the build the root
@@ -103,7 +110,82 @@ describe('@quillmark/wasm/runtime — surface', () => {
   })
 })
 
+// The typed-editor sugar binds a quill to a document once, so writes are bare
+// `set` / `setAll` / `card(i).set` — the JS twin of Rust's `quill.editor(doc)`,
+// forwarding to the `commit*` verbs (typed for a schema field, opaque otherwise).
+describe('@quillmark/wasm/runtime — DocumentEditor / CardEditor (bind the quill once)', () => {
+  const EDITOR_QUILL_YAML = `quill:
+  name: editor_test
+  version: "1.0"
+  backend: typst
+  description: Typed editor sugar test
+
+main:
+  fields:
+    subject:
+      type: richtext
+      inline: true
+    qty:
+      type: integer
+
+card_kinds:
+  note:
+    fields:
+      body:
+        type: richtext
+`
+  const buildQuill = () =>
+    Quill.fromTree(makeQuill({ name: 'editor_test', plate: TEST_PLATE, quillYaml: EDITOR_QUILL_YAML }))
+  const blankDoc = () => Document.fromMarkdown('~~~card-yaml\n$quill: editor_test\n~~~\n\nBody.')
+  const fieldOf = (card, key) =>
+    card.payloadItems.find((i) => i.type === 'field' && i.key === key)?.value
+
+  it('set binds the quill once and routes typed vs opaque', () => {
+    const ed = new DocumentEditor(buildQuill(), blankDoc())
+    expect(ed.set('qty', '3')).toBe('typed') // schema field → strict coerce
+    expect(ed.set('stray', 'x')).toBe('opaque') // unknown → verbatim store
+    expect(fieldOf(ed.document.main, 'qty')).toBe(3)
+    expect(fieldOf(ed.document.main, 'stray')).toBe('x')
+  })
+
+  it('setAll returns the per-field routing record, flagging a typo as opaque', () => {
+    const ed = new DocumentEditor(buildQuill(), blankDoc())
+    const routing = ed.setAll({ qty: '5', titel: 'oops' })
+    expect(routing).toEqual({ qty: 'typed', titel: 'opaque' })
+    expect(fieldOf(ed.document.main, 'qty')).toBe(5)
+  })
+
+  it('card(i).set targets the composable card via its kind schema', () => {
+    const doc = Document.fromMarkdown(
+      '~~~card-yaml\n$quill: editor_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
+    )
+    const ed = new DocumentEditor(buildQuill(), doc)
+    expect(ed.card(0).set('body', 'Card **body**.')).toBe('typed')
+    expect(doc.cardFieldMarkdown(0, 'body')).toBe('Card **body**.\n')
+  })
+
+  it('a bad card index throws at write time, not at card()', () => {
+    const ed = new DocumentEditor(buildQuill(), blankDoc())
+    const cardEd = ed.card(9) // lazy: constructing the CardEditor never throws
+    expect(cardEd).toBeInstanceOf(CardEditor)
+    expect(() => cardEd.set('body', 'x')).toThrow(/IndexOutOfRange/)
+  })
+})
+
 describe('@quillmark/wasm/runtime — Engine (hidden core→backend crossing)', () => {
+  // Warm the lazy Typst-backend import + first Typst compile once, outside any
+  // timed test. `Engine.render` dynamically `import()`s the backend wasm binary
+  // on first render — a one-time cost (large module instantiation) that on a
+  // cold CI runner alone can approach the per-test ceiling. Paying it here keeps
+  // the individual render tests warm (sub-second, like the SVG case) so a tight
+  // per-test `testTimeout` still catches a genuine hang. The hook carries its own
+  // generous timeout for the cold load.
+  beforeAll(async () => {
+    await new Engine().render(makeRuntimeQuill(), Document.fromMarkdown(TEST_MARKDOWN), {
+      format: 'pdf',
+    })
+  }, 120000)
+
   it('renders a core Quill + Document to PDF without exposing a backend handle', async () => {
     const engine = new Engine()
     const quill = makeRuntimeQuill()
@@ -393,6 +475,23 @@ A single line of body ink.`
       const hit = session.fieldAt(body.page, (x0 + x1) / 2, (y0 + y1) / 2)
       expect(hit).toBe('$body')
       expect(session.fieldAt(body.page, 1, 1)).toBeUndefined()
+
+      // fieldBoxes — the whole-field union helper. A single-line body has one
+      // span-bearing segment, so its box unions to one rect covering that line.
+      expect(typeof session.fieldBoxes).toBe('function')
+      const boxes = session.fieldBoxes('$body')
+      expect(boxes.length).toBe(1)
+      expect(boxes[0].field).toBe('$body')
+      expect(boxes[0].span).toBeDefined()
+      // A field with no span-bearing region has no derived content box.
+      expect(session.fieldBoxes('does_not_exist')).toEqual([])
+
+      // positionAt — the fine-grained click direction, carrying the granularity
+      // signal. A hit on the single line's ink is cluster-exact.
+      expect(typeof session.positionAt).toBe('function')
+      const chit = session.positionAt(body.page, (x0 + x1) / 2, (y0 + y1) / 2)
+      expect(chit.field).toBe('$body')
+      expect(chit.granularity).toBe('cluster')
 
       // paint.
       expect(typeof session.paint).toBe('function')
