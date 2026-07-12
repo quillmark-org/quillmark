@@ -547,9 +547,10 @@ impl PyDocument {
     /// stores the value verbatim, and defers coercion/validation to render.
     /// Reach for it deliberately — standalone data with no quill in hand,
     /// quill-agnostic storage/migration, or a store-now-validate-later editor
-    /// holding not-yet-conforming input. When a quill *is* in hand, prefer
-    /// `commit_field` (typed commit) so a mismatch surfaces at the write.
-    /// Raises `QuillmarkError` on a malformed name. Mirrors WASM `setField`.
+    /// holding not-yet-conforming input. When a quill *is* in hand, prefer the
+    /// typed editor (`doc.editor(quill).set(name, value)`) so a mismatch surfaces
+    /// at the write. Raises `QuillmarkError` on a malformed name. Mirrors WASM
+    /// `setField`.
     fn set_field(&mut self, name: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
         let qv = py_to_quillvalue(&value)?;
         self.inner
@@ -573,103 +574,16 @@ impl PyDocument {
     /// (database columns, form keys) surface every violation in one pass.
     ///
     /// The batched quill-free primitive (see `set_field`) — stores every value
-    /// opaquely, deferring coercion to render. Prefer `commit_fields` whenever a
-    /// quill is in hand: it typed-commits the batch and reports per-field
-    /// routing, so a form submitting a card is not silently stripped of schema
-    /// typing. Mirrors WASM `setFields`.
+    /// opaquely, deferring coercion to render. Prefer the typed editor
+    /// (`doc.editor(quill).set_all(fields)`) whenever a quill is in hand: it
+    /// typed-commits the batch and reports per-field routing, so a form
+    /// submitting a card is not silently stripped of schema typing. Mirrors WASM
+    /// `setFields`.
     fn set_fields(&mut self, fields: Bound<'_, PyDict>) -> PyResult<()> {
         let batch = pydict_to_field_batch(&fields)?;
         self.inner
             .main_mut()
             .set_fields(batch)
-            .map_err(convert_edit_errors)
-    }
-
-    /// Typed field write on the main card, resolving the field's schema `type`
-    /// from `quill` — the one write verb for every field type. Python has no
-    /// richtext field writer otherwise, so a richtext value (a corpus dict or a
-    /// markdown string) commits to the canonical corpus here; scalars coerce to
-    /// their declared type (`"3"` → `3`).
-    ///
-    /// A field declared in the schema is strict-committed — a mismatch raises
-    /// now. A name the schema does not declare raises
-    /// `[EditError::UnknownField]` rather than falling to the opaque store: on
-    /// the typed path it is a typo. Use `set_field` when opaque storage is the
-    /// intent. Also raises `QuillmarkError` on a typed mismatch or a malformed
-    /// name. Mirrors WASM `commitField`.
-    fn commit_field(
-        &mut self,
-        quill: PyRef<'_, PyQuill>,
-        name: &str,
-        value: Bound<'_, PyAny>,
-    ) -> PyResult<()> {
-        let qv = py_to_quillvalue(&value)?;
-        quill
-            .inner
-            .editor(&mut self.inner)
-            .set(name, qv)
-            .map_err(convert_edit_error)
-    }
-
-    /// Batched twin of `commit_field`: typed-commit several main-card fields
-    /// atomically, resolving each field's schema `type` from `quill`. This is
-    /// the whole-card typed verb — prefer it over `set_fields` whenever a quill
-    /// is in hand, so a form submitting a card gets schema typing. All-or-nothing
-    /// with the same per-field-diagnostic error contract as `set_fields`: nothing
-    /// is applied on error and the raised `QuillmarkError` carries one diagnostic
-    /// per offending field (`path` = field name), including an
-    /// `[EditError::UnknownField]` for any name the schema does not declare, so a
-    /// whole-form submit sees every typo in one pass. Mirrors WASM `commitFields`.
-    fn commit_fields(
-        &mut self,
-        quill: PyRef<'_, PyQuill>,
-        fields: Bound<'_, PyDict>,
-    ) -> PyResult<()> {
-        let batch = pydict_to_field_batch(&fields)?;
-        quill
-            .inner
-            .editor(&mut self.inner)
-            .set_all(batch)
-            .map_err(convert_edit_errors)
-    }
-
-    /// Typed field write on the composable card at `index` — the card-indexed
-    /// twin of `commit_field`, resolving the field's type from the card's
-    /// `$kind` schema in `quill`. Raises `[EditError::UnknownField]` for a field
-    /// the card-kind schema does not declare (an unknown `$kind` has no schema,
-    /// so every field is undeclared), on an out-of-range index, or a typed
-    /// mismatch. Mirrors WASM `commitCardField`.
-    fn commit_card_field(
-        &mut self,
-        quill: PyRef<'_, PyQuill>,
-        index: usize,
-        name: &str,
-        value: Bound<'_, PyAny>,
-    ) -> PyResult<()> {
-        let qv = py_to_quillvalue(&value)?;
-        let mut editor = quill.inner.editor(&mut self.inner);
-        let mut card = editor.card(index).map_err(convert_edit_error)?;
-        card.set(name, qv).map_err(convert_edit_error)
-    }
-
-    /// Batched twin of `commit_card_field`: typed-commit several fields on the
-    /// composable card at `index` atomically, resolving each field's type from
-    /// the card's `$kind` schema in `quill`. All-or-nothing with the same
-    /// per-field-diagnostic contract as `commit_fields` (an
-    /// `[EditError::UnknownField]` per undeclared name). Raises on an
-    /// out-of-range index. Mirrors WASM `commitCardFields`.
-    fn commit_card_fields(
-        &mut self,
-        quill: PyRef<'_, PyQuill>,
-        index: usize,
-        fields: Bound<'_, PyDict>,
-    ) -> PyResult<()> {
-        let batch = pydict_to_field_batch(&fields)?;
-        let mut editor = quill.inner.editor(&mut self.inner);
-        editor
-            .card(index)
-            .map_err(convert_edit_error)?
-            .set_all(batch)
             .map_err(convert_edit_errors)
     }
 
@@ -914,8 +828,9 @@ impl PyDocument {
 
     /// Store an opaque value on the composable card at `index` — the
     /// card-indexed twin of `set_field`, and the same quill-free primitive.
-    /// Prefer `commit_card_field` when a quill is in hand. Raises on an
-    /// out-of-range index or a malformed name. Mirrors WASM `setCardField`.
+    /// Prefer the typed editor (`doc.editor(quill).card(index).set(...)`) when a
+    /// quill is in hand. Raises on an out-of-range index or a malformed name.
+    /// Mirrors WASM `setCardField`.
     fn set_card_field(
         &mut self,
         index: usize,
@@ -931,8 +846,8 @@ impl PyDocument {
     /// Batched twin of `set_card_field`: set several fields on the composable
     /// card at `index` atomically. Same all-or-nothing, one-diagnostic-per-field
     /// contract as `set_fields`, and the same quill-free-primitive framing —
-    /// prefer `commit_card_fields` when a quill is in hand. Mirrors WASM
-    /// `setCardFields`.
+    /// prefer the typed editor (`doc.editor(quill).card(index).set_all(...)`)
+    /// when a quill is in hand. Mirrors WASM `setCardFields`.
     fn set_card_fields(&mut self, index: usize, fields: Bound<'_, PyDict>) -> PyResult<()> {
         let batch = pydict_to_field_batch(&fields)?;
         self.card_mut_or_raise(index)?
