@@ -86,11 +86,14 @@ The primitive stays load-bearing — it is what lets a `Document` be constructed
 and `from_json`'d with no bundle (standalone data), what quill-agnostic
 storage/migration infra writes through, what a store-now-validate-later editor
 uses to hold not-yet-conforming input, and the way to store a value opaquely on
-purpose. Reach for the opaque `set_*` for those; reach for the editor / `commit`
-by default. The bindings mirror this: `commitField` / `commitFields`
-(+ `commitCard*`) and the JS `DocumentEditor` / `CardEditor` sugar over the
-schema-bound editor, with `setField` / `setCardField` as the quill-free opaque
-store.
+purpose. Reach for the opaque `set_*` for those; reach for the editor by
+default. `Quill::editor(&mut doc)` is the documented front door in every
+surface: `quill.editor(doc)` in WASM, `doc.editor(quill)` in Python (the
+schema-bound `DocumentEditor` / `Editor` with `set` / `set_all` / `set_body` /
+`add_card` / `card(i)`). The `commitField` / `commitFields` (+ `commitCard*`)
+verbs are the stable ABI underneath it, and `setField` / `setCardField` remain
+the quill-free opaque store. See [BINDINGS.md](BINDINGS.md) for the two-tier
+write surface and the core-vs-bindings parity table.
 
 ## Addressing cards for re-render
 

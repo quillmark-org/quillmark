@@ -70,7 +70,7 @@ export declare function isQuillmarkError(e: unknown): e is QuillmarkError;
 // (run via `npm run typecheck`), so these and the generated
 // `pkg/backends/typst/wasm.d.ts` cannot silently diverge.
 
-import type { Quill, Document } from '../core/wasm.js';
+import type { Quill, Document, Card } from '../core/wasm.js';
 import type { Diagnostic } from '../core/wasm.js';
 
 /** Canonical contract every backend build must satisfy. One emitted output. */
@@ -442,22 +442,38 @@ export declare class LiveSession {
 	free(): void;
 }
 
-// ── Typed-editor sugar ──────────────────────────────────────────────────────
+// ── Typed editor — the tier-1 front door ────────────────────────────────────
+
+// `quill.editor(doc)` is patched onto the re-exported `Quill` prototype (the
+// class is re-exported verbatim, so the method is declared by merging into the
+// core module's `Quill` rather than redeclaring the class).
+declare module '../core/wasm.js' {
+	interface Quill {
+		/**
+		 * Bind this quill's schema to `doc` for typed writes — the documented
+		 * front door, mirroring core's `quill.editor(&mut doc)`. The schema grants
+		 * the typing, so the quill is the factory. The returned editor holds both
+		 * handles by reference and owns neither (nothing to `free()`); it is
+		 * ephemeral by convention — bind, write, discard.
+		 */
+		editor(doc: Document): DocumentEditor;
+	}
+}
 
 /**
- * A `Document` bound to its `Quill` for typed writes — the JS twin of Rust's
- * `quill.editor(&mut doc)`. Binds the schema source once so writes are bare
- * `set` / `setAll` / `card(i).set` instead of threading the `quill` handle
- * through every `commit*` call. Holds both handles by reference and owns
- * neither — nothing to `free()`.
+ * A `Document` bound to its `Quill` for typed writes — the tier-1 default,
+ * constructed via {@link Quill.editor}. Speaks names, values, and markdown; a
+ * consumer here never meets an `Addr`, a corpus object, or a `Delta`. Bare
+ * `set` / `setAll` / `setBody` / `addCard` / `card(i).set` instead of threading
+ * the `quill` handle through every `commit*` call. Holds both handles by
+ * reference and owns neither — nothing to `free()`.
  *
- * `commit*` is the default write path whenever a quill is in hand: it resolves
- * each field's schema type and strict-commits it, throwing `UnknownField` for a
- * name the schema does not declare — on the typed path an undeclared name is a
- * typo, not a fallback. The raw `Document.setField` / `setFields` verbs remain
- * the deliberate quill-free primitive (standalone data, storage/migration infra,
- * or holding not-yet-conforming in-progress input) — and the way to store a
- * value opaquely on purpose.
+ * Typed commit is the default whenever a quill is in hand: it resolves each
+ * field's schema type and strict-commits it, throwing `UnknownField` for a name
+ * the schema does not declare — on the typed path an undeclared name is a typo,
+ * not a fallback. The raw `Document.setField` / `setFields` verbs remain the
+ * deliberate quill-free primitive (standalone data, storage/migration infra, or
+ * holding not-yet-conforming in-progress input).
  */
 export declare class DocumentEditor {
 	constructor(quill: Quill, doc: Document);
@@ -475,8 +491,25 @@ export declare class DocumentEditor {
 	 */
 	setAll(fields: Record<string, unknown>): void;
 	/**
+	 * Set the main body from markdown (edit semantics: anchors rebase), discarding
+	 * the delta — the receipt-free body write. Use `doc.revise({}, md)` for the
+	 * `Delta` receipt.
+	 */
+	setBody(markdown: string): void;
+	/**
+	 * Build a composable card of `kind`, typed-commit `fields` onto it, set its
+	 * body from optional markdown, and append it — the fused `makeCard` + typed
+	 * commit + `pushCard`. Transactional: a rejected field (throws a per-field
+	 * diagnostic bundle) or an invalid kind/body leaves the document untouched.
+	 */
+	addCard(kind: string, fields?: Record<string, unknown>, body?: string): void;
+	/** Remove the composable card at `index`, returning it (or `undefined`). */
+	removeCard(index: number): Card | undefined;
+	/**
 	 * A {@link CardEditor} for the composable card at `index`. Index validity is
-	 * checked lazily at commit time, so this never throws.
+	 * checked lazily at commit time, so this never throws. The cursor is
+	 * ephemeral — a `removeCard`/`addCard` between binding and writing silently
+	 * retargets it; for durable addressing stamp `$id` and re-resolve at write.
 	 */
 	card(index: number): CardEditor;
 }
@@ -493,4 +526,6 @@ export declare class CardEditor {
 	readonly index: number;
 	set(name: string, value: unknown): void;
 	setAll(fields: Record<string, unknown>): void;
+	/** Set this card's body from markdown (edit semantics), discarding the delta. */
+	setBody(markdown: string): void;
 }

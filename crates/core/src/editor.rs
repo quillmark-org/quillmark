@@ -75,6 +75,48 @@ impl<'a> TypedEditor<'a> {
         set_all_impl(self.doc.main_mut(), schema, fields)
     }
 
+    /// Revise the main card's body from markdown (edit semantics: surviving
+    /// anchors rebase), discarding the text delta — the receipt-free body write.
+    /// Call [`Card::revise_body`](crate::Card::revise_body) on `doc.main_mut()`
+    /// for the [`Delta`](crate::Delta) receipt (the tier-2 spelling).
+    pub fn set_body(&mut self, markdown: &str) -> Result<(), EditError> {
+        self.doc.main_mut().revise_body(markdown).map(|_| ())
+    }
+
+    /// Build a composable card of `kind`, typed-commit `fields` onto it,
+    /// optionally set its body from markdown, and append it — the fused
+    /// [`Card::new`](crate::Card::new) + typed writes + [`push_card`]. The card is
+    /// committed in full *before* it joins the document, so it is transactional by
+    /// construction: a rejected field (or an invalid kind or body) leaves the
+    /// document untouched. Field errors use the all-or-nothing bundle of
+    /// [`set_all`](Self::set_all); an invalid kind or body surfaces as a
+    /// single-entry bundle keyed `$kind` / `$body`.
+    ///
+    /// [`push_card`]: Document::push_card
+    pub fn add_card<K, V, I>(
+        &mut self,
+        kind: &str,
+        fields: I,
+        body: Option<&str>,
+    ) -> Result<(), Vec<(String, EditError)>>
+    where
+        K: Into<String>,
+        V: Into<QuillValue>,
+        I: IntoIterator<Item = (K, V)>,
+    {
+        let mut card = Card::new(kind).map_err(|e| vec![("$kind".to_string(), e)])?;
+        let schema = self.config.card_kind(kind).map(|s| &s.fields);
+        set_all_impl(&mut card, schema, fields)?;
+        if let Some(md) = body {
+            card.revise_body(md)
+                .map_err(|e| vec![("$body".to_string(), e)])?;
+        }
+        self.doc
+            .push_card(card)
+            .map_err(|e| vec![("$kind".to_string(), e)])?;
+        Ok(())
+    }
+
     /// A schema-bound editor for the composable card at `index`. The card's
     /// `$kind` resolves its [`CardSchema`]; an unknown kind carries no schema, so
     /// every field on it is undeclared and its typed writes fail with
@@ -115,6 +157,12 @@ impl CardEditor<'_> {
             Some(schema) => self.card.commit_field(name, value, schema),
             None => Err(EditError::UnknownField(name.to_string())),
         }
+    }
+
+    /// Revise this card's body from markdown (edit semantics), discarding the
+    /// delta — the card twin of [`TypedEditor::set_body`].
+    pub fn set_body(&mut self, markdown: &str) -> Result<(), EditError> {
+        self.card.revise_body(markdown).map(|_| ())
     }
 
     /// Write several fields on this card atomically — see
@@ -281,6 +329,53 @@ card_kinds:
         assert_eq!(errs[0].0, "titel");
         assert_eq!(errs[0].1.variant_name(), "UnknownField");
         assert!(doc.main().payload().get("qty").is_none());
+    }
+
+    #[test]
+    fn set_body_revises_main_body() {
+        let config = config();
+        let mut doc = blank_doc();
+        let mut ed = TypedEditor::new(&config, &mut doc);
+        ed.set_body("**hi**").unwrap();
+        assert_eq!(doc.main().body_markdown(), "**hi**\n");
+    }
+
+    #[test]
+    fn add_card_fuses_new_commit_push() {
+        let config = config();
+        let mut doc = blank_doc();
+        let mut ed = TypedEditor::new(&config, &mut doc);
+        ed.add_card("note", [("body", "**hi**")], Some("card body"))
+            .unwrap();
+        assert_eq!(doc.cards().len(), 1);
+        assert_eq!(doc.cards()[0].kind(), Some("note"));
+        assert_eq!(doc.cards()[0].field_markdown("body").unwrap(), "**hi**\n");
+        assert_eq!(doc.cards()[0].body_markdown(), "card body\n");
+    }
+
+    #[test]
+    fn add_card_is_transactional_on_bad_field() {
+        let config = config();
+        let mut doc = blank_doc();
+        let mut ed = TypedEditor::new(&config, &mut doc);
+        // An undeclared field aborts the commit; the card never joins the document.
+        let errs = ed
+            .add_card("note", [("stray", "x")], None)
+            .unwrap_err();
+        assert_eq!(errs[0].0, "stray");
+        assert_eq!(errs[0].1.variant_name(), "UnknownField");
+        assert_eq!(doc.cards().len(), 0);
+    }
+
+    #[test]
+    fn add_card_reports_invalid_kind() {
+        let config = config();
+        let mut doc = blank_doc();
+        let mut ed = TypedEditor::new(&config, &mut doc);
+        // A reserved kind is refused before any card is built.
+        let errs = ed.add_card("$reserved", [] as [(&str, &str); 0], None).unwrap_err();
+        assert_eq!(errs[0].0, "$kind");
+        assert_eq!(doc.cards().len(), 0);
     }
 
     #[test]

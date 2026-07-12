@@ -52,7 +52,12 @@
 // (it is) so it tolerates handles from any core instance. The `runtime.test.js`
 // "re-exports the internal core build classes verbatim" case
 // (`Quill === CoreQuill`) is the executable guard for this invariant.
-export { Quill, Document, init } from '../core/wasm.js';
+//
+// Imported (not bare re-exported) so `Quill` is a local binding this module can
+// augment — `quill.editor(doc)` is patched onto its prototype below. The
+// re-export keeps the identity: the exported `Quill` IS the core class.
+import { Quill, Document, init } from '../core/wasm.js';
+export { Quill, Document, init };
 // The document-free corpus codec — re-exported verbatim from the core build so
 // the runtime subpath exposes `exportMarkdown(body)` (the on-demand markdown
 // projection that replaces the eager `bodyMarkdown`), `importMarkdown`, and the
@@ -574,9 +579,49 @@ export class DocumentEditor {
 		return this.#doc.commitFields(this.#quill, fields);
 	}
 	/**
+	 * Set the main body from markdown (edit semantics: surviving anchors rebase),
+	 * discarding the text delta — the receipt-free body write. Call
+	 * `doc.revise({}, md)` for the {@link Delta} receipt (the corpus-lane
+	 * spelling). Markdown in, no corpus or receipt in sight.
+	 * @param {string} markdown
+	 * @returns {void}
+	 */
+	setBody(markdown) {
+		this.#doc.revise({}, markdown);
+	}
+	/**
+	 * Build a composable card of `kind`, typed-commit `fields` onto it, set its
+	 * body from optional markdown, and append it — the fused `makeCard` + typed
+	 * commit + `pushCard`. Transactional: the card is committed in full before it
+	 * joins the document, so a rejected field (throws a per-field diagnostic
+	 * bundle, `UnknownField` per undeclared name) or an invalid kind/body leaves
+	 * the document untouched. See `Document.addCard`.
+	 * @param {string} kind
+	 * @param {Record<string, unknown>} [fields]
+	 * @param {string} [body]
+	 * @returns {void}
+	 */
+	addCard(kind, fields, body) {
+		return this.#doc.addCard(this.#quill, kind, fields, body);
+	}
+	/**
+	 * Remove the composable card at `index`, returning it (or `undefined` if the
+	 * index is out of range) — the tier-1 spelling of `Document.removeCard`.
+	 * @param {number} index
+	 * @returns {import('../core/wasm.js').Card | undefined}
+	 */
+	removeCard(index) {
+		return this.#doc.removeCard(index);
+	}
+	/**
 	 * A {@link CardEditor} bound to the composable card at `index`. Index
 	 * validity is checked lazily by the underlying write (it throws
 	 * `IndexOutOfRange` at commit time), so constructing one never throws.
+	 *
+	 * The cursor is ephemeral — bind, write, discard. It holds `index`, not the
+	 * card: a `removeCard`/`addCard` between binding and writing silently
+	 * retargets it. For durable addressing stamp `$id` and re-resolve the index
+	 * at write time.
 	 * @param {number} index
 	 * @returns {CardEditor}
 	 */
@@ -629,4 +674,33 @@ export class CardEditor {
 	setAll(fields) {
 		return this.#doc.commitCardFields(this.#quill, this.#index, fields);
 	}
+	/**
+	 * Set this card's body from markdown (edit semantics), discarding the delta —
+	 * the card twin of {@link DocumentEditor.setBody}.
+	 * @param {string} markdown
+	 * @returns {void}
+	 */
+	setBody(markdown) {
+		this.#doc.revise({ card: this.#index }, markdown);
+	}
 }
+
+// ── `quill.editor(doc)` — the typed front door ──────────────────────────────
+// The tier-1 default: bind the quill's schema to a document and issue bare
+// typed writes. Mirrors core's `quill.editor(&mut doc)` — the schema grants the
+// typing, so the quill (not the document) is the factory. Patched onto the
+// re-exported `Quill` prototype rather than wrapped: `Quill === CoreQuill`
+// stays true (the identity invariant above); this only adds a method that
+// constructs the pure-JS editor, which owns no WASM handle.
+/**
+ * A {@link DocumentEditor} binding this quill's schema to `doc` for typed
+ * writes — the documented front door. The returned editor holds both handles by
+ * reference and owns neither, so there is nothing to `free()`. Ephemeral by
+ * convention: bind, write, discard.
+ * @this {Quill}
+ * @param {Document} doc the document to mutate, held by reference (not owned)
+ * @returns {DocumentEditor}
+ */
+Quill.prototype.editor = function editor(doc) {
+	return new DocumentEditor(this, doc);
+};

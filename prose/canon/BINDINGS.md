@@ -32,6 +32,64 @@ The WASM binding is the reference surface; Python mirrors it and catches up
 on a best-effort basis (see its status notes below). New contract work lands
 in WASM first.
 
+## The write surface: two tiers over one primitive
+
+The mutation surface has a stated default, decided by one sentence:
+
+> **Tier 1 speaks names, values, and markdown. Tier 2 speaks addresses,
+> corpora, and receipts.**
+
+Tier 1 is the typed editor — `quill.editor(doc)` (Python `doc.editor(quill)`),
+mirroring core's `quill.editor(&mut doc)`. It is the documented default: bare
+`set` / `set_all` / `setBody` / `addCard` / `card(i)`, names and markdown in,
+diagnostics out — a consumer here never meets an `Addr`, a corpus object, or a
+`Delta`. Tier 2 is the corpus lane — the addressed `install` / `revise` /
+`applyChange` verbs plus the `importMarkdown` / `exportMarkdown` / `rebase` /
+`mapPos` codec — for the audience that has anchor identity to preserve.
+
+**The tiers are strata, not a partition.** Tier 1 is *sugar over* tier 2 and the
+typed-commit path — `editor.setBody(md)` is `revise({}, md)` with the receipt
+discarded; `editor.set` is `commitField` with the quill bound once. Anything
+tier 1 writes, tier 2 can write with more control, so the decision tree picks a
+*default*, not a *cage*: a live editor legitimately writes fields through the
+editor and bodies/splices through the addressed verbs in one interaction. Reads
+(`get` / `getMarkdown`) need no schema, so they sit on `Document`, not the
+editor. The quill-free `setField` / `setCardField` primitive stays the third
+lane — verbatim storage, coercion deferred to render.
+
+**Editors and card cursors are ephemeral — bind, write, discard.** They hold an
+address (the quill + document, or an index), never a cache; every call reads
+through the document, so a `removeCard` / `addCard` between binding a cursor and
+writing through it silently retargets it. Durable addressing is `$id` stamped at
+build and re-resolved at patch time ([PROGRAMMATIC.md](PROGRAMMATIC.md)), not a
+held handle.
+
+**The hand-written runtime is the real API; the wasm class is its ABI.** The
+`commit*` verbs are the stable ABI under the editor's `set` / `set_all` — dropped
+from the documented surface, not from the binary. This design commits to that
+split rather than merely tolerating it.
+
+### Parity table
+
+Every binding verb is *identical* to its core twin or names its one forced
+difference — **FFI** (a wasm-bindgen / pyo3 constraint) or **idiom** (a language
+ergonomic), nothing else admitted. Drift is a reviewable diff to this table.
+
+| Concept | Core | Bindings | Class |
+|---|---|---|---|
+| Typed editor front door | `quill.editor(&mut doc)` | `quill.editor(doc)` / `doc.editor(quill)` | **idiom** — core holds `&mut Document` under the checker; the bindings re-borrow per call (pyo3/wasm objects carry no lifetime), so the guarantee becomes the ephemerality convention |
+| Scalar / batch write | `set` / `set_all` | `set` / `setAll` (JS), `set` / `set_all` (py) | identical |
+| Receipt-free body write | `set_body(md)` | `setBody(md)` / `set_body(md)` | identical — core also exposes the delta via `revise_body` |
+| Card creation | `add_card(kind, fields, body?)` | `addCard` / `add_card` | identical — fused make + typed-commit + push, transactional |
+| Card cursor | `editor.card(i)?` (eager check) | `editor.card(i)` (lazy check) | **FFI** — no borrow to validate against; the index is checked at the write |
+| Reads | `card.field_markdown(..)` / `payload().get(..)` | `doc.getMarkdown(name?)` / `doc.get(name)` | **idiom** — the bindings fuse the read into one named verb on `Document` |
+| Richtext ops | `card.revise_field(name, md)?` (borrow chain) | `doc.revise({card, field}, md)` (addr literal) | **FFI** — same model, flattened navigation |
+| Opaque primitive | `set_field` / `set_fields` | `setField` / `setCardField` (JS), `set_field` / `set_fields` (py) | identical |
+
+The single **idiom** row on the front door is the honest cost: the typed editor
+is the one shape pyo3 carries worst, so its "identical" is qualified, not
+claimed. See the as-built [0.93 → 0.94 migration](../../docs/migrations/0.93-to-0.94.md#the-two-tier-binding-surface-932).
+
 ## Python — `bindings/quillmark-python`
 
 PyO3 bindings published as `quillmark` on PyPI. A `snake_case` surface mirroring

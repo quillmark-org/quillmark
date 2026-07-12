@@ -27,13 +27,18 @@ guides in order.
   `pushCard` / `insertCard` take a `CardInput` whose `body` still accepts a
   markdown string and whose non-`kind` fields are optional (#917). The richtext
   write grid then collapses into a document-free corpus codec (`importMarkdown`
-  / `exportMarkdown` / `rebase` / `mapPos`) plus four addressed content verbs
-  (`install` / `revise` / `applyChange` / `commit`); the eager
+  / `exportMarkdown` / `rebase` / `mapPos`) plus the addressed content verbs
+  (`install` / `revise` / `applyChange`); the eager
   `bodyMarkdown`/`fieldMarkdown` projections and the per-address body writers
   retire pre-release, `replaceBody` / `replace_body` / `update_card_body` alias
   for one cycle, and richtext fields gain the anchor-preserving `revise_field`
   (#925). On-disk (`.qmd`) identity stays markdown-lossy — the storage DTO is
-  the lossless carrier.
+  the lossless carrier. The binding write surface then settles into two tiers:
+  `quill.editor(doc)` (Python `doc.editor(quill)`) is the documented default —
+  typed `set` / `set_all` / `setBody` / `addCard` / `card(i)` and quill-free
+  `get` / `getMarkdown` reads — over the corpus lane and the opaque `setField`
+  primitive; the addressed `commit(addr, …)` is deleted (subsumed by the
+  editor) and a core-vs-bindings parity table governs drift (#932).
 - [0.92 → 0.93](0.92-to-0.93.md) — the blueprint placeholder is rebuilt on two
   orthogonal axes (value and marker): blueprints now stamp the `!must_fill` tag
   instead of the `<must-fill>` string sentinel, and bare-null / `field:` now

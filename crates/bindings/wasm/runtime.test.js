@@ -141,39 +141,86 @@ card_kinds:
   const fieldOf = (card, key) =>
     card.payloadItems.find((i) => i.type === 'field' && i.key === key)?.value
 
+  it('quill.editor(doc) is the front door and returns a DocumentEditor', () => {
+    const quill = buildQuill()
+    const ed = quill.editor(blankDoc())
+    expect(ed).toBeInstanceOf(DocumentEditor)
+    // The factory is sugar over the constructor — same class, no wrapping.
+    expect(new DocumentEditor(quill, blankDoc())).toBeInstanceOf(DocumentEditor)
+  })
+
   it('set binds the quill once and strict-commits a schema field', () => {
-    const ed = new DocumentEditor(buildQuill(), blankDoc())
+    const ed = buildQuill().editor(blankDoc())
     ed.set('qty', '3') // schema field → strict coerce
     expect(fieldOf(ed.document.main, 'qty')).toBe(3)
   })
 
   it('set rejects an undeclared name as a typo, not a fallback', () => {
-    const ed = new DocumentEditor(buildQuill(), blankDoc())
+    const ed = buildQuill().editor(blankDoc())
     expect(() => ed.set('stray', 'x')).toThrow(/UnknownField/)
     expect(fieldOf(ed.document.main, 'stray')).toBeUndefined()
   })
 
   it('setAll aborts the whole batch on a typo, applying nothing', () => {
-    const ed = new DocumentEditor(buildQuill(), blankDoc())
+    const ed = buildQuill().editor(blankDoc())
     expect(() => ed.setAll({ qty: '5', titel: 'oops' })).toThrow(/UnknownField/)
     expect(fieldOf(ed.document.main, 'qty')).toBeUndefined()
     expect(fieldOf(ed.document.main, 'titel')).toBeUndefined()
   })
 
-  it('card(i).set targets the composable card via its kind schema', () => {
+  it('setBody writes the main body from markdown, receipt-free', () => {
+    const ed = buildQuill().editor(blankDoc())
+    ed.setBody('New **body**.')
+    expect(ed.document.getMarkdown()).toBe('New **body**.\n')
+  })
+
+  it('addCard fuses make + typed commit + push, transactionally', () => {
+    const ed = buildQuill().editor(blankDoc())
+    // `body` here is the card's richtext FIELD; the third arg is the card body.
+    ed.addCard('note', { body: 'Field **body**.' }, 'Card body text.')
+    expect(ed.document.cards).toHaveLength(1)
+    expect(ed.document.cards[0].kind).toBe('note')
+    expect(exportMarkdown(fieldOf(ed.document.cards[0], 'body'))).toBe('Field **body**.\n')
+    expect(exportMarkdown(ed.document.cards[0].body)).toBe('Card body text.\n')
+    // A typo aborts the commit; the card never joins the document.
+    expect(() => ed.addCard('note', { stray: 'x' })).toThrow(/UnknownField/)
+    expect(ed.document.cards).toHaveLength(1)
+  })
+
+  it('removeCard drops the card and returns it', () => {
+    const ed = buildQuill().editor(blankDoc())
+    ed.addCard('note', { body: 'x' })
+    const removed = ed.removeCard(0)
+    expect(removed.kind).toBe('note')
+    expect(ed.document.cards).toHaveLength(0)
+  })
+
+  it('card(i).set / card(i).setBody target the composable card', () => {
     const doc = Document.fromMarkdown(
       '~~~card-yaml\n$quill: editor_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
     )
-    const ed = new DocumentEditor(buildQuill(), doc)
+    const ed = buildQuill().editor(doc)
     ed.card(0).set('body', 'Card **body**.')
     expect(exportMarkdown(fieldOf(doc.cards[0], 'body'))).toBe('Card **body**.\n')
+    ed.card(0).setBody('Card body md.')
+    expect(exportMarkdown(doc.cards[0].body)).toBe('Card body md.\n')
   })
 
   it('a bad card index throws at write time, not at card()', () => {
-    const ed = new DocumentEditor(buildQuill(), blankDoc())
+    const ed = buildQuill().editor(blankDoc())
     const cardEd = ed.card(9) // lazy: constructing the CardEditor never throws
     expect(cardEd).toBeInstanceOf(CardEditor)
     expect(() => cardEd.set('body', 'x')).toThrow(/IndexOutOfRange/)
+  })
+
+  it('get / getMarkdown read main fields quill-free, off the Document', () => {
+    const ed = buildQuill().editor(blankDoc())
+    ed.set('qty', '3')
+    ed.set('subject', 'Q3 **results**')
+    expect(ed.document.get('qty')).toBe(3)
+    expect(ed.document.getMarkdown('subject')).toBe('Q3 **results**\n')
+    expect(ed.document.get('missing')).toBeUndefined()
+    expect(ed.document.getMarkdown('missing')).toBe('')
   })
 })
 

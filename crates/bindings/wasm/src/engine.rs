@@ -813,6 +813,36 @@ impl Document {
         serialize_or_throw(&cards, "cards")
     }
 
+    /// Read a main-card field's stored value — the raw payload value (a corpus
+    /// object for a richtext field, a scalar/array/object otherwise), or
+    /// `undefined` when the field is absent. The quill-free read: reads need no
+    /// schema, so they live on `Document`, not the typed editor. For the markdown
+    /// projection of a richtext value use [`getMarkdown`](Self::get_markdown).
+    #[wasm_bindgen(js_name = get)]
+    pub fn get(&self, name: &str) -> Result<JsValue, JsValue> {
+        match self.inner.main().payload().get(name) {
+            Some(v) => serialize_or_throw(v.as_json(), "get"),
+            None => Ok(JsValue::UNDEFINED),
+        }
+    }
+
+    /// The markdown projection of a main-card field (`name` given) or the main
+    /// body (`name` omitted) — the on-demand, lossy export (corpus-only marks do
+    /// not survive markdown), returning `""` for an absent field. Re-coins,
+    /// lazily and by name, the projection the eager `fieldMarkdown` /
+    /// `bodyMarkdown` getters dropped in #925; call it only when markdown is what
+    /// you need out.
+    #[wasm_bindgen(js_name = getMarkdown)]
+    pub fn get_markdown(
+        &self,
+        #[wasm_bindgen(unchecked_optional_param_type = "string")] name: Option<String>,
+    ) -> String {
+        match name {
+            Some(n) => self.inner.main().field_markdown(&n).unwrap_or_default(),
+            None => self.inner.main().body_markdown(),
+        }
+    }
+
     /// Number of composable cards (excludes the main card). O(1).
     #[wasm_bindgen(getter, js_name = cardCount)]
     pub fn card_count(&self) -> usize {
@@ -1132,44 +1162,6 @@ impl Document {
         .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// **Commit** a typed value at `addr.field`, resolving the field's schema
-    /// `type` from `quill` — the one typed write verb for every field type
-    /// (richtext, scalar, array, object). The schema carries any `inline`
-    /// constraint. A richtext-typed field stores the canonical corpus (identity
-    /// and corpus-only marks intact). Requires `addr.field`; the body carries no
-    /// schema type, so a bodyless `addr` throws.
-    ///
-    /// A field the schema does not declare throws `[EditError::UnknownField]`
-    /// (a typo on the typed path — use [`setField`](Document::set_field) for
-    /// opaque storage); a typed mismatch throws now, not at render.
-    #[wasm_bindgen(js_name = commit)]
-    pub fn commit(
-        &mut self,
-        #[wasm_bindgen(unchecked_param_type = "Addr")] addr: JsValue,
-        value: JsValue,
-        quill: &Quill,
-    ) -> Result<(), JsValue> {
-        let addr = Addr::from_js(&addr)?;
-        let field = addr.field.as_deref().ok_or_else(|| {
-            WasmError::from(
-                "commit requires addr.field — the body carries no schema type; \
-                 use install/revise for the body",
-            )
-            .to_js_value()
-        })?;
-        let json = js_value_to_json(value, "commit")?;
-        let qv = quillmark_core::QuillValue::from_json(json);
-        let mut editor = quill.inner.editor(&mut self.inner);
-        match addr.card {
-            None => editor.set(field, qv).map_err(|e| edit_error_to_js(&e)),
-            Some(index) => editor
-                .card(index)
-                .map_err(|e| edit_error_to_js(&e))?
-                .set(field, qv)
-                .map_err(|e| edit_error_to_js(&e)),
-        }
-    }
-
     /// Typed field write on the main card, resolving the field's schema `type`
     /// from `quill` — the one write verb for **every** field type (richtext,
     /// scalar, array, object). The schema carries the `inline` constraint, so no
@@ -1224,6 +1216,36 @@ impl Document {
             .inner
             .editor(&mut self.inner)
             .set_all(batch)
+            .map_err(edit_errors_to_js)
+    }
+
+    /// Build a composable card of `kind`, typed-commit `fields` onto it, set its
+    /// body from optional markdown, and append it — the ABI under
+    /// `editor.addCard`. Fuses `makeCard` + typed commit + `pushCard`
+    /// transactionally: the card is committed in full before it joins the
+    /// document, so a rejected field (or an invalid kind or body) leaves the
+    /// document untouched. Field errors throw the same per-field diagnostic
+    /// bundle as [`commitFields`](Self::commit_fields), including an
+    /// `[EditError::UnknownField]` per undeclared name; an invalid kind or body
+    /// throws a single-entry bundle keyed `$kind` / `$body`.
+    #[wasm_bindgen(js_name = addCard)]
+    pub fn add_card(
+        &mut self,
+        quill: &Quill,
+        kind: &str,
+        #[wasm_bindgen(unchecked_optional_param_type = "Record<string, unknown>")] fields: Option<
+            JsValue,
+        >,
+        #[wasm_bindgen(unchecked_optional_param_type = "string")] body: Option<String>,
+    ) -> Result<(), JsValue> {
+        let batch = match fields {
+            Some(f) => js_value_to_field_batch(&f, "addCard")?,
+            None => Vec::new(),
+        };
+        quill
+            .inner
+            .editor(&mut self.inner)
+            .add_card(kind, batch, body.as_deref())
             .map_err(edit_errors_to_js)
     }
 
@@ -1446,7 +1468,7 @@ impl Document {
 
     /// Resolve the card an [`Addr`] targets: the main card when `addr.card` is
     /// absent, else the composable card at that index (out-of-range throws). The
-    /// static address axis the four addressed content verbs share.
+    /// static address axis the addressed content verbs share.
     fn addr_card_mut(&mut self, addr: &Addr) -> Result<&mut quillmark_core::Card, JsValue> {
         match addr.card {
             None => Ok(self.inner.main_mut()),

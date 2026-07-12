@@ -714,22 +714,6 @@ card_kinds:
       .toThrow(/FieldRichtextNotInline/)
   })
 
-  it('commit(addr, value, quill) is the addressed typed door for main and card fields', () => {
-    const quill = buildQuill()
-    const doc = Document.fromMarkdown(
-      '~~~card-yaml\n$quill: commit_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
-    )
-    // Main field, resolving the schema type from the quill.
-    doc.commit({ field: 'qty' }, '3', quill)
-    expect(field(doc.main, 'qty')).toBe(3)
-    // Card field, addressed by index.
-    doc.commit({ card: 0, field: 'body' }, 'Card **body**.', quill)
-    expect(exportMarkdown(field(doc.cards[0], 'body'))).toBe('Card **body**.\n')
-    // A typo is rejected on the typed path; the body has no schema type.
-    expect(() => doc.commit({ field: 'stray' }, 'x', quill)).toThrow(/UnknownField/)
-    expect(() => doc.commit({}, 'x', quill)).toThrow(/addr\.field/)
-  })
-
   it('revise({field}) rebases a richtext field anchor and applyChange splices it', () => {
     const quill = buildQuill()
     const doc = blankDoc()

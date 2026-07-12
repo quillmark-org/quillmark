@@ -596,7 +596,7 @@ def test_to_markdown_ambiguous_string_survival():
     assert field(doc2.main, "date_str") == "2024-01-15"
 
 
-# ── Typed field writes — commit_field / commit_card_field ─────────────────────
+# ── Tier-1 typed editor — doc.editor(quill) front door ────────────────────────
 
 
 def _richtext_form_quill():
@@ -604,59 +604,87 @@ def _richtext_form_quill():
     return Quill.from_path(str(_latest_version(QUILLS_PATH / "richtext_form")))
 
 
-def test_commit_field_richtext_typed():
-    """commit_field resolves a richtext field's type and stores canonical corpus."""
+def _taro_quill():
+    """The taro fixture quill (main string fields; a `quotes` card kind)."""
+    return Quill.from_path(str(_latest_version(QUILLS_PATH / "taro")))
+
+
+def test_editor_front_door_set_and_reads():
+    """doc.editor(quill).set writes; the reads live quill-free on the Document."""
+    quill = _taro_quill()
+    doc = Document("taro@0.1.0")
+    ed = doc.editor(quill)
+    ed.set("author", "Ada")
+    ed.set_all({"title": "On Taro"})
+    assert ed.document is doc  # holds the same object, mutated in place
+    assert doc.get("author") == "Ada"
+    assert doc.get("missing") is None
+    ed.set_body("A **taro** essay.")
+    assert doc.get_markdown() == "A **taro** essay.\n"
+
+
+def test_editor_set_rejects_unknown_field():
+    """An undeclared name is a typo on the typed path — it raises, nothing lands."""
+    quill = _taro_quill()
+    doc = Document("taro@0.1.0")
+    with pytest.raises(QuillmarkError, match="UnknownField"):
+        doc.editor(quill).set("stray", "x")
+    assert not has_field(doc.main, "stray")
+
+
+def test_editor_add_card_transactional():
+    """add_card fuses make + typed commit + push; a typo leaves the doc untouched."""
+    quill = _taro_quill()
+    doc = Document("taro@0.1.0")
+    ed = doc.editor(quill)
+    ed.add_card("quotes", {"author": "Basho"}, "A quote body.")
+    assert len(doc.cards) == 1
+    assert field(doc.cards[0], "author") == "Basho"
+    with pytest.raises(QuillmarkError, match="UnknownField"):
+        ed.add_card("quotes", {"stray": "x"})
+    assert len(doc.cards) == 1  # nothing joined the document
+
+
+def test_editor_card_cursor_set_and_body():
+    """editor.card(i) targets the composable card; a bad index raises at the write."""
+    quill = _taro_quill()
+    doc = Document("taro@0.1.0")
+    ed = doc.editor(quill)
+    ed.add_card("quotes", {"author": "Basho"})
+    ed.card(0).set("author", "Issa")
+    assert field(doc.cards[0], "author") == "Issa"
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+        ed.card(9).set("author", "x")
+
+
+def test_editor_set_coerces_richtext_to_corpus():
+    """A richtext field commits the canonical corpus, not the authored markdown."""
     quill = _richtext_form_quill()
     doc = Document("richtext_form@0.1.0")
-    doc.commit_field(quill, "bio", "A **bold** intro.")
+    doc.editor(quill).set("bio", "A **bold** intro.")
     value = field(doc.main, "bio")
-    # Stored structurally as the corpus dict, not the authored markdown string.
-    assert isinstance(value, dict)
+    assert isinstance(value, dict)  # stored as the corpus dict, not a string
     assert value["text"] == "A bold intro."
 
 
-def test_commit_field_unknown_field_raises():
-    """A field absent from the schema is a typo on the typed path — it raises."""
-    quill = _richtext_form_quill()
-    doc = Document("richtext_form@0.1.0")
-    with pytest.raises(QuillmarkError, match="UnknownField"):
-        doc.commit_field(quill, "stray", "x")
-    assert not has_field(doc.main, "stray")
-    # Opaque storage stays available on purpose through the raw verb.
-    doc.set_field("stray", "x")
-    assert field(doc.main, "stray") == "x"
-
-
-def test_commit_field_inline_violation_raises():
+def test_editor_set_rejects_inline_violation():
     """A richtext(inline) field rejects multi-block content at the write."""
     quill = _richtext_form_quill()
     doc = Document("richtext_form@0.1.0")
     with pytest.raises(QuillmarkError, match="FieldRichtextNotInline"):
-        doc.commit_field(quill, "headline", "line one\n\nline two")
+        doc.editor(quill).set("headline", "line one\n\nline two")
 
 
-def test_commit_card_field_index_out_of_range():
-    """commit_card_field surfaces IndexOutOfRange for a missing card."""
+def test_editor_set_all_is_all_or_nothing():
+    """A mid-batch inline violation aborts set_all — nothing lingers."""
     quill = _richtext_form_quill()
     doc = Document("richtext_form@0.1.0")
-    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
-        doc.commit_card_field(quill, 0, "body", "x")
+    with pytest.raises(QuillmarkError, match="FieldRichtextNotInline"):
+        doc.editor(quill).set_all({"bio": "ok", "headline": "line one\n\nline two"})
+    assert not has_field(doc.main, "bio")
 
 
-# ── Addressed content verbs — commit / revise / apply_change ──────────────────
-
-
-def test_commit_addressed_typed_door():
-    """commit(value, quill, field=...) is the addressed typed door; the body has
-    no schema type so a field is required, and a typo raises UnknownField."""
-    quill = _richtext_form_quill()
-    doc = Document("richtext_form@0.1.0")
-    doc.commit("A **bold** intro.", quill, field="bio")
-    assert isinstance(field(doc.main, "bio"), dict)
-    with pytest.raises(QuillmarkError, match="UnknownField"):
-        doc.commit("x", quill, field="stray")
-    with pytest.raises(TypeError):
-        doc.commit("x", quill)  # field is a required keyword
+# ── Addressed content verbs — revise / apply_change ───────────────────────────
 
 
 def test_revise_field_and_apply_change_splice():
@@ -682,58 +710,3 @@ def test_corpus_codec_rebase_and_map_pos():
     assert map_pos(out["delta"], 11, "after") == 17
 
 
-# ── Typed batched writes — commit_fields / commit_card_fields ─────────────────
-
-
-def _taro_quill():
-    """The taro fixture quill (main: string fields; card kind `quotes`)."""
-    return Quill.from_path(str(_latest_version(QUILLS_PATH / "taro")))
-
-
-def test_commit_fields_typed_batch():
-    """commit_fields typed-commits a batch, coercing each value to its type."""
-    quill = _richtext_form_quill()
-    doc = Document("richtext_form@0.1.0")
-    doc.commit_fields(quill, {"bio": "A **bold** intro.", "headline": "Hi"})
-    # The richtext value was coerced to the corpus, not stored verbatim.
-    assert isinstance(field(doc.main, "bio"), dict)
-
-
-def test_commit_fields_rejects_unknown_field():
-    """A typo the schema does not own aborts the all-or-nothing batch."""
-    quill = _richtext_form_quill()
-    doc = Document("richtext_form@0.1.0")
-    with pytest.raises(QuillmarkError, match="UnknownField"):
-        doc.commit_fields(quill, {"bio": "hi", "titel": "oops"})
-    # Nothing applied — the good field must not linger either.
-    assert not has_field(doc.main, "bio")
-    assert not has_field(doc.main, "titel")
-
-
-def test_commit_fields_is_all_or_nothing():
-    """A richtext(inline) violation aborts the whole batch — nothing lingers."""
-    quill = _richtext_form_quill()
-    doc = Document("richtext_form@0.1.0")
-    with pytest.raises(QuillmarkError, match="FieldRichtextNotInline"):
-        doc.commit_fields(quill, {"bio": "ok", "headline": "line one\n\nline two"})
-    assert not has_field(doc.main, "bio")
-
-
-def test_commit_card_fields_typed_batch():
-    """commit_card_fields resolves the card's $kind schema and commits each field."""
-    quill = _taro_quill()
-    doc = Document("taro@0.1.0")
-    doc.push_card(Document.make_card("quotes"))
-    doc.commit_card_fields(quill, 0, {"author": "Ada"})
-    assert field(doc.cards[0], "author") == "Ada"
-    # A field the `quotes` kind does not declare aborts the batch as a typo.
-    with pytest.raises(QuillmarkError, match="UnknownField"):
-        doc.commit_card_fields(quill, 0, {"stray": "x"})
-
-
-def test_commit_card_fields_index_out_of_range():
-    """commit_card_fields surfaces IndexOutOfRange for a missing card."""
-    quill = _taro_quill()
-    doc = Document("taro@0.1.0")
-    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
-        doc.commit_card_fields(quill, 0, {"author": "x"})
