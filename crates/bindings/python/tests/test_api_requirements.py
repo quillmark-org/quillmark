@@ -619,3 +619,61 @@ def test_commit_card_field_index_out_of_range():
     doc = Document("richtext_form@0.1.0")
     with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
         doc.commit_card_field(quill, 0, "body", "x")
+
+
+# ── Typed batched writes — commit_fields / commit_card_fields ─────────────────
+
+
+def _taro_quill():
+    """The taro fixture quill (main: string fields; card kind `quotes`)."""
+    return Quill.from_path(str(_latest_version(QUILLS_PATH / "taro")))
+
+
+def test_commit_fields_typed_batch_reports_routing():
+    """commit_fields typed-commits a batch and returns per-field routing."""
+    quill = _richtext_form_quill()
+    doc = Document("richtext_form@0.1.0")
+    routing = doc.commit_fields(quill, {"bio": "A **bold** intro.", "headline": "Hi"})
+    # Both are schema fields → typed, keyed by field name.
+    assert routing == {"bio": "typed", "headline": "typed"}
+    # And the richtext value was coerced to the corpus, not stored verbatim.
+    assert isinstance(field(doc.main, "bio"), dict)
+
+
+def test_commit_fields_reports_opaque_field_on_success():
+    """A typo the schema does not own stores opaquely and shows in the routing."""
+    quill = _richtext_form_quill()
+    doc = Document("richtext_form@0.1.0")
+    routing = doc.commit_fields(quill, {"bio": "hi", "titel": "oops"})
+    assert routing == {"bio": "typed", "titel": "opaque"}
+    # The signal set_fields drops: which names fell to the opaque store.
+    opaque = [n for n, r in routing.items() if r == "opaque"]
+    assert opaque == ["titel"]
+
+
+def test_commit_fields_is_all_or_nothing():
+    """A richtext(inline) violation aborts the whole batch — nothing lingers."""
+    quill = _richtext_form_quill()
+    doc = Document("richtext_form@0.1.0")
+    with pytest.raises(QuillmarkError, match="FieldRichtextNotInline"):
+        doc.commit_fields(quill, {"bio": "ok", "headline": "line one\n\nline two"})
+    assert not has_field(doc.main, "bio")
+
+
+def test_commit_card_fields_typed_batch_reports_routing():
+    """commit_card_fields resolves the card's $kind schema and routes per field."""
+    quill = _taro_quill()
+    doc = Document("taro@0.1.0")
+    doc.push_card(Document.make_card("quotes"))
+    routing = doc.commit_card_fields(quill, 0, {"author": "Ada", "stray": "x"})
+    # `author` is declared on the `quotes` kind; `stray` is not.
+    assert routing == {"author": "typed", "stray": "opaque"}
+    assert field(doc.cards[0], "author") == "Ada"
+
+
+def test_commit_card_fields_index_out_of_range():
+    """commit_card_fields surfaces IndexOutOfRange for a missing card."""
+    quill = _taro_quill()
+    doc = Document("taro@0.1.0")
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+        doc.commit_card_fields(quill, 0, {"author": "x"})
