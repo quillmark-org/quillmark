@@ -21,7 +21,12 @@ pub enum MarkOp {
         end: Usv,
         kind: MarkKind,
     },
-    /// Drop formatting marks of `kind` overlapping `[start, end)`.
+    /// Un-format `kind` over `[start, end)`: subtract the range from each
+    /// overlapping same-kind *formatting* mark, keeping the non-overlapping
+    /// fragments (a mid-run removal punches a hole; `normalize` drops any
+    /// zero-width fragment an edge-aligned removal leaves). Non-formatting
+    /// (identity/unknown) handles can't be range-fragmented, so an overlapping
+    /// one is dropped whole — anchors normally go through [`MarkOp::RemoveAnchor`].
     Remove {
         start: Usv,
         end: Usv,
@@ -202,9 +207,38 @@ impl RichText {
                             len,
                         });
                     }
-                    self.marks.retain(|m| {
-                        m.kind != *kind || !ranges_overlap(m.start, m.end, *start, *end)
-                    });
+                    let mut next = Vec::with_capacity(self.marks.len());
+                    for m in self.marks.drain(..) {
+                        // Untouched: a different kind, or no overlap with the
+                        // removed range.
+                        if m.kind != *kind || !ranges_overlap(m.start, m.end, *start, *end) {
+                            next.push(m);
+                            continue;
+                        }
+                        // Identity/unknown handles have no range algebra to
+                        // subtract — drop the overlapping one whole.
+                        if !kind.is_formatting() {
+                            continue;
+                        }
+                        // Formatting: subtract [start, end), re-emitting the
+                        // surviving fragments. An edge-aligned removal yields a
+                        // zero-width fragment here; `normalize` drops it.
+                        if m.start < *start {
+                            next.push(Mark {
+                                start: m.start,
+                                end: *start,
+                                kind: m.kind.clone(),
+                            });
+                        }
+                        if *end < m.end {
+                            next.push(Mark {
+                                start: *end,
+                                end: m.end,
+                                kind: m.kind.clone(),
+                            });
+                        }
+                    }
+                    self.marks = next;
                 }
                 MarkOp::RemoveAnchor { id } => {
                     self.marks
@@ -568,6 +602,108 @@ mod tests {
         }])
         .unwrap();
         assert!(!rt.marks.iter().any(|m| matches!(m.kind, MarkKind::Emph)));
+    }
+
+    #[test]
+    fn apply_mark_ops_remove_punches_hole() {
+        // Un-formatting the middle of a run leaves the two non-overlapping
+        // fragments, not an empty mark set (issue #901). Strong[0,6) over
+        // "abcdef", Remove[2,4) -> Strong[0,2) + Strong[4,6).
+        let mut rt = from_markdown("abcdef").unwrap();
+        rt.apply_mark_ops(&[MarkOp::Add {
+            start: 0,
+            end: 6,
+            kind: MarkKind::Strong,
+        }])
+        .unwrap();
+        rt.apply_mark_ops(&[MarkOp::Remove {
+            start: 2,
+            end: 4,
+            kind: MarkKind::Strong,
+        }])
+        .unwrap();
+        let strong: Vec<_> = rt
+            .marks
+            .iter()
+            .filter(|m| matches!(m.kind, MarkKind::Strong))
+            .map(|m| (m.start, m.end))
+            .collect();
+        assert_eq!(strong, vec![(0, 2), (4, 6)]);
+    }
+
+    #[test]
+    fn apply_mark_ops_remove_at_edge_leaves_no_zero_width() {
+        // A removal flush against the mark's start yields a zero-width left
+        // fragment [0,0); normalize drops it, leaving only the right fragment.
+        let mut rt = from_markdown("abcdef").unwrap();
+        rt.apply_mark_ops(&[MarkOp::Add {
+            start: 0,
+            end: 6,
+            kind: MarkKind::Strong,
+        }])
+        .unwrap();
+        rt.apply_mark_ops(&[MarkOp::Remove {
+            start: 0,
+            end: 2,
+            kind: MarkKind::Strong,
+        }])
+        .unwrap();
+        let strong: Vec<_> = rt
+            .marks
+            .iter()
+            .filter(|m| matches!(m.kind, MarkKind::Strong))
+            .map(|m| (m.start, m.end))
+            .collect();
+        assert_eq!(strong, vec![(2, 6)]);
+    }
+
+    #[test]
+    fn apply_mark_ops_remove_covering_range_drops_mark() {
+        // A removal that fully covers the mark leaves nothing (both fragments
+        // zero-width or inverted) — the whole-drop case still holds.
+        let mut rt = from_markdown("abcdef").unwrap();
+        rt.apply_mark_ops(&[MarkOp::Add {
+            start: 2,
+            end: 4,
+            kind: MarkKind::Emph,
+        }])
+        .unwrap();
+        rt.apply_mark_ops(&[MarkOp::Remove {
+            start: 0,
+            end: 6,
+            kind: MarkKind::Emph,
+        }])
+        .unwrap();
+        assert!(!rt.marks.iter().any(|m| matches!(m.kind, MarkKind::Emph)));
+    }
+
+    #[test]
+    fn apply_mark_ops_remove_non_formatting_drops_whole() {
+        // Identity/unknown handles can't be range-fragmented: an overlapping
+        // one is dropped whole, never split into fragments.
+        let mut rt = from_markdown("abcdef").unwrap();
+        rt.marks.push(Mark {
+            start: 0,
+            end: 6,
+            kind: MarkKind::Unknown {
+                tag: "x".into(),
+                attrs: serde_json::json!({}),
+            },
+        });
+        rt.normalize();
+        rt.apply_mark_ops(&[MarkOp::Remove {
+            start: 2,
+            end: 4,
+            kind: MarkKind::Unknown {
+                tag: "x".into(),
+                attrs: serde_json::json!({}),
+            },
+        }])
+        .unwrap();
+        assert!(!rt
+            .marks
+            .iter()
+            .any(|m| matches!(m.kind, MarkKind::Unknown { .. })));
     }
 
     #[test]
