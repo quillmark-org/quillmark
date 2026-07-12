@@ -1078,6 +1078,13 @@ impl QuillConfig {
             if obj.get("type").and_then(|v| v.as_str()) == Some("richtext(inline)") {
                 return Some(format!("{RICHTEXT_INLINE_TOKEN_MSG}."));
             }
+            if obj.get("type").and_then(|v| v.as_str()) == Some("markdown") {
+                return Some(
+                    "'markdown' is no longer a field type; use type: richtext (block) \
+                     or type: richtext with inline: true."
+                        .to_string(),
+                );
+            }
         }
         None
     }

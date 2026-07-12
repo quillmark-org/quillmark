@@ -1,0 +1,12 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 1bb70c0781b6fe555a4e9d4bb7dad510ab48f623a67c4fd010bc5545f91035dd # shrinks to chars = ['*', 'a', 'a', 'a', 'a', 'a', 'a', 'a'], specs = [(11, 46, 0)]
+cc 0e2e102d7078c736feac5a4fcc9874dfa10016c59997643dd47c1e568aeba706 # shrinks to chars = ['a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', 'a', ' ', 'a'], specs = [(9, 12, 0), (11, 1, 2)]
+cc 4d70741529d8bc55999e32baee1408f43fe4c56d89049d5507ce3e4fd45e4c70 # shrinks to chars = ['a', 'a', 'a', 'a', 'a', 'a', 'a', '*'], specs = [(8, 9, 1), (0, 0, 0), (34, 9, 3)]
+cc 8847c015b9ea58761a4f5f8f293f74729e23a30e08ee1dbce6ae83139dde6b00 # shrinks to md = "- 0*你 a*~# a~"
+cc ff90f800ae8fe6d16e7adb6f38ebcf558488cade231db13d3705afc542faa985 # shrinks to chars = ['a', 'a', 'a', 'a', ' ', '.', 'a', 'a'], specs = [(28, 25, 0), (59, 45, 3)]
+cc 5e333ee554d5dea4ec07af36bca02d4e0494549dee880518d7fc5448d81a06d9 # shrinks to md = "# 0. **a**"

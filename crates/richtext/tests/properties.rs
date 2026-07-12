@@ -233,6 +233,78 @@ proptest! {
             "re-imported overlap corpus not a fixed point: {:?}", md);
     }
 
+    /// Editor marks over *mixed* text stay text-safe — the punctuation, symbol,
+    /// emoji, and whitespace coverage the #848 staircase above deliberately
+    /// excludes (its content is `[a-z]` only). An `apply_mark_ops` mark whose
+    /// edge falls between a word char and a punctuation/symbol/whitespace char is
+    /// not representable as a `*`/`**`/`~~` run under CommonMark flanking, so the
+    /// codec clips the mark inward (or drops it) rather than leak a literal
+    /// delimiter into the text. Formatting may be lost; the text never is. Guards
+    /// the corruption `clip_unflankable` fixes: bolding `a.` used to export
+    /// `**a.**b`, which re-imports as the literal string `**a.**b`.
+    #[test]
+    fn editor_marks_over_mixed_text_are_text_safe(
+        mid in prop::collection::vec(
+            prop::sample::select(vec![
+                'a', 'b', '9', '你', '.', ',', '#', '_', '*', '~', '✓', '€', '😀', ' ',
+            ]),
+            2..10,
+        ),
+        specs in prop::collection::vec((0usize..64, 0usize..64, 0u8..4), 0..4),
+    ) {
+        // Word-char edges keep the mark-free baseline a round-trip fixed point
+        // (markdown strips leading/trailing paragraph whitespace and reads a
+        // leading `#`/`-`/`*` as a block marker); the punctuation/symbol/emoji/
+        // space coverage lives in the interior, which is where marks clash with
+        // CommonMark flanking anyway.
+        let text: String = std::iter::once('a')
+            .chain(mid)
+            .chain(std::iter::once('a'))
+            .collect();
+        let n = text.chars().count();
+        let mut rt = RichText {
+            text: text.clone(),
+            lines: vec![Line { kind: LineKind::Para, containers: vec![], continues: false }],
+            marks: vec![],
+            islands: vec![],
+        };
+        rt.normalize();
+        // Stay in the valid domain and only mark when the text length is intact
+        // (normalization can reshape whitespace-only content).
+        prop_assume!(rt.validate().is_ok());
+        prop_assume!(rt.len_usv() == n);
+        // Isolate the mark effect: require the *mark-free* text to already be a
+        // round-trip fixed point, so a later mismatch is mark-induced, not the
+        // orthogonal markdown limits (leading/trailing paragraph whitespace is
+        // stripped on import, etc.).
+        prop_assume!(from_markdown(&to_markdown(&rt)).unwrap().text == rt.text);
+
+        let ops: Vec<MarkOp> = specs
+            .iter()
+            .map(|&(a, b, k)| {
+                let (s, e) = (a % (n + 1), b % (n + 1));
+                MarkOp::Add { start: s.min(e), end: s.max(e), kind: ov_kind(k) }
+            })
+            .filter(|op| matches!(op, MarkOp::Add { start, end, .. } if start < end))
+            .collect();
+        rt.apply_mark_ops(&ops).unwrap();
+        prop_assert_eq!(rt.validate(), Ok(()), "editor marks left corpus invalid");
+
+        let md = to_markdown(&rt);
+        let rt2 = from_markdown(&md).unwrap();
+        // The guarantee: no clipped/dropped mark leaks a delimiter into the text.
+        // (Mark *fidelity* is not promised — an unrepresentable editor mark is
+        // degraded away — only that the text survives. The import-domain
+        // fixed-point contract is covered by `corpus_round_trip_and_invariants`.)
+        prop_assert_eq!(&rt2.text, &rt.text,
+            "editor mark corrupted text.\n text: {:?}\n md:   {:?}\n out:  {:?}",
+            rt.text, md, rt2.text);
+        // Text stays safe across a second export cycle too — a degraded corpus
+        // never drifts the text further on re-save.
+        prop_assert_eq!(&from_markdown(&to_markdown(&rt2)).unwrap().text, &rt.text,
+            "text drifted on the second cycle: {:?}", md);
+    }
+
     /// Issue #900: image alt and image/link URLs carry the markup- and
     /// destination-terminating specials — `]`/`[`/`\` in alt, spaces, unbalanced
     /// parens, `&`, `<`/`>`/`\` in a url — that the codec must escape so the

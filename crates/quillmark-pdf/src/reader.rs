@@ -356,6 +356,26 @@ fn skip_ws_and_comments(b: &[u8], start: usize) -> usize {
     }
 }
 
+/// If `b[i]` opens a literal string (`(`) or a `%`-comment, return the index just
+/// past it, so a dict/array scanner steps over content that can carry raw
+/// `<<`/`>>`/`[`/`]`/`endobj` bytes without treating them as structure. Hex
+/// strings (`<…>`) need no handling: a well-formed one holds only hex digits, so
+/// it can't carry a stray `<`/`>` that would derail the byte walk. `None` when
+/// `b[i]` is neither — the caller advances one byte.
+fn skip_string_or_comment(b: &[u8], i: usize) -> Option<usize> {
+    match b.get(i)? {
+        b'(' => Some(skip_pdf_string(b, i)),
+        b'%' => {
+            let mut j = i + 1;
+            while j < b.len() && b[j] != b'\n' && b[j] != b'\r' {
+                j += 1;
+            }
+            Some(j)
+        }
+        _ => None,
+    }
+}
+
 /// Find the byte index where a value beginning at `start` ends. Returns the
 /// index AFTER the value's last byte. Whitespace at `start` is skipped before
 /// classifying the value type.
@@ -372,8 +392,8 @@ fn read_value_end(b: &[u8], start: usize) -> Option<usize> {
             let mut depth = 1;
             i += 1;
             while i < b.len() {
-                if b[i] == b'(' {
-                    i = skip_pdf_string(b, i);
+                if let Some(ni) = skip_string_or_comment(b, i) {
+                    i = ni;
                     continue;
                 }
                 if b[i] == b'[' {
@@ -393,6 +413,10 @@ fn read_value_end(b: &[u8], start: usize) -> Option<usize> {
             let mut depth = 1;
             i += 2;
             while i + 1 < b.len() && depth > 0 {
+                if let Some(ni) = skip_string_or_comment(b, i) {
+                    i = ni;
+                    continue;
+                }
                 if b[i..].starts_with(b"<<") {
                     depth += 1;
                     i += 2;
@@ -523,9 +547,10 @@ pub fn extract_outer_dict(obj_bytes: &[u8]) -> Option<&[u8]> {
     let mut depth = 0i32;
     let mut i = open;
     while i + 1 < obj_bytes.len() {
-        // Skip literal strings — they can contain `<<` / `>>` as raw bytes.
-        if obj_bytes[i] == b'(' {
-            i = skip_pdf_string(obj_bytes, i);
+        // Skip literal strings and `%`-comments — either can carry `<<` / `>>` as
+        // raw bytes that would otherwise skew the nesting depth.
+        if let Some(ni) = skip_string_or_comment(obj_bytes, i) {
+            i = ni;
             continue;
         }
         if obj_bytes[i..].starts_with(b"<<") {
@@ -810,6 +835,35 @@ mod tests {
         assert_eq!(&pdf[e - 6..e], b"endobj");
         // The real terminator is the standalone `endobj`, past the comment.
         assert!(&pdf[s..e].ends_with(b"/B 2 >>\nendobj"));
+    }
+
+    #[test]
+    fn outer_dict_skips_comment_bearing_gt_gt() {
+        // A `%`-comment carrying `>>` inside the object body must not close the
+        // outer dict early and drop the keys that follow it.
+        let obj = b"5 0 obj\n<< /A 1 %trailing >> in a comment\n /MediaBox [0 0 1 2] >>\nendobj\n";
+        let dict = extract_outer_dict(obj).expect("dict parses");
+        let mb = find_dict_value(dict, "MediaBox").expect("/MediaBox survives the comment");
+        assert_eq!(parse_rect_array(mb), Some([0.0, 0.0, 1.0, 2.0]));
+    }
+
+    #[test]
+    fn value_end_nested_dict_skips_string_and_comment_gt_gt() {
+        // A nested-dict value whose interior carries `>>` inside a `(…)` string or
+        // a `%`-comment must terminate at the real `>>`, so the key→value walk
+        // finds the entry that follows.
+        let dict = b" /K << /S (a>>b) %c >> d\n /T 3 >> /After 9 0 R ";
+        let after = find_dict_value(dict, "After").expect("/After after the nested dict");
+        assert_eq!(after.trim_ascii(), b"9 0 R");
+    }
+
+    #[test]
+    fn value_end_array_skips_comment_bracket() {
+        // A `%`-comment carrying `]` inside an array value must not end the array
+        // early.
+        let dict = b" /Arr [1 2 %x]\n 3] /After (real) ";
+        let after = find_dict_value(dict, "After").expect("/After after the array");
+        assert_eq!(after.trim_ascii(), b"(real)");
     }
 
     #[test]

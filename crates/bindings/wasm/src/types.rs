@@ -101,7 +101,7 @@ impl From<Location> for quillmark_core::Location {
     }
 }
 
-/// Diagnostic message (error, warning, or note)
+/// Diagnostic message (error or warning)
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]

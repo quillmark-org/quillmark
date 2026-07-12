@@ -8,6 +8,14 @@
 
 ## Unreleased
 
+- fix(richtext): the markdown-export codec never leaks a delimiter into the
+  corpus. An editor `apply_mark_ops` mark can wrap a span markdown can't
+  represent (a `strong`/`emph`/`strike` edge on punctuation/symbols/whitespace,
+  or abutting a literal `*`) — the run would re-import as literal `**`/`*`/`~~`
+  text (bolding `a.` used to export `**a.**b`). `to_markdown` now verifies each
+  rendered line by re-parse and drops any mark whose emission would alter the
+  text, so the text always round-trips; only the unrepresentable formatting is
+  lost. Import-domain corpora are unaffected (still an exact fixed point).
 - feat(core,wasm,python)!: typed field writes via schema-carried types. One
   per-type write dispatch (`conform_value(value, schema, mode)`) unifies the
   render floor's coercion with a strict-write mode behind a `Leniency` flag; one
@@ -113,13 +121,16 @@
   rasters at `RenderOptions::ppi` (default 144). The `preview` cargo feature is
   removed — the hayro raster/SVG/PNG seam is always linked, so SVG/PNG/canvas
   work out of the box rather than behind a flag. The `quillmark` crate's
-  `pdfform-preview` feature is dropped (folded into `pdfform`); the wasm
-  `pdfform-preview` feature now gates only the `web-sys` canvas painter
+  `pdfform-preview` feature is folded into `pdfform`; in the wasm crate both the
+  `typst` and `pdfform` build variants link the `web-sys` canvas painter directly
 - fix(quillmark-pdf): `find_dict_value` now walks the dict as strict
   key→value pairs, so a Name in *value* position (e.g. `/Subtype /Producer`)
   is no longer mis-matched as a key; the object/dict scanners also skip
   `%`-comments, so `endobj` or a key token inside a comment can't derail
-  parsing of an untrusted base PDF
+  parsing of a base PDF. The `<<…>>`/`[…]` depth walkers (`extract_outer_dict`
+  and `read_value_end`'s nested-dict/array branches) skip `%`-comments and
+  literal `(…)` strings uniformly, so a `>>`/`]` carried inside a comment or
+  string no longer truncates a dict/array and drops the keys after it
 - feat(pdfform): add the Typst-free `pdfform` backend + shared `quillmark-pdf`
   AcroForm stamping spine; rewire Typst signatures onto the spine; thread a
   `regions` sidecar through `RenderResult` and generalize the raster-preview
@@ -146,7 +157,7 @@
   longer disagree with what `paint` does. The engine and WASM `supportsCanvas`
   surfaces are unchanged in shape. See `docs/migrations/0.92-to-0.93.md`
 - build(wasm)!: rename the WASM engine feature `render` → `typst` (now the
-  default) and add `pdfform` / `pdfform-preview` build variants, so a Typst-free
+  default) and add a `pdfform` build variant, so a Typst-free
   PDF-form bundle can ship without Typst. From-source builders pass
   `--features typst` where they used `--features render`; the published JS API is
   unchanged. See `docs/migrations/0.92-to-0.93.md`

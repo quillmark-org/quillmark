@@ -203,7 +203,11 @@ fn emit_container(
             ordinal,
         } => {
             let marker = if *ordered {
-                format!("{}. ", start + ordinal)
+                // `start`/`ordinal` are unbounded `u64` and `validate` does not
+                // ceiling them, so a corrupt/adversarial corpus can drive the
+                // sum past `u64::MAX`; saturate rather than panic (or wrap under
+                // release overflow-checks) on the render path.
+                format!("{}. ", start.saturating_add(*ordinal))
             } else {
                 "- ".to_string()
             };
@@ -544,7 +548,6 @@ fn render_marked_core(
     island_markup_at: impl Fn(usize) -> Option<String>,
 ) -> String {
     let n = chars.len();
-    let mut out = String::new();
 
     // Clip the wrapping marks so the sweep only ever sees a representable shape.
     let mut fmt: Vec<(usize, usize, &MarkKind)> = fmt.to_vec();
@@ -553,79 +556,123 @@ fn render_marked_core(
     clip_fmt_to_atomic(&mut fmt, &atomics);
     clip_asterisk_overlap(&mut fmt);
 
-    // Indices into `fmt` for the marks currently open, outermost first. Storing
-    // the index (not `(end, kind)`) keeps each open mark's identity, so a
-    // reopened mark re-emits its OWN delimiter.
-    let mut stack: Vec<usize> = Vec::new();
-    let mut pos = 0usize;
-    while pos <= n {
-        // Close every mark ending at `pos` (innermost first) and reopen the
-        // deeper survivors that do not — free overlap → proper nesting.
-        if let Some(idx) = stack.iter().position(|&fi| fmt[fi].1 == pos) {
-            let mut reopen: Vec<usize> = Vec::new();
-            while stack.len() > idx {
-                let fi = stack.pop().unwrap();
-                out.push_str(&delim_close(fmt[fi].2));
-                if fmt[fi].1 != pos {
-                    reopen.push(fi);
+    // One mark sweep over `fmt` → inline markdown. Free (Peritext) overlap is
+    // lowered to nesting by closing every mark ending at `pos` and reopening the
+    // deeper survivors.
+    let sweep = |fmt: &[(usize, usize, &MarkKind)]| -> String {
+        let mut out = String::new();
+        // Indices into `fmt` for the marks currently open, outermost first.
+        // Storing the index (not `(end, kind)`) keeps each open mark's identity,
+        // so a reopened mark re-emits its OWN delimiter.
+        let mut stack: Vec<usize> = Vec::new();
+        let mut pos = 0usize;
+        while pos <= n {
+            if let Some(idx) = stack.iter().position(|&fi| fmt[fi].1 == pos) {
+                let mut reopen: Vec<usize> = Vec::new();
+                while stack.len() > idx {
+                    let fi = stack.pop().unwrap();
+                    out.push_str(&delim_close(fmt[fi].2));
+                    if fmt[fi].1 != pos {
+                        reopen.push(fi);
+                    }
+                }
+                for fi in reopen.into_iter().rev() {
+                    out.push_str(&delim_open(fmt[fi].2));
+                    stack.push(fi);
                 }
             }
-            for fi in reopen.into_iter().rev() {
+            // Open formatting marks starting here, longest span (outer) first —
+            // BEFORE any atomic run, so a formatting mark that begins at the same
+            // position as inline code/link still wraps it (`**` + code →
+            // `**`code`…**`, not a dropped strong).
+            let mut opening: Vec<usize> = (0..fmt.len()).filter(|&fi| fmt[fi].0 == pos).collect();
+            opening.sort_by(|&a, &b| fmt[b].1.cmp(&fmt[a].1));
+            for fi in opening {
                 out.push_str(&delim_open(fmt[fi].2));
                 stack.push(fi);
             }
-        }
-        // Open formatting marks starting here, longest span (outer) first —
-        // BEFORE any atomic run, so a formatting mark that begins at the same
-        // position as inline code/link still wraps it (`**` + code → `**`code`…**`,
-        // not a dropped strong).
-        let mut opening: Vec<usize> = (0..fmt.len()).filter(|&fi| fmt[fi].0 == pos).collect();
-        opening.sort_by(|&a, &b| fmt[b].1.cmp(&fmt[a].1));
-        for fi in opening {
-            out.push_str(&delim_open(fmt[fi].2));
-            stack.push(fi);
-        }
-        // A link is emitted atomically as [text](url); its display text carries
-        // plain content (nested marks in link text are not supported).
-        if let Some(&(ls, le, url)) = links.iter().find(|(s, _, _)| *s == pos) {
-            out.push('[');
-            out.push_str(&escape_run(&chars[ls..le], escape_pipe));
-            out.push_str("](");
-            emit_url(url, &mut out);
-            out.push(')');
-            pos = le;
-            continue;
-        }
-        // A code range is atomic.
-        if let Some(&(cs, ce)) = code_ranges.iter().find(|(s, _)| *s == pos) {
-            let content: String = chars[cs..ce].iter().collect();
-            let ticks = longest_backtick_run(&content) + 1;
-            let fence = "`".repeat(ticks.max(1));
-            out.push_str(&fence);
-            out.push_str(&content);
-            out.push_str(&fence);
-            pos = ce;
-            continue;
-        }
-        if pos < n {
-            let c = chars[pos];
-            if c == ISLAND_SLOT {
-                if let Some(markup) = island_markup_at(pos) {
-                    out.push_str(&markup);
-                }
-            } else if Some(pos) == escape_punct_at {
-                out.push('\\');
-                out.push(c);
-            } else {
-                escape_char_into(c, pos == 0 && escape_leading_block, escape_pipe, &mut out);
+            // A link is emitted atomically as [text](url); its display text
+            // carries plain content (nested marks in link text are not supported).
+            if let Some(&(ls, le, url)) = links.iter().find(|(s, _, _)| *s == pos) {
+                out.push('[');
+                out.push_str(&escape_run(&chars[ls..le], escape_pipe));
+                out.push_str("](");
+                emit_url(url, &mut out);
+                out.push(')');
+                pos = le;
+                continue;
             }
+            // A code range is atomic.
+            if let Some(&(cs, ce)) = code_ranges.iter().find(|(s, _)| *s == pos) {
+                let content: String = chars[cs..ce].iter().collect();
+                let ticks = longest_backtick_run(&content) + 1;
+                let fence = "`".repeat(ticks.max(1));
+                out.push_str(&fence);
+                out.push_str(&content);
+                out.push_str(&fence);
+                pos = ce;
+                continue;
+            }
+            if pos < n {
+                let c = chars[pos];
+                if c == ISLAND_SLOT {
+                    if let Some(markup) = island_markup_at(pos) {
+                        out.push_str(&markup);
+                    }
+                } else if Some(pos) == escape_punct_at {
+                    out.push('\\');
+                    out.push(c);
+                } else {
+                    escape_char_into(c, pos == 0 && escape_leading_block, escape_pipe, &mut out);
+                }
+            }
+            pos += 1;
         }
-        pos += 1;
-    }
-    // Drain any mark still open at end of sweep. Clipping keeps every wrap `end`
-    // reachable, so this normally drains nothing; it is the final close guard.
-    while let Some(fi) = stack.pop() {
-        out.push_str(&delim_close(fmt[fi].2));
+        // Drain any mark still open at end of sweep. Clipping keeps every wrap
+        // `end` reachable, so this normally drains nothing; the final close guard.
+        while let Some(fi) = stack.pop() {
+            out.push_str(&delim_close(fmt[fi].2));
+        }
+        out
+    };
+
+    // Verify-and-drop safety net. The clips above and the sweep round-trip every
+    // corpus `import` produces, but an editor's `apply_mark_ops` can build a mark
+    // over a span markdown can't represent — CommonMark's full emphasis algorithm
+    // (delimiter-run matching, the rule of 3, `\*`-escape adjacency) has corners
+    // no local rule captures — and it lowers to a `**`/`*`/`~~` run pulldown
+    // re-reads as literal text, leaking a delimiter into the corpus. Re-parse the
+    // rendered line and, if its plain text drifted, drop the last flanking mark
+    // and re-sweep until the text is preserved. Terminates: dropping only removes
+    // delimiters, and the mark-free render is always text-safe. Only marked lines
+    // pay the re-parse; a line markdown already round-trips passes on the first.
+    //
+    // The probe wraps the fragment in `,…,`: this is an *inline* fragment, but
+    // parsed standalone a leading `0. ` / `# ` / `> ` would read as a list/heading/
+    // quote marker (a false positive that would drop a good mark). A punctuation
+    // sentinel blocks every leading-block construct, preserves edge whitespace,
+    // and is flanking-equivalent to the line start/end it replaces (a run's
+    // open/close decision is identical whether the neighbor is line-boundary
+    // whitespace or a punctuation char), so it never masks or invents a leak.
+    // `expected` is the corpus text with islands as their slot char, which
+    // `import` restores from the emitted island markup.
+    let expected: String = chars.iter().collect();
+    let is_flanking = |k: &MarkKind| {
+        matches!(k, MarkKind::Strong | MarkKind::Emph | MarkKind::Strike)
+    };
+    let want = format!(",{expected},");
+    let text_safe = |md: &str| {
+        crate::import::from_markdown(&format!(",{md},"))
+            .map(|rt| rt.text == want)
+            .unwrap_or(false)
+    };
+    let mut out = sweep(&fmt);
+    while fmt.iter().any(|m| is_flanking(m.2)) && !text_safe(&out) {
+        let Some(i) = fmt.iter().rposition(|m| is_flanking(m.2)) else {
+            break;
+        };
+        fmt.remove(i);
+        out = sweep(&fmt);
     }
     out
 }
@@ -1226,5 +1273,22 @@ mod tests {
         let mut esc = String::new();
         emit_url("a&<\\b", &mut esc);
         assert_eq!(esc, "<a\\&\\<\\\\b>", "specials escaped inside the wrap");
+    }
+
+    #[test]
+    fn ordered_list_marker_saturates_on_overflow() {
+        // `validate` does not ceiling `start`/`ordinal`, so a corrupt corpus can
+        // carry `start == u64::MAX`. Export must not panic (or wrap silently) on
+        // the `start + ordinal` marker; it saturates instead.
+        let json = format!(
+            r#"{{"text":"x","lines":[{{"kind":"para","containers":[{{"container":"list_item","ordered":true,"start":{},"ordinal":5}}]}}],"marks":[],"islands":[]}}"#,
+            u64::MAX
+        );
+        let rt = RichText::from_canonical_json(&json).unwrap();
+        let md = to_markdown(&rt);
+        assert!(
+            md.contains(&format!("{}. ", u64::MAX)),
+            "marker saturates to u64::MAX: {md:?}"
+        );
     }
 }
