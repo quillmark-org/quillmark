@@ -5,9 +5,11 @@
 //! form editor, an MCP server) already holds the resolved [`QuillConfig`] — it
 //! renders with it. [`Quill::editor`](crate::Quill::editor) binds the schema
 //! once, so callers issue one verb (`set`) and never pass a type token or an
-//! `inline` flag: the editor resolves each field's type itself and routes a
-//! schema field through the strict commit and an unknown field through the
-//! opaque store.
+//! `inline` flag: the editor resolves each field's type itself, strict-commits
+//! a schema field, and rejects a name the schema does not declare with
+//! [`EditError::UnknownField`] — on the typed path an undeclared name is a typo,
+//! not a fallback. Opaque storage stays available on purpose through the raw
+//! [`Card::set_field`](crate::Card::set_field) verb.
 //!
 //! ```ignore
 //! let mut ed = quill.editor(&mut doc);
@@ -28,39 +30,6 @@ use crate::document::{Card, Document, EditError};
 use crate::quill::{CardSchema, FieldSchema, QuillConfig};
 use crate::value::QuillValue;
 
-/// Which store a [`TypedEditor::set`] / [`CardEditor::set`] used: `Typed` when
-/// the field is declared in the schema (strict commit), `Opaque` when it is not
-/// (verbatim store, mirroring [`Card::set_field`](crate::Card::set_field)).
-///
-/// An editor's caller usually meant a schema field, so a typo'd name silently
-/// storing opaque is otherwise invisible until validation — the return value
-/// surfaces which path ran.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Committed {
-    /// The field is declared in the schema; the value was strict-committed to
-    /// its canonical typed form.
-    Typed,
-    /// The field is not in the schema; the value was stored opaquely (the field
-    /// bag stays a bag).
-    Opaque,
-}
-
-impl Committed {
-    /// `true` for [`Committed::Typed`].
-    pub fn is_typed(self) -> bool {
-        matches!(self, Committed::Typed)
-    }
-
-    /// `"typed"` or `"opaque"` — the discriminant a binding surfaces to its
-    /// caller.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Committed::Typed => "typed",
-            Committed::Opaque => "opaque",
-        }
-    }
-}
-
 /// A [`Document`] bound to its [`QuillConfig`] for typed writes. Construct with
 /// [`Quill::editor`](crate::Quill::editor). Writes target the main card; use
 /// [`card`](Self::card) for a composable card.
@@ -76,43 +45,27 @@ impl<'a> TypedEditor<'a> {
     }
 
     /// Write a field on the main card. Resolves the field's schema type and
-    /// strict-commits it ([`Committed::Typed`]); an unknown field stores
-    /// opaquely ([`Committed::Opaque`]). Error surface is that of
-    /// [`Card::commit_field`](crate::Card::commit_field) /
-    /// [`Card::set_field`](crate::Card::set_field).
-    pub fn set(
-        &mut self,
-        name: &str,
-        value: impl Into<QuillValue>,
-    ) -> Result<Committed, EditError> {
+    /// strict-commits it; a name the schema does not declare fails with
+    /// [`EditError::UnknownField`] rather than falling to the opaque store — on
+    /// the typed path it is a typo. For deliberate opaque storage use the raw
+    /// [`Card::set_field`](crate::Card::set_field). Other errors are those of
+    /// [`Card::commit_field`](crate::Card::commit_field).
+    pub fn set(&mut self, name: &str, value: impl Into<QuillValue>) -> Result<(), EditError> {
         let config = self.config;
         match config.main.fields.get(name) {
-            Some(schema) => {
-                self.doc.main_mut().commit_field(name, value, schema)?;
-                Ok(Committed::Typed)
-            }
-            None => {
-                self.doc.main_mut().set_field(name, value)?;
-                Ok(Committed::Opaque)
-            }
+            Some(schema) => self.doc.main_mut().commit_field(name, value, schema),
+            None => Err(EditError::UnknownField(name.to_string())),
         }
     }
 
     /// Write several main-card fields atomically — the typed twin of
     /// [`Card::set_fields`](crate::Card::set_fields). Every field is resolved
-    /// (typed conform or opaque store) before any is applied; on any violation
-    /// nothing is written and every offending field is returned as a
-    /// `(name, error)` pair.
-    ///
-    /// On success returns one `(name, `[`Committed`]`)` pair per field, in input
-    /// order — the batch form of [`set`](Self::set)'s scalar return, so a caller
-    /// submitting a whole form sees which names fell to the opaque store (a
-    /// likely typo) instead of losing that signal to the batch, the way
+    /// (strict conform, or [`EditError::UnknownField`] for a name the schema does
+    /// not declare) before any is applied; on any violation nothing is written
+    /// and every offending field is returned as a `(name, error)` pair, so a
+    /// caller submitting a whole form sees every typo in one pass the way
     /// [`Card::set_fields`](crate::Card::set_fields) does.
-    pub fn set_all<K, V, I>(
-        &mut self,
-        fields: I,
-    ) -> Result<Vec<(String, Committed)>, Vec<(String, EditError)>>
+    pub fn set_all<K, V, I>(&mut self, fields: I) -> Result<(), Vec<(String, EditError)>>
     where
         K: Into<String>,
         V: Into<QuillValue>,
@@ -123,8 +76,10 @@ impl<'a> TypedEditor<'a> {
     }
 
     /// A schema-bound editor for the composable card at `index`. The card's
-    /// `$kind` resolves its [`CardSchema`]; an unknown kind degrades the whole
-    /// card to opaque writes (mirroring `coerce_card`). Returns
+    /// `$kind` resolves its [`CardSchema`]; an unknown kind carries no schema, so
+    /// every field on it is undeclared and its typed writes fail with
+    /// [`EditError::UnknownField`] (write such a card opaquely through
+    /// [`Card::set_field`](crate::Card::set_field)). Returns
     /// [`EditError::IndexOutOfRange`] when `index` is out of range.
     pub fn card(&mut self, index: usize) -> Result<CardEditor<'_>, EditError> {
         let config = self.config;
@@ -152,32 +107,20 @@ impl CardEditor<'_> {
     }
 
     /// Write a field on this card. Resolves the field against the card's
-    /// [`CardSchema`] (typed commit) or stores opaquely when the field — or the
-    /// whole card kind — is unknown.
-    pub fn set(
-        &mut self,
-        name: &str,
-        value: impl Into<QuillValue>,
-    ) -> Result<Committed, EditError> {
+    /// [`CardSchema`] and strict-commits it; a field the schema does not declare
+    /// — or any field when the card kind is unknown — fails with
+    /// [`EditError::UnknownField`] rather than storing opaquely.
+    pub fn set(&mut self, name: &str, value: impl Into<QuillValue>) -> Result<(), EditError> {
         match self.schema.and_then(|s| s.fields.get(name)) {
-            Some(schema) => {
-                self.card.commit_field(name, value, schema)?;
-                Ok(Committed::Typed)
-            }
-            None => {
-                self.card.set_field(name, value)?;
-                Ok(Committed::Opaque)
-            }
+            Some(schema) => self.card.commit_field(name, value, schema),
+            None => Err(EditError::UnknownField(name.to_string())),
         }
     }
 
     /// Write several fields on this card atomically — see
-    /// [`TypedEditor::set_all`], including the per-field [`Committed`] routing
-    /// returned on success.
-    pub fn set_all<K, V, I>(
-        &mut self,
-        fields: I,
-    ) -> Result<Vec<(String, Committed)>, Vec<(String, EditError)>>
+    /// [`TypedEditor::set_all`]; an undeclared name aborts the whole batch with
+    /// [`EditError::UnknownField`].
+    pub fn set_all<K, V, I>(&mut self, fields: I) -> Result<(), Vec<(String, EditError)>>
     where
         K: Into<String>,
         V: Into<QuillValue>,
@@ -189,15 +132,15 @@ impl CardEditor<'_> {
 
 /// All-or-nothing batched write shared by [`TypedEditor::set_all`] and
 /// [`CardEditor::set_all`]: resolve every field first (collecting every error),
-/// apply none on failure, apply all on success. Each field's routing — typed
-/// when it is in `fields_schema`, opaque when it is not — is the same decision
-/// the scalar `set` makes, recorded here so the batch can hand it back rather
-/// than swallow it.
+/// apply none on failure, apply all on success. A name absent from
+/// `fields_schema` (or every name, when the whole schema is `None` — an unknown
+/// card kind) is an [`EditError::UnknownField`], the batch form of the scalar
+/// `set`'s reject-the-typo decision.
 fn set_all_impl<K, V, I>(
     card: &mut Card,
     fields_schema: Option<&BTreeMap<String, FieldSchema>>,
     fields: I,
-) -> Result<Vec<(String, Committed)>, Vec<(String, EditError)>>
+) -> Result<(), Vec<(String, EditError)>>
 where
     K: Into<String>,
     V: Into<QuillValue>,
@@ -208,29 +151,24 @@ where
         .map(|(k, v)| (k.into(), v.into()))
         .collect();
 
-    let mut resolved: Vec<(String, QuillValue, Committed)> = Vec::with_capacity(fields.len());
+    let mut resolved: Vec<(String, QuillValue)> = Vec::with_capacity(fields.len());
     let mut errors: Vec<(String, EditError)> = Vec::new();
     for (name, value) in fields {
-        let schema = fields_schema.and_then(|m| m.get(&name));
-        let routed = if schema.is_some() {
-            Committed::Typed
-        } else {
-            Committed::Opaque
-        };
-        match resolve_field_write(&name, value, schema) {
-            Ok(stored) => resolved.push((name, stored, routed)),
-            Err(e) => errors.push((name, e)),
+        match fields_schema.and_then(|m| m.get(&name)) {
+            Some(schema) => match resolve_field_write(&name, value, schema) {
+                Ok(stored) => resolved.push((name, stored)),
+                Err(e) => errors.push((name, e)),
+            },
+            None => errors.push((name.clone(), EditError::UnknownField(name))),
         }
     }
     if !errors.is_empty() {
         return Err(errors);
     }
-    let mut routing = Vec::with_capacity(resolved.len());
-    for (name, stored, routed) in resolved {
-        card.payload_mut().insert(name.clone(), stored);
-        routing.push((name, routed));
+    for (name, stored) in resolved {
+        card.payload_mut().insert(name, stored);
     }
-    Ok(routing)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -275,8 +213,8 @@ card_kinds:
         let mut ed = TypedEditor::new(&config, &mut doc);
 
         // A schema field commits typed: "3" → 3, richtext string → corpus.
-        assert_eq!(ed.set("qty", "3").unwrap(), Committed::Typed);
-        assert_eq!(ed.set("subject", "Hello").unwrap(), Committed::Typed);
+        ed.set("qty", "3").unwrap();
+        ed.set("subject", "Hello").unwrap();
         assert_eq!(
             doc.main().payload().get("qty").unwrap().as_json(),
             &serde_json::json!(3)
@@ -285,16 +223,15 @@ card_kinds:
     }
 
     #[test]
-    fn set_stores_unknown_field_opaque() {
+    fn set_rejects_unknown_field() {
         let config = config();
         let mut doc = blank_doc();
         let mut ed = TypedEditor::new(&config, &mut doc);
-        // Unknown field → opaque store, and the caller can see it happened.
-        assert_eq!(ed.set("notafield", "x").unwrap(), Committed::Opaque);
-        assert_eq!(
-            doc.main().payload().get("notafield").unwrap().as_str(),
-            Some("x")
-        );
+        // Unknown field on the typed path is a typo, not a fallback: it fails
+        // here and nothing is written. Opaque storage is the raw `set_field`.
+        let err = ed.set("notafield", "x").unwrap_err();
+        assert_eq!(err.variant_name(), "UnknownField");
+        assert!(doc.main().payload().get("notafield").is_none());
     }
 
     #[test]
@@ -322,17 +259,9 @@ card_kinds:
         assert_eq!(errs[0].0, "subject");
         assert!(doc.main().payload().get("qty").is_none());
 
-        // A clean batch applies every field and reports each field's routing
-        // in input order.
+        // A clean batch applies every field.
         let mut ed = TypedEditor::new(&config, &mut doc);
-        let routing = ed.set_all([("qty", "5"), ("subject", "ok")]).unwrap();
-        assert_eq!(
-            routing,
-            vec![
-                ("qty".to_string(), Committed::Typed),
-                ("subject".to_string(), Committed::Typed),
-            ]
-        );
+        ed.set_all([("qty", "5"), ("subject", "ok")]).unwrap();
         assert_eq!(
             doc.main().payload().get("qty").unwrap().as_json(),
             &serde_json::json!(5)
@@ -340,27 +269,18 @@ card_kinds:
     }
 
     #[test]
-    fn set_all_reports_opaque_fields_on_success() {
+    fn set_all_rejects_unknown_field() {
         let config = config();
         let mut doc = blank_doc();
         let mut ed = TypedEditor::new(&config, &mut doc);
-        // A whole-form submit with a typo'd name: `qty` is a schema field (typed),
-        // `titel` is not (opaque). The batch succeeds — the opaque field is the
-        // signal a caller uses to flag the probable typo, not lost to the batch.
-        let routing = ed.set_all([("qty", "3"), ("titel", "oops")]).unwrap();
-        assert_eq!(
-            routing,
-            vec![
-                ("qty".to_string(), Committed::Typed),
-                ("titel".to_string(), Committed::Opaque),
-            ]
-        );
-        let opaque: Vec<&str> = routing
-            .iter()
-            .filter(|(_, c)| !c.is_typed())
-            .map(|(n, _)| n.as_str())
-            .collect();
-        assert_eq!(opaque, vec!["titel"]);
+        // A whole-form submit with a typo'd name: `qty` is a schema field, `titel`
+        // is not. The undeclared name aborts the all-or-nothing batch — nothing is
+        // written and the typo is reported.
+        let errs = ed.set_all([("qty", "3"), ("titel", "oops")]).unwrap_err();
+        assert_eq!(errs.len(), 1);
+        assert_eq!(errs[0].0, "titel");
+        assert_eq!(errs[0].1.variant_name(), "UnknownField");
+        assert!(doc.main().payload().get("qty").is_none());
     }
 
     #[test]
@@ -371,9 +291,10 @@ card_kinds:
 
         let mut ed = TypedEditor::new(&config, &mut doc);
         let mut card_ed = ed.card(0).unwrap();
-        assert_eq!(card_ed.set("body", "**hi**").unwrap(), Committed::Typed);
-        // Unknown field on a known card → opaque.
-        assert_eq!(card_ed.set("stray", "v").unwrap(), Committed::Opaque);
+        card_ed.set("body", "**hi**").unwrap();
+        // Unknown field on a known card → rejected as a typo.
+        let err = card_ed.set("stray", "v").unwrap_err();
+        assert_eq!(err.variant_name(), "UnknownField");
 
         assert_eq!(doc.cards()[0].field_markdown("body").unwrap(), "**hi**\n");
 

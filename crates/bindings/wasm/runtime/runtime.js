@@ -521,10 +521,10 @@ export class LiveSession {
 // They hold JS references to the caller's EXISTING handles — no WASM object of
 // their own, no `free()` burden, no second owner of either handle — and every
 // write delegates straight to the underlying `commit*` verb: a schema field is
-// typed-committed (coerced to canonical form, mismatch throws now), an unknown
-// field falls to the opaque store, and the return value says which (`"typed"` /
-// `"opaque"`, or the per-field record for the batch) so a typo'd name is visible
-// at the write, not buried until validation.
+// typed-committed (coerced to canonical form, mismatch throws now), and a name
+// the schema does not declare throws `UnknownField` rather than falling to the
+// opaque store — on the typed path an undeclared name is a typo. Opaque storage
+// stays available through the raw `Document.setField` / `setCardField` verbs.
 
 /**
  * A {@link Document} bound to its {@link Quill} for typed writes — the JS twin
@@ -548,24 +548,22 @@ export class DocumentEditor {
 		return this.#doc;
 	}
 	/**
-	 * Typed-commit one main-card field. Returns `"typed"` when the field is in
-	 * the schema (strict coerce, mismatch throws now) or `"opaque"` when it is
-	 * not (stored verbatim). See `Document.commitField`.
+	 * Typed-commit one main-card field (strict coerce, mismatch throws now).
+	 * Throws `UnknownField` for a name the schema does not declare. See
+	 * `Document.commitField`.
 	 * @param {string} name
 	 * @param {unknown} value
-	 * @returns {import('./runtime.d.ts').Committed}
+	 * @returns {void}
 	 */
 	set(name, value) {
 		return this.#doc.commitField(this.#quill, name, value);
 	}
 	/**
 	 * Typed-commit several main-card fields atomically — nothing is applied on
-	 * error. On success returns the per-field routing
-	 * `Record<string, "typed" | "opaque">`, so a whole-form submit still sees
-	 * which names fell to the opaque store (a likely typo). See
-	 * `Document.commitFields`.
+	 * error (throws a per-field diagnostic bundle, including an `UnknownField`
+	 * for each undeclared name). See `Document.commitFields`.
 	 * @param {Record<string, unknown>} fields
-	 * @returns {Record<string, import('./runtime.d.ts').Committed>}
+	 * @returns {void}
 	 */
 	setAll(fields) {
 		return this.#doc.commitFields(this.#quill, fields);
@@ -606,22 +604,22 @@ export class CardEditor {
 		return this.#index;
 	}
 	/**
-	 * Typed-commit one field on this card. `"typed"` / `"opaque"` per
-	 * `Document.commitCardField`. Throws `IndexOutOfRange` if the bound index
-	 * is out of range.
+	 * Typed-commit one field on this card, per `Document.commitCardField`.
+	 * Throws `UnknownField` for an undeclared name and `IndexOutOfRange` if the
+	 * bound index is out of range.
 	 * @param {string} name
 	 * @param {unknown} value
-	 * @returns {import('./runtime.d.ts').Committed}
+	 * @returns {void}
 	 */
 	set(name, value) {
 		return this.#doc.commitCardField(this.#quill, this.#index, name, value);
 	}
 	/**
-	 * Typed-commit several fields on this card atomically. Per-field routing
-	 * record on success, per `Document.commitCardFields`. Throws
-	 * `IndexOutOfRange` if the bound index is out of range.
+	 * Typed-commit several fields on this card atomically, per
+	 * `Document.commitCardFields`. Throws a per-field diagnostic bundle on error
+	 * and `IndexOutOfRange` if the bound index is out of range.
 	 * @param {Record<string, unknown>} fields
-	 * @returns {Record<string, import('./runtime.d.ts').Committed>}
+	 * @returns {void}
 	 */
 	setAll(fields) {
 		return this.#doc.commitCardFields(this.#quill, this.#index, fields);

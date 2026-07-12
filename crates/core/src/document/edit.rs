@@ -57,6 +57,16 @@ pub enum EditError {
     #[error("invalid field name '{0}': must match [A-Za-z_][A-Za-z0-9_]*")]
     InvalidFieldName(String),
 
+    /// A typed write ([`TypedEditor::set`](crate::TypedEditor::set) /
+    /// [`CardEditor::set`](crate::CardEditor::set)) addressed a well-formed name
+    /// that the bound schema does not declare (or a card whose `$kind` carries
+    /// no schema). The typed path resolves every name to a schema type, so an
+    /// undeclared name is a typo, not a fallback — it fails here instead of
+    /// landing silently in the opaque store. Reach for the raw
+    /// [`Card::set_field`](Card::set_field) when opaque storage is the intent.
+    #[error("field '{0}' is not declared in the schema")]
+    UnknownField(String),
+
     #[error("invalid card kind '{0}': must match [a-z_][a-z0-9_]*")]
     InvalidKindName(String),
 
@@ -123,6 +133,7 @@ impl EditError {
     pub fn variant_name(&self) -> &'static str {
         match self {
             EditError::InvalidFieldName(_) => "InvalidFieldName",
+            EditError::UnknownField(_) => "UnknownField",
             EditError::InvalidKindName(_) => "InvalidKindName",
             EditError::ReservedKind => "ReservedKind",
             EditError::IndexOutOfRange { .. } => "IndexOutOfRange",
@@ -213,27 +224,24 @@ fn conform_error_to_edit(name: &str, err: CoercionError) -> EditError {
     }
 }
 
-/// Compute the canonical stored form of a field write **without applying it** —
-/// the dry-run shared by [`Card::commit_field`] and the batched, all-or-nothing
-/// [`TypedEditor::set_all`](crate::TypedEditor::set_all).
+/// Compute the canonical stored form of a typed field write **without applying
+/// it** — the dry-run shared by [`Card::commit_field`] and the batched,
+/// all-or-nothing [`TypedEditor::set_all`](crate::TypedEditor::set_all).
 ///
-/// `schema = Some(_)` is a typed write (strict `Leniency::Write` conform);
-/// `schema = None` is an opaque write (mirrors [`Card::set_field`], storing the
-/// value verbatim). Either way the name and stored-value depth are validated,
-/// so a batch can collect every violation before any mutation.
+/// Strict `Leniency::Write` conform against `schema`; the name and stored-value
+/// depth are validated too, so a batch can collect every violation before any
+/// mutation. The unknown-name case never reaches here — the editor rejects it
+/// with [`EditError::UnknownField`] before there is a schema to conform against.
 pub(crate) fn resolve_field_write(
     name: &str,
     value: QuillValue,
-    schema: Option<&FieldSchema>,
+    schema: &FieldSchema,
 ) -> Result<QuillValue, EditError> {
     if !is_valid_field_name(name) {
         return Err(EditError::InvalidFieldName(name.to_string()));
     }
-    let stored = match schema {
-        Some(schema) => QuillConfig::conform_value(&value, schema, name, Leniency::Write)
-            .map_err(|e| conform_error_to_edit(name, e))?,
-        None => value,
-    };
+    let stored = QuillConfig::conform_value(&value, schema, name, Leniency::Write)
+        .map_err(|e| conform_error_to_edit(name, e))?;
     // Depth-bound the stored form (name already validated above).
     check_field(name, stored.as_json())?;
     Ok(stored)
@@ -626,7 +634,7 @@ impl Card {
         value: impl Into<QuillValue>,
         schema: &FieldSchema,
     ) -> Result<(), EditError> {
-        let stored = resolve_field_write(name, value.into(), Some(schema))?;
+        let stored = resolve_field_write(name, value.into(), schema)?;
         self.payload_mut().insert(name.to_string(), stored);
         Ok(())
     }

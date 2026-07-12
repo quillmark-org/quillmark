@@ -75,19 +75,22 @@ commit is a schema-bound layer over that primitive: `Quill::editor(&mut doc)`
 binds the resolved schema, and its `set` / `set_all` resolve each field's `type`,
 coerce to the canonical form (`"3"` → `3`, a markdown string → a richtext
 corpus), and fail at the write on a mismatch — the default whenever a Quill is
-in hand. Each write reports where it landed (`Committed::{Typed, Opaque}`): a
-schema field commits typed, an unknown name falls to the opaque store, so a typo
-is visible at the write rather than at validation. `set_all` returns that
-decision per field, so a whole-form batch keeps the signal instead of swallowing
-it.
+in hand. A name the schema does not declare fails with `EditError::UnknownField`
+rather than falling to the opaque store: on the typed path an undeclared name is
+a typo, not a fallback, so it is refused at the write rather than surfacing later
+at validation. `set_all` is all-or-nothing and reports every undeclared name
+(and every conform failure) in one pass, so a whole-form batch surfaces every
+typo at once.
 
 The primitive stays load-bearing — it is what lets a `Document` be constructed
 and `from_json`'d with no bundle (standalone data), what quill-agnostic
-storage/migration infra writes through, and what a store-now-validate-later
-editor uses to hold not-yet-conforming input. Reach for the opaque `set_*` on
-purpose for those; reach for the editor / `commit` by default. The bindings
-mirror this: `commitField` / `commitFields` (+ `commitCard*`) and the JS
-`DocumentEditor` / `CardEditor` sugar over `set*`'s quill-free store.
+storage/migration infra writes through, what a store-now-validate-later editor
+uses to hold not-yet-conforming input, and the way to store a value opaquely on
+purpose. Reach for the opaque `set_*` for those; reach for the editor / `commit`
+by default. The bindings mirror this: `commitField` / `commitFields`
+(+ `commitCard*`) and the JS `DocumentEditor` / `CardEditor` sugar over the
+schema-bound editor, with `setField` / `setCardField` as the quill-free opaque
+store.
 
 ## Addressing cards for re-render
 

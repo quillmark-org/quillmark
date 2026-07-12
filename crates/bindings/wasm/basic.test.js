@@ -645,18 +645,21 @@ card_kinds:
   it('commitField resolves the schema type: richtext string → corpus, integer "3" → 3', () => {
     const quill = buildQuill()
     const doc = blankDoc()
-    expect(doc.commitField(quill, 'intro', 'A **bold** intro.')).toBe('typed')
+    doc.commitField(quill, 'intro', 'A **bold** intro.')
     expect(typeof field(doc.main, 'intro')).toBe('object')
     expect(doc.fieldMarkdown('intro')).toBe('A **bold** intro.\n')
 
-    expect(doc.commitField(quill, 'qty', '3')).toBe('typed')
+    doc.commitField(quill, 'qty', '3')
     expect(field(doc.main, 'qty')).toBe(3)
   })
 
-  it('commitField stores an unknown field opaquely and says so', () => {
+  it('commitField rejects an unknown field as a typo and writes nothing', () => {
     const quill = buildQuill()
     const doc = blankDoc()
-    expect(doc.commitField(quill, 'stray', 'x')).toBe('opaque')
+    expect(() => doc.commitField(quill, 'stray', 'x')).toThrow(/UnknownField/)
+    expect(hasField(doc.main, 'stray')).toBe(false)
+    // Opaque storage stays available on purpose through the raw verb.
+    doc.setField('stray', 'x')
     expect(field(doc.main, 'stray')).toBe('x')
   })
 
@@ -680,33 +683,28 @@ card_kinds:
     const doc = Document.fromMarkdown(
       '~~~card-yaml\n$quill: commit_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
     )
-    expect(doc.commitCardField(quill, 0, 'body', 'Card **body**.')).toBe('typed')
+    doc.commitCardField(quill, 0, 'body', 'Card **body**.')
     expect(doc.cardFieldMarkdown(0, 'body')).toBe('Card **body**.\n')
     expect(() => doc.commitCardField(quill, 9, 'body', 'x')).toThrow(/IndexOutOfRange/)
   })
 
-  it('commitFields typed-commits a batch and reports per-field routing', () => {
+  it('commitFields typed-commits a batch', () => {
     const quill = buildQuill()
     const doc = blankDoc()
-    const routing = doc.commitFields(quill, { intro: 'A **bold** intro.', qty: '3' })
-    // Both are schema fields → typed, keyed by field name.
-    expect(routing).toEqual({ intro: 'typed', qty: 'typed' })
-    // And the values were coerced, not stored verbatim.
+    doc.commitFields(quill, { intro: 'A **bold** intro.', qty: '3' })
+    // The values were coerced, not stored verbatim.
     expect(doc.fieldMarkdown('intro')).toBe('A **bold** intro.\n')
     expect(field(doc.main, 'qty')).toBe(3)
   })
 
-  it('commitFields reports an opaque field on success, so a typo is visible', () => {
+  it('commitFields aborts the whole batch on a typo, reporting the unknown field', () => {
     const quill = buildQuill()
     const doc = blankDoc()
-    // `qty` is a schema field; `titel` is a typo the schema does not own — it
-    // still stores (opaque), and the routing record surfaces which one, instead
-    // of losing the signal to the batch the way setFields does.
-    const routing = doc.commitFields(quill, { qty: '5', titel: 'oops' })
-    expect(routing).toEqual({ qty: 'typed', titel: 'opaque' })
-    expect(field(doc.main, 'qty')).toBe(5)
-    const opaque = Object.entries(routing).filter(([, r]) => r === 'opaque').map(([n]) => n)
-    expect(opaque).toEqual(['titel'])
+    // `qty` is a schema field; `titel` is a typo the schema does not own — the
+    // undeclared name aborts the all-or-nothing batch and nothing is applied.
+    expect(() => doc.commitFields(quill, { qty: '5', titel: 'oops' })).toThrow(/UnknownField/)
+    expect(hasField(doc.main, 'qty')).toBe(false)
+    expect(hasField(doc.main, 'titel')).toBe(false)
   })
 
   it('commitFields is all-or-nothing: a bad field aborts the whole batch', () => {
@@ -724,9 +722,10 @@ card_kinds:
     const doc = Document.fromMarkdown(
       '~~~card-yaml\n$quill: commit_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
     )
-    const routing = doc.commitCardFields(quill, 0, { body: 'Card **body**.', stray: 'x' })
-    expect(routing).toEqual({ body: 'typed', stray: 'opaque' })
+    doc.commitCardFields(quill, 0, { body: 'Card **body**.' })
     expect(doc.cardFieldMarkdown(0, 'body')).toBe('Card **body**.\n')
+    // An undeclared field on the card aborts the batch.
+    expect(() => doc.commitCardFields(quill, 0, { stray: 'x' })).toThrow(/UnknownField/)
     expect(() => doc.commitCardFields(quill, 9, { body: 'x' })).toThrow(/IndexOutOfRange/)
   })
 })

@@ -510,94 +510,86 @@ impl PyDocument {
     /// markdown string) commits to the canonical corpus here; scalars coerce to
     /// their declared type (`"3"` → `3`).
     ///
-    /// Returns `"typed"` when the field is declared in the schema (strict
-    /// commit — a mismatch raises now) or `"opaque"` when it is not (stored
-    /// verbatim, like `set_field`). Raises `QuillmarkError` on a typed mismatch
-    /// or a malformed name. Mirrors WASM `commitField`.
+    /// A field declared in the schema is strict-committed — a mismatch raises
+    /// now. A name the schema does not declare raises
+    /// `[EditError::UnknownField]` rather than falling to the opaque store: on
+    /// the typed path it is a typo. Use `set_field` when opaque storage is the
+    /// intent. Also raises `QuillmarkError` on a typed mismatch or a malformed
+    /// name. Mirrors WASM `commitField`.
     fn commit_field(
         &mut self,
         quill: PyRef<'_, PyQuill>,
         name: &str,
         value: Bound<'_, PyAny>,
-    ) -> PyResult<String> {
+    ) -> PyResult<()> {
         let qv = py_to_quillvalue(&value)?;
         quill
             .inner
             .editor(&mut self.inner)
             .set(name, qv)
-            .map(|c| c.as_str().to_string())
             .map_err(convert_edit_error)
     }
 
     /// Batched twin of `commit_field`: typed-commit several main-card fields
     /// atomically, resolving each field's schema `type` from `quill`. This is
     /// the whole-card typed verb — prefer it over `set_fields` whenever a quill
-    /// is in hand, so a form submitting a card gets schema typing instead of the
-    /// opaque store. All-or-nothing with the same per-field-diagnostic error
-    /// contract as `set_fields`: nothing is applied on error and the raised
-    /// `QuillmarkError` carries one diagnostic per offending field (`path` =
-    /// field name).
-    ///
-    /// On success returns a `dict[str, str]` keyed by the input field names, in
-    /// input order — the batch form of `commit_field`'s scalar `"typed"` /
-    /// `"opaque"` return, so a whole-form submit still sees which names fell to
-    /// the opaque store (a likely typo) instead of losing that signal to the
-    /// batch the way `set_fields` does. Mirrors WASM `commitFields`.
-    fn commit_fields<'py>(
+    /// is in hand, so a form submitting a card gets schema typing. All-or-nothing
+    /// with the same per-field-diagnostic error contract as `set_fields`: nothing
+    /// is applied on error and the raised `QuillmarkError` carries one diagnostic
+    /// per offending field (`path` = field name), including an
+    /// `[EditError::UnknownField]` for any name the schema does not declare, so a
+    /// whole-form submit sees every typo in one pass. Mirrors WASM `commitFields`.
+    fn commit_fields(
         &mut self,
-        py: Python<'py>,
         quill: PyRef<'_, PyQuill>,
         fields: Bound<'_, PyDict>,
-    ) -> PyResult<Bound<'py, PyDict>> {
+    ) -> PyResult<()> {
         let batch = pydict_to_field_batch(&fields)?;
-        let routing = quill
+        quill
             .inner
             .editor(&mut self.inner)
             .set_all(batch)
-            .map_err(convert_edit_errors)?;
-        committed_routing_to_pydict(py, routing)
+            .map_err(convert_edit_errors)
     }
 
     /// Typed field write on the composable card at `index` — the card-indexed
     /// twin of `commit_field`, resolving the field's type from the card's
-    /// `$kind` schema in `quill`. Returns `"typed"` / `"opaque"`; raises on an
-    /// out-of-range index or a typed mismatch. Mirrors WASM `commitCardField`.
+    /// `$kind` schema in `quill`. Raises `[EditError::UnknownField]` for a field
+    /// the card-kind schema does not declare (an unknown `$kind` has no schema,
+    /// so every field is undeclared), on an out-of-range index, or a typed
+    /// mismatch. Mirrors WASM `commitCardField`.
     fn commit_card_field(
         &mut self,
         quill: PyRef<'_, PyQuill>,
         index: usize,
         name: &str,
         value: Bound<'_, PyAny>,
-    ) -> PyResult<String> {
+    ) -> PyResult<()> {
         let qv = py_to_quillvalue(&value)?;
         let mut editor = quill.inner.editor(&mut self.inner);
         let mut card = editor.card(index).map_err(convert_edit_error)?;
-        card.set(name, qv)
-            .map(|c| c.as_str().to_string())
-            .map_err(convert_edit_error)
+        card.set(name, qv).map_err(convert_edit_error)
     }
 
     /// Batched twin of `commit_card_field`: typed-commit several fields on the
     /// composable card at `index` atomically, resolving each field's type from
     /// the card's `$kind` schema in `quill`. All-or-nothing with the same
-    /// per-field-diagnostic contract as `commit_fields`, whose `dict[str, str]`
-    /// routing shape it mirrors. Raises on an out-of-range index. Mirrors WASM
-    /// `commitCardFields`.
-    fn commit_card_fields<'py>(
+    /// per-field-diagnostic contract as `commit_fields` (an
+    /// `[EditError::UnknownField]` per undeclared name). Raises on an
+    /// out-of-range index. Mirrors WASM `commitCardFields`.
+    fn commit_card_fields(
         &mut self,
-        py: Python<'py>,
         quill: PyRef<'_, PyQuill>,
         index: usize,
         fields: Bound<'_, PyDict>,
-    ) -> PyResult<Bound<'py, PyDict>> {
+    ) -> PyResult<()> {
         let batch = pydict_to_field_batch(&fields)?;
         let mut editor = quill.inner.editor(&mut self.inner);
-        let routing = editor
+        editor
             .card(index)
             .map_err(convert_edit_error)?
             .set_all(batch)
-            .map_err(convert_edit_errors)?;
-        committed_routing_to_pydict(py, routing)
+            .map_err(convert_edit_errors)
     }
 
     fn remove_field<'py>(&mut self, py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
@@ -1255,21 +1247,6 @@ fn pydict_to_field_batch(
         return Err(raise_with_diagnostics(diags, message));
     }
     Ok(batch)
-}
-
-/// Project the `(name, `[`Committed`](quillmark_core::Committed)`)` routing a
-/// typed `set_all` returns to the Python `dict[str, str]` (`"typed"` /
-/// `"opaque"`) that `commit_fields` / `commit_card_fields` hand back. Insertion
-/// order follows the input batch (the routing vec preserves it).
-fn committed_routing_to_pydict(
-    py: Python<'_>,
-    routing: Vec<(String, quillmark_core::Committed)>,
-) -> PyResult<Bound<'_, PyDict>> {
-    let dict = PyDict::new(py);
-    for (name, committed) in routing {
-        dict.set_item(name, committed.as_str())?;
-    }
-    Ok(dict)
 }
 
 fn py_to_json(value: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {

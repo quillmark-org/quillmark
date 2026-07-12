@@ -590,18 +590,22 @@ def test_commit_field_richtext_typed():
     """commit_field resolves a richtext field's type and stores canonical corpus."""
     quill = _richtext_form_quill()
     doc = Document("richtext_form@0.1.0")
-    assert doc.commit_field(quill, "bio", "A **bold** intro.") == "typed"
+    doc.commit_field(quill, "bio", "A **bold** intro.")
     value = field(doc.main, "bio")
     # Stored structurally as the corpus dict, not the authored markdown string.
     assert isinstance(value, dict)
     assert value["text"] == "A bold intro."
 
 
-def test_commit_field_unknown_field_is_opaque():
-    """A field absent from the schema stores opaquely, and the caller is told."""
+def test_commit_field_unknown_field_raises():
+    """A field absent from the schema is a typo on the typed path — it raises."""
     quill = _richtext_form_quill()
     doc = Document("richtext_form@0.1.0")
-    assert doc.commit_field(quill, "stray", "x") == "opaque"
+    with pytest.raises(QuillmarkError, match="UnknownField"):
+        doc.commit_field(quill, "stray", "x")
+    assert not has_field(doc.main, "stray")
+    # Opaque storage stays available on purpose through the raw verb.
+    doc.set_field("stray", "x")
     assert field(doc.main, "stray") == "x"
 
 
@@ -629,26 +633,24 @@ def _taro_quill():
     return Quill.from_path(str(_latest_version(QUILLS_PATH / "taro")))
 
 
-def test_commit_fields_typed_batch_reports_routing():
-    """commit_fields typed-commits a batch and returns per-field routing."""
+def test_commit_fields_typed_batch():
+    """commit_fields typed-commits a batch, coercing each value to its type."""
     quill = _richtext_form_quill()
     doc = Document("richtext_form@0.1.0")
-    routing = doc.commit_fields(quill, {"bio": "A **bold** intro.", "headline": "Hi"})
-    # Both are schema fields → typed, keyed by field name.
-    assert routing == {"bio": "typed", "headline": "typed"}
-    # And the richtext value was coerced to the corpus, not stored verbatim.
+    doc.commit_fields(quill, {"bio": "A **bold** intro.", "headline": "Hi"})
+    # The richtext value was coerced to the corpus, not stored verbatim.
     assert isinstance(field(doc.main, "bio"), dict)
 
 
-def test_commit_fields_reports_opaque_field_on_success():
-    """A typo the schema does not own stores opaquely and shows in the routing."""
+def test_commit_fields_rejects_unknown_field():
+    """A typo the schema does not own aborts the all-or-nothing batch."""
     quill = _richtext_form_quill()
     doc = Document("richtext_form@0.1.0")
-    routing = doc.commit_fields(quill, {"bio": "hi", "titel": "oops"})
-    assert routing == {"bio": "typed", "titel": "opaque"}
-    # The signal set_fields drops: which names fell to the opaque store.
-    opaque = [n for n, r in routing.items() if r == "opaque"]
-    assert opaque == ["titel"]
+    with pytest.raises(QuillmarkError, match="UnknownField"):
+        doc.commit_fields(quill, {"bio": "hi", "titel": "oops"})
+    # Nothing applied — the good field must not linger either.
+    assert not has_field(doc.main, "bio")
+    assert not has_field(doc.main, "titel")
 
 
 def test_commit_fields_is_all_or_nothing():
@@ -660,15 +662,16 @@ def test_commit_fields_is_all_or_nothing():
     assert not has_field(doc.main, "bio")
 
 
-def test_commit_card_fields_typed_batch_reports_routing():
-    """commit_card_fields resolves the card's $kind schema and routes per field."""
+def test_commit_card_fields_typed_batch():
+    """commit_card_fields resolves the card's $kind schema and commits each field."""
     quill = _taro_quill()
     doc = Document("taro@0.1.0")
     doc.push_card(Document.make_card("quotes"))
-    routing = doc.commit_card_fields(quill, 0, {"author": "Ada", "stray": "x"})
-    # `author` is declared on the `quotes` kind; `stray` is not.
-    assert routing == {"author": "typed", "stray": "opaque"}
+    doc.commit_card_fields(quill, 0, {"author": "Ada"})
     assert field(doc.cards[0], "author") == "Ada"
+    # A field the `quotes` kind does not declare aborts the batch as a typo.
+    with pytest.raises(QuillmarkError, match="UnknownField"):
+        doc.commit_card_fields(quill, 0, {"stray": "x"})
 
 
 def test_commit_card_fields_index_out_of_range():

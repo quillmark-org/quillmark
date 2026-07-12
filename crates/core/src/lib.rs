@@ -31,7 +31,7 @@ pub use document::{
 };
 
 pub mod editor;
-pub use editor::{CardEditor, Committed, TypedEditor};
+pub use editor::{CardEditor, TypedEditor};
 
 pub mod backend;
 pub use backend::{formats_support_canvas, Backend};

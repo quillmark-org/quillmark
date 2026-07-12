@@ -24,7 +24,10 @@
   `EditError::FieldConform` for non-richtext mismatches (richtext keeps
   `FieldRichtextDecode` / `FieldRichtextNotInline`). A schema-bound
   `TypedEditor` (`Quill::editor(&mut doc)`) is the front door: `set` / `set_all`
-  resolve field types and report `Committed::{Typed,Opaque}`. Bindings gain
+  resolve field types and strict-commit; a name the schema does not declare is a
+  typo on the typed path, so it fails with `EditError::UnknownField` instead of
+  falling to the opaque store (#918) — opaque storage stays available through the
+  raw `set_field` / `setField` / `setCardField` verbs. Bindings gain
   `commitField` / `commitCardField` (wasm) and `commit_field` /
   `commit_card_field` (Python, net-new — Python had no richtext field writer).
   The pre-release richtext-specific writers are removed in the same cycle:

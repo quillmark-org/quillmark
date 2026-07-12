@@ -259,12 +259,12 @@ mutates through two layers:
   `doc.commitField(quill, name, value)` / `doc.commitFields(quill, {...})` (and
   the `commitCard*` twins) resolve each field's schema `type`, coerce the value
   to its canonical form (`"3"` → `3`, a markdown string → a richtext corpus),
-  and **fail now** on a mismatch instead of at render. The return value reports
-  where the value landed: `"typed"` for a schema field, `"opaque"` for one the
-  schema does not own. The batch form returns that per field —
-  `Record<string, "typed" | "opaque">`, in input order — so a whole-form submit
-  still sees which names fell through to the opaque store (a likely typo), the
-  signal `setFields` discards.
+  and **fail now** on a mismatch instead of at render. A name the schema does
+  not declare throws `UnknownField` rather than falling to the opaque store — on
+  the typed path an undeclared name is a typo, not a fallback. The batch form is
+  all-or-nothing: an undeclared name aborts the whole write and its per-field
+  diagnostics name every offending field, so a whole-form submit surfaces every
+  typo `setFields` would silently absorb.
 
 - **`set*` — the deliberate quill-free primitive.** `doc.setField(name, value)`
   / `doc.setFields({...})` (and the `setCard*` twins) validate only the field
@@ -290,10 +290,9 @@ writer — bind them once with the editor sugar and issue bare verbs:
 import { DocumentEditor } from "@quillmark/wasm";
 
 const ed = new DocumentEditor(quill, doc);          // JS twin of Rust `quill.editor(doc)`
-ed.set("subject", "Q3 results");                    // → "typed"
-const routing = ed.setAll({ qty: "3", titel: "x" }); // → { qty: "typed", titel: "opaque" }
-const typos = Object.entries(routing)
-  .filter(([, r]) => r === "opaque").map(([k]) => k); // ["titel"] — flag in the UI
+ed.set("subject", "Q3 results");                    // strict-committed to the schema type
+ed.setAll({ qty: "3", subject: "Q3" });             // all-or-nothing batch
+ed.set("titel", "x");                               // throws UnknownField — a typo, not a fallback
 ed.card(2).set("body", "**note**");                 // composable card, resolved by its $kind
 ```
 

@@ -443,17 +443,6 @@ export declare class LiveSession {
 // ── Typed-editor sugar ──────────────────────────────────────────────────────
 
 /**
- * Which store a typed write used: `"typed"` when the field is declared in the
- * quill schema (strict commit — coerced to canonical form, a mismatch throws at
- * the write) or `"opaque"` when it is not (stored verbatim, like
- * `Document.setField`). A scalar write ({@link DocumentEditor.set}) returns one;
- * a batch ({@link DocumentEditor.setAll}) returns a `Record` of them keyed by
- * field name. The signal exists so a typo'd name silently landing in the opaque
- * store is visible at the write, not buried until validation.
- */
-export type Committed = 'typed' | 'opaque';
-
-/**
  * A `Document` bound to its `Quill` for typed writes — the JS twin of Rust's
  * `quill.editor(&mut doc)`. Binds the schema source once so writes are bare
  * `set` / `setAll` / `card(i).set` instead of threading the `quill` handle
@@ -461,29 +450,28 @@ export type Committed = 'typed' | 'opaque';
  * neither — nothing to `free()`.
  *
  * `commit*` is the default write path whenever a quill is in hand: it resolves
- * each field's schema type and typed-commits it, reporting {@link Committed}.
- * The raw `Document.setField` / `setFields` verbs remain the deliberate
- * quill-free primitive (standalone data, storage/migration infra, or holding
- * not-yet-conforming in-progress input) — reach for them only when you
- * intend the opaque store.
+ * each field's schema type and strict-commits it, throwing `UnknownField` for a
+ * name the schema does not declare — on the typed path an undeclared name is a
+ * typo, not a fallback. The raw `Document.setField` / `setFields` verbs remain
+ * the deliberate quill-free primitive (standalone data, storage/migration infra,
+ * or holding not-yet-conforming in-progress input) — and the way to store a
+ * value opaquely on purpose.
  */
 export declare class DocumentEditor {
 	constructor(quill: Quill, doc: Document);
 	/** The bound document — the instance passed in, mutated in place. */
 	readonly document: Document;
 	/**
-	 * Typed-commit one main-card field. `"typed"` for a schema field (strict
-	 * coerce, mismatch throws now), `"opaque"` for an unknown one.
+	 * Typed-commit one main-card field (strict coerce, mismatch throws now).
+	 * Throws `UnknownField` for a name the schema does not declare.
 	 */
-	set(name: string, value: unknown): Committed;
+	set(name: string, value: unknown): void;
 	/**
 	 * Typed-commit several main-card fields atomically — nothing is applied on
 	 * error (throws a {@link QuillmarkError} carrying one diagnostic per
-	 * offending field). On success returns the per-field routing keyed by field
-	 * name, so a whole-form submit still sees which names fell to the opaque
-	 * store.
+	 * offending field, including an `UnknownField` for each undeclared name).
 	 */
-	setAll(fields: Record<string, unknown>): Record<string, Committed>;
+	setAll(fields: Record<string, unknown>): void;
 	/**
 	 * A {@link CardEditor} for the composable card at `index`. Index validity is
 	 * checked lazily at commit time, so this never throws.
@@ -501,6 +489,6 @@ export declare class CardEditor {
 	constructor(quill: Quill, doc: Document, index: number);
 	/** The bound card index. */
 	readonly index: number;
-	set(name: string, value: unknown): Committed;
-	setAll(fields: Record<string, unknown>): Record<string, Committed>;
+	set(name: string, value: unknown): void;
+	setAll(fields: Record<string, unknown>): void;
 }
