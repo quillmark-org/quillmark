@@ -14,6 +14,7 @@ description = "RichText corpus content model, canonical serialization, edit delt
 publish = true
 
 [dependencies]
+serde = { workspace = true }
 serde_json = { workspace = true }
 # The markdown projection's parser. This crate is the workspace's single home
 # for a CommonMark parser; render paths consume the corpus, never markdown.

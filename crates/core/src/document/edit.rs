@@ -88,7 +88,10 @@ pub enum EditError {
     /// A body value in the corpus-or-markdown encoding could not be decoded: a
     /// JSON object that is not a canonical richtext corpus, a markdown string
     /// that failed to import, or a shape that is neither object, string, nor
-    /// null. Returned by [`Card::set_body_value`](Card::set_body_value).
+    /// null. Retained for callers that decode a JSON-valued body at a boundary;
+    /// the corpus writers ([`Card::install_body`](Card::install_body) /
+    /// [`Card::revise_body`](Card::revise_body)) take a typed [`RichText`] or a
+    /// markdown string and never produce it.
     #[error("body decode failed: {0}")]
     BodyDecode(String),
 
@@ -545,51 +548,35 @@ impl Card {
         removed
     }
 
-    /// Set the body corpus directly from a pre-built [`RichText`]. The native
-    /// richtext writer: a corpus is valid by construction, so this is
-    /// infallible — no markdown import, no schema check. Use it when the caller
-    /// already holds a corpus (a decoded canonical-JSON body, another field's
-    /// value, an editor's serialized state); use [`replace_body`](Self::replace_body)
-    /// to import from an authored markdown string instead.
-    pub fn set_body_corpus(&mut self, corpus: RichText) {
+    /// Install the body corpus directly from a pre-built [`RichText`] — **value
+    /// semantics**, the native richtext writer. A corpus is valid by
+    /// construction, so this is infallible: no markdown import, no diff, no
+    /// schema check; the identity anchors of the previous body are *gone*
+    /// (install-this-exact-value, so a `to_markdown → install` round-trip cannot
+    /// resurrect them). Use it when the caller already holds a corpus (a decoded
+    /// canonical-JSON body, another field's value, an editor's serialized state).
+    /// For "here's new authored markdown," use [`revise_body`](Self::revise_body),
+    /// which rebases surviving anchors; the cold-import path is spelled at the
+    /// call site as `install_body(import_body(md)?)`.
+    pub fn install_body(&mut self, corpus: RichText) {
         self.overwrite_body(corpus);
     }
 
-    /// Set the body from either accepted richtext encoding — a canonical corpus
-    /// **object** (decoded and validated) or an authored markdown **string**
-    /// (imported) — the write twin of the `Card.body` read shape
-    /// (`RichText | string`). `null` installs the empty corpus. Routes through
-    /// the one object-vs-string dispatch (`decode_richtext_value`), so it
-    /// stays lossless for corpus-only marks a markdown projection cannot carry
-    /// (e.g. `underline`), unlike serializing to markdown and calling
-    /// [`replace_body`](Self::replace_body). Prefer the typed
-    /// [`set_body_corpus`](Self::set_body_corpus) when the caller already holds a
-    /// [`RichText`]; this is for a JSON-valued body crossing a binding boundary.
-    pub fn set_body_value(&mut self, value: &serde_json::Value) -> Result<(), EditError> {
-        match crate::document::decode_richtext_value(value) {
-            Some(result) => {
-                let corpus = result.map_err(|e| EditError::BodyDecode(e.into_message()))?;
-                self.overwrite_body(corpus);
-                Ok(())
-            }
-            // Neither object nor string: `null` is the empty corpus; anything
-            // else is an invalid body value.
-            None => match value {
-                serde_json::Value::Null => {
-                    self.overwrite_body(RichText::empty());
-                    Ok(())
-                }
-                other => Err(EditError::BodyDecode(format!(
-                    "expected a richtext corpus object or a markdown string, got {}",
-                    match other {
-                        serde_json::Value::Bool(_) => "a boolean",
-                        serde_json::Value::Number(_) => "a number",
-                        serde_json::Value::Array(_) => "an array",
-                        _ => "an unsupported value",
-                    }
-                ))),
-            },
+    /// Install a richtext field's corpus directly from a pre-built [`RichText`]
+    /// — the field-level twin of [`install_body`](Self::install_body). Value
+    /// semantics: stores the canonical corpus JSON verbatim (identity marks and
+    /// corpus-only marks such as `underline` intact), no diff, no schema check
+    /// (schema-blind, like [`apply_field_richtext_change`](Self::apply_field_richtext_change)
+    /// — [`commit_field`](Self::commit_field) is the typed door). Returns
+    /// [`EditError::InvalidFieldName`] for a malformed name.
+    pub fn install_field(&mut self, name: &str, corpus: RichText) -> Result<(), EditError> {
+        if !is_valid_field_name(name) {
+            return Err(EditError::InvalidFieldName(name.to_string()));
         }
+        let canonical = quillmark_richtext::serial::to_canonical_value(&corpus);
+        self.payload_mut()
+            .insert(name.to_string(), QuillValue::from_json(canonical));
+        Ok(())
     }
 
     /// Write-time commit: validate and normalize `value` per the field's schema
@@ -639,29 +626,62 @@ impl Card {
         Ok(())
     }
 
-    /// Replace the body from an authored markdown string — the whole-document
-    /// (stale-text / LLM / MCP) writer. Imports the markdown, diffs it against
-    /// the current body, and rebases surviving identity anchors onto the new
-    /// text (cold import + [`diff_import`]). A pathologically over-nested input
-    /// (`> MAX_NESTING_DEPTH`) returns [`EditError::BodyImport`] rather than
-    /// silently degrading to the empty corpus. To also obtain the text
-    /// [`Delta`] for recording into a session change log, call
-    /// [`import_body_delta`](Self::import_body_delta).
-    pub fn replace_body(&mut self, body: impl Into<String>) -> Result<(), EditError> {
-        self.import_body_delta(body).map(|_| ())
-    }
-
-    /// Import an authored markdown string into the body and return the text
-    /// [`Delta`] from the old body to the new one — the observable form of
-    /// [`replace_body`](Self::replace_body). The returned delta is the text
-    /// change an editor bridge maps its own positions through across a
-    /// whole-document replace. Surviving identity anchors rebase onto the new
-    /// text; formatting marks are re-derived by the fresh import. Returns
-    /// [`EditError::BodyImport`] on an over-nested input.
-    pub fn import_body_delta(&mut self, body: impl Into<String>) -> Result<Delta, EditError> {
+    /// Revise the body from an authored markdown string — **edit semantics**,
+    /// the whole-document (stale-text / LLM / MCP) writer, and the receipt-
+    /// returning default write path. Imports the markdown, diffs it against the
+    /// current body, and rebases surviving identity anchors onto the new text
+    /// (cold import + [`diff_import`]), then returns the text [`Delta`] from the
+    /// old body to the new one — the change an editor bridge maps its own
+    /// positions through across a whole-document replace ([`Delta::map_pos`]).
+    /// Surviving identity anchors rebase; formatting marks are re-derived by the
+    /// fresh import. A pathologically over-nested input (`> MAX_NESTING_DEPTH`)
+    /// returns [`EditError::BodyImport`] rather than silently degrading to the
+    /// empty corpus. Discard the receipt with `let _ = card.revise_body(md)?;`
+    /// when caret stability is not needed.
+    pub fn revise_body(&mut self, body: impl Into<String>) -> Result<Delta, EditError> {
         let (corpus, delta) =
             diff_import(self.body(), &body.into()).map_err(EditError::BodyImport)?;
         self.overwrite_body(corpus);
+        Ok(delta)
+    }
+
+    /// Revise a richtext field from an authored markdown string — the
+    /// field-level twin of [`revise_body`](Self::revise_body), and the
+    /// field-level `diff_import` the write surface previously lacked (the only
+    /// field-corpus writers were the cold [`commit_field`](Self::commit_field)
+    /// and the splice [`apply_field_richtext_change`](Self::apply_field_richtext_change),
+    /// so an LLM rewriting a richtext field's markdown had no anchor-preserving
+    /// path). Decodes the field's current corpus as the diff base (an **absent**
+    /// field cold-imports from empty), rebases surviving anchors onto the new
+    /// text, re-stores the canonical corpus, and returns the text [`Delta`].
+    ///
+    /// Schema-blind by design — the corpus-writer stratum splices without the
+    /// quill (like [`apply_field_richtext_change`](Self::apply_field_richtext_change));
+    /// [`commit_field`](Self::commit_field) is the typed door that enforces
+    /// `richtext(inline)`, and a violation otherwise surfaces at validate/render.
+    ///
+    /// Returns [`EditError::InvalidFieldName`] for a malformed name,
+    /// [`EditError::FieldRichtextDecode`] when the field is present but is not a
+    /// richtext corpus (a scalar a `set_field` wrote), and
+    /// [`EditError::BodyImport`] on an over-nested markdown input.
+    pub fn revise_field(&mut self, name: &str, body: impl Into<String>) -> Result<Delta, EditError> {
+        if !is_valid_field_name(name) {
+            return Err(EditError::InvalidFieldName(name.to_string()));
+        }
+        let base = match self.field_richtext(name) {
+            Some(Ok(rt)) => rt,
+            Some(Err(e)) => {
+                return Err(EditError::FieldRichtextDecode {
+                    field: name.to_string(),
+                    message: e.into_message(),
+                })
+            }
+            None => RichText::empty(),
+        };
+        let (corpus, delta) = diff_import(&base, &body.into()).map_err(EditError::BodyImport)?;
+        let canonical = quillmark_richtext::serial::to_canonical_value(&corpus);
+        self.payload_mut()
+            .insert(name.to_string(), QuillValue::from_json(canonical));
         Ok(delta)
     }
 

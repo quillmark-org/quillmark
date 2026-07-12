@@ -41,12 +41,17 @@ pub mod ops;
 pub mod serial;
 pub mod usv;
 
-pub use delta::{Assoc, Delta, Op};
+pub use delta::{diff_import, Assoc, Delta, Op};
+pub use export::to_markdown;
+pub use import::from_markdown;
 pub use model::{
     Container, Invariant, Island, Line, LineKind, Loss, Mark, MarkKind, RichText, Usv,
 };
 pub use normalize::normalize_markdown;
-pub use ops::{ApplyError, LineOp, MarkOp};
+pub use ops::{
+    line_op_from_value, line_op_to_value, mark_op_from_value, mark_op_to_value, ApplyError, LineOp,
+    MarkOp,
+};
 pub use serial::ParseError;
 
 /// Maximum container nesting depth the markdown codecs accept before erroring.

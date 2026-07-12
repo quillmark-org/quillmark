@@ -2379,6 +2379,7 @@ dependencies = [
  "proptest",
  "pulldown-cmark",
  "quillmark-fixtures",
+ "serde",
  "serde_json",
  "similar",
 ]

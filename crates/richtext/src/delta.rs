@@ -36,19 +36,28 @@
 //! follow-up.
 
 use crate::model::{Mark, MarkKind, RichText};
+use serde::{Deserialize, Serialize};
 use similar::{ChangeTag, TextDiff};
 use std::borrow::Cow;
 
 /// A per-field edit against a base corpus. Ops apply left-to-right, consuming
 /// base positions; `Retain`/`Delete` advance the base cursor, `Insert` adds new
 /// text. USV throughout.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Serializes as `{ "ops": [ {"retain": n} | {"insert": s} | {"delete": n} ] }`
+/// — plain, structured-clone-able data an editor bridge stores in a change
+/// record and maps its own positions through ([`map_pos`](Self::map_pos)). The
+/// serde shape is the wire the `rebase` codec and `applyChange` bundle carry
+/// across the language bindings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Delta {
     pub ops: Vec<Op>,
 }
 
-/// One delta operation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// One delta operation. Serializes externally-tagged with a lowercase key
+/// (`{"retain": 5}`, `{"insert": "x"}`, `{"delete": 2}`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Op {
     /// Keep `n` chars of the base unchanged.
     Retain(usize),
@@ -58,8 +67,10 @@ pub enum Op {
     Delete(usize),
 }
 
-/// Which side of a same-position insertion a mapped point lands on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Which side of a same-position insertion a mapped point lands on. Serializes
+/// as `"before"` / `"after"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Assoc {
     /// Stay before inserted text.
     Before,

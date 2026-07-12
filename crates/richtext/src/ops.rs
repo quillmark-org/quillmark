@@ -53,6 +53,156 @@ pub enum LineOp {
     },
 }
 
+// ── Change-bundle wire (mark / line op ⇄ JSON) ──────────────────────────────
+//
+// [`Delta`] serializes through serde derive; [`MarkOp`] and [`LineOp`] carry
+// [`MarkKind`] / [`LineKind`] / [`Container`], whose canonical JSON is the
+// hand-written `serial` encoding (the `{type, …}` / `{kind, …}` discriminants a
+// `RichTextMark` / `RichTextLine` already uses). These converters reuse that
+// exact vocabulary so the `applyChange` bundle speaks the same shapes the
+// corpus read surface does, rather than a second serde-derived dialect. The
+// language bindings call them to lower a JS/Python bundle to core ops.
+
+use crate::serial::{
+    container_from_value, container_to_value, line_kind_from_value, line_kind_to_value,
+    mark_from_value, mark_to_value, ParseError,
+};
+use serde_json::{Map, Value};
+
+/// Encode a [`MarkOp`] to its wire object. `Add`/`Remove` carry the mark
+/// vocabulary (`{op, start, end, type, …}`); `RemoveAnchor` is `{op, id}`.
+pub fn mark_op_to_value(op: &MarkOp) -> Value {
+    let mut m = Map::new();
+    match op {
+        MarkOp::Add { start, end, kind } => {
+            m.insert("op".into(), "add".into());
+            merge_mark(&mut m, *start, *end, kind);
+        }
+        MarkOp::Remove { start, end, kind } => {
+            m.insert("op".into(), "remove".into());
+            merge_mark(&mut m, *start, *end, kind);
+        }
+        MarkOp::RemoveAnchor { id } => {
+            m.insert("op".into(), "removeAnchor".into());
+            m.insert("id".into(), Value::String(id.clone()));
+        }
+    }
+    Value::Object(m)
+}
+
+/// Merge a mark's `{start, end, type, …}` fields into an op object, reusing the
+/// canonical `serial` mark encoding.
+fn merge_mark(m: &mut Map<String, Value>, start: Usv, end: Usv, kind: &MarkKind) {
+    let mark = Mark {
+        start,
+        end,
+        kind: kind.clone(),
+    };
+    if let Value::Object(fields) = mark_to_value(&mark) {
+        m.extend(fields);
+    }
+}
+
+/// Decode a [`MarkOp`] from its wire object. Dispatches on `op`; `add`/`remove`
+/// read the mark vocabulary through [`mark_from_value`].
+pub fn mark_op_from_value(v: &Value) -> Result<MarkOp, ParseError> {
+    let o = v.as_object().ok_or(ParseError::Shape("mark op"))?;
+    match o.get("op").and_then(Value::as_str) {
+        Some("add") => {
+            let mark = mark_from_value(v)?;
+            Ok(MarkOp::Add {
+                start: mark.start,
+                end: mark.end,
+                kind: mark.kind,
+            })
+        }
+        Some("remove") => {
+            let mark = mark_from_value(v)?;
+            Ok(MarkOp::Remove {
+                start: mark.start,
+                end: mark.end,
+                kind: mark.kind,
+            })
+        }
+        Some("removeAnchor") => Ok(MarkOp::RemoveAnchor {
+            id: o
+                .get("id")
+                .and_then(Value::as_str)
+                .ok_or(ParseError::Shape("removeAnchor id"))?
+                .to_string(),
+        }),
+        _ => Err(ParseError::Shape("mark op kind")),
+    }
+}
+
+/// Encode a [`LineOp`] to its wire object. `SetKind` flattens the line-kind
+/// discriminant (`kind`/`level`/`lang`) alongside `op`/`line`.
+pub fn line_op_to_value(op: &LineOp) -> Value {
+    let mut m = Map::new();
+    match op {
+        LineOp::Split { at } => {
+            m.insert("op".into(), "split".into());
+            m.insert("at".into(), Value::from(*at));
+        }
+        LineOp::Join { line } => {
+            m.insert("op".into(), "join".into());
+            m.insert("line".into(), Value::from(*line));
+        }
+        LineOp::SetKind { line, kind } => {
+            m.insert("op".into(), "setKind".into());
+            m.insert("line".into(), Value::from(*line));
+            if let Value::Object(fields) = line_kind_to_value(kind) {
+                m.extend(fields);
+            }
+        }
+        LineOp::SetContainers { line, containers } => {
+            m.insert("op".into(), "setContainers".into());
+            m.insert("line".into(), Value::from(*line));
+            m.insert(
+                "containers".into(),
+                Value::Array(containers.iter().map(container_to_value).collect()),
+            );
+        }
+    }
+    Value::Object(m)
+}
+
+/// Decode a [`LineOp`] from its wire object. Dispatches on `op`.
+pub fn line_op_from_value(v: &Value) -> Result<LineOp, ParseError> {
+    let o = v.as_object().ok_or(ParseError::Shape("line op"))?;
+    let line = || {
+        o.get("line")
+            .and_then(Value::as_u64)
+            .map(|n| n as usize)
+            .ok_or(ParseError::Shape("line op line"))
+    };
+    match o.get("op").and_then(Value::as_str) {
+        Some("split") => Ok(LineOp::Split {
+            at: o
+                .get("at")
+                .and_then(Value::as_u64)
+                .map(|n| n as usize)
+                .ok_or(ParseError::Shape("split at"))?,
+        }),
+        Some("join") => Ok(LineOp::Join { line: line()? }),
+        Some("setKind") => Ok(LineOp::SetKind {
+            line: line()?,
+            kind: line_kind_from_value(v)?,
+        }),
+        Some("setContainers") => Ok(LineOp::SetContainers {
+            line: line()?,
+            containers: o
+                .get("containers")
+                .and_then(Value::as_array)
+                .ok_or(ParseError::Shape("setContainers containers"))?
+                .iter()
+                .map(container_from_value)
+                .collect::<Result<_, _>>()?,
+        }),
+        _ => Err(ParseError::Shape("line op kind")),
+    }
+}
+
 /// Why an apply failed — range or line index out of bounds, or invariants
 /// broken before normalization could repair them.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -537,6 +687,67 @@ mod tests {
     use super::*;
     use crate::delta::diff;
     use crate::import::from_markdown;
+
+    #[test]
+    fn mark_op_wire_round_trips_each_variant() {
+        let ops = vec![
+            MarkOp::Add {
+                start: 0,
+                end: 3,
+                kind: MarkKind::Strong,
+            },
+            MarkOp::Add {
+                start: 1,
+                end: 2,
+                kind: MarkKind::Link {
+                    url: "https://x".into(),
+                },
+            },
+            MarkOp::Remove {
+                start: 4,
+                end: 6,
+                kind: MarkKind::Anchor { id: "c1".into() },
+            },
+            MarkOp::RemoveAnchor { id: "c2".into() },
+        ];
+        for op in ops {
+            let v = mark_op_to_value(&op);
+            assert_eq!(mark_op_from_value(&v).unwrap(), op, "round-trip: {v}");
+        }
+    }
+
+    #[test]
+    fn line_op_wire_round_trips_each_variant() {
+        let ops = vec![
+            LineOp::Split { at: 5 },
+            LineOp::Join { line: 1 },
+            LineOp::SetKind {
+                line: 0,
+                kind: LineKind::Heading { level: 2 },
+            },
+            LineOp::SetContainers {
+                line: 2,
+                containers: vec![Container::Quote],
+            },
+        ];
+        for op in ops {
+            let v = line_op_to_value(&op);
+            assert_eq!(line_op_from_value(&v).unwrap(), op, "round-trip: {v}");
+        }
+    }
+
+    #[test]
+    fn delta_serde_shape() {
+        let d = Delta {
+            ops: vec![Op::Retain(2), Op::Insert("hi".into()), Op::Delete(1)],
+        };
+        let v = serde_json::to_value(&d).unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!({"ops": [{"retain": 2}, {"insert": "hi"}, {"delete": 1}]})
+        );
+        assert_eq!(serde_json::from_value::<Delta>(v).unwrap(), d);
+    }
 
     #[test]
     fn apply_text_delta_rebases_marks() {

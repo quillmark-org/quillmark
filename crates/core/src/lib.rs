@@ -49,7 +49,7 @@ pub mod session;
 pub use session::{ApplyError, Assoc, ChangeSet, Delta, LineOp, LiveSession, MarkOp, Op};
 
 /// The canonical corpus content model — re-exported so consumers of the
-/// document mutators ([`Card::set_body_corpus`], [`Card::apply_body_change`])
+/// document mutators ([`Card::install_body`], [`Card::apply_body_change`])
 /// can name the type without depending on `quillmark-richtext` directly.
 pub use quillmark_richtext::RichText;
 

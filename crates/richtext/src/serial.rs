@@ -139,9 +139,13 @@ fn arr<'a>(obj: &'a Map<String, Value>, key: &'static str) -> Result<&'a Vec<Val
 
 // ---- Line ----
 
-fn line_to_value(line: &Line) -> Value {
+/// Encode a [`LineKind`] into its canonical `kind` fields (`"para"`,
+/// `{"kind":"heading","level":n}`, …). Public so the mark/line **op** wire
+/// ([`crate::ops`]) reuses the exact discriminant a `RichTextLine` carries,
+/// rather than forking the encoding.
+pub fn line_kind_to_value(kind: &LineKind) -> Value {
     let mut m = Map::new();
-    match &line.kind {
+    match kind {
         LineKind::Para => {
             m.insert("kind".into(), "para".into());
         }
@@ -162,6 +166,39 @@ fn line_to_value(line: &Line) -> Value {
             m.insert("kind".into(), "rule".into());
         }
     }
+    Value::Object(m)
+}
+
+/// Decode a [`LineKind`] from an object carrying the canonical `kind` fields.
+/// The inverse of [`line_kind_to_value`]; the shared line-kind reader for
+/// [`line_from_value`] and the line-op wire.
+pub fn line_kind_from_value(v: &Value) -> Result<LineKind, ParseError> {
+    let o = v.as_object().ok_or(ParseError::Shape("line"))?;
+    match o.get("kind").and_then(Value::as_str) {
+        Some("para") => Ok(LineKind::Para),
+        Some("heading") => {
+            let level = o
+                .get("level")
+                .and_then(Value::as_u64)
+                .ok_or(ParseError::Shape("heading level"))?;
+            if !(1..=6).contains(&level) {
+                return Err(ParseError::Shape("heading level"));
+            }
+            Ok(LineKind::Heading { level: level as u8 })
+        }
+        Some("code") => Ok(LineKind::Code {
+            lang: o.get("lang").and_then(Value::as_str).map(str::to_string),
+        }),
+        Some("island") => Ok(LineKind::Island),
+        Some("rule") => Ok(LineKind::Rule),
+        _ => Err(ParseError::Shape("line kind")),
+    }
+}
+
+fn line_to_value(line: &Line) -> Value {
+    let Value::Object(mut m) = line_kind_to_value(&line.kind) else {
+        unreachable!("line_kind_to_value always returns an object")
+    };
     m.insert(
         "containers".into(),
         Value::Array(line.containers.iter().map(container_to_value).collect()),
@@ -176,25 +213,7 @@ fn line_to_value(line: &Line) -> Value {
 
 fn line_from_value(v: &Value) -> Result<Line, ParseError> {
     let o = v.as_object().ok_or(ParseError::Shape("line"))?;
-    let kind = match o.get("kind").and_then(Value::as_str) {
-        Some("para") => LineKind::Para,
-        Some("heading") => {
-            let level = o
-                .get("level")
-                .and_then(Value::as_u64)
-                .ok_or(ParseError::Shape("heading level"))?;
-            if !(1..=6).contains(&level) {
-                return Err(ParseError::Shape("heading level"));
-            }
-            LineKind::Heading { level: level as u8 }
-        }
-        Some("code") => LineKind::Code {
-            lang: o.get("lang").and_then(Value::as_str).map(str::to_string),
-        },
-        Some("island") => LineKind::Island,
-        Some("rule") => LineKind::Rule,
-        _ => return Err(ParseError::Shape("line kind")),
-    };
+    let kind = line_kind_from_value(v)?;
     let containers = o
         .get("containers")
         .and_then(Value::as_array)
@@ -210,7 +229,10 @@ fn line_from_value(v: &Value) -> Result<Line, ParseError> {
     })
 }
 
-fn container_to_value(c: &Container) -> Value {
+/// Encode a [`Container`] into its canonical wire object. Public so the line-op
+/// wire ([`crate::ops`]) reuses the same container shape a `RichTextLine`
+/// carries.
+pub fn container_to_value(c: &Container) -> Value {
     let mut m = Map::new();
     match c {
         Container::ListItem {
@@ -230,7 +252,9 @@ fn container_to_value(c: &Container) -> Value {
     Value::Object(m)
 }
 
-fn container_from_value(v: &Value) -> Result<Container, ParseError> {
+/// Decode a [`Container`] from its canonical wire object. The inverse of
+/// [`container_to_value`].
+pub fn container_from_value(v: &Value) -> Result<Container, ParseError> {
     let o = v.as_object().ok_or(ParseError::Shape("container"))?;
     match o.get("container").and_then(Value::as_str) {
         Some("list_item") => Ok(Container::ListItem {
@@ -245,7 +269,10 @@ fn container_from_value(v: &Value) -> Result<Container, ParseError> {
 
 // ---- Mark ----
 
-fn mark_to_value(mark: &Mark) -> Value {
+/// Encode a [`Mark`] (`{start, end, type, …}`) into its canonical wire object.
+/// Public so the mark-op wire ([`crate::ops`]) reuses the exact `type`
+/// discriminant a `RichTextMark` carries.
+pub fn mark_to_value(mark: &Mark) -> Value {
     let mut m = Map::new();
     m.insert("start".into(), Value::from(mark.start));
     m.insert("end".into(), Value::from(mark.end));
@@ -281,7 +308,10 @@ fn mark_to_value(mark: &Mark) -> Value {
     Value::Object(m)
 }
 
-fn mark_from_value(v: &Value) -> Result<Mark, ParseError> {
+/// Decode a [`Mark`] from its canonical wire object. The inverse of
+/// [`mark_to_value`]; the shared mark reader for the corpus decoder and the
+/// mark-op wire.
+pub fn mark_from_value(v: &Value) -> Result<Mark, ParseError> {
     let o = v.as_object().ok_or(ParseError::Shape("mark"))?;
     let start = o
         .get("start")

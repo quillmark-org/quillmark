@@ -128,16 +128,13 @@ pub struct CardWire {
     /// model (a corpus object, `{text, lines, marks, islands}`). The empty corpus
     /// when absent. A markdown string is also accepted on input (imported), so an
     /// LLM/markdown writer can still hand a string here.
+    ///
+    /// No `body_markdown` projection rides this wire: the eager `export ∘ body`
+    /// precompute was dropped (the delimiter-safety fix makes `to_markdown`
+    /// re-parse every rendered line, so it is no longer cheap) in favor of the
+    /// on-demand `exportMarkdown(body)` codec at the binding boundary.
     #[serde(default)]
     pub body: JsonValue,
-    /// The body's markdown projection (`export ∘ body`) — a read convenience, not
-    /// stored state. Always emitted (empty string for an empty body, so consumers
-    /// need not guard for absence); ignored on input (`body` is authoritative, so
-    /// a round-trip through this shape is lossless regardless of `bodyMarkdown`).
-    /// The snake_case `body_markdown` is also accepted on input (the Python dict
-    /// shape), like `payload_items`.
-    #[serde(default, alias = "body_markdown")]
-    pub body_markdown: String,
 }
 
 /// Failure converting a [`CardWire`] back into a [`Card`].
@@ -176,7 +173,6 @@ impl From<&Card> for CardWire {
             seed: None,
             payload_items: Vec::new(),
             body: quillmark_richtext::serial::to_canonical_value(card.body()),
-            body_markdown: card.body_markdown(),
         };
         for item in card.payload().items() {
             match item {
@@ -310,7 +306,7 @@ impl TryFrom<CardWire> for Card {
 /// of truth in two accepted encodings: a **corpus object** (an editor / a
 /// re-serialized card) is deserialized and validated; a **markdown string** (an
 /// LLM / markdown writer) is imported. `null`/absent is the empty corpus; any
-/// other shape is an invalid `$body`. `body_markdown` is never read.
+/// other shape is an invalid `$body`.
 fn body_from_wire(body: &JsonValue) -> Result<RichText, WireError> {
     let invalid = |reason: String| WireError::InvalidField {
         key: "$body".to_string(),
@@ -481,7 +477,6 @@ mod tests {
                 nested_fills: Vec::new(),
             }],
             body: JsonValue::Null,
-            body_markdown: String::new(),
         })
         .unwrap();
         let json = serde_json::to_value(CardWire::from(&card)).unwrap();
@@ -502,7 +497,6 @@ mod tests {
             seed: None,
             payload_items: Vec::new(),
             body: JsonValue::Null,
-            body_markdown: String::new(),
         })
         .unwrap_err();
         assert!(matches!(err, WireError::InvalidQuillReference { .. }));

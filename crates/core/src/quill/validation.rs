@@ -792,7 +792,7 @@ main:
         );
         // Prose triggers the error; whitespace-only does not.
         let mut prose_card = typed_card("skills", &[("items", json!(["Rust"]))]);
-        prose_card.replace_body("Should not be here.").unwrap();
+        prose_card.revise_body("Should not be here.").unwrap();
         let doc = doc_with_typed_cards(&[], vec![prose_card]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
@@ -802,7 +802,7 @@ main:
         )));
 
         let mut ws_card = typed_card("skills", &[("items", json!(["Rust"]))]);
-        ws_card.replace_body("\n   \n").unwrap();
+        ws_card.revise_body("\n   \n").unwrap();
         let ok_doc = doc_with_typed_cards(&[], vec![ws_card]);
         assert!(validate_typed_document(&config, &ok_doc).is_ok());
     }
