@@ -960,9 +960,9 @@ main:
 
 #[test]
 fn position_at_on_a_raw_block_degrades_to_the_segment_start() {
-    // The spike's `#raw` correction: every physical line of a multi-line
-    // `#raw(block: true, "…")` fence shares one resolved node wider than any
-    // per-line run, so per-run inversion cannot pick a line. position_at
+    // Every physical line of a multi-line `#raw(block: true, "…")` fence shares
+    // one resolved node wider than any per-line run, so per-run inversion
+    // cannot pick a line. position_at
     // degrades to the code **segment's** corpus start — so clicks on different
     // fence lines resolve to the *same* corpus position (segment-level
     // correctness kept, per-line precision unavailable), distinct from the

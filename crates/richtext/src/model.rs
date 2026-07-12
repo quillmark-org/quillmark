@@ -7,7 +7,7 @@
 //! commits to. Everything an editor disagrees on (edge-expand,
 //! adjacent-merge-at-insertion) is *not* encoded — the model only ever stores
 //! the resulting range, so the stored form is identical whatever the editor
-//! did. See `prose/plans/richtext/phase-0.md` § Spike A.
+//! did.
 
 use crate::normalize::is_bidi_char;
 use serde_json::Value as JsonValue;
@@ -178,7 +178,7 @@ pub enum Loss {
 
 impl MarkKind {
     /// Formatting marks are a property of a range and union when coincident;
-    /// identity/unknown marks are handles and never merge (Spike-A rules).
+    /// identity/unknown marks are handles and never merge.
     pub fn is_formatting(&self) -> bool {
         matches!(
             self,
@@ -231,7 +231,7 @@ pub(crate) fn canonical_json_string(v: &JsonValue) -> String {
 
 /// Rebuild `v` with every object's keys sorted, recursively. Pins island
 /// `props` (and unknown-mark attrs) against `preserve_order` leaking insertion
-/// order into the canonical bytes / content hash (Spike C carry-forward). For
+/// order into the canonical bytes / content hash. For
 /// an owned tree, prefer [`sort_keys_owned`] — it reorders in place without
 /// cloning the leaves.
 pub(crate) fn sorted_value(v: &JsonValue) -> JsonValue {
@@ -554,7 +554,7 @@ impl RichText {
     }
 }
 
-/// Apply the three Spike-A rules and the canonical sort to a flat mark list.
+/// Apply the three normalization rules and the canonical sort to a flat mark list.
 ///
 /// 1. Same-kind formatting marks union when adjacent *or* overlapping.
 /// 2. Different-kind marks overlap freely (never split into runs).
@@ -612,8 +612,8 @@ pub(crate) fn normalize_marks(marks: Vec<Mark>) -> Vec<Mark> {
     // Canonical sort: (start, end, kind-ord, attrs). Key cached per mark so
     // `attrs_key`'s allocation runs once each, not once per comparison.
     out.sort_by_cached_key(|m| (m.start, m.end, m.kind.ord(), m.kind.attrs_key()));
-    // Drop byte-identical duplicates. Identity/unknown handles never *merge*
-    // (Spike-A rule 3), but two marks equal in range, kind, and attrs are the
+    // Drop byte-identical duplicates. Identity/unknown handles never *merge*,
+    // but two marks equal in range, kind, and attrs are the
     // same handle recorded twice — redundant bytes, not two handles. The sort
     // above makes any such pair adjacent, so `dedup` (structural `PartialEq`,
     // order-independent for `Unknown` attrs under `preserve_order`) removes it.

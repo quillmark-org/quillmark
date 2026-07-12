@@ -1277,7 +1277,7 @@ mod tests {
     /// An empty-text link (`[](url)`) drops at import: its mark is zero-width and
     /// `RichText::normalize` drops zero-width formatting marks (`link` is
     /// formatting), leaving a blank paragraph, so the emitter yields "".
-    /// Documented in `quillmark-richtext` (Spike-A rules).
+    /// Documented in `quillmark-richtext` (normalization rules).
     #[test]
     fn empty_text_link_dropped_at_import() {
         assert_eq!(emit("[](https://example.com)").markup, "");

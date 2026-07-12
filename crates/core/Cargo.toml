@@ -16,7 +16,7 @@ publish = true
 # deltas, and markdown codecs. `core` depends on it for the storage/body content
 # type and the markdown-string normalizer; the parser (pulldown) it carries is
 # reachable only through the codecs, so no-feature `pkg/core` still ships without
-# it (tree-shaken until a body/import path is wired — issue #831 phase 2).
+# it (tree-shaken — the render path never calls the codecs).
 quillmark-richtext = { workspace = true }
 serde = { workspace = true }
 serde-saphyr = { workspace = true }

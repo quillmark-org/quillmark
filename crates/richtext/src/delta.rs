@@ -229,7 +229,7 @@ impl Delta {
 }
 
 /// A relocation match shorter than this many chars is too weak to trust — the
-/// verbatim-move detector's length floor (mirrors the spike's `MIN_MOVE`).
+/// verbatim-move detector's length floor.
 const MIN_MOVE: usize = 4;
 
 /// Above this many USV chars, the single-line path skips `similar`'s

@@ -1,4 +1,4 @@
-//! Phase-1 property suite (issue #831 step 1).
+//! Property suite for the RichText codecs (issue #831).
 //!
 //! The four properties the freeze rests on:
 //!
@@ -20,7 +20,7 @@ use quillmark_richtext::{Delta, Island, LineKind, LineOp, Loss, MarkOp, Op, Rich
 use serde_json::{json, Value};
 
 // ---------------------------------------------------------------------------
-// A constrained markdown generator: combinations of the phase-1 constructs,
+// A constrained markdown generator: combinations of the corpus constructs,
 // with inline tokens space-separated so the property exercises structure and
 // marks without depending on CommonMark's delimiter-adjacency corners (those
 // are pinned by explicit unit tests, not fuzzed here).
@@ -497,7 +497,7 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// Fixture corpus: the phase-1 codecs run against real fixture markdown bodies.
+// Fixture corpus: the markdown codecs run against real fixture markdown bodies.
 // ---------------------------------------------------------------------------
 
 fn fixture_body(name: &str) -> String {

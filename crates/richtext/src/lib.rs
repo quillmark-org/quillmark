@@ -9,13 +9,12 @@
 //! `core`, `quillmark`, and both backends (`typst`, `pdfform`) consume this
 //! crate: the seam carries corpus JSON, storage embeds it structurally (see
 //! `prose/canon/DOCUMENT_STORAGE.md`), and the corpus edit surface
-//! (`delta`, `ops`) drives per-field splices. See
-//! `prose/plans/richtext/` for the phase map that landed it.
+//! (`delta`, `ops`) drives per-field splices.
 //!
 //! ## Layout
 //!
-//! - [`model`] — the [`RichText`] type, the mark set, normalization (the three
-//!   Spike-A rules), and invariants. The freeze.
+//! - [`model`] — the [`RichText`] type, the mark set, normalization (three
+//!   rules), and invariants. The freeze.
 //! - [`serial`] — canonical, byte-deterministic JSON. One encoding for the seam
 //!   and for storage.
 //! - [`import`] — markdown → corpus (normalize → pulldown → corpus).

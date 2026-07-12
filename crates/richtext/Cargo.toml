@@ -10,7 +10,7 @@ description = "RichText corpus content model, canonical serialization, edit delt
 # The leaf content-model crate: `quillmark-core` depends on it for the storage
 # body type and the markdown-string normalizer, so it carries no dependency on
 # the document engine. Published because `quillmark-core` (published) depends on
-# it. Tracked in prose/plans/richtext/.
+# it.
 publish = true
 
 [dependencies]
