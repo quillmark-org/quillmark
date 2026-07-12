@@ -232,18 +232,24 @@ const markdown = doc.toMarkdown();
 
 For per-card seeding, `quill.seedMain()` returns just the `$kind: main` card
 and `quill.seedCard(kind)` returns a starter composable card (or `undefined`
-if the kind is not declared). Both return the same `Card` shape as
+if the kind is not declared). Both return the read `Card` shape of
 `doc.main` / `doc.cards`, which `doc.pushCard` / `doc.insertCard` accept
 directly:
 
 ```ts
 doc.pushCard(quill.seedCard("note"));                 // seed → push
 doc.pushCard(Document.makeCard("note", { x: 1 }));    // build from a flat map
+doc.pushCard({ kind: "note", body: "Plain **markdown**." });  // bare inline
 ```
 
-There is one `Card` shape in both directions — `pushCard` / `insertCard` take
-exactly what `cards` / `removeCard` / `seedCard` return. Build a fresh card
-from a flat field map with `Document.makeCard(kind, fields?, body?)`.
+Reads and writes are two aligned shapes. A read `Card` always has `body:
+RichText` (canonical corpus, never a raw string) — no narrowing, no guessing
+whether the body was normalized. The write shape `CardInput` widens `body` to
+`RichText | string` (a markdown string imports to the corpus) and makes every
+field but `kind` optional. Every `Card` is a valid `CardInput`, so `pushCard` /
+`insertCard` still take exactly what `cards` / `removeCard` / `seedCard` return.
+Build a fresh card from a flat field map with
+`Document.makeCard(kind, fields?, body?)`.
 
 Batch mutation: `doc.setFields({...})` / `doc.setCardFields(index, {...})`
 apply a whole object atomically — on any invalid field nothing is applied and
