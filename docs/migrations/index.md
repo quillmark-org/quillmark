@@ -22,8 +22,12 @@ guides in order.
   writer + `apply(doc)` (the experimental `applyFieldDelta` / change-log surface
   was removed, #886). Card-write verbs become mechanical twins of their
   main-card names — `updateCardField`/`updateCardFields`/`updateCardBody` rename
-  to `setCardField`/`setCardFields`/`replaceCardBody` (#895). On-disk (`.qmd`)
-  identity stays markdown-lossy — the storage DTO is the lossless carrier.
+  to `setCardField`/`setCardFields`/`replaceCardBody` (#895). The wasm `Card`
+  shape splits by direction: a read `Card` always has `body: RichText`, while
+  `pushCard` / `insertCard` take a `CardInput` whose `body` still accepts a
+  markdown string and whose non-`kind` fields are optional (#917). On-disk
+  (`.qmd`) identity stays markdown-lossy — the storage DTO is the lossless
+  carrier.
 - [0.92 → 0.93](0.92-to-0.93.md) — the blueprint placeholder is rebuilt on two
   orthogonal axes (value and marker): blueprints now stamp the `!must_fill` tag
   instead of the `<must-fill>` string sentinel, and bare-null / `field:` now

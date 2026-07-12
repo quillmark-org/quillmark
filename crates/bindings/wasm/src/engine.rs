@@ -97,10 +97,12 @@ export interface QuillMetadata {
 "#;
 
 /// TypeScript for the canonical `Card` wire shape (mirrors
-/// `quillmark_core::CardWire`), referenced by name via `unchecked_param_type`
-/// on `pushCard` / `insertCard`. The single shape both *returned* by
-/// `Document.main` / `cards` / `removeCard` / `quill.seedCard` and *accepted*
-/// by `pushCard` / `insertCard` / `Document.makeCard`.
+/// `quillmark_core::CardWire`) and its write-input twin `CardInput`. `Card` is
+/// the read shape *returned* by `Document.main` / `cards` / `removeCard` /
+/// `quill.seedCard` / `Document.makeCard`; `CardInput` is the shape *accepted*
+/// by `pushCard` / `insertCard` (referenced by name via `unchecked_param_type`).
+/// They differ only in `body`: a read is always canonical `RichText`, a write
+/// also takes a markdown `string`.
 #[wasm_bindgen(typescript_custom_section)]
 const CARD_TS: &'static str = r#"
 /**
@@ -126,10 +128,11 @@ export type PayloadItem =
     | { type: "comment"; text: string; inline?: boolean };
 
 /**
- * A single card block. The one shape exchanged in both directions: returned by
- * `Document.main` / `Document.cards` / `Document.removeCard` / `Quill.seedCard`,
- * and accepted by `Document.pushCard` / `Document.insertCard`. Build a fresh
- * one with `Document.makeCard`.
+ * A single card block, as read back from a document: returned by
+ * `Document.main` / `Document.cards` / `Document.removeCard` / `Quill.seedCard`
+ * / `Document.makeCard`. To feed a card *into* a document use `CardInput`
+ * (which `pushCard` / `insertCard` accept); every `Card` is a valid `CardInput`,
+ * so a card read from one document pushes straight into another.
  *
  * `$` system entries are hoisted to named fields: `kind` (the `$kind`, empty
  * string when none), optional `quill` (the `$quill` `name@version`, main card
@@ -145,13 +148,34 @@ export interface Card {
     seed?: Record<string, unknown>;
     payloadItems: PayloadItem[];
     /**
-     * The card body as canonical RichText-JSON — the source-of-truth content
-     * model. An editor writes this shape back; a markdown string is also accepted
-     * on input (imported). Read `bodyMarkdown` for the markdown projection.
+     * The card body as canonical `RichText` — the source-of-truth content model.
+     * Always this corpus shape on read, never a markdown string; read
+     * `bodyMarkdown` for the markdown projection. Write a body back with
+     * `setBody` / `setCardBody`, or via `CardInput.body`.
      */
-    body: RichText | string;
+    body: RichText;
     /** The body's markdown projection (`export ∘ body`). Read-only; `""` for an empty body. */
     bodyMarkdown: string;
+}
+
+/**
+ * A card written *into* a document — the input twin of `Card`, accepted by
+ * `Document.pushCard` / `Document.insertCard`. Like `Card` but `body` also
+ * takes a markdown `string` (imported to the corpus, so a markdown / LLM writer
+ * needn't build the `RichText` shape), and every field but `kind` is optional —
+ * an absent field defaults (no payload items, an empty body). `bodyMarkdown` is
+ * ignored (`body` is authoritative). Write one inline (`{ kind, body }`) or
+ * build it with `Document.makeCard`.
+ */
+export interface CardInput {
+    kind: string;
+    quill?: string;
+    id?: string;
+    ext?: Record<string, unknown>;
+    seed?: Record<string, unknown>;
+    payloadItems?: PayloadItem[];
+    body?: RichText | string;
+    bodyMarkdown?: string;
 }
 
 /**
@@ -1121,14 +1145,15 @@ impl Document {
         })
     }
 
-    /// Append a card to the end of the card list. Accepts a `Card` (the shape
-    /// returned by `cards` / `removeCard` / `quill.seedCard`); build a fresh
-    /// one with [`Document.makeCard`](Document::make_card). Throws if
-    /// `card.kind` is not a valid kind name.
+    /// Append a card to the end of the card list. Accepts a `CardInput` — a card
+    /// read back (`cards` / `removeCard` / `quill.seedCard`), a
+    /// [`makeCard`](Document::make_card) result, or a bare `{ kind, body }`
+    /// (every returned `Card` is a valid `CardInput`). Throws if `card.kind` is
+    /// not a valid kind name.
     #[wasm_bindgen(js_name = pushCard)]
     pub fn push_card(
         &mut self,
-        #[wasm_bindgen(unchecked_param_type = "Card")] card: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "CardInput")] card: JsValue,
     ) -> Result<(), JsValue> {
         let core_card = js_to_card(&card)?;
         self.inner
@@ -1137,12 +1162,12 @@ impl Document {
     }
 
     /// Insert a card at `index` (must be in `0..=cards.length`). Accepts a
-    /// `Card` (see [`pushCard`](Self::push_card)).
+    /// `CardInput` (see [`pushCard`](Self::push_card)).
     #[wasm_bindgen(js_name = insertCard)]
     pub fn insert_card(
         &mut self,
         index: usize,
-        #[wasm_bindgen(unchecked_param_type = "Card")] card: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "CardInput")] card: JsValue,
     ) -> Result<(), JsValue> {
         let core_card = js_to_card(&card)?;
         self.inner
@@ -1457,7 +1482,7 @@ fn card_to_js(card: &quillmark_core::Card) -> Result<JsValue, JsValue> {
     serialize_or_throw(&quillmark_core::CardWire::from(card), "card")
 }
 
-/// Deserialize a `Card`-shaped JS value into a core
+/// Deserialize a `CardInput`-shaped JS value into a core
 /// [`Card`](quillmark_core::Card) via [`CardWire`](quillmark_core::CardWire).
 /// The single place WASM turns JS into a core card — used by `pushCard` /
 /// `insertCard`.
@@ -1484,7 +1509,7 @@ fn js_to_card(value: &JsValue) -> Result<quillmark_core::Card, JsValue> {
             if let Some(k) = key.as_string() {
                 if !ALLOWED.contains(&k.as_str()) {
                     return Err(WasmError::from(format!(
-                        "card has unknown field `{k}`; expected a Card \
+                        "card has unknown field `{k}`; expected a CardInput \
                          {{ kind, payloadItems, body, … }} — build one with \
                          Document.makeCard(kind, fields, body)"
                     ))
