@@ -9,7 +9,7 @@ main:
       example:
       - Attachment description, YYYY MMM DD
       ui:
-        group: Additional
+        group: additional
         order: 18
       items:
         type: string
@@ -20,7 +20,7 @@ main:
       example:
       - Rank and Name, ORG/SYMBOL
       ui:
-        group: Additional
+        group: additional
         order: 16
       items:
         type: string
@@ -33,7 +33,7 @@ main:
         applicable DoD guidance.
       default: ""
       ui:
-        group: Classification
+        group: classification
         order: 9
         compact: true
       enum:
@@ -50,7 +50,7 @@ main:
         Leave blank to omit.
       default: ""
       ui:
-        group: Classification
+        group: classification
         order: 12
         compact: true
     cui_controlled_by:
@@ -60,7 +60,7 @@ main:
         'SAF/AA'). Required by DoDM 5200.48 when classification is CUI.
       default: ""
       ui:
-        group: Classification
+        group: classification
         order: 11
         compact: true
     cui_limited_dissemination:
@@ -70,7 +70,7 @@ main:
         'NOFORN'). Independent from the banner suffix above.
       default: ""
       ui:
-        group: Classification
+        group: classification
         order: 13
         compact: true
     cui_poc:
@@ -80,7 +80,7 @@ main:
         john.smith@us.af.mil'). Required by DoDM 5200.48 when classification is CUI.
       default: ""
       ui:
-        group: Classification
+        group: classification
         order: 14
         compact: true
     date:
@@ -88,7 +88,7 @@ main:
       description: YYYY-MM-DD. Leave blank to use today's date.
       default: ""
       ui:
-        group: Additional
+        group: additional
         order: 21
         compact: true
     dissemination:
@@ -98,7 +98,7 @@ main:
         CUI//NF in the header/footer). Leave blank for no suffix.
       default: ""
       ui:
-        group: Classification
+        group: classification
         order: 10
         compact: true
     distribution:
@@ -111,7 +111,7 @@ main:
       - ORG1/SYMBOL
       - ORG2/SYMBOL
       ui:
-        group: Additional
+        group: additional
         order: 17
       items:
         type: string
@@ -120,7 +120,7 @@ main:
       description: Body text size in points; decimals allowed (e.g. 11.5).
       default: 12
       ui:
-        group: Additional
+        group: additional
         order: 20
         compact: true
     letterhead_caption:
@@ -129,7 +129,7 @@ main:
       example:
       - HEADQUARTERS [UNIT NAME]
       ui:
-        group: Letterhead
+        group: letterhead
         order: 5
       items:
         type: string
@@ -140,7 +140,7 @@ main:
         letterhead.
       default: dow
       ui:
-        group: Letterhead
+        group: letterhead
         order: 6
         compact: true
       enum:
@@ -151,7 +151,7 @@ main:
       description: Bold-caps line below the seal; blank to omit.
       default: ""
       ui:
-        group: Letterhead
+        group: letterhead
         order: 7
         compact: true
     letterhead_title:
@@ -159,7 +159,7 @@ main:
       description: Change only for Joint Commands or DoW agencies.
       default: DEPARTMENT OF THE AIR FORCE
       ui:
-        group: Letterhead
+        group: letterhead
         order: 4
     memo_for:
       type: array
@@ -171,7 +171,7 @@ main:
       - ORG1/SYMBOL
       - ORG2/SYMBOL
       ui:
-        group: Addressing
+        group: addressing
         order: 0
       items:
         type: string
@@ -189,7 +189,7 @@ main:
       - 123 Street Ave
       - City ST 12345-6789
       ui:
-        group: Addressing
+        group: addressing
         order: 1
       items:
         type: string
@@ -200,7 +200,7 @@ main:
         body paragraph layout per AFH 33-337.
       default: usaf
       ui:
-        group: Additional
+        group: additional
         order: 19
         compact: true
       enum:
@@ -217,7 +217,7 @@ main:
       - AFMAN 33-326, 25 November 2011, *Preparing Official Communications*
       - AFI 33-360, *Publications and Forms Management*
       ui:
-        group: Additional
+        group: additional
         order: 15
       items:
         type: richtext
@@ -229,7 +229,7 @@ main:
       - FIRST M. LAST, Rank, USAF
       - Duty Title
       ui:
-        group: Addressing
+        group: addressing
         order: 3
       items:
         type: string
@@ -241,7 +241,7 @@ main:
         applicable.
       example: Subject of the Memorandum
       ui:
-        group: Addressing
+        group: addressing
         order: 2
       inline: true
     tag_line:
@@ -251,10 +251,16 @@ main:
         (e.g. *italics*, **bold**).
       default: ""
       ui:
-        group: Letterhead
+        group: letterhead
         order: 8
         compact: true
       inline: true
+  ui:
+    groups:
+      addressing: {}
+      letterhead: {}
+      classification: {}
+      additional: {}
   body:
     example: |
       The first paragraph. Top-level paragraphs are auto-numbered; do not add manual numbering.
@@ -274,7 +280,7 @@ card_kinds:
           or 'disapprove' to circle the selected option.
         default: ""
         ui:
-          group: Additional
+          group: additional
           order: 4
           compact: true
         enum:
@@ -290,7 +296,7 @@ card_kinds:
           fill-in line for the endorser to date by hand when signing.
         default: ""
         ui:
-          group: Additional
+          group: additional
           order: 5
           compact: true
       for:
@@ -298,14 +304,14 @@ card_kinds:
         description: Office symbol or organization receiving the endorsed memo.
         example: ORG/SYMBOL
         ui:
-          group: Addressing
+          group: addressing
           order: 1
       format:
         type: string
         description: "'standard' (formal, same page), 'informal' (less formal routing), or 'separate_page' (begins on a new page)."
         default: standard
         ui:
-          group: Additional
+          group: additional
           order: 3
           compact: true
         enum:
@@ -317,7 +323,7 @@ card_kinds:
         description: Office symbol or Rank Name of the endorsing official.
         example: ORG/SYMBOL
         ui:
-          group: Addressing
+          group: addressing
           order: 0
       signature_block:
         type: array
@@ -326,9 +332,12 @@ card_kinds:
         - FIRST M. LAST, Rank, USAF
         - Duty Title
         ui:
-          group: Addressing
+          group: addressing
           order: 2
         items:
           type: string
     ui:
       title: Routing indorsement
+      groups:
+        addressing: {}
+        additional: {}

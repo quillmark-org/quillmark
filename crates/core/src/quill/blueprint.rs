@@ -162,18 +162,29 @@ fn build_card(card: &CardSchema) -> Card {
 }
 
 /// Append every field of a card as payload items, clustered by `ui.group` and
-/// ordered by `ui.order`.
+/// ordered by `ui.order`. Group order follows the card's `ui.groups` registry
+/// when present.
 fn append_fields(items: &mut Vec<PayloadItem>, card: &CardSchema) {
-    for field in group_fields(card.fields.values()) {
+    let registry: Option<Vec<&str>> = card
+        .ui
+        .as_ref()
+        .and_then(|u| u.groups.as_ref())
+        .map(|r| r.0.iter().map(|g| g.id.as_str()).collect());
+    for field in group_fields(card.fields.values(), registry.as_deref()) {
         append_field(items, field);
     }
 }
 
-/// Order fields by `ui.group` (ungrouped lead, then groups in first-appearance
-/// order) with `ui.order` sorting within each cluster. Grouping is purely
-/// positional (no banner); the clusters are flattened into a single field
-/// stream.
-fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(fields: I) -> Vec<&'a FieldSchema> {
+/// Order fields by `ui.group` (ungrouped lead, then grouped clusters) with
+/// `ui.order` sorting within each cluster. Grouped clusters follow the
+/// `registry` declaration order when a registry is present, else first-
+/// appearance order (the deprecated implicit-group fallback); for a migrated
+/// quill the two are identical. Grouping is purely positional (no banner); the
+/// clusters are flattened into a single field stream.
+fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
+    fields: I,
+    registry: Option<&[&str]>,
+) -> Vec<&'a FieldSchema> {
     let mut sorted: Vec<&FieldSchema> = fields.into_iter().collect();
     sorted.sort_by_key(|f| f.ui_order());
     let mut groups: Vec<(Option<&str>, Vec<&FieldSchema>)> = Vec::new();
@@ -184,7 +195,18 @@ fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(fields: I) -> Vec<&
             None => groups.push((group, vec![field])),
         }
     }
-    groups.sort_by_key(|(g, _)| g.is_some());
+    // Ungrouped is the implicit leading pseudo-group (rank 0). Grouped clusters
+    // (rank 1) sort by registry position; with no registry every group ties at
+    // `usize::MAX` and the stable sort preserves first appearance.
+    groups.sort_by_key(|(g, _)| match g {
+        None => (0, 0),
+        Some(id) => (
+            1,
+            registry
+                .and_then(|order| order.iter().position(|o| o == id))
+                .unwrap_or(usize::MAX),
+        ),
+    });
     groups.into_iter().flat_map(|(_, fields)| fields).collect()
 }
 

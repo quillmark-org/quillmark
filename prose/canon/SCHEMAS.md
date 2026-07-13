@@ -258,7 +258,7 @@ document carries no `$seed`).
 `QuillConfig::schema()` returns the structural schema as `serde_json::Value`. It includes:
 
 - Field types, constraints, and `enum`/`default`/`example` annotations
-- `ui` hints on fields and card kinds (`group`, `order`, `compact`, `multiline`, `title`)
+- `ui` hints on fields (`group`, `order`, `compact`, `multiline`, `title`) and on cards (`title`, plus the `groups` registry that `group` references)
 - `body` blocks on cards (`enabled`, `example`)
 
 The schema describes only the user-fillable fields. The quill reference

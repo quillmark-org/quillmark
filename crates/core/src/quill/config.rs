@@ -1,5 +1,5 @@
 //! Quill configuration parsing and normalization.
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::error::Error as StdError;
 
 use indexmap::IndexMap;
@@ -10,7 +10,7 @@ use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
 use super::types::RICHTEXT_INLINE_TOKEN_MSG;
-use super::{BodyCardSchema, CardSchema, FieldSchema, FieldType, UiCardSchema};
+use super::{BodyCardSchema, CardSchema, FieldSchema, FieldType, GroupRegistry, UiCardSchema};
 
 /// Canonical string text for a bare scalar unambiguously representable as a
 /// string — a boolean (`true`/`false`) or number (`47`, `1.0`). `None` for
@@ -929,6 +929,99 @@ impl QuillConfig {
         }
     }
 
+    /// Validate a card's group registry and every card-level field's `ui.group`
+    /// reference against it. Nested `ui.group` is already rejected upstream by
+    /// [`validate_field_schema_shape`](Self::validate_field_schema_shape), so
+    /// only card-level fields are considered here.
+    ///
+    /// With a registry present, `ui.group` is a *reference*: registry ids carry
+    /// the same snake_case discipline as field keys and must be unique, and a
+    /// reference to an id the registry does not declare is `quill::unknown_group`
+    /// (the "no mixing implicit and declared" rule falls out of this — with a
+    /// registry there is no implicit fallback). With no registry, each `ui.group`
+    /// is a deprecated implicit group (label-as-identity, today's semantics
+    /// untouched) and the card earns one `quill::implicit_group` warning.
+    fn validate_card_groups(
+        label: &str,
+        card: &CardSchema,
+        errors: &mut Vec<Diagnostic>,
+        warnings: &mut Vec<Diagnostic>,
+    ) {
+        let referenced: Vec<&str> = card
+            .fields
+            .values()
+            .filter_map(|f| f.ui.as_ref().and_then(|u| u.group.as_deref()))
+            .collect();
+
+        match card.ui.as_ref().and_then(|u| u.groups.as_ref()) {
+            Some(GroupRegistry(groups)) => {
+                let mut ids: HashSet<&str> = HashSet::new();
+                for g in groups {
+                    if !Self::is_snake_case_identifier(&g.id) {
+                        errors.push(
+                            Diagnostic::new(
+                                Severity::Error,
+                                format!(
+                                    "{label} group id '{}' must be snake_case (lowercase letters, \
+                                     digits, and underscores only); the display label goes in \
+                                     'title:'.",
+                                    g.id
+                                ),
+                            )
+                            .with_code("quill::invalid_group_id".to_string()),
+                        );
+                    }
+                    // Insert regardless of snake_case validity so a reference to
+                    // an ill-named id resolves — one diagnostic, not a cascade.
+                    if !ids.insert(g.id.as_str()) {
+                        errors.push(
+                            Diagnostic::new(
+                                Severity::Error,
+                                format!("{label} declares group '{}' more than once.", g.id),
+                            )
+                            .with_code("quill::duplicate_group".to_string()),
+                        );
+                    }
+                }
+                // One diagnostic per distinct unresolved reference.
+                let unresolved: BTreeSet<&str> =
+                    referenced.iter().copied().filter(|g| !ids.contains(g)).collect();
+                for group in unresolved {
+                    errors.push(
+                        Diagnostic::new(
+                            Severity::Error,
+                            format!(
+                                "{label} field references group '{group}', which is not declared \
+                                 in ui.groups. Add it to the registry, or fix the reference."
+                            ),
+                        )
+                        .with_code("quill::unknown_group".to_string()),
+                    );
+                }
+            }
+            None => {
+                if !referenced.is_empty() {
+                    warnings.push(
+                        Diagnostic::new(
+                            Severity::Warning,
+                            format!(
+                                "{label} uses ui.group without a ui.groups registry (implicit \
+                                 groups). Declare the groups under the card's ui.groups; implicit \
+                                 groups are deprecated and become an error in a future release."
+                            ),
+                        )
+                        .with_code("quill::implicit_group".to_string())
+                        .with_hint(
+                            "Add a ui.groups registry listing each group id, and reference the id \
+                             from each field's ui.group."
+                                .to_string(),
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
     /// Validate a single `example:` or `default:` literal against the declared
     /// schema, pushing `quill::*`-namespaced [`Diagnostic`]s for any violations.
     ///
@@ -1407,7 +1500,7 @@ impl QuillConfig {
                             format!("Invalid 'quill.ui' block: {}", e),
                         )
                         .with_code("quill::invalid_ui".to_string())
-                        .with_hint("Valid key under 'ui' is: title.".to_string()),
+                        .with_hint("Valid keys under 'ui' are: title, groups.".to_string()),
                     );
                     None
                 }
@@ -1502,7 +1595,7 @@ impl QuillConfig {
                     errors.push(
                         Diagnostic::new(Severity::Error, format!("Invalid 'main.ui' block: {}", e))
                             .with_code("quill::invalid_ui".to_string())
-                            .with_hint("Valid key under 'ui' is: title.".to_string()),
+                            .with_hint("Valid keys under 'ui' are: title, groups.".to_string()),
                     );
                     None
                 }
@@ -1661,6 +1754,17 @@ impl QuillConfig {
             if let Some(d) = warn_example_unused(&format!("card_kinds.{}", card.name), &card.body) {
                 warnings.push(d);
             }
+        }
+
+        // Validate each card's group registry and its fields' group references.
+        Self::validate_card_groups("main", &main, &mut errors, &mut warnings);
+        for card in &card_kinds {
+            Self::validate_card_groups(
+                &format!("card_kinds.{}", card.name),
+                card,
+                &mut errors,
+                &mut warnings,
+            );
         }
 
         // Error when `body.example` contains a line that the document parser

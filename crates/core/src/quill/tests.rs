@@ -1664,6 +1664,163 @@ main:
 }
 
 #[test]
+fn group_registry_list_form_orders_blueprint_by_declaration() {
+    // The registry declares `beta` before `alpha`, but a field references
+    // `alpha` first (lower ui.order). Clustering must follow registry order
+    // (beta, then alpha), not first-appearance order.
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  ui:
+    groups: [beta, alpha]
+  fields:
+    a1: { type: string, ui: { group: alpha } }
+    b1: { type: string, ui: { group: beta } }
+"#;
+    let bp = QuillConfig::from_yaml(yaml).unwrap().blueprint();
+    let a = bp.find("a1:").unwrap();
+    let b = bp.find("b1:").unwrap();
+    assert!(b < a, "registry order (beta<alpha) must drive clustering:\n{bp}");
+}
+
+#[test]
+fn group_registry_map_form_carries_title_override() {
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  ui:
+    groups:
+      addressing: {}
+      letterhead: { title: "Letterhead & Seal" }
+  fields:
+    a: { type: string, ui: { group: addressing } }
+    l: { type: string, ui: { group: letterhead } }
+"#;
+    let config = QuillConfig::from_yaml(yaml).unwrap();
+    let reg = &config.main.ui.as_ref().unwrap().groups.as_ref().unwrap().0;
+    assert_eq!(reg.len(), 2);
+    assert_eq!(reg[0].id, "addressing");
+    assert_eq!(reg[0].title, None);
+    assert_eq!(reg[1].id, "letterhead");
+    assert_eq!(reg[1].title.as_deref(), Some("Letterhead & Seal"));
+}
+
+#[test]
+fn unknown_group_reference_is_rejected() {
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  ui:
+    groups: [addressing]
+  fields:
+    subject: { type: string, ui: { group: letterhead } }
+"#;
+    let err = QuillConfig::from_yaml_with_warnings(yaml).unwrap_err();
+    assert!(err
+        .iter()
+        .any(|d| d.code.as_deref() == Some("quill::unknown_group")));
+}
+
+#[test]
+fn implicit_group_without_registry_warns() {
+    // No registry + a field group is the deprecated implicit-group form.
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  fields:
+    subject: { type: string, ui: { group: Addressing } }
+"#;
+    let (_config, warnings) = QuillConfig::from_yaml_with_warnings(yaml).unwrap();
+    assert!(warnings
+        .iter()
+        .any(|d| d.code.as_deref() == Some("quill::implicit_group")));
+}
+
+#[test]
+fn duplicate_group_id_is_rejected() {
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  ui:
+    groups: [addressing, addressing]
+  fields:
+    subject: { type: string, ui: { group: addressing } }
+"#;
+    let err = QuillConfig::from_yaml_with_warnings(yaml).unwrap_err();
+    assert!(err
+        .iter()
+        .any(|d| d.code.as_deref() == Some("quill::duplicate_group")));
+}
+
+#[test]
+fn non_snake_case_group_id_is_rejected() {
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  ui:
+    groups: [Addressing]
+  fields:
+    subject: { type: string, ui: { group: Addressing } }
+"#;
+    let err = QuillConfig::from_yaml_with_warnings(yaml).unwrap_err();
+    assert!(err
+        .iter()
+        .any(|d| d.code.as_deref() == Some("quill::invalid_group_id")));
+}
+
+#[test]
+fn group_registry_round_trips_through_serde_and_schema() {
+    // List-form input normalizes to the canonical map form on emit, preserving
+    // declaration order, and re-parses to the identical registry.
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  ui:
+    groups: [addressing, letterhead]
+  fields:
+    a: { type: string, ui: { group: addressing } }
+    l: { type: string, ui: { group: letterhead } }
+"#;
+    let config = QuillConfig::from_yaml(yaml).unwrap();
+    let ui = config.main.ui.clone().unwrap();
+    let json = serde_json::to_value(&ui).unwrap();
+    let back: UiCardSchema = serde_json::from_value(json).unwrap();
+    assert_eq!(ui, back, "registry must survive emit → parse");
+
+    // Emission carries order (preserve_order) and titles are omitted when derived.
+    let schema = config.schema();
+    let groups = schema["main"]["ui"]["groups"].as_object().unwrap();
+    let keys: Vec<&str> = groups.keys().map(String::as_str).collect();
+    assert_eq!(keys, ["addressing", "letterhead"]);
+    assert!(groups["addressing"].as_object().unwrap().is_empty());
+}
+
+#[test]
+fn migrated_group_fixtures_declare_registries_and_do_not_warn() {
+    for name in ["usaf_memo/0.2.0", "cmu_letter/0.1.0", "classic_resume/0.1.0"] {
+        let path = quillmark_fixtures::resource_path(&format!("quills/{name}/Quill.yaml"));
+        let yaml = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {name}: {e}"));
+        let (config, warnings) = QuillConfig::from_yaml_with_warnings(&yaml)
+            .unwrap_or_else(|e| panic!("{name} must load: {e:?}"));
+        assert!(
+            !warnings
+                .iter()
+                .any(|d| d.code.as_deref() == Some("quill::implicit_group")),
+            "{name} still emits implicit_group: {warnings:?}"
+        );
+        assert!(
+            config
+                .main
+                .ui
+                .as_ref()
+                .and_then(|u| u.groups.as_ref())
+                .is_some(),
+            "{name} main should declare a group registry"
+        );
+    }
+}
+
+#[test]
 fn test_array_items_recursive_coercion() {
     let yaml_content = r#"
 quill:

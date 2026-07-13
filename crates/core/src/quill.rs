@@ -22,7 +22,10 @@ pub use formats::parse_date_ymd;
 pub use ignore::QuillIgnore;
 pub use schema::{build_transform_schema, QUILLMARK_INLINE_KEY, RICHTEXT_MEDIA_TYPE};
 pub use tree::FileTreeNode;
-pub use types::{BodyCardSchema, CardSchema, FieldSchema, FieldType, UiCardSchema, UiFieldSchema};
+pub use types::{
+    BodyCardSchema, CardSchema, FieldSchema, FieldType, GroupRegistry, GroupSchema, UiCardSchema,
+    UiFieldSchema,
+};
 
 use std::collections::HashMap;
 

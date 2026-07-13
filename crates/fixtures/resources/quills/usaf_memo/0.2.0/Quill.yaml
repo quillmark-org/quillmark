@@ -8,6 +8,8 @@ typst:
   plate_file: plate.typ
 
 main:
+  ui:
+    groups: [addressing, letterhead, classification, additional]
   body:
     example: |
       The first paragraph. Top-level paragraphs are auto-numbered; do not add manual numbering.
@@ -22,7 +24,7 @@ main:
         - ORG1/SYMBOL
         - ORG2/SYMBOL
       ui:
-        group: Addressing
+        group: addressing
       description: "Organization/office symbol in UPPERCASE. To address a specific person, add their rank and name in parentheses (e.g., 'ORG/SYMBOL (LT COL JANE DOE)'). For many recipients, enter 'SEE DISTRIBUTION' and list them in the Distribution field."
 
     memo_from:
@@ -36,7 +38,7 @@ main:
         - 123 Street Ave
         - City ST 12345-6789
       ui:
-        group: Addressing
+        group: addressing
       description: "If recipients are on the same installation, use only the office symbol. For recipients on other installations, include the full mailing address to enable return correspondence. Omit entirely to produce a Memorandum for Record (no MEMO FROM line)."
 
     subject:
@@ -44,7 +46,7 @@ main:
       inline: true
       example: Subject of the Memorandum
       ui:
-        group: Addressing
+        group: addressing
       description: Be brief and clear. Capitalize the first letter of each word except articles, prepositions, and conjunctions. Include suspense dates in parentheses if applicable.
 
     signature_block:
@@ -55,14 +57,14 @@ main:
         - "FIRST M. LAST, Rank, USAF"
         - Duty Title
       ui:
-        group: Addressing
+        group: addressing
       description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title."
 
     letterhead_title:
       type: string
       default: DEPARTMENT OF THE AIR FORCE
       ui:
-        group: Letterhead
+        group: letterhead
       description: Change only for Joint Commands or DoW agencies.
 
     letterhead_caption:
@@ -72,7 +74,7 @@ main:
       example:
         - HEADQUARTERS [UNIT NAME]
       ui:
-        group: Letterhead
+        group: letterhead
       description: The full organization name of your unit.
 
     letterhead_seal:
@@ -82,7 +84,7 @@ main:
         - dod
       default: dow
       ui:
-        group: Letterhead
+        group: letterhead
         compact: true
       description: Department of War (DoW) or Department of Defense (DoD) seal shown in the letterhead.
 
@@ -90,7 +92,7 @@ main:
       type: string
       default: ""
       ui:
-        group: Letterhead
+        group: letterhead
         compact: true
       description: Bold-caps line below the seal; blank to omit.
 
@@ -99,7 +101,7 @@ main:
       inline: true
       default: ""
       ui:
-        group: Letterhead
+        group: letterhead
         compact: true
       description: "Organizational motto at the bottom of the page. Supports Markdown emphasis (e.g. *italics*, **bold**)."
 
@@ -114,7 +116,7 @@ main:
         - TOP SECRET
       default: ""
       ui:
-        group: Classification
+        group: classification
         compact: true
       description: "Select the classification marking shown in the header and footer banner. Unclassified documents typically omit this banner entirely — leave blank unless the document is CUI or classified. Mark per DAFI 16-1404 (DoDM 5200.48 for CUI) and applicable DoD guidance."
 
@@ -122,7 +124,7 @@ main:
       type: string
       default: ""
       ui:
-        group: Classification
+        group: classification
         compact: true
       description: "Banner dissemination suffix appended after double slash (e.g. 'NF' renders as CUI//NF in the header/footer). Leave blank for no suffix."
 
@@ -130,7 +132,7 @@ main:
       type: string
       default: ""
       ui:
-        group: Classification
+        group: classification
         compact: true
       description: "Office or organization that designated this information as CUI (e.g., 'SAF/AA'). Required by DoDM 5200.48 when classification is CUI."
 
@@ -138,7 +140,7 @@ main:
       type: string
       default: ""
       ui:
-        group: Classification
+        group: classification
         compact: true
       description: "CUI category from the DoD CUI Registry (e.g., 'Privacy/MED', 'CTI', 'PRVCY'). Leave blank to omit."
 
@@ -146,7 +148,7 @@ main:
       type: string
       default: ""
       ui:
-        group: Classification
+        group: classification
         compact: true
       description: "Limited dissemination control shown in the indicator block (e.g., 'FEDONLY', 'NOFORN'). Independent from the banner suffix above."
 
@@ -154,7 +156,7 @@ main:
       type: string
       default: ""
       ui:
-        group: Classification
+        group: classification
         compact: true
       description: "Point of contact for CUI questions (e.g., 'Capt J. Smith, DSN 555-1234, john.smith@us.af.mil'). Required by DoDM 5200.48 when classification is CUI."
 
@@ -168,7 +170,7 @@ main:
         - "AFMAN 33-326, 25 November 2011, *Preparing Official Communications*"
         - "AFI 33-360, *Publications and Forms Management*"
       ui:
-        group: Additional
+        group: additional
       description: "References, auto-lettered (a), (b), (c) per AFH 33-337. Cite each by organization, type, date, and title; italicize publication titles with *asterisks* (standard Markdown emphasis)."
 
     cc:
@@ -179,7 +181,7 @@ main:
       example:
         - Rank and Name, ORG/SYMBOL
       ui:
-        group: Additional
+        group: additional
       description: List office symbols of recipients to receive copies.
 
     distribution:
@@ -191,7 +193,7 @@ main:
         - ORG1/SYMBOL
         - ORG2/SYMBOL
       ui:
-        group: Additional
+        group: additional
       description: Complete list of recipients if 'SEE DISTRIBUTION' is used in the 'Memo For' field.
 
     attachments:
@@ -202,7 +204,7 @@ main:
       example:
         - Attachment description, YYYY MMM DD
       ui:
-        group: Additional
+        group: additional
       description: List attachments in the order they are mentioned in the memo. Briefly describe each; do not use 'as stated' or abbreviations.
 
     memo_style:
@@ -212,7 +214,7 @@ main:
         - daf
       default: usaf
       ui:
-        group: Additional
+        group: additional
         compact: true
       description: "USAF memorandum or DAF headquarters memorandum; DAF changes date format and body paragraph layout per AFH 33-337."
 
@@ -220,7 +222,7 @@ main:
       type: number
       default: 12
       ui:
-        group: Additional
+        group: additional
         compact: true
       description: Body text size in points; decimals allowed (e.g. 11.5).
 
@@ -228,7 +230,7 @@ main:
       type: datetime
       default: ""
       ui:
-        group: Additional
+        group: additional
         compact: true
       description: YYYY-MM-DD. Leave blank to use today's date.
 
@@ -237,18 +239,19 @@ card_kinds:
     description: Chain of routing endorsements. Each endorsement block adds an official response or forwarding action to the original memo.
     ui:
       title: Routing indorsement
+      groups: [addressing, additional]
     fields:
       from:
         type: string
         example: ORG/SYMBOL
         ui:
-          group: Addressing
+          group: addressing
         description: Office symbol or Rank Name of the endorsing official.
       for:
         type: string
         example: ORG/SYMBOL
         ui:
-          group: Addressing
+          group: addressing
         description: Office symbol or organization receiving the endorsed memo.
       signature_block:
         type: array
@@ -258,7 +261,7 @@ card_kinds:
           - "FIRST M. LAST, Rank, USAF"
           - Duty Title
         ui:
-          group: Addressing
+          group: addressing
         description: "Line 1: Name in UPPERCASE as signed, grade, and service. Line 2: Duty title."
       format:
         type: string
@@ -268,7 +271,7 @@ card_kinds:
           - separate_page
         default: standard
         ui:
-          group: Additional
+          group: additional
           compact: true
         description: "'standard' (formal, same page), 'informal' (less formal routing), or 'separate_page' (begins on a new page)."
       action:
@@ -280,13 +283,13 @@ card_kinds:
           - disapprove
         default: ""
         ui:
-          group: Additional
+          group: additional
           compact: true
         description: "Action taken by the endorser. Leave blank to hide the Approve/Disapprove line entirely, 'undecided' to display the line with neither option circled, 'approve' or 'disapprove' to circle the selected option."
       date:
         type: datetime
         default: ""
         ui:
-          group: Additional
+          group: additional
           compact: true
         description: "YYYY-MM-DD. Date the endorser signs/forwards the memo (per AFH 33-337 Ch. 14, this is distinct from the originating memo's date). Leave blank to render a fill-in line for the endorser to date by hand when signing."

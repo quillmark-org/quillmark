@@ -53,6 +53,116 @@ pub struct UiCardSchema {
     /// template. See `docs/quills/quill-yaml-reference.md`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// The card's group registry: the visible table of contents that names
+    /// every group a field may reference and fixes their display order. A
+    /// field's `ui.group` is a *reference* into this registry, validated at
+    /// load. Absent when the card declares no groups (or uses the deprecated
+    /// implicit-group form).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub groups: Option<GroupRegistry>,
+}
+
+/// One entry in a card's [`GroupRegistry`]: a snake_case identity plus an
+/// optional display-label override. The `id` decouples identity from label the
+/// same way a field's snake_case key decouples from its `ui.title` — a rename
+/// of the label touches one line and never breaks a `ui.group` reference or
+/// persisted per-group editor state. When `title` is `None`, consumers derive
+/// the label from `id` (`memo_for` → "Memo For"), exactly as they derive a
+/// field label from its key.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GroupSchema {
+    /// snake_case identity; rides the registry map key (or list item) on the wire.
+    pub id: String,
+    /// Display-label override; `None` means derive the label from `id`.
+    pub title: Option<String>,
+}
+
+/// A card's ordered group registry (`main.ui.groups` or a card kind's
+/// `ui.groups`). Declaration order **is** display order — the same contract
+/// field declaration order gives `ui.order` — so it is held as a `Vec` that
+/// survives regardless of surface form. Authored as either a sequence of ids
+/// (`[addressing, letterhead]`, titles derived) or a mapping of id to
+/// attributes (`{ letterhead: { title: … } }`, for label overrides); both fold
+/// into the same ordered list. Serializes back to the canonical mapping form,
+/// declaration order preserved.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GroupRegistry(pub Vec<GroupSchema>);
+
+/// The attribute block of a registry entry in the mapping authoring/emission
+/// form (`id: { title: … }`). A bare `id:` (null) or `id: {}` carries no
+/// override.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GroupEntryDef {
+    title: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for GroupRegistry {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct RegistryVisitor;
+        impl<'de> serde::de::Visitor<'de> for RegistryVisitor {
+            type Value = GroupRegistry;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a sequence of group ids or a mapping of group id to attributes")
+            }
+
+            // Sequence form: `[addressing, letterhead]` — bare ids, titles derived.
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<GroupRegistry, A::Error> {
+                let mut groups = Vec::new();
+                while let Some(id) = seq.next_element::<String>()? {
+                    groups.push(GroupSchema { id, title: None });
+                }
+                Ok(GroupRegistry(groups))
+            }
+
+            // Mapping form: `{ addressing: {}, letterhead: { title: … } }`.
+            // A null or `{}` value carries no override; declaration order is
+            // preserved by serde_json's `preserve_order`.
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<GroupRegistry, A::Error> {
+                let mut groups = Vec::new();
+                while let Some((id, def)) = map.next_entry::<String, Option<GroupEntryDef>>()? {
+                    groups.push(GroupSchema {
+                        id,
+                        title: def.and_then(|d| d.title),
+                    });
+                }
+                Ok(GroupRegistry(groups))
+            }
+        }
+        deserializer.deserialize_any(RegistryVisitor)
+    }
+}
+
+impl Serialize for GroupRegistry {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        // Canonical form: the mapping, so a title override has a home and the
+        // registry key (identity) is explicit. A title-less entry emits an
+        // empty object; the map's declaration order carries the display-order
+        // contract on the wire.
+        #[derive(Serialize)]
+        struct GroupEntryOut<'a> {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            title: Option<&'a str>,
+        }
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for group in &self.0 {
+            map.serialize_entry(
+                &group.id,
+                &GroupEntryOut {
+                    title: group.title.as_deref(),
+                },
+            )?;
+        }
+        map.end()
+    }
 }
 
 /// Schema definition for a card kind (composable content blocks)
