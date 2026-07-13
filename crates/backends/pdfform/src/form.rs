@@ -165,29 +165,26 @@ impl FormParseError {
     }
 }
 
+/// Just the `schema` tag, deserialized ahead of the full spec so the version
+/// gate runs *before* field-shape validation. A retired `form@0.1.0` file
+/// carries `0.1.0`-shaped fields (an unbound `signature` in `fields`, no
+/// `schema_field`) that no longer deserialize into a [`BoundField`]; gating on
+/// the tag first guarantees such a file gets the migration error, not a generic
+/// "missing field" JSON error.
+#[derive(Debug, Deserialize)]
+struct SchemaTag {
+    schema: String,
+}
+
 impl FormSpec {
     /// Parse and validate a `form.json` byte slice.
     pub fn parse(bytes: &[u8]) -> Result<FormSpec, FormParseError> {
+        // Gate the version on the tag alone, before the field shapes are read.
+        let tag: SchemaTag = serde_json::from_slice(bytes).map_err(FormParseError::Json)?;
+        check_version(&tag.schema)?;
         let spec: FormSpec = serde_json::from_slice(bytes).map_err(FormParseError::Json)?;
-        spec.check_version()?;
         spec.check_unique_names()?;
         Ok(spec)
-    }
-
-    /// The `schema` tag must name the supported `form@0.2.x`. The retired
-    /// `0.1.x` gets a targeted migration error; anything else is a foreign tag.
-    fn check_version(&self) -> Result<(), FormParseError> {
-        let version = self
-            .schema
-            .strip_prefix(SCHEMA_PREFIX)
-            .ok_or_else(|| FormParseError::BadSchema(self.schema.clone()))?;
-        if version_matches(version, SUPPORTED_MAJOR_MINOR) {
-            Ok(())
-        } else if version_matches(version, RETIRED_VERSION_MAJOR_MINOR) {
-            Err(FormParseError::RetiredVersion(self.schema.clone()))
-        } else {
-            Err(FormParseError::BadSchema(self.schema.clone()))
-        }
     }
 
     /// AcroForm `/T` names must be unique across *both* populations.
@@ -207,6 +204,21 @@ impl FormSpec {
             .iter()
             .map(|f| f.name.as_str())
             .chain(self.widgets.iter().map(|w| w.name.as_str()))
+    }
+}
+
+/// The `schema` tag must name the supported `form@0.2.x`. The retired `0.1.x`
+/// gets a targeted migration error; anything else is a foreign tag.
+fn check_version(schema: &str) -> Result<(), FormParseError> {
+    let version = schema
+        .strip_prefix(SCHEMA_PREFIX)
+        .ok_or_else(|| FormParseError::BadSchema(schema.to_string()))?;
+    if version_matches(version, SUPPORTED_MAJOR_MINOR) {
+        Ok(())
+    } else if version_matches(version, RETIRED_VERSION_MAJOR_MINOR) {
+        Err(FormParseError::RetiredVersion(schema.to_string()))
+    } else {
+        Err(FormParseError::BadSchema(schema.to_string()))
     }
 }
 
@@ -293,6 +305,29 @@ mod tests {
             Err(e @ FormParseError::RetiredVersion(_)) => {
                 assert_eq!(e.code(), "pdfform::form_schema_version");
                 assert!(e.to_string().contains(MIGRATION_GUIDE));
+            }
+            other => panic!("expected RetiredVersion, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn retired_v1_with_v1_shaped_fields_still_gets_migration_error() {
+        // A real 0.1.0 file carries an unbound `signature` in `fields` with no
+        // `schema_field` — which no longer deserializes into a BoundField. The
+        // version gate must fire on the tag *before* that shape is read, so the
+        // author gets the migration pointer, not a generic "missing field" error.
+        let json = br#"{
+          "schema": "quillmark/form@0.1.0",
+          "fields": [
+            { "name": "FullName", "schema_field": "full_name", "page": 0,
+              "rect": { "x": 0, "y": 0, "w": 1, "h": 1 }, "type": "text" },
+            { "name": "Signature", "page": 0,
+              "rect": { "x": 0, "y": 2, "w": 1, "h": 1 }, "type": "signature" }
+          ]
+        }"#;
+        match FormSpec::parse(json) {
+            Err(e @ FormParseError::RetiredVersion(_)) => {
+                assert_eq!(e.code(), "pdfform::form_schema_version");
             }
             other => panic!("expected RetiredVersion, got {other:?}"),
         }
