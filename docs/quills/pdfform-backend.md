@@ -16,7 +16,7 @@ my-form/
 ```
 
 - **`form.pdf`** — the *stripped background*: the normalized form with its `/AcroForm`, widget annotations, and page `/Annots` removed (pure pages, rules, boxes, and labels).
-- **`form.json`** — the complete, value-free description of every field: name, page, geometry, type.
+- **`form.json`** — the value-free **placement + binding** layer: where each widget sits (`page`, `rect`) and which schema field it binds (`schema_field`). Everything intrinsic — widget kind, choice options, multiline, tooltip — is *derived* from the quill schema, not restated here.
 
 At render time the backend writes the AcroForm **fresh** from `form.json` onto the background, then binds each field's value from your document data. It never reads or reconciles a form already in `form.pdf`.
 
@@ -72,65 +72,87 @@ See the [Quill.yaml Reference](quill-yaml-reference.md) for the full field-type 
 
 ## `form.json`
 
-`form.json` is a durable, version-controlled artifact — complete enough to rebuild every widget, yet readable and diffable. Each entry describes one field:
+`form.json` is a durable, version-controlled artifact — readable and diffable. It carries two populations: **bound `fields`** that reference a `schema_field` and inherit their widget kind from the schema, and **unbound `widgets`** with no schema field (a signer fills them), which declare their own `type`:
 
 ```json
 {
-  "schema": "quillmark/form@0.1.0",
+  "schema": "quillmark/form@0.2.0",
   "fields": [
     {
       "name": "FullName",
       "schema_field": "full_name",
       "page": 0,
-      "rect": { "x": 180, "y": 100, "w": 340, "h": 20 },
-      "type": "text",
-      "tooltip": "Full legal name of the applicant"
+      "rect": { "x": 180, "y": 100, "w": 340, "h": 20 }
     },
     {
       "name": "Comments",
       "schema_field": "comments",
       "page": 0,
-      "rect": { "x": 180, "y": 140, "w": 340, "h": 80 },
-      "type": "text",
-      "multiline": true
+      "rect": { "x": 180, "y": 140, "w": 340, "h": 80 }
     },
     {
       "name": "Agree",
       "schema_field": "agree",
       "page": 0,
-      "rect": { "x": 180, "y": 240, "w": 14, "h": 14 },
-      "type": "checkbox"
+      "rect": { "x": 180, "y": 240, "w": 14, "h": 14 }
     },
     {
       "name": "FavoriteColor",
       "schema_field": "favorite_color",
       "page": 0,
-      "rect": { "x": 180, "y": 280, "w": 340, "h": 20 },
-      "type": "choice",
-      "options": ["red", "green", "blue"]
-    },
+      "rect": { "x": 180, "y": 280, "w": 340, "h": 20 }
+    }
+  ],
+  "widgets": [
     {
       "name": "Signature",
+      "type": "signature",
       "page": 0,
-      "rect": { "x": 180, "y": 330, "w": 340, "h": 40 },
-      "type": "signature"
+      "rect": { "x": 180, "y": 330, "w": 340, "h": 40 }
     }
   ]
 }
 ```
 
-### Field keys
+Note what is **absent** from the bound fields: no `type`, `options`, or `multiline`. `FullName` is a text box because `full_name` is a `string`; `Agree` is a checkbox because `agree` is a `boolean`; `FavoriteColor` is a dropdown whose options are the schema field's `enum` values; `Comments` is a multi-line text box because `comments` is a scalar array with `ui.multiline`. The two files cannot drift, because there is only one source of truth.
+
+### Bound-field keys (`fields`)
 
 | Key | Required | Notes |
 |---|---|---|
-| `name` | yes | The widget's `/T` entry — unique within the document. |
+| `name` | yes | The widget's `/T` entry — unique across **both** `fields` and `widgets`. |
+| `schema_field` | yes | The document field this widget binds to. Resolved against the quill schema at load; a dangling path is a load error (`pdfform::dangling_binding`), not a silent blank. |
 | `page` | yes | 0-based page index into `form.pdf`. |
 | `rect` | yes | `{x, y, w, h}` in **PDF points** (1/72"), **top-left origin**, page-relative (see below). |
+| `tooltip` | no | Overrides the widget's `/TU`. When omitted, the field inherits the schema field's `description`. |
+
+### Unbound-widget keys (`widgets`)
+
+An unbound widget has no `schema_field`, so it cannot inherit a kind — it declares one.
+
+| Key | Required | Notes |
+|---|---|---|
+| `name` | yes | The widget's `/T` entry — unique across both populations. |
 | `type` | yes | One of `text`, `checkbox`, `choice`, `signature`. |
-| `schema_field` | no | The document field this widget binds to. Omit for unbound fields (e.g. a signer-filled signature). |
-| `tooltip` | no | The widget's `/TU` tooltip. |
+| `page` | yes | 0-based page index into `form.pdf`. |
+| `rect` | yes | Same top-left geometry as a bound field. |
+| `tooltip` | no | The widget's `/TU`. |
 | `multiline` | text only | `true` for a multi-line text box. |
 | `options` | choice only | The dropdown options, as bare strings. |
+
+### Widget-kind projection
+
+A bound field's kind is derived from the **capability of the resolved schema field**, not its `type` token — so both `type: enum` and the deprecated `string` + `enum:` modifier project to a dropdown. The projection is total, or the quill fails to load:
+
+| Resolved schema field | Widget kind |
+|---|---|
+| has `enum` values (any spelling) | **choice**, options = the enum values |
+| `boolean` | **checkbox** |
+| `string`, `number`, `integer`, `datetime`, `richtext`, `plaintext` | **text** |
+| array of the above (scalar or prose) | **text** — elements joined with newlines |
+| `object`, or array of objects | **load error** `pdfform::unbindable_field` |
+
+`multiline` on a text widget comes from the schema field's `ui.multiline`.
 
 ### Top-left coordinates
 
@@ -138,7 +160,7 @@ See the [Quill.yaml Reference](quill-yaml-reference.md) for the full field-type 
 
 ### Schema versioning and unknown keys
 
-`schema` follows the convention `quillmark/form@<version>`, hand-set at the last format change (never auto-derived from a crate version). Unknown keys are **ignored, not rejected**, so the format can grow additively — old engines skip new keys and new engines default missing ones.
+`schema` follows the convention `quillmark/form@<version>`, hand-set at the last format change (never auto-derived from a crate version). The current format is **`quillmark/form@0.2.0`**. Unknown *keys* are **ignored, not rejected**, so the format can grow additively — but a retired *version* is rejected: a `form@0.1.0` file (which restated `type`/`options`/`multiline` on each field) fails to load with `pdfform::form_schema_version` and a pointer to the migration guide.
 
 ### Opinionated styling
 
@@ -146,10 +168,10 @@ The background owns all visual chrome; each widget is a transparent input over i
 
 ## Binding values
 
-Each field's value comes from the **resolver**: for every `form.json` field with a `schema_field`, the backend dereferences that path against your document data and coerces it to the field's type.
+Each field's value comes from the **resolver**: for every bound field, the backend dereferences its `schema_field` against your document data and coerces it to the field's derived widget kind.
 
 - **Bound against the same validated data the Typst plate sees.** Schema validation, defaults, zero-fill, and scalar coercion are all inherited — there is no second data pipeline.
-- **Addressing** is a shallow path rooted at a schema field name, optionally with an array index or nested key: `full_name`, `comments.0`.
+- **Addressing** is a shallow path rooted at a schema field name, optionally with an array index or nested key: `full_name`, `comments.0`, `address.street`. The path is validated against the schema at load: a `.N` segment requires an array, a `.key` segment requires an object, and any miss is a `pdfform::dangling_binding` load error naming the failing segment.
 - **Coercion is type-directed:**
 
 | Type | Binding |
@@ -163,19 +185,20 @@ Each field's value comes from the **resolver**: for every `form.json` field with
 
 ### Card-instance addressing
 
-A `schema_field` rooted at the reserved `$cards` key binds one card instance from the document's `$cards` array (the same array the Typst plate iterates):
+A `schema_field` rooted at the reserved `$cards` key binds one card instance from the document's `$cards` array (the same array the Typst plate iterates), **by kind + index**:
 
-- **By absolute index:** `$cards.0.from` — the first card overall.
-- **By kind + index:** `$cards.indorsement.1.from` — the second card whose `$kind` is `indorsement`, skipping intervening cards of other kinds.
+- `$cards.indorsement.1.from` — the `from` field of the second card whose `$kind` is `indorsement`, skipping intervening cards of other kinds.
 
-This lets a **static, fixed-capacity** form lay out a bounded number of card slots across its existing pages — each slot a `form.json` field with its own `page`, bound to a distinct instance.
+Absolute-index addressing (`$cards.0.from`) is **not accepted** in `form@0.2.0`: a widget's kind must be statically derivable at load, and only the *kind* names which schema field the slot binds (an absolute index does not, since the card at that position varies per document).
+
+This lets a **static, fixed-capacity** form lay out a bounded number of card slots across its existing pages — each slot a bound field with its own `page`, bound to a distinct instance.
 
 !!! warning "Static forms only"
     `pdfform` stamps over a fixed, pre-existing page set. It never composes content, appends continuation pages, or merges PDFs. A document carrying more card instances than the form has slots is the author's concern, not the engine's.
 
 ## Signature fields
 
-A `type: signature` field (with no `schema_field`) produces a clickable, **unsigned** AcroForm signature widget. Open the result in Acrobat — or any reader that supports form signing — and the widget presents a "Sign Here" affordance.
+A `type: signature` entry in the `widgets` section produces a clickable, **unsigned** AcroForm signature widget. Open the result in Acrobat — or any reader that supports form signing — and the widget presents a "Sign Here" affordance.
 
 The widget is unsigned: Quillmark performs no cryptography. To produce a signed PDF, run the output through pyHanko, Acrobat, endesive, or another signing tool.
 

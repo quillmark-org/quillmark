@@ -14,11 +14,13 @@
 //! backends collapse to the same `&[FieldSpec]` seam; they differ only in where
 //! geometry and values come from.
 
+mod bind;
 mod flatten;
 mod form;
 mod resolve;
 mod typography;
 
+use bind::BoundWidget;
 use flatten::flatten as flatten_to_pdf;
 use form::FormSpec;
 use quillmark_core::session::SessionHandle;
@@ -83,15 +85,22 @@ impl Backend for PdfformBackend {
             )
         })?;
 
-        let spec = FormSpec::parse(form_json)
-            .map_err(|e| engine_err("pdfform::invalid_form_json", e.to_string()))?;
+        let spec =
+            FormSpec::parse(form_json).map_err(|e| engine_err(e.code(), e.to_string()))?;
+
+        // Bind at load: resolve every field against the quill schema and derive
+        // its widget intrinsics (kind, options, multiline, tooltip). A dangling
+        // or unbindable `schema_field` is a load error here, not a silent blank
+        // at value time.
+        let bound = bind::bind_widgets(&spec, source.config())
+            .map_err(|e| engine_err(e.code(), e.to_string()))?;
 
         // Page boxes drive the top-left → bottom-left flip (honouring a
         // non-zero page origin); reading them from the background also surfaces
         // a malformed/out-of-contract base early.
         let page_boxes = quillmark_pdf::page_media_boxes(&base_pdf).map_err(map_pdf_err)?;
 
-        let field_specs = resolve_field_specs(&spec, &page_boxes, json_data)?;
+        let field_specs = resolve_field_specs(&bound, &page_boxes, json_data)?;
 
         // Pre-flatten once so render_rgba / SVG / PNG renders have a
         // ready-to-rasterize flat PDF without re-running flatten on every
@@ -100,7 +109,7 @@ impl Backend for PdfformBackend {
 
         Ok(LiveSession::new(Box::new(PdfformSession {
             base_pdf,
-            spec,
+            bound,
             field_specs,
             page_boxes,
             flat_pdf,
@@ -108,26 +117,27 @@ impl Backend for PdfformBackend {
     }
 }
 
-/// Resolve the form spec's fields against document data — the per-document
-/// half of `open`, re-run by each `apply`.
+/// Resolve the bound widgets' values against document data — the per-document
+/// half of `open`, re-run by each `apply`. Intrinsics were already derived at
+/// bind time; this pass only flips geometry and resolves values.
 fn resolve_field_specs(
-    spec: &FormSpec,
+    bound: &[BoundWidget],
     page_boxes: &[[f32; 4]],
     json_data: &serde_json::Value,
 ) -> Result<Vec<FieldSpec>, RenderError> {
     let page_count = page_boxes.len();
-    let mut field_specs: Vec<FieldSpec> = Vec::with_capacity(spec.fields.len());
-    for field in &spec.fields {
-        let media_box = page_boxes.get(field.page).copied().ok_or_else(|| {
+    let mut field_specs: Vec<FieldSpec> = Vec::with_capacity(bound.len());
+    for widget in bound {
+        let media_box = page_boxes.get(widget.page).copied().ok_or_else(|| {
             engine_err(
                 "pdfform::field_page_out_of_range",
                 format!(
                     "field {:?} targets page {} but `{FORM_PDF}` has {page_count} page(s)",
-                    field.name, field.page
+                    widget.name, widget.page
                 ),
             )
         })?;
-        field_specs.push(resolve::field_spec(field, media_box, json_data));
+        field_specs.push(resolve::field_spec(widget, media_box, json_data));
     }
     Ok(field_specs)
 }
@@ -137,9 +147,9 @@ fn resolve_field_specs(
 #[derive(Debug)]
 struct PdfformSession {
     base_pdf: Vec<u8>,
-    /// The parsed `form.json` field definitions; re-resolved against new
-    /// document data by each `apply`.
-    spec: FormSpec,
+    /// The value-free widget layer, bound against the quill schema at open;
+    /// re-resolved against new document data by each `apply`.
+    bound: Vec<BoundWidget>,
     field_specs: Vec<FieldSpec>,
     /// Page media-boxes from the background; used by `page_size_pt` without
     /// reparsing the PDF on every canvas-paint call. Its length is the page
@@ -243,7 +253,7 @@ impl SessionHandle for PdfformSession {
     /// changed; the background never changes, so field deltas are the only
     /// visible delta.
     fn apply(&mut self, json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
-        let field_specs = resolve_field_specs(&self.spec, &self.page_boxes, json_data)?;
+        let field_specs = resolve_field_specs(&self.bound, &self.page_boxes, json_data)?;
         let flat_pdf = flatten_to_pdf(self.base_pdf.clone(), &field_specs).map_err(map_pdf_err)?;
 
         let mut dirty_pages: Vec<usize> = self

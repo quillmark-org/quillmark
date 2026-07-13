@@ -1,5 +1,7 @@
-//! The resolver: the bind step that turns a value-free [`FormField`] plus the
-//! document's `compile_data` JSON into a stamp-spine [`FieldSpec`].
+//! The value step: turn a value-free [`BoundWidget`] plus the document's
+//! `compile_data` JSON into a stamp-spine [`FieldSpec`]. Intrinsics (kind,
+//! options, multiline, tooltip) were already derived from the quill schema at
+//! load ([`crate::bind`]); this module resolves only the per-document *value*.
 //!
 //! Binding is against `compile_data` — the same validated, zero-filled object
 //! the Typst plate reads as `data.*` — so zero-fill, schema validation,
@@ -12,37 +14,33 @@
 //!
 //! A `schema_field` rooted at the reserved `$cards` key binds to one card
 //! instance in the document's `$cards` array (the same array the Typst plate
-//! iterates). Two forms, so a fixed-capacity form can lay out repeated card
-//! slots:
-//!
-//! - **By absolute index:** `$cards.<i>.<field>` — the `i`-th card overall
-//!   (e.g. `$cards.0.from`).
-//! - **By kind + index:** `$cards.<kind>.<i>.<field>` — the `i`-th card whose
-//!   `$kind` is `<kind>` (e.g. `$cards.indorsement.1.from` is the second
-//!   indorsement). This survives reordering and intervening cards of other
-//!   kinds, which absolute indexing does not.
-//!
-//! Either form descends the remaining path into the chosen card object exactly
+//! iterates), by kind + index: `$cards.<kind>.<i>.<field>` — the `i`-th card
+//! whose `$kind` is `<kind>` (e.g. `$cards.indorsement.1.from` is the second
+//! indorsement). This survives reordering and intervening cards of other kinds.
+//! Absolute-index addressing (`$cards.<i>`) was retired in `form@0.2.0`: a
+//! widget kind must be statically derivable at load, and only the kind names the
+//! field. The path descends the remaining segments into the chosen card exactly
 //! as a top-level binding would.
 
 use quillmark_pdf::{FieldSpec, FieldType, CHECKBOX_ON_STATE};
 use serde_json::Value;
 
-use crate::form::{FieldKind, FormField, Rect};
+use crate::bind::BoundWidget;
+use crate::form::Rect;
 
-/// Build a [`FieldSpec`] for `field`, flipping its top-left rect to bottom-left
+/// Build a [`FieldSpec`] for `widget`, flipping its top-left rect to bottom-left
 /// against the page's `media_box` and resolving its bound value from `data`.
 ///
 /// `media_box` is the normalized `[x0, y0, x1, y1]` of the target page.
-pub fn field_spec(field: &FormField, media_box: [f32; 4], data: &Value) -> FieldSpec {
+pub fn field_spec(widget: &BoundWidget, media_box: [f32; 4], data: &Value) -> FieldSpec {
     FieldSpec {
-        name: field.name.clone(),
-        schema_field: field.schema_field.clone(),
-        page: field.page,
-        rect: flip_rect(field.rect, media_box),
-        field_type: field_type(&field.kind),
-        value: resolve_value(&field.kind, field.schema_field.as_deref(), data),
-        tooltip: field.tooltip.clone(),
+        name: widget.name.clone(),
+        schema_field: widget.schema_field.clone(),
+        page: widget.page,
+        rect: flip_rect(widget.rect, media_box),
+        field_type: widget.field_type.clone(),
+        value: resolve_value(&widget.field_type, widget.schema_field.as_deref(), data),
+        tooltip: widget.tooltip.clone(),
     }
 }
 
@@ -58,36 +56,22 @@ fn flip_rect(r: Rect, media_box: [f32; 4]) -> [f32; 4] {
     [left + r.x, top - (r.y + r.h), left + r.x + r.w, top - r.y]
 }
 
-fn field_type(kind: &FieldKind) -> FieldType {
-    match kind {
-        FieldKind::Text { multiline } => FieldType::Text {
-            multiline: *multiline,
-        },
-        FieldKind::Checkbox => FieldType::Checkbox,
-        FieldKind::Choice { options } => FieldType::Choice {
-            options: options.clone(),
-        },
-        FieldKind::Signature => FieldType::Signature,
-    }
-}
-
-/// Resolve a field's bound value. `None` (blank) for: an unbound field
+/// Resolve a widget's bound value. `None` (blank) for: an unbound widget
 /// (`schema_field: None`), an absent/null target, a signature, an empty text
 /// value, an unchecked checkbox, or a choice value matching no option.
-fn resolve_value(kind: &FieldKind, schema_field: Option<&str>, data: &Value) -> Option<String> {
+fn resolve_value(field_type: &FieldType, schema_field: Option<&str>, data: &Value) -> Option<String> {
     let raw = lookup(data, schema_field?)?;
-    match kind {
-        FieldKind::Text { .. } => coerce_text(raw),
-        FieldKind::Checkbox => is_truthy(raw).then(|| CHECKBOX_ON_STATE.to_string()),
-        FieldKind::Choice { options } => coerce_choice(raw, options),
-        FieldKind::Signature => None,
+    match field_type {
+        FieldType::Text { .. } => coerce_text(raw),
+        FieldType::Checkbox => is_truthy(raw).then(|| CHECKBOX_ON_STATE.to_string()),
+        FieldType::Choice { options } => coerce_choice(raw, options),
+        FieldType::Signature => None,
     }
 }
 
 /// Dereference a shallow `field[.<index-or-key>]*` path against `data`. A path
-/// rooted at the reserved `$cards` key resolves a card instance (by absolute
-/// index, or by `$kind` + index) before descending the rest. Returns `None` for
-/// any missing segment.
+/// rooted at the reserved `$cards` key resolves a card instance (by `$kind` +
+/// index) before descending the rest. Returns `None` for any missing segment.
 fn lookup<'a>(data: &'a Value, path: &str) -> Option<&'a Value> {
     let mut parts = path.split('.');
     let root = parts.next()?;
@@ -97,30 +81,21 @@ fn lookup<'a>(data: &'a Value, path: &str) -> Option<&'a Value> {
     descend(data.get(root)?, parts)
 }
 
-/// Resolve a `$cards`-rooted path: select one card from the `$cards` array
-/// either by absolute index (`$cards.<i>...`) or by kind + index
-/// (`$cards.<kind>.<i>...`), then descend the remaining segments into it.
-///
-/// The first segment is tried as an absolute index *before* being treated as a
-/// kind, so **card kinds are expected to be non-numeric**: a `$kind` that is a
-/// numeric string can only be reached by its absolute index, never by kind.
+/// Resolve a `$cards.<kind>.<i>...` path: select the `i`-th card whose `$kind`
+/// is `<kind>`, then descend the remaining segments into it. Absolute indexing
+/// was retired in `form@0.2.0` (the bind step rejects it), so the first segment
+/// is always a kind and the second its instance index.
 fn lookup_card<'a, 'p, I>(data: &'a Value, mut parts: I) -> Option<&'a Value>
 where
     I: Iterator<Item = &'p str>,
 {
     let cards = data.get("$cards")?.as_array()?;
-    let first = parts.next()?;
-    let card = if let Ok(i) = first.parse::<usize>() {
-        // `$cards.<i>...` — absolute index.
-        cards.get(i)?
-    } else {
-        // `$cards.<kind>.<i>...` — the i-th card of that `$kind`.
-        let i: usize = parts.next()?.parse().ok()?;
-        cards
-            .iter()
-            .filter(|c| c.get("$kind").and_then(Value::as_str) == Some(first))
-            .nth(i)?
-    };
+    let kind = parts.next()?;
+    let i: usize = parts.next()?.parse().ok()?;
+    let card = cards
+        .iter()
+        .filter(|c| c.get("$kind").and_then(Value::as_str) == Some(kind))
+        .nth(i)?;
     descend(card, parts)
 }
 
@@ -248,7 +223,7 @@ mod tests {
     }
 
     fn text(field: &str) -> Option<String> {
-        resolve_value(&FieldKind::Text { multiline: false }, Some(field), &data())
+        resolve_value(&FieldType::Text { multiline: false }, Some(field), &data())
     }
 
     #[test]
@@ -256,7 +231,7 @@ mod tests {
         assert_eq!(text("full_name"), Some("Ada Lovelace".into()));
         assert_eq!(
             resolve_value(
-                &FieldKind::Text { multiline: true },
+                &FieldType::Text { multiline: true },
                 Some("comments"),
                 &data()
             ),
@@ -331,14 +306,14 @@ mod tests {
     #[test]
     fn unbound_is_blank() {
         assert_eq!(
-            resolve_value(&FieldKind::Text { multiline: false }, None, &data()),
+            resolve_value(&FieldType::Text { multiline: false }, None, &data()),
             None
         );
     }
 
     #[test]
     fn checkbox_truthiness() {
-        let on = |f| resolve_value(&FieldKind::Checkbox, Some(f), &data());
+        let on = |f| resolve_value(&FieldType::Checkbox, Some(f), &data());
         assert_eq!(on("agree"), Some(CHECKBOX_ON_STATE.to_string()));
         assert_eq!(on("decline"), None);
         assert_eq!(on("missing"), None);
@@ -347,7 +322,7 @@ mod tests {
     #[test]
     fn choice_must_match_option() {
         let opts = vec!["red".to_string(), "green".to_string(), "blue".to_string()];
-        let kind = FieldKind::Choice { options: opts };
+        let kind = FieldType::Choice { options: opts };
         assert_eq!(
             resolve_value(&kind, Some("favorite_color"), &data()),
             Some("green".into())
@@ -359,13 +334,13 @@ mod tests {
     #[test]
     fn signature_never_binds() {
         assert_eq!(
-            resolve_value(&FieldKind::Signature, Some("full_name"), &data()),
+            resolve_value(&FieldType::Signature, Some("full_name"), &data()),
             None
         );
     }
 
     /// A mixed-kind `$cards` array: two indorsements with a note between them,
-    /// so by-kind indexing must skip the note that absolute indexing would not.
+    /// so by-kind indexing must skip the note.
     fn card_data() -> Value {
         json!({
             "$cards": [
@@ -378,19 +353,10 @@ mod tests {
 
     fn card_text(path: &str) -> Option<String> {
         resolve_value(
-            &FieldKind::Text { multiline: false },
+            &FieldType::Text { multiline: false },
             Some(path),
             &card_data(),
         )
-    }
-
-    #[test]
-    fn card_absolute_index() {
-        assert_eq!(card_text("$cards.0.from"), Some("Alice".into()));
-        assert_eq!(card_text("$cards.1.from"), Some("ignored".into()));
-        assert_eq!(card_text("$cards.2.from"), Some("Bob".into()));
-        // Past the end → blank.
-        assert_eq!(card_text("$cards.3.from"), None);
     }
 
     #[test]
@@ -406,9 +372,9 @@ mod tests {
     }
 
     #[test]
-    fn card_coercion_runs_per_field_kind() {
+    fn card_coercion_runs_per_widget_type() {
         // A checkbox bound to a card field coerces truthiness like any other.
-        let agree = |path| resolve_value(&FieldKind::Checkbox, Some(path), &card_data());
+        let agree = |path| resolve_value(&FieldType::Checkbox, Some(path), &card_data());
         assert_eq!(
             agree("$cards.indorsement.0.agree"),
             Some(CHECKBOX_ON_STATE.to_string())
@@ -421,7 +387,10 @@ mod tests {
         // Missing index after a kind, a bare `$cards`, and a missing field.
         assert_eq!(card_text("$cards.indorsement"), None);
         assert_eq!(card_text("$cards"), None);
-        assert_eq!(card_text("$cards.0.missing"), None);
+        assert_eq!(card_text("$cards.indorsement.0.missing"), None);
+        // Absolute-index addressing is gone: `$cards.0.from` reads `0` as a kind,
+        // which matches no card's `$kind`, so it resolves blank.
+        assert_eq!(card_text("$cards.0.from"), None);
     }
 
     #[test]
@@ -456,26 +425,6 @@ mod tests {
         assert_eq!(coerce_text(&json!([])), None);
     }
 
-    #[test]
-    fn numeric_card_kind_cannot_be_addressed_by_kind() {
-        // KNOWN LIMITATION: `lookup_card` tries `parse::<usize>()` on the first
-        // segment first, so a `$kind` that is a numeric string is unreachable by
-        // kind — `$cards.<n>...` is always read as an absolute index. Card kinds
-        // are therefore expected to be non-numeric.
-        let data = json!({
-            "$cards": [
-                { "$kind": "note", "from": "first" },
-                { "$kind": "2",    "from": "numeric-kind" }
-            ]
-        });
-        let by = |path| resolve_value(&FieldKind::Text { multiline: false }, Some(path), &data);
-        // `$cards.2.from` is read as absolute index 2 (out of range) — NOT as
-        // "kind \"2\", index <next>".
-        assert_eq!(by("$cards.2.from"), None);
-        // The numeric-kind card is only reachable by its absolute index.
-        assert_eq!(by("$cards.1.from"), Some("numeric-kind".into()));
-    }
-
     /// Card slots on a STATIC multi-page form, end-to-end through `field_spec`:
     /// a form with one card slot per page binds each card INSTANCE to its own
     /// page via card-instance addressing. Two cards of one kind, two slots on two
@@ -494,7 +443,7 @@ mod tests {
 
         // Two card slots, one per page, each bound to a distinct instance index.
         let mb = [0.0, 0.0, 612.0, 792.0];
-        let slot = |name: &str, page: usize, schema_field: &str| FormField {
+        let slot = |name: &str, page: usize, schema_field: &str| BoundWidget {
             name: name.into(),
             schema_field: Some(schema_field.into()),
             page,
@@ -504,8 +453,8 @@ mod tests {
                 w: 200.0,
                 h: 20.0,
             },
+            field_type: FieldType::Text { multiline: false },
             tooltip: None,
-            kind: FieldKind::Text { multiline: false },
         };
         let slot0 = slot("Indorsement0From", 0, "$cards.indorsement.0.from");
         let slot1 = slot("Indorsement1From", 1, "$cards.indorsement.1.from");

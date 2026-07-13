@@ -42,7 +42,14 @@ guides in order.
   types join the schema: `plaintext` (navigable unformatted prose over the
   richtext corpus, via a literal codec) and a promoted first-class `enum`
   (`type: enum` + `values:`, the `enum:` modifier on `string` deprecated for one
-  release); `string` narrows to open scalar data (#938).
+  release); `string` narrows to open scalar data (#938). The `pdfform` backend's
+  `form.json` slims to a binding layer — `form@0.2.0`: bound `fields` drop
+  `type`/`options`/`multiline` (derived from the schema field's kind, `enum`
+  values, and `ui.multiline`), unbound widgets move to a `widgets` section,
+  binding runs at load so a bad `schema_field` fails with
+  `pdfform::dangling_binding` / `pdfform::unbindable_field` instead of a silent
+  blank, `form@0.1.0` is rejected, and `$cards` absolute-index addressing is
+  removed (#940).
 - [0.92 → 0.93](0.92-to-0.93.md) — the blueprint placeholder is rebuilt on two
   orthogonal axes (value and marker): blueprints now stamp the `!must_fill` tag
   instead of the `<must-fill>` string sentinel, and bare-null / `field:` now

@@ -1,42 +1,90 @@
-//! `form.json` wire types and parsing.
+//! `form.json` wire types and parsing (`form@0.2.0`).
 //!
-//! `form.json` is the durable, value-free field-definition layer of a `pdfform`
-//! quill — the *format* side of Quillmark's quill/document dichotomy. It is
-//! complete enough to rebuild every widget yet flat and diffable. Unknown keys
-//! are ignored (additive evolution needs no version bump); invalid type/payload
-//! combinations are unrepresentable thanks to the internally-tagged `type`.
+//! `form.json` is the durable, value-free **placement + binding + widget-identity**
+//! layer of a `pdfform` quill — the *format* side of Quillmark's quill/document
+//! dichotomy. As of `form@0.2.0` it no longer restates what the quill schema
+//! already carries: a bound field names a `schema_field` and inherits its widget
+//! kind, options, multiline, and tooltip from the resolved
+//! [`FieldSchema`](quillmark_core::FieldSchema) (see [`crate::bind`]). Only the
+//! two things the schema cannot know — where the widget sits (`page`/`rect`) and
+//! which logical field it binds — live here.
+//!
+//! Two field populations, at different altitudes:
+//! - **`fields`** — bound widgets. Each references a `schema_field`; its kind is
+//!   *derived*, never declared, so `form.json` and the schema cannot drift.
+//! - **`widgets`** — unbound widgets with no schema field (a signer-filled
+//!   signature, an interactively-filled box). Having no schema to inherit from,
+//!   each carries its own `type`.
+//!
+//! Unknown keys are ignored (additive evolution needs no version bump); invalid
+//! type/payload combinations on an unbound widget are unrepresentable thanks to
+//! the internally-tagged `type`.
 
 use serde::Deserialize;
 
 /// The `schema` tag prefix every `form.json` must carry, following the Document
-/// DTO convention (`quillmark/form@<version>`). V1 adopts only the field+value
-/// format; the chained-migration machinery lands when a breaking change first
-/// does.
+/// DTO convention (`quillmark/form@<version>`).
 pub const SCHEMA_PREFIX: &str = "quillmark/form@";
 
-/// A parsed `form.json`: the schema tag plus the field reconstruction list.
+/// The `form.json` format version this backend reads. `0.2.0` slimmed bound
+/// fields to a binding layer that derives widget intrinsics from the quill
+/// schema; `0.1.0` (which restated `type`/`options`/`multiline`) is rejected at
+/// load with a migration pointer.
+pub const SCHEMA_VERSION: &str = "0.2.0";
+
+/// The retired format version, rejected with migration guidance.
+const RETIRED_VERSION_MAJOR_MINOR: &str = "0.1";
+/// The accepted major.minor; a matching patch is tolerated.
+const SUPPORTED_MAJOR_MINOR: &str = "0.2";
+
+/// The working migration guide the version error points a stranded `0.1.0`
+/// author at.
+const MIGRATION_GUIDE: &str = "docs/migrations/0.93-to-0.94.md";
+
+/// A parsed `form.json`: the schema tag plus the two field populations.
 #[derive(Debug, Clone, Deserialize)]
 pub struct FormSpec {
     pub schema: String,
-    pub fields: Vec<FormField>,
+    /// Schema-bound widgets — kind/options/multiline/tooltip inherited from the
+    /// referenced [`FieldSchema`](quillmark_core::FieldSchema).
+    #[serde(default)]
+    pub fields: Vec<BoundField>,
+    /// Unbound widgets — no schema field, so each declares its own `type`.
+    #[serde(default)]
+    pub widgets: Vec<UnboundWidget>,
 }
 
-/// One field definition: identity + geometry + binding + kind.
+/// One **bound** field: identity + geometry + binding. Its widget kind, choice
+/// options, and multiline flag are *not* here — they are derived from the
+/// resolved [`FieldSchema`](quillmark_core::FieldSchema) at load
+/// ([`crate::bind`]). `tooltip` is an optional override; when absent the field
+/// inherits the schema field's `description`.
 ///
-/// `rect` is **top-left** `{x,y,w,h}` in PDF points, page-relative — the
-/// loader flips it to the spine's bottom-left origin. `schema_field` is the
-/// document field this binds to; `None` means unbound (a signer fills it).
+/// `rect` is **top-left** `{x,y,w,h}` in PDF points, page-relative — the loader
+/// flips it to the spine's bottom-left origin.
 #[derive(Debug, Clone, Deserialize)]
-pub struct FormField {
+pub struct BoundField {
     pub name: String,
+    /// The document field this widget binds to. Resolved against the quill
+    /// schema at load; a dangling path is a load error, not a silent blank.
+    pub schema_field: String,
+    pub page: usize,
+    pub rect: Rect,
     #[serde(default)]
-    pub schema_field: Option<String>,
+    pub tooltip: Option<String>,
+}
+
+/// One **unbound** widget: identity + geometry + an explicit kind. Bound to no
+/// schema field (a signer fills it), so its intrinsics are declared, not derived.
+#[derive(Debug, Clone, Deserialize)]
+pub struct UnboundWidget {
+    pub name: String,
     pub page: usize,
     pub rect: Rect,
     #[serde(default)]
     pub tooltip: Option<String>,
     #[serde(flatten)]
-    pub kind: FieldKind,
+    pub kind: WidgetKind,
 }
 
 /// A top-left rectangle in PDF points (1/72").
@@ -48,12 +96,13 @@ pub struct Rect {
     pub h: f32,
 }
 
-/// The kind of a [`FormField`] and its kind-specific definition. Internally
-/// tagged by `type` and flattened into the field, so the JSON stays flat while
-/// invalid combinations (a `signature` with `options`) are unrepresentable.
+/// The declared kind of an [`UnboundWidget`]. Internally tagged by `type` and
+/// flattened into the widget, so the JSON stays flat while invalid combinations
+/// (a `signature` with `options`) are unrepresentable. Bound fields carry no
+/// such tag — their kind is derived from the schema.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
-pub enum FieldKind {
+pub enum WidgetKind {
     Text {
         #[serde(default)]
         multiline: bool,
@@ -72,10 +121,14 @@ pub enum FormParseError {
     Json(serde_json::Error),
     /// The `schema` tag is not a recognized `quillmark/form@…` string.
     BadSchema(String),
-    /// Two fields share the same `name`. AcroForm top-level field names must be
-    /// unique — duplicates would stamp two `/T`-colliding fields and render as a
-    /// single malformed field, so reject them at parse time (mirroring the
-    /// Typst producer, which rejects duplicate `form-field` names).
+    /// The `schema` tag names the retired `form@0.1.0` format. Surfaced with its
+    /// own error code and a migration pointer, distinct from a foreign tag.
+    RetiredVersion(String),
+    /// Two fields/widgets share the same `name`. AcroForm top-level field names
+    /// must be unique across the whole form — duplicates would stamp two
+    /// `/T`-colliding fields and render as a single malformed field, so reject
+    /// them at parse time (mirroring the Typst producer, which rejects duplicate
+    /// `form-field` names).
     DuplicateField(String),
 }
 
@@ -85,7 +138,14 @@ impl std::fmt::Display for FormParseError {
             FormParseError::Json(e) => write!(f, "form.json is not valid: {e}"),
             FormParseError::BadSchema(s) => write!(
                 f,
-                "form.json `schema` is {s:?}, expected a \"{SCHEMA_PREFIX}<version>\" tag"
+                "form.json `schema` is {s:?}, expected a \"{SCHEMA_PREFIX}{SCHEMA_VERSION}\" tag"
+            ),
+            FormParseError::RetiredVersion(s) => write!(
+                f,
+                "form.json `schema` is {s:?}; the `form@{RETIRED_VERSION_MAJOR_MINOR}.x` format is \
+                 retired — bound fields no longer restate `type`/`options`/`multiline` (they are \
+                 derived from the quill schema). Migrate to \"{SCHEMA_PREFIX}{SCHEMA_VERSION}\"; \
+                 see {MIGRATION_GUIDE}"
             ),
             FormParseError::DuplicateField(name) => write!(
                 f,
@@ -95,21 +155,69 @@ impl std::fmt::Display for FormParseError {
     }
 }
 
+impl FormParseError {
+    /// The stable error code a caller stamps on the surfaced diagnostic.
+    pub fn code(&self) -> &'static str {
+        match self {
+            FormParseError::RetiredVersion(_) => "pdfform::form_schema_version",
+            _ => "pdfform::invalid_form_json",
+        }
+    }
+}
+
 impl FormSpec {
     /// Parse and validate a `form.json` byte slice.
     pub fn parse(bytes: &[u8]) -> Result<FormSpec, FormParseError> {
         let spec: FormSpec = serde_json::from_slice(bytes).map_err(FormParseError::Json)?;
-        if !spec.schema.starts_with(SCHEMA_PREFIX) {
-            return Err(FormParseError::BadSchema(spec.schema));
-        }
-        let mut seen = std::collections::HashSet::new();
-        for field in &spec.fields {
-            if !seen.insert(field.name.as_str()) {
-                return Err(FormParseError::DuplicateField(field.name.clone()));
-            }
-        }
+        spec.check_version()?;
+        spec.check_unique_names()?;
         Ok(spec)
     }
+
+    /// The `schema` tag must name the supported `form@0.2.x`. The retired
+    /// `0.1.x` gets a targeted migration error; anything else is a foreign tag.
+    fn check_version(&self) -> Result<(), FormParseError> {
+        let version = self
+            .schema
+            .strip_prefix(SCHEMA_PREFIX)
+            .ok_or_else(|| FormParseError::BadSchema(self.schema.clone()))?;
+        if version_matches(version, SUPPORTED_MAJOR_MINOR) {
+            Ok(())
+        } else if version_matches(version, RETIRED_VERSION_MAJOR_MINOR) {
+            Err(FormParseError::RetiredVersion(self.schema.clone()))
+        } else {
+            Err(FormParseError::BadSchema(self.schema.clone()))
+        }
+    }
+
+    /// AcroForm `/T` names must be unique across *both* populations.
+    fn check_unique_names(&self) -> Result<(), FormParseError> {
+        let mut seen = std::collections::HashSet::new();
+        for name in self.field_names() {
+            if !seen.insert(name) {
+                return Err(FormParseError::DuplicateField(name.to_string()));
+            }
+        }
+        Ok(())
+    }
+
+    /// Every widget name, bound then unbound, in declaration order.
+    fn field_names(&self) -> impl Iterator<Item = &str> {
+        self.fields
+            .iter()
+            .map(|f| f.name.as_str())
+            .chain(self.widgets.iter().map(|w| w.name.as_str()))
+    }
+}
+
+/// A version string matches `<major.minor>` when it is exactly that or carries a
+/// `.patch` suffix — so `0.2` and `0.2.7` both match `"0.2"`, while `0.20` does
+/// not.
+fn version_matches(version: &str, major_minor: &str) -> bool {
+    version == major_minor
+        || version
+            .strip_prefix(major_minor)
+            .is_some_and(|rest| rest.starts_with('.'))
 }
 
 #[cfg(test)]
@@ -117,39 +225,77 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_all_four_kinds_and_ignores_unknown_keys() {
+    fn parses_bound_fields_and_unbound_widgets_ignoring_unknown_keys() {
         let json = br#"{
-          "schema": "quillmark/form@0.1.0",
+          "schema": "quillmark/form@0.2.0",
           "fields": [
             { "name": "FullName", "schema_field": "full_name", "page": 0,
-              "rect": { "x": 180, "y": 57, "w": 340, "h": 20 }, "type": "text",
+              "rect": { "x": 180, "y": 57, "w": 340, "h": 20 },
               "tooltip": "Full legal name", "future_key": 42 },
             { "name": "Comments", "schema_field": "comments", "page": 0,
-              "rect": { "x": 180, "y": 120, "w": 340, "h": 80 }, "type": "text", "multiline": true },
-            { "name": "Agree", "schema_field": "agree", "page": 0,
-              "rect": { "x": 180, "y": 90, "w": 14, "h": 14 }, "type": "checkbox" },
-            { "name": "FavoriteColor", "schema_field": "favorite_color", "page": 0,
-              "rect": { "x": 180, "y": 150, "w": 340, "h": 20 }, "type": "choice",
-              "options": ["red", "green", "blue"] },
+              "rect": { "x": 180, "y": 120, "w": 340, "h": 80 } }
+          ],
+          "widgets": [
             { "name": "Signature", "page": 0,
               "rect": { "x": 180, "y": 190, "w": 340, "h": 40 }, "type": "signature" }
           ]
         }"#;
         let spec = FormSpec::parse(json).expect("parse ok");
-        assert_eq!(spec.fields.len(), 5);
-        assert_eq!(spec.fields[0].kind, FieldKind::Text { multiline: false });
-        assert_eq!(spec.fields[0].schema_field.as_deref(), Some("full_name"));
-        assert_eq!(spec.fields[1].kind, FieldKind::Text { multiline: true });
-        assert_eq!(spec.fields[2].kind, FieldKind::Checkbox);
+        assert_eq!(spec.fields.len(), 2);
+        assert_eq!(spec.fields[0].schema_field, "full_name");
+        assert_eq!(spec.fields[0].tooltip.as_deref(), Some("Full legal name"));
+        assert_eq!(spec.fields[1].tooltip, None);
+        assert_eq!(spec.widgets.len(), 1);
+        assert_eq!(spec.widgets[0].kind, WidgetKind::Signature);
+    }
+
+    #[test]
+    fn unbound_widgets_carry_every_kind() {
+        let json = br#"{
+          "schema": "quillmark/form@0.2.0",
+          "widgets": [
+            { "name": "T", "page": 0, "rect": { "x": 0, "y": 0, "w": 1, "h": 1 },
+              "type": "text", "multiline": true },
+            { "name": "C", "page": 0, "rect": { "x": 0, "y": 2, "w": 1, "h": 1 }, "type": "checkbox" },
+            { "name": "Ch", "page": 0, "rect": { "x": 0, "y": 4, "w": 1, "h": 1 },
+              "type": "choice", "options": ["a", "b"] },
+            { "name": "S", "page": 0, "rect": { "x": 0, "y": 6, "w": 1, "h": 1 }, "type": "signature" }
+          ]
+        }"#;
+        let spec = FormSpec::parse(json).expect("parse ok");
+        assert_eq!(spec.widgets[0].kind, WidgetKind::Text { multiline: true });
+        assert_eq!(spec.widgets[1].kind, WidgetKind::Checkbox);
         assert_eq!(
-            spec.fields[3].kind,
-            FieldKind::Choice {
-                options: vec!["red".into(), "green".into(), "blue".into()]
+            spec.widgets[2].kind,
+            WidgetKind::Choice {
+                options: vec!["a".into(), "b".into()]
             }
         );
-        assert_eq!(spec.fields[4].kind, FieldKind::Signature);
-        // Unbound signature.
-        assert_eq!(spec.fields[4].schema_field, None);
+        assert_eq!(spec.widgets[3].kind, WidgetKind::Signature);
+    }
+
+    #[test]
+    fn empty_populations_default_to_empty_vecs() {
+        let spec = FormSpec::parse(br#"{ "schema": "quillmark/form@0.2.0" }"#).expect("parse ok");
+        assert!(spec.fields.is_empty());
+        assert!(spec.widgets.is_empty());
+    }
+
+    #[test]
+    fn accepts_patch_within_supported_minor() {
+        assert!(FormSpec::parse(br#"{ "schema": "quillmark/form@0.2.7", "fields": [] }"#).is_ok());
+    }
+
+    #[test]
+    fn rejects_retired_v1_with_migration_code() {
+        let json = br#"{ "schema": "quillmark/form@0.1.0", "fields": [] }"#;
+        match FormSpec::parse(json) {
+            Err(e @ FormParseError::RetiredVersion(_)) => {
+                assert_eq!(e.code(), "pdfform::form_schema_version");
+                assert!(e.to_string().contains(MIGRATION_GUIDE));
+            }
+            other => panic!("expected RetiredVersion, got {other:?}"),
+        }
     }
 
     #[test]
@@ -162,17 +308,37 @@ mod tests {
     }
 
     #[test]
-    fn rejects_duplicate_field_names() {
+    fn rejects_unknown_form_version_as_bad_schema() {
+        let json = br#"{ "schema": "quillmark/form@9.9.9", "fields": [] }"#;
+        assert!(matches!(
+            FormSpec::parse(json),
+            Err(FormParseError::BadSchema(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_duplicate_names_across_populations() {
         let json = br#"{
-          "schema": "quillmark/form@0.1.0",
+          "schema": "quillmark/form@0.2.0",
           "fields": [
-            { "name": "Dup", "page": 0, "rect": { "x": 0, "y": 0, "w": 1, "h": 1 }, "type": "text" },
-            { "name": "Dup", "page": 0, "rect": { "x": 0, "y": 2, "w": 1, "h": 1 }, "type": "text" }
+            { "name": "Dup", "schema_field": "a", "page": 0, "rect": { "x": 0, "y": 0, "w": 1, "h": 1 } }
+          ],
+          "widgets": [
+            { "name": "Dup", "page": 0, "rect": { "x": 0, "y": 2, "w": 1, "h": 1 }, "type": "signature" }
           ]
         }"#;
         match FormSpec::parse(json) {
             Err(FormParseError::DuplicateField(name)) => assert_eq!(name, "Dup"),
             other => panic!("expected DuplicateField, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn version_matches_guards_adjacent_minors() {
+        assert!(version_matches("0.2", "0.2"));
+        assert!(version_matches("0.2.0", "0.2"));
+        assert!(version_matches("0.2.15", "0.2"));
+        assert!(!version_matches("0.20", "0.2"));
+        assert!(!version_matches("0.21.0", "0.2"));
     }
 }

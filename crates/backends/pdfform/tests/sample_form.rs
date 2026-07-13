@@ -97,12 +97,14 @@ fn fixture_renders_structurally_valid_filled_pdf() {
     // `/V`+`/AS`, and `/FT` names) are owned by the spine seam in
     // `quillmark-pdf/tests/stamp.rs`.
 
-    // Text: bound scalar value + tooltip.
+    // Text: bound scalar value + tooltip. The form.json field carries no
+    // `tooltip`, so `/TU` is inherited from the schema field's `description`
+    // (form@0.2.0 derives the tooltip when unset).
     let full = widget(&doc, af, "FullName");
     assert_eq!(full.get(b"V").unwrap().as_str().unwrap(), b"Ada Lovelace");
     assert_eq!(
         full.get(b"TU").unwrap().as_str().unwrap(),
-        b"Full legal name of the applicant"
+        b"Full legal name of the applicant. Binds the FullName text field."
     );
 
     // Multiline text: array joined with newlines.
