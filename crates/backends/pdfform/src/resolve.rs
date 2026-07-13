@@ -1,7 +1,8 @@
 //! The value step: turn a value-free [`BoundWidget`] plus the document's
 //! `compile_data` JSON into a stamp-spine [`FieldSpec`]. Intrinsics (kind,
-//! options, multiline, tooltip) were already derived from the quill schema at
-//! load ([`crate::bind`]); this module resolves only the per-document *value*.
+//! options, multiline, tooltip) and final geometry were already resolved from
+//! the static inputs at load ([`crate::bind`]); this module resolves only the
+//! per-document *value* and copies the rest through.
 //!
 //! Binding is against `compile_data` — the same validated, zero-filled object
 //! the Typst plate reads as `data.*` — so zero-fill, schema validation,
@@ -26,34 +27,19 @@ use quillmark_pdf::{FieldSpec, FieldType, CHECKBOX_ON_STATE};
 use serde_json::Value;
 
 use crate::bind::BoundWidget;
-use crate::form::Rect;
 
-/// Build a [`FieldSpec`] for `widget`, flipping its top-left rect to bottom-left
-/// against the page's `media_box` and resolving its bound value from `data`.
-///
-/// `media_box` is the normalized `[x0, y0, x1, y1]` of the target page.
-pub fn field_spec(widget: &BoundWidget, media_box: [f32; 4], data: &Value) -> FieldSpec {
+/// Build a [`FieldSpec`] for `widget`: copy its already-final identity, geometry,
+/// and kind through, and resolve its bound value from `data`.
+pub fn field_spec(widget: &BoundWidget, data: &Value) -> FieldSpec {
     FieldSpec {
         name: widget.name.clone(),
         schema_field: widget.schema_field.clone(),
         page: widget.page,
-        rect: flip_rect(widget.rect, media_box),
+        rect: widget.rect,
         field_type: widget.field_type.clone(),
         value: resolve_value(&widget.field_type, widget.schema_field.as_deref(), data),
         tooltip: widget.tooltip.clone(),
     }
-}
-
-/// Page-relative top-left `{x,y,w,h}` → spine bottom-left `[x0, y0, x1, y1]` in
-/// PDF user space. Honours a non-zero page origin: the left edge is the
-/// MediaBox `x0` and `y` is measured down from the top edge (MediaBox `y1`), so
-/// a translated MediaBox (e.g. `[10 20 622 812]`) places widgets correctly
-/// rather than shifting them by the origin. This is the single biggest
-/// hand-authoring footgun, defused structurally in one place.
-fn flip_rect(r: Rect, media_box: [f32; 4]) -> [f32; 4] {
-    let left = media_box[0];
-    let top = media_box[3];
-    [left + r.x, top - (r.y + r.h), left + r.x + r.w, top - r.y]
 }
 
 /// Resolve a widget's bound value. `None` (blank) for: an unbound widget
@@ -442,25 +428,21 @@ mod tests {
         });
 
         // Two card slots, one per page, each bound to a distinct instance index.
-        let mb = [0.0, 0.0, 612.0, 792.0];
+        // Geometry is already final (placed at bind time); this test pins the
+        // value/page binding, so the rect is an opaque placeholder.
         let slot = |name: &str, page: usize, schema_field: &str| BoundWidget {
             name: name.into(),
             schema_field: Some(schema_field.into()),
             page,
-            rect: Rect {
-                x: 100.0,
-                y: 100.0,
-                w: 200.0,
-                h: 20.0,
-            },
+            rect: [100.0, 100.0, 300.0, 120.0],
             field_type: FieldType::Text { multiline: false },
             tooltip: None,
         };
         let slot0 = slot("Indorsement0From", 0, "$cards.indorsement.0.from");
         let slot1 = slot("Indorsement1From", 1, "$cards.indorsement.1.from");
 
-        let spec0 = field_spec(&slot0, mb, &data);
-        let spec1 = field_spec(&slot1, mb, &data);
+        let spec0 = field_spec(&slot0, &data);
+        let spec1 = field_spec(&slot1, &data);
 
         // Instance 0's value on page 0; instance 1's value on page 1.
         assert_eq!(spec0.page, 0, "first slot is on page 0");
@@ -471,37 +453,5 @@ mod tests {
         // The names carry through unchanged (the spine writes them to /T).
         assert_eq!(spec0.name, "Indorsement0From");
         assert_eq!(spec1.name, "Indorsement1From");
-    }
-
-    #[test]
-    fn rect_flip_is_bottom_left() {
-        // A 14×14 box at top-left (180, 90) on an 800-tall, zero-origin page.
-        let r = Rect {
-            x: 180.0,
-            y: 90.0,
-            w: 14.0,
-            h: 14.0,
-        };
-        assert_eq!(
-            flip_rect(r, [0.0, 0.0, 600.0, 800.0]),
-            [180.0, 800.0 - 104.0, 194.0, 800.0 - 90.0]
-        );
-    }
-
-    #[test]
-    fn rect_flip_honours_nonzero_origin() {
-        // Same box on a page whose MediaBox is translated to [10 20 622 812].
-        // Widgets must land offset by the origin, not at a (0,0) origin.
-        let r = Rect {
-            x: 180.0,
-            y: 100.0,
-            w: 14.0,
-            h: 14.0,
-        };
-        let mb = [10.0, 20.0, 622.0, 812.0]; // top edge y1 = 812
-        assert_eq!(
-            flip_rect(r, mb),
-            [10.0 + 180.0, 812.0 - 114.0, 10.0 + 194.0, 812.0 - 100.0]
-        );
     }
 }

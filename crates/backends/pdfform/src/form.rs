@@ -41,10 +41,11 @@ const SUPPORTED_MAJOR_MINOR: &str = "0.2";
 /// author at.
 const MIGRATION_GUIDE: &str = "docs/migrations/0.93-to-0.94.md";
 
-/// A parsed `form.json`: the schema tag plus the two field populations.
+/// A parsed `form.json`: the two field populations. The `schema` tag is read and
+/// version-gated separately ([`SchemaTag`]) before this is deserialized, so it
+/// is not restated here — any `schema` key in the JSON is simply ignored.
 #[derive(Debug, Clone, Deserialize)]
 pub struct FormSpec {
-    pub schema: String,
     /// Schema-bound widgets — kind/options/multiline/tooltip inherited from the
     /// referenced [`FieldSchema`](quillmark_core::FieldSchema).
     #[serde(default)]

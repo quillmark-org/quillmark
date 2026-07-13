@@ -88,19 +88,21 @@ impl Backend for PdfformBackend {
         let spec =
             FormSpec::parse(form_json).map_err(|e| engine_err(e.code(), e.to_string()))?;
 
-        // Bind at load: resolve every field against the quill schema and derive
-        // its widget intrinsics (kind, options, multiline, tooltip). A dangling
-        // or unbindable `schema_field` is a load error here, not a silent blank
-        // at value time.
-        let bound = bind::bind_widgets(&spec, source.config())
-            .map_err(|e| engine_err(e.code(), e.to_string()))?;
-
         // Page boxes drive the top-left → bottom-left flip (honouring a
         // non-zero page origin); reading them from the background also surfaces
-        // a malformed/out-of-contract base early.
+        // a malformed/out-of-contract base early. Read before binding so
+        // geometry is placed once, at load.
         let page_boxes = quillmark_pdf::page_media_boxes(&base_pdf).map_err(map_pdf_err)?;
 
-        let field_specs = resolve_field_specs(&bound, &page_boxes, json_data)?;
+        // Bind at load: resolve every field against the two static inputs — the
+        // quill schema (kind, options, multiline, tooltip) and the page geometry
+        // (final rect, page-range check). A dangling/unbindable `schema_field` or
+        // an out-of-range page is a load error here, not a silent blank or a
+        // per-render recomputation.
+        let bound = bind::bind_widgets(&spec, source.config(), &page_boxes)
+            .map_err(|e| engine_err(e.code(), e.to_string()))?;
+
+        let field_specs = resolve_field_specs(&bound, json_data);
 
         // Pre-flatten once so render_rgba / SVG / PNG renders have a
         // ready-to-rasterize flat PDF without re-running flatten on every
@@ -118,28 +120,14 @@ impl Backend for PdfformBackend {
 }
 
 /// Resolve the bound widgets' values against document data — the per-document
-/// half of `open`, re-run by each `apply`. Intrinsics were already derived at
-/// bind time; this pass only flips geometry and resolves values.
-fn resolve_field_specs(
-    bound: &[BoundWidget],
-    page_boxes: &[[f32; 4]],
-    json_data: &serde_json::Value,
-) -> Result<Vec<FieldSpec>, RenderError> {
-    let page_count = page_boxes.len();
-    let mut field_specs: Vec<FieldSpec> = Vec::with_capacity(bound.len());
-    for widget in bound {
-        let media_box = page_boxes.get(widget.page).copied().ok_or_else(|| {
-            engine_err(
-                "pdfform::field_page_out_of_range",
-                format!(
-                    "field {:?} targets page {} but `{FORM_PDF}` has {page_count} page(s)",
-                    widget.name, widget.page
-                ),
-            )
-        })?;
-        field_specs.push(resolve::field_spec(widget, media_box, json_data));
-    }
-    Ok(field_specs)
+/// half of `open`, re-run by each `apply`. Intrinsics and geometry were already
+/// resolved at bind time, so this pass only fills in values; nothing here can
+/// fail.
+fn resolve_field_specs(bound: &[BoundWidget], json_data: &serde_json::Value) -> Vec<FieldSpec> {
+    bound
+        .iter()
+        .map(|widget| resolve::field_spec(widget, json_data))
+        .collect()
 }
 
 /// A `pdfform` render session: the stripped background plus the resolved field
@@ -253,7 +241,7 @@ impl SessionHandle for PdfformSession {
     /// changed; the background never changes, so field deltas are the only
     /// visible delta.
     fn apply(&mut self, json_data: &serde_json::Value) -> Result<ChangeSet, RenderError> {
-        let field_specs = resolve_field_specs(&self.bound, &self.page_boxes, json_data)?;
+        let field_specs = resolve_field_specs(&self.bound, json_data);
         let flat_pdf = flatten_to_pdf(self.base_pdf.clone(), &field_specs).map_err(map_pdf_err)?;
 
         let mut dirty_pages: Vec<usize> = self

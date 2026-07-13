@@ -1,7 +1,9 @@
 //! The **bind** step: at quill load, resolve every `form.json` field against the
-//! quill schema and derive its widget intrinsics — so `form.json` never restates
-//! what the schema already carries, and a widget bound to a nonexistent field is
-//! a load error, not a silent blank.
+//! two static inputs — the quill schema and the background geometry — into the
+//! session's value-free widget layer. Everything here is a pure function of the
+//! quill (not the document), so it runs once at open, never per render:
+//! `form.json` never restates what the schema carries, and a widget bound to a
+//! nonexistent field or an out-of-range page is a load error, not a silent blank.
 //!
 //! Two products, one per field population ([`crate::form`]):
 //! - A **bound** field names a `schema_field`. [`bind`] walks that path against
@@ -14,15 +16,17 @@
 //!   through (no schema to consult).
 //!
 //! Both collapse to a [`BoundWidget`] — the value-free intrinsic layer the
-//! session holds for its lifetime; per-document value resolution ([`crate::resolve`])
-//! runs against it.
+//! session holds for its lifetime, its `rect` already flipped to final PDF
+//! geometry. Per-document value resolution ([`crate::resolve`]) runs against it
+//! and touches nothing but the value.
 
 use quillmark_core::quill::{FieldSchema, FieldType as SchemaType, QuillConfig};
 use quillmark_pdf::FieldType as WidgetType;
 
 use crate::form::{BoundField, FormSpec, Rect, UnboundWidget, WidgetKind};
 
-/// A `form.json` field with its widget intrinsics resolved: geometry plus a
+/// A `form.json` field with everything static about it resolved: **final**
+/// geometry (bottom-left `[x0, y0, x1, y1]`, page-range validated) plus a
 /// value-free [`WidgetType`]. A bound field carries `Some(schema_field)` (its
 /// value is resolved per document); an unbound widget carries `None`.
 #[derive(Debug, Clone, PartialEq)]
@@ -30,14 +34,14 @@ pub struct BoundWidget {
     pub name: String,
     pub schema_field: Option<String>,
     pub page: usize,
-    pub rect: Rect,
+    pub rect: [f32; 4],
     pub field_type: WidgetType,
     pub tooltip: Option<String>,
 }
 
-/// Why binding a `form.json` field against the quill schema failed. Both
-/// variants are load errors — the point of binding at load is to turn what was a
-/// silently-blank widget into a diagnostic.
+/// Why binding a `form.json` field failed. Every variant is a load error — the
+/// point of binding at load is to turn what was a silently-blank (or misplaced)
+/// widget into a diagnostic.
 #[derive(Debug)]
 pub enum BindError {
     /// A `schema_field` path does not resolve: a missing root, or a `.segment`
@@ -55,6 +59,12 @@ pub enum BindError {
         path: String,
         ty: String,
     },
+    /// A widget targets a page the background PDF does not have.
+    PageOutOfRange {
+        name: String,
+        page: usize,
+        page_count: usize,
+    },
 }
 
 impl BindError {
@@ -63,6 +73,7 @@ impl BindError {
         match self {
             BindError::Dangling { .. } => "pdfform::dangling_binding",
             BindError::Unbindable { .. } => "pdfform::unbindable_field",
+            BindError::PageOutOfRange { .. } => "pdfform::field_page_out_of_range",
         }
     }
 }
@@ -85,31 +96,47 @@ impl std::fmt::Display for BindError {
                  type `{ty}` — no widget can render it; bind a scalar, enum, boolean, or an array \
                  of those instead"
             ),
+            BindError::PageOutOfRange {
+                name,
+                page,
+                page_count,
+            } => write!(
+                f,
+                "form.json field {name:?} targets page {page} but `form.pdf` has {page_count} page(s)"
+            ),
         }
     }
 }
 
-/// Resolve and project every field in `spec` against `config`, yielding the
-/// session's value-free widget layer. Bound fields inherit their kind, choice
-/// options, multiline, and tooltip from the schema; unbound widgets pass their
-/// declared kind through unchanged.
+/// Resolve and place every field in `spec` against the schema and the page
+/// geometry, yielding the session's value-free widget layer. Bound fields
+/// inherit their kind, choice options, multiline, and tooltip from the schema;
+/// unbound widgets pass their declared kind through unchanged; every widget's
+/// rect is flipped to final geometry and its page validated — all of it once,
+/// here, so nothing downstream repeats it per document.
 pub fn bind_widgets(
     spec: &FormSpec,
     config: &QuillConfig,
+    page_boxes: &[[f32; 4]],
 ) -> Result<Vec<BoundWidget>, BindError> {
     let mut bound = Vec::with_capacity(spec.fields.len() + spec.widgets.len());
     for field in &spec.fields {
-        bound.push(bind_field(field, config)?);
+        bound.push(bind_field(field, config, page_boxes)?);
     }
     for widget in &spec.widgets {
-        bound.push(bind_unbound(widget));
+        bound.push(bind_unbound(widget, page_boxes)?);
     }
     Ok(bound)
 }
 
-/// Bind one schema-bound field: resolve its path, project the widget kind, and
-/// inherit the tooltip (an explicit `tooltip` overrides the schema `description`).
-fn bind_field(field: &BoundField, config: &QuillConfig) -> Result<BoundWidget, BindError> {
+/// Bind one schema-bound field: resolve its path, project the widget kind, place
+/// its geometry, and inherit the tooltip (an explicit `tooltip` overrides the
+/// schema `description`).
+fn bind_field(
+    field: &BoundField,
+    config: &QuillConfig,
+    page_boxes: &[[f32; 4]],
+) -> Result<BoundWidget, BindError> {
     let schema = bind(config, &field.name, &field.schema_field)?;
     let field_type = project_kind(schema, &field.name, &field.schema_field)?;
     let tooltip = field
@@ -120,23 +147,55 @@ fn bind_field(field: &BoundField, config: &QuillConfig) -> Result<BoundWidget, B
         name: field.name.clone(),
         schema_field: Some(field.schema_field.clone()),
         page: field.page,
-        rect: field.rect,
+        rect: place(&field.name, field.page, field.rect, page_boxes)?,
         field_type,
         tooltip,
     })
 }
 
-/// Lift one unbound widget: its declared kind maps straight to a [`WidgetType`],
-/// no schema consulted.
-fn bind_unbound(widget: &UnboundWidget) -> BoundWidget {
-    BoundWidget {
+/// Lift one unbound widget: its declared kind maps straight to a [`WidgetType`]
+/// (no schema consulted) and its geometry is placed.
+fn bind_unbound(
+    widget: &UnboundWidget,
+    page_boxes: &[[f32; 4]],
+) -> Result<BoundWidget, BindError> {
+    Ok(BoundWidget {
         name: widget.name.clone(),
         schema_field: None,
         page: widget.page,
-        rect: widget.rect,
+        rect: place(&widget.name, widget.page, widget.rect, page_boxes)?,
         field_type: widget_type(&widget.kind),
         tooltip: widget.tooltip.clone(),
-    }
+    })
+}
+
+/// Flip a widget's top-left, page-relative rect to final bottom-left PDF
+/// geometry against its page's media box, validating the page exists. Runs once
+/// per widget at load — the geometry is fixed for the session's lifetime.
+fn place(
+    name: &str,
+    page: usize,
+    rect: Rect,
+    page_boxes: &[[f32; 4]],
+) -> Result<[f32; 4], BindError> {
+    let media_box = page_boxes.get(page).ok_or_else(|| BindError::PageOutOfRange {
+        name: name.to_string(),
+        page,
+        page_count: page_boxes.len(),
+    })?;
+    Ok(flip_rect(rect, *media_box))
+}
+
+/// Page-relative top-left `{x,y,w,h}` → spine bottom-left `[x0, y0, x1, y1]` in
+/// PDF user space. Honours a non-zero page origin: the left edge is the MediaBox
+/// `x0` and `y` is measured down from the top edge (MediaBox `y1`), so a
+/// translated MediaBox (e.g. `[10 20 622 812]`) places widgets correctly rather
+/// than shifting them by the origin. This is the single biggest hand-authoring
+/// footgun, defused structurally in one place.
+fn flip_rect(r: Rect, media_box: [f32; 4]) -> [f32; 4] {
+    let left = media_box[0];
+    let top = media_box[3];
+    [left + r.x, top - (r.y + r.h), left + r.x + r.w, top - r.y]
 }
 
 /// Resolve a `schema_field` path to the leaf [`FieldSchema`] it addresses.
@@ -513,8 +572,45 @@ main:
             }"#,
         )
         .unwrap();
-        let bound = bind_widgets(&spec, &cfg).unwrap();
+        let mb = [[0.0, 0.0, 612.0, 792.0]];
+        let bound = bind_widgets(&spec, &cfg, &mb).unwrap();
         assert_eq!(bound[0].tooltip.as_deref(), Some("From the schema."));
         assert_eq!(bound[1].tooltip.as_deref(), Some("Override."));
+    }
+
+    #[test]
+    fn place_flips_to_bottom_left_and_honours_origin() {
+        let r = Rect {
+            x: 180.0,
+            y: 90.0,
+            w: 14.0,
+            h: 14.0,
+        };
+        // Zero-origin page.
+        assert_eq!(
+            place("W", 0, r, &[[0.0, 0.0, 600.0, 800.0]]).unwrap(),
+            [180.0, 800.0 - 104.0, 194.0, 800.0 - 90.0]
+        );
+        // Translated MediaBox [10 20 622 812]: widgets land offset by the origin.
+        assert_eq!(
+            place("W", 0, r, &[[10.0, 20.0, 622.0, 812.0]]).unwrap(),
+            [10.0 + 180.0, 812.0 - 104.0, 10.0 + 194.0, 812.0 - 90.0]
+        );
+    }
+
+    #[test]
+    fn place_rejects_out_of_range_page() {
+        let r = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 1.0,
+            h: 1.0,
+        };
+        match place("W", 2, r, &[[0.0, 0.0, 612.0, 792.0]]) {
+            Err(e @ BindError::PageOutOfRange { .. }) => {
+                assert_eq!(e.code(), "pdfform::field_page_out_of_range");
+            }
+            other => panic!("expected PageOutOfRange, got {other:?}"),
+        }
     }
 }
