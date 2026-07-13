@@ -370,6 +370,27 @@ impl RichText {
             && self.lines[0].containers.is_empty()
     }
 
+    /// Whether this corpus satisfies the `plaintext` constraint: no marks, no
+    /// islands, and every line is a plain `Para` sitting in no container. It is
+    /// the multi-line generalization of [`is_inline`](Self::is_inline) (which
+    /// additionally pins the corpus to one line) with the mark/island exclusion
+    /// made explicit — a plaintext value carries prose the author navigates but
+    /// no formatting. `continues` is unconstrained: a lone `\n` may be a
+    /// within-paragraph break. [`RichText::empty`] is plain.
+    ///
+    /// This is the plaintext analogue of `is_inline`, enforced at coercion and
+    /// validation with the `NotPlain` error; the distinguishing property of
+    /// plaintext over `richtext { marks: [] }` is the *literal* codec
+    /// ([`crate::import::from_plaintext`]), not this predicate.
+    pub fn is_plain(&self) -> bool {
+        self.marks.is_empty()
+            && self.islands.is_empty()
+            && self
+                .lines
+                .iter()
+                .all(|l| l.kind == LineKind::Para && l.containers.is_empty())
+    }
+
     /// Whether the corpus carries no renderable content: the text is empty or
     /// whitespace-only. An island slot ([`ISLAND_SLOT`], U+FFFC) is not
     /// whitespace, so an island-bearing corpus is never blank. This is the

@@ -42,8 +42,8 @@ pub mod serial;
 pub mod usv;
 
 pub use delta::{diff_import, Assoc, Delta, Op};
-pub use export::to_markdown;
-pub use import::from_markdown;
+pub use export::{to_markdown, to_plaintext};
+pub use import::{from_markdown, from_plaintext};
 pub use model::{
     Container, Invariant, Island, Line, LineKind, Loss, Mark, MarkKind, RichText, Usv,
 };

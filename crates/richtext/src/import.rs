@@ -95,6 +95,50 @@ pub fn from_markdown(markdown: &str) -> Result<RichText, ImportError> {
     Ok(rt)
 }
 
+/// Import plain text (literal) into a [`RichText`] corpus — the literal-codec
+/// sibling of [`from_markdown`]. Every character is content, never syntax:
+/// `*hi*` is four literal chars, not emphasis, and nothing is escaped. Paired
+/// with [`crate::export::to_plaintext`] as its exporter, it pins the literal
+/// fixed point `to_plaintext(from_plaintext(s)) == s` for any `s` free of `\r`,
+/// bidi controls, and the reserved island slot ([`ISLAND_SLOT`]) — the same
+/// boundary cleanup [`from_markdown`] performs, so the fixed point holds for
+/// clean plaintext and the corpus invariants hold by construction.
+///
+/// Line structure is **derived, not stored**: a lone `\n` between two non-empty
+/// segments is a within-paragraph break ([`Line::continues`] `true`, lowered as
+/// a backend hard break); a blank line (`\n\n`) is a paragraph boundary (its own
+/// empty line resets `continues`). The text is stored verbatim, so the round
+/// trip is byte-exact and idempotent regardless of how structure is later
+/// re-derived.
+pub fn from_plaintext(s: &str) -> RichText {
+    // Boundary cleanup so the corpus invariants hold: CRLF→LF (drop `\r`), strip
+    // bidi controls, drop the reserved island slot. Clean plaintext passes
+    // through untouched, so the literal fixed point holds for it.
+    let text: String = s
+        .chars()
+        .filter(|&c| c != '\r' && c != ISLAND_SLOT && !crate::normalize::is_bidi_char(c))
+        .collect();
+    // One line per `\n`-separated segment. `continues` marks a within-paragraph
+    // break — a lone `\n` joining two non-empty segments; any empty segment is a
+    // paragraph boundary and resets it. Line 0 is always `false`.
+    let segments: Vec<&str> = text.split('\n').collect();
+    let lines = segments
+        .iter()
+        .enumerate()
+        .map(|(i, seg)| Line {
+            kind: LineKind::Para,
+            containers: Vec::new(),
+            continues: i > 0 && !seg.is_empty() && !segments[i - 1].is_empty(),
+        })
+        .collect();
+    RichText {
+        text,
+        lines,
+        marks: Vec::new(),
+        islands: Vec::new(),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Corpus builder
 // ---------------------------------------------------------------------------
@@ -1121,6 +1165,65 @@ mod tests {
         let rt = from_markdown(md).unwrap();
         assert_eq!(rt.validate(), Ok(()), "invariants for {md:?}");
         rt
+    }
+
+    fn imp_plain(s: &str) -> RichText {
+        let rt = from_plaintext(s);
+        assert_eq!(rt.validate(), Ok(()), "invariants for {s:?}");
+        rt
+    }
+
+    /// Plaintext is literal: markdown delimiters are content, not syntax, and
+    /// nothing is escaped or marked. The corpus is mark- and island-free.
+    #[test]
+    fn plaintext_is_literal_and_plain() {
+        let rt = imp_plain("a *star* and _under_ #hash");
+        assert_eq!(rt.text, "a *star* and _under_ #hash");
+        assert!(rt.marks.is_empty());
+        assert!(rt.islands.is_empty());
+        assert!(rt.is_plain());
+        assert!(rt.is_inline(), "one line with no formatting is also inline");
+    }
+
+    /// The literal fixed point: `to_plaintext(from_plaintext(s)) == s` for clean
+    /// text, and re-import is idempotent.
+    #[test]
+    fn plaintext_round_trip_is_verbatim_and_idempotent() {
+        for s in ["", "one line", "a\nb", "a\n\nb", "trailing\n", "*not bold*"] {
+            let rt = imp_plain(s);
+            assert_eq!(crate::export::to_plaintext(&rt), s, "verbatim for {s:?}");
+            let rt2 = from_plaintext(&crate::export::to_plaintext(&rt));
+            assert_eq!(rt2.text, rt.text, "idempotent for {s:?}");
+            assert_eq!(rt2.lines, rt.lines, "idempotent structure for {s:?}");
+        }
+    }
+
+    /// Lone `\n` between non-empty segments is a within-paragraph break
+    /// (`continues: true`); a blank line resets it to a paragraph boundary.
+    #[test]
+    fn plaintext_derives_continues_from_line_structure() {
+        let rt = imp_plain("a\nb");
+        assert_eq!(rt.lines.len(), 2);
+        assert!(!rt.lines[0].continues);
+        assert!(rt.lines[1].continues, "lone \\n is a within-paragraph break");
+
+        let rt = imp_plain("a\n\nb");
+        assert_eq!(rt.lines.len(), 3);
+        assert!(!rt.lines[0].continues);
+        assert!(!rt.lines[1].continues, "the blank line is a paragraph boundary");
+        assert!(!rt.lines[2].continues, "text after a blank line starts a new block");
+    }
+
+    /// Boundary cleanup keeps the corpus invariants: CRLF collapses to LF, bidi
+    /// controls and the reserved island slot are dropped. Clean text is
+    /// unaffected, so the fixed point still holds for it.
+    #[test]
+    fn plaintext_strips_invariant_breakers() {
+        let rt = imp_plain("a\r\nb");
+        assert_eq!(rt.text, "a\nb", "CRLF collapses to LF");
+        let rt = imp_plain(&format!("a{ISLAND_SLOT}b"));
+        assert_eq!(rt.text, "ab", "the reserved island slot is dropped");
+        assert_eq!(rt.islands.len(), 0);
     }
 
     #[test]
