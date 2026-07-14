@@ -66,7 +66,7 @@ typst:
 
 The main document card holds **root-block field schemas** under `main.fields`. Optional `main.description` describes the schema itself (independent of `quill.description`, which describes the quill package). Optional `main.ui` sets container-level UI for that card. `quill.ui` is a fallback for `main.ui`, not a merge: any `main.ui` — even an empty `ui: {}` — wins wholesale, and `quill.ui` applies only when `main.ui` is absent.
 
-Field order under `main.fields` determines display order in UIs — the first field gets `order: 0`, the second gets `order: 1`, and so on.
+Field order under `main.fields` **is** display order in UIs: the declaration order of the keys is carried structurally through parsing and schema emission, so consumers walk the fields in key order. There is no `ui.order` knob — to reorder fields, reorder them in `Quill.yaml`.
 
 Field keys must be `snake_case` (`^[a-z][a-z0-9_]*$`). Capitalized field keys are reserved.
 
@@ -255,19 +255,11 @@ The two registry forms are interchangeable: a bare sequence of ids (`[addressing
 
 **Implicit groups (deprecated).** A `ui.group` with no `ui.groups` registry on the card still works: each distinct value is an implicit group whose label *is* the value, ordered by first appearance — today's behavior. It now emits a `quill::implicit_group` deprecation warning and will become an error in a future release. Declare a registry to silence it.
 
-### `order`
+### field order
 
-Auto-assigned from field position. This positional assignment applies at every level — card-level fields *and* the properties of a typed dictionary or typed-table row — so nested properties render in declaration order rather than alphabetically. To override:
+Field display order is **declaration order** — the order the keys appear in `Quill.yaml`. This holds at every level: card-level fields, and the properties of a typed dictionary or typed-table row. The order is carried structurally (the schema's field maps preserve key order, and `schema()` re-emits that order), so no per-field knob is involved.
 
-```yaml
-main:
-  fields:
-    # Will get order: 0 from position, but we force it to 5
-    special_field:
-      type: string
-      ui:
-        order: 5
-```
+There is no `ui.order` key. It was removed: an authored `ui: { order: N }` is now a load error (`quill::field_parse_error`) directing you to reorder the fields instead. To move a field, move its block in `Quill.yaml`.
 
 ### `compact`
 

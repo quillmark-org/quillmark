@@ -56,7 +56,11 @@ guides in order.
   (`quill::implicit_group`); plus two `ui.*` fixes — `ui.group` in a nested
   position is now a load error (`quill::nested_group_not_supported`), and
   typed-dictionary / typed-table-row properties render in declaration order
-  instead of alphabetically (#941).
+  instead of alphabetically (#941). Field ordering then goes fully structural:
+  `ui.order` is removed (an authored `order:` is a load error), field and
+  card-kind display order becomes the key order of the emitted schema
+  (declaration order), and the auto-stamped `order:` integer disappears from
+  `QuillConfig::schema()` — consumers walk the maps in key order (#941).
 - [0.92 → 0.93](0.92-to-0.93.md) — the blueprint placeholder is rebuilt on two
   orthogonal axes (value and marker): blueprints now stamp the `!must_fill` tag
   instead of the `<must-fill>` string sentinel, and bare-null / `field:` now

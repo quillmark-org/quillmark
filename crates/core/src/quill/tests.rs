@@ -1671,8 +1671,8 @@ main:
 #[test]
 fn group_registry_list_form_orders_blueprint_by_declaration() {
     // The registry declares `beta` before `alpha`, but a field references
-    // `alpha` first (lower ui.order). Clustering must follow registry order
-    // (beta, then alpha), not first-appearance order.
+    // `alpha` first (earlier in declaration order). Clustering must follow
+    // registry order (beta, then alpha), not first-appearance order.
     let yaml = r#"
 quill: { name: x, version: "1.0", backend: typst, description: x }
 main:

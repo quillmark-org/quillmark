@@ -358,11 +358,12 @@ rejected at `Quill.yaml` parse time (`quill::object_missing_properties`).
 
 ## UI metadata honored
 
-`ui.order` controls field ordering within the document. Most other `ui:`
-keys (`ui.group`, `ui.compact`, `ui.multiline`, `ui.title`) are
-presentation-only and do not affect blueprint output. In particular,
-`ui.group` emits no banner lines; fields within the same `ui.group`
-cluster together via `ui.order`.
+Field declaration order controls field ordering within the document —
+carried structurally by the schema's ordered field maps, not a `ui`
+key. The `ui:` keys (`ui.group`, `ui.compact`, `ui.multiline`,
+`ui.title`) are presentation-only and do not affect blueprint output. In
+particular, `ui.group` emits no banner lines; fields within the same
+`ui.group` cluster together while preserving declaration order.
 
 ## Body markers
 

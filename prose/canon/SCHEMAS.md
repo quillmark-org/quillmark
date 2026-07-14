@@ -121,7 +121,8 @@ it, not the engine.
 
 No surface owns a precedence *policy*; each **projection cuts the same ladder**
 at a different rung, and the per-rung producers are shared (`zero_value` for the
-floor, `FieldSchema::ui_order` for ordering):
+floor; field ordering is declaration order, carried by the schema's ordered
+field maps rather than a sort key):
 
 | Projection | Per-field precedence | Floor | Output |
 |---|---|---|---|
@@ -242,7 +243,7 @@ projection — there is no annotated `example` string. Implemented by
 Seeding a *new card into an existing document* — `Quill::seed_card(kind,
 overlay)` — adds one more rung above `example:`: a curated, per-document
 **overlay** read from the main card's `$seed` map. Per field the precedence is
-**`$seed` overlay › `example:` › absent** (ordered by `ui.order`), and `default`
+**`$seed` overlay › `example:` › absent** (ordered by field declaration order), and `default`
 / `zero` stay deferred to the render floor exactly as everywhere else, so the
 "never persist a `default`" invariant holds. The overlay is *sparse* — fields it
 omits keep flowing from the schema seed, so it tracks an evolving quill rather
@@ -258,7 +259,7 @@ document carries no `$seed`).
 `QuillConfig::schema()` returns the structural schema as `serde_json::Value`. It includes:
 
 - Field types, constraints, and `enum`/`default`/`example` annotations
-- `ui` hints on fields (`group`, `order`, `compact`, `multiline`, `title`) and on cards (`title`, plus the `groups` registry that `group` references)
+- `ui` hints on fields (`group`, `compact`, `multiline`, `title`) and on cards (`title`, plus the `groups` registry that `group` references). Field display order is not a hint: it is the key order of the emitted `fields`/`properties` maps (declaration order)
 - `body` blocks on cards (`enabled`, `example`)
 
 The schema describes only the user-fillable fields. The quill reference
