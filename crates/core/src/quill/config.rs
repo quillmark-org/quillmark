@@ -1,5 +1,5 @@
 //! Quill configuration parsing and normalization.
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::error::Error as StdError;
 
 use indexmap::IndexMap;
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Diagnostic, Severity};
 use crate::value::QuillValue;
 
-use super::types::RICHTEXT_INLINE_TOKEN_MSG;
+use super::types::{RICHTEXT_INLINE_TOKEN_MSG, UI_ORDER_REMOVED_MSG};
 use super::{BodyCardSchema, CardSchema, FieldSchema, FieldType, GroupRegistry, UiCardSchema};
 
 /// Canonical string text for a bare scalar unambiguously representable as a
@@ -81,7 +81,7 @@ pub struct QuillConfig {
 struct CardSchemaDef {
     pub description: Option<String>,
     // Declared so `deny_unknown_fields` accepts a `fields:` block on a card.
-    // Fields are re-parsed via `parse_fields_with_order` for ordering.
+    // Fields are parsed separately via `parse_fields` (per-field diagnostics).
     #[allow(dead_code)]
     pub fields: Option<serde_json::Map<String, serde_json::Value>>,
     pub ui: Option<UiCardSchema>,
@@ -154,6 +154,10 @@ impl QuillConfig {
     /// card kind. The quill reference (constructed as `name@version` from
     /// quill metadata) and card-kind discriminators are document-level
     /// metadata, not fields, so they do not appear here.
+    ///
+    /// Key order is the ordering contract: fields, nested properties, and card
+    /// kinds all emit in declaration order (`preserve_order` end-to-end), so a
+    /// consumer walking the maps in key order renders the authored layout.
     pub fn schema(&self) -> serde_json::Value {
         let mut obj = serde_json::Map::new();
 
@@ -162,18 +166,15 @@ impl QuillConfig {
         obj.insert("main".to_string(), main_value);
 
         if !self.card_kinds.is_empty() {
-            let card_kinds: BTreeMap<String, serde_json::Value> = self
-                .card_kinds
-                .iter()
-                .map(|card| {
-                    let card_value =
-                        serde_json::to_value(card).expect("CardSchema is always serializable");
-                    (card.name.clone(), card_value)
-                })
-                .collect();
+            let mut card_kinds = serde_json::Map::new();
+            for card in &self.card_kinds {
+                let card_value =
+                    serde_json::to_value(card).expect("CardSchema is always serializable");
+                card_kinds.insert(card.name.clone(), card_value);
+            }
             obj.insert(
                 "card_kinds".to_string(),
-                serde_json::to_value(&card_kinds).expect("card_kinds map is always serializable"),
+                serde_json::Value::Object(card_kinds),
             );
         }
 
@@ -681,7 +682,7 @@ impl QuillConfig {
     /// child's path is `"{parent_path}.{k}"`.
     fn coerce_object_props(
         obj: &serde_json::Map<String, serde_json::Value>,
-        props: &std::collections::BTreeMap<String, Box<super::FieldSchema>>,
+        props: &IndexMap<String, Box<super::FieldSchema>>,
         parent_path: &str,
         mode: Leniency,
     ) -> Result<serde_json::Map<String, serde_json::Value>, CoercionError> {
@@ -1152,17 +1153,17 @@ impl QuillConfig {
     }
 
     /// Parse fields from a JSON map into `FieldSchema`s (both `main.fields` and
-    /// a card kind's `fields`), assigning each field's `ui.order` from its
-    /// position in `key_order` (definition order). `context` labels error
-    /// messages (e.g. `"field schema"`, `"card_kind 'note' field"`).
-    fn parse_fields_with_order(
+    /// a card kind's `fields`). Declaration order rides the map itself: the
+    /// source map preserves key order (serde_json's `preserve_order`) and the
+    /// returned `IndexMap` keeps insertion order, so no ordering pass runs.
+    /// `context` labels error messages (e.g. `"field schema"`,
+    /// `"card_kind 'note' field"`).
+    fn parse_fields(
         fields_map: &serde_json::Map<String, serde_json::Value>,
-        key_order: &[String],
         context: &str,
         errors: &mut Vec<Diagnostic>,
-    ) -> BTreeMap<String, FieldSchema> {
-        let mut fields = BTreeMap::new();
-        let mut fallback_counter = 0;
+    ) -> IndexMap<String, FieldSchema> {
+        let mut fields = IndexMap::new();
 
         for (field_name, field_value) in fields_map {
             if !Self::is_snake_case_identifier(field_name) {
@@ -1181,18 +1182,9 @@ impl QuillConfig {
                 continue;
             }
 
-            // Determine order from key_order, or use fallback counter
-            let order = if let Some(idx) = key_order.iter().position(|k| k == field_name) {
-                idx as i32
-            } else {
-                let o = key_order.len() as i32 + fallback_counter;
-                fallback_counter += 1;
-                o
-            };
-
             let quill_value = QuillValue::from_json(field_value.clone());
             match FieldSchema::from_quill_value(field_name.clone(), &quill_value) {
-                Ok(mut schema) => {
+                Ok(schema) => {
                     // One recursive pass enforces the whole shape contract:
                     // containers carry the right child schema (`object` →
                     // `properties`, `array` → `items`), and nesting stops after
@@ -1203,10 +1195,6 @@ impl QuillConfig {
                         errors.push(diag);
                         continue;
                     }
-
-                    // Assign this card-level field its positional `ui.order`
-                    // (nested properties are stamped in `from_quill_value`).
-                    schema.set_ui_order_if_unset(order);
 
                     let owner = format!("{} '{}'", context, field_name);
                     Self::validate_field_blueprint_constraints(&schema, &owner, errors);
@@ -1238,6 +1226,13 @@ impl QuillConfig {
                 return Some(
                     "'title' is not a valid field key; use 'description' instead.".to_string(),
                 );
+            }
+            if obj
+                .get("ui")
+                .and_then(|u| u.as_object())
+                .is_some_and(|u| u.contains_key("order"))
+            {
+                return Some(format!("{UI_ORDER_REMOVED_MSG}."));
             }
             if obj.get("type").and_then(|v| v.as_str()) == Some("richtext(inline)") {
                 return Some(format!("{RICHTEXT_INLINE_TOKEN_MSG}."));
@@ -1561,25 +1556,13 @@ impl QuillConfig {
         let main_obj_opt = quill_yaml_val.get("main").and_then(|v| v.as_object());
 
         // Extract main.fields (optional)
-        let fields = if let Some(main_obj) = main_obj_opt {
-            if let Some(fields_val) = main_obj.get("fields") {
-                if let Some(fields_map) = fields_val.as_object() {
-                    // With preserve_order feature, keys iterator respects insertion order
-                    let field_order: Vec<String> = fields_map.keys().cloned().collect();
-                    Self::parse_fields_with_order(
-                        fields_map,
-                        &field_order,
-                        "field schema",
-                        &mut errors,
-                    )
-                } else {
-                    BTreeMap::new()
-                }
-            } else {
-                BTreeMap::new()
-            }
+        let fields = if let Some(fields_map) = main_obj_opt
+            .and_then(|main_obj| main_obj.get("fields"))
+            .and_then(|v| v.as_object())
+        {
+            Self::parse_fields(fields_map, "field schema", &mut errors)
         } else {
-            BTreeMap::new()
+            IndexMap::new()
         };
 
         // Extract main.ui (optional). Fail loudly on malformed UI metadata rather
@@ -1694,16 +1677,13 @@ impl QuillConfig {
                         let card_fields = if let Some(card_fields_table) =
                             card_value.get("fields").and_then(|v| v.as_object())
                         {
-                            let card_field_order: Vec<String> =
-                                card_fields_table.keys().cloned().collect();
-                            Self::parse_fields_with_order(
+                            Self::parse_fields(
                                 card_fields_table,
-                                &card_field_order,
                                 &format!("card_kind '{}' field", card_name),
                                 &mut errors,
                             )
                         } else {
-                            BTreeMap::new()
+                            IndexMap::new()
                         };
 
                         Self::validate_description_singleline(

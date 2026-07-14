@@ -38,7 +38,7 @@ use crate::{Card, Document, Payload, QuillReference, QuillValue, SeedOverlay};
 /// [`SeedOverlay`] over the schema-example base. Per field the precedence is
 /// `overlay › example › absent`; the overlay may also add a field the base
 /// omits (a `default`-only field with no `example`). The final fields are
-/// ordered by `ui.order` (matching the blueprint). Only fields declared on the
+/// ordered by schema declaration order (matching the blueprint). Only fields declared on the
 /// schema are included — an overlay key naming no schema field is ignored here
 /// (the editor-surface validator flags it). Body: `overlay › body.example ›
 /// empty`, honored only when the kind enables bodies. The `$quill` / `$kind`
@@ -70,16 +70,11 @@ fn seed_parts(schema: &CardSchema, overlay: Option<&SeedOverlay>) -> (Payload, R
         }
     }
 
-    // Order by `ui.order`. Every key is a declared field here, so the lookup
-    // always resolves; the `i32::MAX` fallback is defensive.
+    // Order by schema declaration order (the schema's field-map index). Every
+    // key is a declared field here, so the lookup always resolves; the
+    // `usize::MAX` fallback is defensive.
     let mut entries: Vec<(String, QuillValue)> = merged.into_iter().collect();
-    entries.sort_by_key(|(name, _)| {
-        schema
-            .fields
-            .get(name)
-            .map(|f| f.ui_order())
-            .unwrap_or(i32::MAX)
-    });
+    entries.sort_by_key(|(name, _)| schema.fields.get_index_of(name).unwrap_or(usize::MAX));
     let fields: IndexMap<String, QuillValue> = entries.into_iter().collect();
 
     // Body region as a corpus: an overlay body (authored markdown) is imported;

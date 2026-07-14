@@ -40,10 +40,10 @@
 //!   A *non-empty* partial default is rendered verbatim (a deliberate
 //!   "already handled" signal); only `{}` expands.
 //!
-//! `ui.order` controls field ordering. `ui.group` clusters fields together
-//! within the document but emits no banner.
+//! Declaration order controls field ordering. `ui.group` clusters fields
+//! together within the document but emits no banner.
 
-use std::collections::BTreeMap;
+use indexmap::IndexMap;
 
 use super::{zero_value, CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::document::emit::{saphyr_emit_flow, saphyr_emit_scalar};
@@ -162,8 +162,8 @@ fn build_card(card: &CardSchema) -> Card {
 }
 
 /// Append every field of a card as payload items, clustered by `ui.group` and
-/// ordered by `ui.order`. Group order follows the card's `ui.groups` registry
-/// when present.
+/// ordered by declaration order. Group order follows the card's `ui.groups`
+/// registry when present.
 fn append_fields(items: &mut Vec<PayloadItem>, card: &CardSchema) {
     let registry: Option<Vec<&str>> = card
         .ui
@@ -175,9 +175,10 @@ fn append_fields(items: &mut Vec<PayloadItem>, card: &CardSchema) {
     }
 }
 
-/// Order fields by `ui.group` (ungrouped lead, then grouped clusters) with
-/// `ui.order` sorting within each cluster. Grouped clusters follow the
-/// `registry` declaration order when a registry is present, else first-
+/// Order fields by `ui.group` (ungrouped lead, then grouped clusters),
+/// preserving declaration order within each cluster (`fields` arrives in
+/// declaration order and the clustering is stable). Grouped clusters follow
+/// the `registry` declaration order when a registry is present, else first-
 /// appearance order (the deprecated implicit-group fallback); for a migrated
 /// quill the two are identical. Grouping is purely positional (no banner); the
 /// clusters are flattened into a single field stream.
@@ -185,10 +186,8 @@ fn group_fields<'a, I: IntoIterator<Item = &'a FieldSchema>>(
     fields: I,
     registry: Option<&[&str]>,
 ) -> Vec<&'a FieldSchema> {
-    let mut sorted: Vec<&FieldSchema> = fields.into_iter().collect();
-    sorted.sort_by_key(|f| f.ui_order());
     let mut groups: Vec<(Option<&str>, Vec<&FieldSchema>)> = Vec::new();
-    for field in sorted {
+    for field in fields {
         let group = field.ui.as_ref().and_then(|u| u.group.as_deref());
         match groups.iter_mut().find(|(g, _)| *g == group) {
             Some(slot) => slot.1.push(field),
@@ -287,20 +286,14 @@ fn append_scalar(items: &mut Vec<PayloadItem>, field: &FieldSchema) {
     items.push(PayloadItem::comment_inline(type_expression(field)));
 }
 
-fn sort_props(props: &BTreeMap<String, Box<FieldSchema>>) -> Vec<&FieldSchema> {
-    let mut v: Vec<&FieldSchema> = props.values().map(|b| b.as_ref()).collect();
-    v.sort_by_key(|f| f.ui_order());
-    v
-}
-
 /// Build the per-property body of an Unendorsed typed container: the value
-/// mapping (each property at its own cell), the nested comments (description +
-/// `# e.g.` + inline type annotation, addressed by `container_path`/slot), and
-/// the nested fill paths. `prefix` is the container path of the mapping
-/// relative to the field value (`[]` for a typed dict, `[Index(0)]` for a typed
-/// table's synthetic row).
+/// mapping (each property at its own cell, in declaration order), the nested
+/// comments (description + `# e.g.` + inline type annotation, addressed by
+/// `container_path`/slot), and the nested fill paths. `prefix` is the container
+/// path of the mapping relative to the field value (`[]` for a typed dict,
+/// `[Index(0)]` for a typed table's synthetic row).
 fn build_property_mapping(
-    props: &BTreeMap<String, Box<FieldSchema>>,
+    props: &IndexMap<String, Box<FieldSchema>>,
     prefix: &[PathSegment],
 ) -> (
     JsonMap<String, JsonValue>,
@@ -310,7 +303,7 @@ fn build_property_mapping(
     let mut map = JsonMap::new();
     let mut nested = Vec::new();
     let mut fills = Vec::new();
-    for (slot, prop) in sort_props(props).into_iter().enumerate() {
+    for (slot, prop) in props.values().map(|b| b.as_ref()).enumerate() {
         if let Some(desc) = collapse_opt(&prop.description) {
             nested.push(NestedComment {
                 container_path: prefix.to_vec(),
@@ -355,7 +348,7 @@ fn build_property_mapping(
 fn append_typed_dict(
     items: &mut Vec<PayloadItem>,
     field: &FieldSchema,
-    props: &BTreeMap<String, Box<FieldSchema>>,
+    props: &IndexMap<String, Box<FieldSchema>>,
 ) {
     push_leading(items, field, true);
 
@@ -385,7 +378,7 @@ fn append_typed_dict(
 fn append_typed_table(
     items: &mut Vec<PayloadItem>,
     field: &FieldSchema,
-    item_props: &BTreeMap<String, Box<FieldSchema>>,
+    item_props: &IndexMap<String, Box<FieldSchema>>,
 ) {
     push_leading(items, field, true);
 

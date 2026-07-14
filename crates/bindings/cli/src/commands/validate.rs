@@ -1,7 +1,7 @@
 use crate::errors::{CliError, Result};
 use clap::Parser;
 use quillmark_core::quill::{CardSchema, FieldSchema, QuillConfig};
-use std::collections::BTreeMap;
+use indexmap::IndexMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -223,7 +223,7 @@ fn validate_file_references(
 /// diagnostics. This pass only adds the advisory checks the parser does not:
 /// empty enum constraints and missing field descriptions.
 fn validate_field_schemas(
-    fields: &BTreeMap<String, FieldSchema>,
+    fields: &IndexMap<String, FieldSchema>,
     result: &mut ValidationResult,
     context: &str,
 ) {
