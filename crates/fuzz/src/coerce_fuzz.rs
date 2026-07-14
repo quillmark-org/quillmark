@@ -28,7 +28,7 @@
 //! - **W3 (commit ∘ commit = commit):** a committed value is a fixed point —
 //!   re-committing it yields the same stored value.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use proptest::prelude::*;

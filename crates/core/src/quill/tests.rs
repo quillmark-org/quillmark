@@ -1032,24 +1032,17 @@ main:
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
 
-    // Check that fields have correct order based on TOML position
-    // Order is automatically generated based on field position
-
-    let first = config.main.fields.get("first").unwrap();
-    assert_eq!(first.ui.as_ref().unwrap().order, Some(0));
-
-    let second = config.main.fields.get("second").unwrap();
-    assert_eq!(second.ui.as_ref().unwrap().order, Some(1));
+    // Declaration order is display order, carried structurally by the field
+    // map — no stamped `ui.order` integer. Iterating the map yields the
+    // authored order.
+    let names: Vec<&str> = config.main.fields.keys().map(|k| k.as_str()).collect();
+    assert_eq!(names, ["first", "second", "third", "fourth"]);
 
     let third = config.main.fields.get("third").unwrap();
-    assert_eq!(third.ui.as_ref().unwrap().order, Some(2));
     assert_eq!(
         third.ui.as_ref().unwrap().group,
         Some("Test Group".to_string())
     );
-
-    let fourth = config.main.fields.get("fourth").unwrap();
-    assert_eq!(fourth.ui.as_ref().unwrap().order, Some(3));
 }
 
 #[test]
@@ -1075,7 +1068,9 @@ main:
     let author_field = &config.main.fields["author"];
     let ui = author_field.ui.as_ref().unwrap();
     assert_eq!(ui.group, Some("Author Info".to_string()));
-    assert_eq!(ui.order, Some(0)); // First field should have order 0
+    // Order is not a field-level knob; `author` leads because it is declared
+    // first in the field map.
+    assert_eq!(config.main.fields.get_index_of("author"), Some(0));
 }
 #[test]
 fn test_field_schema_with_description() {
@@ -1302,23 +1297,15 @@ card_kinds:
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
 
-    let first = config.main.fields.get("first").unwrap();
-    let zero = config.main.fields.get("zero").unwrap();
     let second = config.card_kind("second").unwrap();
 
-    // Check field ordering
-    let ord_first = first.ui.as_ref().unwrap().order.unwrap();
-    let ord_zero = zero.ui.as_ref().unwrap().order.unwrap();
+    // Within main.fields, "first" is declared before "zero"; the field map
+    // carries that order.
+    assert_eq!(config.main.fields.get_index_of("first"), Some(0));
+    assert_eq!(config.main.fields.get_index_of("zero"), Some(1));
 
-    // Within fields, "first" is before "zero"
-    assert!(ord_first < ord_zero);
-    assert_eq!(ord_first, 0);
-    assert_eq!(ord_zero, 1);
-
-    // Card fields should also have ordering
-    let card_field = second.fields.get("card_field").unwrap();
-    let ord_card_field = card_field.ui.as_ref().unwrap().order.unwrap();
-    assert_eq!(ord_card_field, 0); // First (and only) field in this card
+    // Card fields carry declaration order too.
+    assert_eq!(second.fields.get_index_of("card_field"), Some(0));
 }
 #[test]
 fn test_card_field_order_preservation() {
@@ -1347,17 +1334,9 @@ card_kinds:
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
     let card = config.card_kind("mycard").unwrap();
 
-    let z_first = card.fields.get("z_first").unwrap();
-    let a_second = card.fields.get("a_second").unwrap();
-
-    // Check orders
-    let z_order = z_first.ui.as_ref().unwrap().order.unwrap();
-    let a_order = a_second.ui.as_ref().unwrap().order.unwrap();
-
-    // If strict file order is preserved:
-    // z_first should be 0, a_second should be 1
-    assert_eq!(z_order, 0, "z_first should be 0 (defined first)");
-    assert_eq!(a_order, 1, "a_second should be 1 (defined second)");
+    // Declaration order (z_first, then a_second) is preserved, not alphabetized.
+    let names: Vec<&str> = card.fields.keys().map(|k| k.as_str()).collect();
+    assert_eq!(names, ["z_first", "a_second"]);
 }
 #[test]
 fn test_nested_schema_parsing() {
@@ -1542,10 +1521,10 @@ main:
 }
 
 #[test]
-fn nested_object_properties_receive_positional_ui_order() {
-    // Properties render in declaration order, not the alphabetical order their
-    // `BTreeMap` storage would otherwise impose: `zulu` is declared first, so
-    // it sorts ahead of `alpha` despite the reversed alphabet.
+fn nested_object_properties_preserve_declaration_order() {
+    // Properties render in declaration order, not the alphabetical order a
+    // `BTreeMap` would impose: `zulu` is declared first, so it leads `alpha`
+    // despite the reversed alphabet. The `IndexMap` carries the order.
     let yaml = r#"
 quill: { name: x, version: "1.0", backend: typst, description: x }
 main:
@@ -1558,14 +1537,14 @@ main:
 "#;
     let config = QuillConfig::from_yaml(yaml).unwrap();
     let props = config.main.fields["address"].properties.as_ref().unwrap();
-    assert_eq!(props["zulu"].ui_order(), 0);
-    assert_eq!(props["alpha"].ui_order(), 1);
+    let names: Vec<&str> = props.keys().map(|k| k.as_str()).collect();
+    assert_eq!(names, ["zulu", "alpha"]);
 }
 
 #[test]
-fn typed_table_row_properties_receive_positional_ui_order() {
+fn typed_table_row_properties_preserve_declaration_order() {
     // The synthetic row of a typed table is an object built by the same
-    // `from_quill_value` recursion, so its properties get positional order too.
+    // `from_quill_value` recursion, so its properties keep declaration order too.
     let yaml = r#"
 quill: { name: x, version: "1.0", backend: typst, description: x }
 main:
@@ -1581,14 +1560,15 @@ main:
     let config = QuillConfig::from_yaml(yaml).unwrap();
     let props = config.main.fields["rows"].items.as_ref().unwrap();
     let props = props.properties.as_ref().unwrap();
-    assert_eq!(props["org"].ui_order(), 0);
-    assert_eq!(props["year"].ui_order(), 1);
+    let names: Vec<&str> = props.keys().map(|k| k.as_str()).collect();
+    assert_eq!(names, ["org", "year"]);
 }
 
 #[test]
-fn nested_property_explicit_ui_order_is_preserved() {
-    // An author-supplied `order` on a nested property is never overwritten; the
-    // sibling without one still receives its positional index.
+fn authored_ui_order_on_nested_property_is_rejected() {
+    // `ui.order` is retired: display order is declaration order. An authored
+    // `order` on any field — nested or top-level — is a hard load error with
+    // the migration message.
     let yaml = r#"
 quill: { name: x, version: "1.0", backend: typst, description: x }
 main:
@@ -1599,10 +1579,35 @@ main:
         street: { type: string, ui: { order: 5 } }
         city: { type: string }
 "#;
-    let config = QuillConfig::from_yaml(yaml).unwrap();
-    let props = config.main.fields["address"].properties.as_ref().unwrap();
-    assert_eq!(props["street"].ui_order(), 5);
-    assert_eq!(props["city"].ui_order(), 1);
+    let err = QuillConfig::from_yaml_with_warnings(yaml).unwrap_err();
+    assert!(
+        err.iter()
+            .any(|d| d.message.contains("ui.order is no longer accepted")),
+        "expected ui.order rejection, got: {err:?}"
+    );
+}
+
+#[test]
+fn authored_ui_order_on_card_field_is_rejected() {
+    // Same rejection at card level, with an actionable hint.
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  fields:
+    title: { type: string, ui: { order: 3 } }
+"#;
+    let err = QuillConfig::from_yaml_with_warnings(yaml).unwrap_err();
+    let hit = err
+        .iter()
+        .find(|d| d.message.contains("ui.order is no longer accepted"))
+        .expect("expected ui.order rejection");
+    assert!(
+        hit.hint
+            .as_deref()
+            .is_some_and(|h| h.contains("reorder the fields")),
+        "expected migration hint, got: {:?}",
+        hit.hint
+    );
 }
 
 #[test]
@@ -2338,9 +2343,11 @@ main:
     assert_eq!(summary.r#type, FieldType::RichText { inline: false });
     assert_eq!(summary.ui.as_ref().unwrap().multiline, Some(true));
 
+    // A field with no authored `ui:` block now carries `ui: None` — order is
+    // no longer stamped, so nothing fabricates a `ui` block.
     let notes = config.main.fields.get("notes").unwrap();
     assert_eq!(notes.r#type, FieldType::RichText { inline: false });
-    assert_eq!(notes.ui.as_ref().unwrap().multiline, None);
+    assert!(notes.ui.is_none());
 }
 
 #[test]

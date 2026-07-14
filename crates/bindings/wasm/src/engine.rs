@@ -15,10 +15,12 @@ use wasm_bindgen::prelude::*;
 /// Emitted via `typescript_custom_section` as the single source of truth.
 #[wasm_bindgen(typescript_custom_section)]
 const METADATA_TS: &'static str = r#"
-/** UI layout hints for a single field. */
+/** UI layout hints for a single field. Field display order is not a hint:
+ * key order in the schema's `fields`/`properties` objects is declaration
+ * order, the ordering contract. */
 export interface QuillFieldUi {
+    title?: string;
     group?: string;
-    order?: number;
     compact?: boolean;
     multiline?: boolean;
 }
@@ -498,9 +500,10 @@ impl Quill {
     }
 
     /// Document schema for the quill: the user-fillable fields plus their
-    /// `ui` hints (title / group / order / compact / multiline). The single
+    /// `ui` hints (title / group / compact / multiline). The single
     /// field-metadata surface — drives form editors and LLM/MCP consumers
-    /// alike. Returns the `QuillSchema` shape.
+    /// alike. Key order in `fields`/`properties` is declaration order — the
+    /// ordering contract. Returns the `QuillSchema` shape.
     #[wasm_bindgen(getter, js_name = schema, unchecked_return_type = "QuillSchema")]
     pub fn schema(&self) -> Result<JsValue, JsValue> {
         let value = self.inner.config().schema();
@@ -562,7 +565,7 @@ impl Quill {
     /// `validation::must_fill` warning for each `!must_fill` marker left in
     /// the document. Field values, defaults, and order are not part of this
     /// surface: read them from the `Document` payload and `Quill.schema`
-    /// (fields carry `ui.order`).
+    /// (schema key order is display order).
     #[wasm_bindgen(js_name = validate, unchecked_return_type = "Diagnostic[]")]
     pub fn validate(&self, doc: &Document) -> Result<JsValue, JsValue> {
         let diags = self.inner.validate(&doc.inner);

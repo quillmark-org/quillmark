@@ -168,7 +168,7 @@ impl Quill {
     ///
     /// Field values, defaults, and presentation order are not part of this
     /// surface — read them from the [`Document`] payload and the quill schema
-    /// (`quill.config().schema()`, carrying each field's `ui.order`).
+    /// (`quill.config().schema()`, whose key order is display order).
     pub fn validate(&self, doc: &Document) -> Vec<Diagnostic> {
         let mut diags = match self.config().validate_document(doc) {
             Ok(()) => Vec::new(),
