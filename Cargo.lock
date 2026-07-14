@@ -2297,6 +2297,7 @@ name = "quillmark-cli"
 version = "0.92.1"
 dependencies = [
  "clap",
+ "indexmap",
  "quillmark",
  "quillmark-core",
  "serde_json",

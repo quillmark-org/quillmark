@@ -28,7 +28,7 @@
 //! - **W3 (commit ∘ commit = commit):** a committed value is a fixed point —
 //!   re-committing it yields the same stored value.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use proptest::prelude::*;
@@ -60,7 +60,7 @@ fn arb_field_schema(max_depth: u32) -> impl Strategy<Value = FieldSchema> {
     let leaf = arb_leaf_field_type().prop_map(|ty| FieldSchema::new(String::new(), ty, None));
     leaf.prop_recursive(max_depth, 24, 3, |inner| {
         let props_map = prop::collection::btree_map(PROP_NAME_RE, inner, 1..=3).prop_map(|m| {
-            let mut props: BTreeMap<String, Box<FieldSchema>> = BTreeMap::new();
+            let mut props: IndexMap<String, Box<FieldSchema>> = IndexMap::new();
             for (k, mut v) in m {
                 v.name = k.clone();
                 props.insert(k, Box::new(v));
@@ -124,7 +124,7 @@ fn arb_json_value(max_depth: u32) -> impl Strategy<Value = serde_json::Value> {
 fn config_with_one_field(schema: FieldSchema) -> QuillConfig {
     let mut schema = schema;
     schema.name = ROOT_FIELD.to_string();
-    let mut fields = BTreeMap::new();
+    let mut fields = IndexMap::new();
     fields.insert(ROOT_FIELD.to_string(), schema);
     let main = CardSchema {
         name: "main".to_string(),
@@ -297,7 +297,7 @@ proptest! {
 #[test]
 fn regression_t2_array_of_object_path() {
     // Schema: { f: array, items: { x: integer } }
-    let mut inner = BTreeMap::new();
+    let mut inner = IndexMap::new();
     inner.insert(
         "x".to_string(),
         Box::new(FieldSchema::new("x".to_string(), FieldType::Integer, None)),

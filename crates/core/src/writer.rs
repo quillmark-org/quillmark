@@ -23,7 +23,7 @@
 //! cannot cross a binding boundary that carries no lifetimes (wasm-bindgen /
 //! pyo3 objects); those surfaces construct one per call from the quill handle.
 
-use std::collections::BTreeMap;
+use indexmap::IndexMap;
 
 use crate::document::edit::resolve_field_write;
 use crate::document::{Card, Document, EditError};
@@ -186,7 +186,7 @@ impl CardWriter<'_> {
 /// `set`'s reject-the-typo decision.
 fn set_all_impl<K, V, I>(
     card: &mut Card,
-    fields_schema: Option<&BTreeMap<String, FieldSchema>>,
+    fields_schema: Option<&IndexMap<String, FieldSchema>>,
     fields: I,
 ) -> Result<(), Vec<(String, EditError)>>
 where

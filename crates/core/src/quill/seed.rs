@@ -38,7 +38,7 @@ use crate::{Card, Document, Payload, QuillReference, QuillValue, SeedOverlay};
 /// [`SeedOverlay`] over the schema-example base. Per field the precedence is
 /// `overlay › example › absent`; the overlay may also add a field the base
 /// omits (a `default`-only field with no `example`). The final fields are
-/// ordered by `ui.order` (matching the blueprint). Only fields declared on the
+/// ordered by schema declaration order (matching the blueprint). Only fields declared on the
 /// schema are included — an overlay key naming no schema field is ignored here
 /// (the editor-surface validator flags it). Body: `overlay › body.example ›
 /// empty`, honored only when the kind enables bodies. The `$quill` / `$kind`
@@ -51,36 +51,23 @@ use crate::{Card, Document, Payload, QuillReference, QuillValue, SeedOverlay};
 /// (from a document's `$seed`) pass through as authored and canonicalize at the
 /// next `compile_data`.
 fn seed_parts(schema: &CardSchema, overlay: Option<&SeedOverlay>) -> (Payload, RichText) {
-    // Merge the example base with the overlay (schema-declared fields only). A
-    // richtext-bearing field seeds from its pre-validated corpus companion; every
-    // other field seeds from its raw `example`.
-    let mut merged: IndexMap<String, QuillValue> = IndexMap::new();
+    // Drive by `schema.fields` (declaration order), so the result is in
+    // declaration order natively — no merge-then-sort. Per field the precedence
+    // is `overlay › example_corpus › example › absent`: a richtext-bearing field
+    // seeds from its pre-validated corpus companion, every other from its raw
+    // `example`, and the overlay overrides either (and can supply a value for a
+    // `default`-only field the base omits). An overlay key naming no schema
+    // field is skipped — it is never iterated here.
+    let mut fields: IndexMap<String, QuillValue> = IndexMap::new();
     for (name, field) in &schema.fields {
-        if let Some(corpus) = &field.example_corpus {
-            merged.insert(name.clone(), corpus.clone());
-        } else if let Some(example) = &field.example {
-            merged.insert(name.clone(), example.clone());
+        let value = overlay
+            .and_then(|o| o.fields.get(name))
+            .or(field.example_corpus.as_ref())
+            .or(field.example.as_ref());
+        if let Some(value) = value {
+            fields.insert(name.clone(), value.clone());
         }
     }
-    if let Some(overlay) = overlay {
-        for (name, value) in &overlay.fields {
-            if schema.fields.contains_key(name) {
-                merged.insert(name.clone(), value.clone());
-            }
-        }
-    }
-
-    // Order by `ui.order`. Every key is a declared field here, so the lookup
-    // always resolves; the `i32::MAX` fallback is defensive.
-    let mut entries: Vec<(String, QuillValue)> = merged.into_iter().collect();
-    entries.sort_by_key(|(name, _)| {
-        schema
-            .fields
-            .get(name)
-            .map(|f| f.ui_order())
-            .unwrap_or(i32::MAX)
-    });
-    let fields: IndexMap<String, QuillValue> = entries.into_iter().collect();
 
     // Body region as a corpus: an overlay body (authored markdown) is imported;
     // otherwise the `body.example` corpus cache is used; else empty — and only

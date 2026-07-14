@@ -8,6 +8,8 @@ typst:
   plate_file: plate.typ
 
 main:
+  ui:
+    groups: [essentials, letterhead, advanced]
   fields:
     recipient:
       type: array
@@ -18,7 +20,7 @@ main:
         - 123 Main St
         - Anytown, USA
       ui:
-        group: Essentials
+        group: essentials
       description: The recipient's name and full mailing address.
 
     signature_block:
@@ -29,7 +31,7 @@ main:
         - First M. Last
         - Title
       ui:
-        group: Essentials
+        group: essentials
       description: "The signer's information. Line 1: Name. Line 2: Title."
 
     department:
@@ -37,7 +39,7 @@ main:
       default: ""
       example: Department of Electrical and Computer Engineering
       ui:
-        group: Letterhead
+        group: letterhead
       description: The department or organizational unit name for the letterhead.
 
     address:
@@ -48,7 +50,7 @@ main:
         - 5000 Forbes Avenue
         - Pittsburgh, PA 15213-3890
       ui:
-        group: Letterhead
+        group: letterhead
       description: The sender's institutional mailing address.
 
     url:
@@ -56,11 +58,11 @@ main:
       default: ""
       example: www.ece.cmu.edu
       ui:
-        group: Letterhead
+        group: letterhead
       description: The department or university website URL.
 
     date:
       type: datetime
       ui:
-        group: Advanced
+        group: advanced
       description: The date to appear on the letter.

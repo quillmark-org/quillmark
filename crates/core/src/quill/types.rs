@@ -1,27 +1,63 @@
 //! Quill schema and core type definitions.
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::value::QuillValue;
 
-/// UI-specific metadata for field rendering
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// UI-specific metadata for field rendering.
+///
+/// Field display order is not a `ui` knob: declaration order in Quill.yaml
+/// **is** display order, carried structurally by the schema's ordered field
+/// maps ([`CardSchema::fields`], [`FieldSchema::properties`]) and by key order
+/// on the emitted-schema wire. The retired `ui.order` key is rejected with a
+/// pointed message (`UI_ORDER_REMOVED_MSG`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UiFieldSchema {
     /// Display label for the field — decoupled from the snake_case wire key.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
-    /// Automatically generated based on field position in Quill.yaml.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub order: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compact: Option<bool>,
     /// Valid on `string` fields (plain text with newlines preserved) and `richtext` fields.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub multiline: Option<bool>,
+}
+
+/// Migration message for the retired `ui.order` key — shared by the
+/// [`UiFieldSchema`] deserializer's error and `QuillConfig::field_parse_hint`'s
+/// hint text, so the two can't drift.
+pub(crate) const UI_ORDER_REMOVED_MSG: &str = "ui.order is no longer accepted; \
+     field display order is declaration order — reorder the fields in Quill.yaml instead";
+
+/// Wire shape of a `ui:` block. `order` is declared so its rejection carries
+/// the migration message rather than serde's generic unknown-key error.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UiFieldSchemaDef {
+    title: Option<String>,
+    group: Option<String>,
+    order: Option<serde_json::Value>,
+    compact: Option<bool>,
+    multiline: Option<bool>,
+}
+
+impl<'de> Deserialize<'de> for UiFieldSchema {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let def = UiFieldSchemaDef::deserialize(deserializer)?;
+        if def.order.is_some() {
+            return Err(serde::de::Error::custom(UI_ORDER_REMOVED_MSG));
+        }
+        Ok(UiFieldSchema {
+            title: def.title,
+            group: def.group,
+            compact: def.compact,
+            multiline: def.multiline,
+        })
+    }
 }
 
 /// Body namespace configuration for a card kind
@@ -53,6 +89,116 @@ pub struct UiCardSchema {
     /// template. See `docs/quills/quill-yaml-reference.md`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// The card's group registry: the visible table of contents that names
+    /// every group a field may reference and fixes their display order. A
+    /// field's `ui.group` is a *reference* into this registry, validated at
+    /// load. Absent when the card declares no groups (or uses the deprecated
+    /// implicit-group form).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub groups: Option<GroupRegistry>,
+}
+
+/// One entry in a card's [`GroupRegistry`]: a snake_case identity plus an
+/// optional display-label override. The `id` decouples identity from label the
+/// same way a field's snake_case key decouples from its `ui.title` — a rename
+/// of the label touches one line and never breaks a `ui.group` reference or
+/// persisted per-group editor state. When `title` is `None`, consumers derive
+/// the label from `id` (`memo_for` → "Memo For"), exactly as they derive a
+/// field label from its key.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GroupSchema {
+    /// snake_case identity; rides the registry map key (or list item) on the wire.
+    pub id: String,
+    /// Display-label override; `None` means derive the label from `id`.
+    pub title: Option<String>,
+}
+
+/// A card's ordered group registry (`main.ui.groups` or a card kind's
+/// `ui.groups`). Declaration order **is** display order — the same contract
+/// fields carry through their ordered map — so it is held as a `Vec` that
+/// survives regardless of surface form. Authored as either a sequence of ids
+/// (`[addressing, letterhead]`, titles derived) or a mapping of id to
+/// attributes (`{ letterhead: { title: … } }`, for label overrides); both fold
+/// into the same ordered list. Serializes back to the canonical mapping form,
+/// declaration order preserved.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GroupRegistry(pub Vec<GroupSchema>);
+
+/// The attribute block of a registry entry in the mapping authoring/emission
+/// form (`id: { title: … }`). A bare `id:` (null) or `id: {}` carries no
+/// override.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GroupEntryDef {
+    title: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for GroupRegistry {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct RegistryVisitor;
+        impl<'de> serde::de::Visitor<'de> for RegistryVisitor {
+            type Value = GroupRegistry;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a sequence of group ids or a mapping of group id to attributes")
+            }
+
+            // Sequence form: `[addressing, letterhead]` — bare ids, titles derived.
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<GroupRegistry, A::Error> {
+                let mut groups = Vec::new();
+                while let Some(id) = seq.next_element::<String>()? {
+                    groups.push(GroupSchema { id, title: None });
+                }
+                Ok(GroupRegistry(groups))
+            }
+
+            // Mapping form: `{ addressing: {}, letterhead: { title: … } }`.
+            // A null or `{}` value carries no override; declaration order is
+            // preserved by serde_json's `preserve_order`.
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<GroupRegistry, A::Error> {
+                let mut groups = Vec::new();
+                while let Some((id, def)) = map.next_entry::<String, Option<GroupEntryDef>>()? {
+                    groups.push(GroupSchema {
+                        id,
+                        title: def.and_then(|d| d.title),
+                    });
+                }
+                Ok(GroupRegistry(groups))
+            }
+        }
+        deserializer.deserialize_any(RegistryVisitor)
+    }
+}
+
+impl Serialize for GroupRegistry {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        // Canonical form: the mapping, so a title override has a home and the
+        // registry key (identity) is explicit. A title-less entry emits an
+        // empty object; the map's declaration order carries the display-order
+        // contract on the wire.
+        #[derive(Serialize)]
+        struct GroupEntryOut<'a> {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            title: Option<&'a str>,
+        }
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for group in &self.0 {
+            map.serialize_entry(
+                &group.id,
+                &GroupEntryOut {
+                    title: group.title.as_deref(),
+                },
+            )?;
+        }
+        map.end()
+    }
 }
 
 /// Schema definition for a card kind (composable content blocks)
@@ -63,7 +209,10 @@ pub struct CardSchema {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    pub fields: BTreeMap<String, FieldSchema>,
+    /// Declaration order is display order: the map preserves Quill.yaml key
+    /// order end-to-end (parse, iteration, `schema()` emission), so ordering
+    /// needs no side-channel knob.
+    pub fields: IndexMap<String, FieldSchema>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui: Option<UiCardSchema>,
     /// Controls whether a body editor is shown and provides optional guide text.
@@ -257,8 +406,9 @@ pub struct FieldSchema {
     /// Restricts valid values on string fields. Serializes as `enum`.
     pub enum_values: Option<Vec<String>>,
     /// Nested field schemas for `object` types (the typed dictionary's
-    /// properties).
-    pub properties: Option<BTreeMap<String, Box<FieldSchema>>>,
+    /// properties). Ordered: declaration order is display order at every
+    /// nesting level, carried by the map itself.
+    pub properties: Option<IndexMap<String, Box<FieldSchema>>>,
     /// Element schema for `array` types. Required on every `array` field:
     /// the element type gives the array a concrete element type (`string[]`,
     /// `integer[]`, `richtext[]`, …). For a typed table the element is an
@@ -302,13 +452,6 @@ struct FieldSchemaDef {
 }
 
 impl FieldSchema {
-    /// Sort key for blueprint/form/seed field ordering: `ui.order` when set,
-    /// else `i32::MAX` (declaration order is assigned to `ui.order` at parse
-    /// time, so the fallback is defensive). The one shared ordering producer.
-    pub fn ui_order(&self) -> i32 {
-        self.ui.as_ref().and_then(|u| u.order).unwrap_or(i32::MAX)
-    }
-
     pub fn new(name: String, r#type: FieldType, description: Option<String>) -> Self {
         Self {
             name,
@@ -346,15 +489,14 @@ impl FieldSchema {
             ui: def.ui,
             enum_values,
             properties: if let Some(props) = def.properties {
-                let mut p = BTreeMap::new();
+                // Declaration order (preserved by serde_json's `preserve_order`)
+                // carries straight into the `IndexMap`, so nested properties
+                // render in authored order at every depth.
+                let mut p = IndexMap::new();
                 for (key, value) in props {
-                    p.insert(
-                        key.clone(),
-                        Box::new(FieldSchema::from_quill_value(
-                            key,
-                            &QuillValue::from_json(value),
-                        )?),
-                    );
+                    let prop =
+                        FieldSchema::from_quill_value(key.clone(), &QuillValue::from_json(value))?;
+                    p.insert(key, Box::new(prop));
                 }
                 Some(p)
             } else {

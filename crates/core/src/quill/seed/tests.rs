@@ -235,14 +235,44 @@ fn overlay_adds_a_field_the_base_omits() {
 }
 
 #[test]
-fn overlay_fields_are_ordered_by_ui_order() {
+fn overlay_fields_are_ordered_by_declaration() {
     let quill = quill_from_yaml(QUILL);
     // Overlay touches `tag` (declared 2nd) and `author` (declared 1st); the
-    // result must still be ordered by ui.order, not overlay insertion order.
+    // result must still be in declaration order, not overlay insertion order.
     let ov = overlay(json!({ "tag": "pinned", "author": "Custom" }));
     let card = quill.seed_card("note", Some(&ov)).expect("known kind");
     let keys: Vec<&str> = card.payload().keys().map(String::as_str).collect();
     assert_eq!(keys, vec!["author", "tag"]);
+}
+
+#[test]
+fn overlay_added_field_lands_in_declaration_position() {
+    // The seed is driven by schema declaration order, so an overlay that adds a
+    // base-omitted field lands at its *declared* position, not appended last.
+    // Here `alpha` (no example, declared first) is base-omitted while `beta`
+    // (declared second) flows from its example; overlaying `alpha` must place
+    // it ahead of `beta`.
+    let quill = quill_from_yaml(
+        r#"
+quill:
+  name: order_seed
+  version: "1.0"
+  backend: typst
+  description: Seed order test
+card_kinds:
+  note:
+    fields:
+      alpha:
+        type: string
+      beta:
+        type: string
+        example: B
+"#,
+    );
+    let ov = overlay(json!({ "alpha": "A" }));
+    let card = quill.seed_card("note", Some(&ov)).expect("known kind");
+    let keys: Vec<&str> = card.payload().keys().map(String::as_str).collect();
+    assert_eq!(keys, vec!["alpha", "beta"]);
 }
 
 #[test]

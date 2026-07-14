@@ -8,12 +8,14 @@ typst:
   plate_file: plate.typ
 
 main:
+  ui:
+    groups: [personal_info]
   fields:
     name:
       type: string
       example: John Doe
       ui:
-        group: Personal Info
+        group: personal_info
 
     contacts:
       type: array
@@ -24,7 +26,7 @@ main:
         - 123-456-7890
         - linkedin.com/in/johndoe
       ui:
-        group: Personal Info
+        group: personal_info
       description: List of contact details (email, phone, links, etc.)
 
 card_kinds:

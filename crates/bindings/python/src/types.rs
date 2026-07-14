@@ -186,7 +186,7 @@ impl PyQuill {
     /// `validation::must_fill` warning for each `!must_fill` marker left in
     /// the document. Field values, defaults, and order are not part of this
     /// surface: read them from the `Document` payload and `Quill.schema`
-    /// (fields carry `ui.order`).
+    /// (schema key order is display order).
     fn validate<'py>(
         &self,
         py: Python<'py>,

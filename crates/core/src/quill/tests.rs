@@ -1032,24 +1032,17 @@ main:
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
 
-    // Check that fields have correct order based on TOML position
-    // Order is automatically generated based on field position
-
-    let first = config.main.fields.get("first").unwrap();
-    assert_eq!(first.ui.as_ref().unwrap().order, Some(0));
-
-    let second = config.main.fields.get("second").unwrap();
-    assert_eq!(second.ui.as_ref().unwrap().order, Some(1));
+    // Declaration order is display order, carried structurally by the field
+    // map — no stamped `ui.order` integer. Iterating the map yields the
+    // authored order.
+    let names: Vec<&str> = config.main.fields.keys().map(|k| k.as_str()).collect();
+    assert_eq!(names, ["first", "second", "third", "fourth"]);
 
     let third = config.main.fields.get("third").unwrap();
-    assert_eq!(third.ui.as_ref().unwrap().order, Some(2));
     assert_eq!(
         third.ui.as_ref().unwrap().group,
         Some("Test Group".to_string())
     );
-
-    let fourth = config.main.fields.get("fourth").unwrap();
-    assert_eq!(fourth.ui.as_ref().unwrap().order, Some(3));
 }
 
 #[test]
@@ -1075,7 +1068,9 @@ main:
     let author_field = &config.main.fields["author"];
     let ui = author_field.ui.as_ref().unwrap();
     assert_eq!(ui.group, Some("Author Info".to_string()));
-    assert_eq!(ui.order, Some(0)); // First field should have order 0
+    // Order is not a field-level knob; `author` leads because it is declared
+    // first in the field map.
+    assert_eq!(config.main.fields.get_index_of("author"), Some(0));
 }
 #[test]
 fn test_field_schema_with_description() {
@@ -1302,23 +1297,15 @@ card_kinds:
 
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
 
-    let first = config.main.fields.get("first").unwrap();
-    let zero = config.main.fields.get("zero").unwrap();
     let second = config.card_kind("second").unwrap();
 
-    // Check field ordering
-    let ord_first = first.ui.as_ref().unwrap().order.unwrap();
-    let ord_zero = zero.ui.as_ref().unwrap().order.unwrap();
+    // Within main.fields, "first" is declared before "zero"; the field map
+    // carries that order.
+    assert_eq!(config.main.fields.get_index_of("first"), Some(0));
+    assert_eq!(config.main.fields.get_index_of("zero"), Some(1));
 
-    // Within fields, "first" is before "zero"
-    assert!(ord_first < ord_zero);
-    assert_eq!(ord_first, 0);
-    assert_eq!(ord_zero, 1);
-
-    // Card fields should also have ordering
-    let card_field = second.fields.get("card_field").unwrap();
-    let ord_card_field = card_field.ui.as_ref().unwrap().order.unwrap();
-    assert_eq!(ord_card_field, 0); // First (and only) field in this card
+    // Card fields carry declaration order too.
+    assert_eq!(second.fields.get_index_of("card_field"), Some(0));
 }
 #[test]
 fn test_card_field_order_preservation() {
@@ -1347,17 +1334,9 @@ card_kinds:
     let config = QuillConfig::from_yaml(yaml_content).unwrap();
     let card = config.card_kind("mycard").unwrap();
 
-    let z_first = card.fields.get("z_first").unwrap();
-    let a_second = card.fields.get("a_second").unwrap();
-
-    // Check orders
-    let z_order = z_first.ui.as_ref().unwrap().order.unwrap();
-    let a_order = a_second.ui.as_ref().unwrap().order.unwrap();
-
-    // If strict file order is preserved:
-    // z_first should be 0, a_second should be 1
-    assert_eq!(z_order, 0, "z_first should be 0 (defined first)");
-    assert_eq!(a_order, 1, "a_second should be 1 (defined second)");
+    // Declaration order (z_first, then a_second) is preserved, not alphabetized.
+    let names: Vec<&str> = card.fields.keys().map(|k| k.as_str()).collect();
+    assert_eq!(names, ["z_first", "a_second"]);
 }
 #[test]
 fn test_nested_schema_parsing() {
@@ -1539,6 +1518,311 @@ main:
         Some("quill::nested_object_not_supported")
     );
     assert!(err[0].message.contains("rows"));
+}
+
+#[test]
+fn nested_object_properties_preserve_declaration_order() {
+    // Properties render in declaration order, not the alphabetical order a
+    // `BTreeMap` would impose: `zulu` is declared first, so it leads `alpha`
+    // despite the reversed alphabet. The `IndexMap` carries the order.
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  fields:
+    address:
+      type: object
+      properties:
+        zulu: { type: string }
+        alpha: { type: string }
+"#;
+    let config = QuillConfig::from_yaml(yaml).unwrap();
+    let props = config.main.fields["address"].properties.as_ref().unwrap();
+    let names: Vec<&str> = props.keys().map(|k| k.as_str()).collect();
+    assert_eq!(names, ["zulu", "alpha"]);
+}
+
+#[test]
+fn typed_table_row_properties_preserve_declaration_order() {
+    // The synthetic row of a typed table is an object built by the same
+    // `from_quill_value` recursion, so its properties keep declaration order too.
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  fields:
+    rows:
+      type: array
+      items:
+        type: object
+        properties:
+          org: { type: string }
+          year: { type: integer }
+"#;
+    let config = QuillConfig::from_yaml(yaml).unwrap();
+    let props = config.main.fields["rows"].items.as_ref().unwrap();
+    let props = props.properties.as_ref().unwrap();
+    let names: Vec<&str> = props.keys().map(|k| k.as_str()).collect();
+    assert_eq!(names, ["org", "year"]);
+}
+
+#[test]
+fn authored_ui_order_on_nested_property_is_rejected() {
+    // `ui.order` is retired: display order is declaration order. An authored
+    // `order` on any field — nested or top-level — is a hard load error with
+    // the migration message.
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  fields:
+    address:
+      type: object
+      properties:
+        street: { type: string, ui: { order: 5 } }
+        city: { type: string }
+"#;
+    let err = QuillConfig::from_yaml_with_warnings(yaml).unwrap_err();
+    assert!(
+        err.iter()
+            .any(|d| d.message.contains("ui.order is no longer accepted")),
+        "expected ui.order rejection, got: {err:?}"
+    );
+}
+
+#[test]
+fn authored_ui_order_on_card_field_is_rejected() {
+    // Same rejection at card level, with an actionable hint.
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  fields:
+    title: { type: string, ui: { order: 3 } }
+"#;
+    let err = QuillConfig::from_yaml_with_warnings(yaml).unwrap_err();
+    let hit = err
+        .iter()
+        .find(|d| d.message.contains("ui.order is no longer accepted"))
+        .expect("expected ui.order rejection");
+    assert!(
+        hit.hint
+            .as_deref()
+            .is_some_and(|h| h.contains("reorder the fields")),
+        "expected migration hint, got: {:?}",
+        hit.hint
+    );
+}
+
+#[test]
+fn ui_group_on_object_property_is_rejected() {
+    // `ui.group` clusters card-level fields only; on a typed-dictionary
+    // property it was silently inert, and now loads as a hard error.
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  fields:
+    address:
+      type: object
+      properties:
+        street: { type: string, ui: { group: Location } }
+"#;
+    let err = QuillConfig::from_yaml_with_warnings(yaml).unwrap_err();
+    assert!(err
+        .iter()
+        .any(|d| d.code.as_deref() == Some("quill::nested_group_not_supported")));
+}
+
+#[test]
+fn ui_group_on_typed_table_property_is_rejected() {
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  fields:
+    rows:
+      type: array
+      items:
+        type: object
+        properties:
+          score: { type: number, ui: { group: Metrics } }
+"#;
+    let err = QuillConfig::from_yaml_with_warnings(yaml).unwrap_err();
+    assert!(err
+        .iter()
+        .any(|d| d.code.as_deref() == Some("quill::nested_group_not_supported")));
+}
+
+#[test]
+fn ui_group_on_card_level_field_is_still_accepted() {
+    // Regression guard: the nested-position rejection must not touch card-level
+    // fields, where grouping is the whole point.
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  fields:
+    subject: { type: string, ui: { group: Addressing } }
+"#;
+    let config = QuillConfig::from_yaml(yaml).unwrap();
+    assert_eq!(
+        config.main.fields["subject"]
+            .ui
+            .as_ref()
+            .and_then(|u| u.group.as_deref()),
+        Some("Addressing")
+    );
+}
+
+#[test]
+fn group_registry_list_form_orders_blueprint_by_declaration() {
+    // The registry declares `beta` before `alpha`, but a field references
+    // `alpha` first (earlier in declaration order). Clustering must follow
+    // registry order (beta, then alpha), not first-appearance order.
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  ui:
+    groups: [beta, alpha]
+  fields:
+    a1: { type: string, ui: { group: alpha } }
+    b1: { type: string, ui: { group: beta } }
+"#;
+    let bp = QuillConfig::from_yaml(yaml).unwrap().blueprint();
+    let a = bp.find("a1:").unwrap();
+    let b = bp.find("b1:").unwrap();
+    assert!(b < a, "registry order (beta<alpha) must drive clustering:\n{bp}");
+}
+
+#[test]
+fn group_registry_map_form_carries_title_override() {
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  ui:
+    groups:
+      addressing: {}
+      letterhead: { title: "Letterhead & Seal" }
+  fields:
+    a: { type: string, ui: { group: addressing } }
+    l: { type: string, ui: { group: letterhead } }
+"#;
+    let config = QuillConfig::from_yaml(yaml).unwrap();
+    let reg = &config.main.ui.as_ref().unwrap().groups.as_ref().unwrap().0;
+    assert_eq!(reg.len(), 2);
+    assert_eq!(reg[0].id, "addressing");
+    assert_eq!(reg[0].title, None);
+    assert_eq!(reg[1].id, "letterhead");
+    assert_eq!(reg[1].title.as_deref(), Some("Letterhead & Seal"));
+}
+
+#[test]
+fn unknown_group_reference_is_rejected() {
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  ui:
+    groups: [addressing]
+  fields:
+    subject: { type: string, ui: { group: letterhead } }
+"#;
+    let err = QuillConfig::from_yaml_with_warnings(yaml).unwrap_err();
+    assert!(err
+        .iter()
+        .any(|d| d.code.as_deref() == Some("quill::unknown_group")));
+}
+
+#[test]
+fn implicit_group_without_registry_warns() {
+    // No registry + a field group is the deprecated implicit-group form.
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  fields:
+    subject: { type: string, ui: { group: Addressing } }
+"#;
+    let (_config, warnings) = QuillConfig::from_yaml_with_warnings(yaml).unwrap();
+    assert!(warnings
+        .iter()
+        .any(|d| d.code.as_deref() == Some("quill::implicit_group")));
+}
+
+#[test]
+fn duplicate_group_id_is_rejected() {
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  ui:
+    groups: [addressing, addressing]
+  fields:
+    subject: { type: string, ui: { group: addressing } }
+"#;
+    let err = QuillConfig::from_yaml_with_warnings(yaml).unwrap_err();
+    assert!(err
+        .iter()
+        .any(|d| d.code.as_deref() == Some("quill::duplicate_group")));
+}
+
+#[test]
+fn non_snake_case_group_id_is_rejected() {
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  ui:
+    groups: [Addressing]
+  fields:
+    subject: { type: string, ui: { group: Addressing } }
+"#;
+    let err = QuillConfig::from_yaml_with_warnings(yaml).unwrap_err();
+    assert!(err
+        .iter()
+        .any(|d| d.code.as_deref() == Some("quill::invalid_group_id")));
+}
+
+#[test]
+fn group_registry_round_trips_through_serde_and_schema() {
+    // List-form input normalizes to the canonical map form on emit, preserving
+    // declaration order, and re-parses to the identical registry.
+    let yaml = r#"
+quill: { name: x, version: "1.0", backend: typst, description: x }
+main:
+  ui:
+    groups: [addressing, letterhead]
+  fields:
+    a: { type: string, ui: { group: addressing } }
+    l: { type: string, ui: { group: letterhead } }
+"#;
+    let config = QuillConfig::from_yaml(yaml).unwrap();
+    let ui = config.main.ui.clone().unwrap();
+    let json = serde_json::to_value(&ui).unwrap();
+    let back: UiCardSchema = serde_json::from_value(json).unwrap();
+    assert_eq!(ui, back, "registry must survive emit → parse");
+
+    // Emission carries order (preserve_order) and titles are omitted when derived.
+    let schema = config.schema();
+    let groups = schema["main"]["ui"]["groups"].as_object().unwrap();
+    let keys: Vec<&str> = groups.keys().map(String::as_str).collect();
+    assert_eq!(keys, ["addressing", "letterhead"]);
+    assert!(groups["addressing"].as_object().unwrap().is_empty());
+}
+
+#[test]
+fn migrated_group_fixtures_declare_registries_and_do_not_warn() {
+    for name in ["usaf_memo/0.2.0", "cmu_letter/0.1.0", "classic_resume/0.1.0"] {
+        let path = quillmark_fixtures::resource_path(&format!("quills/{name}/Quill.yaml"));
+        let yaml = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {name}: {e}"));
+        let (config, warnings) = QuillConfig::from_yaml_with_warnings(&yaml)
+            .unwrap_or_else(|e| panic!("{name} must load: {e:?}"));
+        assert!(
+            !warnings
+                .iter()
+                .any(|d| d.code.as_deref() == Some("quill::implicit_group")),
+            "{name} still emits implicit_group: {warnings:?}"
+        );
+        assert!(
+            config
+                .main
+                .ui
+                .as_ref()
+                .and_then(|u| u.groups.as_ref())
+                .is_some(),
+            "{name} main should declare a group registry"
+        );
+    }
 }
 
 #[test]
@@ -2059,9 +2343,11 @@ main:
     assert_eq!(summary.r#type, FieldType::RichText { inline: false });
     assert_eq!(summary.ui.as_ref().unwrap().multiline, Some(true));
 
+    // A field with no authored `ui:` block now carries `ui: None` — order is
+    // no longer stamped, so nothing fabricates a `ui` block.
     let notes = config.main.fields.get("notes").unwrap();
     assert_eq!(notes.r#type, FieldType::RichText { inline: false });
-    assert_eq!(notes.ui.as_ref().unwrap().multiline, None);
+    assert!(notes.ui.is_none());
 }
 
 #[test]

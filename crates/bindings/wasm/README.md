@@ -213,9 +213,9 @@ const diagnostics = quill.validate(Document.fromMarkdown(markdown));
 const errors = diagnostics.filter(d => d.severity === "error");
 ```
 
-To render a form editor, read field definitions from `quill.schema` (sort
-fields by each field's `ui.order`) and the authored values from the
-`Document` payload — there is no separate form-view projection.
+To render a form editor, read field definitions from `quill.schema` (walk
+`fields` in key order — declaration order is display order) and the authored
+values from the `Document` payload — there is no separate form-view projection.
 
 ### `quill.seedDocument()`
 
