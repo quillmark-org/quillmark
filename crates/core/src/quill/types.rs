@@ -12,7 +12,7 @@ use crate::value::QuillValue;
 /// **is** display order, carried structurally by the schema's ordered field
 /// maps ([`CardSchema::fields`], [`FieldSchema::properties`]) and by key order
 /// on the emitted-schema wire. The retired `ui.order` key is rejected with a
-/// pointed message (see [`UI_ORDER_REMOVED_MSG`]).
+/// pointed message (`UI_ORDER_REMOVED_MSG`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct UiFieldSchema {
     /// Display label for the field — decoupled from the snake_case wire key.
