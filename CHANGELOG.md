@@ -1,5 +1,317 @@
 # Changelog
 
+## v0.94.0 - 2026-07-15
+
+- Delete prose/plans directory
+- feat(wasm): promote the live-session/canvas surface to stable
+- docs(release): reconcile changelog and guides for 0.94.0 (skip 0.93)
+- test(core,quillmark): remove redundant and low-value tests
+- core: drop public→private rustdoc link in UiFieldSchema docs
+- core/seed: collapse merge-then-sort into one declaration-order pass
+- docs: declaration order is the field ordering contract; ui.order removed
+- core, bindings: update tests, golden, and doc surfaces for structural order
+- core: field declaration order becomes structural (IndexMap), ui.order retired
+- Simplify group-order sort key and ui.order stamping
+- Add card-level ui.groups registry for group identity and ordering
+- pdfform: place widget geometry once at bind, not per render
+- pdfform: gate form.json version before field-shape parse
+- pdfform: derive widget intrinsics from the quill schema (form@0.2.0, #940)
+- Reject nested ui.group; auto-order nested object properties
+- docs: densify the plaintext/enum section of the 0.93->0.94 guide
+- core, richtext: follow simplification cascades from plaintext
+- docs: extend canon (BLUEPRINT, PLATE_DATA) for plaintext and enum
+- docs: document plaintext and enum field types, narrow string
+- quillmark: end-to-end render test for plaintext through typst
+- core: test plaintext codec and enum promotion end-to-end
+- core: add plaintext and enum first-class field types
+- richtext: add from_plaintext literal codec and is_plain predicate
+- fix(typst/overlay): stop underline/strike decoration ink truncating $body regions
+- chore: migrate org references quillmark-org → borb-sh
+- docs: fix cross-tree link that broke mkdocs --strict
+- simplify: fix stale receiver refs and facade-prose misses after rename
+- rename typed-write facade editor→writer; unify on quill.writer(doc)
+- python: delete redundant commit_* verbs (subsumed by the editor)
+- docs: two-tier binding surface — parity table + strata/ephemerality (#932)
+- python: Document.editor(quill) front door + Editor/CardEditor + reads
+- wasm: quill.editor(doc) front door + tier-1 gap verbs + reads
+- wasm+python: delete addressed commit(addr) verb (subsumed by editor)
+- core: TypedEditor set_body + add_card (tier-1 mirror verbs)
+- simplify: follow the #925 cascades
+- docs: finish migration index entry; tidy wasm doc link
+- python: mirrored addressed write surface + corpus codec
+- wasm: addressed write surface (install/revise/applyChange/commit) + codec
+- richtext+core: pure Delta codec + install/revise body & field verbs
+- test(wasm): update runtime.test.js editor sugar to the strict contract
+- feat(core,wasm,python)!: typed field writes reject unknown names (#918)
+- wasm: split Card read type from CardInput write type (#917)
+- richtext: MarkOp::Remove subtracts the range instead of dropping the whole mark
+- fix(quillmark-pdf): dict/array depth walkers skip comments and strings
+- fix(richtext): markdown export never leaks a delimiter into the corpus
+- fix(richtext): saturate ordered-list marker; doc/hint cleanups from final review
+- #913: mirror the WASM typed batch on Python (commit_fields + set/commit reframe)
+- #911: finish exposing the typed editor in WASM (commitFields batch + JS editor sugar + reframe)
+- test(wasm): warm the lazy Typst backend load before timed Engine renders
+- test: consolidate generator-arm round-trips and costume proptests (tier 3-4)
+- test: remove orphan fixtures and redundant/low-value tests (tier 1-2)
+- docs: audit of legacy/redundant/low-value tests, fixtures, logic
+- richtext/core/bindings: address issues #902–#906
+- richtext: escape image alt/URL and link URL on markdown export (#900)
+- richtext: strip \r and bidi controls from apply_text_delta inserts
+- Remove prose/proposals/: 893 proposal has landed
+- Unify binding write-verb grammar: mechanical card-write twins (#895)
+- Hard cutover to commit_field: remove legacy richtext writers
+- wip: bindings + tests + docs for typed writes (pre-cutover)
+- Typed field writes: conform dispatch, commit_field, TypedEditor (core)
+- Review typed-field-writes proposal against codebase; resolve open questions
+- Add proposal: typed field writes via schema-carried types (#893)
+- feat(wasm): setCardBody — corpus writer for a non-main card body (#892)
+- remove(core,richtext,wasm)!: delete the incremental-edit surface (#886)
+- test(wasm): fix two applyFieldDelta tests left stale by the #881 un-gate
+- feat(regions): field_boxes helper + CorpusHit granularity signal (#884)
+- fix(core,wasm): resolve lint CI failure + re-sync applyFieldDelta type after merge
+- wasm/canvas: report clamp on PaintResult; document paint compositing constraints
+- fix(wasm): make applyFieldDelta and supportsCanvas types honest about their domain
+- docs: migration guide for the richtext field write-surface unification (#881)
+- richtext: un-gate applyFieldDelta to richtext fields (step 6)
+- wasm: setRichtextField / updateCardRichtextField + per-field markdown getter (step 5)
+- richtext: emit projects corpus fields to markdown; wire/DTO lossless (steps 2-4)
+- richtext: Card::set_field_richtext writer + corpus read-back (step 1)
+- fixtures: table_demo Quill + end-to-end table render test; document pdfform limit
+- richtext: property-test structured tables through normalize + round-trip
+- richtext: in-cell images degrade honestly instead of silent-Lossless
+- richtext: canonical table shape — validate invariants, repair in normalize
+- test: drop two redundant inline tests; dense-prose the runtime edit-surface note
+- Prune landed simplification entries from the backlog
+- Silence clippy nits in span_scan walk refactor
+- test(wasm): keep runtime edit-surface guard focused on the #876 methods
+- docs: fix rustdoc intra-doc links to satisfy the -Dwarnings lint gate
+- Filter locate's glyph walk to the target segment
+- Share frame-walk geometry between region scan and corpus walk
+- feat(wasm): expose incremental editor edit surface through runtime (#876)
+- Skip props re-clone in normalize when already key-sorted; document R2 hazard
+- Carry the <u>/Strong distinction instead of re-sniffing source
+- feat(typst): add plaintext(field) projection helper + document richtext migration hazard (#873)
+- Lift island mark-dispatch out of model into serial
+- Build canonical richtext tree once via move-based key sort
+- feat(wasm): add setBody(corpus) mutator on Document (#874)
+- Dedup emit_inline mark partition into wraps_and_codes
+- fix(typst): lower richtext(inline) fields to inline content (#872); fix wasm TS types (#875)
+- Remove unused ChangeLog/session forward surface
+- Cut over-engineered simplification findings; refresh drifted citations
+- docs(simplifications): remove the addressed findings
+- docs(simplifications): record the sync-twins deferral rationale
+- refactor(typst,richtext): dedup container dispatch and the #846 clip
+- refactor(core): one shared decoder for the dual-shape richtext seam
+- refactor(richtext): make apply_field_change all-or-nothing
+- refactor(core): single carrier for the richtext inline flag
+- refactor(richtext): drop unused usv UTF-16 helpers and content_key alias
+- refactor: apply low-risk simplifications from prose/simplifications
+- docs: record simplification-review findings in prose/simplifications/
+- fix(richtext): apply a short field delta leniently (auto-append remainder)
+- Trim unused test-only public methods from core
+- docs(core,typst): dense-prose pass on comments
+- docs(richtext): dense-prose pass on comments
+- docs(core): update QuillValue fill-setter reference after set_fill removal
+- Remove more dead/redundant logic
+- docs: remove stale info across canon, docs, and comments
+- test: remove redundant and low-value tests across the workspace
+- Remove dead and redundant logic
+- fix(docs): resolve broken intra-doc links (cargo doc -Dwarnings)
+- typst/richtext: address #855 cleanup findings
+- Fix #851 follow-up: transactional applyFieldDelta and fail-closed invalidation
+- richtext: fix issue #854 cleanup findings
+- fix(session): close the three delta-protocol lifecycle gaps (#851)
+- Fix low-risk API-surface findings from #856
+- fix(wasm): strip unreachable delta-API types from public runtime.d.ts (#850)
+- chore: ignore dist/, .vite/, test-results/ to prevent build-artifact commits
+- fix(richtext): cap single-line char diff to avoid quadratic blowup (#849)
+- fix(richtext): balance markdown export for overlap, escape `&` and trailing heading `#` (#848)
+- docs: fix richtext drift found in #853
+- fix(richtext): keep islands in sync on text-channel edits (#847)
+- fix(typst): balance markup for overlapping wrap+code marks (#846)
+- Render thematic breaks (---/***/___) instead of dropping them
+- fix(richtext): correct ChangeLog::map_pos staleness and future-revision handling
+- chore(richtext): drop richtext-spikes from integration branch
+- Move richtext inline shape to `inline: true` schema field.
+- feat(richtext): PR-H findings — fixture, runtime nav, docs (PR-H)
+- cargo fmt
+- feat(richtext): preview revision stamp + WASM session delta API (PR-F/PR-G)
+- feat(richtext): fallible document body mutators (PR-E)
+- docs(richtext): drop .qmd and Quill-Delta from phase-3 plan
+- docs(richtext): record PR-C/D landing in phase-3 plan
+- feat(richtext): add mark/line op channels and apply bundle (PR-D)
+- feat(richtext): add revision counter and bounded change log (PR-C)
+- feat(richtext): replace coarse delta::diff with Myers/LCS (PR-B)
+- Remove husky pre-commit hook
+- cargo fmt
+- docs(richtext): record phase-3 spike findings on integration branch
+- docs(richtext): align canon + code comments to PR-G, wrap up phase 2
+- fix(wasm): add span to canonical FieldRegion contract
+- richtext PR-G: richtext(inline), load-time example cache, alias cutover
+- Delete prose/review directory
+- docs(richtext): trim phase plans to landed reality, fold spike findings
+- test(richtext): wasm binding test for positionAt/locate round-trip (#829)
+- PR-F: regions + navigation — two-tier segment scan, position_at/locate (#829)
+- spike(richtext): PR-F de-risking — run-machine transparency + glyph.span.1 precision
+- fix(richtext): accept bodyMarkdown in the wasm card field allowlist
+- feat(richtext): phase-2 PR-E — bindings expose corpus body + bodyMarkdown
+- docs(richtext): clarify hard vs soft break in the CONVERT lowering table
+- docs(richtext): phase-2 PR-E canon rework for the corpus seam
+- feat(richtext): phase-2 PR-E — pdfform lowers richtext to plaintext + fixture
+- feat(richtext): phase-2 PR-E part 2 — delete the markdown oracle
+- feat(richtext): phase-2 PR-E part 1 — seam flip + typst consumes corpus
+- docs(richtext): reconcile Typst-emit section with structured cells
+- docs(richtext): PR-E handover + phase-2 status refresh
+- docs(richtext): remove the .qmd file-extension concept
+- feat(richtext): structured table cells — markdown a pure projection
+- feat(richtext): phase-2 PR-D — typst corpus emitter + segment source maps
+- feat(richtext): phase-2 PR-C — storage cutover to quillmark/document@0.93.0
+- fix(richtext): resolve broken RichText::validate intra-doc link
+- fix(core): quote payload scalars that would re-parse as a non-string
+- docs(richtext): PR-B landing log + PR-C handover on the phase-2 plan
+- fix(richtext): clear rustdoc -Dwarnings lint on phase-2 PR-B docs
+- test(bindings): update body expectations for corpus canonicalization
+- feat(richtext): phase-2 PR-B — Card.body is RichText, markdown a projection
+- docs(richtext): lock separate-crate topology + retire Quill-Delta framing in plan
+- refactor(richtext): make quillmark-richtext a leaf crate core depends on
+- docs(richtext): phase-2 plan — engine consumes RichText, delivers #829
+- docs(richtext): note block-quote emit decision for phase-2 handover
+- docs(richtext): phase-1 handover doc + integration HQ updates
+- fix(richtext): address phase-1 review — freeze determinism, codecs, anchors
+- feat(richtext): phase 1 — RichText corpus model, codecs, canonical serialization
+- docs(richtext): land phase-0 spike findings on the integration HQ
+- docs(richtext): make integration HQ canonical, self-contained
+- docs(richtext): open integration HQ plan for the content-model rework
+- Sync usaf_memo/0.2.0 fixture with airmark-quiver template
+- #824: dedup bindings tests + add two coverage guards
+- #823 items 2-9: dedup core + integration tests
+- #821 follow-up: fix rustdoc private-intra-doc-link in winansi_encode
+- #822: dedup typst backend + PDF crate tests (~280 lines)
+- #825: cache only the wasm cargo build dir, always regenerate pkg/
+- #806: resolve overlapping widget field_at by paint order, not name
+- Dead-code sweep from minimize-0.92.1-main review (#817–#821, #823, #825)
+- Ground #809/#810: memoize page checks, unify dict-splice + field-name filters (#816)
+- Tidy deferred backlog: dedup error-summary, pdfform flatten-limit docs, cleanup (#804, #807, #810, #812) (#815)
+- Fix silent-data-loss regression and blueprint/error/docs gaps (#803, #805, #808, #811) (#814)
+- Land LiveSession.fieldAt delegation; harden page_hashes against source spans (#801) (#813)
+- Helper codegen v2: markup blocks + generated data literal, retiring eval() and json() (#800)
+- Disable clippy in lint CI job (#798)
+- Satisfy clippy's manual_contains in the scalar-window walker
+- Drop the #797 spike modules from the branch
+- Harden the span scan against the review findings
+- Delete .claude/skills/simplification-cascades directory
+- Spike: generated data literal is Typst-equal to the json() blob
+- Spike: content fields as markup blocks resolve with per-node spans
+- Document the span-based region contract across canon, core, and the migration guide
+- Expose fieldAt on the WASM session; align binding docs with the span contract
+- Migrate usaf_memo off tagged(); rewrite region tests for the span contract
+- Span-based region tracking: codegen'd eval windows + glyph-span scan
+- Omit $body from the transform schema for body-disabled kinds
+- feat(regions): any array is element-addressable; SchemaMeta drops its unreachable Option
+- test(typst): own the widget-region test's schema instead of borrowing the fixture's
+- refactor(typst): collapse SchemaMeta per-kind table boilerplate, test-owned widget width
+- docs(migrations): document the compile-time region-binding validation in the working guide
+- fix(ci): hash every pkg/ input in the wasm cache key, check key sets in the drift guard
+- fix(wasm): sync canonical runtime.d.ts with the regions sidecar, wire typecheck into CI
+- feat(regions): validate form-field paths, reject scalar index-tagging, cache schema meta
+- docs(migrations): fix stale region-uniqueness line in 0.92→0.93 guide
+- Reconcile canon and migration guide with the reworked error system
+- Update binding surfaces to the current-compile warnings contract
+- Thread Typst compile warnings through the session as current-compile state
+- Collapse RenderError to a single diagnostics-carrying struct; drop Severity::Note
+- Amend error-rework proposal per adversarial review
+- Propose error system rework: one failure type, warnings on the compile seam
+- dense-prose: drop issue reference and history narration from regions test
+- feat(regions): tag the usaf_memo plate; canon + migration guide for the new region contract
+- feat(regions): per-placement regions, public tagged() helper, one-shot sidecar
+- docs: accuracy pass + dense-prose sweep across docs/, prose/canon/, comments, READMEs
+- build-wasm.sh: dev builds stamp next-patch -dev.<sha>, releases stamp verbatim
+- wasm runtime: snapshot caller handles before the first await
+- ci: enable the Clippy lint gate
+- Python: batched-error message embeds the first diagnostic
+- docs(core): note apply's $quill-check boundary on LiveSession::apply (#778)
+- perf(wasm): LiveSession retains QuillConfig, not the whole Quill (#778)
+- docs: canonize LiveSession — live preview owns apply/ChangeSet (#778)
+- feat(wasm): LiveSession.apply(doc) -> ChangeSet (#778)
+- Canon: endorse programmatic document construction
+- refactor!: collapse RenderSession into LiveSession (#778)
+- Add blank-canvas Document constructor in core and all bindings
+- feat: transactional apply() + ChangeSet on the render session (#778)
+- Add scalar From impls for QuillValue; mutators take Into<QuillValue>
+- Expose batched set_fields across Python, WASM, and .NET bindings
+- feat(typst): persist the World in the session; evict comemo after each compile (#778)
+- Add atomic batched Card::set_fields
+- remove(dotnet)!: drop the .NET binding entirely
+- Update README.md
+- Update README.md
+- Update README.md
+- Update README.md
+- Update README.md
+- Update README.md
+- Update README.md
+- fix: update WASM region test for content auto-tag; fix doc links
+- docs(region): tighten regions() doc per dense-prose
+- feat(region): one region per logical schema field
+- docs(region): fix grouping guidance and note blank/empty no-region case
+- refactor(typst): expose a region only for schema-addressable fields
+- feat(typst): auto-region tagging for content fields (#775)
+- refactor(core)!: move field regions from RenderResult to RenderSession::regions()
+- refactor(core)!: key regions on the quill schema field, not the backend widget
+- docs: fold prune-evolutionary-info into dense-prose
+- docs: canonize comment/doc style as the dense-prose skill
+- refactor(test): drop dangling BACKLOG.md reference
+- refactor(core): tighten doc-comments, prune evolutionary phrasing
+- refactor(bindings): neutralize marketing and reframe legacy phrasing
+- refactor(quillmark,cli,fuzz): tighten comments, drop bug-history narration
+- refactor(typst): tighten module and item doc-comments
+- docs(canon): prune evolutionary and marketing phrasing
+- docs: neutralize marketing and reframe legacy aliases in consumer docs
+- feat(pdfform): export PNG and SVG; remove the preview feature gate
+- fix(ci): resolve lint and docs CI failures on pdfform branch
+- fix(quillmark-pdf): make find_dict_value key/value-position aware
+- Make the plate a Typst-backend concern, not a universal one
+- Address branch-review findings: spine robustness, coercion parity, doc accuracy
+- Prune resolved review items 01–06; trim 07 to remaining gaps
+- Rework item 2: derive canvas capability, delete supports_canvas flag
+- Address branch-review item 3: total FieldRegion round-trip
+- Address branch-review items 1, 2, 4, 5, 6, 7
+- docs(review): write up unaddressed branch-review items for discussion
+- test(pdfform): restore flatten byte-level coverage at the unit level (preview-gated)
+- refactor(pdfform): PDF output always AcroForm; remove the public flatten knob
+- Update sample_form PDF title and field labels
+- Make pdfform framing industry-neutral
+- docs: add PDF Form backend page under quills section
+- refactor(pdfform): remove the form.json -> Quill.yaml scaffold
+- refactor(pdf): extract the incremental-update envelope into PdfUpdate
+- pdfform: WinAnsi flatten encoding, value clipping, shared PDF writer
+- review: resolve low-risk findings from pdfform branch review
+- Update README.md
+- Remove qualification layer and page composition: pdfform fills static forms only
+- feat(quillmark-pdf): page-merge primitive + continuation foundation (#757)
+- refactor(pdfform): centralize flatten value typography as one source of truth (#752)
+- feat(wasm): ship pdfform canvas + make the per-backend canvas contract explicit (#755)
+- feat(typst): generalize the plate API to arbitrary form-field(...) (#758)
+- feat(pdfform): card-instance value addressing in the resolver (#757)
+- feat(qualify): add quillmark-qualify — AcroForm PDF → form.pdf + form.json (#753)
+- chore(fmt): apply rustfmt line-wrapping to pre-existing drift
+- feat(pdfform,cli): scaffold Quill.yaml from a form.json field spec (#756)
+- fix(pdfform): build the preview feature against hayro's vello_cpu re-export
+- Expose form-field regions from stamped AcroForm backends (#759)
+- Implement `pdfform` backend + shared `quillmark-pdf` stamping spine (V1) (#750)
+- docs(proposal): design for pdfform backend + shared AcroForm spine (#744) (#748)
+- fix(python): count container levels, not the scalar leaf, in depth bound (#742) (#746)
+- Add generic hint for unresolvable Typst eval errors (issue #745) (#747)
+- docs: fix prose/canon, docs, and code-comment consistency drift (#743)
+- fix(core): count empty containers in json_depth_exceeds (#741)
+- Update README.md
+- docs: position Quillmark as a "schema-driven document engine" (#739) (#740)
+- review(0.93.0): fix stale comments, document scalar coercion, cover card markers (#738)
+- Unify blueprint emission on Document::to_markdown (#737)
+- docs(blueprint): fix $-line comment inaccuracies in canon (#735)
+- core: graciously coerce bare scalars into string fields (#733)
+- docs(spike): propose unifying blueprint placeholder on the !must_fill tag (#732)
+
+
 ## v0.92.1 - 2026-06-22
 
 - Accept uppercase field names; reserve only `$`-prefixed keys (#730)
