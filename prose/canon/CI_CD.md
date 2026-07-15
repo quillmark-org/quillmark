@@ -39,6 +39,8 @@ Excluded: multi-OS matrix, MSRV, security scanners, coverage, benchmarks.
 
 The PR uses a GitHub App token (`TAGGER_APP_ID`/`TAGGER_PRIVATE_KEY`) so CI runs on it and so its merge fires `release.yml` — PRs opened with the default `GITHUB_TOKEN` do not trigger workflow events.
 
+The Tagger App's installation is scoped to this repository under its current owner. Transferring or renaming the repo to a new owner does not carry that installation over; `create-github-app-token` then fails with `404 Not Found` on `.../installation` until an org admin installs (or extends repository access for) the App under the new owner.
+
 ---
 
 ## 3) Release & publish (`release.yml`)
