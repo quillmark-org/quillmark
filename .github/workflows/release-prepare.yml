@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: Version bump type (ignored while iterating an existing RC)
+        description: Version bump type (ignored while iterating an existing RC, or when version_override is set)
         required: true
         type: choice
         options:
@@ -15,6 +15,11 @@ on:
         required: false
         type: boolean
         default: false
+      version_override:
+        description: Explicit next version (e.g. 0.94.0), used verbatim and overriding bump — set to skip a minor
+        required: false
+        type: string
+        default: ""
 
 jobs:
   prepare:
@@ -52,8 +57,16 @@ jobs:
             | jq -r '.packages[] | select(.name == "quillmark") | .version')
 
           RC="${{ inputs.release_candidate }}"
+          OVERRIDE="${{ inputs.version_override }}"
 
-          if [[ "$CURRENT" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-rc\.([0-9]+)$ ]]; then
+          if [[ -n "$OVERRIDE" ]]; then
+            # Explicit target (e.g. skip a minor): used verbatim; the checkbox
+            # still decides whether to cut it as a fresh -rc.1.
+            NEXT="$OVERRIDE"
+            if [[ "$RC" == "true" && "$NEXT" != *-rc.* ]]; then
+              NEXT="${NEXT}-rc.1"
+            fi
+          elif [[ "$CURRENT" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-rc\.([0-9]+)$ ]]; then
             # Already an RC: the target base version is fixed, so `bump` is
             # ignored. The checkbox decides whether to iterate or promote.
             RC_BASE="${BASH_REMATCH[1]}"

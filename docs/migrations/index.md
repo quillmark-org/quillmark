@@ -10,6 +10,12 @@ so a guide is the path forward, not an optional read. Each guide is scoped to a
 single version step; to cross several versions, work through the relevant
 guides in order.
 
+!!! note "0.93 was never separately published"
+
+    The 0.93 milestone folded into 0.94.0 — no 0.93.x release was tagged.
+    Upgrading from 0.92.1 means following the **0.92 → 0.93** and
+    **0.93 → 0.94** guides in sequence.
+
 ## Available guides
 
 - [0.93 → 0.94](0.93-to-0.94.md) — `type: richtext(inline)` retires; declare
