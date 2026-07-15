@@ -8,6 +8,75 @@
 
 ## Unreleased
 
+These notes cover everything since v0.92.1. No 0.93.x was separately
+published — the 0.93 milestone folds into this release, so the upgrade path
+from 0.92.1 is the `0.92-to-0.93` and `0.93-to-0.94` guides read in sequence.
+
+- feat(wasm): the live-session / canvas-paint surface graduates from
+  `@experimental` to stable — `Engine.open`, `LiveSession`, `apply` /
+  `ChangeSet`, `paint` / `PaintOptions` / `PaintResult`, `PageSize`, and the
+  `supportsCanvas` probe are now the committed preview API. The tag is dropped
+  from the runtime `.d.ts` / `.js`, the wasm README, and `PREVIEW.md`; further
+  shape changes follow the normal deprecation path rather than landing in any
+  0.x. `Engine.render` / `supportedFormats` remain the one-shot path
+- refactor(core)!: field ordering becomes fully structural — `ui.order` is
+  removed and an authored `order:` is a load error. Field and card-kind display
+  order is now the key order of the emitted schema (declaration order, backed by
+  an `IndexMap`), and the auto-stamped `order:` integer disappears from
+  `QuillConfig::schema()`; consumers walk the maps in key order instead of
+  sorting on a stamped index. Typed-dictionary / typed-table-row properties
+  render in declaration order, not alphabetically (#941). See
+  `docs/migrations/0.93-to-0.94.md`
+- feat(core)!: a card-level `ui.groups` registry gives groups identity and
+  order. `ui.group` becomes a validated reference to a snake_case id
+  (`quill::unknown_group` for a dangling ref); the registry's declaration order
+  fixes group display order, labels derive from the id with a `title:` override,
+  and a bare label-as-identity group is deprecated (`quill::implicit_group`). A
+  nested `ui.group` is a load error (`quill::nested_group_not_supported`) (#941).
+  See `docs/migrations/0.93-to-0.94.md`
+- feat(core,typst,wasm,python)!: `plaintext` and a first-class `enum` join the
+  schema. `plaintext` is navigable unformatted prose carried over the richtext
+  corpus (a literal codec, with a `plaintext(field)` helper on the Typst side);
+  `enum` is promoted to `type: enum` + `values:`, and the `enum:` modifier on
+  `string` is deprecated for one release. `string` narrows to open scalar data
+  (#938). See `docs/migrations/0.93-to-0.94.md`
+- refactor(core)!: `type: richtext(inline)` retires — declare `type: richtext`
+  with `inline: true`. The old token is a hard `quill::field_parse_error`, and
+  `inline: true` on a non-richtext field is likewise rejected. Blueprint still
+  emits `richtext(inline)<markdown>` and `build_transform_schema` gains
+  `quillmark:inline: true`, both derived from the flag; documents and corpus
+  wire shapes are unaffected. See `docs/migrations/0.93-to-0.94.md`
+- refactor(pdfform)!: `form.json` slims to a binding layer (`form@0.2.0`). Bound
+  `fields` drop `type` / `options` / `multiline` (derived from the schema
+  field's kind, `enum` values, and `ui.multiline`); unbound widgets move to a
+  `widgets` section; binding runs at load, so a bad `schema_field` fails with
+  `pdfform::dangling_binding` / `pdfform::unbindable_field` instead of a silent
+  blank. `form@0.1.0` is rejected and `$cards` absolute-index addressing is
+  removed. Widget geometry is placed once at bind, not per render (#940). See
+  `docs/migrations/0.93-to-0.94.md`
+- refactor(core,richtext,wasm,python)!: the binding write surface settles into
+  two tiers over a document-free corpus codec. `quill.writer(doc)` (wasm and
+  Python alike) is the documented default — typed `set` / `set_all` / `setBody`
+  / `addCard` / `card(i)` and quill-free `get` / `getMarkdown` reads — layered
+  over the corpus lane (`importMarkdown` / `exportMarkdown` / `rebase` / `mapPos`
+  plus the addressed `install` / `revise` / `applyChange` verbs) and the opaque
+  `setField` primitive. The eager `bodyMarkdown` / `fieldMarkdown` projections
+  and the per-address body writers retire pre-release; `replaceBody` /
+  `replace_body` / `update_card_body` alias for one cycle; richtext fields gain
+  the anchor-preserving `revise_field`; the addressed `commit(addr, …)` is
+  deleted (subsumed by the writer). A core-vs-bindings parity table governs
+  drift (#925, #932). See `docs/migrations/0.93-to-0.94.md`
+- refactor(wasm)!: the `Card` shape splits by direction — a read `Card` always
+  carries `body: RichText`, while `pushCard` / `insertCard` take a `CardInput`
+  whose `body` still accepts a markdown string and whose non-`kind` fields are
+  optional (#917). The card-write verbs become mechanical twins of their
+  main-card names: `updateCardField` / `updateCardFields` rename to
+  `setCardField` / `setCardFields` (#895). See `docs/migrations/0.93-to-0.94.md`
+- fix(typst/overlay): underline / strike decoration ink no longer truncates
+  `$body` field regions — the region geometry is taken before decoration strokes
+  extend the glyph ink box, so a highlighted body field's box matches the text
+  instead of the overrun (#937)
+- chore: migrate org references `quillmark-org` → `borb-sh` across the tree
 - fix(richtext): the markdown-export codec never leaks a delimiter into the
   corpus. An editor `apply_mark_ops` mark can wrap a span markdown can't
   represent (a `strong`/`emph`/`strike` edge on punctuation/symbols/whitespace,

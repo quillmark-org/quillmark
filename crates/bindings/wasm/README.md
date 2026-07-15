@@ -309,12 +309,6 @@ write.
 
 ### `engine.render(quill, parsed, opts?)` vs. `engine.open(quill, parsed)`
 
-> **Experimental:** the entire session surface — `engine.open`,
-> `LiveSession`, `apply`, `ChangeSet`, `paint`, `PaintOptions`, `PaintResult`,
-> `PageSize`, and the `supportsCanvas` probe — ships ahead of its first
-> production consumer and may change shape in any 0.x release. `engine.render`
-> is the stable path.
-
 Use **`engine.render`** for one-shot exports (PDF/SVG/PNG) — compiles, emits
 artifacts, done. Use **`LiveSession`** (returned by `engine.open`) for
 reactive previews: the session is a persistent compiler. `paint` / `render` /

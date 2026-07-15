@@ -195,7 +195,6 @@ export type OutputFormat = 'pdf' | 'svg' | 'txt' | 'png';
 
 /**
  * Canonical contract every backend build must satisfy. Page geometry in pt.
- * @experimental Part of the iterative-session/canvas surface — see {@link LiveSession}.
  */
 export interface PageSize {
 	widthPt: number;
@@ -204,7 +203,6 @@ export interface PageSize {
 
 /**
  * Canonical contract every backend build must satisfy. Inputs to `paint`.
- * @experimental Part of the iterative-session/canvas surface — see {@link LiveSession}.
  */
 export interface PaintOptions {
 	layoutScale?: number;
@@ -213,7 +211,6 @@ export interface PaintOptions {
 
 /**
  * Canonical contract every backend build must satisfy. Output of `paint`.
- * @experimental Part of the iterative-session/canvas surface — see {@link LiveSession}.
  */
 export interface PaintResult {
 	layoutWidth: number;      // canvas.style.width target; independent of densityScale
@@ -240,7 +237,6 @@ export interface PaintResult {
  * {@link LiveSession.apply}: `dirtyPages` lists the pages whose rendered
  * content differs from the previous compile, including added pages; removed
  * pages are implied by `pageCount`. Repaint `dirty ∩ visible`.
- * @experimental Part of the live-session/canvas surface — see {@link LiveSession}.
  */
 export interface ChangeSet {
 	pageCount: number;
@@ -294,9 +290,6 @@ export declare class Engine {
 	 * The `quill` and `doc` handles are read synchronously before the first
 	 * await, so the caller may `free()` them as soon as this call returns; the
 	 * caller owns the returned session and must `.free()` it.
-	 * @experimental Ships ahead of its first production consumer (the designed
-	 * canvas live-preview path — see `prose/canon/PREVIEW.md`). The session/paint
-	 * surface may change in any 0.x release; `render()` is the stable path.
 	 */
 	open(quill: Quill, doc: Document): Promise<LiveSession>;
 
@@ -318,7 +311,6 @@ export declare class Engine {
 	 * the resulting {@link LiveSession.supportsCanvas} answers `false`. Gate
 	 * mounting a canvas UI on this; gate the actual `paint` call on the session's
 	 * getter once `open()` has run.
-	 * @experimental Probes the experimental session/canvas surface — see {@link LiveSession}.
 	 */
 	supportsCanvas(quill: Quill): Promise<boolean>;
 }
@@ -335,11 +327,6 @@ export declare class Engine {
  * {@link LiveSession.regions} carries schema-field geometry for interactive
  * overlays / cross-navigation drawn on top of the raster; it is never needed to
  * complete the picture.
- *
- * @experimental The whole session/canvas-paint surface (`Engine.open`,
- * `LiveSession`, `PaintOptions`, `PaintResult`, `PageSize`) ships ahead of
- * its first production consumer and may change shape in any 0.x release.
- * The stable render path is `Engine.render`.
  */
 export declare class LiveSession {
 	private constructor();

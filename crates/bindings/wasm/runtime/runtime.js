@@ -318,9 +318,6 @@ export class Engine {
 	 * the caller owns the returned session and must `.free()` it. The `quill`
 	 * and `doc` handles are read synchronously before the first await, so the
 	 * caller may `free()` them as soon as this call returns.
-	 * @experimental Ships ahead of its first production consumer (the designed
-	 * canvas live-preview path); the session/paint surface may change in any
-	 * 0.x release. `render()` is the stable path.
 	 * @param {Quill} quill
 	 * @param {Document} doc
 	 * @returns {Promise<LiveSession>}

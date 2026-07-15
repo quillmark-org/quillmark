@@ -106,8 +106,8 @@ otherwise too, so eviction is unconditional, not a session feature.
 
 **One session type.** Immutability is an invariant, not a type: reads between
 edits see a stable document because apply swaps the compile only on success,
-and the preview consumer (ours — the session surface is `@experimental` and
-preview is WASM-only by non-goal) executes serially. There is no separate
+and the preview consumer (ours — preview is WASM-only by non-goal) executes
+serially. There is no separate
 frozen snapshot type and no change-generation counter — with a single owned
 consumer there is no cross-edit reader to protect. If a long-lived read-only
 viewer ever needs to shed the retained world, a `freeze()` that drops it and
