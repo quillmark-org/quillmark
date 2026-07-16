@@ -33,6 +33,30 @@ export type {
 	QuillMetadata
 } from '../core/wasm.js';
 
+// Corpus edit vocabulary — the op-grained content model `Document`'s methods
+// speak (`applyChange(addr, bundle)`, `install(addr, rt)`, `revise(…) => Delta`).
+// Declared in the core build; re-exported here so the single public entry point
+// names every type its own re-exported surface already references — `Card.body`
+// is a `RichText`, `PayloadItem.nestedFills` a `PathStep[][]`, `CardInput.body` a
+// `RichText | string` — rather than forcing consumers to derive them structurally
+// off the `Document` handle. The corpus write path (a ProseMirror↔corpus codec)
+// must name all of them; they are its correctness core, not edge types.
+export type {
+	RichText,
+	RichTextLine,
+	RichTextContainer,
+	RichTextMark,
+	RichTextIsland,
+	CardInput,
+	PathStep,
+	Addr,
+	Delta,
+	Assoc,
+	LineOp,
+	MarkOp,
+	ChangeBundle
+} from '../core/wasm.js';
+
 // ── Error contract ──────────────────────────────────────────────────────────
 
 /**
