@@ -51,6 +51,16 @@ pub enum LineOp {
         line: usize,
         containers: Vec<Container>,
     },
+    /// Set (or clear) a line's `continues` flag — whether it continues the
+    /// previous line's block across a within-block hard break (a markdown hard
+    /// break, a code fence's interior line) rather than starting a new block.
+    /// The op-grained twin of the value that `install` already round-trips:
+    /// `split`/`join`/text-delta `\n` insertion all mint `continues: false`
+    /// lines, so without this a hard break or a new code-fence interior line is
+    /// unreachable op-wise and falls back to a whole-`install` (losing that
+    /// edit's identity anchors). Setting `continues: true` on line 0 is
+    /// [`ApplyError::FirstLineContinues`] (nothing precedes it to continue).
+    SetContinues { line: usize, continues: bool },
 }
 
 // ── Change-bundle wire (mark / line op ⇄ JSON) ──────────────────────────────
@@ -163,6 +173,11 @@ pub fn line_op_to_value(op: &LineOp) -> Value {
                 Value::Array(containers.iter().map(container_to_value).collect()),
             );
         }
+        LineOp::SetContinues { line, continues } => {
+            m.insert("op".into(), "setContinues".into());
+            m.insert("line".into(), Value::from(*line));
+            m.insert("continues".into(), Value::Bool(*continues));
+        }
     }
     Value::Object(m)
 }
@@ -198,6 +213,13 @@ pub fn line_op_from_value(v: &Value) -> Result<LineOp, ParseError> {
                 .iter()
                 .map(container_from_value)
                 .collect::<Result<_, _>>()?,
+        }),
+        Some("setContinues") => Ok(LineOp::SetContinues {
+            line: line()?,
+            continues: o
+                .get("continues")
+                .and_then(Value::as_bool)
+                .ok_or(ParseError::Shape("setContinues continues"))?,
         }),
         _ => Err(ParseError::Shape("line op kind")),
     }
@@ -274,6 +296,11 @@ pub enum ApplyError {
         lines: usize,
         segments: usize,
     },
+    /// A [`LineOp::SetContinues`] tried to set `continues: true` on line 0, which
+    /// has nothing before it to continue — the apply-time twin of the
+    /// [`Invariant::FirstLineContinues`](crate::model::Invariant::FirstLineContinues)
+    /// validation error, refused here because `normalize` does not repair it.
+    FirstLineContinues,
     /// The text delta's expected base length disagreed with the corpus —
     /// it was built against a different revision.
     DeltaBaseMismatch {
@@ -460,6 +487,18 @@ impl RichText {
                 LineOp::SetContainers { line, containers } => {
                     let line = self.line_mut(*line)?;
                     line.containers = containers.clone();
+                }
+                LineOp::SetContinues { line, continues } => {
+                    // Line 0 has nothing before it to continue: setting the flag
+                    // there would forge the `FirstLineContinues` invariant that
+                    // `normalize` does not repair. Reject before the write so the
+                    // corpus stays valid (`apply_field_change` stages line ops on
+                    // a scratch copy, so this leaves `self` untouched).
+                    if *line == 0 && *continues {
+                        return Err(ApplyError::FirstLineContinues);
+                    }
+                    let l = self.line_mut(*line)?;
+                    l.continues = *continues;
                 }
             }
         }
@@ -776,6 +815,14 @@ mod tests {
                 line: 2,
                 containers: vec![Container::Quote],
             },
+            LineOp::SetContinues {
+                line: 1,
+                continues: true,
+            },
+            LineOp::SetContinues {
+                line: 3,
+                continues: false,
+            },
         ];
         for op in ops {
             let v = line_op_to_value(&op);
@@ -996,6 +1043,62 @@ mod tests {
         }])
         .unwrap();
         assert!(matches!(rt.lines[0].kind, LineKind::Heading { level: 2 }));
+    }
+
+    #[test]
+    fn line_op_set_continues_sets_and_clears() {
+        // Two paragraph lines (delta-split → both `continues: false`, i.e. two
+        // blocks). `setContinues` on line 1 turns the boundary into a within-block
+        // hard break, and export then emits one block, not two paragraphs.
+        let mut rt = from_markdown("one two").unwrap();
+        rt.apply_text_delta(&diff("one two", "one\ntwo")).unwrap();
+        assert!(!rt.lines[1].continues, "delta-split newline is a new block");
+
+        rt.apply_line_ops(&[LineOp::SetContinues {
+            line: 1,
+            continues: true,
+        }])
+        .unwrap();
+        assert!(rt.lines[1].continues);
+        assert_eq!(rt.validate(), Ok(()));
+        assert_eq!(
+            crate::export::to_markdown(&rt).matches("\n\n").count(),
+            0,
+            "a within-block hard break is not a paragraph boundary"
+        );
+
+        // Clearing restores the block boundary.
+        rt.apply_line_ops(&[LineOp::SetContinues {
+            line: 1,
+            continues: false,
+        }])
+        .unwrap();
+        assert!(!rt.lines[1].continues);
+        assert_eq!(rt.validate(), Ok(()));
+    }
+
+    #[test]
+    fn line_op_set_continues_rejects_first_line() {
+        let mut rt = from_markdown("one two").unwrap();
+        rt.apply_text_delta(&diff("one two", "one\ntwo")).unwrap();
+        let before = rt.clone();
+        // `continues: true` on line 0 forges `FirstLineContinues`; refused, and
+        // the corpus is left untouched.
+        assert_eq!(
+            rt.apply_line_ops(&[LineOp::SetContinues {
+                line: 0,
+                continues: true,
+            }]),
+            Err(ApplyError::FirstLineContinues)
+        );
+        assert_eq!(rt, before, "rejected op leaves the corpus untouched");
+        // Clearing line 0 (already `false`) is a no-op, not an error.
+        rt.apply_line_ops(&[LineOp::SetContinues {
+            line: 0,
+            continues: false,
+        }])
+        .unwrap();
+        assert_eq!(rt.validate(), Ok(()));
     }
 
     fn island(id: &str) -> Island {

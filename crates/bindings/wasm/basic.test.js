@@ -731,6 +731,27 @@ card_kinds:
     ).toThrow()
   })
 
+  it('applyChange setContinues lowers a hard break op-wise (#949)', () => {
+    const doc = blankDoc()
+    // Two paragraph lines (a delta-inserted `\n` mints `continues:false`), so
+    // export separates them with a blank line — two blocks.
+    doc.revise({}, 'one two')
+    doc.applyChange({}, { delta: { ops: [{ retain: 3 }, { insert: '\n' }, { retain: 4 }] } })
+    expect(exportMarkdown(doc.main.body)).toContain('\n\n')
+
+    // setContinues turns the boundary into a within-block hard break: one block,
+    // no blank-line separator — and identity anchors ride through (op, not install).
+    doc.applyChange({}, { lineOps: [{ op: 'setContinues', line: 1, continues: true }] })
+    expect(exportMarkdown(doc.main.body)).not.toContain('\n\n')
+    expect(doc.main.body.lines[1].continues).toBe(true)
+
+    // `continues:true` on line 0 has nothing to continue — rejected, value intact.
+    expect(() =>
+      doc.applyChange({}, { lineOps: [{ op: 'setContinues', line: 0, continues: true }] }),
+    ).toThrow()
+    expect(doc.main.body.lines[1].continues).toBe(true)
+  })
+
   it('commitCardField resolves the card-kind schema and errors on a bad index', () => {
     const quill = buildQuill()
     const doc = Document.fromMarkdown(

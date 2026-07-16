@@ -267,7 +267,13 @@ export type MarkOp =
       ))
     | { op: "removeAnchor"; id: string };
 
-/** A line/block edit. `split`/`join` splice `\n`; `setKind`/`setContainers` touch metadata. */
+/**
+ * A line/block edit. `split`/`join` splice `\n`; `setKind`/`setContainers`/
+ * `setContinues` touch metadata. `setContinues` sets/clears a line's within-block
+ * hard-break flag (`RichTextLine.continues`) — the op-grained way to lower a
+ * Shift+Enter hard break or a new code-fence interior line; `continues: true` on
+ * line 0 is rejected (nothing precedes it to continue).
+ */
 export type LineOp =
     | { op: "split"; at: number }
     | { op: "join"; line: number }
@@ -276,7 +282,8 @@ export type LineOp =
           | { kind: "heading"; level: number }
           | { kind: "code"; lang?: string }
       ))
-    | { op: "setContainers"; line: number; containers: RichTextContainer[] };
+    | { op: "setContainers"; line: number; containers: RichTextContainer[] }
+    | { op: "setContinues"; line: number; continues: boolean };
 
 /**
  * A committed corpus edit bundle for `applyChange`: a text `delta` (default no
