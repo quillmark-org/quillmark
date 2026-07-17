@@ -15,9 +15,6 @@ Long-form project documentation, in three tiers by maturity:
 - **`plans/`** — working plans for multi-phase reworks in flight: the
   integration HQ for a change too large for a single proposal. One subdirectory
   per rework. Removed once the rework lands.
-- **`simplifications/`** — point-in-time simplification-review findings,
-  grouped by the crate where the fix lands. Entries are removed as they are
-  fixed or spun into GitHub issues.
 
 Canonical docs never reference proposals or plans. References never link
 out to other prose docs.
