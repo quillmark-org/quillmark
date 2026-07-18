@@ -256,7 +256,9 @@ card_kinds:
     expect(ed.document.getMarkdown()).toBe('Main **body**.')
     expect(() => ed.document.getMarkdown({ field: 'subject' })).toThrow(/body-only/)
     expect(quill.view(ed.document).get('subject')).toBe('Q3 **results**')
-    expect(quill.view(ed.document).get('missing')).toBeUndefined()
+    // view.get carries schema authority: an unknown name throws (vs `undefined`
+    // from the quill-free transport `Document.get` above).
+    expect(() => quill.view(ed.document).get('missing')).toThrow(/UnknownField/)
   })
 })
 
