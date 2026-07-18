@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- feat(wasm,python): keyed card reads `getCardField(index, name)` / `getCardMarkdown(index, name?)` (py `get_card_field` / `get_card_markdown`) — the card-indexed twins of `get` / `getMarkdown`, mirroring the `commitCardField` / `setCardField` write verbs so card reads no longer require a `payloadItems` walk (#953)
+
 ## v0.94.0 - 2026-07-15
 
 - Delete prose/plans directory

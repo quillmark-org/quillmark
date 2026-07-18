@@ -541,6 +541,36 @@ impl PyDocument {
         }
     }
 
+    /// Read a composable card's field value — the card-indexed twin of `get`: a
+    /// dict for a richtext corpus, a scalar/list/dict otherwise, or `None` when
+    /// the field is absent. An out-of-range `index` raises `IndexOutOfRange`, as
+    /// the card write verbs do — a bad index is a boundary error, not an absent
+    /// field. Mirrors WASM `Document.getCardField`.
+    fn get_card_field<'py>(
+        &self,
+        py: Python<'py>,
+        index: usize,
+        name: &str,
+    ) -> PyResult<Option<Bound<'py, PyAny>>> {
+        match self.card_or_raise(index)?.payload().get(name) {
+            Some(v) => Ok(Some(quillvalue_to_py(py, v)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// The markdown projection of a composable card's field (`name` given) or its
+    /// body (`name` omitted) — the card-indexed twin of `get_markdown`, `""` for
+    /// an absent field. An out-of-range `index` raises `IndexOutOfRange`. Mirrors
+    /// WASM `Document.getCardMarkdown`.
+    #[pyo3(signature = (index, name=None))]
+    fn get_card_markdown(&self, index: usize, name: Option<&str>) -> PyResult<String> {
+        let card = self.card_or_raise(index)?;
+        Ok(match name {
+            Some(n) => card.field_markdown(n).unwrap_or_default(),
+            None => card.body_markdown(),
+        })
+    }
+
     /// Store an opaque value on a main-card field, clearing any `!must_fill`
     /// marker. The quill-free primitive: it holds only the `$quill` *reference*,
     /// stores the value verbatim, and defers coercion/validation to render.
@@ -879,6 +909,16 @@ impl PyDocument {
     fn card_mut_or_raise(&mut self, index: usize) -> PyResult<&mut quillmark_core::Card> {
         let len = self.inner.cards().len();
         self.inner.card_mut(index).ok_or_else(|| {
+            convert_edit_error(quillmark_core::EditError::IndexOutOfRange { index, len })
+        })
+    }
+
+    /// Resolve a composable card by index for a read, raising the same
+    /// `IndexOutOfRange` error the card mutators raise. The immutable twin of
+    /// `card_mut_or_raise`, shared by the card-indexed reads.
+    fn card_or_raise(&self, index: usize) -> PyResult<&quillmark_core::Card> {
+        let len = self.inner.cards().len();
+        self.inner.cards().get(index).ok_or_else(|| {
             convert_edit_error(quillmark_core::EditError::IndexOutOfRange { index, len })
         })
     }

@@ -82,7 +82,8 @@ ergonomic), nothing else admitted. Drift is a reviewable diff to this table.
 | Receipt-free body write | `set_body(md)` | `setBody(md)` / `set_body(md)` | identical — core also exposes the delta via `revise_body` |
 | Card creation | `add_card(kind, fields, body?)` | `addCard` / `add_card` | identical — fused make + typed-commit + push, transactional |
 | Card cursor | `writer.card(i)?` (eager check) | `writer.card(i)` (lazy check) | **FFI** — no borrow to validate against; the index is checked at the write |
-| Reads | `card.field_markdown(..)` / `payload().get(..)` | `doc.getMarkdown(name?)` / `doc.get(name)` | **idiom** — the bindings fuse the read into one named verb on `Document` |
+| Reads (main) | `card.field_markdown(..)` / `payload().get(..)` | `doc.getMarkdown(name?)` / `doc.get(name)` | **idiom** — the bindings fuse the read into one named verb on `Document` |
+| Reads (card) | `cards()[i].field_markdown(..)` / `payload().get(..)` | `doc.getCardMarkdown(i, name?)` / `doc.getCardField(i, name)` | **idiom** — the card-indexed twins of the main reads, mirroring the card write verbs; `getCardMarkdown` is a fallible `Result` (the index bounds-check) where main `getMarkdown` is infallible |
 | Richtext ops | `card.revise_field(name, md)?` (borrow chain) | `doc.revise({card, field}, md)` (addr literal) | **FFI** — same model, flattened navigation |
 | Opaque primitive | `set_field` / `set_fields` | `setField` / `setCardField` (JS), `set_field` / `set_fields` (py) | identical |
 

@@ -858,6 +858,39 @@ impl Document {
         }
     }
 
+    /// Read a composable card's field value — the card-indexed twin of
+    /// [`get`](Self::get): the raw payload value (a corpus object for a richtext
+    /// field, a scalar/array/object otherwise), or `undefined` when the field is
+    /// absent. An out-of-range `index` throws `[EditError::IndexOutOfRange]`, as
+    /// the card write verbs do — a bad index is a boundary error, not an absent
+    /// field.
+    #[wasm_bindgen(js_name = getCardField)]
+    pub fn get_card_field(&self, index: usize, name: &str) -> Result<JsValue, JsValue> {
+        match self.card_or_throw(index)?.payload().get(name) {
+            Some(v) => serialize_or_throw(v.as_json(), "getCardField"),
+            None => Ok(JsValue::UNDEFINED),
+        }
+    }
+
+    /// The markdown projection of a composable card's field (`name` given) or its
+    /// body (`name` omitted) — the card-indexed twin of
+    /// [`getMarkdown`](Self::get_markdown), `""` for an absent field. An
+    /// out-of-range `index` throws `[EditError::IndexOutOfRange]`; that
+    /// fallibility is the one difference from the infallible main `getMarkdown`,
+    /// forced by the index.
+    #[wasm_bindgen(js_name = getCardMarkdown)]
+    pub fn get_card_markdown(
+        &self,
+        index: usize,
+        #[wasm_bindgen(unchecked_optional_param_type = "string")] name: Option<String>,
+    ) -> Result<String, JsValue> {
+        let card = self.card_or_throw(index)?;
+        Ok(match name {
+            Some(n) => card.field_markdown(&n).unwrap_or_default(),
+            None => card.body_markdown(),
+        })
+    }
+
     /// Number of composable cards (excludes the main card). O(1).
     #[wasm_bindgen(getter, js_name = cardCount)]
     pub fn card_count(&self) -> usize {
@@ -1477,6 +1510,17 @@ impl Document {
     fn card_mut_or_throw(&mut self, index: usize) -> Result<&mut quillmark_core::Card, JsValue> {
         let len = self.inner.cards().len();
         self.inner.card_mut(index).ok_or_else(|| {
+            edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
+        })
+    }
+
+    /// Resolve a composable card by index for a read, mapping out-of-range to the
+    /// same `IndexOutOfRange` JS error the card mutators throw. The immutable twin
+    /// of [`card_mut_or_throw`](Self::card_mut_or_throw), shared by the
+    /// card-indexed reads.
+    fn card_or_throw(&self, index: usize) -> Result<&quillmark_core::Card, JsValue> {
+        let len = self.inner.cards().len();
+        self.inner.cards().get(index).ok_or_else(|| {
             edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
         })
     }

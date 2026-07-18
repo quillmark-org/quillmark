@@ -156,7 +156,10 @@ title: Draft
     expect(doc.cards[0].kind).toBe('note')
 
     doc.setCardField(0, 'author', 'Bob')
-    expect(field(doc.cards[0], 'author')).toBe('Bob')
+    // Keyed card read (#953) — mirrors the write, no payloadItems walk. Agrees
+    // with the hand-rolled projection it replaces.
+    expect(doc.getCardField(0, 'author')).toBe('Bob')
+    expect(doc.getCardField(0, 'author')).toBe(field(doc.cards[0], 'author'))
 
     // Storage DTO round-trips losslessly — the editor's persistence path.
     const restored = Document.fromJson(doc.toJson())
@@ -165,5 +168,31 @@ title: Draft
     // Removal works back down to empty.
     doc.removeCard(0)
     expect(doc.cardCount).toBe(0)
+  })
+
+  it('keyed card reads mirror the card write verbs (#953)', () => {
+    const doc = Document.fromMarkdown(`~~~
+$quill: core_test
+$kind: main
+title: Draft
+~~~
+
+# Body`)
+    doc.pushCard(Document.makeCard('note', { author: 'Alice' }, 'A note body.'))
+
+    // getCardField — value keyed by name; undefined when the field is absent.
+    expect(doc.getCardField(0, 'author')).toBe('Alice')
+    expect(doc.getCardField(0, 'missing')).toBeUndefined()
+
+    // getCardMarkdown — the card body when name omitted, the field projection
+    // when named (a bare string field imports as markdown).
+    expect(doc.getCardMarkdown(0)).toContain('A note body.')
+    expect(doc.getCardMarkdown(0, 'author')).toContain('Alice')
+    expect(doc.getCardMarkdown(0, 'missing')).toBe('')
+
+    // An out-of-range index is a boundary error — it throws, the way the card
+    // write verbs do, rather than reading back as undefined/"".
+    expect(() => doc.getCardField(1, 'author')).toThrow()
+    expect(() => doc.getCardMarkdown(1)).toThrow()
   })
 })

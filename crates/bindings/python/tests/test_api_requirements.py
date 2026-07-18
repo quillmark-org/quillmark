@@ -380,6 +380,43 @@ def test_set_card_field_out_of_range():
         doc.set_card_field(0, "title", "x")
 
 
+def test_get_card_field():
+    """get_card_field reads a card field by name — the card-indexed twin of get,
+    agreeing with the payload_items projection it replaces."""
+    doc = Document.from_markdown(MD_WITH_CARDS)
+    assert doc.get_card_field(0, "foo") == "bar"
+    assert doc.get_card_field(0, "foo") == field(doc.cards[0], "foo")
+    # A valid card with no such field reads back as None (not an error).
+    assert doc.get_card_field(0, "missing") is None
+
+
+def test_get_card_field_out_of_range():
+    """get_card_field raises IndexOutOfRange for a bad card index — a boundary
+    error, the way the card write verbs surface it, not an absent field."""
+    doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+        doc.get_card_field(0, "foo")
+
+
+def test_get_card_markdown():
+    """get_card_markdown projects a card field (name given) or the card body
+    (name omitted) — the card-indexed twin of get_markdown."""
+    doc = Document.from_markdown(MD_WITH_CARDS)
+    # A bare string field imports as markdown.
+    assert "bar" in doc.get_card_markdown(0, "foo")
+    # Body when name omitted.
+    assert "Card one." in doc.get_card_markdown(0)
+    # Absent field → "".
+    assert doc.get_card_markdown(0, "missing") == ""
+
+
+def test_get_card_markdown_out_of_range():
+    """get_card_markdown raises IndexOutOfRange for a bad card index."""
+    doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+        doc.get_card_markdown(0)
+
+
 def test_revise_card_body():
     """revise(md, card=i) revises a card body and returns the text delta."""
     doc = Document.from_markdown(MD_WITH_CARDS)
