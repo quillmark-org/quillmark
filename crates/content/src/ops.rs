@@ -353,12 +353,11 @@ impl Content {
         let delta = sanitized.as_ref();
 
         let old_chars: Vec<char> = self.text.chars().collect();
-        // A splice may name only the region it changes: pad a short delta with a
-        // trailing retain over the untouched remainder so a bare prepend applies
-        // against the whole content. An over-long delta still fails the check.
-        let extended = delta.extend_to_base(old_chars.len());
-        let delta = extended.as_ref();
         let old_lines = self.lines.clone();
+        // A splice may name only the region it changes: `try_apply` retains the
+        // untouched remainder implicitly, so a bare prepend applies against the
+        // whole content. An over-long delta (consuming more base than exists)
+        // still fails the base-length check.
         let new_text = delta
             .try_apply(&self.text)
             .map_err(|e| ApplyError::DeltaBaseMismatch {
