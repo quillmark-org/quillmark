@@ -1,4 +1,4 @@
-//! Markdown-string input normalization — the boundary preprocessing corpus
+//! Markdown-string input normalization — the boundary preprocessing content
 //! import runs before parsing. Converts line endings to `\n`, strips invisible
 //! Unicode bidi controls (which sit adjacent to `**`/`_` and defeat delimiter
 //! recognition), and repairs `<!-- ... -->` HTML-comment fences that would

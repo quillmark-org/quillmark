@@ -1,7 +1,7 @@
 use crate::{
     CorpusHit, Diagnostic, RenderError, RenderOptions, RenderResult, RenderedRegion, Severity,
 };
-pub use quillmark_richtext::{ApplyError, Assoc, Delta, LineOp, MarkOp, Op};
+pub use quillmark_content::{ApplyError, Assoc, Delta, LineOp, MarkOp, Op};
 
 /// What a committed [`LiveSession::apply`] changed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,21 +128,21 @@ pub trait SessionHandle: Send + Sync + 'static {
             .map(|r| r.field)
     }
 
-    /// A point → **corpus position** in a content field — the fine-grained
+    /// A point → **content position** in a content field — the fine-grained
     /// twin of [`field_at`](Self::field_at) (which answers with the field
     /// alone). `x`/`y` are PDF points, bottom-left origin on `page`. Returns
-    /// the field plus a USV offset into its `RichText`, cluster-exact and
+    /// the field plus a USV offset into its `Content`, cluster-exact and
     /// degrading to the containing segment's start on origin-less ink (see
     /// [`CorpusHit`]). `None` off all content ink, on a scalar/widget (no
-    /// corpus address), or when the backend maps no corpus. Default `None` —
+    /// content address), or when the backend maps no content. Default `None` —
     /// a backend that carries a per-segment source map overrides this.
     fn position_at(&self, _page: usize, _x: f32, _y: f32) -> Option<CorpusHit> {
         None
     }
 
-    /// A corpus position → **caret rect** in a content field — the reverse of
+    /// A content position → **caret rect** in a content field — the reverse of
     /// [`position_at`](Self::position_at). `pos` is a USV offset into `field`'s
-    /// `RichText`; the returned [`RenderedRegion`] is the box of the glyph the
+    /// `Content`; the returned [`RenderedRegion`] is the box of the glyph the
     /// caret sits at, page-indexed, with `span` collapsed to `[pos, pos]`.
     /// `None` when `field` places no tracked content or `pos` maps to no drawn
     /// glyph. Default `None` — overridden by a backend with a source map.
@@ -266,14 +266,14 @@ impl LiveSession {
         self.inner.field_at(page, x, y)
     }
 
-    /// A point → **corpus position** — the fine-grained click direction:
+    /// A point → **content position** — the fine-grained click direction:
     /// hit-test a point and get back the field *and* a USV offset into its
-    /// `RichText`, for placing a caret or mapping a selection into the content
+    /// `Content`, for placing a caret or mapping a selection into the content
     /// model. `x`/`y` are PDF points, bottom-left origin, the same convention
     /// as [`field_at`](Self::field_at). The offset is cluster-exact and
     /// degrades to the containing segment's start on origin-less ink (list
     /// markers, a code fence's interior). `None` off all content ink, on a
-    /// scalar/widget, or for backends with no corpus map. See [`CorpusHit`].
+    /// scalar/widget, or for backends with no content map. See [`CorpusHit`].
     ///
     /// Resolves against the current compile; the editor owns the caret it
     /// places and anchors it across later edits itself.
@@ -281,9 +281,9 @@ impl LiveSession {
         self.inner.position_at(page, x, y)
     }
 
-    /// A corpus position → **caret rect** — the reverse of
+    /// A content position → **caret rect** — the reverse of
     /// [`position_at`](Self::position_at): given a field and a USV offset into
-    /// its `RichText`, return the box (page-indexed) to draw a caret at. `None`
+    /// its `Content`, return the box (page-indexed) to draw a caret at. `None`
     /// when the field places no tracked content or the offset maps to no drawn
     /// glyph. Resolves against the current compile.
     pub fn locate(&self, field: &str, pos: usize) -> Option<RenderedRegion> {

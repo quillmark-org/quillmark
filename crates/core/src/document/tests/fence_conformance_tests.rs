@@ -94,7 +94,7 @@ fn assert_conformant(label: &str, md: &str) {
     }
 }
 
-// ── Synthetic edge-case corpus ────────────────────────────────────────────────
+// ── Synthetic edge-case content ────────────────────────────────────────────────
 
 #[test]
 fn scanner_agrees_with_commonmark_on_synthetic_corpus() {
@@ -187,7 +187,7 @@ fn scanner_agrees_with_commonmark_on_synthetic_corpus() {
     }
 }
 
-// ── Fixture corpus ────────────────────────────────────────────────────────────
+// ── Fixture content ────────────────────────────────────────────────────────────
 
 fn collect_md(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     let Ok(entries) = std::fs::read_dir(root) else {

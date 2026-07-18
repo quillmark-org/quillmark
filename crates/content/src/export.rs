@@ -1,4 +1,4 @@
-//! Markdown export: corpus → markdown, per island loss class.
+//! Markdown export: content → markdown, per island loss class.
 //!
 //! The projection back to markdown. Marks become syntax; islands are emitted per
 //! their [`Loss`] class; identity ([`MarkKind::Anchor`]) marks are **omitted** —
@@ -6,11 +6,11 @@
 //! § Codecs). Anchors carry no markdown encoding, so dropping them here is by
 //! design, not loss.
 //!
-//! The contract this crate pins is the **corpus fixed point**: for a corpus `rt`
+//! The contract this crate pins is the **content fixed point**: for a content `rt`
 //! obtained from [`crate::import::from_markdown`],
 //! `from_markdown(to_markdown(rt)) == rt` modulo island loss class — markdown
-//! source is not canonical, but the corpus is, so round-trip is defined at the
-//! corpus, not the string.
+//! source is not canonical, but the content is, so round-trip is defined at the
+//! content, not the string.
 //!
 //! ## Documented codec limits (degenerate, non-authorable corpora)
 //!
@@ -27,11 +27,11 @@
 //! markdown or a form editor. Hardening them is deferred until a live editor
 //! defines what it can even produce.
 
-use crate::model::{Container, Island, LineKind, MarkKind, RichText, ISLAND_SLOT};
+use crate::model::{Container, Island, LineKind, MarkKind, Content, ISLAND_SLOT};
 
-/// Render a corpus to markdown. Lossless/degraded islands emit their markdown;
+/// Render a content to markdown. Lossless/degraded islands emit their markdown;
 /// unrepresentable islands emit a placeholder comment.
-pub fn to_markdown(rt: &RichText) -> String {
+pub fn to_markdown(rt: &Content) -> String {
     // Per-line char ranges, so global marks can be clipped to a line.
     let segments = line_segments(rt);
     let ctx = Ctx {
@@ -50,7 +50,7 @@ pub fn to_markdown(rt: &RichText) -> String {
     out
 }
 
-/// Render a corpus to plaintext: [`RichText::text`] with island slots
+/// Render a content to plaintext: [`Content::text`] with island slots
 /// ([`ISLAND_SLOT`]) removed. The lossy sibling of [`to_markdown`] — it drops
 /// every mark and island (tables, images have no plaintext projection), keeping
 /// only literal text. Callers that want a non-empty result should check for the
@@ -58,38 +58,38 @@ pub fn to_markdown(rt: &RichText) -> String {
 ///
 /// Tables (and images) having no plaintext form is a **decided limitation**, not
 /// an oversight (issue #880): the pdfform backend fills a form field from this
-/// projection, so a field bound to a table-bearing corpus renders the surrounding
+/// projection, so a field bound to a table-bearing content renders the surrounding
 /// text and silently omits the table. A degraded row/tab dump was rejected — it
 /// would read as a faithful table and mislead — so the projection drops the
 /// island outright. Revisit only if a form field ever needs tabular fill.
-pub fn to_plaintext(rt: &RichText) -> String {
+pub fn to_plaintext(rt: &Content) -> String {
     rt.text.chars().filter(|&c| c != ISLAND_SLOT).collect()
 }
 
 struct Ctx<'a> {
-    rt: &'a RichText,
+    rt: &'a Content,
     segments: &'a [Segment],
 }
 
-/// One line's char range `[start, end)` into the corpus, with the matching byte
+/// One line's char range `[start, end)` into the content, with the matching byte
 /// range and the count of island slots before the line — so a caller indexes
-/// the corpus text and the island list in O(1) without rescanning.
+/// the content text and the island list in O(1) without rescanning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Segment {
     /// USV index of the line's first char.
     pub start: usize,
-    /// USV index one past the line's last char (its `\n`, or the corpus end).
+    /// USV index one past the line's last char (its `\n`, or the content end).
     pub end: usize,
-    /// Byte offset of `start` in the corpus text.
+    /// Byte offset of `start` in the content text.
     pub byte_start: usize,
-    /// Byte offset of `end` in the corpus text.
+    /// Byte offset of `end` in the content text.
     pub byte_end: usize,
     /// Count of [`ISLAND_SLOT`] chars before `start`.
     pub slots_before: usize,
 }
 
-/// Per-line char/byte ranges and slot prefixes over a corpus, in line order.
-pub fn line_segments(rt: &RichText) -> Vec<Segment> {
+/// Per-line char/byte ranges and slot prefixes over a content, in line order.
+pub fn line_segments(rt: &Content) -> Vec<Segment> {
     let mut segs = Vec::with_capacity(rt.lines.len());
     let mut start = 0usize;
     let mut byte_start = 0usize;
@@ -121,7 +121,7 @@ pub fn line_segments(rt: &RichText) -> Vec<Segment> {
         byte_end: rt.text.len(),
         slots_before,
     });
-    // Defensive: a malformed corpus (lines.len() != segments) still gets one
+    // Defensive: a malformed content (lines.len() != segments) still gets one
     // segment per line so indexing never panics.
     let total_slots = slots_before + line_slots;
     while segs.len() < rt.lines.len() {
@@ -204,7 +204,7 @@ fn emit_container(
         } => {
             let marker = if *ordered {
                 // `start`/`ordinal` are unbounded `u64` and `validate` does not
-                // ceiling them, so a corrupt/adversarial corpus can drive the
+                // ceiling them, so a corrupt/adversarial content can drive the
                 // sum past `u64::MAX`; saturate rather than panic (or wrap under
                 // release overflow-checks) on the render path.
                 format!("{}. ", start.saturating_add(*ordinal))
@@ -331,7 +331,7 @@ fn emit_island(isl: &Island, out: &mut String) {
         "image" => emit_image(isl, out),
         _ => {
             // Unknown island / unrepresentable: a comment placeholder that
-            // survives round-trip as no corpus text (HTML comments are stripped
+            // survives round-trip as no content text (HTML comments are stripped
             // on re-import). The island itself is preserved via storage, not the
             // projection.
             out.push_str(&format!("<!-- island:{} -->", isl.island_type));
@@ -498,7 +498,7 @@ fn render_inline(ctx: &Ctx, i: usize, escape_leading_block: bool) -> String {
         false, // prose text does not escape `|`
         |pos_local| {
             // Segment prefix + slots earlier on this line: the island index for
-            // the slot at `pos_local`, without rescanning the whole corpus.
+            // the slot at `pos_local`, without rescanning the whole content.
             let before = slots_before_line
                 + chars[..pos_local]
                     .iter()
@@ -523,7 +523,7 @@ fn render_inline(ctx: &Ctx, i: usize, escape_leading_block: bool) -> String {
 /// can produce `strong[0,4)` + `strike[2,6)` — but markdown syntax nests. The
 /// sweep closes every mark ending at a boundary and reopens the deeper survivors,
 /// so a partial overlap lowers to balanced markdown (`**ab~~cd~~**~~ef~~`), which
-/// re-imports to the same corpus for marks with *distinct* delimiters. Two
+/// re-imports to the same content for marks with *distinct* delimiters. Two
 /// preconditions the sweep can't express in reopened markdown are clipped away
 /// first:
 ///
@@ -637,11 +637,11 @@ fn render_marked_core(
     };
 
     // Verify-and-drop safety net. The clips above and the sweep round-trip every
-    // corpus `import` produces, but an editor's `apply_mark_ops` can build a mark
+    // content `import` produces, but an editor's `apply_mark_ops` can build a mark
     // over a span markdown can't represent — CommonMark's full emphasis algorithm
     // (delimiter-run matching, the rule of 3, `\*`-escape adjacency) has corners
     // no local rule captures — and it lowers to a `**`/`*`/`~~` run pulldown
-    // re-reads as literal text, leaking a delimiter into the corpus. Re-parse the
+    // re-reads as literal text, leaking a delimiter into the content. Re-parse the
     // rendered line and, if its plain text drifted, drop the last flanking mark
     // and re-sweep until the text is preserved. Terminates: dropping only removes
     // delimiters, and the mark-free render is always text-safe. Only marked lines
@@ -654,7 +654,7 @@ fn render_marked_core(
     // and is flanking-equivalent to the line start/end it replaces (a run's
     // open/close decision is identical whether the neighbor is line-boundary
     // whitespace or a punctuation char), so it never masks or invents a leak.
-    // `expected` is the corpus text with islands as their slot char, which
+    // `expected` is the content text with islands as their slot char, which
     // `import` restores from the emitted island markup.
     let expected: String = chars.iter().collect();
     let is_flanking = |k: &MarkKind| {
@@ -868,7 +868,7 @@ mod tests {
     use crate::import::from_markdown;
     use crate::model::{Line, Loss, Mark};
 
-    /// The contract: export∘import is the identity on the corpus (modulo
+    /// The contract: export∘import is the identity on the content (modulo
     /// island loss class, which our test islands don't trigger).
     fn round_trips(md: &str) {
         let rt = from_markdown(md).unwrap();
@@ -876,7 +876,7 @@ mod tests {
         let rt2 = from_markdown(&md2).unwrap();
         assert_eq!(
             rt, rt2,
-            "corpus not a fixed point.\n  in:  {md:?}\n  mid: {md2:?}"
+            "content not a fixed point.\n  in:  {md:?}\n  mid: {md2:?}"
         );
     }
 
@@ -891,7 +891,7 @@ mod tests {
         );
         assert_eq!(to_plaintext(&rt), "bold text");
         // An island slot in the text is removed.
-        let mut rt = RichText {
+        let mut rt = Content {
             text: format!("see {ISLAND_SLOT} here"),
             lines: vec![Line { kind: LineKind::Para, containers: vec![], continues: false }],
             marks: vec![],
@@ -906,11 +906,11 @@ mod tests {
         assert_eq!(to_plaintext(&rt), "see  here");
     }
 
-    /// A single-paragraph corpus over `text` with hand-placed `marks` — the
+    /// A single-paragraph content over `text` with hand-placed `marks` — the
     /// free-overlap shapes an editor's `apply_mark_ops` produces but markdown
     /// import never does. Normalized + validated before use.
-    fn marked(text: &str, marks: Vec<Mark>) -> RichText {
-        let mut rt = RichText {
+    fn marked(text: &str, marks: Vec<Mark>) -> Content {
+        let mut rt = Content {
             text: text.to_string(),
             lines: vec![Line {
                 kind: LineKind::Para,
@@ -921,7 +921,7 @@ mod tests {
             islands: vec![],
         };
         rt.normalize();
-        assert_eq!(rt.validate(), Ok(()), "corpus invariants");
+        assert_eq!(rt.validate(), Ok(()), "content invariants");
         rt
     }
 
@@ -994,7 +994,7 @@ mod tests {
 
     #[test]
     fn leading_ordered_marker_escaped() {
-        // Corpus prose that begins `N.` must not re-import as an ordered list.
+        // Content prose that begins `N.` must not re-import as an ordered list.
         let mut rt = from_markdown("x").unwrap();
         rt.text = "1. not a list".into();
         let md = to_markdown(&rt);
@@ -1007,7 +1007,7 @@ mod tests {
     #[test]
     fn table_with_formatted_cells_round_trips() {
         // Option A: cells carry {text, marks}; export reconstructs their markdown
-        // from structure, so the corpus is a fixed point across formatted cells.
+        // from structure, so the content is a fixed point across formatted cells.
         round_trips("| Name | Note |\n| --- | --- |\n| **bold** | _italic_ |");
         round_trips("| A |\n| --- |\n| **b** and _i_ `c` [d](https://e.com) ~~e~~ |");
         round_trips("| A |\n| --- |\n| <u>under</u> |");
@@ -1111,7 +1111,7 @@ mod tests {
 
     /// Overlap between marks with *distinct* delimiters round-trips exactly:
     /// the close-and-reopen sweep lowers `strong[0,4)` + `strike[2,6)` to
-    /// `**ab~~cd~~**~~ef~~`, which re-imports to the same overlapping corpus.
+    /// `**ab~~cd~~**~~ef~~`, which re-imports to the same overlapping content.
     #[test]
     fn overlapping_distinct_delim_marks_round_trip_exactly() {
         for (k1, k2) in [
@@ -1169,7 +1169,7 @@ mod tests {
     }
 
     /// Issue #848 part 2: a literal `&` (or an entity-shaped `&amp;`) must not
-    /// re-import as the decoded entity. `from_markdown("\\&amp;")` yields corpus
+    /// re-import as the decoded entity. `from_markdown("\\&amp;")` yields content
     /// text "&amp;"; exporting it unescaped as `&amp;` would re-import as "&".
     #[test]
     fn ampersand_and_entities_round_trip() {
@@ -1277,14 +1277,14 @@ mod tests {
 
     #[test]
     fn ordered_list_marker_saturates_on_overflow() {
-        // `validate` does not ceiling `start`/`ordinal`, so a corrupt corpus can
+        // `validate` does not ceiling `start`/`ordinal`, so a corrupt content can
         // carry `start == u64::MAX`. Export must not panic (or wrap silently) on
         // the `start + ordinal` marker; it saturates instead.
         let json = format!(
             r#"{{"text":"x","lines":[{{"kind":"para","containers":[{{"container":"list_item","ordered":true,"start":{},"ordinal":5}}]}}],"marks":[],"islands":[]}}"#,
             u64::MAX
         );
-        let rt = RichText::from_canonical_json(&json).unwrap();
+        let rt = Content::from_canonical_json(&json).unwrap();
         let md = to_markdown(&rt);
         assert!(
             md.contains(&format!("{}. ", u64::MAX)),

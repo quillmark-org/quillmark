@@ -12,21 +12,21 @@
 
 use serde::{Deserialize, Serialize};
 
-use quillmark_richtext::import::{from_markdown as import_markdown, ImportError};
-use quillmark_richtext::RichText;
+use quillmark_content::import::{from_markdown as import_markdown, ImportError};
+use quillmark_content::Content;
 
 use crate::error::ParseError;
 use crate::version::QuillReference;
 use crate::Diagnostic;
 
-/// The single markdown→corpus boundary for card bodies. Every construction path
+/// The single markdown→content boundary for card bodies. Every construction path
 /// that starts from an authored markdown string ([`Document::parse`],
 /// wire/storage deserialization, seeding, blueprint) routes through it, so the
 /// markdown parser is reached from exactly one helper. An empty string yields
-/// the empty corpus without invoking the parser.
-pub(crate) fn import_body(md: &str) -> Result<RichText, ImportError> {
+/// the empty content without invoking the parser.
+pub(crate) fn import_body(md: &str) -> Result<Content, ImportError> {
     if md.is_empty() {
-        Ok(RichText::empty())
+        Ok(Content::empty())
     } else {
         import_markdown(md)
     }
@@ -37,7 +37,7 @@ pub(crate) fn import_body(md: &str) -> Result<RichText, ImportError> {
 /// Surfaced publicly as the error of [`Card::field_richtext`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RichtextDecodeError {
-    /// A JSON object that is not a valid canonical corpus.
+    /// A JSON object that is not a valid canonical content.
     NotCorpus(String),
     /// A markdown string that failed to import.
     BadMarkdown(String),
@@ -52,23 +52,23 @@ impl RichtextDecodeError {
     }
 }
 
-/// Decode a JSON value in either accepted richtext encoding: a canonical corpus
-/// **object** ([`from_canonical_value`](quillmark_richtext::serial::from_canonical_value))
+/// Decode a JSON value in either accepted richtext encoding: a canonical content
+/// **object** ([`from_canonical_value`](quillmark_content::serial::from_canonical_value))
 /// or an authored markdown **string** (via [`import_body`], the single markdown
 /// boundary). The one place the object-vs-string dispatch lives; a call site
 /// handles the shapes that are neither — `null`, array, scalar — and maps the
 /// error into its own type.
 ///
 /// - `Some(Ok(rt))` — decoded.
-/// - `Some(Err(e))` — an object that is not a corpus, or a string that failed
+/// - `Some(Err(e))` — an object that is not a content, or a string that failed
 ///   to import; `e` names the encoding so the caller can prefix its message.
 /// - `None` — the value is neither an object nor a string.
 pub(crate) fn decode_richtext_value(
     value: &serde_json::Value,
-) -> Option<Result<RichText, RichtextDecodeError>> {
+) -> Option<Result<Content, RichtextDecodeError>> {
     match value {
         serde_json::Value::Object(_) => Some(
-            quillmark_richtext::serial::from_canonical_value(value)
+            quillmark_content::serial::from_canonical_value(value)
                 .map_err(|e| RichtextDecodeError::NotCorpus(e.to_string())),
         ),
         serde_json::Value::String(md) => {
@@ -78,9 +78,9 @@ pub(crate) fn decode_richtext_value(
     }
 }
 
-/// Decode a JSON value for a `plaintext` field: a canonical corpus **object**
+/// Decode a JSON value for a `plaintext` field: a canonical content **object**
 /// (revalidated) or a literal **string** imported verbatim
-/// ([`from_plaintext`](quillmark_richtext::from_plaintext) — never markdown, so
+/// ([`from_plaintext`](quillmark_content::from_plaintext) — never markdown, so
 /// `*hi*` stays four plain characters). The plaintext twin of
 /// [`decode_richtext_value`]: the string branch is infallible (literal import
 /// can't fail), so only the object branch yields `Err` (`String` message). A
@@ -89,16 +89,16 @@ pub(crate) fn decode_richtext_value(
 /// literal-import site and the validation shape check.
 ///
 /// - `Some(Ok(rt))` — decoded.
-/// - `Some(Err(msg))` — an object that is not a valid corpus.
+/// - `Some(Err(msg))` — an object that is not a valid content.
 /// - `None` — the value is neither an object nor a string.
 pub(crate) fn decode_plaintext_value(
     value: &serde_json::Value,
-) -> Option<Result<RichText, String>> {
+) -> Option<Result<Content, String>> {
     match value {
         serde_json::Value::Object(_) => {
-            Some(quillmark_richtext::serial::from_canonical_value(value).map_err(|e| e.to_string()))
+            Some(quillmark_content::serial::from_canonical_value(value).map_err(|e| e.to_string()))
         }
-        serde_json::Value::String(s) => Some(Ok(quillmark_richtext::from_plaintext(s))),
+        serde_json::Value::String(s) => Some(Ok(quillmark_content::from_plaintext(s))),
         _ => None,
     }
 }
@@ -168,22 +168,22 @@ pub struct Parsed {
     pub warnings: Vec<Diagnostic>,
 }
 
-/// A single card-yaml block (root or composable). `body` is the corpus
-/// ([`RichText`]) form of the prose after the closing fence — the empty corpus
+/// A single card-yaml block (root or composable). `body` is the content
+/// ([`Content`]) form of the prose after the closing fence — the empty content
 /// when none follows; check `card.body().is_blank()`. Markdown is a projection:
 /// [`Card::body_markdown`] re-emits it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Card {
     payload: Payload,
-    body: RichText,
+    body: Content,
 }
 
 impl Card {
-    /// Create a `Card` from its parts without validation. `body` is the corpus
+    /// Create a `Card` from its parts without validation. `body` is the content
     /// form; to build from an authored markdown string, import it first via the
     /// crate-internal `import_body` boundary. For user-facing construction of
     /// composable cards use [`Card::new`].
-    pub fn from_parts(payload: Payload, body: RichText) -> Self {
+    pub fn from_parts(payload: Payload, body: Content) -> Self {
         Self { payload, body }
     }
 
@@ -215,9 +215,9 @@ impl Card {
         &mut self.payload
     }
 
-    /// The card body as a [`RichText`] corpus — the canonical content model.
+    /// The card body as a [`Content`] content — the canonical content model.
     /// For the markdown projection use [`Card::body_markdown`].
-    pub fn body(&self) -> &RichText {
+    pub fn body(&self) -> &Content {
         &self.body
     }
 
@@ -225,40 +225,40 @@ impl Card {
     /// derived view (`export ∘ body`), not stored state; a `Document` round-trip
     /// therefore canonicalizes the body (e.g. `__b__` → `**b**`).
     pub fn body_markdown(&self) -> String {
-        quillmark_richtext::export::to_markdown(&self.body)
+        quillmark_content::export::to_markdown(&self.body)
     }
 
-    pub(crate) fn overwrite_body(&mut self, body: RichText) {
+    pub(crate) fn overwrite_body(&mut self, body: Content) {
         self.body = body;
     }
 
-    pub(crate) fn body_mut(&mut self) -> &mut RichText {
+    pub(crate) fn body_mut(&mut self) -> &mut Content {
         &mut self.body
     }
 
-    /// Read a richtext-valued user field back as a [`RichText`] corpus — the
+    /// Read a richtext-valued user field back as a [`Content`] content — the
     /// field-level twin of [`Card::body`]. Decodes the stored value through the
     /// same object-or-markdown dispatch the writer
     /// ([`commit_field`](Card::commit_field)) commits, so a field
-    /// stored as a canonical corpus reads back losslessly (identity marks
+    /// stored as a canonical content reads back losslessly (identity marks
     /// intact) and a still-authored markdown string imports.
     ///
     /// - `None` — the field is absent.
-    /// - `Some(Ok(rt))` — decoded corpus.
-    /// - `Some(Err(_))` — the field is present but neither a corpus object nor
+    /// - `Some(Ok(rt))` — decoded content.
+    /// - `Some(Err(_))` — the field is present but neither a content object nor
     ///   an importable markdown string (e.g. a bare number a `store_field` wrote).
     ///
     /// A `Document` carries no schema, so this cannot itself tell a richtext
     /// field from a plain string field; the caller names a field it knows is
     /// richtext, exactly as it does when writing.
-    pub fn field_richtext(&self, name: &str) -> Option<Result<RichText, RichtextDecodeError>> {
+    pub fn field_richtext(&self, name: &str) -> Option<Result<Content, RichtextDecodeError>> {
         let value = self.payload.get(name)?.as_json();
         Some(match crate::document::decode_richtext_value(value) {
             Some(result) => result,
             None => match value {
-                serde_json::Value::Null => Ok(RichText::empty()),
+                serde_json::Value::Null => Ok(Content::empty()),
                 _ => Err(RichtextDecodeError::NotCorpus(
-                    "expected a richtext corpus object or a markdown string".to_string(),
+                    "expected a richtext content object or a markdown string".to_string(),
                 )),
             },
         })
@@ -266,19 +266,19 @@ impl Card {
 
     /// The markdown projection of a richtext-valued field (`export ∘ decode`) —
     /// the field-level twin of [`Card::body_markdown`], and the projection an
-    /// emit or a markdown save writes for a corpus-valued field. The projection
+    /// emit or a markdown save writes for a content-valued field. The projection
     /// twin of [`field_richtext`](Card::field_richtext), carrying its `Ok`/`Err`
     /// decode outcome:
     ///
     /// - `None` — the field is absent.
     /// - `Some(Ok(md))` — the projected markdown.
     /// - `Some(Err(_))` — the field is present but does not decode as richtext
-    ///   (a scalar/array/object a `store_field` wrote, or a non-corpus object).
+    ///   (a scalar/array/object a `store_field` wrote, or a non-content object).
     ///
     /// Absence returns `None`; a present non-richtext value returns `Some(Err)`,
     /// so the projection surfaces the type mismatch instead of blanking on it.
     pub fn field_markdown(&self, name: &str) -> Option<Result<String, RichtextDecodeError>> {
-        Some(self.field_richtext(name)?.map(|rt| quillmark_richtext::export::to_markdown(&rt)))
+        Some(self.field_richtext(name)?.map(|rt| quillmark_content::export::to_markdown(&rt)))
     }
 }
 
@@ -362,7 +362,7 @@ impl Document {
         // it in); match that shape so a blank document round-trips equal.
         payload.set_kind("main");
         Self {
-            main: Card::from_parts(payload, RichText::empty()),
+            main: Card::from_parts(payload, Content::empty()),
             cards: Vec::new(),
         }
     }
@@ -449,14 +449,14 @@ impl Document {
     /// {
     ///   "$quill": "<ref>",
     ///   "$body": { "text": "…", "lines": [...], "marks": [...], "islands": [...] },
-    ///   "$cards": [{ "$kind": "<tag>", "$body": <corpus>, "<field>": <value>, ... }],
+    ///   "$cards": [{ "$kind": "<tag>", "$body": <content>, "<field>": <value>, ... }],
     ///   "<field>": <value>, ...
     /// }
     /// ```
     ///
-    /// `$body` (global and per-card) is canonical RichText-JSON — the corpus as
+    /// `$body` (global and per-card) is canonical Content-JSON — the content as
     /// a nested object, not a markdown string. Richtext payload fields likewise
-    /// cross as corpus objects (committed at coercion time).
+    /// cross as content objects (committed at coercion time).
     ///
     /// `$`-prefixed keys carry document-level metadata (quill ref, body
     /// text, card list, card kind). User payload fields stay flat at the
@@ -470,13 +470,13 @@ impl Document {
             serde_json::Value::String(self.quill_reference().to_string()),
         );
 
-        // The seam carries the body as canonical RichText-JSON (Option A): a
-        // nested corpus object, byte-identical to `to_canonical_json`, never a lossy
-        // markdown string. Backends lower the corpus (typst → markup + source
+        // The seam carries the body as canonical Content-JSON (Option A): a
+        // nested content object, byte-identical to `to_canonical_json`, never a lossy
+        // markdown string. Backends lower the content (typst → markup + source
         // map; pdfform → `.text`); the markdown projection is `body_markdown`.
         map.insert(
             "$body".to_string(),
-            quillmark_richtext::serial::to_canonical_value(self.main.body()),
+            quillmark_content::serial::to_canonical_value(self.main.body()),
         );
 
         let cards_array: Vec<serde_json::Value> = self
@@ -490,7 +490,7 @@ impl Document {
                 );
                 card_map.insert(
                     "$body".to_string(),
-                    quillmark_richtext::serial::to_canonical_value(card.body()),
+                    quillmark_content::serial::to_canonical_value(card.body()),
                 );
                 for (key, value) in card.payload.iter() {
                     card_map.insert(key.clone(), value.as_json().clone());

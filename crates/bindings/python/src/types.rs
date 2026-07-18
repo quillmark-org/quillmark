@@ -413,8 +413,8 @@ impl PyDocument {
             .collect()
     }
 
-    /// Main card's global body as canonical RichText-JSON — the source-of-truth
-    /// content model (a corpus dict, `{text, lines, marks, islands}`). For the
+    /// Main card's global body as canonical Content-JSON — the source-of-truth
+    /// content model (a content dict, `{text, lines, marks, islands}`). For the
     /// markdown projection call the codec `export_markdown(doc.body)`.
     #[getter]
     fn body<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
@@ -423,13 +423,13 @@ impl PyDocument {
     }
 
     /// **Install** a richtext value at the address `(card, field)` — value
-    /// semantics, corpus only. `rt` is a canonical corpus dict; the identity
+    /// semantics, content only. `rt` is a canonical content dict; the identity
     /// anchors of any previous value are gone. An absent `field` targets the
     /// body, an absent `card` the main card. For "here's new markdown," use
     /// [`revise`](Self::revise); the cold path is `install(import_markdown(md))`,
     /// which spells anchor loss at the call site. The kwargs idiom of WASM
     /// `doc.install(addr, rt)`. Raises on an out-of-range card, a malformed field
-    /// name, or an `rt` that is not a canonical corpus dict.
+    /// name, or an `rt` that is not a canonical content dict.
     #[pyo3(signature = (rt, card=None, field=None))]
     fn install(
         &mut self,
@@ -437,14 +437,14 @@ impl PyDocument {
         card: Option<usize>,
         field: Option<&str>,
     ) -> PyResult<()> {
-        let corpus = py_to_corpus(&rt)?;
+        let content = py_to_corpus(&rt)?;
         let target = self.addr_card_mut(card)?;
         match field {
             None => {
-                target.install_body(corpus);
+                target.install_body(content);
                 Ok(())
             }
-            Some(name) => target.install_field(name, corpus).map_err(convert_edit_error),
+            Some(name) => target.install_field(name, content).map_err(convert_edit_error),
         }
     }
 
@@ -455,7 +455,7 @@ impl PyDocument {
     /// absent `field` targets the body, an absent `card` the main card; an absent
     /// field cold-imports from empty. The kwargs idiom of WASM
     /// `doc.revise(addr, md)`. Raises on an out-of-range card, a malformed field
-    /// name, a present non-corpus field value, or an over-nested markdown input.
+    /// name, a present non-content field value, or an over-nested markdown input.
     #[pyo3(signature = (markdown, card=None, field=None))]
     fn revise<'py>(
         &mut self,
@@ -473,7 +473,7 @@ impl PyDocument {
         json_to_py(py, &delta_to_json(&delta))
     }
 
-    /// **Apply** a committed corpus edit `bundle` (`{delta?, line_ops?, mark_ops?}`)
+    /// **Apply** a committed content edit `bundle` (`{delta?, line_ops?, mark_ops?}`)
     /// at `(card, field)` — the editor splice: text delta, then line ops, then
     /// mark ops (mark ranges in post-delta coordinates), each all-or-nothing. An
     /// absent `field` targets the body, an absent `card` the main card. The kwargs
@@ -516,7 +516,7 @@ impl PyDocument {
     }
 
 
-    /// Read a main-card field's stored value — a dict for a richtext corpus, a
+    /// Read a main-card field's stored value — a dict for a richtext content, a
     /// scalar/list/dict otherwise, or `None` when the field is absent. The
     /// quill-free read: reads need no schema, so they live on `Document`, not the
     /// typed writer. For the markdown projection of a richtext value use
@@ -529,7 +529,7 @@ impl PyDocument {
     }
 
     /// The markdown projection of a main-card field (`name` given) or the main
-    /// body (`name` omitted) — the on-demand, lossy export (corpus-only marks do
+    /// body (`name` omitted) — the on-demand, lossy export (content-only marks do
     /// not survive markdown), returning `""` for an **absent** field. A
     /// **present** field that does not decode as richtext raises
     /// `FieldRichtextDecode` — the projection surfaces the type mismatch instead
@@ -544,7 +544,7 @@ impl PyDocument {
     }
 
     /// Read a composable card's field value — the card-indexed twin of `get`: a
-    /// dict for a richtext corpus, a scalar/list/dict otherwise, or `None` when
+    /// dict for a richtext content, a scalar/list/dict otherwise, or `None` when
     /// the field is absent. An out-of-range `index` raises `IndexOutOfRange`, as
     /// the card write verbs do — a bad index is a boundary error, not an absent
     /// field. Mirrors WASM `Document.getCardField`.
@@ -815,7 +815,7 @@ impl PyDocument {
             seed: None,
             payload_items,
             // The `body` argument is markdown; `Card::try_from` imports it to the
-            // corpus, and `card_to_pydict` re-emits the corpus body.
+            // content, and `card_to_pydict` re-emits the content body.
             body: serde_json::Value::String(body.unwrap_or_default()),
         };
         let card = quillmark_core::Card::try_from(wire)
@@ -939,7 +939,7 @@ impl PyDocument {
 
 /// A `Document` bound to its `Quill` for typed writes — the schema-bound writer,
 /// from `Quill.writer(doc)`. Speaks names, values, and markdown; a consumer
-/// here never meets an address, a corpus dict, or a delta. It holds both objects
+/// here never meets an address, a content dict, or a delta. It holds both objects
 /// by reference and re-borrows them per call (pyo3 objects carry no lifetime, so
 /// unlike core's `TypedWriter` it cannot keep the borrow) — so it is ephemeral by
 /// convention: bind, write, discard. Mirrors WASM `quill.writer(doc)`.
@@ -1158,7 +1158,7 @@ impl PyRenderResult {
     /// [start, end] | None}` with rect in PDF points, bottom-left origin, page
     /// indices document-space. Content fields carry one entry per **segment**
     /// (paragraph, heading, code fence) and page, each `span` the covered USV
-    /// corpus range; widgets and scalar reference sites carry `span: None`. A
+    /// content range; widgets and scalar reference sites carry `span: None`. A
     /// field may still appear more than once; group by `field` and union the
     /// segment rects for the whole-field box.
     #[getter]
@@ -1394,7 +1394,7 @@ fn card_to_pydict<'py>(
         None => d.set_item("seed", py.None())?,
     }
 
-    // `body` is the canonical corpus (source of truth); the markdown projection
+    // `body` is the canonical content (source of truth); the markdown projection
     // is the on-demand `export_markdown(body)` codec. The reverse path
     // (`py_dict_to_card`) reads `body`.
     d.set_item("body", json_to_py(py, &wire.body)?)?;
@@ -1617,20 +1617,20 @@ fn py_dict_to_card(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::Card> {
     quillmark_core::Card::try_from(wire).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
-// ── Addressed-write helpers + corpus codec ──────────────────────────────────────
+// ── Addressed-write helpers + content codec ──────────────────────────────────────
 
-/// Decode a Python value as a canonical `RichText` corpus dict — the `install`
-/// input (value semantics, corpus only). Rejects a markdown string: the cold
+/// Decode a Python value as a canonical `Content` content dict — the `install`
+/// input (value semantics, content only). Rejects a markdown string: the cold
 /// path is `install(import_markdown(md))`.
-fn py_to_corpus(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::RichText> {
+fn py_to_corpus(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::Content> {
     let json = py_to_json(value)?;
     if !json.is_object() {
         return Err(PyValueError::new_err(
-            "expected a RichText corpus dict; for markdown use import_markdown(md) first",
+            "expected a Content content dict; for markdown use import_markdown(md) first",
         ));
     }
-    quillmark_richtext::serial::from_canonical_value(&json)
-        .map_err(|e| PyValueError::new_err(format!("not a canonical RichText corpus: {e}")))
+    quillmark_content::serial::from_canonical_value(&json)
+        .map_err(|e| PyValueError::new_err(format!("not a canonical Content content: {e}")))
 }
 
 /// Serialize a [`Delta`](quillmark_core::Delta) to its JSON wire (`{ops: [...]}`).
@@ -1649,32 +1649,32 @@ fn parse_change_bundle(
     Vec<quillmark_core::MarkOp>,
 )> {
     let json = py_to_json(value)?;
-    quillmark_richtext::change_bundle_from_value(&json).map_err(PyValueError::new_err)
+    quillmark_content::change_bundle_from_value(&json).map_err(PyValueError::new_err)
 }
 
-/// Import a markdown string to a canonical `RichText` corpus dict — the pure,
+/// Import a markdown string to a canonical `Content` content dict — the pure,
 /// document-free codec. Pair with `install(import_markdown(md))` to spell the
 /// cold (anchor-losing) write; prefer `revise` for edit semantics. Raises on an
 /// over-nested input.
 #[pyfunction]
 pub fn import_markdown<'py>(py: Python<'py>, markdown: &str) -> PyResult<Bound<'py, PyAny>> {
-    let corpus = quillmark_richtext::from_markdown(markdown)
+    let content = quillmark_content::from_markdown(markdown)
         .map_err(|e| PyValueError::new_err(format!("import_markdown: {e}")))?;
-    json_to_py(py, &quillmark_richtext::serial::to_canonical_value(&corpus))
+    json_to_py(py, &quillmark_content::serial::to_canonical_value(&content))
 }
 
-/// Export a canonical `RichText` corpus dict to its markdown projection — the
+/// Export a canonical `Content` content dict to its markdown projection — the
 /// pure codec that replaces the eager `body_markdown` / `field_markdown`
-/// precomputes (`export_markdown(doc.body)`). Raises if `rt` is not a corpus.
+/// precomputes (`export_markdown(doc.body)`). Raises if `rt` is not a content.
 #[pyfunction]
 pub fn export_markdown(rt: Bound<'_, PyAny>) -> PyResult<String> {
-    let corpus = py_to_corpus(&rt)?;
-    Ok(quillmark_richtext::to_markdown(&corpus))
+    let content = py_to_corpus(&rt)?;
+    Ok(quillmark_content::to_markdown(&content))
 }
 
-/// Rebase `markdown` onto a `base` corpus dict — the pure, document-free twin of
-/// `revise`: cold-import + `diff_import`, returning `{corpus, delta}` (surviving
-/// anchors rebased). Raises on an over-nested input or a non-corpus `base`.
+/// Rebase `markdown` onto a `base` content dict — the pure, document-free twin of
+/// `revise`: cold-import + `diff_import`, returning `{content, delta}` (surviving
+/// anchors rebased). Raises on an over-nested input or a non-content `base`.
 #[pyfunction]
 pub fn rebase<'py>(
     py: Python<'py>,
@@ -1682,16 +1682,16 @@ pub fn rebase<'py>(
     markdown: &str,
 ) -> PyResult<Bound<'py, PyAny>> {
     let base = py_to_corpus(&base)?;
-    let (corpus, delta) = quillmark_richtext::diff_import(&base, markdown)
+    let (content, delta) = quillmark_content::diff_import(&base, markdown)
         .map_err(|e| PyValueError::new_err(format!("rebase: {e}")))?;
     let out = serde_json::json!({
-        "corpus": quillmark_richtext::serial::to_canonical_value(&corpus),
+        "content": quillmark_content::serial::to_canonical_value(&content),
         "delta": delta_to_json(&delta),
     });
     json_to_py(py, &out)
 }
 
-/// Map a base corpus position through a `delta` (a `{ops: [...]}` dict) to its
+/// Map a base content position through a `delta` (a `{ops: [...]}` dict) to its
 /// new position — the pure position-mapping codec for holding a caret stable
 /// across a `revise`. `assoc` is `"before"` or `"after"` (`"after"` moves past a
 /// same-position insertion). Raises on a malformed `delta`.

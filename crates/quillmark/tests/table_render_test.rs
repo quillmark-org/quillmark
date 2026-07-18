@@ -1,5 +1,5 @@
 //! End-to-end coverage for GFM tables (issue #880): a table in a document
-//! `$body` renders through the full markdown -> RichText -> Typst -> artifact
+//! `$body` renders through the full markdown -> Content -> Typst -> artifact
 //! pipeline. The inline codec's unit tests pin `import(export(t))`; this pins
 //! the *rendered* path — the Typst emitter's `#table(...)` lowering, exercised
 //! with column alignment, formatted cells, and a ragged row that the model

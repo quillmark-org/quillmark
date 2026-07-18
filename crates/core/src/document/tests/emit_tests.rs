@@ -1,7 +1,7 @@
 //! Tests for `Document::to_markdown`.
 //!
 //! Coverage:
-//! - Type-fidelity round-trip over the full fixture corpus.
+//! - Type-fidelity round-trip over the full fixture content.
 //! - Stability (emit-twice byte-equal) smoke test.
 //! - Unit tests for targeted value types and edge cases.
 
@@ -30,7 +30,7 @@ fn assert_round_trip(label: &str, src: &str) {
     );
 }
 
-// ── Fixture corpus round-trip ─────────────────────────────────────────────────
+// ── Fixture content round-trip ─────────────────────────────────────────────────
 
 /// Every top-level `.md` file under `crates/fixtures/resources` — files
 /// without a root `~~~card-yaml` block are skipped at parse time.
@@ -244,7 +244,7 @@ fn empty_map_omitted_from_emit() {
     let mut p = Payload::from_index_map(payload);
     p.set_quill("test".parse().unwrap());
     p.set_kind("main");
-    let main = Card::from_parts(p, quillmark_richtext::RichText::empty());
+    let main = Card::from_parts(p, quillmark_content::Content::empty());
     let doc = crate::document::Document::from_main_and_cards(main, vec![]);
 
     let md = doc.to_markdown();
@@ -283,7 +283,7 @@ fn nested_map_keys_with_structural_chars_emit_valid_yaml() {
     let mut p = Payload::from_index_map(payload);
     p.set_quill("test".parse().unwrap());
     p.set_kind("main");
-    let main = Card::from_parts(p, quillmark_richtext::RichText::empty());
+    let main = Card::from_parts(p, quillmark_content::Content::empty());
     let doc = Document::from_main_and_cards(main, vec![]);
 
     let md = doc.to_markdown();

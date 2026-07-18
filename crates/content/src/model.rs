@@ -1,4 +1,4 @@
-//! The `RichText` corpus model — one text sequence per field carrying line
+//! The `Content` content model — one text sequence per field carrying line
 //! attributes, anchored marks, and embedded islands, over a single coordinate
 //! space of Unicode scalar values (Rust `char`).
 //!
@@ -12,26 +12,26 @@
 use crate::normalize::is_bidi_char;
 use serde_json::Value as JsonValue;
 
-/// A position in a [`RichText`], counted in Unicode scalar values (USV) — never
+/// A position in a [`Content`], counted in Unicode scalar values (USV) — never
 /// bytes, never UTF-16 units. One astral char is 1 USV / 4 UTF-8 bytes / 2
 /// UTF-16 units. Conversions to/from the JS (UTF-16) and Rust (UTF-8)
 /// boundaries live in [`crate::usv`].
 pub type Usv = usize;
 
 /// U+FFFC OBJECT REPLACEMENT CHARACTER — the single-USV slot an island occupies
-/// in the corpus. One slot per island; every slot has a backing island. A stray
+/// in the content. One slot per island; every slot has a backing island. A stray
 /// slot (or a slot with no island) is an invariant violation.
 pub const ISLAND_SLOT: char = '\u{FFFC}';
 
-/// One content field as a corpus: the text plus the structure that rides on it.
+/// One content field as a content: the text plus the structure that rides on it.
 ///
 /// Invariants (established once by import normalization, checked by
-/// [`RichText::validate`]): the text holds no `\r` and no bidi controls; the
+/// [`Content::validate`]): the text holds no `\r` and no bidi controls; the
 /// count of [`ISLAND_SLOT`] equals `islands.len()`; `lines.len()` equals the
 /// number of `\n`-separated segments; marks are normalized (sorted, unioned).
 #[derive(Debug, Clone, PartialEq)]
-pub struct RichText {
-    /// The corpus. `\n` is a line boundary; [`ISLAND_SLOT`] is an island slot.
+pub struct Content {
+    /// The content. `\n` is a line boundary; [`ISLAND_SLOT`] is an island slot.
     pub text: String,
     /// One entry per `\n`-separated segment of `text`, in order. The line tree
     /// is *derived* from this flat list plus each line's `containers` path — it
@@ -149,7 +149,7 @@ pub enum MarkKind {
 }
 
 /// A structured object with no honest text encoding — a table, figure, or future
-/// embed — occupying one [`ISLAND_SLOT`] in the corpus.
+/// embed — occupying one [`ISLAND_SLOT`] in the content.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Island {
     /// Minted, `$id`-style stable id — once islands mint their own ids, this
@@ -292,8 +292,8 @@ pub(crate) fn sort_keys_owned(v: JsonValue) -> JsonValue {
     }
 }
 
-/// Ways a [`RichText`] can violate its invariants. Returned by
-/// [`RichText::validate`]; import normalization guarantees none of these.
+/// Ways a [`Content`] can violate its invariants. Returned by
+/// [`Content::validate`]; import normalization guarantees none of these.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Invariant {
     /// `\r` in the text (line endings must be normalized to `\n`).
@@ -304,7 +304,7 @@ pub enum Invariant {
     IslandSlotMismatch { slots: usize, islands: usize },
     /// `lines.len() != newline_segment_count`.
     LineCountMismatch { lines: usize, segments: usize },
-    /// A mark range runs past the corpus or is inverted (`start > end`).
+    /// A mark range runs past the content or is inverted (`start > end`).
     MarkOutOfRange { start: Usv, end: Usv, len: Usv },
     /// A zero-width formatting mark survived normalization.
     ZeroWidthFormatting { at: Usv },
@@ -315,7 +315,7 @@ pub enum Invariant {
     /// An [`MarkKind::Unknown`] reused a reserved built-in `type` name.
     ReservedUnknownTag(String),
     /// A formatting mark edge sits on a `\n` (normalization should have trimmed
-    /// it) — a hand-built corpus that skipped `normalize`.
+    /// it) — a hand-built content that skipped `normalize`.
     MarkEdgeOnNewline { at: Usv },
     /// A table island's `aligns` length differs from its column count (the
     /// header width). `normalize` syncs `aligns` to the column count.
@@ -329,7 +329,7 @@ pub enum Invariant {
     TableCellNewline { cell: usize },
     /// Two islands share an `id`. Ids are a minted, stable identity (the sole
     /// source of hash nondeterminism); import mints them by index so they never
-    /// collide, but a hand-built or round-tripped corpus can. Downstream code
+    /// collide, but a hand-built or round-tripped content can. Downstream code
     /// that keys islands by id would otherwise silently pick the wrong one.
     IslandIdCollision { id: String },
     /// A table island's `header` prop is present but not a JSON array — it
@@ -338,10 +338,10 @@ pub enum Invariant {
     TableHeaderNotArray,
 }
 
-impl RichText {
-    /// An empty corpus: one empty `Para` line, no marks, no islands.
+impl Content {
+    /// An empty content: one empty `Para` line, no marks, no islands.
     pub fn empty() -> Self {
-        RichText {
+        Content {
             text: String::new(),
             lines: vec![Line {
                 kind: LineKind::Para,
@@ -358,10 +358,10 @@ impl RichText {
         self.text.chars().count()
     }
 
-    /// Whether this corpus satisfies the `richtext(inline)` constraint: exactly
+    /// Whether this content satisfies the `richtext(inline)` constraint: exactly
     /// one `Para` line, sitting in no container, with no islands. A single line
     /// can never `continues` (line 0 is always `false`), so that dimension is
-    /// implied. [`RichText::empty`] is inline (one empty `Para`), so a blank or
+    /// implied. [`Content::empty`] is inline (one empty `Para`), so a blank or
     /// zero-filled inline field passes.
     pub fn is_inline(&self) -> bool {
         self.islands.is_empty()
@@ -370,13 +370,13 @@ impl RichText {
             && self.lines[0].containers.is_empty()
     }
 
-    /// Whether this corpus satisfies the `plaintext` constraint: no marks, no
+    /// Whether this content satisfies the `plaintext` constraint: no marks, no
     /// islands, and every line is a plain `Para` sitting in no container. It is
     /// the multi-line generalization of [`is_inline`](Self::is_inline) (which
-    /// additionally pins the corpus to one line) with the mark/island exclusion
+    /// additionally pins the content to one line) with the mark/island exclusion
     /// made explicit — a plaintext value carries prose the author navigates but
     /// no formatting. `continues` is unconstrained: a lone `\n` may be a
-    /// within-paragraph break. [`RichText::empty`] is plain.
+    /// within-paragraph break. [`Content::empty`] is plain.
     ///
     /// This is the plaintext analogue of `is_inline`, enforced at coercion and
     /// validation with the `NotPlain` error; the distinguishing property of
@@ -391,10 +391,10 @@ impl RichText {
                 .all(|l| l.kind == LineKind::Para && l.containers.is_empty())
     }
 
-    /// Whether the corpus carries no renderable content: the text is empty or
+    /// Whether the content carries no renderable content: the text is empty or
     /// whitespace-only. An island slot ([`ISLAND_SLOT`], U+FFFC) is not
-    /// whitespace, so an island-bearing corpus is never blank. This is the
-    /// corpus analogue of the old `body.trim().is_empty()` string check —
+    /// whitespace, so an island-bearing content is never blank. This is the
+    /// content analogue of the old `body.trim().is_empty()` string check —
     /// body-disabled validation and round-trip emit key on it.
     pub fn is_blank(&self) -> bool {
         self.text.trim().is_empty()
@@ -456,7 +456,7 @@ impl RichText {
 
     /// Mark `type` names the projection reserves; an [`MarkKind::Unknown`] may
     /// not reuse one (its serialization would parse back as the built-in,
-    /// silently dropping its attrs — non-injective). Checked by [`RichText::validate`].
+    /// silently dropping its attrs — non-injective). Checked by [`Content::validate`].
     pub const RESERVED_MARK_TYPES: [&'static str; 7] = [
         "strong",
         "emph",
@@ -467,8 +467,8 @@ impl RichText {
         "anchor",
     ];
 
-    /// Check every invariant. `Ok(())` on a well-formed corpus. Import
-    /// guarantees this; a hand-built corpus should be run through it in tests.
+    /// Check every invariant. `Ok(())` on a well-formed content. Import
+    /// guarantees this; a hand-built content should be run through it in tests.
     pub fn validate(&self) -> Result<(), Invariant> {
         let mut slots = 0usize;
         for c in self.text.chars() {
@@ -652,8 +652,8 @@ mod tests {
 
     #[test]
     fn is_blank_tracks_whitespace_and_islands() {
-        assert!(RichText::empty().is_blank());
-        let mut ws = RichText::empty();
+        assert!(Content::empty().is_blank());
+        let mut ws = Content::empty();
         ws.text = "  \n\t ".to_string();
         ws.lines = vec![
             Line {
@@ -669,13 +669,13 @@ mod tests {
         ];
         assert!(ws.is_blank(), "whitespace-only text is blank");
 
-        let mut has_text = RichText::empty();
+        let mut has_text = Content::empty();
         has_text.text = "x".to_string();
         assert!(!has_text.is_blank());
 
-        // An island slot is not whitespace, so an island-bearing corpus is
+        // An island slot is not whitespace, so an island-bearing content is
         // never blank even with no other text.
-        let mut island_only = RichText::empty();
+        let mut island_only = Content::empty();
         island_only.text = ISLAND_SLOT.to_string();
         assert!(!island_only.is_blank());
     }
@@ -738,12 +738,12 @@ mod tests {
 
     #[test]
     fn empty_is_valid() {
-        assert_eq!(RichText::empty().validate(), Ok(()));
+        assert_eq!(Content::empty().validate(), Ok(()));
     }
 
     #[test]
     fn is_inline_accepts_empty_and_single_para() {
-        assert!(RichText::empty().is_inline());
+        assert!(Content::empty().is_inline());
         assert!(crate::import::from_markdown("just one line")
             .unwrap()
             .is_inline());
@@ -768,7 +768,7 @@ mod tests {
 
     #[test]
     fn validate_catches_slot_mismatch() {
-        let mut rt = RichText::empty();
+        let mut rt = Content::empty();
         rt.text = "\u{FFFC}".into();
         rt.lines = vec![Line {
             kind: LineKind::Island,
@@ -786,7 +786,7 @@ mod tests {
 
     #[test]
     fn validate_catches_line_count() {
-        let mut rt = RichText::empty();
+        let mut rt = Content::empty();
         rt.text = "a\nb".into(); // 2 segments, but 1 line
         assert_eq!(
             rt.validate(),
@@ -799,7 +799,7 @@ mod tests {
 
     #[test]
     fn normalize_is_idempotent() {
-        let mut rt = RichText::empty();
+        let mut rt = Content::empty();
         rt.text = "hello world".into();
         rt.marks = vec![
             f(6, 11, MarkKind::Strong),
@@ -818,8 +818,8 @@ mod tests {
     /// marks whatever the input order — the live-model determinism invariant.
     #[test]
     fn table_cell_marks_normalize_and_are_idempotent() {
-        fn table(cell_marks: serde_json::Value) -> RichText {
-            let mut rt = RichText::empty();
+        fn table(cell_marks: serde_json::Value) -> Content {
+            let mut rt = Content::empty();
             rt.text = ISLAND_SLOT.to_string();
             rt.lines = vec![Line {
                 kind: LineKind::Island,
@@ -867,7 +867,7 @@ mod tests {
     /// `validate` bounds a cell mark by its own cell's text length (in USV).
     #[test]
     fn validate_catches_cell_mark_out_of_range() {
-        let mut rt = RichText::empty();
+        let mut rt = Content::empty();
         rt.text = ISLAND_SLOT.to_string();
         rt.lines = vec![Line {
             kind: LineKind::Island,
@@ -895,10 +895,10 @@ mod tests {
         );
     }
 
-    /// A `RichText` holding a single table island with the given props — the
+    /// A `Content` holding a single table island with the given props — the
     /// shared fixture for the table-shape invariant tests.
-    fn table_rt(props: serde_json::Value) -> RichText {
-        let mut rt = RichText::empty();
+    fn table_rt(props: serde_json::Value) -> Content {
+        let mut rt = Content::empty();
         rt.text = ISLAND_SLOT.to_string();
         rt.lines = vec![Line {
             kind: LineKind::Island,
@@ -1025,11 +1025,11 @@ mod tests {
     }
 
     /// Two islands sharing an `id` violate the minted-identity invariant.
-    /// Import mints ids by index so never collides; a hand-built corpus can.
+    /// Import mints ids by index so never collides; a hand-built content can.
     /// Issue #903.
     #[test]
     fn duplicate_island_id_is_rejected() {
-        let mut rt = RichText::empty();
+        let mut rt = Content::empty();
         rt.text = format!("{ISLAND_SLOT}\n{ISLAND_SLOT}");
         rt.lines = vec![
             Line {
@@ -1064,7 +1064,7 @@ mod tests {
     /// Distinct-id anchors over the same range are kept. Issue #906.
     #[test]
     fn normalize_dedupes_identical_identity_marks() {
-        let mut rt = RichText::empty();
+        let mut rt = Content::empty();
         rt.text = "abcd".into();
         let anchor = |id: &str| Mark {
             start: 0,

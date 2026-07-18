@@ -542,7 +542,7 @@ fn test_card_set_body() {
 // ── Card richtext body writers ───────────────────────────────────────────────
 
 /// A body markdown import past the container-nesting limit now returns
-/// `EditError::Import` instead of silently degrading to the empty corpus.
+/// `EditError::Import` instead of silently degrading to the empty content.
 #[test]
 fn test_replace_body_reports_import_error() {
     let mut card = Card::new("note").unwrap();
@@ -553,24 +553,24 @@ fn test_replace_body_reports_import_error() {
     }
 }
 
-/// `install_body` installs a pre-built corpus verbatim — value semantics, no
-/// markdown import, lossless for corpus-only marks a markdown projection drops.
+/// `install_body` installs a pre-built content verbatim — value semantics, no
+/// markdown import, lossless for content-only marks a markdown projection drops.
 #[test]
 fn test_install_body_sets_directly() {
-    use quillmark_richtext::model::{Mark, MarkKind};
+    use quillmark_content::model::{Mark, MarkKind};
 
-    let mut corpus = quillmark_richtext::import::from_markdown("underlined body").unwrap();
-    // An `underline` mark has no markdown projection — the corpus path must keep it.
-    corpus.marks.push(Mark {
+    let mut content = quillmark_content::import::from_markdown("underlined body").unwrap();
+    // An `underline` mark has no markdown projection — the content path must keep it.
+    content.marks.push(Mark {
         start: 0,
         end: 10,
         kind: MarkKind::Underline,
     });
-    corpus.normalize();
+    content.normalize();
 
     let mut card = Card::new("note").unwrap();
-    card.install_body(corpus.clone());
-    assert_eq!(card.body(), &corpus);
+    card.install_body(content.clone());
+    assert_eq!(card.body(), &content);
     assert!(card
         .body()
         .marks
@@ -578,29 +578,29 @@ fn test_install_body_sets_directly() {
         .any(|m| matches!(m.kind, MarkKind::Underline)));
 }
 
-/// `install_field` installs a pre-built corpus into a richtext field verbatim —
-/// the field-level twin of `install_body`, lossless for corpus-only marks, and
+/// `install_field` installs a pre-built content into a richtext field verbatim —
+/// the field-level twin of `install_body`, lossless for content-only marks, and
 /// reads back through `field_richtext`. A malformed name is rejected.
 #[test]
 fn test_install_field_sets_directly() {
-    use quillmark_richtext::model::{Mark, MarkKind};
+    use quillmark_content::model::{Mark, MarkKind};
 
-    let mut corpus = quillmark_richtext::import::from_markdown("underlined intro").unwrap();
-    corpus.marks.push(Mark {
+    let mut content = quillmark_content::import::from_markdown("underlined intro").unwrap();
+    content.marks.push(Mark {
         start: 0,
         end: 10,
         kind: MarkKind::Underline,
     });
-    corpus.normalize();
+    content.normalize();
 
     let mut card = Card::new("note").unwrap();
-    card.install_field("intro", corpus.clone()).unwrap();
+    card.install_field("intro", content.clone()).unwrap();
     let read = card.field_richtext("intro").unwrap().unwrap();
-    assert_eq!(read, corpus);
+    assert_eq!(read, content);
     assert!(read.marks.iter().any(|m| matches!(m.kind, MarkKind::Underline)));
 
     assert_eq!(
-        card.install_field("$bad", quillmark_richtext::RichText::empty())
+        card.install_field("$bad", quillmark_content::Content::empty())
             .unwrap_err()
             .variant_name(),
         "InvalidFieldName"
@@ -609,10 +609,10 @@ fn test_install_field_sets_directly() {
 
 /// `revise_field` imports markdown into a richtext field with edit semantics,
 /// rebasing surviving anchors and returning the text delta. An absent field
-/// cold-imports from empty; a present non-corpus value is a decode error.
+/// cold-imports from empty; a present non-content value is a decode error.
 #[test]
 fn test_revise_field_diff_imports_and_returns_delta() {
-    use quillmark_richtext::model::{Mark, MarkKind};
+    use quillmark_content::model::{Mark, MarkKind};
 
     let mut card = Card::new("note").unwrap();
     // Cold start against an absent field.
@@ -635,7 +635,7 @@ fn test_revise_field_diff_imports_and_returns_delta() {
         .iter()
         .any(|m| matches!(&m.kind, MarkKind::Anchor { id } if id == "c1")));
 
-    // A present non-corpus scalar is a decode error.
+    // A present non-content scalar is a decode error.
     card.store_field("count", crate::QuillValue::from_json(serde_json::json!(3)))
         .unwrap();
     assert_eq!(
@@ -651,7 +651,7 @@ fn test_revise_field_diff_imports_and_returns_delta() {
 #[test]
 fn test_revise_field_checked_preserves_anchors_and_enforces_inline() {
     use crate::quill::{FieldSchema, FieldType};
-    use quillmark_richtext::model::{Mark, MarkKind};
+    use quillmark_content::model::{Mark, MarkKind};
 
     let inline = FieldSchema::new(
         "subject".to_string(),
@@ -686,7 +686,7 @@ fn test_revise_field_checked_preserves_anchors_and_enforces_inline() {
         "anchor should rebase onto surviving text, unlike the cold commit_field"
     );
 
-    // A multi-block result fails the inline check on the *diffed* corpus with the
+    // A multi-block result fails the inline check on the *diffed* content with the
     // same FieldRichtextNotInline surface commit_field raises — and the field is
     // left unchanged (the schema check runs before the store).
     let before = card.field_markdown("subject").unwrap().unwrap();
@@ -705,38 +705,38 @@ fn test_revise_field_checked_preserves_anchors_and_enforces_inline() {
     assert!(card.field_markdown("body").unwrap().unwrap().contains("para two"));
 }
 
-/// `commit_field` on a richtext field accepts a **canonical corpus object**,
-/// stores it as the field's canonical value (lossless for corpus-only marks),
+/// `commit_field` on a richtext field accepts a **canonical content object**,
+/// stores it as the field's canonical value (lossless for content-only marks),
 /// and reads back through `field_richtext` — the typed door beside the
 /// value-semantics `install_field` / `body`.
 #[test]
 fn test_commit_field_richtext_corpus_object_reads_back() {
-    use quillmark_richtext::model::{Mark, MarkKind};
+    use quillmark_content::model::{Mark, MarkKind};
 
-    let mut corpus = quillmark_richtext::import::from_markdown("underlined intro").unwrap();
-    // `underline` has no markdown projection — the corpus store must keep it.
-    corpus.marks.push(Mark {
+    let mut content = quillmark_content::import::from_markdown("underlined intro").unwrap();
+    // `underline` has no markdown projection — the content store must keep it.
+    content.marks.push(Mark {
         start: 0,
         end: 10,
         kind: MarkKind::Underline,
     });
-    corpus.normalize();
-    let json = quillmark_richtext::serial::to_canonical_value(&corpus);
+    content.normalize();
+    let json = quillmark_content::serial::to_canonical_value(&content);
 
     let mut card = Card::new("note").unwrap();
     commit_richtext(&mut card, "intro", &json, false).unwrap();
 
-    // Stored structurally as the corpus object, not the authored string.
+    // Stored structurally as the content object, not the authored string.
     assert!(card.payload().get("intro").unwrap().as_json().is_object());
     // Reads back losslessly, underline intact.
     let read = card.field_richtext("intro").unwrap().unwrap();
-    assert_eq!(read, corpus);
+    assert_eq!(read, content);
     assert!(read.marks.iter().any(|m| matches!(m.kind, MarkKind::Underline)));
 }
 
 /// A richtext `commit_field` accepts a **markdown string** (imported) and passes
-/// `null` through (reading back as the empty corpus); `field_markdown` is the
-/// projection twin of `body_markdown`. A non-corpus object / other shape is
+/// `null` through (reading back as the empty content); `field_markdown` is the
+/// projection twin of `body_markdown`. A non-content object / other shape is
 /// `EditError::FieldRichtextDecode`.
 #[test]
 fn test_commit_field_richtext_markdown_null_and_rejects_bad() {
@@ -745,13 +745,13 @@ fn test_commit_field_richtext_markdown_null_and_rejects_bad() {
     commit_richtext(&mut card, "intro", &serde_json::json!("**bold** intro"), false).unwrap();
     assert_eq!(card.field_markdown("intro").unwrap().unwrap(), "**bold** intro\n");
 
-    // null passes through (stored as null) and reads back as the empty corpus.
+    // null passes through (stored as null) and reads back as the empty content.
     commit_richtext(&mut card, "intro", &serde_json::Value::Null, false).unwrap();
     assert!(card.payload().get("intro").unwrap().as_json().is_null());
     assert!(card.field_richtext("intro").unwrap().unwrap().is_blank());
 
     assert_eq!(
-        commit_richtext(&mut card, "intro", &serde_json::json!({ "not": "a corpus" }), false)
+        commit_richtext(&mut card, "intro", &serde_json::json!({ "not": "a content" }), false)
             .unwrap_err()
             .variant_name(),
         "FieldRichtextDecode"
@@ -765,7 +765,7 @@ fn test_commit_field_richtext_markdown_null_and_rejects_bad() {
 }
 
 /// A richtext(inline) `commit_field` commits the `richtext(inline)` check at
-/// write: a single-`Para` corpus stores, a multi-block corpus is
+/// write: a single-`Para` content stores, a multi-block content is
 /// `EditError::FieldRichtextNotInline` — the write is the strict commit, not a
 /// deferred render failure.
 #[test]
@@ -804,7 +804,7 @@ fn test_commit_field_array_of_inline_richtext_reports_not_inline() {
         None,
     )));
 
-    // A single-line element coerces to a corpus and the array commits.
+    // A single-line element coerces to a content and the array commits.
     card.commit_field(
         "refs",
         QuillValue::from_json(serde_json::json!(["one line"])),
@@ -910,10 +910,10 @@ fn test_field_richtext_absent_and_non_richtext() {
     assert!(card.field_markdown("count").unwrap().is_err());
 }
 
-/// A corpus-valued field emits to card-yaml as its **markdown projection**, not
+/// A content-valued field emits to card-yaml as its **markdown projection**, not
 /// a nested `{text, lines, marks, islands}` object — card-yaml stays
 /// markdown-clean. Re-parsing yields a string field (schema-less parse), the
-/// documented on-disk identity boundary; the corpus survives only via the DTO.
+/// documented on-disk identity boundary; the content survives only via the DTO.
 #[test]
 fn test_corpus_field_emits_as_markdown_projection() {
     let mut doc = Document::new(QuillReference::from_str("test_quill").unwrap());
@@ -932,7 +932,7 @@ fn test_corpus_field_emits_as_markdown_projection() {
         md.contains("intro: \"**bold** intro\\n\""),
         "expected markdown projection, got:\n{md}"
     );
-    assert!(!md.contains("lines:"), "corpus object leaked into card-yaml:\n{md}");
+    assert!(!md.contains("lines:"), "content object leaked into card-yaml:\n{md}");
 
     // Re-parse: schema-less, so the field is now a plain string (identity lost
     // on disk — the intended boundary), but the markdown content survives.
@@ -943,8 +943,8 @@ fn test_corpus_field_emits_as_markdown_projection() {
     );
 }
 
-/// A plain object field that is *not* a canonical corpus emits structurally
-/// (unchanged) — projection fires only on genuine corpus objects.
+/// A plain object field that is *not* a canonical content emits structurally
+/// (unchanged) — projection fires only on genuine content objects.
 #[test]
 fn test_non_corpus_object_field_emits_structurally() {
     let mut doc = Document::new(QuillReference::from_str("test_quill").unwrap());
@@ -959,17 +959,17 @@ fn test_non_corpus_object_field_emits_structurally() {
     assert!(md.contains("city: Paris"), "{md}");
 }
 
-/// A content-canonical corpus whose top-level keys are in NON-canonical order
+/// A content-canonical content whose top-level keys are in NON-canonical order
 /// stays structural — the projection guard is byte-exact (canonical-string
 /// equality), not the order-independent `Value` compare it used to be. Under
 /// the old guard this projected to a flattened markdown scalar, breaking the
 /// field's round-trip. Issue #905.
 #[test]
 fn test_noncanonical_order_corpus_field_stays_structural() {
-    // A real corpus, then its top-level keys rebuilt in reverse (same content,
+    // A real content, then its top-level keys rebuilt in reverse (same content,
     // non-canonical bytes).
-    let rt = quillmark_richtext::import::from_markdown("**bold**").unwrap();
-    let canonical = quillmark_richtext::serial::to_canonical_value(&rt);
+    let rt = quillmark_content::import::from_markdown("**bold**").unwrap();
+    let canonical = quillmark_content::serial::to_canonical_value(&rt);
     let obj = canonical.as_object().unwrap();
     let mut scrambled = serde_json::Map::new();
     for k in obj.keys().rev() {
@@ -984,10 +984,10 @@ fn test_noncanonical_order_corpus_field_stays_structural() {
         )
         .unwrap();
     let md = doc.to_markdown();
-    // Structural: the corpus keys survive; it did not collapse to `intro: "..."`.
+    // Structural: the content keys survive; it did not collapse to `intro: "..."`.
     assert!(
         md.contains("marks:") && md.contains("lines:"),
-        "non-canonical-order corpus should stay structural, got:\n{md}"
+        "non-canonical-order content should stay structural, got:\n{md}"
     );
 }
 
@@ -1011,9 +1011,9 @@ fn test_revise_body_returns_delta_and_updates_body() {
 /// the new text via `diff_import`, where the old fresh-import path dropped it.
 #[test]
 fn test_revise_body_rebases_anchor() {
-    use quillmark_richtext::model::{Mark, MarkKind};
+    use quillmark_content::model::{Mark, MarkKind};
 
-    let mut base = quillmark_richtext::import::from_markdown("keep the target word").unwrap();
+    let mut base = quillmark_content::import::from_markdown("keep the target word").unwrap();
     // Anchor over "target" (chars 9..15).
     base.marks.push(Mark {
         start: 9,
@@ -1032,18 +1032,18 @@ fn test_revise_body_rebases_anchor() {
         .find(|m| matches!(&m.kind, MarkKind::Anchor { id } if id == "c1"))
         .expect("identity anchor survives the whole-document replace");
     let text = &card.body().text;
-    let s = quillmark_richtext::usv::char_to_byte(text, anchor.start);
-    let e = quillmark_richtext::usv::char_to_byte(text, anchor.end);
+    let s = quillmark_content::usv::char_to_byte(text, anchor.start);
+    let e = quillmark_content::usv::char_to_byte(text, anchor.end);
     assert_eq!(&text[s..e], "target");
 }
 
 /// `apply_body_change` applies a native field-change bundle (text delta, then
-/// line ops, then mark ops) to the body corpus.
+/// line ops, then mark ops) to the body content.
 #[test]
 fn test_apply_body_change_applies_bundle() {
     use crate::MarkOp;
-    use quillmark_richtext::delta::diff;
-    use quillmark_richtext::model::MarkKind;
+    use quillmark_content::delta::diff;
+    use quillmark_content::model::MarkKind;
 
     let mut card = Card::new("note").unwrap();
     card.revise_body("abc").unwrap();
@@ -1073,8 +1073,8 @@ fn test_apply_body_change_applies_bundle() {
 #[test]
 fn test_apply_body_change_reports_out_of_range() {
     use crate::MarkOp;
-    use quillmark_richtext::delta::diff;
-    use quillmark_richtext::model::MarkKind;
+    use quillmark_content::delta::diff;
+    use quillmark_content::model::MarkKind;
 
     let mut card = Card::new("note").unwrap();
     card.revise_body("abc").unwrap();
@@ -1095,14 +1095,14 @@ fn test_apply_body_change_reports_out_of_range() {
 }
 
 /// `apply_field_richtext_change` splices a bundle into a richtext field's stored
-/// corpus and re-stores it — the field-path twin of `apply_body_change`.
+/// content and re-stores it — the field-path twin of `apply_body_change`.
 /// Identity marks (a strong span applied post-delta) survive on the re-stored
-/// corpus, which is what makes anchors persist on field content across edits.
+/// content, which is what makes anchors persist on field content across edits.
 #[test]
 fn test_apply_field_richtext_change_splices_and_persists() {
     use crate::MarkOp;
-    use quillmark_richtext::delta::diff;
-    use quillmark_richtext::model::MarkKind;
+    use quillmark_content::delta::diff;
+    use quillmark_content::model::MarkKind;
 
     let mut card = Card::new("note").unwrap();
     commit_richtext(&mut card, "intro", &serde_json::json!("abc"), false).unwrap();
@@ -1119,7 +1119,7 @@ fn test_apply_field_richtext_change_splices_and_persists() {
     )
     .unwrap();
 
-    // The stored value is still a canonical corpus object carrying the edit.
+    // The stored value is still a canonical content object carrying the edit.
     assert!(card.payload().get("intro").unwrap().as_json().is_object());
     let rt = card.field_richtext("intro").unwrap().unwrap();
     assert_eq!(rt.text, "abXc");
@@ -1131,7 +1131,7 @@ fn test_apply_field_richtext_change_splices_and_persists() {
 /// knows is richtext.
 #[test]
 fn test_apply_field_richtext_change_rejects_non_richtext() {
-    use quillmark_richtext::delta::diff;
+    use quillmark_content::delta::diff;
 
     let mut card = Card::new("note").unwrap();
     let identity = diff("", "");
@@ -1214,7 +1214,7 @@ fn test_invariants_after_mutation_sequence() {
     assert!(json.is_object());
     assert_eq!(json["$quill"].as_str(), Some("test_quill"));
     assert!(json["$cards"].is_array());
-    // `$body` is canonical corpus JSON; its `text` is the content-only string.
+    // `$body` is canonical content JSON; its `text` is the content-only string.
     assert_eq!(json["$body"]["text"].as_str(), Some("Updated body."));
 
     // Payload still has expected keys

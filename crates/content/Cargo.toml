@@ -1,23 +1,23 @@
 [package]
-name = "quillmark-richtext"
+name = "quillmark-content"
 version.workspace = true
 edition.workspace = true
 include.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository = "https://github.com/borb-sh/quillmark"
-description = "RichText corpus content model, canonical serialization, edit deltas, and markdown codecs for Quillmark (issue #831)"
+description = "Content model (splice-shaped USV text with line attributes, marks, and islands), canonical serialization, edit deltas, and richtext/plaintext codecs for Quillmark"
 # The leaf content-model crate: `quillmark-core` depends on it for the storage
 # body type and the markdown-string normalizer, so it carries no dependency on
 # the document engine. Published because `quillmark-core` (published) depends on
-# it. Tracked in prose/plans/richtext/.
+# it.
 publish = true
 
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
 # The markdown projection's parser. This crate is the workspace's single home
-# for a CommonMark parser; render paths consume the corpus, never markdown.
+# for a CommonMark parser; render paths consume the content, never markdown.
 pulldown-cmark = { workspace = true }
 similar = { workspace = true }
 

@@ -14,7 +14,7 @@
 // public entry point, so this is a structural fact. Replacing the re-export
 // with a wrapper is a breaking design change, not a refactor. See runtime.js.
 export { Quill, Document, init } from '../core/wasm.js';
-// The document-free corpus codec, re-exported from the core build.
+// The document-free content codec, re-exported from the core build.
 export { importMarkdown, exportMarkdown, rebase, mapPos } from '../core/wasm.js';
 
 import type { CardAddr } from '../core/wasm.js';
@@ -45,20 +45,20 @@ export type {
 	QuillMetadata
 } from '../core/wasm.js';
 
-// Corpus edit vocabulary — the op-grained content model `Document`'s methods
+// Content edit vocabulary — the op-grained content model `Document`'s methods
 // speak (`applyChange(addr, bundle)`, `install(addr, rt)`, `revise(…) => Delta`).
 // Declared in the core build; re-exported here so the single public entry point
 // names every type its own re-exported surface already references — `Card.body`
-// is a `RichText`, `PayloadItem.nestedFills` a `PathStep[][]`, `CardInput.body` a
-// `RichText | string` — rather than forcing consumers to derive them structurally
-// off the `Document` handle. The corpus write path (a ProseMirror↔corpus codec)
+// is a `Content`, `PayloadItem.nestedFills` a `PathStep[][]`, `CardInput.body` a
+// `Content | string` — rather than forcing consumers to derive them structurally
+// off the `Document` handle. The content write path (a ProseMirror↔content codec)
 // must name all of them; they are its correctness core, not edge types.
 export type {
-	RichText,
-	RichTextLine,
-	RichTextContainer,
-	RichTextMark,
-	RichTextIsland,
+	Content,
+	ContentLine,
+	ContentContainer,
+	ContentMark,
+	ContentIsland,
 	CardInput,
 	PathStep,
 	Addr,
@@ -137,7 +137,7 @@ export interface RenderOptions {
  * to decide whether to trust the offset. Never sub-cluster: `'cluster'` is the
  * finest, `'segment'` the floor it degrades to on origin-less ink.
  *
- * - `'cluster'` — `pos` is the first corpus char of the cluster under the point
+ * - `'cluster'` — `pos` is the first content char of the cluster under the point
  *   (an escaped/CJK/shaping cluster floors to its first char). Place the caret
  *   at `pos` directly.
  * - `'segment'` — the point hit origin-less ink (list markers, numbering, a
@@ -146,7 +146,7 @@ export interface RenderOptions {
  */
 export type HitGranularity = 'cluster' | 'segment';
 
-/** A click resolved to a field and USV offset into its RichText. */
+/** A click resolved to a field and USV offset into its Content. */
 export interface CorpusHit {
 	field: string;
 	pos: number;
@@ -202,8 +202,8 @@ export interface FieldRegion {
 	/** `[x0, y0, x1, y1]` in PDF points (1/72″), bottom-left origin. */
 	rect: [number, number, number, number];
 	/**
-	 * The corpus slice this box covers — USV `[start, end)` into the field's
-	 * `RichText` for content ink (one segment), absent for a scalar reference
+	 * The content slice this box covers — USV `[start, end)` into the field's
+	 * `Content` for content ink (one segment), absent for a scalar reference
 	 * site or widget. Consumers key segment highlights on it;
 	 * {@link LiveSession.fieldBoxes} unions same-page segments for the
 	 * whole-field box.
@@ -430,11 +430,11 @@ export declare class LiveSession {
 	 */
 	fieldAt(page: number, x: number, y: number): string | undefined;
 	/**
-	 * Fine-grained click → corpus position (caret placement). Same PDF-point
+	 * Fine-grained click → content position (caret placement). Same PDF-point
 	 * space as {@link fieldAt}; `undefined` off all content ink.
 	 */
 	positionAt(page: number, x: number, y: number): CorpusHit | undefined;
-	/** Corpus position → caret rect — reverse of {@link positionAt}. */
+	/** Content position → caret rect — reverse of {@link positionAt}. */
 	locate(field: string, pos: number): FieldRegion | undefined;
 	/** Page geometry in points (1/72″). Report-only; the painter sizes the canvas. */
 	pageSize(page: number): PageSize;

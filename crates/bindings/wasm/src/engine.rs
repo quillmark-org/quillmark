@@ -108,7 +108,7 @@ export interface QuillMetadata {
 /// the read shape *returned* by `Document.main` / `cards` / `removeCard` /
 /// `quill.seedCard` / `Document.makeCard`; `CardInput` is the shape *accepted*
 /// by `insertCard` (referenced by name via `unchecked_param_type`).
-/// They differ only in `body`: a read is always canonical `RichText`, a write
+/// They differ only in `body`: a read is always canonical `Content`, a write
 /// also takes a markdown `string`.
 #[wasm_bindgen(typescript_custom_section)]
 const CARD_TS: &'static str = r#"
@@ -155,19 +155,19 @@ export interface Card {
     seed?: Record<string, unknown>;
     payloadItems: PayloadItem[];
     /**
-     * The card body as canonical `RichText` — the source-of-truth content model.
-     * Always this corpus shape on read, never a markdown string. For the markdown
+     * The card body as canonical `Content` — the source-of-truth content model.
+     * Always this content shape on read, never a markdown string. For the markdown
      * projection call the codec `exportMarkdown(card.body)`. Write a body back
      * with `doc.install(addr, rt)` / `doc.revise(addr, md)`, or via `CardInput.body`.
      */
-    body: RichText;
+    body: Content;
 }
 
 /**
  * A card written *into* a document — the input twin of `Card`, accepted by
  * `Document.insertCard`. Like `Card` but `body` also
- * takes a markdown `string` (imported to the corpus, so a markdown / LLM writer
- * needn't build the `RichText` shape), and every field but `kind` is optional —
+ * takes a markdown `string` (imported to the content, so a markdown / LLM writer
+ * needn't build the `Content` shape), and every field but `kind` is optional —
  * an absent field defaults (no payload items, an empty body). Write one inline
  * (`{ kind, body }`) or build it with `Document.makeCard`.
  */
@@ -178,26 +178,26 @@ export interface CardInput {
     ext?: Record<string, unknown>;
     seed?: Record<string, unknown>;
     payloadItems?: PayloadItem[];
-    body?: RichText | string;
+    body?: Content | string;
 }
 
 /**
- * Canonical richtext corpus — the content model for a card body (and richtext
+ * Canonical richtext content — the content model for a card body (and richtext
  * fields). One text sequence over a single coordinate space (Unicode scalar
  * values): `text` plus line attributes, anchored `marks`, and embedded
  * `islands`. Every edit is a splice; markdown is a projection, not the model.
- * Mirrors `quillmark_richtext::serial`'s canonical JSON encoding.
+ * Mirrors `quillmark_content::serial`'s canonical JSON encoding.
  */
-export interface RichText {
+export interface Content {
     text: string;
-    lines: RichTextLine[];
-    marks: RichTextMark[];
-    islands: RichTextIsland[];
+    lines: ContentLine[];
+    marks: ContentMark[];
+    islands: ContentIsland[];
 }
 
-/** One `\n`-separated segment of `RichText.text`, in order. */
-export type RichTextLine = {
-    containers: RichTextContainer[];
+/** One `\n`-separated segment of `Content.text`, in order. */
+export type ContentLine = {
+    containers: ContentContainer[];
     /** A within-block hard line break rather than a new block. Omitted (false) in the common case. */
     continues?: boolean;
 } & (
@@ -209,20 +209,20 @@ export type RichTextLine = {
 );
 
 /** An ancestor block a line nests inside, outermost first. */
-export type RichTextContainer =
+export type ContentContainer =
     | { container: "list_item"; ordered: boolean; start: number; ordinal: number }
     | { container: "quote" };
 
-/** A mark over char range `[start, end)` into `RichText.text`. */
-export type RichTextMark = { start: number; end: number } & (
+/** A mark over char range `[start, end)` into `Content.text`. */
+export type ContentMark = { start: number; end: number } & (
     | { type: "strong" | "emph" | "underline" | "strike" | "code" }
     | { type: "link"; url: string }
     | { type: "anchor"; id: string }
     | { type: string; attrs: unknown }
 );
 
-/** A structured object (table, figure, …) occupying one island slot in `RichText.text`. */
-export interface RichTextIsland {
+/** A structured object (table, figure, …) occupying one island slot in `Content.text`. */
+export interface ContentIsland {
     id: string;
     type: string;
     props: unknown;
@@ -258,7 +258,7 @@ export interface CardAddr {
 }
 
 /**
- * A text-splice change set over the USV corpus (CodeMirror `ChangeSet`
+ * A text-splice change set over the USV content (CodeMirror `ChangeSet`
  * semantics) — plain, structured-clone-able data. Returned by `revise` and by
  * the `rebase` codec; map a stored position through it with `mapPos`.
  */
@@ -271,7 +271,7 @@ export type Assoc = "before" | "after";
 
 /**
  * A mark edit in post-text-delta coordinates. `add` / `remove` carry the
- * `RichTextMark` vocabulary (`{ type, … }`); `removeAnchor` drops one identity
+ * `ContentMark` vocabulary (`{ type, … }`); `removeAnchor` drops one identity
  * anchor by id.
  */
 export type MarkOp =
@@ -286,7 +286,7 @@ export type MarkOp =
 /**
  * A line/block edit. `split`/`join` splice `\n`; `setKind`/`setContainers`/
  * `setContinues` touch metadata. `setContinues` sets/clears a line's within-block
- * hard-break flag (`RichTextLine.continues`) — the op-grained way to lower a
+ * hard-break flag (`ContentLine.continues`) — the op-grained way to lower a
  * Shift+Enter hard break or a new code-fence interior line; `continues: true` on
  * line 0 is rejected (nothing precedes it to continue).
  */
@@ -298,11 +298,11 @@ export type LineOp =
           | { kind: "heading"; level: number }
           | { kind: "code"; lang?: string }
       ))
-    | { op: "setContainers"; line: number; containers: RichTextContainer[] }
+    | { op: "setContainers"; line: number; containers: ContentContainer[] }
     | { op: "setContinues"; line: number; continues: boolean };
 
 /**
- * A committed corpus edit bundle for `applyChange`: a text `delta` (default no
+ * A committed content edit bundle for `applyChange`: a text `delta` (default no
  * text change), then `lineOps`, then `markOps` (mark ranges are in post-delta
  * coordinates). Every field is optional.
  */
@@ -845,8 +845,8 @@ impl Document {
     }
 
     /// Read the value at `addr` — the raw stored payload value of a field (a
-    /// corpus object for a richtext field, a scalar/array/object otherwise), or
-    /// the **body corpus** when `addr.field` is absent. A bare string is `Addr`
+    /// content object for a richtext field, a scalar/array/object otherwise), or
+    /// the **body content** when `addr.field` is absent. A bare string is `Addr`
     /// shorthand for `{ field }`. Reads are total over the field axis: an absent
     /// field is `undefined`; only an out-of-range `addr.card` throws
     /// `[EditError::IndexOutOfRange]`. Reads need no schema, so they live on
@@ -861,7 +861,7 @@ impl Document {
         let card = self.addr_card_ref(&addr)?;
         match &addr.field {
             None => serialize_or_throw(
-                &quillmark_richtext::serial::to_canonical_value(card.body()),
+                &quillmark_content::serial::to_canonical_value(card.body()),
                 "get",
             ),
             Some(field) => match card.payload().get(field) {
@@ -873,7 +873,7 @@ impl Document {
 
     /// The markdown projection of the value at `addr` — a field's (given
     /// `addr.field`) or the body's (absent) — the on-demand, lossy export
-    /// (corpus-only marks do not survive markdown). A bare string is `Addr`
+    /// (content-only marks do not survive markdown). A bare string is `Addr`
     /// shorthand for `{ field }`. Returns `undefined` for an **absent** field
     /// (absence vs empty is real signal for must-fill / seeding UIs); a body is
     /// never absent. A **present** field that does not decode as richtext (a
@@ -1215,8 +1215,8 @@ impl Document {
         Ok(())
     }
 
-    /// **Install** a richtext value at `addr` — **value semantics**, corpus only.
-    /// Stores exactly `rt` (a canonical `RichText` corpus object); the identity
+    /// **Install** a richtext value at `addr` — **value semantics**, content only.
+    /// Stores exactly `rt` (a canonical `Content` content object); the identity
     /// anchors of any previous value are gone. An absent `addr.field` targets the
     /// body, an absent `addr.card` the main card. For "here's new markdown," use
     /// [`revise`](Document::revise); the cold-import path is spelled at the call
@@ -1224,22 +1224,22 @@ impl Document {
     /// source.
     ///
     /// Throws on an out-of-range card, a malformed field name, or an `rt` that is
-    /// not a canonical corpus object.
+    /// not a canonical content object.
     #[wasm_bindgen(js_name = install)]
     pub fn install(
         &mut self,
         #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
-        #[wasm_bindgen(unchecked_param_type = "RichText")] rt: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "Content")] rt: JsValue,
     ) -> Result<(), JsValue> {
         let addr = Addr::from_js_or_string(&addr)?;
-        let corpus = js_to_corpus(rt, "install")?;
+        let content = js_to_corpus(rt, "install")?;
         let card = self.addr_card_mut(&addr)?;
         match &addr.field {
             None => {
-                card.install_body(corpus);
+                card.install_body(content);
                 Ok(())
             }
-            Some(field) => card.install_field(field, corpus).map_err(|e| edit_error_to_js(&e)),
+            Some(field) => card.install_field(field, content).map_err(|e| edit_error_to_js(&e)),
         }
     }
 
@@ -1251,7 +1251,7 @@ impl Document {
     /// absent `addr.card` the main card; an absent field cold-imports from empty.
     ///
     /// Throws on an out-of-range card, a malformed field name, a present
-    /// non-corpus field value, or an over-nested markdown input.
+    /// non-content field value, or an over-nested markdown input.
     #[wasm_bindgen(js_name = revise, unchecked_return_type = "Delta")]
     pub fn revise(
         &mut self,
@@ -1303,7 +1303,7 @@ impl Document {
         serialize_or_throw(&delta, "reviseField")
     }
 
-    /// **Apply** a committed corpus edit `bundle` (`{ delta?, lineOps?, markOps? }`)
+    /// **Apply** a committed content edit `bundle` (`{ delta?, lineOps?, markOps? }`)
     /// at `addr` — the editor splice: text delta first, then line ops, then mark
     /// ops (mark ranges in post-delta coordinates), each all-or-nothing. An absent
     /// `addr.field` targets the body, an absent `addr.card` the main card.
@@ -1333,10 +1333,10 @@ impl Document {
     /// `quill` — the stable ABI under the runtime `writer.set` / `writer.card(i).set`.
     /// The one write verb for **every** field type (richtext, scalar, array,
     /// object); the schema carries the `inline` constraint, so no type token or
-    /// flag is passed. A richtext-typed field stores the canonical corpus, so
-    /// identity marks (anchors, island ids) and corpus-only marks (e.g.
+    /// flag is passed. A richtext-typed field stores the canonical content, so
+    /// identity marks (anchors, island ids) and content-only marks (e.g.
     /// `underline`) live on it and survive compiles and the storage DTO. Values
-    /// use the encoding the seam already speaks: a corpus object or markdown
+    /// use the encoding the seam already speaks: a content object or markdown
     /// string for richtext, a scalar/array/object otherwise.
     ///
     /// A bare string is `Addr` shorthand for `{ field }`; `{ card, field }`
@@ -1479,10 +1479,10 @@ impl Document {
             seed: None,
             payload_items,
             // The `body` argument is markdown; `Card::try_from` imports it to the
-            // corpus (and validates the fields).
+            // content (and validates the fields).
             body: serde_json::Value::String(body.unwrap_or_default()),
         };
-        // Round-trip through `Card` so the emitted card carries the corpus body
+        // Round-trip through `Card` so the emitted card carries the content body
         // (the source-of-truth shape `cards()` returns), not the raw authored
         // string.
         let card = quillmark_core::Card::try_from(string_wire)
@@ -1671,19 +1671,19 @@ impl Addr {
     }
 }
 
-/// Decode a JS value as a canonical `RichText` corpus object — the `install`
-/// input (value semantics, corpus only). Rejects a markdown string: the cold
+/// Decode a JS value as a canonical `Content` content object — the `install`
+/// input (value semantics, content only). Rejects a markdown string: the cold
 /// path is spelled `install(addr, importMarkdown(md))`.
-fn js_to_corpus(value: JsValue, ctx: &str) -> Result<quillmark_core::RichText, JsValue> {
+fn js_to_corpus(value: JsValue, ctx: &str) -> Result<quillmark_core::Content, JsValue> {
     let json = js_value_to_json(value, ctx)?;
     if !json.is_object() {
         return Err(WasmError::from(format!(
-            "{ctx}: expected a RichText corpus object; for markdown use importMarkdown(md) first"
+            "{ctx}: expected a Content content object; for markdown use importMarkdown(md) first"
         ))
         .to_js_value());
     }
-    quillmark_richtext::serial::from_canonical_value(&json)
-        .map_err(|e| WasmError::from(format!("{ctx}: not a canonical RichText corpus: {e}")).to_js_value())
+    quillmark_content::serial::from_canonical_value(&json)
+        .map_err(|e| WasmError::from(format!("{ctx}: not a canonical Content content: {e}")).to_js_value())
 }
 
 /// Lower a `ChangeBundle` (`{ delta?, lineOps?, markOps? }`) to core ops via the
@@ -1699,58 +1699,58 @@ fn parse_change_bundle(
     JsValue,
 > {
     let json = js_value_to_json(value.clone(), "applyChange")?;
-    quillmark_richtext::change_bundle_from_value(&json)
+    quillmark_content::change_bundle_from_value(&json)
         .map_err(|e| WasmError::from(format!("applyChange: {e}")).to_js_value())
 }
 
-// ── Corpus codec (document-free) ────────────────────────────────────────────────
+// ── Content codec (document-free) ────────────────────────────────────────────────
 
-/// Import a markdown string to a canonical `RichText` corpus — the pure,
+/// Import a markdown string to a canonical `Content` content — the pure,
 /// document-free codec. Pair with `install(addr, importMarkdown(md))` to spell
 /// the cold (anchor-losing) write at the call site; prefer `revise` for edit
 /// semantics. Throws on an over-nested input.
-#[wasm_bindgen(js_name = importMarkdown, unchecked_return_type = "RichText")]
+#[wasm_bindgen(js_name = importMarkdown, unchecked_return_type = "Content")]
 pub fn import_markdown(markdown: &str) -> Result<JsValue, JsValue> {
-    let corpus = quillmark_richtext::from_markdown(markdown)
+    let content = quillmark_content::from_markdown(markdown)
         .map_err(|e| WasmError::from(format!("importMarkdown: {e}")).to_js_value())?;
     serialize_or_throw(
-        &quillmark_richtext::serial::to_canonical_value(&corpus),
+        &quillmark_content::serial::to_canonical_value(&content),
         "importMarkdown",
     )
 }
 
-/// Export a canonical `RichText` corpus to its markdown projection — the pure
+/// Export a canonical `Content` content to its markdown projection — the pure
 /// codec that replaces the eager `bodyMarkdown` / `fieldMarkdown` precomputes
-/// (`exportMarkdown(card.body)`). Throws if `rt` is not a canonical corpus.
+/// (`exportMarkdown(card.body)`). Throws if `rt` is not a canonical content.
 #[wasm_bindgen(js_name = exportMarkdown)]
 pub fn export_markdown(
-    #[wasm_bindgen(unchecked_param_type = "RichText")] rt: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "Content")] rt: JsValue,
 ) -> Result<String, JsValue> {
-    let corpus = js_to_corpus(rt, "exportMarkdown")?;
-    Ok(quillmark_richtext::to_markdown(&corpus))
+    let content = js_to_corpus(rt, "exportMarkdown")?;
+    Ok(quillmark_content::to_markdown(&content))
 }
 
-/// Rebase `markdown` onto a `base` corpus — the pure, document-free twin of
-/// `revise`: cold-import + `diff_import`, returning the new `corpus` and the
+/// Rebase `markdown` onto a `base` content — the pure, document-free twin of
+/// `revise`: cold-import + `diff_import`, returning the new `content` and the
 /// text `delta` (surviving anchors rebased). Use it to compute a revise without
 /// a document in hand; `revise(addr, md)` fuses this with the store for
-/// atomicity. Throws on an over-nested markdown input or a non-corpus `base`.
-#[wasm_bindgen(js_name = rebase, unchecked_return_type = "{ corpus: RichText; delta: Delta }")]
+/// atomicity. Throws on an over-nested markdown input or a non-content `base`.
+#[wasm_bindgen(js_name = rebase, unchecked_return_type = "{ content: Content; delta: Delta }")]
 pub fn rebase(
-    #[wasm_bindgen(unchecked_param_type = "RichText")] base: JsValue,
+    #[wasm_bindgen(unchecked_param_type = "Content")] base: JsValue,
     markdown: &str,
 ) -> Result<JsValue, JsValue> {
     let base = js_to_corpus(base, "rebase")?;
-    let (corpus, delta) = quillmark_richtext::diff_import(&base, markdown)
+    let (content, delta) = quillmark_content::diff_import(&base, markdown)
         .map_err(|e| WasmError::from(format!("rebase: {e}")).to_js_value())?;
     let out = serde_json::json!({
-        "corpus": quillmark_richtext::serial::to_canonical_value(&corpus),
+        "content": quillmark_content::serial::to_canonical_value(&content),
         "delta": serde_json::to_value(&delta).unwrap_or(serde_json::Value::Null),
     });
     serialize_or_throw(&out, "rebase")
 }
 
-/// Map a base corpus position through a `delta` to its new position — the pure
+/// Map a base content position through a `delta` to its new position — the pure
 /// position-mapping codec an editor bridge composes to hold a caret stable
 /// across a `revise`. `assoc` decides the side of a same-position insertion
 /// (`"after"` moves past it). Throws on a malformed `delta`.
@@ -2201,9 +2201,9 @@ impl LiveSession {
         self.inner.field_at(page, x, y)
     }
 
-    /// A point → **corpus position** — the fine-grained click direction:
+    /// A point → **content position** — the fine-grained click direction:
     /// hit-test a point and get back the field *and* a USV offset into its
-    /// `RichText` (for placing a caret or mapping a selection into the content
+    /// `Content` (for placing a caret or mapping a selection into the content
     /// model), or `undefined` off all content ink. `x`/`y` are PDF points,
     /// bottom-left origin — the same space as `fieldAt`. The offset is
     /// cluster-exact and degrades to the containing segment's start on
@@ -2214,8 +2214,8 @@ impl LiveSession {
         self.inner.position_at(page, x, y).map(Into::into)
     }
 
-    /// A corpus position → **caret rect** — the reverse of `positionAt`: given
-    /// a field and a USV offset into its `RichText`, return the box (in the
+    /// A content position → **caret rect** — the reverse of `positionAt`: given
+    /// a field and a USV offset into its `Content`, return the box (in the
     /// same bottom-left PDF-point space as `FieldRegion.rect`) to draw a caret
     /// at, its `span` collapsed to `[pos, pos]`; `undefined` when the field
     /// places no tracked content or the offset maps to no drawn glyph.

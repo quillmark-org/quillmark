@@ -1,4 +1,4 @@
-//! The per-field edit surface: a [`Delta`] of text splices over the USV corpus,
+//! The per-field edit surface: a [`Delta`] of text splices over the USV content,
 //! plus the **stale-text writer** path — cold-parse a full new markdown document,
 //! char-diff it against the base, and rebase the base's identity marks
 //! (anchors/comments) through the diff so annotations survive an LLM
@@ -12,7 +12,7 @@
 //! that *rebase through* a delta ([`Delta::map_pos`]), they do not ride it as op
 //! attributes. This is deliberate — an attribute map is a per-character property
 //! map and cannot represent overlapping same-kind marks or two distinct
-//! identity anchors over one range, the exact algebra the corpus model keeps
+//! identity anchors over one range, the exact algebra the content model keeps
 //! (Peritext free overlap + identity handles). Editing marks and line/block
 //! attributes are their own op channels, not attributes on this delta. The
 //! positional channel stays isomorphic to a text CRDT's op stream — the shape
@@ -23,24 +23,24 @@
 //! Position mapping ([`Delta::map_pos`]) follows CodeMirror's
 //! `ChangeDesc.mapPos` / ProseMirror mapping semantics. Anchoring a captured
 //! position across edits is the editor's job (its own transaction mapping); the
-//! corpus carries no session-side change log.
+//! content carries no session-side change log.
 //!
 //! ## The move weak spot (documented limit)
 //!
 //! A paragraph reorder is delete-here + insert-there to any char differ, so a
 //! naive rebase collapses an anchor in the moved text to the deletion point. The
 //! detector re-homes an anchor onto a **single, verbatim block move** by locating
-//! the moved text in the new corpus. Text both *moved and rewritten* in one round
+//! the moved text in the new content. Text both *moved and rewritten* in one round
 //! (the match is lost) drops the anchor — the accepted residual, stated not
 //! hidden. Tightening verbatim → fuzzy (longest-common-substring) is a hardening
 //! follow-up.
 
-use crate::model::{Mark, MarkKind, RichText};
+use crate::model::{Mark, MarkKind, Content};
 use serde::{Deserialize, Serialize};
 use similar::{ChangeTag, TextDiff};
 use std::borrow::Cow;
 
-/// A per-field edit against a base corpus. Ops apply left-to-right, consuming
+/// A per-field edit against a base content. Ops apply left-to-right, consuming
 /// base positions; `Retain`/`Delete` advance the base cursor, `Insert` adds new
 /// text. USV throughout.
 ///
@@ -356,15 +356,15 @@ fn push_insert(ops: &mut Vec<Op>, s: &str) {
 
 /// The stale-text writer path: cold-parse `new_markdown`, char-diff it against
 /// `base`, and carry `base`'s identity marks (anchors) forward, rebased through
-/// the diff (re-homing verbatim block moves). The returned corpus is `new_rt`
+/// the diff (re-homing verbatim block moves). The returned content is `new_rt`
 /// (structure/marks/islands from the fresh import) plus the surviving anchors.
 ///
-/// Returns the new corpus and the [`Delta`] used — the text change an editor
+/// Returns the new content and the [`Delta`] used — the text change an editor
 /// bridge can map its own positions through.
 pub fn diff_import(
-    base: &RichText,
+    base: &Content,
     new_markdown: &str,
-) -> Result<(RichText, Delta), crate::import::ImportError> {
+) -> Result<(Content, Delta), crate::import::ImportError> {
     let mut new_rt = crate::import::from_markdown(new_markdown)?;
     let delta = diff(&base.text, &new_rt.text);
 
@@ -372,7 +372,7 @@ pub fn diff_import(
     let new_chars: Vec<char> = new_rt.text.chars().collect();
     let inserted = delta.inserted_spans();
     for m in &base.marks {
-        // Only identity marks live in the corpus but not in markdown; formatting
+        // Only identity marks live in the content but not in markdown; formatting
         // marks are re-derived by the fresh import, so we do not carry them.
         let MarkKind::Anchor { .. } = &m.kind else {
             continue;
@@ -416,7 +416,7 @@ fn rebase_anchor(
         return Some((ns, ne)); // survived a surrounding edit
     }
     // Collapsed — try a verbatim block move: the annotated span must reappear
-    // inside inserted text (not merely somewhere in the surviving corpus).
+    // inside inserted text (not merely somewhere in the surviving content).
     relocate_span(base_chars, new_chars, inserted, m.start, m.end)
 }
 

@@ -891,7 +891,7 @@ title: Test
 #[test]
 fn test_over_nested_body_surfaces_body_import_error() {
     // A body whose container nesting exceeds MAX_NESTING_DEPTH cannot import into
-    // the corpus; the parse fails with the dedicated `parse::body_import` code
+    // the content; the parse fails with the dedicated `parse::body_import` code
     // (such a body never rendered — the backend rejected the same depth).
     let deep = ">".repeat(crate::error::MAX_NESTING_DEPTH + 5);
     let markdown =
@@ -908,7 +908,7 @@ fn test_canonical_root_with_kind_round_trips_byte_equal() {
     // §9.1: a canonical document is a parse-emit fixed point. Adding the
     // implicit-kind synthesis must not perturb canonical input — when
     // `$kind: main` is already written, the emitter produces the same line.
-    // The canonical body carries a single trailing newline — the corpus
+    // The canonical body carries a single trailing newline — the content
     // projection's block terminator — so the document is a parse-emit fixed point.
     let canonical = "~~~\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\nBody.\n";
     let doc = decompose(canonical).unwrap();
@@ -1386,7 +1386,7 @@ Use <<card body>> here.";
         "<<nested value>>"
     );
 
-    // Body chevrons in the corpus projection: code contexts (fenced + inline)
+    // Body chevrons in the content projection: code contexts (fenced + inline)
     // protect them verbatim; plain-text `<<word>>` follows CommonMark HTML rules
     // (`<word>` reads as an inline tag). This pins the exact projected body.
     let body = doc.main().body_markdown();
@@ -1407,7 +1407,7 @@ Use <<card body>> here.";
 #[test]
 fn test_multiline_chevrons_projection() {
     // A plain-text `<<text ... >>` spanning a line follows CommonMark HTML rules
-    // in the corpus projection. Pin the exact projected body.
+    // in the content projection. Pin the exact projected body.
     let markdown = "~~~card-yaml\n$quill: test_quill\n$kind: main\n~~~\n\n<<text\nacross lines>>";
     let doc = decompose(markdown).unwrap();
     let body = doc.main().body_markdown();
@@ -1693,7 +1693,7 @@ fn test_yaml_syntax_error_missing_colon() {
 
 #[test]
 fn test_body_with_leading_newlines() {
-    // The body is a corpus; markdown is its projection. Leading blank lines are
+    // The body is a content; markdown is its projection. Leading blank lines are
     // canonicalized away at import, so the emitted body no longer carries them.
     let markdown =
         "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\n\n\nBody with leading newlines.";
@@ -1769,7 +1769,7 @@ fn test_f2_strip_does_not_overstrip_content_newlines() {
     let reparsed = Document::parse(&emitted).unwrap().document;
     assert_eq!(doc.main().body_markdown(), reparsed.main().body_markdown());
     // The code block content survives; trailing blank lines canonicalize to a
-    // single newline (the corpus projection normalizes block spacing).
+    // single newline (the content projection normalizes block spacing).
     assert!(
         doc.main().body_markdown().ends_with("```\n"),
         "expected code block, got {:?}",
@@ -1948,7 +1948,7 @@ Conclusion content.
 
     let body = doc.main().body_markdown();
     assert!(body.contains("Main document body."));
-    // `***` (thematic break) has no corpus representation and is dropped by the
+    // `***` (thematic break) has no content representation and is dropped by the
     // projection; the surrounding paragraphs survive.
     assert!(body.contains("More content after horizontal rule."));
 
@@ -1991,7 +1991,7 @@ fn test_to_plate_json_simple() {
 
     assert_eq!(json["$quill"], "my_quill");
     assert_eq!(json["title"], "Hello");
-    // `$body` crosses the seam as canonical corpus JSON, not a markdown string.
+    // `$body` crosses the seam as canonical content JSON, not a markdown string.
     assert_eq!(json["$body"]["text"], "Body text.");
     assert!(json["$body"]["lines"].is_array());
     assert!(json["$cards"].is_array());
@@ -2022,7 +2022,7 @@ Card body here.
 
     assert_eq!(json["$quill"], "usaf_memo");
     assert_eq!(json["title"], "Test");
-    // `$body` (global and per-card) crosses as canonical corpus JSON; its `text`
+    // `$body` (global and per-card) crosses as canonical content JSON; its `text`
     // is the content-only string (blank-line separator stripped on parse).
     assert_eq!(json["$body"]["text"], "Global body.");
 

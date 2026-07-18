@@ -71,12 +71,12 @@ fn usaf_memo_regions_cover_body_signature_and_cards() {
     // regenerate with the helper on every committed edit — and its card
     // address surfaces through the same package rebuild.
     let mut edited = quill.compile_data(&parsed).expect("compile seed data");
-    // An editor writes the card body as canonical corpus JSON through the seam.
-    let rt = quillmark_richtext::import::from_markdown(
+    // An editor writes the card body as canonical content JSON through the seam.
+    let rt = quillmark_content::import::from_markdown(
         "The indorsement **body**, rebuilt by render-body.",
     )
     .expect("import");
-    edited["$cards"][0]["$body"] = quillmark_richtext::serial::to_canonical_value(&rt);
+    edited["$cards"][0]["$body"] = quillmark_content::serial::to_canonical_value(&rt);
     session.apply(&edited).expect("apply edited card body");
     let fields: HashSet<String> = session.regions().into_iter().map(|r| r.field).collect();
     assert!(

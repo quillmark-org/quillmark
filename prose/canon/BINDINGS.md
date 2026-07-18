@@ -46,14 +46,14 @@ from the bound quill, so a name the schema does not declare is a typo
 (`UnknownField`), not a fallback.
 
 `Document` holds everything quill-free: the opaque `store*` primitive (verbatim,
-coercion deferred to render) and the addressed corpus lane — `install` / `revise`
+coercion deferred to render) and the addressed content lane — `install` / `revise`
 / `applyChange` plus the `importMarkdown` / `exportMarkdown` / `rebase` / `mapPos`
 codec — which navigate by `Addr` and return `Delta` receipts but never consult a
 schema. Reads (`get` / `getMarkdown` / `isFill` / `getExt`) need no schema, so
 they sit on `Document` too.
 
 `reviseField` is the writer verb that is both typed *and* anchor-preserving: it
-rebases surviving anchors like the corpus `revise`, then conforms the diffed
+rebases surviving anchors like the content `revise`, then conforms the diffed
 result to the field schema like `set`. Because it needs the schema, it lives on
 the writer — wrapping core's `Card::revise_field_checked` primitive, which
 `Document` does not expose.
@@ -61,7 +61,7 @@ the writer — wrapping core's `Card::revise_field_checked` primitive, which
 **The verb carries the lane.** One vocabulary rule, stated once here: **store**
 = verbatim (the quill-free opaque write, coercion deferred to render), **set** =
 typed (the writer's strict commit at the write), **install / revise / apply** =
-corpus (identity-aware). `remove_*` has no lane — one verb serves every write path.
+content (identity-aware). `remove_*` has no lane — one verb serves every write path.
 So `store_field` / `store_fields` / `store_fill` (+ `store_ext` / `store_seed_*`)
 are the opaque store, `set` / `set_all` / `set_body` the typed writer, and a name
 never needs per-verb disambiguation against its neighbor (the opaque batch
@@ -100,7 +100,7 @@ ergonomic), nothing else admitted. Drift is a reviewable diff to this table.
 | Cursor kind | `writer.card(i)?.kind()` | `writer.card(i).kind` | identical — the JS getter reads through `doc.card(i)` |
 | Reads (value / markdown / fill / `$ext`) | `field_markdown(..)` / `payload().get(..)` / `payload().is_fill(..)` / `card.ext()` (borrow chain; index for a card) | `doc.get(addr?)` / `doc.getMarkdown(addr?)` / `doc.isFill(addr)` / `doc.getExt(cardAddr?)` / `doc.getExtNamespace(cardAddr, ns)` (JS); name-keyed twins (py) | **idiom** / **FFI** — WASM fuses every read onto the one `Addr` (a bare string ⇒ `{field}`), *total over the field axis* (absent field → `undefined`, `isFill` → `false`; only an out-of-range card throws) — save that `getMarkdown` on a **present** field that does not decode as richtext throws `FieldRichtextDecode` (a type mismatch is not absence; #968); Python stays name-keyed |
 | Reads (whole card / `$id` / seed) | `card(i)` / `find_card(id)` / `main().seed()` | `doc.card(i)` / `doc.cardIndexById(id)` / `doc.seedOverlay(kind)` | **idiom** — the bindings fuse each into one named verb on `Document`; `card(i)` throws out of range, `find_card`/`cardIndexById` return the first `$id` match (non-unique by design) |
-| Richtext revise (corpus lane) | `Card::revise_field(name, md)?` (schema-blind, borrow chain) | `doc.revise({card, field}, md)` (addr literal) | **FFI** — same model, flattened navigation; schema-blind, `Delta` in hand |
+| Richtext revise (content lane) | `Card::revise_field(name, md)?` (schema-blind, borrow chain) | `doc.revise({card, field}, md)` (addr literal) | **FFI** — same model, flattened navigation; schema-blind, `Delta` in hand |
 | Opaque store | `store_field` / `store_fields` / `store_fill` | `storeField` / `storeFields` / `storeFill` (JS, `Addr`), `store_field` / `store_fields` / `store_card_field` (py, name-keyed) | identical — the quill-free verbatim write; WASM addresses with `Addr`, Python stays name-keyed |
 | Parse + warnings | `Document::parse(md) -> Parsed { document, warnings }` | `Document.fromMarkdown(md)` → `doc.warnings` getter | **FFI** — the wrapper fuses `Parsed` + `Document` into one session object: `fromMarkdown` returns the document directly and stashes the parse `warnings` on it (`doc.warnings`). That getter is a deliberate asymmetry with core, where warnings live only on `Parsed`: it is session state, so `equals` and the storage DTO exclude it and `loadJson`/`fromJson` clear it (a reloaded document carries no parse warnings) |
 

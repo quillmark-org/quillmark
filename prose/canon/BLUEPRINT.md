@@ -109,7 +109,7 @@ Form: **`# <type>[<format>]`**
   when the refinement carries information beyond the type name itself.
   - `datetime<YYYY-MM-DD[Thh:mm:ss]>`
   - `richtext<markdown>`, `richtext(inline)<markdown>` — the `<markdown>` slot
-    names the surface encoding an author writes over the corpus model
+    names the surface encoding an author writes over the content model
   - `plaintext<plain>`, `plaintext(inline)<plain>` — the `<plain>` slot names
     the literal codec (delimiters stay literal), distinct from `<markdown>`
   - `array<string>`, `array<integer>`, `array<object>`, `array<richtext<markdown>>`, …
@@ -210,7 +210,7 @@ The marker is stamped where the LLM types the value:
 ### Richtext fields
 
 A richtext field's value cell is markdown — the surface projection of the
-corpus model, which `to_markdown` re-emits — carried under a `# richtext<markdown>`
+content model, which `to_markdown` re-emits — carried under a `# richtext<markdown>`
 annotation.
 
 An **Unendorsed** `richtext` field renders as a bare marker on the field —

@@ -1,15 +1,15 @@
-//! Markdown import (cold): `normalize → pulldown → corpus`.
+//! Markdown import (cold): `normalize → pulldown → content`.
 //!
 //! The one place the `<u>` allowlist and `***` fixups run — once, at the
 //! boundary (issue #831 § Codecs). Input is normalized by
 //! [`crate::normalize::normalize_markdown`] (CRLF→LF, bidi strip, HTML
-//! comment-fence repair) so the corpus invariants hold by construction, then
+//! comment-fence repair) so the content invariants hold by construction, then
 //! parsed with `pulldown_cmark` (CommonMark + strikethrough + pipe tables) and
-//! walked into a [`RichText`].
+//! walked into a [`Content`].
 //!
 //! ## Canonicalizations (documented, not bugs)
 //!
-//! Import maps some distinct markdown to one canonical corpus. All of them, in
+//! Import maps some distinct markdown to one canonical content. All of them, in
 //! one place:
 //!
 //! - **Soft breaks → space; hard breaks → a `continues` line.** A soft break is
@@ -38,7 +38,7 @@
 //!   itself.
 
 use crate::model::{
-    Container, Island, Line, LineKind, Loss, Mark, MarkKind, RichText, ISLAND_SLOT,
+    Container, Island, Line, LineKind, Loss, Mark, MarkKind, Content, ISLAND_SLOT,
 };
 use crate::normalize::normalize_markdown;
 use crate::MAX_NESTING_DEPTH;
@@ -74,8 +74,8 @@ impl std::fmt::Display for ImportError {
 }
 impl std::error::Error for ImportError {}
 
-/// Import markdown into a normalized, validated [`RichText`] corpus.
-pub fn from_markdown(markdown: &str) -> Result<RichText, ImportError> {
+/// Import markdown into a normalized, validated [`Content`] content.
+pub fn from_markdown(markdown: &str) -> Result<Content, ImportError> {
     let normalized = normalize_markdown(markdown);
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
@@ -95,14 +95,14 @@ pub fn from_markdown(markdown: &str) -> Result<RichText, ImportError> {
     Ok(rt)
 }
 
-/// Import plain text (literal) into a [`RichText`] corpus — the literal-codec
+/// Import plain text (literal) into a [`Content`] content — the literal-codec
 /// sibling of [`from_markdown`]. Every character is content, never syntax:
 /// `*hi*` is four literal chars, not emphasis, and nothing is escaped. Paired
 /// with [`crate::export::to_plaintext`] as its exporter, it pins the literal
 /// fixed point `to_plaintext(from_plaintext(s)) == s` for any `s` free of `\r`,
 /// bidi controls, and the reserved island slot ([`ISLAND_SLOT`]) — the same
 /// boundary cleanup [`from_markdown`] performs, so the fixed point holds for
-/// clean plaintext and the corpus invariants hold by construction.
+/// clean plaintext and the content invariants hold by construction.
 ///
 /// Line structure is **derived, not stored**: a lone `\n` between two non-empty
 /// segments is a within-paragraph break ([`Line::continues`] `true`, lowered as
@@ -110,8 +110,8 @@ pub fn from_markdown(markdown: &str) -> Result<RichText, ImportError> {
 /// empty line resets `continues`). The text is stored verbatim, so the round
 /// trip is byte-exact and idempotent regardless of how structure is later
 /// re-derived.
-pub fn from_plaintext(s: &str) -> RichText {
-    // Boundary cleanup so the corpus invariants hold: CRLF→LF (drop `\r`), strip
+pub fn from_plaintext(s: &str) -> Content {
+    // Boundary cleanup so the content invariants hold: CRLF→LF (drop `\r`), strip
     // bidi controls, drop the reserved island slot. Clean plaintext passes
     // through untouched, so the literal fixed point holds for it.
     let text: String = s
@@ -136,7 +136,7 @@ pub fn from_plaintext(s: &str) -> RichText {
             }
         })
         .collect();
-    RichText {
+    Content {
         text,
         lines,
         marks: Vec::new(),
@@ -145,17 +145,17 @@ pub fn from_plaintext(s: &str) -> RichText {
 }
 
 // ---------------------------------------------------------------------------
-// Corpus builder
+// Content builder
 // ---------------------------------------------------------------------------
 
 /// A flat inline accumulator: `text` plus `marks` over local USV offsets, with
-/// the corpus char-filtering baked in. One implementation serves both a prose
+/// the content char-filtering baked in. One implementation serves both a prose
 /// line's inline content (embedded in the [`Builder`], which layers the
 /// line/block scaffolding on top) and a table cell's isolated content (offsets
 /// `0..cell_len`) — the mark-building logic is written once, not copied per site.
 #[derive(Default)]
 struct Inline {
-    /// The accumulated text (a whole corpus for the [`Builder`]; one cell's text
+    /// The accumulated text (a whole content for the [`Builder`]; one cell's text
     /// for a table cell). USV length is tracked in [`Self::pos`].
     text: String,
     /// USV position = char count of [`Self::text`].
@@ -166,7 +166,7 @@ struct Inline {
 }
 
 impl Inline {
-    /// Append inline text, stripping characters the corpus forbids: `\r` and a
+    /// Append inline text, stripping characters the content forbids: `\r` and a
     /// stray [`ISLAND_SLOT`] are dropped; a stray `\n` becomes a space (inline
     /// text carries no line boundary — real ones go through [`Self::push_raw`]).
     ///
@@ -229,7 +229,7 @@ struct Builder {
     /// instead of [`MarkKind::Strong`] — the carried form of the distinction the
     /// fixer would otherwise erase.
     underline_opens: UnderlineOpens,
-    /// The corpus text + marks; the [`Builder`] adds line/block structure around
+    /// The content text + marks; the [`Builder`] adds line/block structure around
     /// it (a `\n` boundary is [`Inline::push_raw`], inline content is the mark
     /// machinery). A table cell reuses the same [`Inline`] in isolation.
     inline: Inline,
@@ -354,7 +354,7 @@ impl Builder {
     }
 
     /// Append inline text to the current line, stripping any characters the
-    /// corpus invariants forbid (stray `\r`, stray island slots; stray `\n`
+    /// content invariants forbid (stray `\r`, stray island slots; stray `\n`
     /// becomes a space — inline text should carry none).
     fn push_inline(&mut self, s: &str) {
         self.ensure_open(LineKind::Para);
@@ -507,7 +507,7 @@ impl Builder {
                     }
                 }
                 // Html/InlineHtml already stripped or rewritten by the fixer;
-                // math/footnotes/etc. produce no corpus content.
+                // math/footnotes/etc. produce no content content.
                 _ => {}
             }
         }
@@ -674,7 +674,7 @@ impl Builder {
                 continues,
             );
             self.code_opened = true;
-            // Code text is literal; still enforce corpus invariants.
+            // Code text is literal; still enforce content invariants.
             self.push_code_line(seg);
         }
     }
@@ -859,7 +859,7 @@ impl Builder {
         self.mint_island("image", props, Loss::Lossless);
     }
 
-    fn finish(mut self) -> RichText {
+    fn finish(mut self) -> Content {
         if let Some(last) = self.cur.take() {
             self.lines.push(last);
         }
@@ -875,7 +875,7 @@ impl Builder {
         while !self.inline.open.is_empty() {
             self.close_mark();
         }
-        RichText {
+        Content {
             text: self.inline.text,
             lines: self.lines,
             marks: self.inline.marks,
@@ -1166,20 +1166,20 @@ mod tests {
     use super::*;
     use crate::model::LineKind;
 
-    fn imp(md: &str) -> RichText {
+    fn imp(md: &str) -> Content {
         let rt = from_markdown(md).unwrap();
         assert_eq!(rt.validate(), Ok(()), "invariants for {md:?}");
         rt
     }
 
-    fn imp_plain(s: &str) -> RichText {
+    fn imp_plain(s: &str) -> Content {
         let rt = from_plaintext(s);
         assert_eq!(rt.validate(), Ok(()), "invariants for {s:?}");
         rt
     }
 
     /// Plaintext is literal: markdown delimiters are content, not syntax, and
-    /// nothing is escaped or marked. The corpus is mark- and island-free.
+    /// nothing is escaped or marked. The content is mark- and island-free.
     #[test]
     fn plaintext_is_literal_and_plain() {
         let rt = imp_plain("a *star* and _under_ #hash");
@@ -1219,7 +1219,7 @@ mod tests {
         assert!(!rt.lines[2].continues, "text after a blank line starts a new block");
     }
 
-    /// Boundary cleanup keeps the corpus invariants: CRLF collapses to LF, bidi
+    /// Boundary cleanup keeps the content invariants: CRLF collapses to LF, bidi
     /// controls and the reserved island slot are dropped. Clean text is
     /// unaffected, so the fixed point still holds for it.
     #[test]
@@ -1460,7 +1460,7 @@ mod tests {
     #[test]
     fn adjacent_sibling_lists_merge_is_stable() {
         // Documented canonicalization: two sibling bullet lists collapse to one.
-        // Distinct markdown, one corpus — but the corpus is a fixed point.
+        // Distinct markdown, one content — but the content is a fixed point.
         let rt = imp("* a\n\n+ b");
         let rt2 = from_markdown(&crate::export::to_markdown(&rt)).unwrap();
         assert_eq!(rt, rt2, "merged sibling lists still round-trip");
@@ -1488,9 +1488,9 @@ mod tests {
     fn import_and_editor_corpus_same_canonical_bytes() {
         // The freeze's central promise: equal content → equal bytes, whatever
         // the producer. Import of "a\n\n**b**" must byte-match a hand-built
-        // editor corpus of the same content.
+        // editor content of the same content.
         let imported = imp("a\n\n**b**");
-        let editor = RichText {
+        let editor = Content {
             text: "a\nb".into(),
             lines: vec![
                 Line {

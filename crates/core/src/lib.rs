@@ -48,10 +48,10 @@ pub use region::{field_boxes, CorpusHit, HitGranularity, RenderedRegion};
 pub mod session;
 pub use session::{ApplyError, Assoc, ChangeSet, Delta, LineOp, LiveSession, MarkOp, Op};
 
-/// The canonical corpus content model — re-exported so consumers of the
+/// The canonical content content model — re-exported so consumers of the
 /// document mutators ([`Card::install_body`], [`Card::apply_body_change`])
-/// can name the type without depending on `quillmark-richtext` directly.
-pub use quillmark_richtext::RichText;
+/// can name the type without depending on `quillmark-content` directly.
+pub use quillmark_content::Content;
 
 pub mod quill;
 pub use quill::{zero_value, FileTreeNode, Quill, QuillIgnore, STANDARD_METADATA_KEYS};

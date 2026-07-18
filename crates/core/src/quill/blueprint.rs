@@ -134,10 +134,10 @@ fn build_main_card(card: &CardSchema, quill_ref: &str, description: Option<&str>
         Payload::from_items(items),
         // The blueprint's output *is* the markdown surface, so it imports the
         // body text (a trusted example or a generated placeholder) here and
-        // re-emits it via `to_markdown`. The empty-corpus fallback is defensive —
+        // re-emits it via `to_markdown`. The empty-content fallback is defensive —
         // a placeholder or a load-validated example never over-nests.
         crate::document::import_body(&body_text(card, "main"))
-            .unwrap_or_else(|_| quillmark_richtext::RichText::empty()),
+            .unwrap_or_else(|_| quillmark_content::Content::empty()),
     )
 }
 
@@ -157,7 +157,7 @@ fn build_card(card: &CardSchema) -> Card {
     Card::from_parts(
         Payload::from_items(items),
         crate::document::import_body(&body_text(card, &card.name))
-            .unwrap_or_else(|_| quillmark_richtext::RichText::empty()),
+            .unwrap_or_else(|_| quillmark_content::Content::empty()),
     )
 }
 

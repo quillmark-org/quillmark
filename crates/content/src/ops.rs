@@ -1,13 +1,13 @@
 //! Mark and line op channels — structural edits separate from text splices.
 //!
-//! [`MarkOp`] and [`LineOp`] apply after [`RichText::apply_text_delta`] in one
+//! [`MarkOp`] and [`LineOp`] apply after [`Content::apply_text_delta`] in one
 //! bundle; mark ranges are in post-delta coordinates. Line split/join
 //! also splice `\n` in `text`; position mapping through the change log still
 //! composes [`Delta::map_pos`](crate::delta::Delta::map_pos) on the text delta
 //! channel — record `\n` edits there when mapping stale positions.
 
 use crate::delta::{Assoc, Delta, Op};
-use crate::model::{Container, Island, Line, LineKind, Mark, MarkKind, RichText, Usv, ISLAND_SLOT};
+use crate::model::{Container, Island, Line, LineKind, Mark, MarkKind, Content, Usv, ISLAND_SLOT};
 use crate::normalize::is_bidi_char;
 use crate::usv::char_to_byte;
 use std::borrow::Cow;
@@ -68,9 +68,9 @@ pub enum LineOp {
 // [`Delta`] serializes through serde derive; [`MarkOp`] and [`LineOp`] carry
 // [`MarkKind`] / [`LineKind`] / [`Container`], whose canonical JSON is the
 // hand-written `serial` encoding (the `{type, …}` / `{kind, …}` discriminants a
-// `RichTextMark` / `RichTextLine` already uses). These converters reuse that
+// `ContentMark` / `ContentLine` already uses). These converters reuse that
 // exact vocabulary so the `applyChange` bundle speaks the same shapes the
-// corpus read surface does, rather than a second serde-derived dialect. The
+// content read surface does, rather than a second serde-derived dialect. The
 // language bindings call them to lower a JS/Python bundle to core ops.
 
 use crate::serial::{
@@ -301,7 +301,7 @@ pub enum ApplyError {
     /// [`Invariant::FirstLineContinues`](crate::model::Invariant::FirstLineContinues)
     /// validation error, refused here because `normalize` does not repair it.
     FirstLineContinues,
-    /// The text delta's expected base length disagreed with the corpus —
+    /// The text delta's expected base length disagreed with the content —
     /// it was built against a different revision.
     DeltaBaseMismatch {
         expected: usize,
@@ -314,7 +314,7 @@ pub enum ApplyError {
     IslandSlotInInsert,
 }
 
-impl RichText {
+impl Content {
     /// Splice `text` via `delta`, rebase marks, sync `lines` to `\n` changes,
     /// cascade island removal for any deleted slot, then normalize.
     ///
@@ -325,14 +325,14 @@ impl RichText {
     /// own channel, never a text splice, so a slot arriving here would orphan.
     ///
     /// Inserted text is sanitized first: `\r` and Unicode bidi controls — the
-    /// chars [`RichText::validate`] forbids — are stripped, mirroring the
+    /// chars [`Content::validate`] forbids — are stripped, mirroring the
     /// normalization `import` applies at the string boundary. The text-delta
-    /// channel is the *other* way text enters the corpus, so without this an
-    /// insert of `\r` or a bidi control returned `Ok` while leaving a corpus
+    /// channel is the *other* way text enters the content, so without this an
+    /// insert of `\r` or a bidi control returned `Ok` while leaving a content
     /// that fails `validate()` (see issue #899).
     pub fn apply_text_delta(&mut self, delta: &Delta) -> Result<(), ApplyError> {
         // Reject before mutating: a raw slot in an insert would create a slot
-        // with no backing island. Checked up front so the corpus is untouched
+        // with no backing island. Checked up front so the content is untouched
         // on this error.
         for op in &delta.ops {
             if let Op::Insert(s) = op {
@@ -343,7 +343,7 @@ impl RichText {
         }
 
         // Strip the chars `validate()` forbids (`\r`, bidi controls) from every
-        // insert before they reach the corpus. Stripping — not rejecting —
+        // insert before they reach the content. Stripping — not rejecting —
         // mirrors `import`: these are content to normalize away, unlike a raw
         // slot, which has no backing island and must be refused. Sanitizing the
         // whole delta up front keeps `try_apply` / `map_pos` / line+island sync
@@ -355,7 +355,7 @@ impl RichText {
         let old_chars: Vec<char> = self.text.chars().collect();
         // A splice may name only the region it changes: pad a short delta with a
         // trailing retain over the untouched remainder so a bare prepend applies
-        // against the whole corpus. An over-long delta still fails the check.
+        // against the whole content. An over-long delta still fails the check.
         let extended = delta.extend_to_base(old_chars.len());
         let delta = extended.as_ref();
         let old_lines = self.lines.clone();
@@ -492,7 +492,7 @@ impl RichText {
                     // Line 0 has nothing before it to continue: setting the flag
                     // there would forge the `FirstLineContinues` invariant that
                     // `normalize` does not repair. Reject before the write so the
-                    // corpus stays valid (`apply_field_change` stages line ops on
+                    // content stays valid (`apply_field_change` stages line ops on
                     // a scratch copy, so this leaves `self` untouched).
                     if *line == 0 && *continues {
                         return Err(ApplyError::FirstLineContinues);
@@ -614,7 +614,7 @@ fn ranges_overlap(a0: Usv, a1: Usv, b0: Usv, b1: Usv) -> bool {
     a0 < b1 && b0 < a1
 }
 
-/// A char the corpus text may not carry (`validate()` rejects it): a bare `\r`
+/// A char the content text may not carry (`validate()` rejects it): a bare `\r`
 /// or a Unicode bidi formatting control. `\n` is a real line boundary and a raw
 /// [`ISLAND_SLOT`] is refused separately, so neither belongs here.
 fn insert_forbidden(c: char) -> bool {
@@ -625,7 +625,7 @@ fn insert_forbidden(c: char) -> bool {
 /// borrowed untouched when no insert carries one (the common keystroke). Mirrors
 /// the forbidden-char stripping `import` applies (`push_text`, `strip_bidi_
 /// formatting`); a raw `\r`/bidi arriving through the text-delta channel would
-/// otherwise persist a corpus that fails `validate()`.
+/// otherwise persist a content that fails `validate()`.
 fn sanitize_inserts(delta: &Delta) -> Cow<'_, Delta> {
     let needs_cleaning = delta
         .ops
@@ -866,7 +866,7 @@ mod tests {
     #[test]
     fn apply_text_delta_pads_short_prepend() {
         // A bare prepend names only its inserted text (no trailing retain); it
-        // still splices against the whole corpus rather than failing the base
+        // still splices against the whole content rather than failing the base
         // check (regression for the per-field delta path).
         let mut rt = from_markdown("hello").unwrap();
         rt.apply_text_delta(&Delta {
@@ -1083,7 +1083,7 @@ mod tests {
         rt.apply_text_delta(&diff("one two", "one\ntwo")).unwrap();
         let before = rt.clone();
         // `continues: true` on line 0 forges `FirstLineContinues`; refused, and
-        // the corpus is left untouched.
+        // the content is left untouched.
         assert_eq!(
             rt.apply_line_ops(&[LineOp::SetContinues {
                 line: 0,
@@ -1091,7 +1091,7 @@ mod tests {
             }]),
             Err(ApplyError::FirstLineContinues)
         );
-        assert_eq!(rt, before, "rejected op leaves the corpus untouched");
+        assert_eq!(rt, before, "rejected op leaves the content untouched");
         // Clearing line 0 (already `false`) is a no-op, not an error.
         rt.apply_line_ops(&[LineOp::SetContinues {
             line: 0,
@@ -1110,9 +1110,9 @@ mod tests {
         }
     }
 
-    /// A single-line corpus `a￼b` (one inline island slot, one backing island).
-    fn corpus_with_island() -> RichText {
-        let mut rt = RichText::empty();
+    /// A single-line content `a￼b` (one inline island slot, one backing island).
+    fn corpus_with_island() -> Content {
+        let mut rt = Content::empty();
         rt.text = format!("a{ISLAND_SLOT}b");
         rt.lines = vec![Line {
             kind: LineKind::Para,
@@ -1140,7 +1140,7 @@ mod tests {
 
     #[test]
     fn delete_one_of_two_slots_removes_the_matching_island() {
-        let mut rt = RichText::empty();
+        let mut rt = Content::empty();
         rt.text = format!("{ISLAND_SLOT}x{ISLAND_SLOT}");
         rt.lines = vec![Line {
             kind: LineKind::Para,
@@ -1175,7 +1175,7 @@ mod tests {
             ],
         };
         assert_eq!(rt.apply_text_delta(&d), Err(ApplyError::IslandSlotInInsert));
-        // Corpus untouched on the rejected insert (checked before any mutation).
+        // Content untouched on the rejected insert (checked before any mutation).
         assert_eq!(rt.text, "ab");
         assert!(rt.islands.is_empty());
         assert_eq!(rt.validate(), Ok(()));
@@ -1183,7 +1183,7 @@ mod tests {
 
     #[test]
     fn insert_carriage_return_is_stripped() {
-        // A `\r` in an insert is dropped, not persisted — the corpus stays
+        // A `\r` in an insert is dropped, not persisted — the content stays
         // valid instead of the op returning Ok over a `CarriageReturn`
         // violation (issue #899). `\r\n` still yields the line-boundary `\n`.
         let mut rt = from_markdown("ab").unwrap();
@@ -1197,7 +1197,7 @@ mod tests {
 
     #[test]
     fn insert_bidi_control_is_stripped() {
-        // A bidi override (U+202E) in an insert is dropped — the corpus stays
+        // A bidi override (U+202E) in an insert is dropped — the content stays
         // valid and import's Trojan-source defense is not bypassed (issue #899).
         let mut rt = from_markdown("ab").unwrap();
         let d = Delta {
@@ -1262,7 +1262,7 @@ mod tests {
     #[test]
     fn apply_field_change_is_all_or_nothing() {
         // A bundle whose text delta and first mark op succeed but whose second
-        // mark op is out of range must leave the corpus exactly as it was — the
+        // mark op is out of range must leave the content exactly as it was — the
         // successful earlier stages do not partially commit.
         let mut rt = from_markdown("abc").unwrap();
         let before = rt.clone();
@@ -1284,6 +1284,6 @@ mod tests {
             ],
         );
         assert!(matches!(err, Err(ApplyError::MarkOutOfRange { .. })));
-        assert_eq!(rt, before, "failed bundle must not mutate the corpus");
+        assert_eq!(rt, before, "failed bundle must not mutate the content");
     }
 }

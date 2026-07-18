@@ -2,7 +2,7 @@
 
 Schema-driven document engine: Markdown + YAML card metadata → rendered PDF/SVG/PNG via a Typst or PDF-form backend.
 
-Crates: `core` (parsing, schema, traits) · `quillmark` (orchestration) · `richtext` (`RichText` corpus model; the workspace's only markdown parser) · `backends/{typst,pdfform}` · `quillmark-pdf` (Typst-free AcroForm stamping) · `bindings/{python,wasm,cli}` · `fixtures` (test Quills) · `fuzz` (property tests).
+Crates: `core` (parsing, schema, traits) · `quillmark` (orchestration) · `content` (`Content` content model; the workspace's only markdown parser) · `backends/{typst,pdfform}` · `quillmark-pdf` (Typst-free AcroForm stamping) · `bindings/{python,wasm,cli}` · `fixtures` (test Quills) · `fuzz` (property tests).
 
 Design docs: [`prose/canon/INDEX.md`](prose/canon/INDEX.md). Comments and docs follow the `dense-prose` skill: dense, present-tense, unsold.
 

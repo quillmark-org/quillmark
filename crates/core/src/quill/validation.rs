@@ -55,7 +55,7 @@ pub enum ValidationError {
         card: String,
     },
 
-    /// A `richtext(inline)` field whose corpus is not single-`Para` (a block, a
+    /// A `richtext(inline)` field whose content is not single-`Para` (a block, a
     /// list/quote container, or an island). Same fatality class as
     /// `TypeMismatch` — the value is well-typed richtext but the wrong *shape*
     /// for an inline field.
@@ -63,9 +63,9 @@ pub enum ValidationError {
         path: String,
     },
 
-    /// A `plaintext` field whose corpus carries marks, islands, or block
+    /// A `plaintext` field whose content carries marks, islands, or block
     /// formatting. Same fatality class as `TypeMismatch` — the value is a
-    /// well-formed corpus but the wrong *shape* for a plaintext field, which
+    /// well-formed content but the wrong *shape* for a plaintext field, which
     /// takes prose the author navigates but no formatting.
     NotPlain {
         path: String,
@@ -400,9 +400,9 @@ fn validate_value(
                     && super::config::scalar_as_string(value.as_json()).is_some())
         }
         // Post-coercion (Document) a richtext/plaintext value is a canonical
-        // corpus object; an authored `default`/`example` (Schema) is a string
+        // content object; an authored `default`/`example` (Schema) is a string
         // (markdown for richtext, literal for plaintext). Accept both shapes —
-        // the corpus's own invariants were enforced at coercion, and a bare
+        // the content's own invariants were enforced at coercion, and a bare
         // scalar still stringifies. The plaintext-specific plain constraint is
         // checked in the shape pass below, parallel to the inline check.
         FieldType::RichText { .. } | FieldType::PlainText { .. } => {
@@ -486,13 +486,13 @@ fn validate_value(
         },
     };
 
-    // Corpus shape checks, run only on a type-valid value (a mistyped value
+    // Content shape checks, run only on a type-valid value (a mistyped value
     // already raises TypeMismatch below, and a null/absent field zero-fills to
-    // the empty corpus, which is both inline and plain). Mirror the
-    // coercion-layer checks so a corpus that bypassed coercion (e.g. a direct
+    // the empty content, which is both inline and plain). Mirror the
+    // coercion-layer checks so a content that bypassed coercion (e.g. a direct
     // `validate_document`) is still caught. A decode failure is not this layer's
     // error to report — swallow it and flag only a well-formed but mis-shaped
-    // corpus.
+    // content.
     if type_valid {
         match field.r#type {
             FieldType::RichText { inline: true } => {
@@ -509,7 +509,7 @@ fn validate_value(
             FieldType::PlainText { inline } => {
                 // Plaintext strings are literal, not markdown, so a schema
                 // literal decodes through the literal codec; a Document value is
-                // a canonical corpus object. The plain constraint is primary;
+                // a canonical content object. The plain constraint is primary;
                 // the single-line constraint applies only when `inline`. A decode
                 // error is another layer's to report (swallowed via `.ok()`).
                 if let Some(rt) = crate::document::decode_plaintext_value(value.as_json())
@@ -659,7 +659,7 @@ main:
         let mut p = Payload::from_index_map(payload);
         p.set_quill("test_quill".parse().unwrap());
         p.set_kind("main");
-        let main = Card::from_parts(p, quillmark_richtext::RichText::empty());
+        let main = Card::from_parts(p, quillmark_content::Content::empty());
         Document::from_main_and_cards(main, cards)
     }
 
@@ -983,12 +983,12 @@ main:
 
     #[test]
     fn rejects_richtext_inline_with_multi_block_corpus() {
-        // A pre-built two-paragraph corpus reaches the validator directly (no
+        // A pre-built two-paragraph content reaches the validator directly (no
         // coercion), so the validation-layer NotInline backstop must fire.
         let config = config_with("    tag:\n      type: richtext\n      inline: true", "");
-        let rt = quillmark_richtext::import::from_markdown("one\n\ntwo").unwrap();
-        let corpus = quillmark_richtext::serial::to_canonical_value(&rt);
-        let doc = doc_from_fm(&[("tag", corpus)]);
+        let rt = quillmark_content::import::from_markdown("one\n\ntwo").unwrap();
+        let content = quillmark_content::serial::to_canonical_value(&rt);
+        let doc = doc_from_fm(&[("tag", content)]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
             e,
@@ -999,9 +999,9 @@ main:
     #[test]
     fn accepts_richtext_inline_single_para_corpus() {
         let config = config_with("    tag:\n      type: richtext\n      inline: true", "");
-        let rt = quillmark_richtext::import::from_markdown("one line only").unwrap();
-        let corpus = quillmark_richtext::serial::to_canonical_value(&rt);
-        let doc = doc_from_fm(&[("tag", corpus)]);
+        let rt = quillmark_content::import::from_markdown("one line only").unwrap();
+        let content = quillmark_content::serial::to_canonical_value(&rt);
+        let doc = doc_from_fm(&[("tag", content)]);
         assert!(validate_typed_document(&config, &doc).is_ok());
     }
 }

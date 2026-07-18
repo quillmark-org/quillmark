@@ -15,7 +15,7 @@ fn thematic_break_in_body_is_not_a_block() {
     let body = doc.main().body_markdown();
     // `---` is delegated to CommonMark, not parsed as a metadata block: the
     // paragraphs survive and no card splits off. (The thematic break itself has
-    // no corpus representation, so it is dropped by the projection.)
+    // no content representation, so it is dropped by the projection.)
     assert!(
         body.contains("Paragraph text.") && body.contains("After."),
         "stray `---` in prose must be left to CommonMark, body was: {:?}",
@@ -123,7 +123,7 @@ fn normalize_reaches_card_body() {
     let body = doc.cards()[0].body_markdown();
     // Bidi-strip normalization reaches the nested card body at import
     // (`trailing\u{202D}text` → `trailingtext`). The HTML comment is not
-    // representable in the corpus and is dropped by the projection.
+    // representable in the content and is dropped by the projection.
     assert!(
         body.contains("trailingtext"),
         "card body missing bidi-strip, got: {:?}",

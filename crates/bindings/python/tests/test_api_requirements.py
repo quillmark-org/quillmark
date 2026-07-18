@@ -280,9 +280,9 @@ def test_remove_card_then_push_card_round_trips_fields():
 
 
 def test_push_card_accepts_corpus_dict_body():
-    """`body` on a pushed card may be the canonical corpus dict (the shape
+    """`body` on a pushed card may be the canonical content dict (the shape
     `cards()`/`remove_card` emit), not just a markdown string — exercises
-    `py_dict_to_card`'s corpus-dict input path."""
+    `py_dict_to_card`'s content-dict input path."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.push_card({"kind": "note", "body": "**Bold** body."})
     corpus_body = doc.cards[0]["body"]
@@ -713,12 +713,12 @@ def test_writer_card_cursor_set_and_body():
 
 
 def test_writer_set_coerces_richtext_to_corpus():
-    """A richtext field commits the canonical corpus, not the authored markdown."""
+    """A richtext field commits the canonical content, not the authored markdown."""
     quill = _richtext_form_quill()
     doc = Document("richtext_form@0.1.0")
     quill.writer(doc).set("bio", "A **bold** intro.")
     value = field(doc.main, "bio")
-    assert isinstance(value, dict)  # stored as the corpus dict, not a string
+    assert isinstance(value, dict)  # stored as the content dict, not a string
     assert value["text"] == "A bold intro."
 
 
@@ -760,7 +760,7 @@ def test_corpus_codec_rebase_and_map_pos():
     assert rt["text"] == "hello world"
     assert export_markdown(rt) == "hello world\n"
     out = rebase(rt, "hello brave world")
-    assert out["corpus"]["text"] == "hello brave world"
+    assert out["content"]["text"] == "hello brave world"
     assert map_pos(out["delta"], 6, "before") == 6
     assert map_pos(out["delta"], 11, "after") == 17
 

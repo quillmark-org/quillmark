@@ -243,9 +243,9 @@ doc.insertCard({ kind: "note" }, 0);                    // insert at index 0
 ```
 
 Reads and writes are two aligned shapes. A read `Card` always has `body:
-RichText` (canonical corpus, never a raw string) — no narrowing, no guessing
+Content` (canonical content, never a raw string) — no narrowing, no guessing
 whether the body was normalized. The write shape `CardInput` widens `body` to
-`RichText | string` (a markdown string imports to the corpus) and makes every
+`Content | string` (a markdown string imports to the content) and makes every
 field but `kind` optional. Every `Card` is a valid `CardInput`, so `insertCard`
 still takes exactly what `cards` / `removeCard` / `seedCard` return.
 Build a fresh card from a flat field map with
@@ -279,7 +279,7 @@ on `Document` itself (**store** = verbatim, **set** = typed):
   schema once and issue bare `set` / `setAll` / `setBody` / `reviseField` /
   `addCard` / `card(i)`. Each resolves the field's schema `type`, coerces the
   value to its canonical form (`"3"` → `3`, a markdown string → a richtext
-  corpus), and **fails now** on a mismatch instead of at render. A name the schema
+  content), and **fails now** on a mismatch instead of at render. A name the schema
   does not declare throws `UnknownField` rather than falling to the opaque store —
   on the typed path an undeclared name is a typo, not a fallback. The batch form
   (`setAll`) is all-or-nothing: an undeclared name aborts the whole write and its

@@ -120,7 +120,7 @@ fn number_to_string(n: &serde_json::Number) -> String {
 /// array) become `None` so the widget carries no `/V`.
 fn coerce_text(v: &Value) -> Option<String> {
     match v {
-        // An array (e.g. an `array<richtext>`, richtext-corpus elements, or a
+        // An array (e.g. an `array<richtext>`, richtext-content elements, or a
         // `string[]` field) joins its element texts with newlines — the
         // multiline text fill.
         Value::Array(arr) => {
@@ -138,8 +138,8 @@ fn coerce_text(v: &Value) -> Option<String> {
 }
 
 /// A scalar's (or richtext object's) display text: a string/number/bool
-/// directly, or a richtext corpus via its plaintext — the corpus text minus
-/// island slots (tables/images have no plaintext form; a non-corpus object
+/// directly, or a richtext content via its plaintext — the content text minus
+/// island slots (tables/images have no plaintext form; a non-content object
 /// binds nothing). Shared by top-level scalar coercion and per-element array
 /// joining, which is why an empty string survives here and is blanked by the
 /// caller instead.
@@ -153,15 +153,15 @@ fn element_text(e: &Value) -> Option<String> {
     }
 }
 
-/// A richtext corpus's plaintext, via [`quillmark_richtext::export::to_plaintext`]
-/// (island slots stripped). `None` for a non-corpus object or an empty result.
+/// A richtext content's plaintext, via [`quillmark_content::export::to_plaintext`]
+/// (island slots stripped). `None` for a non-content object or an empty result.
 ///
-/// Tables and images carry no plaintext, so a corpus whose content is only a
+/// Tables and images carry no plaintext, so a content whose content is only a
 /// table binds nothing here — the field renders blank, no diagnostic. This is
 /// the decided pdfform limitation (issue #880); see `to_plaintext`.
 fn richtext_plaintext(v: &Value) -> Option<String> {
-    let rt = quillmark_richtext::serial::from_canonical_value(v).ok()?;
-    let text = quillmark_richtext::export::to_plaintext(&rt);
+    let rt = quillmark_content::serial::from_canonical_value(v).ok()?;
+    let text = quillmark_content::export::to_plaintext(&rt);
     (!text.is_empty()).then_some(text)
 }
 
@@ -256,21 +256,21 @@ mod tests {
 
     #[test]
     fn richtext_corpus_lowers_to_plaintext() {
-        // A richtext field crosses the seam as canonical corpus JSON; the widget
+        // A richtext field crosses the seam as canonical content JSON; the widget
         // value is its plaintext — markup dropped (marks live off the text),
         // island slots stripped.
         let rt =
-            quillmark_richtext::import::from_markdown("A **bold** claim.\n\nSecond line.").unwrap();
-        let corpus = quillmark_richtext::serial::to_canonical_value(&rt);
+            quillmark_content::import::from_markdown("A **bold** claim.\n\nSecond line.").unwrap();
+        let content = quillmark_content::serial::to_canonical_value(&rt);
         assert_eq!(
-            coerce_text(&corpus).as_deref(),
+            coerce_text(&content).as_deref(),
             Some("A bold claim.\nSecond line.")
         );
-        // A blank corpus binds nothing.
+        // A blank content binds nothing.
         let blank =
-            quillmark_richtext::serial::to_canonical_value(&quillmark_richtext::RichText::empty());
+            quillmark_content::serial::to_canonical_value(&quillmark_content::Content::empty());
         assert_eq!(coerce_text(&blank), None);
-        // A non-corpus object binds nothing.
+        // A non-content object binds nothing.
         assert_eq!(coerce_text(&json!({ "x": 1 })), None);
     }
 
@@ -278,8 +278,8 @@ mod tests {
     fn richtext_array_joins_element_plaintext() {
         // An `array<richtext>` joins each element's plaintext with newlines.
         let el = |md: &str| {
-            quillmark_richtext::serial::to_canonical_value(
-                &quillmark_richtext::import::from_markdown(md).unwrap(),
+            quillmark_content::serial::to_canonical_value(
+                &quillmark_content::import::from_markdown(md).unwrap(),
             )
         };
         let arr = Value::Array(vec![el("First **ref**."), el("Second _ref_.")]);

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **breaking** all: rename the content genus off its codec's name — crate `quillmark-richtext` → `quillmark-content`, type `RichText` → `Content` (and `RichTextLine`/`RichTextContainer`/`RichTextMark`/`RichTextIsland` → `ContentLine`/…), const `RICHTEXT_MEDIA_TYPE` → `CONTENT_MEDIA_TYPE` and its wire string `application/quillmark-richtext+json` → `application/quillmark-content+json`, `#[serde(skip)]` companion caches `FieldSchema::{default,example}_corpus` → `_content`, `SegmentMap.corpus: Range<usize>` → `.content`, Typst-emitter `EmittedContent` → `Emission` (it is markup + source map, not a Typst `content` value). Schema tokens `richtext` / `plaintext`, `FieldType::{RichText,PlainText}` variants, and the codec-specific `field_richtext` / `FieldRichtext*` / `apply_field_richtext_change` / `richtext(inline)` surface are unchanged — those name codecs, not the model. Canonical body JSON is nameless, so stored documents don't migrate; `contentMediaType` consumers pin to the new spelling. Retires the informal "corpus" noun to end the code/prose split (#976)
 - **breaking** core,wasm,python: `getMarkdown` / `get_markdown` / `get_card_markdown` stop conflating an absent field with a present-but-not-richtext one — a present field that does not decode as richtext (a scalar/array/object a `storeField` wrote) now throws `FieldRichtextDecode` instead of reading back `undefined` / `""`; absence still returns the absent shape. Core `Card::field_markdown` becomes `Option<Result<String, RichtextDecodeError>>` (the projection twin of `field_richtext`). Rule: absence returns, mismatch raises; read the raw value with `get` (#968)
 - feat(core,wasm): typed, anchor-preserving field revise — `TypedWriter::revise_field` / `CardWriter::revise_field` and `writer.reviseField` / `writer.card(i).reviseField` wrap core `Card::revise_field_checked` (diff-rebase surviving anchors, then schema-conform the result); the schema-bound verb lives on the writer, where the schema is (#957, #966)
 - **breaking** wasm: the quill-taking `Document` methods become the hidden ABI under the writer — `commitField` / `commitFields` / `addCard` → `_commitField` / `_commitFields` / `_addCard`, dropped from the `.d.ts`; remove `doc.reviseChecked` (no runtime consumer — use `writer.reviseField`). The visible `Document` class then carries zero quill-taking methods (#966)
@@ -187,7 +188,7 @@
 - test(bindings): update body expectations for corpus canonicalization
 - feat(richtext): phase-2 PR-B — Card.body is RichText, markdown a projection
 - docs(richtext): lock separate-crate topology + retire Quill-Delta framing in plan
-- refactor(richtext): make quillmark-richtext a leaf crate core depends on
+- refactor(richtext): make quillmark-content a leaf crate core depends on
 - docs(richtext): phase-2 plan — engine consumes RichText, delivers #829
 - docs(richtext): note block-quote emit decision for phase-2 handover
 - docs(richtext): phase-1 handover doc + integration HQ updates

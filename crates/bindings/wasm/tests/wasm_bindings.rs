@@ -151,7 +151,7 @@ fn region_quill_tree() -> wasm_bindgen::JsValue {
 
 /// The full region + navigation surface through the WASM session: `regions()`
 /// yields per-segment boxes carrying `span`, `fieldAt` resolves a click to the
-/// field, and `positionAt` / `locate` round-trip a corpus offset (#829).
+/// field, and `positionAt` / `locate` round-trip a content offset (#829).
 #[wasm_bindgen_test]
 fn test_session_regions_and_navigation() {
     let engine = Quillmark::new();
@@ -209,7 +209,7 @@ fn test_session_regions_and_navigation() {
         "each derived box keeps the field and a union span: {boxes:?}"
     );
 
-    // locate maps that corpus offset back to a caret rect on the same page.
+    // locate maps that content offset back to a caret rect on the same page.
     let caret = session
         .locate("body", hit.pos)
         .expect("locate maps the position to a caret rect");

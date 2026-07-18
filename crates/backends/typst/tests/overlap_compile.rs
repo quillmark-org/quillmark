@@ -1,4 +1,4 @@
-//! End-to-end guard for the overlapping wrap+code emit fix (#846): a corpus
+//! End-to-end guard for the overlapping wrap+code emit fix (#846): a content
 //! that an editor can build but markdown import never produces — `strong[0,4)`
 //! partially overlapping `code[2,6)` — must lower to Typst that actually
 //! *compiles*, not merely markup that "looks balanced". The emitter's output is
@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use quillmark_core::{Backend, FileTreeNode, Quill};
-use quillmark_richtext::model::{Line, LineKind, MarkKind, RichText};
+use quillmark_content::model::{Line, LineKind, MarkKind, Content};
 use quillmark_typst::TypstBackend;
 
 fn quill(yaml: &str, plate: &str) -> Quill {
@@ -29,12 +29,12 @@ fn quill(yaml: &str, plate: &str) -> Quill {
     Quill::from_tree(FileTreeNode::Directory { files }).expect("load quill")
 }
 
-/// The canonical corpus JSON the render seam carries for a richtext field, built
-/// from a hand-placed free-overlap corpus (normalize + validate happen inside
+/// The canonical content JSON the render seam carries for a richtext field, built
+/// from a hand-placed free-overlap content (normalize + validate happen inside
 /// `to_canonical_value`).
 fn overlap_corpus() -> serde_json::Value {
-    use quillmark_richtext::model::Mark;
-    let rt = RichText {
+    use quillmark_content::model::Mark;
+    let rt = Content {
         text: "abcdef".to_string(),
         lines: vec![Line {
             kind: LineKind::Para,
@@ -57,7 +57,7 @@ fn overlap_corpus() -> serde_json::Value {
     };
     // The overlap survives normalize/validate — there is no cross-kind overlap
     // invariant — so the seam carries it straight to the emitter.
-    quillmark_richtext::serial::to_canonical_value(&rt)
+    quillmark_content::serial::to_canonical_value(&rt)
 }
 
 const YAML: &str = r#"
@@ -88,6 +88,6 @@ fn overlapping_wrap_and_code_compiles() {
     let data = serde_json::json!({ "body": overlap_corpus() });
     let session = TypstBackend
         .open(&quill(YAML, PLATE), &data)
-        .expect("overlapping wrap+code corpus must compile");
+        .expect("overlapping wrap+code content must compile");
     assert!(session.page_count() >= 1, "produced at least one page");
 }

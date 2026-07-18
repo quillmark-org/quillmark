@@ -41,14 +41,14 @@ impl Document {
     ///    `QuillValue::String("01234")` round-trips as a string, never as an
     ///    integer.  This guarantee is the whole point of owning emission.
     ///
-    ///    **Corpus-field carve-out.** A richtext field committed as a canonical
-    ///    corpus object (and the card `$body`) is *intentionally* markdown-lossy
+    ///    **Content-field carve-out.** A richtext field committed as a canonical
+    ///    content object (and the card `$body`) is *intentionally* markdown-lossy
     ///    on markdown emit: it projects to its markdown form (`project_corpus_field`),
-    ///    so identity marks (anchors, island ids) and corpus-only marks
+    ///    so identity marks (anchors, island ids) and content-only marks
     ///    (`underline`) do not survive a `to_markdown`→`from_markdown` round-trip.
     ///    On-disk identity is markdown-lossy by design; the storage DTO is the
     ///    lossless carrier. The value-equality guarantee above holds for every
-    ///    field the writer did not commit as canonical corpus.
+    ///    field the writer did not commit as canonical content.
     ///
     /// 2. **Emit-idempotent.** `to_markdown` is a pure function of `doc`; two
     ///    calls on the same `doc` return byte-equal strings.
@@ -230,12 +230,12 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
                 fill,
                 nested_comments,
             } => {
-                // A richtext field stores its value as a canonical corpus
+                // A richtext field stores its value as a canonical content
                 // object (via `commit_field`); card-yaml is the
                 // human-authored surface, so it projects back to a markdown
                 // string here — the field-level twin of the `$body` projection,
-                // lossy per the corpus's island loss class (the DTO stays the
-                // lossless carrier). A corpus field is never `!must_fill` and
+                // lossy per the content's island loss class (the DTO stays the
+                // lossless carrier). A content field is never `!must_fill` and
                 // its content carries no user nested-comments/fills, so the
                 // projected scalar routes through the plain string path.
                 if !*fill {
@@ -285,18 +285,18 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
 }
 
 /// The markdown projection of a richtext-valued field, or `None` when `value` is
-/// not a canonical corpus object.
+/// not a canonical content object.
 ///
 /// A richtext field written via [`Card::commit_field`](super::Card::commit_field)
-/// stores the canonical corpus object; emit projects it to a markdown string so
+/// stores the canonical content object; emit projects it to a markdown string so
 /// card-yaml — the human-authored surface — stays markdown-clean rather than
 /// carrying a nested `{text, lines, marks, islands}` tree. Projection is lossy
-/// per the corpus's island loss class (the same tradeoff `$body` makes): island
-/// ids and corpus-only marks do not survive a markdown round-trip, so on-disk
+/// per the content's island loss class (the same tradeoff `$body` makes): island
+/// ids and content-only marks do not survive a markdown round-trip, so on-disk
 /// identity is markdown-lossy by design; the storage DTO is the lossless carrier.
 ///
 /// The guard requires the object to serialize back to a **byte-identical**
-/// canonical corpus, so a user object field that merely resembles one (extra
+/// canonical content, so a user object field that merely resembles one (extra
 /// keys, non-canonical shape, or non-canonical key order) stays structural. The
 /// comparison is on the serialized *strings*, not the `serde_json::Value`s: with
 /// `serde_json/preserve_order` on (it is in this workspace), `Value`'s `PartialEq`
@@ -304,23 +304,23 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
 /// also accept a content-canonical object whose keys are in non-canonical order —
 /// projecting (and thus markdown-flattening) it. String equality pins key order.
 ///
-/// A corpus object normally only arises from the programmatic corpus writer
+/// A content object normally only arises from the programmatic content writer
 /// (`from_markdown` is schema-less and stores a markdown-authored richtext field
 /// as a plain string), so on a parse-originated document this projects only the
-/// fields the writer deliberately committed as corpus.
+/// fields the writer deliberately committed as content.
 fn project_corpus_field(value: &JsonValue) -> Option<String> {
     if !value.is_object() {
         return None;
     }
-    let rt = quillmark_richtext::serial::from_canonical_value(value).ok()?;
+    let rt = quillmark_content::serial::from_canonical_value(value).ok()?;
     // Byte-exact: canonical-string equality, not `Value` equality (which is
-    // order-independent under `preserve_order`). Only a corpus in canonical key
+    // order-independent under `preserve_order`). Only a content in canonical key
     // order projects; anything else stays a structural field.
-    let canonical = quillmark_richtext::serial::to_canonical_value(&rt);
+    let canonical = quillmark_content::serial::to_canonical_value(&rt);
     if serde_json::to_string(&canonical).ok()? != serde_json::to_string(value).ok()? {
         return None;
     }
-    Some(quillmark_richtext::export::to_markdown(&rt))
+    Some(quillmark_content::export::to_markdown(&rt))
 }
 
 /// Ensure `out` ends with `\n\n` so the next fence has a blank line above it.

@@ -43,7 +43,7 @@ ordered payload — typed `$` system metadata, user fields, and YAML
 comments interleaved in source order — as a single discriminated-union
 item list. This is what makes inline-comment preservation symmetric across
 the `$`/non-`$` boundary. The payload shape is unchanged since `0.92.0`;
-`body` is the canonical richtext corpus embedded structurally (a nested
+`body` is the canonical richtext content embedded structurally (a nested
 object, not a markdown string) — see Byte-stability.
 
 ```json
@@ -105,7 +105,7 @@ applied. Every `body` subtree, by contrast, is the recursively key-sorted
 **canonical richtext form** (`CanonicalRichText` in `dto.rs`) — byte-identical
 to `rt.to_canonical_json()` and independent of `preserve_order`, even in a
 consumer crate graph that lacks the feature. Sortedness is semantic
-*inside* the corpus (mark/island/attribute order carries no meaning, so the
+*inside* the content (mark/island/attribute order carries no meaning, so the
 serializer commits to one bit pattern); insertion order is semantic
 *outside* it (payload item order is source order, and matters).
 
@@ -127,7 +127,7 @@ bump can move the migrated bytes even though the schema tag does not
 change. Two ways to manage this:
 
 - **Read-repair.** Rewrite a row under its current schema tag once it has
-  been read and migrated, so the corpus form — not the legacy markdown
+  been read and migrated, so the content form — not the legacy markdown
   string — becomes its byte-stable resting state.
 - **Accept the movement.** For rows left un-repaired, treat a forced
   parser/security bump as either a schema-version event (if a hard
@@ -151,7 +151,7 @@ payload model: a per-field `nested_fills` list on the `Field` item, so
 round-trip (the JSON `value` projection is fill-free), and the `seed`
 payload-item variant (the `$seed` per-card-kind overlay map). `0.93.0`
 leaves the payload model unchanged and instead embeds the card `body` as
-the **canonical richtext corpus** — structurally, as a nested object, not a
+the **canonical richtext content** — structurally, as a nested object, not a
 markdown string (see Byte-stability).
 
 The V0_82_0 → V0_92_0 migration is structural — old payload items map 1:1,
@@ -210,7 +210,7 @@ When the `Document` wire format changes again:
 
 A new frozen DTO can also reject at parse time through a custom
 `Deserialize` rather than through a `TryFrom` migration — `CanonicalRichText`
-(the `body` field's type) normalizes and validates the embedded corpus,
+(the `body` field's type) normalizes and validates the embedded content,
 failing with a serde error before any `TryFrom` in the chain above runs.
 Design a new DTO's `Deserialize` to fail the same way if it embeds
 structured (non-string) data of its own.

@@ -45,7 +45,7 @@ Each is fully covered by a named stronger test; deletion loses no coverage.
 | `richtext/src/delta.rs:518` | `anchor_survives_edit_elsewhere` | `properties.rs:296 diff_import_preserves_surviving_anchor` | proptest generalizes the exact scenario |
 | `core/.../emit_tests.rs:176` | `round_trip_string_ambiguous` | `ambiguous_strings_tests.rs::ambiguous_word_booleans_round_trip` + `::ambiguous_numeric_like_round_trip` | subsuming tests also assert value stays `String` (stronger) |
 | `core/.../emit_tests.rs:170` | `round_trip_numbers` | `number_edge_tests.rs:99 emitted_number_representation_matches_parse` | case set includes 42 / 3.14 with per-key `v1==v2` |
-| `core/.../emit_tests.rs:129` | `emit_twice_is_byte_equal` | `emit_stability_tests.rs` (fixture corpus) + fuzz idempotence | hardcoded determinism smoke |
+| `core/.../emit_tests.rs:129` | `emit_twice_is_byte_equal` | `emit_stability_tests.rs` (fixture content) + fuzz idempotence | hardcoded determinism smoke |
 | `core/.../number_edge_tests.rs:43` | `string_that_looks_like_scientific_notation_round_trip` | `ambiguous_strings_tests.rs:123 ambiguous_numeric_like_round_trip` | string-side only; keep the numeric-side tests in this file |
 | `core/.../number_edge_tests.rs:62` | `string_hex_like_round_trip` | same | |
 | `core/.../dto.rs:1101` | `v0_82_0_payload_migrates_forward` | `dto.rs:1278 v0_82_0_payload_loads_via_migration` (adds schema-version re-check) | strictly stronger sibling |

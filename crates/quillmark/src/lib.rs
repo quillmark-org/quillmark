@@ -22,7 +22,7 @@
 pub use quillmark_core::{
     Artifact, Backend, Card, ChangeSet, Delta, Diagnostic, Document, LiveSession, Location,
     OutputFormat, ParseError, Parsed, Quill, RenderError, RenderOptions, RenderResult,
-    RichText, Severity,
+    Content, Severity,
 };
 
 mod load;

@@ -13,7 +13,7 @@
 //!
 //! ```ignore
 //! let mut w = quill.writer(&mut doc);
-//! w.set("subject", "Q3 results")?;       // richtext(inline) → strict corpus commit
+//! w.set("subject", "Q3 results")?;       // richtext(inline) → strict content commit
 //! w.set("qty", "3")?;                    // integer → strict coerce, stores 3
 //! w.card(2)?.set("desc", corpus_json)?;  // card kind → CardSchema → field type
 //! w.set_all([("a", "1"), ("b", "2")])?;  // batched, all-or-nothing
@@ -303,7 +303,7 @@ card_kinds:
         let mut doc = blank_doc();
         let mut ed = TypedWriter::new(&config, &mut doc);
 
-        // A schema field commits typed: "3" → 3, richtext string → corpus.
+        // A schema field commits typed: "3" → 3, richtext string → content.
         ed.set("qty", "3").unwrap();
         ed.set("subject", "Hello").unwrap();
         assert_eq!(
@@ -477,7 +477,7 @@ card_kinds:
         let config = config();
         let mut doc = blank_doc();
         let mut ed = TypedWriter::new(&config, &mut doc);
-        // Typed richtext write lands the corpus and returns a Delta receipt.
+        // Typed richtext write lands the content and returns a Delta receipt.
         let _delta = ed.revise_field("subject", "Hello").unwrap();
         assert_eq!(doc.main().field_markdown("subject").unwrap().unwrap(), "Hello\n");
 

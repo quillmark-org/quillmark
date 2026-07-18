@@ -2283,10 +2283,10 @@ dependencies = [
 name = "quillmark"
 version = "0.94.0"
 dependencies = [
+ "quillmark-content",
  "quillmark-core",
  "quillmark-fixtures",
  "quillmark-pdfform",
- "quillmark-richtext",
  "quillmark-typst",
  "serde_json",
  "tempfile",
@@ -2304,14 +2304,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "quillmark-content"
+version = "0.94.0"
+dependencies = [
+ "proptest",
+ "pulldown-cmark",
+ "quillmark-fixtures",
+ "serde",
+ "serde_json",
+ "similar",
+]
+
+[[package]]
 name = "quillmark-core"
 version = "0.94.0"
 dependencies = [
  "glob",
  "indexmap",
  "pulldown-cmark",
+ "quillmark-content",
  "quillmark-fixtures",
- "quillmark-richtext",
  "serde",
  "serde-saphyr",
  "serde_json",
@@ -2331,8 +2343,8 @@ version = "0.94.0"
 dependencies = [
  "indexmap",
  "proptest",
+ "quillmark-content",
  "quillmark-core",
- "quillmark-richtext",
  "quillmark-typst",
  "serde_json",
 ]
@@ -2355,10 +2367,10 @@ dependencies = [
  "hayro-svg",
  "lopdf",
  "quillmark",
+ "quillmark-content",
  "quillmark-core",
  "quillmark-fixtures",
  "quillmark-pdf",
- "quillmark-richtext",
  "serde",
  "serde_json",
 ]
@@ -2369,21 +2381,9 @@ version = "0.94.0"
 dependencies = [
  "pyo3",
  "quillmark",
+ "quillmark-content",
  "quillmark-core",
- "quillmark-richtext",
  "serde_json",
-]
-
-[[package]]
-name = "quillmark-richtext"
-version = "0.94.0"
-dependencies = [
- "proptest",
- "pulldown-cmark",
- "quillmark-fixtures",
- "serde",
- "serde_json",
- "similar",
 ]
 
 [[package]]
@@ -2393,9 +2393,9 @@ dependencies = [
  "comemo",
  "js-sys",
  "lopdf",
+ "quillmark-content",
  "quillmark-core",
  "quillmark-pdf",
- "quillmark-richtext",
  "serde_json",
  "tempfile",
  "thiserror",
@@ -2416,8 +2416,8 @@ dependencies = [
  "console_error_panic_hook",
  "js-sys",
  "quillmark",
+ "quillmark-content",
  "quillmark-core",
- "quillmark-richtext",
  "serde",
  "serde-wasm-bindgen 0.6.5",
  "serde_bytes",

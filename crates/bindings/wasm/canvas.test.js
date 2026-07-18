@@ -124,7 +124,7 @@ describe('LiveSession canvas preview', () => {
     expect(size.heightPt).toBeGreaterThan(0)
   })
 
-  it('positionAt resolves content ink to a corpus position and locate reverses it (#829)', () => {
+  it('positionAt resolves content ink to a content position and locate reverses it (#829)', () => {
     const session = openSession()
 
     // A content field surfaces one span-bearing region per segment (#829); the
@@ -148,7 +148,7 @@ describe('LiveSession canvas preview', () => {
     expect(hit.pos).toBeGreaterThanOrEqual(start)
     expect(hit.pos).toBeLessThanOrEqual(end)
 
-    // Reverse: corpus position → caret rect on the same field.
+    // Reverse: content position → caret rect on the same field.
     const caret = session.locate('$body', hit.pos)
     expect(caret, 'locate reverses positionAt').toBeTruthy()
     expect(caret.field).toBe('$body')

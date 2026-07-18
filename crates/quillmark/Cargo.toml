@@ -20,7 +20,7 @@ tempfile = { workspace = true }
 quillmark-typst = { workspace = true }
 quillmark-pdfform = { workspace = true }
 quillmark-fixtures = { workspace = true }
-quillmark-richtext = { workspace = true }
+quillmark-content = { workspace = true }
 serde_json = { workspace = true }
 
 [features]

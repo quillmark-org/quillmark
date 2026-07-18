@@ -102,7 +102,7 @@ def test_engine_render_regions_sidecar(engine, taro_quill_dir, taro_md):
     """render(.., regions=True) populates the schema-field geometry sidecar.
 
     Mirrors the WASM regions contract: each entry is a dict carrying `field`,
-    `page`, `rect`, and `span` (the covered USV corpus range for content ink,
+    `page`, `rect`, and `span` (the covered USV content range for content ink,
     `None` for a scalar/widget). The taro plate interpolates `$body`, so the
     markdown body auto-tags at least one `$body` segment region carrying a span.
     """
@@ -124,7 +124,7 @@ def test_engine_render_regions_sidecar(engine, taro_quill_dir, taro_md):
         f"expected a `$body` region; got: {[r['field'] for r in regions]}"
     )
     assert any(r["span"] is not None for r in body_segments), (
-        "a `$body` content segment carries a corpus span"
+        "a `$body` content segment carries a content span"
     )
 
 

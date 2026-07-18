@@ -66,10 +66,10 @@ describe('Document.fromMarkdown', () => {
     expect(hasField(doc.main, '$cards')).toBe(false)
   })
 
-  it('should expose body as a corpus with a markdown projection', () => {
+  it('should expose body as a content with a markdown projection', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
-    // `body` is the canonical corpus (source-of-truth model); the markdown
+    // `body` is the canonical content (source-of-truth model); the markdown
     // projection is the on-demand `exportMarkdown(body)` codec.
     expect(typeof doc.main.body).toBe('object')
     expect(typeof doc.main.body.text).toBe('string')
@@ -608,15 +608,15 @@ describe('Document editor surface — setQuillRef / install / revise', () => {
     expect(Array.isArray(delta.ops)).toBe(true)
   })
 
-  it('install({}, rt) installs a corpus object with value semantics', () => {
-    // The corpus is the source-of-truth shape doc.main.body reads back; the
+  it('install({}, rt) installs a content object with value semantics', () => {
+    // The content is the source-of-truth shape doc.main.body reads back; the
     // cold path spells importMarkdown at the call site.
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    const corpus = importMarkdown('Corpus **body** here.')
-    expect(typeof corpus).toBe('object')
-    doc.install({}, corpus)
-    expect(doc.main.body.text).toBe('Corpus body here.')
-    expect(exportMarkdown(doc.main.body)).toBe('Corpus **body** here.\n')
+    const content = importMarkdown('Content **body** here.')
+    expect(typeof content).toBe('object')
+    doc.install({}, content)
+    expect(doc.main.body.text).toBe('Content body here.')
+    expect(exportMarkdown(doc.main.body)).toBe('Content **body** here.\n')
   })
 
   it('install({}, importMarkdown("")) clears the body', () => {
@@ -625,14 +625,14 @@ describe('Document editor surface — setQuillRef / install / revise', () => {
     expect(exportMarkdown(doc.main.body)).toBe('')
   })
 
-  it('install rejects a non-corpus value (markdown must go through importMarkdown)', () => {
+  it('install rejects a non-content value (markdown must go through importMarkdown)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     expect(() => doc.install({}, 'plain markdown')).toThrow()
-    expect(() => doc.install({}, { not: 'a corpus' })).toThrow()
+    expect(() => doc.install({}, { not: 'a content' })).toThrow()
   })
 })
 
-describe('Corpus codec — importMarkdown / exportMarkdown / rebase / mapPos', () => {
+describe('Content codec — importMarkdown / exportMarkdown / rebase / mapPos', () => {
   it('importMarkdown ∘ exportMarkdown round-trips a body', () => {
     const rt = importMarkdown('A **bold** line.')
     expect(typeof rt).toBe('object')
@@ -640,10 +640,10 @@ describe('Corpus codec — importMarkdown / exportMarkdown / rebase / mapPos', (
     expect(exportMarkdown(rt)).toBe('A **bold** line.\n')
   })
 
-  it('rebase computes a corpus + delta and mapPos maps a position through it', () => {
+  it('rebase computes a content + delta and mapPos maps a position through it', () => {
     const base = importMarkdown('hello world')
-    const { corpus, delta } = rebase(base, 'hello brave world')
-    expect(corpus.text).toBe('hello brave world')
+    const { content, delta } = rebase(base, 'hello brave world')
+    expect(content.text).toBe('hello brave world')
     expect(Array.isArray(delta.ops)).toBe(true)
     // A caret at the end of "hello " stays; one after "world" shifts past "brave ".
     expect(mapPos(delta, 6, 'before')).toBe(6)
@@ -680,12 +680,12 @@ card_kinds:
     Quill.fromTree(makeQuill({ name: 'commit_test', plate: TEST_PLATE, quillYaml: COMMIT_QUILL_YAML }))
   const blankDoc = () => Document.fromMarkdown('~~~card-yaml\n$quill: commit_test\n~~~\n\nBody.')
 
-  it('commitField resolves the schema type: richtext string → corpus, integer "3" → 3', () => {
+  it('commitField resolves the schema type: richtext string → content, integer "3" → 3', () => {
     const quill = buildQuill()
     const doc = blankDoc()
     doc._commitField(quill, 'intro', 'A **bold** intro.')
     expect(typeof field(doc.main, 'intro')).toBe('object')
-    // The markdown projection of a richtext field is exportMarkdown ∘ its corpus.
+    // The markdown projection of a richtext field is exportMarkdown ∘ its content.
     expect(exportMarkdown(field(doc.main, 'intro'))).toBe('A **bold** intro.\n')
 
     doc._commitField(quill, 'qty', '3')
@@ -702,12 +702,12 @@ card_kinds:
     expect(field(doc.main, 'stray')).toBe('x')
   })
 
-  it('exportMarkdown composes on a committed richtext field; a scalar field is not a corpus', () => {
+  it('exportMarkdown composes on a committed richtext field; a scalar field is not a content', () => {
     const quill = buildQuill()
     const doc = blankDoc()
     // Absent field: the value is undefined, nothing to project.
     expect(field(doc.main, 'nonexistent')).toBeUndefined()
-    // A non-richtext scalar is stored verbatim, not a corpus object.
+    // A non-richtext scalar is stored verbatim, not a content object.
     doc.storeField('count', 3)
     expect(field(doc.main, 'count')).toBe(3)
     // A committed richtext field projects through the codec.
@@ -1068,13 +1068,13 @@ Card body.
     expect(() => doc.revise({ card: 0 }, 'x')).toThrow(/IndexOutOfRange/)
   })
 
-  it('install({card:0}, rt) installs a corpus into a card body', () => {
-    // The corpus is the shape doc.cards[i].body reads back; the card-indexed
+  it('install({card:0}, rt) installs a content into a card body', () => {
+    // The content is the shape doc.cards[i].body reads back; the card-indexed
     // twin of the main-body install path.
-    const corpus = importMarkdown('Card body from **markdown**.')
+    const content = importMarkdown('Card body from **markdown**.')
     const doc = Document.fromMarkdown(MD_WITH_CARD)
-    doc.install({ card: 0 }, corpus)
-    expect(doc.cards[0].body.text).toBe(corpus.text)
+    doc.install({ card: 0 }, content)
+    expect(doc.cards[0].body.text).toBe(content.text)
     expect(exportMarkdown(doc.cards[0].body)).toBe('Card body from **markdown**.\n')
   })
 

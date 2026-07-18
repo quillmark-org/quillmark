@@ -48,7 +48,7 @@ pub(crate) fn field_at(
     span_scan::field_at(doc, world, helper, windows, page, x, y)
 }
 
-/// A point → corpus position in a content field (field + USV offset). The
+/// A point → content position in a content field (field + USV offset). The
 /// fine-grained click direction, cluster-exact. See [`span_scan::position_at`].
 pub(crate) fn position_at(
     doc: &PagedDocument,
@@ -62,7 +62,7 @@ pub(crate) fn position_at(
     span_scan::position_at(doc, world, helper, windows, page, x, y)
 }
 
-/// A corpus position → caret rect in a content field. The reverse of
+/// A content position → caret rect in a content field. The reverse of
 /// [`position_at`]. See [`span_scan::locate`].
 pub(crate) fn locate(
     doc: &PagedDocument,

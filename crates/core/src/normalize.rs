@@ -5,7 +5,7 @@
 //! compare equal). YAML field *values* pass through verbatim.
 //!
 //! Card bodies are **not** normalized here: a body is already a normalized
-//! [`RichText`](quillmark_richtext::RichText) corpus, established once at import
+//! [`Content`](quillmark_content::Content) content, established once at import
 //! (`import::from_markdown` runs `normalize_markdown` — line endings, bidi strip,
 //! HTML-comment fence repair — before parsing). This pass only touches field
 //! names and carries each body through unchanged.
@@ -38,7 +38,7 @@ pub fn normalize_document(
 }
 
 /// Build a new `Card` with NFC-normalized field names, carrying the (already
-/// normalized) body corpus through unchanged.
+/// normalized) body content through unchanged.
 fn normalize_card(card: &Card) -> Card {
     use crate::document::PayloadItem;
     let mut payload = card.payload().clone();

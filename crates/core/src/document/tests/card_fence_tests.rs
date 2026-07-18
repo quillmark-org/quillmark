@@ -202,7 +202,7 @@ fn tilde_code_block_without_blank_line_above_stays_in_body() {
     let doc = Document::parse(src).unwrap().document;
     assert_eq!(doc.cards().len(), 0);
     // The `~~~` block stays in the body as a code block (re-emitted by the
-    // corpus projection); its content survives, the fence syntax may normalize.
+    // content projection); its content survives, the fence syntax may normalize.
     assert!(doc.main().body_markdown().contains("code"));
 }
 
