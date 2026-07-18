@@ -11,7 +11,7 @@ use quillmark_core::Document;
 #[test]
 fn thematic_break_in_body_is_not_a_block() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\nParagraph text.\n\n---\n\nAfter.";
-    let doc = Document::from_markdown(md).unwrap();
+    let doc = Document::parse(md).unwrap().document;
     let body = doc.main().body_markdown();
     // `---` is delegated to CommonMark, not parsed as a metadata block: the
     // paragraphs survive and no card splits off. (The thematic break itself has
@@ -28,7 +28,7 @@ fn thematic_break_in_body_is_not_a_block() {
 #[test]
 fn first_block_without_quill_is_rejected() {
     let md = "~~~card-yaml\ntitle: X\n~~~\n\nBody.";
-    let err = Document::from_markdown(md).unwrap_err().to_string();
+    let err = Document::parse(md).unwrap_err().to_string();
     assert!(err.contains("must declare `$quill"), "got: {}", err);
 }
 
@@ -36,7 +36,7 @@ fn first_block_without_quill_is_rejected() {
 #[test]
 fn yaml_comment_banners_inside_block_are_accepted() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\n# Essential\ntitle: T\n~~~\n\nBody.";
-    let doc = Document::from_markdown(md).unwrap();
+    let doc = Document::parse(md).unwrap().document;
     assert_eq!(
         doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "T"
@@ -47,7 +47,7 @@ fn yaml_comment_banners_inside_block_are_accepted() {
 #[test]
 fn composable_card_block_registers_a_card() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\nB.\n\n~~~card-yaml\n$kind: endorsement\nname: X\n~~~\n\nTrailing.";
-    let doc = Document::from_markdown(md).unwrap();
+    let doc = Document::parse(md).unwrap().document;
     assert_eq!(doc.cards().len(), 1);
     assert_eq!(doc.cards()[0].kind(), Some("endorsement"));
 }
@@ -57,7 +57,7 @@ fn composable_card_block_registers_a_card() {
 #[test]
 fn non_root_block_without_kind_is_allowed() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\nB.\n\n~~~card-yaml\nname: X\n~~~\n";
-    let doc = Document::from_markdown(md).unwrap();
+    let doc = Document::parse(md).unwrap().document;
     assert_eq!(doc.cards().len(), 1);
     assert_eq!(doc.cards()[0].kind(), None);
 }
@@ -66,7 +66,7 @@ fn non_root_block_without_kind_is_allowed() {
 #[test]
 fn fences_inside_code_blocks_are_ignored() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\n```\n~~~card-yaml\n$kind: x\n~~~\n```\n\nBody.";
-    let doc = Document::from_markdown(md).unwrap();
+    let doc = Document::parse(md).unwrap().document;
     assert!(
         doc.cards().is_empty(),
         "card-yaml blocks inside code blocks must not parse"
@@ -83,7 +83,7 @@ fn unknown_dollar_keys_in_payload_are_rejected() {
             "~~~card-yaml\n$quill: t\n$kind: main\n{}: nope\n~~~\n\nBody.",
             key
         );
-        let err = Document::from_markdown(&md).unwrap_err().to_string();
+        let err = Document::parse(&md).unwrap_err().to_string();
         assert!(
             err.contains("system-metadata") || err.contains(key),
             "unknown $-key {} must error, got: {}",
@@ -97,7 +97,7 @@ fn unknown_dollar_keys_in_payload_are_rejected() {
 #[test]
 fn cards_is_always_present_even_when_empty() {
     let doc =
-        Document::from_markdown("~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\nBody.").unwrap();
+        Document::parse("~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\nBody.").unwrap().document;
     assert!(doc.cards().is_empty());
 }
 
@@ -106,11 +106,11 @@ fn cards_is_always_present_even_when_empty() {
 fn card_kind_is_name_validated() {
     let bad =
         "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\nB.\n\n~~~card-yaml\n$kind: ITEMS\n~~~\n\nX.";
-    assert!(Document::from_markdown(bad).is_err());
+    assert!(Document::parse(bad).is_err());
 
     let ok =
         "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\nB.\n\n~~~card-yaml\n$kind: items\n~~~\n\nX.";
-    let doc = Document::from_markdown(ok).unwrap();
+    let doc = Document::parse(ok).unwrap().document;
     assert_eq!(doc.cards()[0].kind(), Some("items"));
 }
 
@@ -118,7 +118,7 @@ fn card_kind_is_name_validated() {
 #[test]
 fn normalize_reaches_card_body() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\n~~~card-yaml\n$kind: x\n~~~\n\n<!-- c -->trailing\u{202D}text";
-    let doc = Document::from_markdown(md).unwrap();
+    let doc = Document::parse(md).unwrap().document;
     let doc = normalize_document(doc).unwrap();
     let body = doc.cards()[0].body_markdown();
     // Bidi-strip normalization reaches the nested card body at import
@@ -135,7 +135,7 @@ fn normalize_reaches_card_body() {
 #[test]
 fn body_crlf_line_endings_are_normalized() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\nLine one.\r\nLine two.\r\n";
-    let doc = Document::from_markdown(md).unwrap();
+    let doc = Document::parse(md).unwrap().document;
     let doc = normalize_document(doc).unwrap();
     let body = doc.main().body_markdown();
     assert!(
@@ -151,7 +151,7 @@ fn body_crlf_line_endings_are_normalized() {
 #[test]
 fn card_body_crlf_line_endings_are_normalized() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\n~~~card-yaml\n$kind: x\n~~~\n\nCard line one.\r\nCard line two.\r\n";
-    let doc = Document::from_markdown(md).unwrap();
+    let doc = Document::parse(md).unwrap().document;
     let doc = normalize_document(doc).unwrap();
     let body = doc.cards()[0].body_markdown();
     assert!(
@@ -164,14 +164,14 @@ fn card_body_crlf_line_endings_are_normalized() {
 // Empty input is rejected with a specific error.
 #[test]
 fn empty_input_is_rejected() {
-    let err = Document::from_markdown("").unwrap_err().to_string();
+    let err = Document::parse("").unwrap_err().to_string();
     assert!(err.contains("Empty markdown input"), "got: {}", err);
 }
 
 // A document with no card-yaml block is rejected.
 #[test]
 fn missing_root_block_is_rejected() {
-    let err = Document::from_markdown("Just prose, no metadata.")
+    let err = Document::parse("Just prose, no metadata.")
         .unwrap_err()
         .to_string();
     assert!(
@@ -186,7 +186,7 @@ fn missing_root_block_is_rejected() {
 #[test]
 fn unclosed_card_yaml_block_falls_through_to_commonmark() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\ntitle: T\n";
-    let err = Document::from_markdown(md).unwrap_err().to_string();
+    let err = Document::parse(md).unwrap_err().to_string();
     assert!(err.contains("Missing required root"), "got: {}", err);
 }
 
@@ -195,7 +195,7 @@ fn unclosed_card_yaml_block_falls_through_to_commonmark() {
 #[test]
 fn card_fence_missing_blank_emits_warning() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\nBody line.\n~~~card-yaml\n$kind: x\n~~~\n";
-    let out = Document::from_markdown_with_warnings(md).unwrap();
+    let out = Document::parse(md).unwrap();
     assert!(
         out.warnings
             .iter()
@@ -214,7 +214,7 @@ fn card_fence_missing_blank_emits_warning() {
 #[test]
 fn unclosed_code_block_emits_warning() {
     let md = "~~~card-yaml\n$quill: t\n$kind: main\n~~~\n\n```\ncode line\n\n~~~card-yaml\n$kind: x\n~~~\n\ntrailing body";
-    let out = Document::from_markdown_with_warnings(md).unwrap();
+    let out = Document::parse(md).unwrap();
     assert!(
         out.warnings
             .iter()
@@ -240,7 +240,7 @@ fn per_block_field_count_cap() {
         s.push_str(&format!("f{}: v\n", i));
     }
     s.push_str("~~~\n\nBody.");
-    let err = Document::from_markdown(&s).unwrap_err().to_string();
+    let err = Document::parse(&s).unwrap_err().to_string();
     assert!(err.contains("Input too large"), "got: {}", err);
 }
 
@@ -251,6 +251,6 @@ fn card_count_cap_is_per_card() {
     for _ in 0..1001 {
         s.push_str("\n~~~card-yaml\n$kind: x\n~~~\n\nB.\n");
     }
-    let err = Document::from_markdown(&s).unwrap_err().to_string();
+    let err = Document::parse(&s).unwrap_err().to_string();
     assert!(err.contains("Input too large"), "got: {}", err);
 }

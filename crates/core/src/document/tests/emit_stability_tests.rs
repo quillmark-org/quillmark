@@ -3,9 +3,9 @@
 //! Verifies that `emit1 == emit2` where:
 //!
 //! ```text
-//! a     = Document::from_markdown(src)
+//! a     = Document::parse(src)
 //! emit1 = a.to_markdown()
-//! b     = Document::from_markdown(&emit1)
+//! b     = Document::parse(&emit1)
 //! emit2 = b.to_markdown()
 //! assert_eq!(emit1, emit2)
 //! ```
@@ -65,8 +65,8 @@ fn parse_emit_parse_emit_stability_over_fixture_corpus() {
         };
 
         // First parse.
-        let a = match Document::from_markdown(&src) {
-            Ok(d) => d,
+        let a = match Document::parse(&src) {
+            Ok(d) => d.document,
             Err(_) => {
                 skipped += 1;
                 continue;
@@ -76,8 +76,8 @@ fn parse_emit_parse_emit_stability_over_fixture_corpus() {
         let emit1 = a.to_markdown();
 
         // Second parse (from the first emission).
-        let b = match Document::from_markdown(&emit1) {
-            Ok(d) => d,
+        let b = match Document::parse(&emit1) {
+            Ok(d) => d.document,
             Err(e) => {
                 failures.push(format!(
                     "FAIL {}: re-parse of emit1 failed: {}\nEmit1:\n{}",

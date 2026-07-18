@@ -49,7 +49,7 @@ fn validate_clean_document_has_no_diagnostics() {
     // All Unendorsed fields supplied; `status` falls back to its default.
     let md = "~~~card-yaml\n$quill: validate_test\n$kind: main\n\
               title: \"T\"\ncount: 1\n~~~\n";
-    let doc = Document::from_markdown(md).unwrap();
+    let doc = Document::parse(md).unwrap().document;
 
     assert!(
         quill.validate(&doc).is_empty(),
@@ -63,7 +63,7 @@ fn validate_forwards_type_mismatch_with_path_and_hint() {
     // `count` is a string, not an integer.
     let md = "~~~card-yaml\n$quill: validate_test\n$kind: main\n\
               title: \"T\"\ncount: \"not-a-number\"\n~~~\n";
-    let doc = Document::from_markdown(md).unwrap();
+    let doc = Document::parse(md).unwrap().document;
 
     let diags = quill.validate(&doc);
     let diag = diags
@@ -81,7 +81,7 @@ fn validate_reports_unknown_card_kind() {
     // `validation::unknown_card`.
     let md = "~~~card-yaml\n$quill: validate_test\n$kind: main\ntitle: \"T\"\ncount: 1\n~~~\n\n\
               ~~~card-yaml\n$kind: ghost\nbody: \"B\"\n~~~\n";
-    let doc = Document::from_markdown(md).unwrap();
+    let doc = Document::parse(md).unwrap().document;
 
     let diags = quill.validate(&doc);
     assert!(
@@ -102,7 +102,7 @@ fn validate_warns_on_must_fill_marker() {
     let md = "~~~card-yaml\n$quill: validate_test\n$kind: main\n\
               title: !must_fill Draft\ncount: !must_fill\n~~~\n\n\
               ~~~card-yaml\n$kind: note\nlabel: !must_fill\n~~~\n";
-    let doc = Document::from_markdown(md).unwrap();
+    let doc = Document::parse(md).unwrap().document;
 
     let diags = quill.validate(&doc);
     let marked: Vec<_> = diags

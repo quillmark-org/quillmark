@@ -56,7 +56,7 @@ fn markdown_and_json_converge_on_canonical_form() {
             skipped += 1;
             continue;
         };
-        let Ok(doc) = Document::from_markdown(&src) else {
+        let Ok(doc) = Document::parse(&src).map(|p| p.document) else {
             skipped += 1;
             continue;
         };

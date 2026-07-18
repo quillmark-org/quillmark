@@ -4,7 +4,7 @@
 //! card carries a [`Payload`] — source-ordered items ([`PayloadItem`]:
 //! `$quill`/`$kind`/`$id` metadata, user fields, and comments, in the order
 //! they appear in the block's YAML content) — and a Markdown body.
-//! [`Document::from_markdown`] returns errors for malformed YAML, unclosed
+//! [`Document::parse`] returns errors for malformed YAML, unclosed
 //! fences, a missing root `$quill`, or unknown `$`-prefixed system keys.
 //!
 //! See [markdown-spec.md](https://github.com/borb-sh/quillmark/blob/main/prose/references/markdown-spec.md)
@@ -20,7 +20,7 @@ use crate::version::QuillReference;
 use crate::Diagnostic;
 
 /// The single markdown→corpus boundary for card bodies. Every construction path
-/// that starts from an authored markdown string ([`Document::from_markdown`],
+/// that starts from an authored markdown string ([`Document::parse`],
 /// wire/storage deserialization, seeding, blueprint) routes through it, so the
 /// markdown parser is reached from exactly one helper. An empty string yields
 /// the empty corpus without invoking the parser.
@@ -156,9 +156,14 @@ pub fn blueprint_instruction(quill_name: &str) -> String {
 #[cfg(test)]
 mod tests;
 
-/// Parse result with the document and any non-fatal warnings.
+/// The record of one parse: the [`Document`] and any non-fatal warnings.
+/// Returned by [`Document::parse`], the single parse entry. Warnings live here
+/// and only here — `Document` is the value (equality, the storage DTO, and
+/// mutators all exclude warnings); `Parsed` is the parse *event*. A caller that
+/// wants only the document writes `Document::parse(md)?.document`.
 #[derive(Debug)]
-pub struct ParseOutput {
+#[must_use = "carries parse warnings; read `.document`/`.warnings` or bind it"]
+pub struct Parsed {
     pub document: Document,
     pub warnings: Vec<Diagnostic>,
 }
@@ -328,9 +333,8 @@ impl SeedOverlay {
 /// for the plate wire shape see [`Document::to_plate_json`].
 ///
 /// Parse-time warnings are *not* document state — they ride out-of-band on
-/// [`ParseOutput`] from [`Document::from_markdown_with_warnings`], the single
-/// owner. Equality and the storage DTO therefore cover only structural content
-/// (`main` and `cards`).
+/// [`Parsed`] from [`Document::parse`], the single owner. Equality and the
+/// storage DTO therefore cover only structural content (`main` and `cards`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(into = "StoredDocument", try_from = "StoredDocument")]
 pub struct Document {
@@ -372,13 +376,15 @@ impl Document {
         Self { main, cards }
     }
 
-    pub fn from_markdown(markdown: &str) -> Result<Self, ParseError> {
-        assemble::decompose(markdown)
-    }
-
-    pub fn from_markdown_with_warnings(markdown: &str) -> Result<ParseOutput, ParseError> {
+    /// Parse card-yaml Markdown into a [`Parsed`] — the [`Document`] plus any
+    /// non-fatal warnings. The single parse entry; a caller that wants only the
+    /// document writes `Document::parse(md)?.document`. Errors on malformed
+    /// YAML, a missing root `$quill`, an over-size input, and the other
+    /// [`ParseError`] variants.
+    #[doc(alias = "from_markdown")]
+    pub fn parse(markdown: &str) -> Result<Parsed, ParseError> {
         assemble::decompose_with_warnings(markdown)
-            .map(|(document, warnings)| ParseOutput { document, warnings })
+            .map(|(document, warnings)| Parsed { document, warnings })
     }
 
     pub fn main(&self) -> &Card {

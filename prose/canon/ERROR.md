@@ -42,9 +42,10 @@ quill's declared backend is not registered.
 Warnings travel the same `Diagnostic` currency as errors, on three producer
 families:
 
-- **Parse warnings** — `Document::from_markdown_with_warnings` (e.g. a `~~~`
-  opener missing its blank line). The CLI render and the WASM one-shot render
-  splice them into `RenderResult.warnings` ahead of any compile warnings.
+- **Parse warnings** — the `warnings` on the `Parsed` that `Document::parse`
+  returns (e.g. a `~~~` opener missing its blank line). The CLI render and the
+  WASM one-shot render splice them into `RenderResult.warnings` ahead of any
+  compile warnings.
 - **Validation warnings** — `Quill::validate(doc)` returns every
   `validation::*` diagnostic, mixing severities; `validation::must_fill` and
   the `$seed` checks are the non-fatal ones. This is the editor-facing

@@ -56,7 +56,7 @@ typed model a parsed `.md` produces, with prose annotations as comments and
 `Document::to_markdown`**. There is no second formatter. Two consequences
 follow:
 
-- The blueprint round-trips through `Document::from_markdown` and back **by
+- The blueprint round-trips through `Document::parse` and back **by
   construction** — the emitter that produced it is the same one round-trip uses.
 - The blueprint inherits `to_markdown`'s representation choices: a **one-space**
   ` # ` inline-comment gap, **block-style** sequences at every level (no inline
@@ -416,7 +416,7 @@ Write main body here.
 
 `blueprint()` guarantees the emitted document is **parseable** *and*
 **renders**: every field key is present, every value is YAML-valid, the
-document round-trips through `Document::from_markdown` and back, and every
+document round-trips through `Document::parse` and back, and every
 cell is type-valid. Endorsed cells coerce and validate against their default;
 Unendorsed cells carry the `!must_fill` marker on a value that is either the
 field's `example` (a real, type-valid suggested value) or bare null/empty —

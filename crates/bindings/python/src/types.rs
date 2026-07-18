@@ -274,7 +274,7 @@ impl PyDocument {
 
     #[staticmethod]
     fn from_markdown(markdown: &str) -> PyResult<Self> {
-        let output = Document::from_markdown_with_warnings(markdown).map_err(|e| {
+        let output = Document::parse(markdown).map_err(|e| {
             let diag = e.to_diagnostic();
             let message = diag.message.clone();
             raise_with_diagnostics(vec![diag], message)

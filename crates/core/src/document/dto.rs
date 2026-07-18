@@ -1009,7 +1009,7 @@ mod tests {
     use super::*;
 
     fn sample() -> Document {
-        Document::from_markdown(
+        Document::parse(
             "\
 ~~~card-yaml
 $quill: usaf_memo@0.1
@@ -1033,6 +1033,7 @@ This body and the metadata above are an indorsement card.
 ",
         )
         .unwrap()
+        .document
     }
 
     #[test]
@@ -1084,10 +1085,11 @@ This body and the metadata above are an indorsement card.
     fn nested_fill_survives_storage_round_trip() {
         // A `!must_fill` marker on a nested object leaf rides the `nested_fills`
         // path list (the JSON `value` projection is fill-free).
-        let doc = Document::from_markdown(
+        let doc = Document::parse(
             "~~~card-yaml\n$quill: q@0.1\n$kind: main\naddr:\n  street: !must_fill\n  city: Anytown\n~~~\n",
         )
-        .unwrap();
+        .unwrap()
+        .document;
         let json = serde_json::to_string(&doc).unwrap();
         let restored: Document = serde_json::from_str(&json).unwrap();
         assert_eq!(doc, restored, "nested fill must survive storage round-trip");
@@ -1100,10 +1102,11 @@ This body and the metadata above are an indorsement card.
 
     #[test]
     fn root_kind_is_main_through_round_trip() {
-        let doc = Document::from_markdown(
+        let doc = Document::parse(
             "~~~card-yaml\n$quill: usaf_memo@0.1\n$kind: main\ntitle: \"Hi\"\n~~~\n",
         )
-        .unwrap();
+        .unwrap()
+        .document;
         assert_eq!(doc.main().kind(), Some("main"));
         let restored: Document =
             serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
@@ -1144,7 +1147,7 @@ $kind: main # required for root
 title: Hi
 ~~~
 ";
-        let doc = Document::from_markdown(src).unwrap();
+        let doc = Document::parse(src).unwrap().document;
         let json = serde_json::to_string(&doc).unwrap();
         let restored: Document = serde_json::from_str(&json).unwrap();
         assert_eq!(doc, restored);
@@ -1394,12 +1397,13 @@ title: Hi
         // Two disciplines in one envelope: the outer structure is compact
         // insertion-ordered serde_json, but the `body` subtree is the canonical
         // richtext form, byte-identical to `rt.to_canonical_json()`.
-        let doc = Document::from_markdown(
+        let doc = Document::parse(
             "~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: Hi\n~~~\n\n\
              A paragraph with **bold**, _emph_, and a [link](https://example.com).\n\n\
              Second paragraph continues the corpus.\n",
         )
-        .unwrap();
+        .unwrap()
+        .document;
         let rt = doc.main().body().clone();
         assert!(
             !rt.marks.is_empty(),

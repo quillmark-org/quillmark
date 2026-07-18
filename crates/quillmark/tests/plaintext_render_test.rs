@@ -52,7 +52,7 @@ fn plaintext_field_lowers_through_typst_backend() {
     // the plaintext codec, and the corpus must lower cleanly to typst content.
     let md = "~~~card-yaml\n$quill: plain_quill\n$kind: main\n\
               subject: \"a *literal* subject with _no_ markup\"\n~~~\n";
-    let parsed = Document::from_markdown(md).expect("parse");
+    let parsed = Document::parse(md).expect("parse").document;
 
     let result = engine.render(
         &quill,

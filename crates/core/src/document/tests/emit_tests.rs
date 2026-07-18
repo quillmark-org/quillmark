@@ -11,15 +11,18 @@ use crate::document::Document;
 
 /// Parse → emit → re-parse and assert the two Documents are equal.
 fn assert_round_trip(label: &str, src: &str) {
-    let a = Document::from_markdown(src)
-        .unwrap_or_else(|e| panic!("{}: from_markdown failed on original: {}", label, e));
+    let a = Document::parse(src)
+        .unwrap_or_else(|e| panic!("{}: parse failed on original: {}", label, e))
+        .document;
     let emitted = a.to_markdown();
-    let b = Document::from_markdown(&emitted).unwrap_or_else(|e| {
-        panic!(
-            "{}: from_markdown failed on emitted document.\nError: {}\nEmitted:\n{}",
-            label, e, emitted
-        )
-    });
+    let b = Document::parse(&emitted)
+        .unwrap_or_else(|e| {
+            panic!(
+                "{}: parse failed on emitted document.\nError: {}\nEmitted:\n{}",
+                label, e, emitted
+            )
+        })
+        .document;
     assert_eq!(
         a, b,
         "{}: round-trip produced different Documents.\nEmitted:\n{}",
@@ -72,14 +75,14 @@ fn fixture_corpus_round_trip() {
         };
 
         // Skip files that are not parseable Quillmark documents (no card-yaml block).
-        match Document::from_markdown(&src) {
+        match Document::parse(&src).map(|p| p.document) {
             Err(_) => {
                 skipped += 1;
                 continue;
             }
             Ok(a) => {
                 let emitted = a.to_markdown();
-                match Document::from_markdown(&emitted) {
+                match Document::parse(&emitted).map(|p| p.document) {
                     Err(e) => {
                         failed += 1;
                         failures.push(format!(
@@ -284,8 +287,9 @@ fn nested_map_keys_with_structural_chars_emit_valid_yaml() {
     let doc = Document::from_main_and_cards(main, vec![]);
 
     let md = doc.to_markdown();
-    let reparsed = Document::from_markdown(&md)
-        .unwrap_or_else(|e| panic!("emitted YAML must re-parse, got error {e}\n{md}"));
+    let reparsed = Document::parse(&md)
+        .unwrap_or_else(|e| panic!("emitted YAML must re-parse, got error {e}\n{md}"))
+        .document;
     let cfg = reparsed.main().payload().get("config").unwrap().as_json();
     assert_eq!(cfg["a: b"], serde_json::json!(1));
     assert_eq!(cfg["*star"], serde_json::json!(2));

@@ -469,7 +469,7 @@ error when any is exceeded:
 | Card count per document | 1000 |
 
 Markdown block nesting depth (100) is enforced at import time by the
-markdown→corpus parser (`Document::from_markdown`); the Typst backend re-checks
+markdown→corpus parser (`Document::parse`); the Typst backend re-checks
 at render as a backstop for corpora built without importing.
 
 ## 9. Emission Contract

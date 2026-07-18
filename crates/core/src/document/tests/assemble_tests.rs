@@ -1766,7 +1766,7 @@ fn test_f2_strip_does_not_overstrip_content_newlines() {
         "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\n```\ncode\n```\n\n\n~~~card-yaml\n$kind: x\n~~~\n";
     let doc = decompose(markdown).unwrap();
     let emitted = doc.to_markdown();
-    let reparsed = Document::from_markdown(&emitted).unwrap();
+    let reparsed = Document::parse(&emitted).unwrap().document;
     assert_eq!(doc.main().body_markdown(), reparsed.main().body_markdown());
     // The code block content survives; trailing blank lines canonicalize to a
     // single newline (the corpus projection normalizes block spacing).
@@ -1982,10 +1982,11 @@ Conclusion content.
 /// Verify to_plate_json produces the correct shape for a simple document.
 #[test]
 fn test_to_plate_json_simple() {
-    let doc = Document::from_markdown(
+    let doc = Document::parse(
         "~~~card-yaml\n$quill: my_quill\n$kind: main\ntitle: Hello\n~~~\n\nBody text.\n",
     )
-    .unwrap();
+    .unwrap()
+    .document;
     let json = doc.to_plate_json();
 
     assert_eq!(json["$quill"], "my_quill");
@@ -2016,7 +2017,7 @@ for: ORG
 
 Card body here.
 ";
-    let doc = Document::from_markdown(markdown).unwrap();
+    let doc = Document::parse(markdown).unwrap().document;
     let json = doc.to_plate_json();
 
     assert_eq!(json["$quill"], "usaf_memo");
@@ -2035,10 +2036,11 @@ Card body here.
 /// to_plate_json parity: the `$quill` key appears first.
 #[test]
 fn test_to_plate_json_quill_first() {
-    let doc = Document::from_markdown(
+    let doc = Document::parse(
         "~~~card-yaml\n$quill: my_quill\n$kind: main\nfoo: bar\nbaz: qux\n~~~\n",
     )
-    .unwrap();
+    .unwrap()
+    .document;
     let json = doc.to_plate_json();
     let obj = json.as_object().unwrap();
     let keys: Vec<&String> = obj.keys().collect();
@@ -2054,7 +2056,7 @@ fn test_to_plate_json_quill_first() {
 #[test]
 fn payload_field_order_preserved_after_quill_removal() {
     let md = "~~~card-yaml\n$quill: q\n$kind: main\nsender: Alice\nrecipient: Bob\ndate: March 15\nsubject: hi\n~~~\n";
-    let doc = Document::from_markdown(md).unwrap();
+    let doc = Document::parse(md).unwrap().document;
     let keys: Vec<&str> = doc.main().payload().keys().map(|s| s.as_str()).collect();
     // Fields must appear in YAML document order, not alphabetical or swap-order.
     assert_eq!(

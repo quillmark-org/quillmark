@@ -675,7 +675,7 @@ impl Document {
     /// Parse markdown into a typed Document. Throws on parse errors.
     #[wasm_bindgen(js_name = fromMarkdown)]
     pub fn from_markdown(markdown: &str) -> Result<Document, JsValue> {
-        let output = quillmark_core::Document::from_markdown_with_warnings(markdown)
+        let output = quillmark_core::Document::parse(markdown)
             .map_err(WasmError::from)
             .map_err(|e| e.to_js_value())?;
 

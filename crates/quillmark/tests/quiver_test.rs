@@ -46,9 +46,11 @@ fn every_quill_in_quiver_renders() {
             "~~~\n$quill: {}@{}\n$kind: main\n~~~\n",
             config.name, config.version
         );
-        let parsed = Document::from_markdown(&markdown).unwrap_or_else(|e| {
-            panic!("quill '{name}' empty document failed to parse: {e:?}\n---\n{markdown}")
-        });
+        let parsed = Document::parse(&markdown)
+            .unwrap_or_else(|e| {
+                panic!("quill '{name}' empty document failed to parse: {e:?}\n---\n{markdown}")
+            })
+            .document;
 
         let result = engine.render(
             &quill,
@@ -81,11 +83,14 @@ fn every_quill_blueprint_round_trips_and_renders() {
             .unwrap_or_else(|e| panic!("quill '{name}' failed to load: {e:?}"));
 
         let bp = quill.config().blueprint();
-        let doc1 = Document::from_markdown(&bp).unwrap_or_else(|e| {
-            panic!("quill '{name}' blueprint failed to parse: {e:?}\n---\n{bp}")
-        });
-        let doc2 = Document::from_markdown(&doc1.to_markdown())
-            .unwrap_or_else(|e| panic!("quill '{name}' blueprint re-emit failed to parse: {e:?}"));
+        let doc1 = Document::parse(&bp)
+            .unwrap_or_else(|e| {
+                panic!("quill '{name}' blueprint failed to parse: {e:?}\n---\n{bp}")
+            })
+            .document;
+        let doc2 = Document::parse(&doc1.to_markdown())
+            .unwrap_or_else(|e| panic!("quill '{name}' blueprint re-emit failed to parse: {e:?}"))
+            .document;
         assert_eq!(doc1, doc2, "quill '{name}': blueprint must round-trip");
 
         let result = engine.render(

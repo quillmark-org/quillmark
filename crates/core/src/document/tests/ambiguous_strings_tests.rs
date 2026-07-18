@@ -33,8 +33,9 @@ fn ambiguous_strings_fixture() -> String {
 /// Parse the fixture and return the document.
 fn parse_fixture() -> Document {
     let src = ambiguous_strings_fixture();
-    Document::from_markdown(&src)
+    Document::parse(&src)
         .unwrap_or_else(|e| panic!("ambiguous_strings.md failed to parse: {}", e))
+        .document
 }
 
 /// Assert that a payload field is `QuillValue::String` with exactly the
@@ -65,8 +66,9 @@ fn assert_string_field_round_trips(doc: &Document, key: &str, expected: &str) {
 fn assert_round_trip_strings(keys_and_values: &[(&str, &str)]) {
     let doc = parse_fixture();
     let emitted = doc.to_markdown();
-    let doc2 = Document::from_markdown(&emitted)
-        .unwrap_or_else(|e| panic!("re-parse after emit failed: {}\nEmitted:\n{}", e, emitted));
+    let doc2 = Document::parse(&emitted)
+        .unwrap_or_else(|e| panic!("re-parse after emit failed: {}\nEmitted:\n{}", e, emitted))
+        .document;
 
     for (key, expected) in keys_and_values {
         // First parse: string type.

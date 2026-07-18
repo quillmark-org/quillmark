@@ -39,7 +39,7 @@ fn test_dry_run_tolerates_must_fill_marker() {
 
     let markdown =
         "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: !must_fill\nauthor: Test\n~~~\n\n# Content\n";
-    let parsed = Document::from_markdown(markdown).expect("parse failed");
+    let parsed = Document::parse(markdown).expect("parse failed").document;
 
     let result = quill.dry_run(&parsed);
     assert!(
@@ -58,7 +58,7 @@ fn test_dry_run_no_schema() {
 
     let markdown =
         "~~~card-yaml\n$quill: test_quill\n$kind: main\nrandom_field: anything\n~~~\n\n# Content\n";
-    let parsed = Document::from_markdown(markdown).expect("parse failed");
+    let parsed = Document::parse(markdown).expect("parse failed").document;
 
     let result = quill.dry_run(&parsed);
     assert!(result.is_ok(), "dry_run should succeed without schema");

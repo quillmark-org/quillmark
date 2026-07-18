@@ -22,7 +22,7 @@
 //!   `# keep verbatim` reminder rides `$quill` as an inline comment.
 //!
 //! Because emission is shared with the parse/round-trip path, the blueprint
-//! round-trips through `Document::from_markdown` and back *by construction* —
+//! round-trips through `Document::parse` and back *by construction* —
 //! there is no second formatter to keep in sync.
 //!
 //! ## Rendering choices that follow from sharing `to_markdown`
@@ -1052,8 +1052,10 @@ main:
           year: { type: integer, default: 0, description: Publication year. }
 "#)
         .blueprint();
-        let doc1 = Document::from_markdown(&bp).expect("blueprint must parse");
-        let doc2 = Document::from_markdown(&doc1.to_markdown()).expect("re-emit must parse");
+        let doc1 = Document::parse(&bp).expect("blueprint must parse").document;
+        let doc2 = Document::parse(&doc1.to_markdown())
+            .expect("re-emit must parse")
+            .document;
         assert_eq!(doc1, doc2, "typed-table blueprint must round-trip");
     }
 
@@ -1076,7 +1078,7 @@ main:
 "#)
         .blueprint();
 
-        let doc1 = Document::from_markdown(&bp).expect("blueprint must parse");
+        let doc1 = Document::parse(&bp).expect("blueprint must parse").document;
         // Every Unendorsed field parsed back as a `!must_fill` marker.
         let payload = doc1.main().payload();
         for key in ["recipient", "subject", "date"] {
@@ -1096,16 +1098,16 @@ main:
 
         // Idempotent round-trip.
         let md2 = doc1.to_markdown();
-        let doc2 = Document::from_markdown(&md2).expect("re-emitted markdown must parse");
+        let doc2 = Document::parse(&md2).expect("re-emitted markdown must parse").document;
         assert_eq!(doc1, doc2, "blueprint must round-trip idempotently");
     }
 
     #[test]
     fn blueprint_round_trips_idempotently() {
         let bp = cfg(LETTER_QUILL).blueprint();
-        let doc1 = Document::from_markdown(&bp).expect("blueprint must parse");
+        let doc1 = Document::parse(&bp).expect("blueprint must parse").document;
         let md2 = doc1.to_markdown();
-        let doc2 = Document::from_markdown(&md2).expect("round-tripped markdown must parse");
+        let doc2 = Document::parse(&md2).expect("round-tripped markdown must parse").document;
         assert_eq!(
             doc1, doc2,
             "Document must be equal after blueprint → parse → emit → parse"
@@ -1130,7 +1132,7 @@ main:
 "#)
         .blueprint();
 
-        let doc = Document::from_markdown(&bp).expect("blueprint must parse");
+        let doc = Document::parse(&bp).expect("blueprint must parse").document;
         let payload = doc.main().payload();
         for (key, expected) in [
             ("version", "1.0"),

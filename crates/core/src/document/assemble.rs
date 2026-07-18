@@ -193,7 +193,10 @@ pub(super) fn build_block(
     })
 }
 
-/// Decompose markdown, discarding warnings. Test- and `from_markdown`-facing.
+/// Decompose markdown, discarding warnings. Test-only convenience over
+/// [`decompose_with_warnings`]; the public entry [`super::Document::parse`]
+/// keeps the warnings, so nothing in the shipping build discards them here.
+#[cfg(test)]
 pub(super) fn decompose(markdown: &str) -> Result<Document, crate::error::ParseError> {
     decompose_with_warnings(markdown).map(|(doc, _)| doc)
 }

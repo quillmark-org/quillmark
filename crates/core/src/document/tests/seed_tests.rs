@@ -10,7 +10,7 @@ use serde_json::json;
 use crate::document::{Document, MetaKey, PayloadItem};
 
 fn parse(src: &str) -> Document {
-    Document::from_markdown(src).expect("source should parse")
+    Document::parse(src).expect("source should parse").document
 }
 
 // ── Parser ─────────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ $seed: {}
 
 #[test]
 fn seed_with_scalar_value_is_rejected() {
-    let err = Document::from_markdown(
+    let err = Document::parse(
         "\
 ~~~card-yaml
 $quill: q@1.0
@@ -73,7 +73,7 @@ $seed: just-a-string
 
 #[test]
 fn seed_with_sequence_value_is_rejected() {
-    let err = Document::from_markdown(
+    let err = Document::parse(
         "\
 ~~~card-yaml
 $quill: q@1.0
@@ -95,7 +95,7 @@ $seed:
 #[test]
 fn unknown_dollar_key_message_lists_seed() {
     // The closed-set rejection lists `$seed` among the accepted keys.
-    let err = Document::from_markdown(
+    let err = Document::parse(
         "\
 ~~~card-yaml
 $quill: q@1.0
@@ -116,7 +116,7 @@ $bogus: x
 fn seed_on_composable_card_is_rejected() {
     // `$seed` is root-only (like `$quill`): a composable block carrying it is a
     // parse error, not silently-inert data.
-    let err = Document::from_markdown(
+    let err = Document::parse(
         "\
 ~~~card-yaml
 $quill: q@1.0

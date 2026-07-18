@@ -22,7 +22,7 @@ fn top_level_comments_round_trip() {
     let src =
         "~~~card-yaml\n$quill: q\n$kind: main\n# recipient's full name\nrecipient: Jane\nauthor: Alice\n~~~\n\nBody.\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let emitted = doc.to_markdown();
 
     assert!(
@@ -32,7 +32,7 @@ fn top_level_comments_round_trip() {
     );
 
     // Value remains intact.
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     assert_eq!(
         doc2.main()
             .payload()
@@ -51,7 +51,7 @@ fn top_level_comments_round_trip() {
 fn top_level_inline_comments_round_trip() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\ntitle: My Document # this is a comment\n~~~\n\nBody.\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let emitted = doc.to_markdown();
 
     assert!(
@@ -66,7 +66,7 @@ fn top_level_inline_comments_round_trip() {
     );
 
     // Value still intact.
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     assert_eq!(
         doc2.main().payload().get("title").and_then(|v| v.as_str()),
         Some("My Document"),
@@ -87,7 +87,7 @@ fn top_level_inline_comments_round_trip() {
 fn block_scalar_with_markdown_headings_round_trips() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nbio: |-\n  ## About me\n\n  - first point\n  Plain line.\ntitle: Resume\n~~~\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     assert_eq!(
         doc.main().payload().get("bio").and_then(|v| v.as_str()),
         Some("## About me\n\n- first point\nPlain line."),
@@ -101,7 +101,7 @@ fn block_scalar_with_markdown_headings_round_trips() {
 
     // Full round-trip is value-stable and idempotent.
     let emitted = doc.to_markdown();
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     assert_eq!(
         doc2.main().payload().get("bio").and_then(|v| v.as_str()),
         Some("## About me\n\n- first point\nPlain line."),
@@ -118,7 +118,7 @@ fn block_scalar_with_markdown_headings_round_trips() {
 fn block_scalar_sequence_items_round_trip() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nsections:\n  - |-\n    ## First\n    body one\n  - |-\n    ## Second\n    body two\n~~~\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let arr = doc
         .main()
         .payload()
@@ -138,7 +138,7 @@ fn block_scalar_sequence_items_round_trip() {
 fn custom_tags_lose_tag_but_keep_value() {
     // `!must_fill` case: round-trip with fill preserved.
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nmemo_from: !must_fill 2d lt example\n~~~\n";
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
 
     let fm = doc.main().payload();
     assert_eq!(
@@ -155,7 +155,7 @@ fn custom_tags_lose_tag_but_keep_value() {
         emitted
     );
 
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     assert!(
         doc2.main().payload().is_fill("memo_from"),
         "fill marker must survive a full round-trip"
@@ -163,7 +163,7 @@ fn custom_tags_lose_tag_but_keep_value() {
 
     // Non-`!must_fill` tag case: warning + dropped tag.
     let src2 = "~~~card-yaml\n$quill: q\n$kind: main\nmemo_from: !include value.txt\n~~~\n";
-    let out = Document::from_markdown_with_warnings(src2).unwrap();
+    let out = Document::parse(src2).unwrap();
     assert!(
         out.warnings
             .iter()
@@ -185,7 +185,7 @@ fn custom_tags_lose_tag_but_keep_value() {
 #[test]
 fn fill_tag_is_rejected_as_noncanonical() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nmemo_from: !fill draft\n~~~\n";
-    let out = Document::from_markdown_with_warnings(src).unwrap();
+    let out = Document::parse(src).unwrap();
 
     let fm = out.document.main().payload();
     assert_eq!(fm.get("memo_from").and_then(|v| v.as_str()), Some("draft"));
@@ -218,7 +218,7 @@ fn fill_tag_is_rejected_as_noncanonical() {
 fn unsupported_fill_position_warns_not_silently_dropped() {
     let code = "parse::fill_marker_unsupported_position";
     let warns = |src: &str| {
-        Document::from_markdown_with_warnings(src)
+        Document::parse(src)
             .unwrap()
             .warnings
             .iter()
@@ -254,7 +254,7 @@ fn unsupported_fill_position_warns_not_silently_dropped() {
 #[test]
 fn nested_must_fill_round_trips() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\naddr:\n  street: !must_fill\n  city: Springfield\n~~~\n";
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
 
     let fm = doc.main().payload();
     let addr = fm.get("addr").unwrap();
@@ -274,7 +274,7 @@ fn nested_must_fill_round_trips() {
         emitted
     );
 
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     assert!(doc2
         .main()
         .payload()
@@ -291,7 +291,7 @@ fn nested_must_fill_round_trips() {
 fn nested_must_fill_on_mapping_is_rejected() {
     let src =
         "~~~card-yaml\n$quill: q\n$kind: main\nouter:\n  inner: !must_fill\n    leaf: 1\n~~~\n";
-    let err = Document::from_markdown(src);
+    let err = Document::parse(src);
     assert!(
         err.is_err(),
         "`!must_fill` on an object-valued nested key must be rejected"
@@ -303,7 +303,7 @@ fn nested_must_fill_on_mapping_is_rejected() {
 fn fill_tag_bare_null_round_trip() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nrecipient: !must_fill\n~~~\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let fm = doc.main().payload();
 
     assert!(fm.get("recipient").map(|v| v.is_null()).unwrap_or(false));
@@ -323,7 +323,7 @@ fn fill_tag_bare_null_round_trip() {
 fn fill_tag_block_sequence_round_trip() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nrecipient: !must_fill\n  - Dr. Who\n  - 1 TARDIS Lane\n~~~\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let fm = doc.main().payload();
 
     assert!(fm.is_fill("recipient"));
@@ -339,7 +339,7 @@ fn fill_tag_block_sequence_round_trip() {
         emitted
     );
 
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     assert!(doc2.main().payload().is_fill("recipient"));
     assert_eq!(doc2, doc, "full round-trip must be equal");
 }
@@ -348,7 +348,7 @@ fn fill_tag_block_sequence_round_trip() {
 #[test]
 fn fill_tag_flow_sequence_round_trip() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\ntags: !must_fill [a, b, c]\n~~~\n";
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let fm = doc.main().payload();
     assert!(fm.is_fill("tags"));
     assert_eq!(
@@ -357,7 +357,7 @@ fn fill_tag_flow_sequence_round_trip() {
     );
 
     let emitted = doc.to_markdown();
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     assert!(doc2.main().payload().is_fill("tags"));
     assert_eq!(doc2, doc);
 }
@@ -366,7 +366,7 @@ fn fill_tag_flow_sequence_round_trip() {
 #[test]
 fn fill_tag_empty_sequence_round_trip() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nitems: !must_fill []\n~~~\n";
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let fm = doc.main().payload();
     assert!(fm.is_fill("items"));
     assert_eq!(
@@ -381,7 +381,7 @@ fn fill_tag_empty_sequence_round_trip() {
         emitted
     );
 
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     assert_eq!(doc2, doc);
 }
 
@@ -389,7 +389,7 @@ fn fill_tag_empty_sequence_round_trip() {
 #[test]
 fn fill_tag_mapping_rejected() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nx: !must_fill {a: 1}\n~~~\n";
-    let err = Document::from_markdown(src).unwrap_err();
+    let err = Document::parse(src).unwrap_err();
     assert!(
         err.to_string().contains("!must_fill") && err.to_string().contains("mapping"),
         "expected mapping-rejection error; got: {}",
@@ -410,7 +410,7 @@ fn fill_tag_all_scalar_types_round_trip() {
         "~~~\n",
     );
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let fm = doc.main().payload();
 
     assert_eq!(fm.get("s").and_then(|v| v.as_str()), Some("hello"));
@@ -426,7 +426,7 @@ fn fill_tag_all_scalar_types_round_trip() {
     }
 
     let emitted = doc.to_markdown();
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     for key in ["s", "i", "f", "b", "n"] {
         assert!(
             doc2.main().payload().is_fill(key),
@@ -449,7 +449,7 @@ fn quoting_normalises_to_canonical_form_with_type_fidelity() {
     // them safe-to-emit-plain after parse.
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nsingle_q: 'hello'\nunquoted: world\ndouble_q: \"already\"\nambiguous: \"on\"\nnumeric_str: \"01234\"\n~~~\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let emitted = doc.to_markdown();
 
     // Source-side single-quoting is dropped; safe strings emit plain.
@@ -472,7 +472,7 @@ fn quoting_normalises_to_canonical_form_with_type_fidelity() {
     );
 
     // Values survive the full round-trip with the right types.
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     for (key, expected) in [
         ("single_q", "hello"),
         ("unquoted", "world"),
@@ -500,7 +500,7 @@ fn nested_sequence_comments_round_trip() {
     let src =
         "~~~card-yaml\n$quill: q\n$kind: main\nitems:\n  # before-first\n  - a\n  # between\n  - b\n  # after-last\n~~~\n";
 
-    let out = Document::from_markdown_with_warnings(src).unwrap();
+    let out = Document::parse(src).unwrap();
     assert!(
         !out.warnings
             .iter()
@@ -526,7 +526,7 @@ fn nested_sequence_comments_round_trip() {
     );
 
     // Round-trip is idempotent across repeated parse/emit cycles.
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     let emitted2 = doc2.to_markdown();
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
@@ -536,7 +536,7 @@ fn nested_sequence_comments_round_trip() {
 fn nested_mapping_comments_round_trip() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nouter:\n  # leading\n  inner: 1\n  # trailing\n~~~\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let emitted = doc.to_markdown();
     assert!(
         emitted.contains("# leading"),
@@ -550,7 +550,7 @@ fn nested_mapping_comments_round_trip() {
     );
 
     // Re-parse and idempotency.
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     let emitted2 = doc2.to_markdown();
     assert_eq!(emitted, emitted2);
 }
@@ -560,7 +560,7 @@ fn nested_mapping_comments_round_trip() {
 fn nested_sequence_inline_comments_round_trip() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nitems:\n  - a # inline\n  - b\n~~~\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let emitted = doc.to_markdown();
     assert!(
         emitted.contains("- a # inline"),
@@ -569,7 +569,7 @@ fn nested_sequence_inline_comments_round_trip() {
     );
 
     // Idempotent across repeated round-trips.
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     let emitted2 = doc2.to_markdown();
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
@@ -579,7 +579,7 @@ fn nested_sequence_inline_comments_round_trip() {
 fn nested_mapping_inline_comments_round_trip() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nouter:\n  inner: 1 # tail\n~~~\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let emitted = doc.to_markdown();
     assert!(
         emitted.contains("inner: 1 # tail"),
@@ -587,7 +587,7 @@ fn nested_mapping_inline_comments_round_trip() {
         emitted
     );
 
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     let emitted2 = doc2.to_markdown();
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
@@ -598,7 +598,7 @@ fn nested_mapping_inline_comments_round_trip() {
 fn inline_on_container_key_round_trips() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nouter: # describes outer\n  inner: 1\n~~~\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let emitted = doc.to_markdown();
     assert!(
         emitted.contains("outer: # describes outer\n  inner: 1"),
@@ -606,7 +606,7 @@ fn inline_on_container_key_round_trips() {
         emitted
     );
 
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     let emitted2 = doc2.to_markdown();
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
@@ -617,7 +617,7 @@ fn inline_on_container_key_round_trips() {
 fn root_payload_comment_round_trips() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\n# main entry\ntitle: Hi\n~~~\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let emitted = doc.to_markdown();
     assert!(
         emitted.starts_with("~~~\n$quill: q\n$kind: main\n# main entry\n"),
@@ -625,7 +625,7 @@ fn root_payload_comment_round_trips() {
         emitted
     );
 
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     let emitted2 = doc2.to_markdown();
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
@@ -637,7 +637,7 @@ fn card_payload_comment_round_trips() {
     let src =
         "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\n~~~card-yaml\n$kind: foo\n# the foo card\nx: 1\n~~~\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let emitted = doc.to_markdown();
     assert!(
         emitted.contains("~~~\n$kind: foo\n# the foo card\n"),
@@ -645,7 +645,7 @@ fn card_payload_comment_round_trips() {
         emitted
     );
 
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     let emitted2 = doc2.to_markdown();
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
@@ -655,7 +655,7 @@ fn card_payload_comment_round_trips() {
 fn fill_with_inline_comment_round_trips() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\ndept: !must_fill Sales # placeholder\n~~~\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     assert!(
         doc.main().payload().is_fill("dept"),
         "fill marker must be set"
@@ -668,7 +668,7 @@ fn fill_with_inline_comment_round_trips() {
         emitted
     );
 
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     let emitted2 = doc2.to_markdown();
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
@@ -679,14 +679,14 @@ fn fill_with_inline_comment_round_trips() {
 fn mixed_inline_comments_round_trip() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\ntitle: Hello # greeting\nitems:\n  - a # first\n  - b\nouter:\n  inner: 1 # nested tail\n~~~\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let emitted = doc.to_markdown();
 
     assert!(emitted.contains("title: Hello # greeting"));
     assert!(emitted.contains("- a # first"));
     assert!(emitted.contains("inner: 1 # nested tail"));
 
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     let emitted2 = doc2.to_markdown();
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
@@ -697,7 +697,7 @@ fn mixed_inline_comments_round_trip() {
 fn orphan_inline_after_remove_degrades_to_own_line() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nfield: value # tail\nother: 2\n~~~\n";
 
-    let mut doc = Document::from_markdown(src).unwrap();
+    let mut doc = Document::parse(src).unwrap().document;
     // Remove the host field. The inline comment is now orphaned in items.
     doc.main_mut().payload_mut().remove("field");
 
@@ -716,7 +716,7 @@ fn orphan_inline_after_remove_degrades_to_own_line() {
     );
 
     // Re-parsing the emitted form yields a stable round-trip.
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     let emitted2 = doc2.to_markdown();
     assert_eq!(
         emitted, emitted2,
@@ -733,7 +733,7 @@ fn inline_on_empty_mapping_degrades_to_own_line() {
 
     // Construct programmatically since `key: {}` doesn't appear in source.
     let src = "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n";
-    let mut doc = Document::from_markdown(src).unwrap();
+    let mut doc = Document::parse(src).unwrap().document;
     doc.main_mut()
         .payload_mut()
         .insert("empty", QuillValue::from_json(serde_json::json!({})));
@@ -765,14 +765,14 @@ fn inline_on_empty_mapping_degrades_to_own_line() {
 fn own_line_then_inline_round_trip() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\n# header\ntitle: Hi # tail\n# footer\n~~~\n";
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let emitted = doc.to_markdown();
 
     assert!(emitted.contains("# header\n"));
     assert!(emitted.contains("title: Hi # tail\n"));
     assert!(emitted.contains("# footer\n"));
 
-    let doc2 = Document::from_markdown(&emitted).unwrap();
+    let doc2 = Document::parse(&emitted).unwrap().document;
     let emitted2 = doc2.to_markdown();
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
@@ -783,7 +783,7 @@ fn own_line_then_inline_round_trip() {
 #[test]
 fn seq_item_inline_first_key_fill_round_trips() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nrecipients:\n  - name: !must_fill\n    role: lead\n~~~\n\nBody.\n";
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let emitted = doc.to_markdown();
     assert!(
         emitted.contains("- name: !must_fill"),
@@ -792,7 +792,7 @@ fn seq_item_inline_first_key_fill_round_trips() {
     );
     // Non-fill sibling keys are unaffected.
     assert!(emitted.contains("role: lead"), "Got:\n{}", emitted);
-    let emitted2 = Document::from_markdown(&emitted).unwrap().to_markdown();
+    let emitted2 = Document::parse(&emitted).unwrap().document.to_markdown();
     assert_eq!(emitted, emitted2, "round-trip must be idempotent");
 }
 
@@ -802,7 +802,7 @@ fn seq_item_inline_first_key_fill_round_trips() {
 #[test]
 fn array_element_nested_fill_survives_markdown_and_storage() {
     let src = "~~~card-yaml\n$quill: q@0.1\n$kind: main\nrecipients:\n  - name: Alice\n    org: !must_fill\n~~~\n\nBody.\n";
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let emitted = doc.to_markdown();
     assert!(emitted.contains("org: !must_fill"), "Got:\n{}", emitted);
     assert!(emitted.contains("name: Alice"), "Got:\n{}", emitted);

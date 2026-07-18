@@ -36,7 +36,7 @@ fn pdfform_canvas_raster_is_complete() {
     let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("sample_form"))
         .expect("load sample_form quill");
     let engine = Quillmark::new();
-    let doc = Document::from_markdown(FILLED).expect("parse markdown");
+    let doc = Document::parse(FILLED).expect("parse markdown").document;
 
     let session = engine.open(&quill, &doc).expect("open session");
 

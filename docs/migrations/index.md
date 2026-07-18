@@ -29,8 +29,11 @@ guides in order.
   `pub(crate)` `insert_unchecked` serves pre-validated callers; the `Card`/writer
   mutators are unchanged) (#958). Parse warnings move fully onto `ParseOutput`:
   `Document::warnings()` and the `from_main_and_cards` `warnings` param are
-  removed and `Document` `PartialEq` becomes a plain derive; `from_markdown` /
-  `from_markdown_with_warnings` are unchanged (#959). Additive, no action:
+  removed and `Document` `PartialEq` becomes a plain derive (#959); the two
+  parse functions then collapse into one entry `Document::parse(md) -> Parsed`
+  (`from_markdown` / `from_markdown_with_warnings` removed, `ParseOutput`
+  renamed `Parsed`; a document-only caller writes `parse(md)?.document`) (#964).
+  Additive, no action:
   single-card reads `card(i)` / `cardIndexById(id)` / `seedOverlay(kind)` backed
   by core `Document::card(i)` / `find_card(id)` (#956).
 - [0.93 → 0.94](0.93-to-0.94.md) — `type: richtext(inline)` retires; declare

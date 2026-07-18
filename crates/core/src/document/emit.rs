@@ -35,7 +35,7 @@ impl Document {
     ///
     /// # Contract
     ///
-    /// 1. **Type-fidelity round-trip.** `Document::from_markdown(&doc.to_markdown())`
+    /// 1. **Type-fidelity round-trip.** `Document::parse(&doc.to_markdown())`
     ///    returns a `Document` equal to `doc` by value *and* by type variant.
     ///    `QuillValue::String("on")` round-trips as a string, never as a bool.
     ///    `QuillValue::String("01234")` round-trips as a string, never as an
@@ -884,12 +884,13 @@ mod tests {
         let mut yaml = String::from("~~~card-yaml\n$quill: q\n$kind: main\nv: ");
         yaml.push_str(&saphyr_emit_scalar(&value));
         yaml.push_str("\n~~~\n");
-        let doc = crate::document::Document::from_markdown(&yaml).unwrap_or_else(|e| {
+        let doc = crate::document::Document::parse(&yaml).unwrap_or_else(|e| {
             panic!(
                 "failed to parse emitted scalar {:?}: {}\n{}",
                 value, e, yaml
             )
-        });
+        })
+        .document;
         let parsed = doc.main().payload().get("v").expect("field 'v'").as_json();
         assert_eq!(
             parsed, &value,
@@ -930,10 +931,10 @@ mod tests {
         // Full `to_markdown` → `from_markdown` path for the reported bug:
         // `String("_0")` must return as a `String`, still equal to `"_0"`.
         let src = "~~~card-yaml\n$quill: q\n$kind: main\na: \"_0\"\n~~~\n\nBody.\n";
-        let doc = crate::document::Document::from_markdown(src).expect("parse src");
+        let doc = crate::document::Document::parse(src).expect("parse src").document;
         let emitted = doc.to_markdown();
         let reparsed =
-            crate::document::Document::from_markdown(&emitted).expect("re-parse emitted markdown");
+            crate::document::Document::parse(&emitted).expect("re-parse emitted markdown").document;
         let value = reparsed
             .main()
             .payload()

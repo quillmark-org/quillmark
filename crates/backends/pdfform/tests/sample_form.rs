@@ -22,7 +22,7 @@ fn render(markdown: &str) -> quillmark::RenderResult {
     let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("sample_form"))
         .expect("load sample_form quill");
     let engine = Quillmark::new();
-    let doc = Document::from_markdown(markdown).expect("parse markdown");
+    let doc = Document::parse(markdown).expect("parse markdown").document;
     engine
         .render(
             &quill,
@@ -41,7 +41,7 @@ fn open_session(markdown: &str) -> quillmark::LiveSession {
     let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("sample_form"))
         .expect("load sample_form quill");
     let engine = Quillmark::new();
-    let doc = Document::from_markdown(markdown).expect("parse markdown");
+    let doc = Document::parse(markdown).expect("parse markdown").document;
     engine.open(&quill, &doc).expect("open ok")
 }
 
@@ -223,7 +223,7 @@ fn apply_rebinds_values_and_reports_dirty_pages() {
     let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("sample_form"))
         .expect("load sample_form quill");
     let engine = Quillmark::new();
-    let doc = Document::from_markdown(FILLED).expect("parse markdown");
+    let doc = Document::parse(FILLED).expect("parse markdown").document;
     let mut session = engine.open(&quill, &doc).expect("open ok");
 
     // Identical data → nothing dirty.
@@ -234,8 +234,9 @@ fn apply_rebinds_values_and_reports_dirty_pages() {
     assert!(cs.dirty_pages.is_empty(), "dirty: {:?}", cs.dirty_pages);
 
     // A changed field dirties its page and rebinds the stamped value.
-    let doc2 = Document::from_markdown(&FILLED.replace("Ada Lovelace", "Grace Hopper"))
-        .expect("parse markdown");
+    let doc2 = Document::parse(&FILLED.replace("Ada Lovelace", "Grace Hopper"))
+        .expect("parse markdown")
+        .document;
     let cs = session
         .apply(&quill.compile_data(&doc2).expect("compile data"))
         .expect("apply");
