@@ -59,7 +59,7 @@ guides in order.
   `bodyMarkdown`/`fieldMarkdown` projections and the per-address body writers
   retire pre-release, `replaceBody` / `replace_body` / `update_card_body` alias
   for one cycle, and richtext fields gain the anchor-preserving `revise_field`
-  (#925). On-disk (`.qmd`) identity stays markdown-lossy — the storage DTO is
+  (#925). On-disk (markdown) identity stays markdown-lossy — the storage DTO is
   the lossless carrier. The binding write surface then settles into two tiers:
   `quill.writer(doc)` (WASM and Python alike) is the documented default —
   typed `set` / `set_all` / `setBody` / `addCard` / `card(i)` and quill-free

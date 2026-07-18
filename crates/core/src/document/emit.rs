@@ -43,7 +43,7 @@ impl Document {
     ///
     ///    **Corpus-field carve-out.** A richtext field committed as a canonical
     ///    corpus object (and the card `$body`) is *intentionally* markdown-lossy
-    ///    on `.qmd` emit: it projects to its markdown form (`project_corpus_field`),
+    ///    on markdown emit: it projects to its markdown form (`project_corpus_field`),
     ///    so identity marks (anchors, island ids) and corpus-only marks
     ///    (`underline`) do not survive a `to_markdown`→`from_markdown` round-trip.
     ///    On-disk identity is markdown-lossy by design; the storage DTO is the
@@ -292,7 +292,7 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
 /// card-yaml — the human-authored surface — stays markdown-clean rather than
 /// carrying a nested `{text, lines, marks, islands}` tree. Projection is lossy
 /// per the corpus's island loss class (the same tradeoff `$body` makes): island
-/// ids and corpus-only marks do not survive a `.qmd` round-trip, so on-disk
+/// ids and corpus-only marks do not survive a markdown round-trip, so on-disk
 /// identity is markdown-lossy by design; the storage DTO is the lossless carrier.
 ///
 /// The guard requires the object to serialize back to a **byte-identical**
