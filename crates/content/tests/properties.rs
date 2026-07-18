@@ -467,13 +467,13 @@ proptest! {
         }
     }
 
-    /// `apply_line_ops` preserves the structural invariants (line/segment sync
-    /// and island/slot sync) across an accepted split/join/set-kind. Marks are
-    /// cleared first: a split/join splices `\n` without rebasing marks (mark
-    /// rebasing rides the text-delta channel, per the `ops` module docs), so
-    /// asserting mark-range preservation here would test a guarantee this
-    /// channel does not make. Splicing `\n` never adds or removes a slot, so
-    /// island sync is a genuine post-condition to check.
+    /// `apply_line_ops` preserves `validate()` across an accepted
+    /// split/join/set-kind — line/segment sync, island/slot sync, and (marks
+    /// left in place) mark ranges. Split/join splice a `\n` and rebase marks
+    /// through that one-char change (`Delta::map_pos` semantics), so the
+    /// rebased marks must still normalize to a valid set; keeping the imported
+    /// marks exercises that remap in the fuzzer. Splicing `\n` never adds or
+    /// removes a slot, so island sync is a genuine post-condition too.
     #[test]
     fn apply_line_ops_preserves_validate(
         md in document(),
@@ -482,7 +482,6 @@ proptest! {
         which in 0u8..3,
     ) {
         let mut rt = from_markdown(&md).unwrap();
-        rt.marks.clear();
         let len = rt.len_usv();
         let nlines = rt.lines.len().max(1);
         let op = match which {

@@ -38,7 +38,6 @@
 use crate::model::{Mark, MarkKind, Content};
 use serde::{Deserialize, Serialize};
 use similar::{ChangeTag, TextDiff};
-use std::borrow::Cow;
 
 /// A per-field edit against a base content. Ops apply left-to-right, consuming
 /// base positions; `Retain`/`Delete` advance the base cursor, `Insert` adds new
@@ -99,57 +98,51 @@ impl Delta {
             .sum()
     }
 
-    /// Pad a *short* delta — one whose ops consume less base than `base_len` —
-    /// with a trailing [`Op::Retain`] over the untouched remainder, so a splice
-    /// that names only the region it changes (a bare prepend of a single
-    /// `Insert`, an edit near the start) applies against the whole base instead
-    /// of tripping [`try_apply`](Self::try_apply)'s base-length check. A delta
-    /// that already covers the base is returned unchanged; one that *overruns*
-    /// it (`expected_base_len() > base_len`) is left to fail as a genuine
-    /// [`BaseLengthMismatch`], since a delta consuming more base than exists is
-    /// built against the wrong revision, not merely abbreviated.
-    pub fn extend_to_base(&self, base_len: usize) -> Cow<'_, Delta> {
-        let consumed = self.expected_base_len();
-        if consumed < base_len {
-            let mut ops = self.ops.clone();
-            ops.push(Op::Retain(base_len - consumed));
-            Cow::Owned(Delta { ops })
-        } else {
-            Cow::Borrowed(self)
-        }
-    }
-
-    /// Apply to `base`, producing the new text. Ignores over-long
-    /// `Retain`/`Delete` gracefully (clamps), so a mismatched delta cannot
-    /// panic. Silently produces garbage on a length mismatch — use
-    /// [`Self::try_apply`] where the base's provenance isn't already trusted.
+    /// Apply to `base`, producing the new text. Base beyond what the ops
+    /// consume is retained implicitly — a *short* delta names only the region
+    /// it changes (a bare prepend, an edit near the start) and the untouched
+    /// remainder carries through. **Panics** if the ops consume *more* base than
+    /// exists (`expected_base_len() > base.chars().count()`): a delta built
+    /// against a longer revision. This is the trusted-provenance path; clamping
+    /// an over-long delta silently is corruption, so where the base's provenance
+    /// isn't already trusted use [`Self::try_apply`], which returns the mismatch
+    /// as an error instead.
     pub fn apply(&self, base: &str) -> String {
         let chars: Vec<char> = base.chars().collect();
         let mut out = String::new();
         let mut i = 0usize;
         for op in &self.ops {
             match op {
+                // Over-long Retain/Delete index past `chars` and panic here —
+                // the intended failure on a wrong-revision base.
                 Op::Retain(n) => {
-                    let end = (i + n).min(chars.len());
-                    out.extend(&chars[i..end]);
-                    i = end;
+                    out.extend(&chars[i..i + n]);
+                    i += n;
                 }
-                Op::Delete(n) => {
-                    i = (i + n).min(chars.len());
-                }
+                Op::Delete(n) => i += n,
                 Op::Insert(s) => out.push_str(s),
             }
         }
-        out.extend(&chars[i.min(chars.len())..]);
+        out.extend(&chars[i..]);
         out
     }
 
-    /// [`Self::apply`], but rejects a delta whose expected base length
-    /// disagrees with `base`'s actual length instead of clamping silently.
+    /// [`Self::apply`], but returns [`BaseLengthMismatch`] instead of panicking
+    /// when the ops consume *more* base than `base` has — a delta built against
+    /// a longer revision. Implicit trailing retain is the contract: a *short*
+    /// delta (ops consuming less than `base`) is accepted and the untouched
+    /// remainder is retained, matching [`map_pos`](Self::map_pos)'s implicit
+    /// trailing retain so a producer that names only the changed region need not
+    /// pad a bare trailing [`Op::Retain`].
+    ///
+    /// Cost of the leniency: a short delta carries no full-base-length check, so
+    /// one replayed against a wrong but *longer* base applies silently instead
+    /// of failing. An abbreviated delta forfeits that tripwire by construction;
+    /// over-consumption still fails.
     pub fn try_apply(&self, base: &str) -> Result<String, BaseLengthMismatch> {
         let expected = self.expected_base_len();
         let actual = base.chars().count();
-        if expected != actual {
+        if expected > actual {
             return Err(BaseLengthMismatch { expected, actual });
         }
         Ok(self.apply(base))
@@ -502,27 +495,54 @@ mod tests {
     }
 
     #[test]
-    fn extend_to_base_pads_short_delta() {
-        // A bare prepend gains a trailing retain over the untouched remainder.
+    fn try_apply_accepts_short_delta_with_implicit_trailing_retain() {
+        // A bare prepend consumes no base; the untouched remainder is retained
+        // implicitly rather than tripping the base-length check.
         let short = Delta {
             ops: vec![Op::Insert("NEW ".into())],
         };
-        let padded = short.extend_to_base(5);
-        assert!(matches!(padded, Cow::Owned(_)));
-        assert_eq!(padded.expected_base_len(), 5);
-        assert_eq!(padded.apply("hello"), "NEW hello");
+        assert_eq!(short.expected_base_len(), 0);
+        assert_eq!(short.try_apply("hello").unwrap(), "NEW hello");
 
-        // A base-covering delta is returned untouched, no clone.
-        let full = Delta {
-            ops: vec![Op::Retain(5)],
+        // An edit near the start, naming only its region, applies against the
+        // whole base — same result whether or not a trailing retain is written.
+        let partial = Delta {
+            ops: vec![Op::Retain(1), Op::Insert("X".into())],
         };
-        assert!(matches!(full.extend_to_base(5), Cow::Borrowed(_)));
+        assert_eq!(partial.try_apply("hello").unwrap(), "hXello");
+    }
 
-        // An over-long delta is left alone to fail at `try_apply`.
+    #[test]
+    fn try_apply_rejects_over_long_delta() {
+        // Consuming more base than exists is a wrong-revision delta, not an
+        // abbreviated one — it errors, it does not clamp.
         let over = Delta {
             ops: vec![Op::Retain(9)],
         };
-        assert!(matches!(over.extend_to_base(5), Cow::Borrowed(_)));
+        assert_eq!(
+            over.try_apply("hello"),
+            Err(BaseLengthMismatch {
+                expected: 9,
+                actual: 5,
+            })
+        );
+
+        // Over-consumption via Delete fails the same way.
+        let over_del = Delta {
+            ops: vec![Op::Delete(9)],
+        };
+        assert!(over_del.try_apply("hello").is_err());
+    }
+
+    #[test]
+    #[should_panic]
+    fn apply_panics_on_over_long_delta() {
+        // The trusted-provenance path panics rather than clamping an over-long
+        // delta to silent garbage.
+        let over = Delta {
+            ops: vec![Op::Retain(9)],
+        };
+        let _ = over.apply("hello");
     }
 
     #[test]

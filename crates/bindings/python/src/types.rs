@@ -475,7 +475,7 @@ impl PyDocument {
 
     /// **Apply** a committed content edit `bundle` (`{delta?, line_ops?, mark_ops?}`)
     /// at `(card, field)` — the editor splice: text delta, then line ops, then
-    /// mark ops (mark ranges in post-delta coordinates), each all-or-nothing. An
+    /// mark ops (mark ranges in final-text coordinates), each all-or-nothing. An
     /// absent `field` targets the body, an absent `card` the main card. The kwargs
     /// idiom of WASM `doc.applyChange(addr, bundle)`. Raises on an out-of-range
     /// card, a field that is not richtext, a malformed bundle, or an out-of-bounds

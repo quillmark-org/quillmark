@@ -762,9 +762,9 @@ impl Card {
     }
 
     /// Apply a committed field-change bundle to the body content — the native
-    /// form-editor writer. Order is text delta → line ops → mark ops, each
-    /// followed by normalization ([`Content::apply_field_change`]); mark
-    /// ranges are in post-text-delta coordinates. Returns
+    /// form-editor writer. Order is text delta → line ops → mark ops, then one
+    /// terminal normalization ([`Content::apply_field_change`]); mark ranges are
+    /// in final-text coordinates. Returns
     /// [`EditError::CorpusApply`] when an op is out of bounds; the apply is
     /// all-or-nothing ([`Content::apply_field_change`]), so the body is
     /// unchanged on error — apply the bundle against the body the delta was

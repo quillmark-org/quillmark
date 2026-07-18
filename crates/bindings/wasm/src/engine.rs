@@ -270,9 +270,9 @@ export interface Delta {
 export type Assoc = "before" | "after";
 
 /**
- * A mark edit in post-text-delta coordinates. `add` / `remove` carry the
- * `ContentMark` vocabulary (`{ type, … }`); `removeAnchor` drops one identity
- * anchor by id.
+ * A mark edit in final-text coordinates (post-delta, post-line-op). `add` /
+ * `remove` carry the `ContentMark` vocabulary (`{ type, … }`); `removeAnchor`
+ * drops one identity anchor by id.
  */
 export type MarkOp =
     | ({ op: "add" | "remove"; start: number; end: number } & (
@@ -1305,7 +1305,7 @@ impl Document {
 
     /// **Apply** a committed content edit `bundle` (`{ delta?, lineOps?, markOps? }`)
     /// at `addr` — the editor splice: text delta first, then line ops, then mark
-    /// ops (mark ranges in post-delta coordinates), each all-or-nothing. An absent
+    /// ops (mark ranges in final-text coordinates), each all-or-nothing. An absent
     /// `addr.field` targets the body, an absent `addr.card` the main card.
     ///
     /// Throws on an out-of-range card, a field that is not richtext, a malformed
