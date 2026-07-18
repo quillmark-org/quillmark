@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **breaking** core: parse warnings live only on `ParseOutput` — the redundant `Document::warnings` field + `warnings()` getter are dropped and `Document::from_main_and_cards` no longer takes a `warnings` param (`Document` `PartialEq` is now a plain derive). `from_markdown` / `from_markdown_with_warnings` are unchanged (#959)
 - feat(wasm,python): keyed card reads `getCardField(index, name)` / `getCardMarkdown(index, name?)` (py `get_card_field` / `get_card_markdown`) — the card-indexed twins of `get` / `getMarkdown`, mirroring the `commitCardField` / `setCardField` write verbs so card reads no longer require a `payloadItems` walk (#953)
 
 ## v0.94.0 - 2026-07-15

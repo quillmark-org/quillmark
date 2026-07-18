@@ -66,7 +66,7 @@ impl QuillConfig {
             rebuild_payload_with_meta(normalized.main(), main_resolved),
             normalized.main().body().clone(),
         );
-        let final_doc = Document::from_main_and_cards(final_main, cards_resolved, Vec::new());
+        let final_doc = Document::from_main_and_cards(final_main, cards_resolved);
 
         Ok(final_doc.to_plate_json())
     }
@@ -97,7 +97,7 @@ impl QuillConfig {
             rebuild_payload_with_meta(doc.main(), coerced_payload),
             doc.main().body().clone(),
         );
-        let coerced_doc = Document::from_main_and_cards(coerced_main, coerced_cards, Vec::new());
+        let coerced_doc = Document::from_main_and_cards(coerced_main, coerced_cards);
 
         // Only *malformed* input is fatal (a value that won't coerce/validate).
         // An incomplete document — absent fields or `!must_fill` placeholders —

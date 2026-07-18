@@ -402,7 +402,6 @@ fn test_document_new_blank_canvas() {
     assert_eq!(doc.quill_reference().to_string(), "test_quill");
     assert!(doc.cards().is_empty());
     assert_eq!(doc.main().body_markdown(), "");
-    assert!(doc.warnings().is_empty());
 
     doc.main_mut().set_fields([("title", "Hello")]).unwrap();
     let mut card = Card::new("note").unwrap();

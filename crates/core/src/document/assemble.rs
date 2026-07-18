@@ -385,7 +385,7 @@ pub(super) fn decompose_with_warnings(
         ));
     }
 
-    let doc = Document::from_main_and_cards(main, cards, warnings.clone());
+    let doc = Document::from_main_and_cards(main, cards);
 
     Ok((doc, warnings))
 }

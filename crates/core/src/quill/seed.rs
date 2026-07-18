@@ -140,7 +140,7 @@ pub(crate) fn seed_document(quill: &Quill) -> Document {
         .iter()
         .map(|schema| seed_composable(schema, None))
         .collect();
-    Document::from_main_and_cards(main, cards, Vec::new())
+    Document::from_main_and_cards(main, cards)
 }
 
 #[cfg(test)]

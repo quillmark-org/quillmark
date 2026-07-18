@@ -242,7 +242,7 @@ fn empty_map_omitted_from_emit() {
     p.set_quill("test".parse().unwrap());
     p.set_kind("main");
     let main = Card::from_parts(p, quillmark_richtext::RichText::empty());
-    let doc = crate::document::Document::from_main_and_cards(main, vec![], vec![]);
+    let doc = crate::document::Document::from_main_and_cards(main, vec![]);
 
     let md = doc.to_markdown();
     assert!(
@@ -281,7 +281,7 @@ fn nested_map_keys_with_structural_chars_emit_valid_yaml() {
     p.set_quill("test".parse().unwrap());
     p.set_kind("main");
     let main = Card::from_parts(p, quillmark_richtext::RichText::empty());
-    let doc = Document::from_main_and_cards(main, vec![], vec![]);
+    let doc = Document::from_main_and_cards(main, vec![]);
 
     let md = doc.to_markdown();
     let reparsed = Document::from_markdown(&md)

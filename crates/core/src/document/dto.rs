@@ -562,7 +562,7 @@ impl TryFrom<DocumentV0_93_0> for Document {
                 }
             }
         }
-        Ok(Document::from_main_and_cards(main, cards, Vec::new()))
+        Ok(Document::from_main_and_cards(main, cards))
     }
 }
 

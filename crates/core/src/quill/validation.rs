@@ -660,7 +660,7 @@ main:
         p.set_quill("test_quill".parse().unwrap());
         p.set_kind("main");
         let main = Card::from_parts(p, quillmark_richtext::RichText::empty());
-        Document::from_main_and_cards(main, cards, vec![])
+        Document::from_main_and_cards(main, cards)
     }
 
     fn typed_card(tag: &str, fields: &[(&str, serde_json::Value)]) -> Card {
@@ -972,7 +972,7 @@ main:
             p,
             crate::document::import_body("Body content that should not be here.").unwrap(),
         );
-        let doc = Document::from_main_and_cards(main, vec![], vec![]);
+        let doc = Document::from_main_and_cards(main, vec![]);
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
             e,

@@ -84,7 +84,7 @@ impl QuillConfig {
         );
         let cards = self.card_kinds.iter().map(build_card).collect();
 
-        Document::from_main_and_cards(main, cards, Vec::new()).to_markdown()
+        Document::from_main_and_cards(main, cards).to_markdown()
     }
 }
 
