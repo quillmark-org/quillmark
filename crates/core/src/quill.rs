@@ -82,6 +82,15 @@ impl Quill {
         crate::TypedWriter::new(&self.config, doc)
     }
 
+    /// A schema-bound [`TypedReader`](crate::TypedReader) over `doc` — the read
+    /// twin of [`writer`](Self::writer). Interprets each field by its declared
+    /// type (a `richtext` field to markdown, every other type verbatim) with
+    /// schema authority: a name the schema does not declare reads as the typo it
+    /// is rather than as absent. See the [`reader`](crate::reader) module.
+    pub fn view<'a>(&'a self, doc: &'a crate::document::Document) -> crate::TypedReader<'a> {
+        crate::TypedReader::new(&self.config, doc)
+    }
+
     /// The in-memory file tree for this quill.
     pub fn files(&self) -> &FileTreeNode {
         &self.files

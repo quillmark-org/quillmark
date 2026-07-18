@@ -398,16 +398,11 @@ def test_get_card_field_out_of_range():
         doc.get_card_field(0, "foo")
 
 
-def test_get_card_markdown():
-    """get_card_markdown projects a card field (name given) or the card body
-    (name omitted) — the card-indexed twin of get_markdown."""
+def test_get_card_markdown_body():
+    """get_card_markdown reads a card's body markdown. A card field's markdown is
+    read via quill.view(doc).card(i).get(name) (#978)."""
     doc = Document.from_markdown(MD_WITH_CARDS)
-    # A bare string field imports as markdown.
-    assert "bar" in doc.get_card_markdown(0, "foo")
-    # Body when name omitted.
     assert "Card one." in doc.get_card_markdown(0)
-    # Absent field → "".
-    assert doc.get_card_markdown(0, "missing") == ""
 
 
 def test_get_card_markdown_out_of_range():
@@ -415,24 +410,6 @@ def test_get_card_markdown_out_of_range():
     doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
     with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
         doc.get_card_markdown(0)
-
-
-def test_get_markdown_raises_on_non_richtext():
-    """A present field that is not richtext (a scalar store_field wrote) raises
-    FieldRichtextDecode on get_markdown / get_card_markdown — the projection
-    surfaces the type mismatch instead of blanking, distinct from an absent
-    field's "" (#968). The raw value still reads back via get / get_card_field."""
-    doc = Document.from_markdown(MD_WITH_CARDS)
-
-    doc.store_field("qty", 3)
-    assert doc.get("qty") == 3
-    with pytest.raises(QuillmarkError, match="FieldRichtextDecode"):
-        doc.get_markdown("qty")
-
-    doc.store_card_field(0, "qty", 3)
-    assert doc.get_card_field(0, "qty") == 3
-    with pytest.raises(QuillmarkError, match="FieldRichtextDecode"):
-        doc.get_card_markdown(0, "qty")
 
 
 def test_revise_card_body():
@@ -737,6 +714,66 @@ def test_writer_set_all_is_all_or_nothing():
     with pytest.raises(QuillmarkError, match="FieldRichtextNotInline"):
         quill.writer(doc).set_all({"bio": "ok", "headline": "line one\n\nline two"})
     assert not has_field(doc.main, "bio")
+
+
+# ── Tier-1 typed reader — quill.view(doc) front door ──────────────────────────
+
+
+def test_view_interprets_by_declared_type():
+    """view.get reads a richtext field as markdown and a scalar as its canonical value."""
+    quill = _richtext_form_quill()
+    doc = Document("richtext_form@0.1.0")
+    quill.writer(doc).set("bio", "A **bold** intro.")
+    v = quill.view(doc)
+    assert v.document is doc  # holds the same object
+    assert v.get("bio") == "A **bold** intro."  # richtext → markdown
+
+    taro = _taro_quill()
+    tdoc = Document("taro@0.1.0")
+    taro.writer(tdoc).set("author", "Ada")
+    assert taro.view(tdoc).get("author") == "Ada"  # scalar → canonical
+
+
+def test_view_absence_returns_none_unknown_name_raises():
+    """Absent → None; a name the schema does not declare raises (the schema authority)."""
+    quill = _richtext_form_quill()
+    v = quill.view(Document("richtext_form@0.1.0"))
+    assert v.get("bio") is None  # absent, not a typo
+    with pytest.raises(QuillmarkError, match="UnknownField"):
+        v.get("nope")  # typo, not absent
+
+
+def test_view_richtext_holding_scalar_raises_mismatch():
+    """A present value that does not decode as richtext raises FieldRichtextDecode."""
+    quill = _richtext_form_quill()
+    doc = Document("richtext_form@0.1.0")
+    doc.store_field("bio", 3)  # opaque write puts a bare number under a richtext field
+    with pytest.raises(QuillmarkError, match="FieldRichtextDecode"):
+        quill.view(doc).get("bio")
+
+
+def test_view_body_read_is_quill_free():
+    """view.get_body mirrors get_markdown() — the quill-free body read."""
+    quill = _taro_quill()
+    doc = Document("taro@0.1.0")
+    quill.writer(doc).set_body("A **taro** essay.")
+    assert quill.view(doc).get_body() == "A **taro** essay."
+
+
+def test_view_card_cursor_reads_through_kind_schema():
+    """view.card(i) reads a card field through its $kind; a bad index raises at the read."""
+    quill = _taro_quill()
+    doc = Document("taro@0.1.0")
+    ed = quill.writer(doc)
+    ed.add_card("quotes", {"author": "Basho"}, "A quote body.")
+    v = quill.view(doc)
+    assert v.card(0).kind == "quotes"
+    assert v.card(0).get("author") == "Basho"
+    assert v.card(0).get_body() == "A quote body."
+    with pytest.raises(QuillmarkError, match="UnknownField"):
+        v.card(0).get("stray")
+    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+        v.card(9).get("author")
 
 
 # ── Addressed content verbs — revise / apply_change ───────────────────────────

@@ -184,24 +184,21 @@ title: Draft
     expect(doc.get({ card: 0, field: 'author' })).toBe('Alice')
     expect(doc.get({ card: 0, field: 'missing' })).toBeUndefined()
 
-    // getCardMarkdown — the card body when name omitted, the field projection
-    // when named (a bare string field imports as markdown).
+    // getMarkdown is the card body read (card address); a field address throws.
+    // A field's markdown reads through the schema-plane view,
+    // quill.view(doc).card(i).get(name) (#978).
     expect(doc.getMarkdown({ card: 0 })).toContain('A note body.')
-    expect(doc.getMarkdown({ card: 0, field: 'author' })).toContain('Alice')
-    expect(doc.getMarkdown({ card: 0, field: 'missing' })).toBeUndefined()
+    expect(() => doc.getMarkdown({ card: 0, field: 'author' })).toThrow(/body-only/)
 
     // An out-of-range index is a boundary error — it throws, the way the card
     // write verbs do, rather than reading back as undefined/"".
     expect(() => doc.get({ card: 1, field: 'author' })).toThrow()
     expect(() => doc.getMarkdown({ card: 1 })).toThrow()
 
-    // A present field that is not richtext (a scalar storeField wrote) throws
-    // FieldRichtextDecode on getMarkdown — the projection surfaces the type
-    // mismatch instead of blanking, distinct from an absent field's undefined
-    // (#968). get still reads the raw value.
+    // get still reads the raw value verbatim (transport) — including a scalar a
+    // storeField wrote under a would-be richtext field.
     doc.storeField({ card: 0, field: 'qty' }, 3)
     expect(doc.get({ card: 0, field: 'qty' })).toBe(3)
-    expect(() => doc.getMarkdown({ card: 0, field: 'qty' })).toThrow(/FieldRichtextDecode/)
   })
 
   it('single-card, $id, and seed-overlay reads (#956)', () => {

@@ -280,6 +280,19 @@ impl Card {
     pub fn field_markdown(&self, name: &str) -> Option<Result<String, RichtextDecodeError>> {
         Some(self.field_richtext(name)?.map(|rt| quillmark_content::export::to_markdown(&rt)))
     }
+
+    /// The plaintext projection of a content-valued field (`to_plaintext ∘
+    /// decode`) — the literal-codec twin of [`field_markdown`](Card::field_markdown),
+    /// for a `plaintext`-typed field: marks are never interpreted, so the text is
+    /// verbatim both ways. Carries [`field_richtext`](Card::field_richtext)'s
+    /// `Ok`/`Err` decode outcome:
+    ///
+    /// - `None` — the field is absent.
+    /// - `Some(Ok(text))` — the projected literal text.
+    /// - `Some(Err(_))` — the field is present but does not decode as content.
+    pub fn field_plaintext(&self, name: &str) -> Option<Result<String, RichtextDecodeError>> {
+        Some(self.field_richtext(name)?.map(|rt| quillmark_content::export::to_plaintext(&rt)))
+    }
 }
 
 /// A parsed, per-kind **seed overlay**: the sparse fields (and optional body)

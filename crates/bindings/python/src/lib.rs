@@ -7,8 +7,8 @@ mod types;
 pub use enums::{PyOutputFormat, PySeverity};
 pub use errors::{convert_edit_error, convert_render_error, QuillmarkError};
 pub use types::{
-    PyArtifact, PyCardWriter, PyDiagnostic, PyDocument, PyWriter, PyLocation, PyQuill, PyQuillmark,
-    PyRenderResult,
+    PyArtifact, PyCardView, PyCardWriter, PyDiagnostic, PyDocument, PyLocation, PyQuill,
+    PyQuillmark, PyRenderResult, PyView, PyWriter,
 };
 
 #[pymodule]
@@ -18,6 +18,8 @@ fn _quillmark(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyDocument>()?;
     m.add_class::<PyWriter>()?;
     m.add_class::<PyCardWriter>()?;
+    m.add_class::<PyView>()?;
+    m.add_class::<PyCardView>()?;
     m.add_class::<PyRenderResult>()?;
     m.add_class::<PyArtifact>()?;
     m.add_class::<PyDiagnostic>()?;
