@@ -904,6 +904,61 @@ impl Document {
         })
     }
 
+    /// Interpreted read at `addr`, resolving the field's declared `type` from
+    /// `quill` — the stable ABI under the runtime `view.get` / `view.card(i).get`.
+    /// The schema-plane twin of the quill-free [`get`](Self::get): a `richtext`
+    /// field returns its markdown projection, every other declared type its
+    /// canonical value verbatim, so a consumer holding the quill reads by field
+    /// meaning rather than by wire shape.
+    ///
+    /// A bare string is `Addr` shorthand for `{ field }`; `{ card, field }`
+    /// targets a composable card (its `$kind` resolves the schema). Returns
+    /// `undefined` for an **absent** field. An absent `addr.field` reads the body
+    /// markdown — quill-free, mirroring [`getMarkdown`](Self::get_markdown), since
+    /// a body's type is a format fact, not a schema fact. A name the schema does
+    /// not declare throws `[EditError::UnknownField]` (the authority `getMarkdown`
+    /// lacks — there an unknown name reads back `undefined`); a `richtext` field
+    /// holding a value that does not decode throws `[EditError::FieldRichtextDecode]`;
+    /// an out-of-range `addr.card` throws.
+    ///
+    /// The `quill` handle is passed per call because a `Document` carries only a
+    /// `$quill` reference, not the resolved schema.
+    #[wasm_bindgen(js_name = _viewGet, skip_typescript, unchecked_return_type = "unknown")]
+    pub fn view_get(
+        &self,
+        quill: &Quill,
+        #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let addr = Addr::from_js_or_string(&addr)?;
+        let view = quill.inner.view(&self.inner);
+        match &addr.field {
+            // Absent field = body: quill-free markdown, the getMarkdown body read.
+            None => Ok(JsValue::from_str(&match addr.card {
+                None => view.get_body(),
+                Some(index) => view
+                    .card(index)
+                    .map_err(|e| edit_error_to_js(&e))?
+                    .get_body(),
+            })),
+            Some(field) => {
+                let read = match addr.card {
+                    None => view.get(field),
+                    Some(index) => {
+                        view.card(index).map_err(|e| edit_error_to_js(&e))?.get(field)
+                    }
+                }
+                .map_err(|e| edit_error_to_js(&e))?;
+                match read {
+                    None => Ok(JsValue::UNDEFINED),
+                    Some(quillmark_core::ReadValue::Markdown(md)) => Ok(JsValue::from_str(&md)),
+                    Some(quillmark_core::ReadValue::Value(v)) => {
+                        serialize_or_throw(v.as_json(), "view.get")
+                    }
+                }
+            }
+        }
+    }
+
     /// Whether the field at `addr` is marked `!must_fill`. A bare string is `Addr`
     /// shorthand for `{ field }`. `false` for an absent field (truthful — it isn't
     /// marked) and for a body address (a body is never a fill). Only an

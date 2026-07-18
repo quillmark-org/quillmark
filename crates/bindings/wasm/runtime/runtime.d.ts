@@ -481,6 +481,16 @@ declare module '../core/wasm.js' {
 		 * ephemeral by convention — bind, write, discard.
 		 */
 		writer(doc: Document): DocumentWriter;
+		/**
+		 * Bind this quill's schema to `doc` for interpreted reads — the read twin of
+		 * {@link Quill.writer}, mirroring core's `quill.view(&doc)`. Each field is
+		 * read by its declared type (a richtext field to markdown, every other type
+		 * verbatim) with schema authority, so a name the schema does not declare
+		 * throws rather than reading back `undefined`. Holds both handles by
+		 * reference and owns neither (nothing to `free()`); ephemeral by convention —
+		 * bind, read, discard.
+		 */
+		view(doc: Document): DocumentView;
 	}
 }
 
@@ -574,4 +584,66 @@ export declare class CardWriter {
 	 * bound index is out of range. Returns the `Delta`.
 	 */
 	reviseField(name: string, markdown: string): Delta;
+}
+
+/**
+ * A `Document` bound to its `Quill` for interpreted reads — the schema-plane read
+ * view, constructed via {@link Quill.view} and the read twin of
+ * {@link DocumentWriter}. One `get` reads each field by its declared type: a
+ * richtext field to its markdown projection, every other type its canonical value
+ * verbatim. Holds both handles by reference and owns neither — nothing to
+ * `free()`.
+ *
+ * The schema authority is the point: unlike the quill-free `Document.get` /
+ * `getMarkdown`, a name the schema does not declare throws `UnknownField` (a
+ * typo) rather than reading back `undefined`. A richtext field holding a value
+ * that does not decode throws `FieldRichtextDecode`, as `getMarkdown` does. The
+ * body read stays quill-free (a body's type is a format fact) and never throws.
+ */
+export declare class DocumentView {
+	constructor(quill: Quill, doc: Document);
+	/** The bound document — the instance passed in. */
+	readonly document: Document;
+	/**
+	 * Read the value at `addr`, interpreted by its declared type: a richtext field
+	 * to markdown, every other type verbatim. A bare string is `Addr` shorthand for
+	 * `{ field }`; an absent `addr.field` reads the body markdown. `undefined` for
+	 * an absent field; throws `UnknownField` for a name the schema does not declare,
+	 * `FieldRichtextDecode` for a richtext field holding an undecodable value, and
+	 * `IndexOutOfRange` for a bad `addr.card`.
+	 */
+	get(addr: Addr | string): unknown;
+	/** The main body's markdown — the quill-free body read. Equals `get({})`. */
+	getBody(): string;
+	/**
+	 * A {@link CardView} for the composable card at `index`. Index validity is
+	 * checked lazily at read time, so this never throws. The cursor is ephemeral —
+	 * a `removeCard`/`addCard` between binding and reading silently retargets it.
+	 */
+	card(index: number): CardView;
+}
+
+/**
+ * A composable card bound to its `Quill` for interpreted reads, from
+ * {@link DocumentView.card}. Same verbs as {@link DocumentView}, reading the card
+ * at its bound index; each read throws `IndexOutOfRange` if that index is out of
+ * range.
+ */
+export declare class CardView {
+	constructor(quill: Quill, doc: Document, index: number);
+	/** The bound card index. */
+	readonly index: number;
+	/**
+	 * The bound card's `$kind` (empty string when it carries none). Throws
+	 * `IndexOutOfRange` if the bound index is out of range.
+	 */
+	readonly kind: string;
+	/**
+	 * Read the field `name` on this card, interpreted by its declared type.
+	 * `undefined` when absent; throws `UnknownField` for an undeclared name and
+	 * `IndexOutOfRange` for a bad index.
+	 */
+	get(name: string): unknown;
+	/** This card's body markdown — the card twin of {@link DocumentView.getBody}. */
+	getBody(): string;
 }
