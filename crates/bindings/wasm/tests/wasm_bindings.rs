@@ -445,7 +445,7 @@ fn test_quill_seed_main_and_card() {
 
 /// `$seed` overlays: the per-kind overlay is read off `Document.main`'s
 /// `seed` map, `Quill.seedCard(kind, overlay)` layers it over the schema
-/// example (overlay › example), and `setSeedNamespace` / `removeSeedNamespace`
+/// example (overlay › example), and `storeSeedNamespace` / `removeSeedNamespace`
 /// write and clear it.
 #[wasm_bindgen_test]
 fn test_seed_overlay_round_trip() {
@@ -496,12 +496,12 @@ fn test_seed_overlay_round_trip() {
         json(&bare)
     );
 
-    // setSeedNamespace writes an overlay; main.seed reads it back; remove clears.
+    // storeSeedNamespace writes an overlay; main.seed reads it back; remove clears.
     let mut doc2 =
         Document::from_markdown("~~~card-yaml\n$quill: seed_quill@1.0\n$kind: main\n~~~\n")
             .expect("fromMarkdown failed");
     let overlay_in = js_sys::JSON::parse("{\"text\":\"WRITTEN\"}").unwrap();
-    doc2.set_seed_namespace("note", overlay_in).unwrap();
+    doc2.store_seed_namespace("note", overlay_in).unwrap();
     assert!(json(&seed_of(&doc2, "note")).contains("WRITTEN"));
     doc2.remove_seed_namespace("note").unwrap();
     assert!(seed_of(&doc2, "note").is_undefined());
@@ -518,8 +518,8 @@ fn test_document_clone_independence() {
 
     // Mutate the clone; the original must keep its original title.
     clone
-        .set_field("title", JsValue::from_str("Changed"))
-        .expect("setField on clone");
+        .store_field(JsValue::from_str("title"), JsValue::from_str("Changed"))
+        .expect("storeField on clone");
 
     // Emit both and check the title survived on each side independently.
     let original_md = doc.to_markdown();

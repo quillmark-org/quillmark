@@ -119,7 +119,7 @@ card_kinds:
 
     // setSeedNamespace writes an overlay; main.seed reads it back; remove clears.
     const doc2 = Document.fromMarkdown('~~~\n$quill: seed_core@1.0.0\n$kind: main\n~~~\n')
-    doc2.setSeedNamespace('note', { author: 'Written' })
+    doc2.storeSeedNamespace('note', { author: 'Written' })
     expect(doc2.main.seed?.note.author).toBe('Written')
     doc2.removeSeedNamespace('note')
     expect(doc2.main.seed?.note).toBeUndefined()
@@ -150,16 +150,16 @@ title: Draft
 # Body`)
 
     // Edit the main card and append a composable card.
-    doc.setField('title', 'Final')
+    doc.storeField('title', 'Final')
     doc.insertCard(Document.makeCard('note', { author: 'Alice' }, 'A note.'))
     expect(doc.cardCount).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
 
-    doc.setCardField(0, 'author', 'Bob')
+    doc.storeField({ card: 0, field: 'author' }, 'Bob')
     // Keyed card read (#953) — mirrors the write, no payloadItems walk. Agrees
     // with the hand-rolled projection it replaces.
-    expect(doc.getCardField(0, 'author')).toBe('Bob')
-    expect(doc.getCardField(0, 'author')).toBe(field(doc.cards[0], 'author'))
+    expect(doc.get({ card: 0, field: 'author' })).toBe('Bob')
+    expect(doc.get({ card: 0, field: 'author' })).toBe(field(doc.cards[0], 'author'))
 
     // Storage DTO round-trips losslessly — the editor's persistence path.
     const restored = Document.fromJson(doc.toJson())
@@ -181,19 +181,19 @@ title: Draft
     doc.insertCard(Document.makeCard('note', { author: 'Alice' }, 'A note body.'))
 
     // getCardField — value keyed by name; undefined when the field is absent.
-    expect(doc.getCardField(0, 'author')).toBe('Alice')
-    expect(doc.getCardField(0, 'missing')).toBeUndefined()
+    expect(doc.get({ card: 0, field: 'author' })).toBe('Alice')
+    expect(doc.get({ card: 0, field: 'missing' })).toBeUndefined()
 
     // getCardMarkdown — the card body when name omitted, the field projection
     // when named (a bare string field imports as markdown).
-    expect(doc.getCardMarkdown(0)).toContain('A note body.')
-    expect(doc.getCardMarkdown(0, 'author')).toContain('Alice')
-    expect(doc.getCardMarkdown(0, 'missing')).toBe('')
+    expect(doc.getMarkdown({ card: 0 })).toContain('A note body.')
+    expect(doc.getMarkdown({ card: 0, field: 'author' })).toContain('Alice')
+    expect(doc.getMarkdown({ card: 0, field: 'missing' })).toBeUndefined()
 
     // An out-of-range index is a boundary error — it throws, the way the card
     // write verbs do, rather than reading back as undefined/"".
-    expect(() => doc.getCardField(1, 'author')).toThrow()
-    expect(() => doc.getCardMarkdown(1)).toThrow()
+    expect(() => doc.get({ card: 1, field: 'author' })).toThrow()
+    expect(() => doc.getMarkdown({ card: 1 })).toThrow()
   })
 
   it('single-card, $id, and seed-overlay reads (#956)', () => {
@@ -220,7 +220,7 @@ title: Draft
 
     // seedOverlay reads one $seed[kind] entry off the main card cheaply, the
     // overlay you feed straight into quill.seedCard(kind, overlay).
-    doc.setSeedNamespace('note', { author: 'Seeded' })
+    doc.storeSeedNamespace('note', { author: 'Seeded' })
     expect(doc.seedOverlay('note')).toEqual({ author: 'Seeded' })
     expect(doc.seedOverlay('absent')).toBeUndefined()
   })

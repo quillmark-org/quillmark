@@ -171,7 +171,7 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
     const originalCardCount = doc.cards.length  // 0 for TEST_MARKDOWN
 
     // Mutate
-    doc.setField('title', 'New Title')
+    doc.storeField('title', 'New Title')
     doc.insertCard(Document.makeCard('note', { author: 'Alice' }, 'Hello'))
     doc.revise({}, 'Updated body')
 
@@ -201,15 +201,15 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
     // in permissive parsers. The emitter must double-quote them so they survive
     // as strings through a re-parse.
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.setField('flag_on', 'on')
-    doc.setField('flag_off', 'off')
-    doc.setField('flag_yes', 'yes')
-    doc.setField('flag_no', 'no')
-    doc.setField('str_true', 'true')
-    doc.setField('str_false', 'false')
-    doc.setField('str_null', 'null')
-    doc.setField('octal_str', '01234')
-    doc.setField('date_str', '2024-01-15')
+    doc.storeField('flag_on', 'on')
+    doc.storeField('flag_off', 'off')
+    doc.storeField('flag_yes', 'yes')
+    doc.storeField('flag_no', 'no')
+    doc.storeField('str_true', 'true')
+    doc.storeField('str_false', 'false')
+    doc.storeField('str_null', 'null')
+    doc.storeField('octal_str', '01234')
+    doc.storeField('date_str', '2024-01-15')
 
     const emitted = doc.toMarkdown()
     const doc2 = Document.fromMarkdown(emitted)
@@ -247,7 +247,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
 
   it('round-trips a mutated document with cards', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.setField('title', 'New Title')
+    doc.storeField('title', 'New Title')
     doc.insertCard(Document.makeCard('note', { author: 'Alice' }, 'Hello'))
 
     const restored = Document.fromJson(doc.toJson())
@@ -281,7 +281,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
     // user fields — only `$`-prefixed keys are reserved — so a stored DTO
     // carrying one must deserialize and round-trip verbatim.
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.setField('PRESENTATION', 'deck')
+    doc.storeField('PRESENTATION', 'deck')
     const restored = Document.fromJson(doc.toJson())
     expect(field(restored.main, 'PRESENTATION')).toBe('deck')
   })
@@ -475,20 +475,20 @@ title: Mismatch Test
 describe('Document editor surface — setField / removeField', () => {
   it('setField inserts a new payload field', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.setField('subtitle', 'A subtitle')
+    doc.storeField('subtitle', 'A subtitle')
     expect(field(doc.main, 'subtitle')).toBe('A subtitle')
   })
 
   it('setField updates an existing field', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.setField('title', 'Updated')
+    doc.storeField('title', 'Updated')
     expect(field(doc.main, 'title')).toBe('Updated')
   })
 
   it('setField accepts uppercase field names verbatim (lowercase is canonical, not enforced)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     for (const name of ['BODY', 'CARDS', 'Title', 'MixedCase_1']) {
-      doc.setField(name, 'x')
+      doc.storeField(name, 'x')
       expect(field(doc.main, name)).toBe('x')
     }
   })
@@ -496,13 +496,13 @@ describe('Document editor surface — setField / removeField', () => {
   it('setField throws EditError::InvalidFieldName for `$`-prefixed names', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     for (const name of ['$body', '$cards', '$quill', '$kind']) {
-      expect(() => doc.setField(name, 'x')).toThrow(/InvalidFieldName/)
+      expect(() => doc.storeField(name, 'x')).toThrow(/InvalidFieldName/)
     }
   })
 
   it('setField throws EditError::InvalidFieldName for an invalid name (hyphen)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.setField('bad-name', 'x')).toThrow(/InvalidFieldName/)
+    expect(() => doc.storeField('bad-name', 'x')).toThrow(/InvalidFieldName/)
   })
 
   it('removeField returns the removed value', () => {
@@ -531,7 +531,7 @@ describe('Document blank-canvas constructor', () => {
     expect(doc.quillRef).toBe('test_quill')
     expect(doc.cards.length).toBe(0)
     expect(exportMarkdown(doc.main.body)).toBe('')
-    doc.setFields({ title: 'Hello' })
+    doc.storeFields({}, { title: 'Hello' })
     expect(field(doc.main, 'title')).toBe('Hello')
   })
 
@@ -543,7 +543,7 @@ describe('Document blank-canvas constructor', () => {
 describe('Document editor surface — setFields / setCardFields', () => {
   it('setFields applies every entry, in object order', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.setFields({ subtitle: 'A subtitle', pages: 3 })
+    doc.storeFields({}, { subtitle: 'A subtitle', pages: 3 })
     expect(field(doc.main, 'subtitle')).toBe('A subtitle')
     expect(field(doc.main, 'pages')).toBe(3)
   })
@@ -551,7 +551,7 @@ describe('Document editor surface — setFields / setCardFields', () => {
   it('a failed batch throws one diagnostic per bad field and applies nothing', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     try {
-      doc.setFields({ ok_field: 'v', 'bad-name': 'v', 'also bad': 'v' })
+      doc.storeFields({}, { ok_field: 'v', 'bad-name': 'v', 'also bad': 'v' })
       throw new Error('setFields should have thrown')
     } catch (err) {
       expect(err.diagnostics.map((d) => d.path)).toEqual(['bad-name', 'also bad'])
@@ -562,16 +562,16 @@ describe('Document editor surface — setFields / setCardFields', () => {
 
   it('setFields rejects a non-object argument', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.setFields('not an object')).toThrow(/plain object/)
+    expect(() => doc.storeFields({}, 'not an object')).toThrow(/plain object/)
   })
 
   it('setCardFields is the card-indexed twin of setFields', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.insertCard(Document.makeCard('note', { foo: 'bar' }))
-    doc.setCardFields(0, { foo: 'baz', extra: 1 })
+    doc.storeFields({ card: 0 }, { foo: 'baz', extra: 1 })
     expect(field(doc.cards[0], 'foo')).toBe('baz')
     expect(field(doc.cards[0], 'extra')).toBe(1)
-    expect(() => doc.setCardFields(99, { foo: 'v' })).toThrow(/IndexOutOfRange/)
+    expect(() => doc.storeFields({ card: 99 }, { foo: 'v' })).toThrow(/IndexOutOfRange/)
   })
 })
 
@@ -683,7 +683,7 @@ card_kinds:
     expect(() => doc.commitField(quill, 'stray', 'x')).toThrow(/UnknownField/)
     expect(hasField(doc.main, 'stray')).toBe(false)
     // Opaque storage stays available on purpose through the raw verb.
-    doc.setField('stray', 'x')
+    doc.storeField('stray', 'x')
     expect(field(doc.main, 'stray')).toBe('x')
   })
 
@@ -693,7 +693,7 @@ card_kinds:
     // Absent field: the value is undefined, nothing to project.
     expect(field(doc.main, 'nonexistent')).toBeUndefined()
     // A non-richtext scalar is stored verbatim, not a corpus object.
-    doc.setField('count', 3)
+    doc.storeField('count', 3)
     expect(field(doc.main, 'count')).toBe(3)
     // A committed richtext field projects through the codec.
     doc.commitField(quill, 'intro', 'plain intro')
@@ -751,15 +751,15 @@ card_kinds:
     const doc = Document.fromMarkdown(
       '~~~card-yaml\n$quill: commit_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
     )
-    doc.commitCardField(quill, 0, 'body', 'Card **body**.')
+    doc.commitField(quill, { card: 0, field: 'body' }, 'Card **body**.')
     expect(exportMarkdown(field(doc.cards[0], 'body'))).toBe('Card **body**.\n')
-    expect(() => doc.commitCardField(quill, 9, 'body', 'x')).toThrow(/IndexOutOfRange/)
+    expect(() => doc.commitField(quill, { card: 9, field: 'body' }, 'x')).toThrow(/IndexOutOfRange/)
   })
 
   it('commitFields typed-commits a batch', () => {
     const quill = buildQuill()
     const doc = blankDoc()
-    doc.commitFields(quill, { intro: 'A **bold** intro.', qty: '3' })
+    doc.commitFields(quill, {}, { intro: 'A **bold** intro.', qty: '3' })
     // The values were coerced, not stored verbatim.
     expect(exportMarkdown(field(doc.main, 'intro'))).toBe('A **bold** intro.\n')
     expect(field(doc.main, 'qty')).toBe(3)
@@ -770,7 +770,7 @@ card_kinds:
     const doc = blankDoc()
     // `qty` is a schema field; `titel` is a typo the schema does not own — the
     // undeclared name aborts the all-or-nothing batch and nothing is applied.
-    expect(() => doc.commitFields(quill, { qty: '5', titel: 'oops' })).toThrow(/UnknownField/)
+    expect(() => doc.commitFields(quill, {}, { qty: '5', titel: 'oops' })).toThrow(/UnknownField/)
     expect(hasField(doc.main, 'qty')).toBe(false)
     expect(hasField(doc.main, 'titel')).toBe(false)
   })
@@ -780,7 +780,7 @@ card_kinds:
     const doc = blankDoc()
     // `subject` is richtext(inline); a multi-block value violates it, so nothing
     // is applied — `qty` must not linger.
-    expect(() => doc.commitFields(quill, { qty: '5', subject: 'line one\n\nline two' }))
+    expect(() => doc.commitFields(quill, {}, { qty: '5', subject: 'line one\n\nline two' }))
       .toThrow(/FieldRichtextNotInline/)
     expect(hasField(doc.main, 'qty')).toBe(false)
   })
@@ -790,11 +790,11 @@ card_kinds:
     const doc = Document.fromMarkdown(
       '~~~card-yaml\n$quill: commit_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
     )
-    doc.commitCardFields(quill, 0, { body: 'Card **body**.' })
+    doc.commitFields(quill, { card: 0 }, { body: 'Card **body**.' })
     expect(exportMarkdown(field(doc.cards[0], 'body'))).toBe('Card **body**.\n')
     // An undeclared field on the card aborts the batch.
-    expect(() => doc.commitCardFields(quill, 0, { stray: 'x' })).toThrow(/UnknownField/)
-    expect(() => doc.commitCardFields(quill, 9, { body: 'x' })).toThrow(/IndexOutOfRange/)
+    expect(() => doc.commitFields(quill, { card: 0 }, { stray: 'x' })).toThrow(/UnknownField/)
+    expect(() => doc.commitFields(quill, { card: 9 }, { body: 'x' })).toThrow(/IndexOutOfRange/)
   })
 })
 
@@ -966,7 +966,7 @@ describe('Document.equals', () => {
   it('returns false after a payload mutation', () => {
     const a = Document.fromMarkdown(TEST_MARKDOWN)
     const b = Document.fromMarkdown(TEST_MARKDOWN)
-    b.setField('title', 'Different')
+    b.storeField('title', 'Different')
     expect(a.equals(b)).toBe(false)
   })
 
@@ -1009,36 +1009,36 @@ Card body.
 
   it('setCardField sets a field on a card', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
-    doc.setCardField(0, 'content', 'hello')
+    doc.storeField({ card: 0, field: 'content' }, 'hello')
     expect(field(doc.cards[0], 'content')).toBe('hello')
   })
 
   it('setCardField accepts uppercase names verbatim', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
-    doc.setCardField(0, 'BODY', 'x')
+    doc.storeField({ card: 0, field: 'BODY' }, 'x')
     expect(field(doc.cards[0], 'BODY')).toBe('x')
   })
 
   it('setCardField throws IndexOutOfRange when card absent', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.setCardField(0, 'title', 'x')).toThrow(/IndexOutOfRange/)
+    expect(() => doc.storeField({ card: 0, field: 'title' }, 'x')).toThrow(/IndexOutOfRange/)
   })
 
   it('removeCardField returns the removed value and deletes the key', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
-    const removed = doc.removeCardField(0, 'foo')
+    const removed = doc.removeField({ card: 0, field: 'foo' })
     expect(removed).toBe('bar')
     expect(hasField(doc.cards[0], 'foo')).toBe(false)
   })
 
   it('removeCardField returns undefined when field absent', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
-    expect(doc.removeCardField(0, 'nonexistent')).toBeUndefined()
+    expect(doc.removeField({ card: 0, field: 'nonexistent' })).toBeUndefined()
   })
 
   it('removeCardField throws IndexOutOfRange when card absent', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.removeCardField(0, 'foo')).toThrow(/IndexOutOfRange/)
+    expect(() => doc.removeField({ card: 0, field: 'foo' })).toThrow(/IndexOutOfRange/)
   })
 
   it('revise({card:0}, md) revises a card body and returns the delta', () => {
@@ -1080,7 +1080,7 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
 
     // Mutate
-    doc.setField('author', 'Bob')
+    doc.storeField('author', 'Bob')
     doc.revise({}, 'New body text.')
     doc.insertCard({ kind: 'note', body: 'Card content.' })
     doc.setQuillRef('updated_quill')
@@ -1104,50 +1104,50 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
 describe('Document editor surface — $ext mutators', () => {
   it('setExt adds an opaque map readable via card.ext', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.setExt({ editor: { title: 'Greeting' } })
+    doc.storeExt({}, { editor: { title: 'Greeting' } })
     expect(doc.main.ext.editor.title).toBe('Greeting')
   })
 
   it('setExt rejects non-object values', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.setExt('nope')).toThrow(/must be a plain object/)
-    expect(() => doc.setExt(42)).toThrow(/must be a plain object/)
+    expect(() => doc.storeExt({}, 'nope')).toThrow(/must be a plain object/)
+    expect(() => doc.storeExt({}, 42)).toThrow(/must be a plain object/)
   })
 
   it('$ext round-trips through toMarkdown', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.setExt({ agent: { pinned: true } })
+    doc.storeExt({}, { agent: { pinned: true } })
     const reparsed = Document.fromMarkdown(doc.toMarkdown())
     expect(reparsed.main.ext.agent.pinned).toBe(true)
   })
 
   it('setExtNamespace preserves sibling namespaces', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.setExtNamespace('editor', { title: 'A' })
-    doc.setExtNamespace('agent', { pinned: true })
-    doc.setExtNamespace('editor', { title: 'B' })
+    doc.storeExtNamespace({}, 'editor', { title: 'A' })
+    doc.storeExtNamespace({}, 'agent', { pinned: true })
+    doc.storeExtNamespace({}, 'editor', { title: 'B' })
     expect(doc.main.ext.editor.title).toBe('B')
     expect(doc.main.ext.agent.pinned).toBe(true)
   })
 
   it('removeExtNamespace clears one slot and drops $ext once empty', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.setExtNamespace('editor', { title: 'A' })
-    doc.setExtNamespace('tutorial', ['step-1', 'step-2'])
+    doc.storeExtNamespace({}, 'editor', { title: 'A' })
+    doc.storeExtNamespace({}, 'tutorial', ['step-1', 'step-2'])
     // Returns the removed value; siblings survive.
-    expect(doc.removeExtNamespace('tutorial')).toEqual(['step-1', 'step-2'])
+    expect(doc.removeExtNamespace({}, 'tutorial')).toEqual(['step-1', 'step-2'])
     expect(doc.main.ext.editor.title).toBe('A')
     expect(doc.main.ext.tutorial).toBeUndefined()
     // Removing the last namespace clears $ext entirely.
-    doc.removeExtNamespace('editor')
+    doc.removeExtNamespace({}, 'editor')
     expect(doc.main.ext == null).toBe(true)
     // Absent namespace is a no-op returning undefined.
-    expect(doc.removeExtNamespace('nope')).toBeUndefined()
+    expect(doc.removeExtNamespace({}, 'nope')).toBeUndefined()
   })
 
   it('removeExt returns the previous map and clears it', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.setExt({ agent: { n: 1 } })
+    doc.storeExt({}, { agent: { n: 1 } })
     expect(doc.removeExt().agent.n).toBe(1)
     expect(doc.main.ext == null).toBe(true)
     expect(doc.removeExt()).toBeUndefined()
@@ -1156,29 +1156,29 @@ describe('Document editor surface — $ext mutators', () => {
   it('card-level ext mutators target the card at index', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.insertCard({ kind: 'note', body: 'x' })
-    doc.setCardExt(0, { agent: { note: 'y' } })
+    doc.storeExt({ card: 0 }, { agent: { note: 'y' } })
     expect(doc.cards[0].ext.agent.note).toBe('y')
-    expect(doc.removeCardExt(0).agent.note).toBe('y')
+    expect(doc.removeExt({ card: 0 }).agent.note).toBe('y')
     expect(doc.cards[0].ext == null).toBe(true)
   })
 
   it('card-level namespace mutators preserve siblings and clear when empty', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.insertCard({ kind: 'note', body: 'x' })
-    doc.setCardExtNamespace(0, 'editor', { title: 'A' })
-    doc.setCardExtNamespace(0, 'tutorial', ['step-1'])
-    expect(doc.removeCardExtNamespace(0, 'tutorial')).toEqual(['step-1'])
+    doc.storeExtNamespace({ card: 0 }, 'editor', { title: 'A' })
+    doc.storeExtNamespace({ card: 0 }, 'tutorial', ['step-1'])
+    expect(doc.removeExtNamespace({ card: 0 }, 'tutorial')).toEqual(['step-1'])
     expect(doc.cards[0].ext.editor.title).toBe('A')
-    doc.removeCardExtNamespace(0, 'editor')
+    doc.removeExtNamespace({ card: 0 }, 'editor')
     expect(doc.cards[0].ext == null).toBe(true)
   })
 
   it('card-level ext mutators throw IndexOutOfRange', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.setCardExt(5, {})).toThrow(/IndexOutOfRange/)
-    expect(() => doc.removeCardExt(5)).toThrow(/IndexOutOfRange/)
-    expect(() => doc.setCardExtNamespace(5, 'a', {})).toThrow(/IndexOutOfRange/)
-    expect(() => doc.removeCardExtNamespace(5, 'a')).toThrow(/IndexOutOfRange/)
+    expect(() => doc.storeExt({ card: 5 }, {})).toThrow(/IndexOutOfRange/)
+    expect(() => doc.removeExt({ card: 5 })).toThrow(/IndexOutOfRange/)
+    expect(() => doc.storeExtNamespace({ card: 5 }, 'a', {})).toThrow(/IndexOutOfRange/)
+    expect(() => doc.removeExtNamespace({ card: 5 }, 'a')).toThrow(/IndexOutOfRange/)
   })
 })
 
@@ -1306,7 +1306,7 @@ describe('Document.clone', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const clone = doc.clone()
 
-    clone.setField('title', 'Changed')
+    clone.storeField('title', 'Changed')
 
     expect(field(doc.main, 'title')).toBe('Test Document')
     expect(field(clone.main, 'title')).toBe('Changed')

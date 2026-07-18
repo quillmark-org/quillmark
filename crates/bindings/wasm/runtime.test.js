@@ -220,7 +220,7 @@ card_kinds:
     expect(ed.document.get('qty')).toBe(3)
     expect(ed.document.getMarkdown('subject')).toBe('Q3 **results**\n')
     expect(ed.document.get('missing')).toBeUndefined()
-    expect(ed.document.getMarkdown('missing')).toBe('')
+    expect(ed.document.getMarkdown('missing')).toBeUndefined()
   })
 })
 

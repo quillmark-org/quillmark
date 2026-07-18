@@ -89,7 +89,7 @@ is resolved at render time, not here. Loads no backend binary.
 A blank document: a main card carrying only `$quill`, an empty body, and no
 composable cards — the programmatic blank canvas. Absent fields resolve at
 render time (schema `default`, else type-empty zero), so nothing the caller
-did not set reaches the output. Build it up with `setFields` / `insertCard`.
+did not set reaches the output. Build it up with `storeFields` / `insertCard`.
 For an example-filled starter use `quill.seedDocument()`. Throws on an
 invalid quill reference.
 
@@ -197,7 +197,7 @@ and compare instead of re-parsing on every keystroke.
 ### `doc.cardCount`
 O(1) getter for the number of composable cards (excluding the main card).
 Use this to validate indices before calling card mutators (`removeCard`,
-`setCardField`, etc.) without allocating the full `cards` array.
+`storeField({ card, field }, …)`, etc.) without allocating the full `cards` array.
 
 ### `quill.validate(doc)`
 
@@ -251,29 +251,39 @@ still takes exactly what `cards` / `removeCard` / `seedCard` return.
 Build a fresh card from a flat field map with
 `Document.makeCard(kind, fields?, body?)`.
 
-Batch mutation: `doc.setFields({...})` / `doc.setCardFields(index, {...})`
+**One address for the whole surface.** Reads and writes navigate by an `Addr` —
+`{ card?, field? }`, absent `card` = main, absent `field` = body — and a bare
+string is shorthand for `{ field }`. So `doc.storeField("qty", 3)` targets the
+main card's `qty`, `doc.storeField({ card: 2, field: "qty" }, 3)` a composable
+card's. Reads are total over the field axis (`get` / `getMarkdown` → `undefined`,
+`isFill` → `false` for an absent field; only an out-of-range card throws); field
+writes throw on a body address. Card-scoped verbs take a `CardAddr` (`{ card? }`)
+first: `doc.getExt({ card: 2 })`, and the batch below.
+
+Batch mutation: `doc.storeFields({}, {...})` / `doc.storeFields({ card: index }, {...})`
 apply a whole object atomically — on any invalid field nothing is applied and
 the thrown error carries one diagnostic per offending field (`path` = field
-name).
+name). The address is first (never shape-overloaded, since `card` is a legal
+field name).
 
-### Typed writes: `commit*` is the default, `set*` is the quill-free primitive
+### Typed writes: `commit*` is the default, `store*` is the quill-free primitive
 
 A `Document` holds only a `$quill` *reference*, not the resolved schema, so it
-mutates through two layers:
+mutates through two layers (**store** = verbatim, **set/commit** = typed):
 
 - **`commit*` — the schema-bound default whenever a quill is in hand.**
-  `doc.commitField(quill, name, value)` / `doc.commitFields(quill, {...})` (and
-  the `commitCard*` twins) resolve each field's schema `type`, coerce the value
-  to its canonical form (`"3"` → `3`, a markdown string → a richtext corpus),
-  and **fail now** on a mismatch instead of at render. A name the schema does
-  not declare throws `UnknownField` rather than falling to the opaque store — on
-  the typed path an undeclared name is a typo, not a fallback. The batch form is
-  all-or-nothing: an undeclared name aborts the whole write and its per-field
+  `doc.commitField(quill, addr, value)` / `doc.commitFields(quill, cardAddr, {...})`
+  (a card field is `{ card, field }`) resolve each field's schema `type`, coerce
+  the value to its canonical form (`"3"` → `3`, a markdown string → a richtext
+  corpus), and **fail now** on a mismatch instead of at render. A name the schema
+  does not declare throws `UnknownField` rather than falling to the opaque store —
+  on the typed path an undeclared name is a typo, not a fallback. The batch form
+  is all-or-nothing: an undeclared name aborts the whole write and its per-field
   diagnostics name every offending field, so a whole-form submit surfaces every
-  typo `setFields` would silently absorb.
+  typo `storeFields` would silently absorb.
 
-- **`set*` — the deliberate quill-free primitive.** `doc.setField(name, value)`
-  / `doc.setFields({...})` (and the `setCard*` twins) validate only the field
+- **`store*` — the deliberate quill-free primitive.** `doc.storeField(addr, value)`
+  / `doc.storeFields(cardAddr, {...})` (and `storeFill`) validate only the field
   name/depth/kind and store the value verbatim, no quill required. Reach for it
   on purpose when you *want* the opaque store: quill-agnostic storage/migration
   infra that has no bundle and must write regardless of a drifted schema;
@@ -446,7 +456,7 @@ compilation failures. The same shape applies to every throw site:
 
 - `Document.fromMarkdown` — parse errors (missing root `$quill` metadata, YAML
   errors, `parse::input_too_large` for inputs > 10 MB).
-- `Document` mutators (`setField`, `setCardField`, etc.) — `EditError`
+- `Document` mutators (`storeField`, `commitField`, etc.) — `EditError`
   variants (`InvalidFieldName`, `InvalidKindName`, `ReservedKind`,
   `IndexOutOfRange`, `ValueTooDeep`) appear in `diagnostics[0].message` with
   the `[EditError::<Variant>]` prefix.

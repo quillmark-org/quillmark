@@ -531,7 +531,7 @@ export class LiveSession {
 // typed-committed (coerced to canonical form, mismatch throws now), and a name
 // the schema does not declare throws `UnknownField` rather than falling to the
 // opaque store — on the typed path an undeclared name is a typo. Opaque storage
-// stays available through the raw `Document.setField` / `setCardField` verbs.
+// stays available through the raw addressed `Document.storeField` verb.
 
 /**
  * A {@link Document} bound to its {@link Quill} for typed writes — the JS twin
@@ -573,7 +573,7 @@ export class DocumentWriter {
 	 * @returns {void}
 	 */
 	setAll(fields) {
-		return this.#doc.commitFields(this.#quill, fields);
+		return this.#doc.commitFields(this.#quill, {}, fields);
 	}
 	/**
 	 * Set the main body from markdown (edit semantics: surviving anchors rebase),
@@ -664,25 +664,26 @@ export class CardWriter {
 		return this.#doc.card(this.#index).kind;
 	}
 	/**
-	 * Typed-commit one field on this card, per `Document.commitCardField`.
-	 * Throws `UnknownField` for an undeclared name and `IndexOutOfRange` if the
-	 * bound index is out of range.
+	 * Typed-commit one field on this card, per `Document.commitField` addressed
+	 * at `{ card, field }`. Throws `UnknownField` for an undeclared name and
+	 * `IndexOutOfRange` if the bound index is out of range.
 	 * @param {string} name
 	 * @param {unknown} value
 	 * @returns {void}
 	 */
 	set(name, value) {
-		return this.#doc.commitCardField(this.#quill, this.#index, name, value);
+		return this.#doc.commitField(this.#quill, { card: this.#index, field: name }, value);
 	}
 	/**
 	 * Typed-commit several fields on this card atomically, per
-	 * `Document.commitCardFields`. Throws a per-field diagnostic bundle on error
-	 * and `IndexOutOfRange` if the bound index is out of range.
+	 * `Document.commitFields` addressed at `{ card }`. Throws a per-field
+	 * diagnostic bundle on error and `IndexOutOfRange` if the bound index is out
+	 * of range.
 	 * @param {Record<string, unknown>} fields
 	 * @returns {void}
 	 */
 	setAll(fields) {
-		return this.#doc.commitCardFields(this.#quill, this.#index, fields);
+		return this.#doc.commitFields(this.#quill, { card: this.#index }, fields);
 	}
 	/**
 	 * Set this card's body from markdown (edit semantics), discarding the delta —

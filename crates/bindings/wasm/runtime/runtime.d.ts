@@ -482,7 +482,7 @@ declare module '../core/wasm.js' {
  * Typed commit is the default whenever a quill is in hand: it resolves each
  * field's schema type and strict-commits it, throwing `UnknownField` for a name
  * the schema does not declare — on the typed path an undeclared name is a typo,
- * not a fallback. The raw `Document.setField` / `setFields` verbs remain the
+ * not a fallback. The raw `Document.storeField` / `storeFields` verbs remain the
  * deliberate quill-free primitive (standalone data, storage/migration infra, or
  * holding not-yet-conforming in-progress input).
  */

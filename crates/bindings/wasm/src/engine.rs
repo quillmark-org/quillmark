@@ -231,14 +231,30 @@ export interface RichTextIsland {
 }
 
 /**
- * A richtext write address. An absent `field` targets the card body; an absent
- * `card` targets the main card. `{}` is the main-card body; `{ card: 2 }` the
- * body of the composable card at index 2; `{ field: "intro" }` the main card's
- * `intro` richtext field; `{ card: 2, field: "intro" }` a card field.
+ * A write address — one navigation concept for the whole `Document` surface. An
+ * absent `field` targets the card body; an absent `card` targets the main card.
+ * `{}` is the main-card body; `{ card: 2 }` the body of the composable card at
+ * index 2; `{ field: "intro" }` the main card's `intro` field; `{ card: 2,
+ * field: "intro" }` a card field.
+ *
+ * On the `Addr`-taking verbs a **bare string** is shorthand for `{ field: name }`
+ * — `doc.storeField("qty", 3)`, `doc.revise("intro", md)` — the one coercion
+ * rule. A bare number is *not* an addr (`{ card: 2 }` is the self-documenting
+ * spelling), so no third navigation idiom re-fragments the surface.
  */
 export interface Addr {
     card?: number;
     field?: string;
+}
+
+/**
+ * A card-only address — the axis the card-scoped verbs (`storeFields`,
+ * `storeExt`, `getExt`, `commitFields`, …) take. An absent `card` targets the
+ * main card. A present `field` throws: a card address takes only `card`, and a
+ * would-be nested write is a bug the error names rather than silently ignores.
+ */
+export interface CardAddr {
+    card?: number;
 }
 
 /**
@@ -828,67 +844,106 @@ impl Document {
         serialize_or_throw(&cards, "cards")
     }
 
-    /// Read a main-card field's stored value — the raw payload value (a corpus
-    /// object for a richtext field, a scalar/array/object otherwise), or
-    /// `undefined` when the field is absent. The quill-free read: reads need no
-    /// schema, so they live on `Document`, not the typed writer. For the markdown
-    /// projection of a richtext value use [`getMarkdown`](Self::get_markdown).
-    #[wasm_bindgen(js_name = get)]
-    pub fn get(&self, name: &str) -> Result<JsValue, JsValue> {
-        match self.inner.main().payload().get(name) {
-            Some(v) => serialize_or_throw(v.as_json(), "get"),
-            None => Ok(JsValue::UNDEFINED),
+    /// Read the value at `addr` — the raw stored payload value of a field (a
+    /// corpus object for a richtext field, a scalar/array/object otherwise), or
+    /// the **body corpus** when `addr.field` is absent. A bare string is `Addr`
+    /// shorthand for `{ field }`. Reads are total over the field axis: an absent
+    /// field is `undefined`; only an out-of-range `addr.card` throws
+    /// `[EditError::IndexOutOfRange]`. Reads need no schema, so they live on
+    /// `Document`, not the typed writer; for the markdown projection of a
+    /// richtext value use [`getMarkdown`](Self::get_markdown).
+    #[wasm_bindgen(js_name = get, unchecked_return_type = "unknown")]
+    pub fn get(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let addr = Addr::from_js_or_string(&addr)?;
+        let card = self.addr_card_ref(&addr)?;
+        match &addr.field {
+            None => serialize_or_throw(
+                &quillmark_richtext::serial::to_canonical_value(card.body()),
+                "get",
+            ),
+            Some(field) => match card.payload().get(field) {
+                Some(v) => serialize_or_throw(v.as_json(), "get"),
+                None => Ok(JsValue::UNDEFINED),
+            },
         }
     }
 
-    /// The markdown projection of a main-card field (`name` given) or the main
-    /// body (`name` omitted) — the on-demand, lossy export (corpus-only marks do
-    /// not survive markdown), returning `""` for an absent field. Re-coins,
-    /// lazily and by name, the projection the eager `fieldMarkdown` /
-    /// `bodyMarkdown` getters dropped in #925; call it only when markdown is what
-    /// you need out.
-    #[wasm_bindgen(js_name = getMarkdown)]
+    /// The markdown projection of the value at `addr` — a field's (given
+    /// `addr.field`) or the body's (absent) — the on-demand, lossy export
+    /// (corpus-only marks do not survive markdown). A bare string is `Addr`
+    /// shorthand for `{ field }`. Returns `undefined` for an absent field
+    /// (absence vs empty is real signal for must-fill / seeding UIs); a body is
+    /// never absent. Only an out-of-range `addr.card` throws.
+    #[wasm_bindgen(js_name = getMarkdown, unchecked_return_type = "string | undefined")]
     pub fn get_markdown(
         &self,
-        #[wasm_bindgen(unchecked_optional_param_type = "string")] name: Option<String>,
-    ) -> String {
-        match name {
-            Some(n) => self.inner.main().field_markdown(&n).unwrap_or_default(),
-            None => self.inner.main().body_markdown(),
-        }
+        #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let addr = Addr::from_js_or_string(&addr)?;
+        let card = self.addr_card_ref(&addr)?;
+        Ok(match &addr.field {
+            None => JsValue::from_str(&card.body_markdown()),
+            Some(field) => match card.field_markdown(field) {
+                Some(md) => JsValue::from_str(&md),
+                None => JsValue::UNDEFINED,
+            },
+        })
     }
 
-    /// Read a composable card's field value — the card-indexed twin of
-    /// [`get`](Self::get): the raw payload value (a corpus object for a richtext
-    /// field, a scalar/array/object otherwise), or `undefined` when the field is
-    /// absent. An out-of-range `index` throws `[EditError::IndexOutOfRange]`, as
-    /// the card write verbs do — a bad index is a boundary error, not an absent
-    /// field.
-    #[wasm_bindgen(js_name = getCardField)]
-    pub fn get_card_field(&self, index: usize, name: &str) -> Result<JsValue, JsValue> {
-        match self.card_or_throw(index)?.payload().get(name) {
-            Some(v) => serialize_or_throw(v.as_json(), "getCardField"),
+    /// Whether the field at `addr` is marked `!must_fill`. A bare string is `Addr`
+    /// shorthand for `{ field }`. `false` for an absent field (truthful — it isn't
+    /// marked) and for a body address (a body is never a fill). Only an
+    /// out-of-range `addr.card` throws.
+    #[wasm_bindgen(js_name = isFill)]
+    pub fn is_fill(
+        &self,
+        #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
+    ) -> Result<bool, JsValue> {
+        let addr = Addr::from_js_or_string(&addr)?;
+        let card = self.addr_card_ref(&addr)?;
+        Ok(match &addr.field {
+            None => false,
+            Some(field) => card.payload().is_fill(field),
+        })
+    }
+
+    /// The whole `$ext` map at `addr` (a card address, absent `card` = main), or
+    /// `undefined` when the card carries none. The fine-grained `$ext` read the
+    /// surface previously lacked: reading your own state no longer means
+    /// serializing the whole card. Throws on a present `field` (a card address
+    /// takes only `card`) or an out-of-range card.
+    #[wasm_bindgen(js_name = getExt, unchecked_return_type = "Record<string, unknown> | undefined")]
+    pub fn get_ext(
+        &self,
+        #[wasm_bindgen(unchecked_optional_param_type = "CardAddr")] addr: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let addr = Addr::from_js(&addr)?;
+        addr.require_card_only("getExt")?;
+        match self.addr_card_ref(&addr)?.ext() {
+            Some(map) => serialize_or_throw(map, "getExt"),
             None => Ok(JsValue::UNDEFINED),
         }
     }
 
-    /// The markdown projection of a composable card's field (`name` given) or its
-    /// body (`name` omitted) — the card-indexed twin of
-    /// [`getMarkdown`](Self::get_markdown), `""` for an absent field. An
-    /// out-of-range `index` throws `[EditError::IndexOutOfRange]`; that
-    /// fallibility is the one difference from the infallible main `getMarkdown`,
-    /// forced by the index.
-    #[wasm_bindgen(js_name = getCardMarkdown)]
-    pub fn get_card_markdown(
+    /// The value stored under `$ext[ns]` at `addr` (a card address, absent `card`
+    /// = main), or `undefined`. The namespace-scoped `$ext` read — your own slot
+    /// without a whole-card serialize, and non-destructive (unlike
+    /// `removeExtNamespace`). Throws on a present `field` or an out-of-range card.
+    #[wasm_bindgen(js_name = getExtNamespace, unchecked_return_type = "unknown")]
+    pub fn get_ext_namespace(
         &self,
-        index: usize,
-        #[wasm_bindgen(unchecked_optional_param_type = "string")] name: Option<String>,
-    ) -> Result<String, JsValue> {
-        let card = self.card_or_throw(index)?;
-        Ok(match name {
-            Some(n) => card.field_markdown(&n).unwrap_or_default(),
-            None => card.body_markdown(),
-        })
+        #[wasm_bindgen(unchecked_param_type = "CardAddr")] addr: JsValue,
+        ns: &str,
+    ) -> Result<JsValue, JsValue> {
+        let addr = Addr::from_js(&addr)?;
+        addr.require_card_only("getExtNamespace")?;
+        match self.addr_card_ref(&addr)?.ext().and_then(|m| m.get(ns)) {
+            Some(v) => serialize_or_throw(v, "getExtNamespace"),
+            None => Ok(JsValue::UNDEFINED),
+        }
     }
 
     /// Number of composable cards (excludes the main card). O(1).
@@ -952,60 +1007,85 @@ impl Document {
 
     // ── Mutators ──────────────────────────────────────────────────────────────
 
-    /// Update a payload field on the main card. Clears any existing `!must_fill` marker.
-    ///
-    /// Throws if `name` does not match `[A-Za-z_][A-Za-z0-9_]*`.
-    #[wasm_bindgen(js_name = setField)]
-    pub fn set_field(&mut self, name: &str, value: JsValue) -> Result<(), JsValue> {
-        let json: serde_json::Value = serde_wasm_bindgen::from_value(value).map_err(|e| {
-            WasmError::from(format!("setField: invalid value: {}", e)).to_js_value()
-        })?;
-        let qv = quillmark_core::QuillValue::from_json(json);
-        self.inner
-            .main_mut()
-            .set_field(name, qv)
-            .map_err(|e| edit_error_to_js(&e))
-    }
-
-    /// Update a payload field on the main card and mark it as `!must_fill`.
-    /// Throws on invalid name (see [`setField`](Document::set_field)).
-    #[wasm_bindgen(js_name = setFill)]
-    pub fn set_fill(&mut self, name: &str, value: JsValue) -> Result<(), JsValue> {
-        let json: serde_json::Value = serde_wasm_bindgen::from_value(value)
-            .map_err(|e| WasmError::from(format!("setFill: invalid value: {}", e)).to_js_value())?;
-        let qv = quillmark_core::QuillValue::from_json(json);
-        self.inner
-            .main_mut()
-            .set_fill(name, qv)
-            .map_err(|e| edit_error_to_js(&e))
-    }
-
-    /// Set several main-card payload fields atomically from a plain object,
-    /// clearing any `!must_fill` marker on each key. Nothing is applied on
-    /// error; the thrown error's `diagnostics` array carries one entry per
-    /// offending field (`path` = field name), so externally-sourced names
-    /// (database columns, form keys) surface every violation in one pass.
-    /// Mirrors Python `set_fields`.
-    #[wasm_bindgen(js_name = setFields)]
-    pub fn set_fields(
+    /// Store a field verbatim at `addr` — the opaque store (**store** = verbatim,
+    /// coercion deferred to render; the typed write is
+    /// [`commitField`](Document::commit_field)). A bare string is `Addr`
+    /// shorthand for `{ field }`, so `doc.storeField("qty", 3)` reads as written;
+    /// `{ card: 2, field: "qty" }` targets a composable card. Clears any
+    /// `!must_fill` marker. A body address (no `field`) throws — a body is never
+    /// opaque; write it with `revise` / `install` / `writer.setBody`. Throws on
+    /// an out-of-range card or a malformed name.
+    #[wasm_bindgen(js_name = storeField)]
+    pub fn store_field(
         &mut self,
+        #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
+        value: JsValue,
+    ) -> Result<(), JsValue> {
+        let addr = Addr::from_js_or_string(&addr)?;
+        let field = addr.require_field("storeField")?.to_string();
+        let json = js_value_to_json(value, "storeField")?;
+        let qv = quillmark_core::QuillValue::from_json(json);
+        self.addr_card_mut(&addr)?
+            .store_field(&field, qv)
+            .map_err(|e| edit_error_to_js(&e))
+    }
+
+    /// Store a field verbatim at `addr` and mark it `!must_fill` — the opaque
+    /// store's fill variant, now card-capable (a bare string or `{ field }` for
+    /// main, `{ card, field }` for a composable card, closing the card-scoped
+    /// fill gap). A body address throws. Same validation as
+    /// [`storeField`](Document::store_field).
+    #[wasm_bindgen(js_name = storeFill)]
+    pub fn store_fill(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
+        value: JsValue,
+    ) -> Result<(), JsValue> {
+        let addr = Addr::from_js_or_string(&addr)?;
+        let field = addr.require_field("storeFill")?.to_string();
+        let json = js_value_to_json(value, "storeFill")?;
+        let qv = quillmark_core::QuillValue::from_json(json);
+        self.addr_card_mut(&addr)?
+            .store_fill(&field, qv)
+            .map_err(|e| edit_error_to_js(&e))
+    }
+
+    /// Store several fields verbatim and atomically on the card `addr` targets —
+    /// the opaque store's batch. `addr` is a **card address** (`{ card }`, absent
+    /// = main); a present `field` throws. The batch verb takes the address first
+    /// and is never shape-overloaded, because `card` is a legal field name:
+    /// `storeFields({}, fields)` is the main card, `storeFields({ card: 2 },
+    /// fields)` a composable one — never ambiguous with "set field `card`".
+    /// Nothing is applied on error; the thrown error's `diagnostics` carry one
+    /// entry per offending field. Throws on an out-of-range card.
+    #[wasm_bindgen(js_name = storeFields)]
+    pub fn store_fields(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "CardAddr")] addr: JsValue,
         #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: JsValue,
     ) -> Result<(), JsValue> {
-        let batch = js_value_to_field_batch(&fields, "setFields")?;
-        self.inner
-            .main_mut()
-            .set_fields(batch)
+        let addr = Addr::from_js(&addr)?;
+        addr.require_card_only("storeFields")?;
+        let batch = js_value_to_field_batch(&fields, "storeFields")?;
+        self.addr_card_mut(&addr)?
+            .store_fields(batch)
             .map_err(edit_errors_to_js)
     }
 
-    /// Remove a payload field on the main card, returning the removed value or
-    /// `undefined`. Throws if `name` does not match `[A-Za-z_][A-Za-z0-9_]*`.
+    /// Remove a field at `addr`, returning the removed value or `undefined`. A
+    /// bare string is `Addr` shorthand for `{ field }`. Removal has no tier — the
+    /// one verb serves every write lane. A body address throws; throws on an
+    /// out-of-range card or a malformed name.
     #[wasm_bindgen(js_name = removeField)]
-    pub fn remove_field(&mut self, name: &str) -> Result<JsValue, JsValue> {
+    pub fn remove_field(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let addr = Addr::from_js_or_string(&addr)?;
+        let field = addr.require_field("removeField")?.to_string();
         let removed = self
-            .inner
-            .main_mut()
-            .remove_field(name)
+            .addr_card_mut(&addr)?
+            .remove_field(&field)
             .map_err(|e| edit_error_to_js(&e))?;
         Ok(match removed {
             Some(v) => serialize_or_throw(v.as_json(), "removeField")?,
@@ -1013,124 +1093,97 @@ impl Document {
         })
     }
 
-    /// Replace the opaque `$ext` map on the main card. `value` must be a plain
-    /// object; throws otherwise. `$ext` carries out-of-band consumer state and
-    /// never reaches the rendered output. Pass `{}` to record an explicit
-    /// empty `$ext`.
-    #[wasm_bindgen(js_name = setExt)]
-    pub fn set_ext(&mut self, value: JsValue) -> Result<(), JsValue> {
-        let map = js_value_to_object(&value, "setExt")?;
-        self.inner
-            .main_mut()
-            .set_ext(map)
-            .map_err(|e| edit_error_to_js(&e))?;
-        Ok(())
+    /// Replace the opaque `$ext` map on the card `addr` targets (a card address,
+    /// absent `card` = main). `value` must be a plain object. `$ext` carries
+    /// out-of-band consumer state and never reaches the rendered output; pass
+    /// `{}` for an explicit empty `$ext`. Quill-free and verbatim — an opaque
+    /// `store` verb. Throws on a present `field` or an out-of-range card.
+    #[wasm_bindgen(js_name = storeExt)]
+    pub fn store_ext(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "CardAddr")] addr: JsValue,
+        value: JsValue,
+    ) -> Result<(), JsValue> {
+        let addr = Addr::from_js(&addr)?;
+        addr.require_card_only("storeExt")?;
+        let map = js_value_to_object(&value, "storeExt")?;
+        self.addr_card_mut(&addr)?
+            .store_ext(map)
+            .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Remove the `$ext` map from the main card *entirely*, returning the
-    /// previous map or `undefined`. This is a blunt escape hatch that discards
-    /// every namespace at once — prefer `removeExtNamespace` to clear only your
-    /// own slot while leaving sibling consumers' state intact.
+    /// Remove the `$ext` map on the card `addr` targets *entirely*, returning the
+    /// previous map or `undefined` — a blunt escape hatch that discards every
+    /// namespace at once (prefer `removeExtNamespace`). `addr` is a card address
+    /// (absent = main). Throws on a present `field` or an out-of-range card.
     #[wasm_bindgen(js_name = removeExt, unchecked_return_type = "Record<string, unknown> | undefined")]
-    pub fn remove_ext(&mut self) -> Result<JsValue, JsValue> {
-        ext_map_to_js(self.inner.main_mut().remove_ext())
+    pub fn remove_ext(
+        &mut self,
+        #[wasm_bindgen(unchecked_optional_param_type = "CardAddr")] addr: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let addr = Addr::from_js(&addr)?;
+        addr.require_card_only("removeExt")?;
+        ext_map_to_js(self.addr_card_mut(&addr)?.remove_ext())
     }
 
-    /// Merge `value` into the main card's `$ext` map under `namespace`, creating
-    /// the map when absent and replacing any existing value at that key. Sibling
-    /// namespaces are preserved, so independent consumers (`$ext.editor`,
-    /// `$ext.agent`, …) don't clobber each other.
-    #[wasm_bindgen(js_name = setExtNamespace)]
-    pub fn set_ext_namespace(&mut self, namespace: &str, value: JsValue) -> Result<(), JsValue> {
-        let json = js_value_to_json(value, "setExtNamespace")?;
-        self.inner
-            .main_mut()
-            .set_ext_namespace(namespace, json)
-            .map_err(|e| edit_error_to_js(&e))?;
-        Ok(())
+    /// Merge `value` into `$ext[ns]` on the card `addr` targets, preserving
+    /// sibling namespaces — the recommended `$ext` write. `addr` is a card
+    /// address (absent = main). Quill-free and verbatim — an opaque `store` verb.
+    /// Throws on a present `field` or an out-of-range card.
+    #[wasm_bindgen(js_name = storeExtNamespace)]
+    pub fn store_ext_namespace(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "CardAddr")] addr: JsValue,
+        ns: &str,
+        value: JsValue,
+    ) -> Result<(), JsValue> {
+        let addr = Addr::from_js(&addr)?;
+        addr.require_card_only("storeExtNamespace")?;
+        let json = js_value_to_json(value, "storeExtNamespace")?;
+        self.addr_card_mut(&addr)?
+            .store_ext_namespace(ns, json)
+            .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Remove `namespace` from the main card's `$ext` map, returning the value
-    /// stored there or `undefined`. This is the recommended way to clear `$ext`
-    /// state: sibling namespaces survive, and when the last namespace is removed
-    /// the `$ext` entry is dropped entirely (not left as `$ext: {}`).
+    /// Remove `$ext[ns]` on the card `addr` targets, returning its value or
+    /// `undefined`; drops `$ext` once empty. `addr` is a card address (absent =
+    /// main). Preserves sibling namespaces. Throws on a present `field` or an
+    /// out-of-range card.
     #[wasm_bindgen(js_name = removeExtNamespace)]
-    pub fn remove_ext_namespace(&mut self, namespace: &str) -> Result<JsValue, JsValue> {
-        json_value_to_js(self.inner.main_mut().remove_ext_namespace(namespace))
+    pub fn remove_ext_namespace(
+        &mut self,
+        #[wasm_bindgen(unchecked_param_type = "CardAddr")] addr: JsValue,
+        ns: &str,
+    ) -> Result<JsValue, JsValue> {
+        let addr = Addr::from_js(&addr)?;
+        addr.require_card_only("removeExtNamespace")?;
+        json_value_to_js(self.addr_card_mut(&addr)?.remove_ext_namespace(ns))
     }
 
-    /// Merge a card-kind's seed `overlay` into the main card's `$seed` map
-    /// under `cardKind`, preserving sibling kinds. Sets the starting values
-    /// new cards of that kind spawn with. Throws if `overlay` cannot be
-    /// serialized or nests too deep.
-    #[wasm_bindgen(js_name = setSeedNamespace)]
-    pub fn set_seed_namespace(&mut self, card_kind: &str, overlay: JsValue) -> Result<(), JsValue> {
-        let json = js_value_to_json(overlay, "setSeedNamespace")?;
+    /// Merge a card-kind's seed `overlay` into the **main** card's `$seed` map
+    /// under `cardKind`, preserving sibling kinds — `$seed` lives on the main
+    /// card by model, so this takes no address. Sets the starting values new
+    /// cards of that kind spawn with. Quill-free and verbatim — an opaque `store`
+    /// verb. Throws if `overlay` cannot be serialized or nests too deep.
+    #[wasm_bindgen(js_name = storeSeedNamespace)]
+    pub fn store_seed_namespace(
+        &mut self,
+        card_kind: &str,
+        overlay: JsValue,
+    ) -> Result<(), JsValue> {
+        let json = js_value_to_json(overlay, "storeSeedNamespace")?;
         self.inner
             .main_mut()
-            .set_seed_namespace(card_kind, json)
-            .map_err(|e| edit_error_to_js(&e))?;
-        Ok(())
+            .store_seed_namespace(card_kind, json)
+            .map_err(|e| edit_error_to_js(&e))
     }
 
     /// Remove `cardKind` from the main card's `$seed` map, returning its
-    /// overlay or `undefined`; drops `$seed` entirely once empty. Sibling
-    /// kinds survive.
+    /// overlay or `undefined`; drops `$seed` entirely once empty. Sibling kinds
+    /// survive. `$seed` is main-only, so this takes no address.
     #[wasm_bindgen(js_name = removeSeedNamespace)]
     pub fn remove_seed_namespace(&mut self, card_kind: &str) -> Result<JsValue, JsValue> {
         json_value_to_js(self.inner.main_mut().remove_seed_namespace(card_kind))
-    }
-
-    /// Replace the `$ext` map on the composable card at `index`. Throws if out
-    /// of range or `value` is not a plain object. Named to mirror `setExt` on
-    /// the main card; `setCardExtNamespace` is the sibling-safe alternative.
-    #[wasm_bindgen(js_name = setCardExt)]
-    pub fn set_card_ext(&mut self, index: usize, value: JsValue) -> Result<(), JsValue> {
-        let map = js_value_to_object(&value, "setCardExt")?;
-        self.card_mut_or_throw(index)?
-            .set_ext(map)
-            .map_err(|e| edit_error_to_js(&e))?;
-        Ok(())
-    }
-
-    /// Remove the `$ext` map from the composable card at `index` *entirely*,
-    /// returning the previous map or `undefined`. Throws if out of range.
-    /// Prefer `removeCardExtNamespace` to clear only one consumer's slot.
-    #[wasm_bindgen(js_name = removeCardExt, unchecked_return_type = "Record<string, unknown> | undefined")]
-    pub fn remove_card_ext(&mut self, index: usize) -> Result<JsValue, JsValue> {
-        ext_map_to_js(self.card_mut_or_throw(index)?.remove_ext())
-    }
-
-    /// Merge `value` into the composable card's `$ext` map under `namespace`,
-    /// preserving sibling namespaces. The card-indexed twin of `setExtNamespace`.
-    /// Throws if out of range or `value` cannot be serialized.
-    #[wasm_bindgen(js_name = setCardExtNamespace)]
-    pub fn set_card_ext_namespace(
-        &mut self,
-        index: usize,
-        namespace: &str,
-        value: JsValue,
-    ) -> Result<(), JsValue> {
-        let json = js_value_to_json(value, "setCardExtNamespace")?;
-        self.card_mut_or_throw(index)?
-            .set_ext_namespace(namespace, json)
-            .map_err(|e| edit_error_to_js(&e))?;
-        Ok(())
-    }
-
-    /// Remove `namespace` from the composable card's `$ext` map, returning the
-    /// value stored there or `undefined`; clears `$ext` entirely once empty.
-    /// The card-indexed twin of `removeExtNamespace`. Throws if out of range.
-    #[wasm_bindgen(js_name = removeCardExtNamespace)]
-    pub fn remove_card_ext_namespace(
-        &mut self,
-        index: usize,
-        namespace: &str,
-    ) -> Result<JsValue, JsValue> {
-        json_value_to_js(
-            self.card_mut_or_throw(index)?
-                .remove_ext_namespace(namespace),
-        )
     }
 
     /// Replace the QUILL reference string. Throws if `ref_str` is invalid.
@@ -1166,10 +1219,10 @@ impl Document {
     #[wasm_bindgen(js_name = install)]
     pub fn install(
         &mut self,
-        #[wasm_bindgen(unchecked_param_type = "Addr")] addr: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
         #[wasm_bindgen(unchecked_param_type = "RichText")] rt: JsValue,
     ) -> Result<(), JsValue> {
-        let addr = Addr::from_js(&addr)?;
+        let addr = Addr::from_js_or_string(&addr)?;
         let corpus = js_to_corpus(rt, "install")?;
         let card = self.addr_card_mut(&addr)?;
         match &addr.field {
@@ -1193,10 +1246,10 @@ impl Document {
     #[wasm_bindgen(js_name = revise, unchecked_return_type = "Delta")]
     pub fn revise(
         &mut self,
-        #[wasm_bindgen(unchecked_param_type = "Addr")] addr: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
         markdown: &str,
     ) -> Result<JsValue, JsValue> {
-        let addr = Addr::from_js(&addr)?;
+        let addr = Addr::from_js_or_string(&addr)?;
         let card = self.addr_card_mut(&addr)?;
         let delta = match &addr.field {
             None => card.revise_body(markdown),
@@ -1204,6 +1257,62 @@ impl Document {
         }
         .map_err(|e| edit_error_to_js(&e))?;
         serialize_or_throw(&delta, "revise")
+    }
+
+    /// **Revise** the richtext **field** at `addr` from markdown *with schema
+    /// enforcement* — typed *and* anchor-preserving, the write [`revise`](Self::revise)
+    /// (schema-blind) and [`commitField`](Self::commit_field) (cold, anchors lost)
+    /// leave in a gap. Diffs the markdown against the field's current corpus so
+    /// surviving anchors rebase (as `revise`), then enforces the field's schema —
+    /// resolved from `quill` — on the *diffed result*: a `richtext(inline)` field
+    /// rejects a multi-block result with `[EditError::FieldRichtextNotInline]`
+    /// (the error surface `commitField` raises, unchanged) while anchors survive.
+    /// Returns the text [`Delta`].
+    ///
+    /// The receipt stays in the corpus lane — anchor preservation is a tier-2
+    /// concern, so the typed-anchor-preserving write lives here, not on the
+    /// receipt-free `writer.set`. `addr` must name a field (a bare string is
+    /// `{ field }`); a **body** address throws (a body carries no field schema —
+    /// use [`revise`](Self::revise)). A name the schema does not declare throws
+    /// `[EditError::UnknownField]`. Throws on an out-of-range card.
+    #[wasm_bindgen(js_name = reviseChecked, unchecked_return_type = "Delta")]
+    pub fn revise_checked(
+        &mut self,
+        quill: &Quill,
+        #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
+        markdown: &str,
+    ) -> Result<JsValue, JsValue> {
+        let addr = Addr::from_js_or_string(&addr)?;
+        let field = addr.require_field("reviseChecked")?.to_string();
+        // Resolve the field's schema (main card, or the addressed card's $kind)
+        // and clone it, dropping the quill borrow before the mutable card borrow.
+        let schema = {
+            let config = quill.inner.config();
+            match addr.card {
+                None => config.main.fields.get(&field).cloned(),
+                Some(index) => {
+                    let cards = self.inner.cards();
+                    let card = cards.get(index).ok_or_else(|| {
+                        edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange {
+                            index,
+                            len: cards.len(),
+                        })
+                    })?;
+                    card.kind()
+                        .and_then(|k| config.card_kind(k))
+                        .and_then(|s| s.fields.get(&field))
+                        .cloned()
+                }
+            }
+        };
+        let schema = schema.ok_or_else(|| {
+            edit_error_to_js(&quillmark_core::EditError::UnknownField(field.clone()))
+        })?;
+        let delta = self
+            .addr_card_mut(&addr)?
+            .revise_field_checked(&field, markdown, &schema)
+            .map_err(|e| edit_error_to_js(&e))?;
+        serialize_or_throw(&delta, "reviseChecked")
     }
 
     /// **Apply** a committed corpus edit `bundle` (`{ delta?, lineOps?, markOps? }`)
@@ -1217,10 +1326,10 @@ impl Document {
     #[wasm_bindgen(js_name = applyChange)]
     pub fn apply_change(
         &mut self,
-        #[wasm_bindgen(unchecked_param_type = "Addr")] addr: JsValue,
+        #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
         #[wasm_bindgen(unchecked_param_type = "ChangeBundle")] bundle: JsValue,
     ) -> Result<(), JsValue> {
-        let addr = Addr::from_js(&addr)?;
+        let addr = Addr::from_js_or_string(&addr)?;
         let (delta, line_ops, mark_ops) = parse_change_bundle(&bundle)?;
         let card = self.addr_card_mut(&addr)?;
         match &addr.field {
@@ -1232,23 +1341,27 @@ impl Document {
         .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Typed field write on the main card, resolving the field's schema `type`
-    /// from `quill` — the one write verb for **every** field type (richtext,
-    /// scalar, array, object). The schema carries the `inline` constraint, so no
-    /// type token or flag is passed. A richtext-typed field stores the canonical
-    /// corpus, so identity marks (anchors, island ids) and corpus-only marks
-    /// (e.g. `underline`) live on it and survive compiles and the storage DTO.
-    /// Values use the encoding the seam already speaks: a corpus object
-    /// or markdown string for richtext, a scalar/array/object otherwise.
+    /// Typed field write at `addr`, resolving the field's schema `type` from
+    /// `quill` — the stable ABI under the runtime `writer.set` / `writer.card(i).set`.
+    /// The one write verb for **every** field type (richtext, scalar, array,
+    /// object); the schema carries the `inline` constraint, so no type token or
+    /// flag is passed. A richtext-typed field stores the canonical corpus, so
+    /// identity marks (anchors, island ids) and corpus-only marks (e.g.
+    /// `underline`) live on it and survive compiles and the storage DTO. Values
+    /// use the encoding the seam already speaks: a corpus object or markdown
+    /// string for richtext, a scalar/array/object otherwise.
     ///
-    /// A field declared in the schema is strict-committed — a mismatch throws
-    /// now, not at render. A name the schema does not declare throws
-    /// `[EditError::UnknownField]` rather than falling to the opaque store: on
-    /// the typed path it is a typo. Use [`setField`](Document::set_field) when
-    /// opaque storage is the intent. Also throws `[EditError::FieldConform]` /
+    /// A bare string is `Addr` shorthand for `{ field }`; `{ card, field }`
+    /// targets a composable card (its `$kind` resolves the schema). A body
+    /// address throws — a body has no field schema; write it with `writer.setBody`
+    /// / `revise`. A field declared in the schema is strict-committed (a mismatch
+    /// throws now, not at render); a name the schema does not declare throws
+    /// `[EditError::UnknownField]` rather than falling to the opaque store — on
+    /// the typed path it is a typo. Use [`storeField`](Document::store_field) for
+    /// opaque storage. Also throws `[EditError::FieldConform]` /
     /// `[EditError::FieldRichtextDecode]` / `[EditError::FieldRichtextNotInline]`
-    /// on a typed mismatch and `[EditError::InvalidFieldName]` on a malformed
-    /// name.
+    /// on a typed mismatch, `[EditError::InvalidFieldName]` on a malformed name,
+    /// and `[EditError::IndexOutOfRange]` on an out-of-range card.
     ///
     /// The `quill` handle is passed per call because a `Document` carries only a
     /// `$quill` reference, not the resolved schema.
@@ -1256,37 +1369,53 @@ impl Document {
     pub fn commit_field(
         &mut self,
         quill: &Quill,
-        name: &str,
+        #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
         value: JsValue,
     ) -> Result<(), JsValue> {
+        let addr = Addr::from_js_or_string(&addr)?;
+        let field = addr.require_field("commitField")?.to_string();
         let json = js_value_to_json(value, "commitField")?;
         let qv = quillmark_core::QuillValue::from_json(json);
-        quill
-            .inner
-            .writer(&mut self.inner)
-            .set(name, qv)
-            .map_err(|e| edit_error_to_js(&e))
+        let mut writer = quill.inner.writer(&mut self.inner);
+        match addr.card {
+            None => writer.set(&field, qv).map_err(|e| edit_error_to_js(&e)),
+            Some(index) => writer
+                .card(index)
+                .map_err(|e| edit_error_to_js(&e))?
+                .set(&field, qv)
+                .map_err(|e| edit_error_to_js(&e)),
+        }
     }
 
     /// Batched twin of [`commitField`](Document::commit_field): typed-commit
-    /// several main-card fields atomically, resolving each field's schema `type`
-    /// from `quill`. All-or-nothing with the same per-field-diagnostic error
-    /// contract as [`setFields`](Document::set_fields) — nothing is applied on
-    /// error and the thrown error's `diagnostics` carry one entry per offending
-    /// field, including an `[EditError::UnknownField]` for any name the schema
-    /// does not declare, so a whole-form submit sees every typo in one pass.
+    /// several fields on the card `addr` targets atomically, resolving each
+    /// field's schema `type` from `quill`. `addr` is a **card address**
+    /// (`{ card }`, absent = main; a present `field` throws). All-or-nothing with
+    /// the same per-field-diagnostic error contract as
+    /// [`storeFields`](Document::store_fields) — nothing is applied on error and
+    /// the thrown error's `diagnostics` carry one entry per offending field,
+    /// including an `[EditError::UnknownField]` for any name the schema does not
+    /// declare, so a whole-form submit sees every typo in one pass. Throws on an
+    /// out-of-range card.
     #[wasm_bindgen(js_name = commitFields)]
     pub fn commit_fields(
         &mut self,
         quill: &Quill,
+        #[wasm_bindgen(unchecked_param_type = "CardAddr")] addr: JsValue,
         #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: JsValue,
     ) -> Result<(), JsValue> {
+        let addr = Addr::from_js(&addr)?;
+        addr.require_card_only("commitFields")?;
         let batch = js_value_to_field_batch(&fields, "commitFields")?;
-        quill
-            .inner
-            .writer(&mut self.inner)
-            .set_all(batch)
-            .map_err(edit_errors_to_js)
+        let mut writer = quill.inner.writer(&mut self.inner);
+        match addr.card {
+            None => writer.set_all(batch).map_err(edit_errors_to_js),
+            Some(index) => writer
+                .card(index)
+                .map_err(|e| edit_error_to_js(&e))?
+                .set_all(batch)
+                .map_err(edit_errors_to_js),
+        }
     }
 
     /// Build a composable card of `kind`, typed-commit `fields` onto it, set its
@@ -1423,99 +1552,6 @@ impl Document {
             .map_err(|e| edit_error_to_js(&e))
     }
 
-    /// Set a field on the card at `index` — the card-indexed twin of
-    /// [`setField`](Document::set_field). Stores the value opaquely.
-    /// Throws if `index` is out of range, `name` is reserved or invalid.
-    #[wasm_bindgen(js_name = setCardField)]
-    pub fn set_card_field(
-        &mut self,
-        index: usize,
-        name: &str,
-        value: JsValue,
-    ) -> Result<(), JsValue> {
-        let json = js_value_to_json(value, "setCardField")?;
-        let qv = quillmark_core::QuillValue::from_json(json);
-        self.card_mut_or_throw(index)?
-            .set_field(name, qv)
-            .map_err(|e| edit_error_to_js(&e))
-    }
-
-    /// Typed field write on the composable card at `index` — the card-indexed
-    /// twin of [`commitField`](Document::commit_field). Resolves the field's
-    /// type from the card's `$kind` schema in `quill` and strict-commits it.
-    ///
-    /// Throws `[EditError::IndexOutOfRange]` when `index` is out of range, and
-    /// the same typed-mismatch / name errors as `commitField` — including
-    /// `[EditError::UnknownField]` for a field the card-kind schema does not
-    /// declare (an unknown `$kind` has no schema, so every field is undeclared).
-    #[wasm_bindgen(js_name = commitCardField)]
-    pub fn commit_card_field(
-        &mut self,
-        quill: &Quill,
-        index: usize,
-        name: &str,
-        value: JsValue,
-    ) -> Result<(), JsValue> {
-        let json = js_value_to_json(value, "commitCardField")?;
-        let qv = quillmark_core::QuillValue::from_json(json);
-        let mut writer = quill.inner.writer(&mut self.inner);
-        let mut card = writer.card(index).map_err(|e| edit_error_to_js(&e))?;
-        card.set(name, qv).map_err(|e| edit_error_to_js(&e))
-    }
-
-    /// Batched twin of [`commitCardField`](Document::commit_card_field):
-    /// typed-commit several fields on the card at `index` atomically, resolving
-    /// each field's type from the card's `$kind` schema in `quill`. All-or-nothing
-    /// with the same per-field-diagnostic contract as
-    /// [`commitFields`](Document::commit_fields), including an
-    /// `[EditError::UnknownField]` diagnostic per undeclared name. Throws
-    /// `[EditError::IndexOutOfRange]` when `index` is out of range.
-    #[wasm_bindgen(js_name = commitCardFields)]
-    pub fn commit_card_fields(
-        &mut self,
-        quill: &Quill,
-        index: usize,
-        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: JsValue,
-    ) -> Result<(), JsValue> {
-        let batch = js_value_to_field_batch(&fields, "commitCardFields")?;
-        let mut writer = quill.inner.writer(&mut self.inner);
-        writer
-            .card(index)
-            .map_err(|e| edit_error_to_js(&e))?
-            .set_all(batch)
-            .map_err(edit_errors_to_js)
-    }
-
-    /// Batched twin of [`setCardField`](Document::set_card_field): set
-    /// several fields on the card at `index` atomically. Same all-or-nothing,
-    /// one-diagnostic-per-field contract as [`setFields`](Document::set_fields).
-    /// Throws if `index` is out of range.
-    #[wasm_bindgen(js_name = setCardFields)]
-    pub fn set_card_fields(
-        &mut self,
-        index: usize,
-        #[wasm_bindgen(unchecked_param_type = "Record<string, unknown>")] fields: JsValue,
-    ) -> Result<(), JsValue> {
-        let batch = js_value_to_field_batch(&fields, "setCardFields")?;
-        self.card_mut_or_throw(index)?
-            .set_fields(batch)
-            .map_err(edit_errors_to_js)
-    }
-
-    /// Remove a field on the card at `index`. Returns the removed value or
-    /// `undefined`. Throws if `index` is out of range or `name` is invalid.
-    #[wasm_bindgen(js_name = removeCardField)]
-    pub fn remove_card_field(&mut self, index: usize, name: &str) -> Result<JsValue, JsValue> {
-        let removed = self
-            .card_mut_or_throw(index)?
-            .remove_field(name)
-            .map_err(|e| edit_error_to_js(&e))?;
-        Ok(match removed {
-            Some(v) => serialize_or_throw(v.as_json(), "removeField")?,
-            None => JsValue::UNDEFINED,
-        })
-    }
-
 }
 
 impl Document {
@@ -1550,6 +1586,16 @@ impl Document {
             Some(index) => self.card_mut_or_throw(index),
         }
     }
+
+    /// Immutable twin of [`addr_card_mut`](Self::addr_card_mut): the main card
+    /// when `addr.card` is absent, else the composable card at that index
+    /// (out-of-range throws). Shared by the addressed reads.
+    fn addr_card_ref(&self, addr: &Addr) -> Result<&quillmark_core::Card, JsValue> {
+        match addr.card {
+            None => Ok(self.inner.main()),
+            Some(index) => self.card_or_throw(index),
+        }
+    }
 }
 
 // ── Addressed write surface ────────────────────────────────────────────────────
@@ -1573,6 +1619,48 @@ impl Addr {
         }
         serde_wasm_bindgen::from_value(value.clone())
             .map_err(|e| WasmError::from(format!("addr must be an Addr object: {e}")).to_js_value())
+    }
+
+    /// Accept a bare string — `Addr` shorthand for `{ field: name }`, the terse
+    /// common case — or an `Addr` object. The one coercion rule: only a string
+    /// collapses to `{ field }` (a bare number is not an addr), so a third
+    /// navigation idiom never re-fragments the surface.
+    fn from_js_or_string(value: &JsValue) -> Result<Addr, JsValue> {
+        match value.as_string() {
+            Some(field) => Ok(Addr {
+                card: None,
+                field: Some(field),
+            }),
+            None => Addr::from_js(value),
+        }
+    }
+
+    /// The field an opaque/typed field write targets. A body address (absent
+    /// `field`) is not a field write, so it throws naming the body verbs — reads
+    /// are total over the field axis, but a body has no field lane to write.
+    fn require_field(&self, ctx: &str) -> Result<&str, JsValue> {
+        self.field.as_deref().ok_or_else(|| {
+            WasmError::from(format!(
+                "{ctx}: a body address (no `field`) is not a field write — \
+                 write the body with revise / install / writer.setBody"
+            ))
+            .to_js_value()
+        })
+    }
+
+    /// Enforce that a card-scoped verb's address carries no `field`. A present
+    /// `field` is a caller who believes they are doing a nested write; the error
+    /// says so rather than silently ignoring it. TS types can't police this (an
+    /// `Addr` variable flows into a `CardAddr` slot), so the runtime check is the
+    /// contract.
+    fn require_card_only(&self, ctx: &str) -> Result<(), JsValue> {
+        if self.field.is_some() {
+            return Err(WasmError::from(format!(
+                "{ctx}: a card address takes only `card`, not `field`"
+            ))
+            .to_js_value());
+        }
+        Ok(())
     }
 }
 
