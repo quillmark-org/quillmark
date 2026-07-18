@@ -1432,3 +1432,31 @@ fn wire_card_rejects_value_past_depth_limit_and_bad_names() {
         "expected name error, got {err}"
     );
 }
+
+// ── Single-card / $id reads (#956) ───────────────────────────────────────────
+
+#[test]
+fn find_card_returns_first_match_and_card_indexes() {
+    let mut doc = Document::new(QuillReference::from_str("test_quill").unwrap());
+
+    let mut c0 = Card::new("item").unwrap();
+    c0.payload_mut().set_id("dup");
+    let mut c1 = Card::new("item").unwrap();
+    c1.payload_mut().set_id("other");
+    let mut c2 = Card::new("item").unwrap();
+    c2.payload_mut().set_id("dup");
+    doc.push_card(c0).unwrap();
+    doc.push_card(c1).unwrap();
+    doc.push_card(c2).unwrap();
+
+    // `$id` is non-unique by design — find_card returns the first match.
+    let (idx, card) = doc.find_card("dup").unwrap();
+    assert_eq!(idx, 0);
+    assert_eq!(card.id(), Some("dup"));
+    assert_eq!(doc.find_card("other").map(|(i, _)| i), Some(1));
+    assert!(doc.find_card("missing").is_none());
+
+    // card(i) is the immutable single-card read; None out of range.
+    assert_eq!(doc.card(1).unwrap().id(), Some("other"));
+    assert!(doc.card(3).is_none());
+}

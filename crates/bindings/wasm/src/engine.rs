@@ -613,7 +613,7 @@ impl Quill {
     /// is not declared in this quill's schema, else a `Card` that feeds
     /// straight into `Document.pushCard` / `insertCard`.
     ///
-    /// Pass `document.main.seed?.[cardKind]` as `overlay` so a card added to a
+    /// Pass `document.seedOverlay(cardKind)` as `overlay` so a card added to a
     /// template-derived document inherits its curated starting values; omit it
     /// (or pass `undefined` / `null`) for the bare schema seed. `overlay` is a
     /// plain object — this reads the document, it does not mutate it.
@@ -895,6 +895,41 @@ impl Document {
     #[wasm_bindgen(getter, js_name = cardCount)]
     pub fn card_count(&self) -> usize {
         self.inner.cards().len()
+    }
+
+    /// A single composable card by index — the whole `Card`, the card-indexed
+    /// twin of the [`main`](Self::main) getter, so reading one card no longer
+    /// means materializing every card via [`cards`](Self::cards). An
+    /// out-of-range `index` throws `[EditError::IndexOutOfRange]`, matching the
+    /// card write verbs.
+    #[wasm_bindgen(js_name = card, unchecked_return_type = "Card")]
+    pub fn card(&self, index: usize) -> Result<JsValue, JsValue> {
+        card_to_js(self.card_or_throw(index)?)
+    }
+
+    /// The index of the first composable card whose `$id` equals `id`, or
+    /// `undefined` when none carries it. Resolves the canonical durable address
+    /// without a hand-rolled scan over [`cards`](Self::cards); `$id` is
+    /// non-unique by design, so the first match wins.
+    #[wasm_bindgen(js_name = cardIndexById, unchecked_return_type = "number | undefined")]
+    pub fn card_index_by_id(&self, id: &str) -> JsValue {
+        match self.inner.find_card(id) {
+            Some((index, _)) => JsValue::from_f64(index as f64),
+            None => JsValue::UNDEFINED,
+        }
+    }
+
+    /// The main card's `$seed` overlay object for `kind` (the `$seed[kind]`
+    /// entry), or `undefined` when absent. The cheap read that feeds
+    /// `quill.seedCard(kind, overlay)` without serializing the whole main card
+    /// via [`main`](Self::main) to fish out one key — and it keeps `seedCard`
+    /// pure: the quill still never reads the document.
+    #[wasm_bindgen(js_name = seedOverlay, unchecked_return_type = "Record<string, unknown> | undefined")]
+    pub fn seed_overlay(&self, kind: &str) -> Result<JsValue, JsValue> {
+        match self.inner.main().seed().and_then(|seed| seed.get(kind)) {
+            Some(overlay) => serialize_or_throw(overlay, "seedOverlay"),
+            None => Ok(JsValue::UNDEFINED),
+        }
     }
 
     /// Structural equality (parse-time `warnings` excluded). Use to debounce

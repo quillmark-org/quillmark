@@ -405,6 +405,27 @@ impl Document {
         &mut self.cards
     }
 
+    /// A single composable card by index — the immutable twin of
+    /// [`card_mut`](Document::card_mut), so reading one card's payload does not
+    /// require materializing every card via [`cards`](Document::cards). `None`
+    /// when out of range.
+    pub fn card(&self, index: usize) -> Option<&Card> {
+        self.cards.get(index)
+    }
+
+    /// The first composable card whose `$id` equals `id`, with its index —
+    /// resolving the canonical durable address ([PROGRAMMATIC.md]) without a
+    /// hand-rolled scan over [`cards`](Document::cards). `$id` is non-unique by
+    /// design, so this returns the first match; `None` when no card carries it.
+    ///
+    /// [PROGRAMMATIC.md]: https://github.com/borb-sh/quillmark/blob/main/prose/canon/PROGRAMMATIC.md
+    pub fn find_card(&self, id: &str) -> Option<(usize, &Card)> {
+        self.cards
+            .iter()
+            .enumerate()
+            .find(|(_, card)| card.id() == Some(id))
+    }
+
     pub(crate) fn cards_vec_mut(&mut self) -> &mut Vec<Card> {
         &mut self.cards
     }
