@@ -266,7 +266,7 @@ impl Card {
 
     /// The markdown projection of a richtext-valued field (`export ∘ decode`) —
     /// the field-level twin of [`Card::body_markdown`], and the projection an
-    /// emit or a `.qmd` save writes for a corpus-valued field. `None` when the
+    /// emit or a markdown save writes for a corpus-valued field. `None` when the
     /// field is absent or does not decode as richtext.
     pub fn field_markdown(&self, name: &str) -> Option<String> {
         match self.field_richtext(name)? {

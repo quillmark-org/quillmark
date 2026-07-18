@@ -1050,7 +1050,7 @@ This body and the metadata above are an indorsement card.
         // A richtext field stored as a canonical corpus object is the case the
         // card-yaml markdown projection is lossy for; the storage DTO is the
         // lossless carrier, so identity marks (an `underline` with no markdown
-        // form) survive a serde-JSON round-trip that a `.qmd` save would drop.
+        // form) survive a serde-JSON round-trip that a markdown save would drop.
         use quillmark_richtext::model::{Mark, MarkKind};
 
         let mut doc = sample();
