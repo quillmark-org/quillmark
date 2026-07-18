@@ -241,7 +241,7 @@ def test_replace_body():
     """replace_body replaces the global Markdown body."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.replace_body("New body content.")
-    assert export_markdown(doc.body) == "New body content.\n"
+    assert export_markdown(doc.body) == "New body content."
 
 
 def test_push_card():
@@ -250,7 +250,7 @@ def test_push_card():
     doc.push_card({"kind": "note", "body": "Card body."})
     assert len(doc.cards) == 1
     assert doc.cards[0]["kind"] == "note"
-    assert export_markdown(doc.cards[0]["body"]) == "Card body.\n"
+    assert export_markdown(doc.cards[0]["body"]) == "Card body."
 
 
 def test_push_card_invalid_kind():
@@ -276,7 +276,7 @@ def test_remove_card_then_push_card_round_trips_fields():
     assert len(doc.cards) == 1
     assert doc.cards[0]["kind"] == "note"
     assert field(doc.cards[0], "author") == "Alice"  # field survived the round-trip
-    assert export_markdown(doc.cards[0]["body"]) == "Body\n"
+    assert export_markdown(doc.cards[0]["body"]) == "Body"
 
 
 def test_push_card_accepts_corpus_dict_body():
@@ -439,7 +439,7 @@ def test_revise_card_body():
     """revise(md, card=i) revises a card body and returns the text delta."""
     doc = Document.from_markdown(MD_WITH_CARDS)
     delta = doc.revise("New card body.", card=0)
-    assert export_markdown(doc.cards[0]["body"]) == "New card body.\n"
+    assert export_markdown(doc.cards[0]["body"]) == "New card body."
     assert isinstance(delta["ops"], list)
 
 
@@ -454,7 +454,7 @@ def test_update_card_body_deprecated_alias():
     """update_card_body (deprecated alias for revise(md, card=i)) still works."""
     doc = Document.from_markdown(MD_WITH_CARDS)
     doc.update_card_body(0, "New card body.")
-    assert export_markdown(doc.cards[0]["body"]) == "New card body.\n"
+    assert export_markdown(doc.cards[0]["body"]) == "New card body."
 
 
 def test_set_ext_adds_map():
@@ -615,7 +615,7 @@ def test_to_markdown_general_round_trip():
     assert len(doc2.cards) == original_card_count + 1
     assert doc2.cards[0]["kind"] == "note"
     assert field(doc2.cards[0], "author") == "Alice"
-    assert export_markdown(doc2.cards[0]["body"]) == "Hello\n"
+    assert export_markdown(doc2.cards[0]["body"]) == "Hello"
 
 
 def test_to_markdown_ambiguous_string_survival():
@@ -675,7 +675,7 @@ def test_writer_front_door_set_and_reads():
     assert doc.get("author") == "Ada"
     assert doc.get("missing") is None
     ed.set_body("A **taro** essay.")
-    assert doc.get_markdown() == "A **taro** essay.\n"
+    assert doc.get_markdown() == "A **taro** essay."
 
 
 def test_writer_set_rejects_unknown_field():
@@ -751,14 +751,14 @@ def test_revise_field_and_apply_change_splice():
         {"mark_ops": [{"op": "add", "start": 8, "end": 12, "type": "strong"}]},
         field="bio",
     )
-    assert export_markdown(field(doc.main, "bio")) == "make it **bold** here\n"
+    assert export_markdown(field(doc.main, "bio")) == "make it **bold** here"
 
 
 def test_corpus_codec_rebase_and_map_pos():
     """The document-free codec round-trips and maps a position through a rebase."""
     rt = import_markdown("hello world")
     assert rt["text"] == "hello world"
-    assert export_markdown(rt) == "hello world\n"
+    assert export_markdown(rt) == "hello world"
     out = rebase(rt, "hello brave world")
     assert out["content"]["text"] == "hello brave world"
     assert map_pos(out["delta"], 6, "before") == 6

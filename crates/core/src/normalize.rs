@@ -78,7 +78,7 @@ mod tests {
             "<<placeholder>>"
         );
 
-        assert_eq!(normalized.main().body_markdown(), "\\<> **bold**\n");
+        assert_eq!(normalized.main().body_markdown(), "\\<> **bold**");
     }
 
     #[test]
@@ -140,7 +140,7 @@ mod tests {
         let doc = Document::parse(md).unwrap().document;
         assert_eq!(doc.cards().len(), 1, "expected 1 card");
         let normalized = super::normalize_document(doc).unwrap();
-        assert_eq!(normalized.cards()[0].body_markdown(), "cardbody\n");
+        assert_eq!(normalized.cards()[0].body_markdown(), "cardbody");
     }
 
     #[test]
@@ -169,7 +169,7 @@ mod tests {
         let md = "~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\n~~~card-yaml\n$kind: note\n~~~\n<!-- comment -->Trailing text\n";
         let doc = Document::parse(md).unwrap().document;
         let normalized = super::normalize_document(doc).unwrap();
-        assert_eq!(normalized.cards()[0].body_markdown(), "Trailing text\n");
+        assert_eq!(normalized.cards()[0].body_markdown(), "Trailing text");
     }
 
     #[test]
@@ -179,6 +179,6 @@ mod tests {
         let md = "~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\n<!-- note -->Content here";
         let doc = Document::parse(md).unwrap().document;
         let normalized = super::normalize_document(doc).unwrap();
-        assert_eq!(normalized.main().body_markdown(), "Content here\n");
+        assert_eq!(normalized.main().body_markdown(), "Content here");
     }
 }

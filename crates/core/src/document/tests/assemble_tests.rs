@@ -99,7 +99,7 @@ fn test_dash_root_block_parses_equivalent_to_card_yaml() {
             .unwrap(),
         "Test"
     );
-    assert_eq!(dash_doc.main().body_markdown(), "Body.\n");
+    assert_eq!(dash_doc.main().body_markdown(), "Body.");
 }
 
 #[test]
@@ -128,7 +128,7 @@ fn test_dash_root_with_composable_card_yaml_parses() {
     assert_eq!(doc.quill_reference().name, "test_quill");
     assert_eq!(doc.cards().len(), 1);
     assert_eq!(doc.cards()[0].kind(), Some("note"));
-    assert_eq!(doc.cards()[0].body_markdown(), "Note body.\n");
+    assert_eq!(doc.cards()[0].body_markdown(), "Note body.");
 }
 
 #[test]
@@ -185,7 +185,7 @@ This is the body.";
 
     assert_eq!(
         doc.main().body_markdown(),
-        "# Hello World\n\nThis is the body.\n"
+        "# Hello World\n\nThis is the body."
     );
     assert_eq!(
         doc.main().payload().get("title").unwrap().as_str().unwrap(),
@@ -224,7 +224,7 @@ Content here.";
 
     let doc = decompose(markdown).unwrap();
 
-    assert_eq!(doc.main().body_markdown(), "Content here.\n");
+    assert_eq!(doc.main().body_markdown(), "Content here.");
     assert_eq!(
         doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Complex Document"
@@ -304,7 +304,7 @@ Body of item 1.";
 
     // Global body is followed by a card block: blank-line separator stripped,
     // so the trailing `\n\n` from the source becomes a single `\n`.
-    assert_eq!(doc.main().body_markdown(), "Main body content.\n");
+    assert_eq!(doc.main().body_markdown(), "Main body content.");
     assert_eq!(
         doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Main Document"
@@ -318,7 +318,7 @@ Body of item 1.";
         "Item 1"
     );
     // Last card body at EOF: no blank-line separator to strip.
-    assert_eq!(card.body_markdown(), "Body of item 1.\n");
+    assert_eq!(card.body_markdown(), "Body of item 1.");
 }
 
 #[test]
@@ -393,7 +393,7 @@ Section 2 content.";
         doc.main().payload().get("title").unwrap().as_str().unwrap(),
         "Global"
     );
-    assert_eq!(doc.main().body_markdown(), "Global body.\n");
+    assert_eq!(doc.main().body_markdown(), "Global body.");
     assert_eq!(doc.cards().len(), 2);
     assert_eq!(doc.cards()[0].kind(), Some("sections"));
 }
@@ -416,7 +416,7 @@ Body without metadata.";
     let card = &doc.cards()[0];
     assert_eq!(card.kind(), Some("items"));
     assert!(card.payload().is_empty());
-    assert_eq!(card.body_markdown(), "Body without metadata.\n");
+    assert_eq!(card.body_markdown(), "Body without metadata.");
 }
 
 #[test]
@@ -804,7 +804,7 @@ This is the memo body.";
             .unwrap(),
         "ORG/SYMBOL"
     );
-    assert_eq!(doc.main().body_markdown(), "This is the memo body.\n");
+    assert_eq!(doc.main().body_markdown(), "This is the memo body.");
 }
 
 #[test]
@@ -832,7 +832,7 @@ Section 1 body.";
     );
     assert_eq!(doc.cards().len(), 1);
     assert_eq!(doc.cards()[0].kind(), Some("sections"));
-    assert_eq!(doc.main().body_markdown(), "Main body.\n");
+    assert_eq!(doc.main().body_markdown(), "Main body.");
 }
 
 #[test]
@@ -1054,7 +1054,7 @@ This is the body.";
     let doc = decompose(markdown).unwrap();
     assert_eq!(
         doc.main().body_markdown(),
-        "# Hello World\n\nThis is the body.\n"
+        "# Hello World\n\nThis is the body."
     );
     assert_eq!(
         doc.main().payload().get("title").unwrap().as_str().unwrap(),
@@ -1392,7 +1392,7 @@ Use <<card body>> here.";
     let body = doc.main().body_markdown();
     assert_eq!(
         body,
-        "\\<> text.\n\n```\n<<in code block>>\n```\n\n`<<inline code>>` and \\<>\n"
+        "\\<> text.\n\n```\n<<in code block>>\n```\n\n`<<inline code>>` and \\<>"
     );
 
     // Card yaml (a YAML scalar, never markdown) preserves chevrons verbatim.
@@ -1401,7 +1401,7 @@ Use <<card body>> here.";
         card.payload().get("description").unwrap().as_str().unwrap(),
         "<<card yaml>>"
     );
-    assert_eq!(card.body_markdown(), "Use \\<> here.\n");
+    assert_eq!(card.body_markdown(), "Use \\<> here.");
 }
 
 #[test]
@@ -1411,14 +1411,14 @@ fn test_multiline_chevrons_projection() {
     let markdown = "~~~card-yaml\n$quill: test_quill\n$kind: main\n~~~\n\n<<text\nacross lines>>";
     let doc = decompose(markdown).unwrap();
     let body = doc.main().body_markdown();
-    assert_eq!(body, "\\<>\n");
+    assert_eq!(body, "\\<>");
 }
 
 #[test]
 fn test_unmatched_chevrons_preserved() {
     let markdown = "~~~card-yaml\n$quill: test_quill\n$kind: main\n~~~\n\n<<unmatched";
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.main().body_markdown(), "\\<\\<unmatched\n");
+    assert_eq!(doc.main().body_markdown(), "\\<\\<unmatched");
 }
 
 // Robustness tests
@@ -1441,7 +1441,7 @@ fn test_missing_quill() {
 fn test_dashes_in_middle_of_line() {
     let markdown = "~~~card-yaml\n$quill: test_quill\n$kind: main\n~~~\n\nsome text --- more text";
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.main().body_markdown(), "some text --- more text\n");
+    assert_eq!(doc.main().body_markdown(), "some text --- more text");
 }
 
 /// CRLF and mixed line endings must parse identically to LF.
@@ -1698,7 +1698,7 @@ fn test_body_with_leading_newlines() {
     let markdown =
         "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\n\n\nBody with leading newlines.";
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.main().body_markdown(), "Body with leading newlines.\n");
+    assert_eq!(doc.main().body_markdown(), "Body with leading newlines.");
 }
 
 #[test]
@@ -1707,7 +1707,7 @@ fn test_body_with_trailing_newlines() {
     // newlines are preserved verbatim as authored content.
     let markdown = "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\nBody.\n\n\n";
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.main().body_markdown(), "Body.\n");
+    assert_eq!(doc.main().body_markdown(), "Body.");
 }
 
 // ── Blank-line separator stripping: parse-side normalisation ─────────────────
@@ -1721,7 +1721,7 @@ fn test_blank_separator_strip_global_body_followed_by_card_lf() {
     let markdown =
         "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\nbody\n\n~~~card-yaml\n$kind: x\n~~~\n";
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.main().body_markdown(), "body\n");
+    assert_eq!(doc.main().body_markdown(), "body");
 }
 
 #[test]
@@ -1730,11 +1730,9 @@ fn test_blank_separator_strip_global_body_followed_by_card_crlf() {
     let markdown =
         "~~~card-yaml\r\n$quill: q\r\n$kind: main\r\n~~~\r\n\r\nbody\r\n\r\n~~~card-yaml\r\n$kind: x\r\n~~~\r\n";
     let doc = decompose(markdown).unwrap();
-    assert!(
-        doc.main().body_markdown().ends_with('\n') && !doc.main().body_markdown().ends_with("\n\n"),
-        "expected exactly one trailing line ending, got {:?}",
-        doc.main().body_markdown()
-    );
+    // CRLF normalizes to LF; the blank-line separator is stripped and the value
+    // projection carries no trailing newline — identical to the `_lf` sibling.
+    assert_eq!(doc.main().body_markdown(), "body");
 }
 
 #[test]
@@ -1743,8 +1741,8 @@ fn test_blank_separator_strip_card_body_followed_by_card() {
     // Last card body is at EOF → preserved verbatim.
     let markdown = "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\n~~~card-yaml\n$kind: a\n~~~\n\nfirst\n\n~~~card-yaml\n$kind: b\n~~~\n\nsecond\n";
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.cards()[0].body_markdown(), "first\n");
-    assert_eq!(doc.cards()[1].body_markdown(), "second\n");
+    assert_eq!(doc.cards()[0].body_markdown(), "first");
+    assert_eq!(doc.cards()[1].body_markdown(), "second");
 }
 
 #[test]
@@ -1754,7 +1752,7 @@ fn test_blank_separator_strip_preserves_author_blank_lines() {
     let markdown =
         "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\nbody\n\n\n~~~card-yaml\n$kind: x\n~~~\n";
     let doc = decompose(markdown).unwrap();
-    assert_eq!(doc.main().body_markdown(), "body\n");
+    assert_eq!(doc.main().body_markdown(), "body");
 }
 
 #[test]
@@ -1768,10 +1766,10 @@ fn test_f2_strip_does_not_overstrip_content_newlines() {
     let emitted = doc.to_markdown();
     let reparsed = Document::parse(&emitted).unwrap().document;
     assert_eq!(doc.main().body_markdown(), reparsed.main().body_markdown());
-    // The code block content survives; trailing blank lines canonicalize to a
-    // single newline (the content projection normalizes block spacing).
+    // The code block content survives; trailing blank lines are dropped (the
+    // content projection is a value, not a file, so it carries no final newline).
     assert!(
-        doc.main().body_markdown().ends_with("```\n"),
+        doc.main().body_markdown().ends_with("```"),
         "expected code block, got {:?}",
         doc.main().body_markdown()
     );
@@ -1904,7 +1902,7 @@ Body content.";
             .unwrap(),
         "normal value"
     );
-    assert_eq!(doc.main().body_markdown(), "Body content.\n");
+    assert_eq!(doc.main().body_markdown(), "Body content.");
 }
 
 /// A multi-card document (root + two composable cards, prose thematic break
@@ -1963,7 +1961,7 @@ Conclusion content.
             .unwrap(),
         "Introduction"
     );
-    assert_eq!(doc.cards()[0].body_markdown(), "Introduction content.\n");
+    assert_eq!(doc.cards()[0].body_markdown(), "Introduction content.");
     assert_eq!(doc.cards()[1].kind(), Some("section"));
     assert_eq!(
         doc.cards()[1]
@@ -1974,7 +1972,7 @@ Conclusion content.
             .unwrap(),
         "Conclusion"
     );
-    assert_eq!(doc.cards()[1].body_markdown(), "Conclusion content.\n");
+    assert_eq!(doc.cards()[1].body_markdown(), "Conclusion content.");
 }
 
 // ── to_plate_json round-trip snapshot ─────────────────────────────────────────

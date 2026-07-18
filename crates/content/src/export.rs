@@ -40,12 +40,14 @@ pub fn to_markdown(rt: &Content) -> String {
     };
     let mut out = String::new();
     emit_block(&ctx, 0..rt.lines.len(), 0, &mut out);
-    // Collapse any trailing blank lines to a single newline.
-    while out.ends_with("\n\n") {
+    // Collapse any trailing blank lines. `to_markdown` projects a *value*, not a
+    // file: it emits no final newline, so `writer.set("subject", "Hello")` reads
+    // back as `"Hello"`, not `"Hello\n"` (the read-back-grows-a-newline footgun,
+    // issue #965). Writers of `.qmd` files own the file-final newline
+    // (`Document::to_markdown`); the corpus fixed point is defined at the corpus,
+    // and import is newline-insensitive, so dropping it is round-trip-invisible.
+    while out.ends_with('\n') {
         out.pop();
-    }
-    if !out.is_empty() && !out.ends_with('\n') {
-        out.push('\n');
     }
     out
 }
@@ -1087,7 +1089,7 @@ mod tests {
             ],
         );
         let md = to_markdown(&rt);
-        assert_eq!(md, "**ab*cd***ef\n", "balanced, no literal `**` leak");
+        assert_eq!(md, "**ab*cd***ef", "balanced, no literal `**` leak");
         let rt2 = from_markdown(&md).unwrap();
         // Text is preserved exactly — the corruption the issue reported is gone.
         assert_eq!(rt2.text, "abcdef");
@@ -1163,7 +1165,7 @@ mod tests {
             ],
         );
         let md = to_markdown(&rt);
-        assert_eq!(md, "**ab**`cdef`\n");
+        assert_eq!(md, "**ab**`cdef`");
         let rt2 = from_markdown(&md).unwrap();
         assert_eq!(rt2.text, "abcdef");
     }

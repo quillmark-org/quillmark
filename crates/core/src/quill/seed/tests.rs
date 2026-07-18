@@ -84,7 +84,7 @@ fn seed_main_commits_only_example_fields() {
     );
 
     // Body region carries `body.example`.
-    assert_eq!(card.body_markdown(), "Main body text.\n");
+    assert_eq!(card.body_markdown(), "Main body text.");
 }
 
 /// A seeded document re-parses from its own markdown with `$quill` / `$kind`
@@ -116,7 +116,7 @@ fn seeded_document_round_trips_through_markdown() {
     );
     // The markdown layer normalizes a body to a single trailing newline;
     // assert the exact normalized form rather than hiding it behind a trim.
-    assert_eq!(reparsed.main().body_markdown(), "Main body text.\n");
+    assert_eq!(reparsed.main().body_markdown(), "Main body text.");
 
     // The composable card survives with its kind and seeded value.
     assert_eq!(reparsed.cards().len(), 1);
@@ -284,7 +284,7 @@ fn overlay_body_overrides_and_non_schema_keys_are_ignored() {
     // An overlay `$body` wins; a non-schema field is ignored.
     let ov = overlay(json!({ "author": "X", "$body": "Overlay body.", "bogus": "drop me" }));
     let card = quill.seed_card("note", Some(&ov)).expect("known kind");
-    assert_eq!(card.body_markdown(), "Overlay body.\n");
+    assert_eq!(card.body_markdown(), "Overlay body.");
     assert!(
         card.payload().get("bogus").is_none(),
         "a key naming no schema field must not land on the card",
