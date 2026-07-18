@@ -367,14 +367,14 @@ the `$` sigil.
 ```typescript
 interface PlateJson {
   $quill: string;         // quill name@version, from the root block $quill
-  $body: object;          // root-block body as canonical Content-JSON content (text/lines/marks/islands), not a markdown string
+  $body: object;          // root-block body as canonical Content-JSON on the plate wire (backends lower it directly); markdown consumers get a lossy projection via exportMarkdown
   $cards: Card[];         // zero or more cards, in document order
   [field: string]: any;   // root-block payload fields, flat
 }
 
 interface Card {
   $kind: string;          // card kind, matches /^[a-z_][a-z0-9_]*$/
-  $body: object;          // card body as canonical Content-JSON content, not a markdown string
+  $body: object;          // card body as canonical Content-JSON on the plate wire (backends lower it directly); markdown consumers get a lossy projection via exportMarkdown
   [field: string]: any;   // card payload fields, flat
 }
 ```
@@ -385,8 +385,11 @@ interface Card {
 - Body text is preserved verbatim — whitespace, line endings, and inline
   CommonMark are untouched by the splitter.
 - `$body` (root and per-card) and every `richtext` payload field cross as
-  canonical Content-JSON content objects (`{ text, lines, marks, islands }`);
-  markdown is a lossless projection of the content, not the wire form.
+  canonical Content-JSON content objects (`{ text, lines, marks, islands }`) —
+  the lossless carrier. Markdown is a *lossy* projection of that content
+  (`underline` and island ids have no markdown form), available to
+  markdown/LLM consumers via the `exportMarkdown` codec, not the plate wire
+  form.
 
 ## 6. Markdown Content
 
