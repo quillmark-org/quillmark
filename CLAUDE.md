@@ -1,24 +1,17 @@
 # Quillmark
 
-Schema-driven document engine: Markdown + YAML card metadata → a rendered PDF/SVG/PNG via a Typst or PDF-form backend. Crates: `core` (parsing/schema/traits), `quillmark` (orchestration), `richtext` (the `RichText` corpus content model + the workspace's only markdown parser), `backends/typst`, `backends/pdfform`, `quillmark-pdf` (Typst-free AcroForm stamp spine), `bindings/{python,wasm,cli}`, `fixtures` (test Quills), `fuzz` (property-based tests).
+Schema-driven document engine: Markdown + YAML card metadata → rendered PDF/SVG/PNG via a Typst or PDF-form backend.
 
-Design docs: [`prose/canon/INDEX.md`](prose/canon/INDEX.md)
+Crates: `core` (parsing, schema, traits) · `quillmark` (orchestration) · `richtext` (`RichText` corpus model; the workspace's only markdown parser) · `backends/{typst,pdfform}` · `quillmark-pdf` (Typst-free AcroForm stamping) · `bindings/{python,wasm,cli}` · `fixtures` (test Quills) · `fuzz` (property tests).
 
-Comments and docs: dense, present-tense, no marketing — see the `dense-prose` skill.
+Design docs: [`prose/canon/INDEX.md`](prose/canon/INDEX.md). Comments and docs follow the `dense-prose` skill: dense, present-tense, unsold.
 
-Released migration guides in [`docs/migrations/`](docs/migrations/) are era-accurate and immutable; only the working (unreleased) one is mutable.
-
-The version in `Cargo.toml` is the *last released* version, not a working one. A CI/CD workflow will automatically bump the version on the next release. 
-
-In a cloud environment, commit early and often to leverage CI/CD builds and tests.
+- Released guides in [`docs/migrations/`](docs/migrations/) are immutable; edit only the unreleased one.
+- The `Cargo.toml` version is the last *released* version, not a working one; CI bumps it on release.
+- Commit early and often — CI runs builds and tests on push.
 
 ## Tests
 
-```bash
-cargo test --workspace
-```
-
-WASM: `./scripts/build-wasm.sh` → `cd crates/bindings/wasm && npm test`. in Cloud environment.
-Python: `cd crates/bindings/python && uv run maturin develop && uv run pytest`
-
-In Claude Cloud environment, run bindings tests on CI/CD instead of locally.
+- `cargo test --workspace`
+- WASM: `./scripts/build-wasm.sh && cd crates/bindings/wasm && npm test`
+- Python: `cd crates/bindings/python && uv run maturin develop && uv run pytest`
