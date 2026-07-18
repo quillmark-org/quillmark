@@ -1,4 +1,5 @@
-//! Schema-bound typed reader — the read twin of [`TypedWriter`](crate::writer).
+//! Schema-bound typed reader — the read twin of
+//! [`TypedWriter`](crate::TypedWriter).
 //!
 //! The read surface's verbs split by read-vs-write, but the deeper fault line is
 //! **interpret-vs-transport**. [`Document::get`](crate::Card::payload) is
@@ -38,7 +39,8 @@
 //! [`Card::body_markdown`](crate::Card::body_markdown) rather than consulting the
 //! schema.
 //!
-//! Like [`TypedWriter`], a bound reader holds `&Document` and `&QuillConfig`, so
+//! Like [`TypedWriter`](crate::TypedWriter), a bound reader holds `&Document`
+//! and `&QuillConfig`, so
 //! it cannot cross a binding boundary that carries no lifetimes (wasm-bindgen /
 //! pyo3); those surfaces construct one per call from the quill handle.
 

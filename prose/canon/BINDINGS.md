@@ -49,8 +49,22 @@ from the bound quill, so a name the schema does not declare is a typo
 coercion deferred to render) and the addressed content lane — `install` / `revise`
 / `applyChange` plus the `importMarkdown` / `exportMarkdown` / `rebase` / `mapPos`
 codec — which navigate by `Addr` and return `Delta` receipts but never consult a
-schema. Reads (`get` / `getMarkdown` / `isFill` / `getExt`) need no schema, so
-they sit on `Document` too.
+schema. **Transport** reads (`get` / `isFill` / `getExt`) return the stored value
+verbatim, need no schema, and sit on `Document` too.
+
+The one **interpreting** read — projecting a field to markdown — is a
+schema-shaped question ("this field's richtext, as markdown"), so it gains a
+schema-bound home: `quill.view(doc)`, the read twin of `quill.writer(doc)`
+(mirroring core's `quill.view(&doc)`). `view.get(addr)` reads each field by its
+declared type — a richtext field to markdown, every other type verbatim — with
+schema authority, so a name the schema does not declare throws `UnknownField`
+instead of reading back `undefined`, and a richtext field holding an undecodable
+value throws `FieldRichtextDecode`. `Document.getMarkdown`'s **field** half is
+thereby superseded by `view.get`; its quill-free **body** projection stays on
+`Document` (a body's type is a format fact, not a schema fact, so `view.getBody`
+mirrors it rather than gating it on the schema). The placement rule generalizes:
+*a verb that needs a schema lives on the writer (writes) or the view (reads);
+`Document` is quill-free data.*
 
 `reviseField` is the writer verb that is both typed *and* anchor-preserving: it
 rebases surviving anchors like the content `revise`, then conforms the diffed
@@ -90,6 +104,8 @@ ergonomic), nothing else admitted. Drift is a reviewable diff to this table.
 | Concept | Core | Bindings | Class |
 |---|---|---|---|
 | Typed writer front door | `quill.writer(&mut doc)` | `quill.writer(doc)` | **idiom** — core holds `&mut Document` under the checker; the bindings re-borrow per call (pyo3/wasm objects carry no lifetime), so the guarantee becomes the ephemerality convention |
+| Typed reader front door | `quill.view(&doc)` | `quill.view(doc)` | **idiom** — the read twin; same re-borrow/ephemerality as the writer |
+| Interpreted read | `view.get(name)?` → `ReadValue` (richtext → markdown, else canonical); `view.card(i)?.get(..)?` | `view.get(addr)` / `view.card(i).get(name)` (JS), `view.get(name)` / `view.card(i).get(name)` (py) | **idiom** / **FFI** — one `get` interprets by declared type; absent → `undefined`/`None`, unknown name → `UnknownField`, undecodable richtext → `FieldRichtextDecode`; supersedes `getMarkdown`'s field half (#978). Body read (`view.getBody` / absent-field addr) stays quill-free |
 | Scalar / batch write | `set` / `set_all` | `set` / `setAll` (JS), `set` / `set_all` (py) | identical |
 | Receipt-free body write | `set_body(md)` | `setBody(md)` / `set_body(md)` | identical — core also exposes the delta via `revise_body` |
 | Typed richtext field revise | `TypedWriter::revise_field(name, md)?` / `CardWriter::revise_field(..)?` | `writer.reviseField(name, md)` / `writer.card(i).reviseField(..)` | identical — typed *and* anchor-preserving, returns the `Delta`; both wrap the `Card::revise_field_checked` primitive |
@@ -98,7 +114,7 @@ ergonomic), nothing else admitted. Drift is a reviewable diff to this table.
 | Card removal (writer) | `writer.remove_card(i)` | `writer.removeCard(i)` | identical |
 | Card cursor | `writer.card(i)?` (eager check) | `writer.card(i)` (lazy check) | **FFI** — no borrow to validate against; the index is checked at the write |
 | Cursor kind | `writer.card(i)?.kind()` | `writer.card(i).kind` | identical — the JS getter reads through `doc.card(i)` |
-| Reads (value / markdown / fill / `$ext`) | `field_markdown(..)` / `payload().get(..)` / `payload().is_fill(..)` / `card.ext()` (borrow chain; index for a card) | `doc.get(addr?)` / `doc.getMarkdown(addr?)` / `doc.isFill(addr)` / `doc.getExt(cardAddr?)` / `doc.getExtNamespace(cardAddr, ns)` (JS); name-keyed twins (py) | **idiom** / **FFI** — WASM fuses every read onto the one `Addr` (a bare string ⇒ `{field}`), *total over the field axis* (absent field → `undefined`, `isFill` → `false`; only an out-of-range card throws) — save that `getMarkdown` on a **present** field that does not decode as richtext throws `FieldRichtextDecode` (a type mismatch is not absence; #968); Python stays name-keyed |
+| Reads (value / markdown / fill / `$ext`) | `field_markdown(..)` / `payload().get(..)` / `payload().is_fill(..)` / `card.ext()` (borrow chain; index for a card) | `doc.get(addr?)` / `doc.getMarkdown(addr?)` / `doc.isFill(addr)` / `doc.getExt(cardAddr?)` / `doc.getExtNamespace(cardAddr, ns)` (JS); name-keyed twins (py) | **idiom** / **FFI** — WASM fuses every read onto the one `Addr` (a bare string ⇒ `{field}`), *total over the field axis* (absent field → `undefined`, `isFill` → `false`; only an out-of-range card throws) — save that `getMarkdown` on a **present** field that does not decode as richtext throws `FieldRichtextDecode` (a type mismatch is not absence; #968); Python stays name-keyed. `getMarkdown`'s field projection is superseded by `view.get` (schema authority; #978) — its body projection stays here |
 | Reads (whole card / `$id` / seed) | `card(i)` / `find_card(id)` / `main().seed()` | `doc.card(i)` / `doc.cardIndexById(id)` / `doc.seedOverlay(kind)` | **idiom** — the bindings fuse each into one named verb on `Document`; `card(i)` throws out of range, `find_card`/`cardIndexById` return the first `$id` match (non-unique by design) |
 | Richtext revise (content lane) | `Card::revise_field(name, md)?` (schema-blind, borrow chain) | `doc.revise({card, field}, md)` (addr literal) | **FFI** — same model, flattened navigation; schema-blind, `Delta` in hand |
 | Opaque store | `store_field` / `store_fields` / `store_fill` | `storeField` / `storeFields` / `storeFill` (JS, `Addr`), `store_field` / `store_fields` / `store_card_field` (py, name-keyed) | identical — the quill-free verbatim write; WASM addresses with `Addr`, Python stays name-keyed |
