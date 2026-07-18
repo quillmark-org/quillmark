@@ -141,6 +141,7 @@ import type {
 	CardInput,
 	PathStep,
 	Addr,
+	CardAddr,
 	Delta,
 	Assoc,
 	LineOp,
@@ -159,9 +160,19 @@ export type CorpusExportsPresent = [
 	CardInput,
 	PathStep,
 	Addr,
+	CardAddr,
 	Delta,
 	Assoc,
 	LineOp,
 	MarkOp,
 	ChangeBundle
 ];
+
+// ── MAIN_CARD_ADDR is a CardAddr (#969) ─────────────────────────────────────
+// The named main-card address must type as a `CardAddr` so it flows into every
+// card-scoped verb's address slot. `typeof import(...)` keeps this purely
+// type-level — no value import, no runtime code — and the assignment fails
+// `npm run typecheck` if the constant's declared type ever drifts off `CardAddr`.
+type MainCardAddrType = typeof import('../../../pkg/runtime/runtime.d.ts').MAIN_CARD_ADDR;
+const mainCardAddrIsCardAddr: CardAddr = {} as MainCardAddrType;
+void mainCardAddrIsCardAddr;

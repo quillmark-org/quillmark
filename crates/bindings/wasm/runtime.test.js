@@ -17,6 +17,7 @@ import {
   Engine,
   DocumentWriter,
   CardWriter,
+  MAIN_CARD_ADDR,
   isQuillmarkError,
   exportMarkdown,
 } from '@quillmark-wasm/runtime'
@@ -49,6 +50,10 @@ This is a test document.`
 function makeRuntimeQuill() {
   return Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
 }
+
+/** Read a field value from a card's payloadItems list by key. */
+const fieldOf = (card, key) =>
+  card.payloadItems.find((i) => i.type === 'field' && i.key === key)?.value
 
 describe('@quillmark/wasm/runtime — surface', () => {
   // IMPLEMENTATION PIN: the root re-exports the internal core build's classes
@@ -138,8 +143,6 @@ card_kinds:
   const buildQuill = () =>
     Quill.fromTree(makeQuill({ name: 'editor_test', plate: TEST_PLATE, quillYaml: EDITOR_QUILL_YAML }))
   const blankDoc = () => Document.fromMarkdown('~~~card-yaml\n$quill: editor_test\n~~~\n\nBody.')
-  const fieldOf = (card, key) =>
-    card.payloadItems.find((i) => i.type === 'field' && i.key === key)?.value
 
   it('quill.writer(doc) is the front door and returns a DocumentWriter', () => {
     const quill = buildQuill()
@@ -221,6 +224,35 @@ card_kinds:
     expect(ed.document.getMarkdown('subject')).toBe('Q3 **results**\n')
     expect(ed.document.get('missing')).toBeUndefined()
     expect(ed.document.getMarkdown('missing')).toBeUndefined()
+  })
+})
+
+// MAIN_CARD_ADDR names the empty main-card address `{}` the card-scoped verbs
+// take, so a main-card batch write reads as intent (`storeFields(MAIN_CARD_ADDR,
+// fields)`) rather than as an anonymous `{}`. It IS `{}` (frozen), so it is a
+// pure alias — `{}` and `undefined` stay equally valid.
+describe('@quillmark/wasm/runtime — MAIN_CARD_ADDR (the named main-card address)', () => {
+  it('is a frozen, empty card address — {} with a name', () => {
+    expect(MAIN_CARD_ADDR).toEqual({})
+    expect(Object.isFrozen(MAIN_CARD_ADDR)).toBe(true)
+  })
+
+  it('targets the main card on a card-scoped verb, identically to {}', () => {
+    const named = new Document('editor_test')
+    named.storeFields(MAIN_CARD_ADDR, { title: 'Hello', qty: 3 })
+    expect(fieldOf(named.main, 'title')).toBe('Hello')
+    expect(fieldOf(named.main, 'qty')).toBe(3)
+
+    // Same effect as the bare empty-address spelling — a pure alias.
+    const empty = new Document('editor_test')
+    empty.storeFields({}, { title: 'Hello', qty: 3 })
+    expect(named.main.payloadItems).toEqual(empty.main.payloadItems)
+  })
+
+  it('carries $ext onto the main card too', () => {
+    const doc = new Document('editor_test')
+    doc.storeExt(MAIN_CARD_ADDR, { editor: { pinned: true } })
+    expect(doc.main.ext.editor.pinned).toBe(true)
   })
 })
 

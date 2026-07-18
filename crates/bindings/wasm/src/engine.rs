@@ -1599,7 +1599,9 @@ impl Document {
 // ── Addressed write surface ────────────────────────────────────────────────────
 
 /// A richtext write address (`{ card?, field? }`). Absent `field` = body, absent
-/// `card` = main. Mirrors the `Addr` TS interface.
+/// `card` = main. Mirrors the `Addr` TS interface. Unknown keys are rejected in
+/// [`from_js`](Addr::from_js), not via `deny_unknown_fields` — `serde_wasm_bindgen`
+/// looks up known fields rather than visiting every key, so it never enforces it.
 #[derive(serde::Deserialize, Default)]
 struct Addr {
     #[serde(default)]
@@ -1610,10 +1612,27 @@ struct Addr {
 
 impl Addr {
     /// Deserialize an `Addr` from its JS object (`undefined`/`null`/`{}` all mean
-    /// the main-card body).
+    /// the main-card body). Rejects a stray key first (as [`js_to_card`] does,
+    /// since `serde_wasm_bindgen` does not enforce `deny_unknown_fields`) so a
+    /// swapped-arg call — `storeFields(fields, {})`, the fields object read as an
+    /// address — throws instead of silently parsing as the empty main-card
+    /// address and writing an empty batch.
     fn from_js(value: &JsValue) -> Result<Addr, JsValue> {
         if value.is_undefined() || value.is_null() {
             return Ok(Addr::default());
+        }
+        if let Some(obj) = value.dyn_ref::<js_sys::Object>() {
+            for key in js_sys::Object::keys(obj).iter() {
+                if let Some(k) = key.as_string() {
+                    if k != "card" && k != "field" {
+                        return Err(WasmError::from(format!(
+                            "addr has unknown key `{k}`; an address takes only \
+                             `card` and `field`"
+                        ))
+                        .to_js_value());
+                    }
+                }
+            }
         }
         serde_wasm_bindgen::from_value(value.clone())
             .map_err(|e| WasmError::from(format!("addr must be an Addr object: {e}")).to_js_value())
