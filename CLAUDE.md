@@ -9,6 +9,7 @@ Design docs: [`prose/canon/INDEX.md`](prose/canon/INDEX.md). Comments and docs f
 - Released guides in [`docs/migrations/`](docs/migrations/) are immutable; edit only the unreleased one.
 - The `Cargo.toml` version is the last *released* version, not a working one; CI bumps it on release.
 - Commit early and often — CI runs builds and tests on push.
+- Don't run `cargo fmt`.
 
 ## Tests
 
