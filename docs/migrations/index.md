@@ -39,6 +39,10 @@ guides in order.
   the one schema-bound door: `writer.reviseField` (typed *and* anchor-preserving)
   lands, the quill-taking `commit*` ABI is underscored and hidden from the
   `.d.ts`, and `EditError::BodyImport` renames to `Import` (#957, #966).
+  `getMarkdown` / `get_markdown` stop conflating absent with
+  present-but-not-richtext: a present field that does not decode now throws
+  `FieldRichtextDecode` instead of reading back blank — absence returns, mismatch
+  raises (#968).
 - [0.93 → 0.94](0.93-to-0.94.md) — `type: richtext(inline)` retires; declare
   `type: richtext` with `inline: true` instead. Blueprint still emits
   `richtext(inline)<markdown>`; `build_transform_schema` gains
@@ -50,24 +54,24 @@ guides in order.
   was removed, #886). Card-write verbs become mechanical twins of their
   main-card names — `updateCardField`/`updateCardFields` rename to
   `setCardField`/`setCardFields` (#895). The wasm `Card`
-  shape splits by direction: a read `Card` always has `body: RichText`, while
+  shape splits by direction: a read `Card` always has `body: Content`, while
   `pushCard` / `insertCard` take a `CardInput` whose `body` still accepts a
   markdown string and whose non-`kind` fields are optional (#917). The richtext
-  write grid then collapses into a document-free corpus codec (`importMarkdown`
+  write grid then collapses into a document-free content codec (`importMarkdown`
   / `exportMarkdown` / `rebase` / `mapPos`) plus the addressed content verbs
   (`install` / `revise` / `applyChange`); the eager
   `bodyMarkdown`/`fieldMarkdown` projections and the per-address body writers
   retire pre-release, `replaceBody` / `replace_body` / `update_card_body` alias
   for one cycle, and richtext fields gain the anchor-preserving `revise_field`
-  (#925). On-disk (`.qmd`) identity stays markdown-lossy — the storage DTO is
+  (#925). On-disk (markdown) identity stays markdown-lossy — the storage DTO is
   the lossless carrier. The binding write surface then settles into two tiers:
   `quill.writer(doc)` (WASM and Python alike) is the documented default —
   typed `set` / `set_all` / `setBody` / `addCard` / `card(i)` and quill-free
-  `get` / `getMarkdown` reads — over the corpus lane and the opaque `setField`
+  `get` / `getMarkdown` reads — over the content lane and the opaque `setField`
   primitive; the addressed `commit(addr, …)` is deleted (subsumed by the
   writer) and a core-vs-bindings parity table governs drift (#932). Two field
   types join the schema: `plaintext` (navigable unformatted prose over the
-  richtext corpus, via a literal codec) and a promoted first-class `enum`
+  richtext content, via a literal codec) and a promoted first-class `enum`
   (`type: enum` + `values:`, the `enum:` modifier on `string` deprecated for one
   release); `string` narrows to open scalar data (#938). The `pdfform` backend's
   `form.json` slims to a binding layer — `form@0.2.0`: bound `fields` drop

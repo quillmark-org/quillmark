@@ -10,10 +10,10 @@ use super::{FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
 
 /// The `contentMediaType` marking a richtext field in the transform schema. The
-/// value crossing the seam for such a field is canonical RichText-JSON (an
+/// value crossing the seam for such a field is canonical Content-JSON (an
 /// object), not a string — backends classify on this media type to lower the
-/// corpus rather than a scalar.
-pub const RICHTEXT_MEDIA_TYPE: &str = "application/quillmark-richtext+json";
+/// content rather than a scalar.
+pub const CONTENT_MEDIA_TYPE: &str = "application/quillmark-content+json";
 
 /// Transform-schema keyword marking a single-`Para` richtext field (`inline: true`
 /// in Quill.yaml). Blueprint still emits `richtext(inline)<markdown>`; this key
@@ -21,7 +21,7 @@ pub const RICHTEXT_MEDIA_TYPE: &str = "application/quillmark-richtext+json";
 pub const QUILLMARK_INLINE_KEY: &str = "quillmark:inline";
 
 /// Transform-schema keyword marking a `plaintext` field — the literal-codec
-/// sibling of richtext. It rides the same [`RICHTEXT_MEDIA_TYPE`], so backends
+/// sibling of richtext. It rides the same [`CONTENT_MEDIA_TYPE`], so backends
 /// lower it identically; this annotation only tells editors to mount a
 /// formatting-free surface and to author/project through the literal codec.
 pub const QUILLMARK_PLAIN_KEY: &str = "quillmark:plain";
@@ -29,7 +29,7 @@ pub const QUILLMARK_PLAIN_KEY: &str = "quillmark:plain";
 /// Build a JSON-Schema-shaped descriptor of a [`QuillConfig`]'s main + card fields.
 ///
 /// The descriptor marks richtext fields with `contentMediaType:
-/// application/quillmark-richtext+json` (see [`RICHTEXT_MEDIA_TYPE`]) and
+/// application/quillmark-content+json` (see [`CONTENT_MEDIA_TYPE`]) and
 /// date/date-time fields with the corresponding JSON Schema `format`.
 ///
 /// `$body` is injected into a kind's `properties` only when that kind's
@@ -49,16 +49,16 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
                 );
             }
             FieldType::RichText { inline } => {
-                // The corpus crosses the seam as a JSON object (canonical
-                // RichText-JSON), not a string; `type: object` + the richtext
-                // media type is how a backend classifies it to lower the corpus.
+                // The content crosses the seam as a JSON object (canonical
+                // Content-JSON), not a string; `type: object` + the richtext
+                // media type is how a backend classifies it to lower the content.
                 schema.insert(
                     "type".to_string(),
                     serde_json::Value::String("object".to_string()),
                 );
                 schema.insert(
                     "contentMediaType".to_string(),
-                    serde_json::Value::String(RICHTEXT_MEDIA_TYPE.to_string()),
+                    serde_json::Value::String(CONTENT_MEDIA_TYPE.to_string()),
                 );
                 if inline {
                     schema.insert(
@@ -68,7 +68,7 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
                 }
             }
             FieldType::PlainText { inline } => {
-                // Plaintext rides the *same* corpus and media type as richtext, so
+                // Plaintext rides the *same* content and media type as richtext, so
                 // a backend classifies and lowers it identically — no backend edit.
                 // The distinction (literal codec, no formatting) is carried by the
                 // `quillmark:plain` annotation, which only editors consult.
@@ -78,7 +78,7 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
                 );
                 schema.insert(
                     "contentMediaType".to_string(),
-                    serde_json::Value::String(RICHTEXT_MEDIA_TYPE.to_string()),
+                    serde_json::Value::String(CONTENT_MEDIA_TYPE.to_string()),
                 );
                 schema.insert(QUILLMARK_PLAIN_KEY.to_string(), serde_json::Value::Bool(true));
                 if inline {
@@ -173,7 +173,7 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
     if config.main.body_enabled() {
         properties.insert(
             "$body".to_string(),
-            serde_json::json!({ "type": "object", "contentMediaType": RICHTEXT_MEDIA_TYPE }),
+            serde_json::json!({ "type": "object", "contentMediaType": CONTENT_MEDIA_TYPE }),
         );
     }
 
@@ -186,7 +186,7 @@ pub fn build_transform_schema(config: &QuillConfig) -> QuillValue {
         if card.body_enabled() {
             card_properties.insert(
                 "$body".to_string(),
-                serde_json::json!({ "type": "object", "contentMediaType": RICHTEXT_MEDIA_TYPE }),
+                serde_json::json!({ "type": "object", "contentMediaType": CONTENT_MEDIA_TYPE }),
             );
         }
         defs.insert(
@@ -281,7 +281,7 @@ main:
         let sections = &json["properties"]["sections"];
         assert_eq!(sections["type"], "array");
         assert_eq!(sections["items"]["type"], "object");
-        assert_eq!(sections["items"]["contentMediaType"], RICHTEXT_MEDIA_TYPE);
+        assert_eq!(sections["items"]["contentMediaType"], CONTENT_MEDIA_TYPE);
     }
 
     #[test]
@@ -338,7 +338,7 @@ card_kinds:
 
         let main_body = &json["properties"]["$body"];
         assert_eq!(main_body["type"], "object");
-        assert_eq!(main_body["contentMediaType"], RICHTEXT_MEDIA_TYPE);
+        assert_eq!(main_body["contentMediaType"], CONTENT_MEDIA_TYPE);
 
         for def_name in ["indorsement_card", "note_card"] {
             let card_body = &json["$defs"][def_name]["properties"]["$body"];
@@ -347,7 +347,7 @@ card_kinds:
                 "{def_name} $body type should be object"
             );
             assert_eq!(
-                card_body["contentMediaType"], RICHTEXT_MEDIA_TYPE,
+                card_body["contentMediaType"], CONTENT_MEDIA_TYPE,
                 "{def_name} $body should be richtext"
             );
         }
@@ -371,7 +371,7 @@ main:
         let json = schema.as_json();
         let subject = &json["properties"]["subject"];
         assert_eq!(subject["type"], "object");
-        assert_eq!(subject["contentMediaType"], RICHTEXT_MEDIA_TYPE);
+        assert_eq!(subject["contentMediaType"], CONTENT_MEDIA_TYPE);
         assert_eq!(subject[QUILLMARK_INLINE_KEY], true);
     }
 

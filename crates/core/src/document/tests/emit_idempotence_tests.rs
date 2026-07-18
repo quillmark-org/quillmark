@@ -1,4 +1,4 @@
-//! Canonical-form convergence corpus tests
+//! Canonical-form convergence content tests
 //!
 //! For every fixture, the markdown and JSON persistence paths must
 //! canonicalise to the same in-memory document. This is the non-trivial

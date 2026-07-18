@@ -35,13 +35,13 @@ fn quill(yaml: &str, plate: &str) -> Quill {
     Quill::from_tree(FileTreeNode::Directory { files }).expect("load quill")
 }
 
-/// The canonical corpus JSON the render seam carries for a richtext field —
-/// these tests drive `Backend::open` directly, so they build the corpus the way
+/// The canonical content JSON the render seam carries for a richtext field —
+/// these tests drive `Backend::open` directly, so they build the content the way
 /// `compile_data` would (`import` then the canonical serializer) rather than
 /// passing a raw markdown string.
-fn corpus(markdown: &str) -> serde_json::Value {
-    let rt = quillmark_richtext::import::from_markdown(markdown).expect("import");
-    quillmark_richtext::serial::to_canonical_value(&rt)
+fn content(markdown: &str) -> serde_json::Value {
+    let rt = quillmark_content::import::from_markdown(markdown).expect("import");
+    quillmark_content::serial::to_canonical_value(&rt)
 }
 
 #[test]
@@ -77,8 +77,8 @@ main:
     // placement should surface one region per page it touches.
     let long = "This is a markdown paragraph that wraps across several lines. ".repeat(200);
     let data = serde_json::json!({
-        "intro": corpus("A **short** intro paragraph on the first page."),
-        "body": corpus(&long),
+        "intro": content("A **short** intro paragraph on the first page."),
+        "body": content(&long),
     });
 
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
@@ -151,7 +151,7 @@ main:
 
 #data.intro
 "#;
-    let data = serde_json::json!({ "intro": corpus("The same intro, placed twice.") });
+    let data = serde_json::json!({ "intro": content("The same intro, placed twice.") });
 
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
     let regions = session.regions();
@@ -354,7 +354,7 @@ main:
   }
 }
 "#;
-    let data = serde_json::json!({ "body": corpus("A body paragraph the package rebuilds.") });
+    let data = serde_json::json!({ "body": content("A body paragraph the package rebuilds.") });
 
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
     let regions = session.regions();
@@ -391,7 +391,7 @@ typst:
 }
 "#;
     let data =
-        serde_json::json!({ "refs": [corpus("First reference."), corpus("Second reference.")] });
+        serde_json::json!({ "refs": [content("First reference."), content("Second reference.")] });
 
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
     let regions = session.regions();
@@ -453,11 +453,11 @@ card_kinds:
 }
 "#;
     let data = serde_json::json!({
-        "intro": corpus("Top-level intro."),
+        "intro": content("Top-level intro."),
         "$cards": [
-            {"$kind": "alpha", "note": corpus("Alpha one.")},
-            {"$kind": "beta",  "note": corpus("Beta one.")},
-            {"$kind": "alpha", "note": corpus("Alpha two.")},
+            {"$kind": "alpha", "note": content("Alpha one.")},
+            {"$kind": "beta",  "note": content("Beta one.")},
+            {"$kind": "alpha", "note": content("Alpha two.")},
         ],
     });
 
@@ -551,7 +551,7 @@ main:
 #data.intro
 "#;
     let good = serde_json::json!({
-        "intro": corpus("A stable paragraph the session keeps serving."),
+        "intro": content("A stable paragraph the session keeps serving."),
         "when": "2026-07-03",
     });
     let mut session = TypstBackend.open(&quill(YAML, PLATE), &good).expect("open");
@@ -563,7 +563,7 @@ main:
 
     // Shorter content shifts every byte offset in the regenerated helper,
     // and the unparseable date fails the compile at data-assembly time.
-    let bad = serde_json::json!({ "intro": corpus("X"), "when": "not-a-date" });
+    let bad = serde_json::json!({ "intro": content("X"), "when": "not-a-date" });
     session
         .apply(&bad)
         .expect_err("the bad date must fail the compile");
@@ -617,7 +617,7 @@ main:
 #data.body
 "#;
     let long = "A paragraph that wraps and flows across pages. ".repeat(120);
-    let data = serde_json::json!({ "body": corpus(&long) });
+    let data = serde_json::json!({ "body": content(&long) });
 
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
     let regions = session.regions();
@@ -744,7 +744,7 @@ main:
     let data = serde_json::json!({
         // Import balances the unterminated `<u>` into a closed underline mark, so
         // the emitter's `#underline[ .. ]` is bracket-balanced by construction.
-        "body": corpus("Please <u>sign here"),
+        "body": content("Please <u>sign here"),
         "n": i64::MIN,
     });
     // Compile success is the assertion: a broken literal or unbalanced block
@@ -812,7 +812,7 @@ main:
 #[test]
 fn segment_regions_carry_span_and_field_union_is_striped() {
     // #829's visible change: a content field breaks into one region **per
-    // paragraph**, each keyed on its corpus span. The whole-field highlight is
+    // paragraph**, each keyed on its content span. The whole-field highlight is
     // the consumer's union of a page's segment rects — so the inter-paragraph
     // whitespace stays uncovered (striped), unlike the old single solid box.
     const YAML: &str = r#"
@@ -837,7 +837,7 @@ main:
 #data.body
 "#;
     let data = serde_json::json!({
-        "body": corpus("First paragraph, alpha.\n\nSecond paragraph, beta."),
+        "body": content("First paragraph, alpha.\n\nSecond paragraph, beta."),
     });
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
     let body: Vec<_> = session
@@ -852,7 +852,7 @@ main:
     );
     assert!(body.iter().all(|r| r.page == 0), "both on page 0: {body:?}");
 
-    // Each segment carries its own corpus span; the two spans are disjoint and
+    // Each segment carries its own content span; the two spans are disjoint and
     // ordered (segment order is the region sort key).
     let s0 = body[0].span.expect("segment 0 carries a span");
     let s1 = body[1].span.expect("segment 1 carries a span");
@@ -880,7 +880,7 @@ main:
 
 #[test]
 fn position_at_and_locate_round_trip_a_corpus_offset() {
-    // The two navigation directions compose: a click resolves to a corpus
+    // The two navigation directions compose: a click resolves to a content
     // position inside the field, and locating that position returns a caret
     // rect back on the same page, inside the field's region. A click off all
     // content ink resolves to nothing.
@@ -905,7 +905,7 @@ main:
 
 #data.body
 "#;
-    let data = serde_json::json!({ "body": corpus("Alpha beta gamma delta epsilon.") });
+    let data = serde_json::json!({ "body": content("Alpha beta gamma delta epsilon.") });
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
     let body: Vec<_> = session
         .regions()
@@ -917,12 +917,12 @@ main:
     let span = region.span.expect("content region carries a span");
 
     // A click near the top-left of the paragraph (its first line) resolves to a
-    // corpus position within the segment's span.
+    // content position within the segment's span.
     let cx = region.rect[0] + 5.0;
     let cy = region.rect[3] - 3.0;
     let hit = session
         .position_at(region.page, cx, cy)
-        .expect("a click inside content resolves to a corpus position");
+        .expect("a click inside content resolves to a content position");
     assert_eq!(hit.field, "body");
     assert!(
         span[0] <= hit.pos && hit.pos <= span[1],
@@ -941,7 +941,7 @@ main:
     // field's region, with `span` collapsed to the caret point.
     let caret = session
         .locate("body", hit.pos)
-        .expect("a corpus position locates a caret rect");
+        .expect("a content position locates a caret rect");
     assert_eq!(caret.page, region.page);
     assert_eq!(caret.span, Some([hit.pos, hit.pos]));
     assert!(
@@ -963,8 +963,8 @@ fn position_at_on_a_raw_block_degrades_to_the_segment_start() {
     // The spike's `#raw` correction: every physical line of a multi-line
     // `#raw(block: true, "…")` fence shares one resolved node wider than any
     // per-line run, so per-run inversion cannot pick a line. position_at
-    // degrades to the code **segment's** corpus start — so clicks on different
-    // fence lines resolve to the *same* corpus position (segment-level
+    // degrades to the code **segment's** content start — so clicks on different
+    // fence lines resolve to the *same* content position (segment-level
     // correctness kept, per-line precision unavailable), distinct from the
     // prose paragraph's.
     const YAML: &str = r#"
@@ -989,7 +989,7 @@ main:
 #data.body
 "#;
     let data = serde_json::json!({
-        "body": corpus("Intro prose here.\n\n```\nfirst code line\nsecond code line\nthird code line\n```"),
+        "body": content("Intro prose here.\n\n```\nfirst code line\nsecond code line\nthird code line\n```"),
     });
     let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
     let body: Vec<_> = session

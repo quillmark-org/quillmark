@@ -33,7 +33,7 @@ pub(crate) fn scalar_as_string(value: &serde_json::Value) -> Option<String> {
 /// [`scalar_as_string`]). `None` for anything else (a multi-element array, an
 /// object, null), leaving the caller's own fallback to apply.
 ///
-/// Shared by the `String` and `RichText` coercion branches, which both reduce
+/// Shared by the `String` and `Content` coercion branches, which both reduce
 /// a lenient value to a string before adopting it (as the field value itself,
 /// or as markdown to import).
 fn lenient_string(value: &serde_json::Value) -> Option<String> {
@@ -127,7 +127,7 @@ pub(crate) enum Leniency {
     Render,
     /// A strict typed write ([`Card::commit_field`](crate::document::Card::commit_field)):
     /// value-parsing normalizations still apply (`"3"` → `3`, a bare scalar
-    /// wraps into a singleton array, richtext markdown imports to corpus), but
+    /// wraps into a singleton array, richtext markdown imports to content), but
     /// cross-type `Boolean`↔`Number` coercions are dropped and every
     /// defer-to-validation fall-through becomes a `CoercionError` — so a
     /// mismatched value fails at the write, not silently at a later render.
@@ -438,14 +438,14 @@ impl QuillConfig {
                 }
             }
             FieldType::PlainText { inline } => {
-                // Plaintext rides the same corpus as richtext but through the
+                // Plaintext rides the same content as richtext but through the
                 // *literal* codec: a string is imported verbatim via
                 // `from_plaintext` (no markdown parsing, no escaping), an
-                // already-structured corpus is validated plain. A wire corpus
+                // already-structured content is validated plain. A wire content
                 // carrying marks or islands is rejected, not silently stripped —
                 // matching the `inline` precedent and keeping coercion lossless.
                 let plain_check =
-                    |rt: &quillmark_richtext::RichText| -> Result<(), CoercionError> {
+                    |rt: &quillmark_content::Content| -> Result<(), CoercionError> {
                         if !rt.is_plain() {
                             return Err(CoercionError::Uncoercible {
                                 path: path.to_string(),
@@ -467,17 +467,17 @@ impl QuillConfig {
                         Ok(())
                     };
                 if json_value.is_object() {
-                    let rt = quillmark_richtext::serial::from_canonical_value(json_value).map_err(
+                    let rt = quillmark_content::serial::from_canonical_value(json_value).map_err(
                         |e| CoercionError::Uncoercible {
                             path: path.to_string(),
                             value: "<object>".to_string(),
                             target: "plaintext".to_string(),
-                            reason: format!("not a valid richtext corpus: {e}"),
+                            reason: format!("not a valid richtext content: {e}"),
                         },
                     )?;
                     plain_check(&rt)?;
                     return Ok(QuillValue::from_json(
-                        quillmark_richtext::serial::to_canonical_value(&rt),
+                        quillmark_content::serial::to_canonical_value(&rt),
                     ));
                 }
                 // Reduce to the authored literal string via the shared leniency
@@ -489,22 +489,22 @@ impl QuillConfig {
                             path: path.to_string(),
                             value: json_value.to_string(),
                             target: "plaintext".to_string(),
-                            reason: "value is not a plaintext string or corpus".to_string(),
+                            reason: "value is not a plaintext string or content".to_string(),
                         }),
                     };
                 };
-                let rt = quillmark_richtext::from_plaintext(&text);
+                let rt = quillmark_content::from_plaintext(&text);
                 plain_check(&rt)?;
                 Ok(QuillValue::from_json(
-                    quillmark_richtext::serial::to_canonical_value(&rt),
+                    quillmark_content::serial::to_canonical_value(&rt),
                 ))
             }
             FieldType::RichText { inline } => {
-                // The seam carries the corpus, so coercion commits the corpus
+                // The seam carries the content, so coercion commits the content
                 // form: an already-structured value (editor / re-render) is
                 // validated and re-canonicalized; an authored markdown string is
                 // imported. Determinism is inherited from `import` being pure.
-                // An `inline` field additionally requires the resulting corpus to
+                // An `inline` field additionally requires the resulting content to
                 // be single-`Para` (`richtext(inline)`): editors mount a one-line
                 // surface, so multi-block content is a coercion error here, in
                 // lockstep with the validation-layer `richtext::not_inline` check.
@@ -515,7 +515,7 @@ impl QuillConfig {
                 // bare scalar or length-1 array to text before importing, which
                 // the strict decoder must not do, so it stays open-coded here.
                 let inline_check =
-                    |rt: &quillmark_richtext::RichText| -> Result<(), CoercionError> {
+                    |rt: &quillmark_content::Content| -> Result<(), CoercionError> {
                         if inline && !rt.is_inline() {
                             return Err(CoercionError::Uncoercible {
                                 path: path.to_string(),
@@ -529,13 +529,13 @@ impl QuillConfig {
                         Ok(())
                     };
                 // A strict write uses `decode_richtext_value` semantics — a
-                // canonical corpus object or a markdown string, nothing else. No
+                // canonical content object or a markdown string, nothing else. No
                 // scalar→string reduction (the render floor's lenient cascade
                 // below): a bare scalar for a richtext field fails the write. The
                 // messages mirror `Card::commit_field`'s richtext error variants,
                 // which the bindings key on.
                 if mode == Leniency::Write {
-                    let corpus = match crate::document::decode_richtext_value(json_value) {
+                    let content = match crate::document::decode_richtext_value(json_value) {
                         Some(result) => result.map_err(|e| CoercionError::Uncoercible {
                             path: path.to_string(),
                             value: "<richtext>".to_string(),
@@ -548,7 +548,7 @@ impl QuillConfig {
                                 value: json_value.to_string(),
                                 target: "richtext".to_string(),
                                 reason: format!(
-                                    "expected a richtext corpus object or a markdown string, got {}",
+                                    "expected a richtext content object or a markdown string, got {}",
                                     match json_value {
                                         serde_json::Value::Bool(_) => "a boolean",
                                         serde_json::Value::Number(_) => "a number",
@@ -559,35 +559,35 @@ impl QuillConfig {
                             })
                         }
                     };
-                    inline_check(&corpus)?;
+                    inline_check(&content)?;
                     return Ok(QuillValue::from_json(
-                        quillmark_richtext::serial::to_canonical_value(&corpus),
+                        quillmark_content::serial::to_canonical_value(&content),
                     ));
                 }
                 if json_value.is_object() {
-                    let rt = quillmark_richtext::serial::from_canonical_value(json_value).map_err(
+                    let rt = quillmark_content::serial::from_canonical_value(json_value).map_err(
                         |e| CoercionError::Uncoercible {
                             path: path.to_string(),
                             value: "<object>".to_string(),
                             target: "richtext".to_string(),
-                            reason: format!("not a valid richtext corpus: {e}"),
+                            reason: format!("not a valid richtext content: {e}"),
                         },
                     )?;
                     inline_check(&rt)?;
                     return Ok(QuillValue::from_json(
-                        quillmark_richtext::serial::to_canonical_value(&rt),
+                        quillmark_content::serial::to_canonical_value(&rt),
                     ));
                 }
                 // Reduce to the authored markdown string via the shared
                 // leniency cascade (bare string, length-1 array unwrap, or bare
                 // scalar), then import.
                 let Some(markdown) = lenient_string(json_value) else {
-                    // A shape that is neither corpus nor stringifiable (e.g. a
+                    // A shape that is neither content nor stringifiable (e.g. a
                     // multi-element array): leave it for the validation layer to
                     // report, matching the String branch's fall-through.
                     return Ok(value.clone());
                 };
-                let rt = quillmark_richtext::import::from_markdown(&markdown).map_err(|e| {
+                let rt = quillmark_content::import::from_markdown(&markdown).map_err(|e| {
                     CoercionError::Uncoercible {
                         path: path.to_string(),
                         value: markdown.clone(),
@@ -597,7 +597,7 @@ impl QuillConfig {
                 })?;
                 inline_check(&rt)?;
                 Ok(QuillValue::from_json(
-                    quillmark_richtext::serial::to_canonical_value(&rt),
+                    quillmark_content::serial::to_canonical_value(&rt),
                 ))
             }
             FieldType::DateTime => {
@@ -1783,10 +1783,10 @@ impl QuillConfig {
         }
 
         // Import every richtext `default` / `example` / `body.example` literal
-        // once into its canonical-corpus companion cache — a pure function of the
+        // once into its canonical-content companion cache — a pure function of the
         // Quill.yaml bytes, never serialized. This is where `richtext(inline)`
         // violations and malformed richtext literals surface as load errors, and
-        // where seeding and the render floor later read a pre-validated corpus
+        // where seeding and the render floor later read a pre-validated content
         // instead of re-importing the markdown per document.
         populate_card_corpus(&mut main, "main", &mut errors);
         for card in &mut card_kinds {
@@ -1831,10 +1831,10 @@ fn example_contains_fence_line(text: &str) -> bool {
     })
 }
 
-/// Whether a field's type tree contains any corpus leaf — the gate for caching
-/// a corpus companion. Both `richtext` and its literal-codec sibling `plaintext`
-/// are corpus leaves; a scalar (`string`, `integer`, `enum`, …) never carries
-/// one; an `array<richtext>` or an `object` with a corpus property does.
+/// Whether a field's type tree contains any content leaf — the gate for caching
+/// a content companion. Both `richtext` and its literal-codec sibling `plaintext`
+/// are content leaves; a scalar (`string`, `integer`, `enum`, …) never carries
+/// one; an `array<richtext>` or an `object` with a content property does.
 fn field_contains_corpus(field: &FieldSchema) -> bool {
     match &field.r#type {
         FieldType::RichText { .. } | FieldType::PlainText { .. } => true,
@@ -1856,19 +1856,19 @@ fn populate_field_corpus(field: &mut FieldSchema, owner: &str, errors: &mut Vec<
     }
     if let Some(default) = field.default.clone() {
         match literal_corpus(&default, field, &format!("{owner} `default`")) {
-            Ok(corpus) => field.default_corpus = corpus,
+            Ok(content) => field.default_corpus = content,
             Err(d) => errors.push(d),
         }
     }
     if let Some(example) = field.example.clone() {
         match literal_corpus(&example, field, &format!("{owner} `example`")) {
-            Ok(corpus) => field.example_corpus = corpus,
+            Ok(content) => field.example_corpus = content,
             Err(d) => errors.push(d),
         }
     }
 }
 
-/// Populate every richtext corpus companion on a card: each field's
+/// Populate every richtext content companion on a card: each field's
 /// `default`/`example`, and the card's `body.example` (block richtext — no
 /// inline constraint; skipped when the body is disabled, since its example is
 /// inert).
@@ -1883,7 +1883,7 @@ fn populate_card_corpus(card: &mut CardSchema, label: &str, errors: &mut Vec<Dia
                 match crate::document::import_body(&example) {
                     Ok(rt) => {
                         body.example_corpus = Some(QuillValue::from_json(
-                            quillmark_richtext::serial::to_canonical_value(&rt),
+                            quillmark_content::serial::to_canonical_value(&rt),
                         ));
                     }
                     Err(e) => errors.push(
@@ -1899,7 +1899,7 @@ fn populate_card_corpus(card: &mut CardSchema, label: &str, errors: &mut Vec<Dia
     }
 }
 
-/// Compute the canonical-corpus form of a richtext-bearing schema literal
+/// Compute the canonical-content form of a richtext-bearing schema literal
 /// (`default` / `example`), importing every markdown leaf once and enforcing
 /// `richtext(inline)`. Recurses through `array` / `object` shapes, converting
 /// only their richtext leaves and passing other elements through unchanged.
@@ -1925,7 +1925,7 @@ fn literal_corpus(
                             format!("markdown import failed: {m}")
                         }
                         crate::document::RichtextDecodeError::NotCorpus(m) => {
-                            format!("not a valid richtext corpus: {m}")
+                            format!("not a valid richtext content: {m}")
                         }
                     };
                     return Err(richtext_literal_error(label, &reason));
@@ -1941,20 +1941,20 @@ fn literal_corpus(
                 return Err(richtext_inline_error(label));
             }
             Ok(Some(QuillValue::from_json(
-                quillmark_richtext::serial::to_canonical_value(&rt),
+                quillmark_content::serial::to_canonical_value(&rt),
             )))
         }
         FieldType::PlainText { inline } => {
             // Plaintext literals are authored as literal strings and imported
-            // verbatim (never markdown), so the cached corpus is plain by
-            // construction; a corpus-object literal is revalidated. Shares the
+            // verbatim (never markdown), so the cached content is plain by
+            // construction; a content-object literal is revalidated. Shares the
             // one object-vs-string dispatch with the validation shape check.
             let rt = match crate::document::decode_plaintext_value(json) {
                 Some(Ok(rt)) => rt,
                 Some(Err(e)) => {
                     return Err(richtext_literal_error(
                         label,
-                        &format!("not a valid richtext corpus: {e}"),
+                        &format!("not a valid richtext content: {e}"),
                     ))
                 }
                 None => {
@@ -1974,7 +1974,7 @@ fn literal_corpus(
                 return Err(richtext_inline_error(label));
             }
             Ok(Some(QuillValue::from_json(
-                quillmark_richtext::serial::to_canonical_value(&rt),
+                quillmark_content::serial::to_canonical_value(&rt),
             )))
         }
         FieldType::Array => {
@@ -1988,9 +1988,9 @@ fn literal_corpus(
             let mut out = Vec::with_capacity(arr.len());
             for (idx, elem) in arr.iter().enumerate() {
                 let elem_v = QuillValue::from_json(elem.clone());
-                let corpus =
+                let content =
                     literal_corpus(&elem_v, items, &format!("{label}[{idx}]"))?.unwrap_or(elem_v);
-                out.push(corpus.into_json());
+                out.push(content.into_json());
             }
             Ok(Some(QuillValue::from_json(serde_json::Value::Array(out))))
         }
@@ -2030,7 +2030,7 @@ fn richtext_literal_error(label: &str, reason: &str) -> Diagnostic {
     .with_code("quill::richtext_example_import".to_string())
 }
 
-/// A load diagnostic for a `richtext(inline)` schema literal whose corpus spans
+/// A load diagnostic for a `richtext(inline)` schema literal whose content spans
 /// more than a single paragraph.
 fn richtext_inline_error(label: &str) -> Diagnostic {
     Diagnostic::new(

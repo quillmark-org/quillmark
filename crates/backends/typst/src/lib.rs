@@ -4,7 +4,7 @@
 //! [`TypstBackend`] implements the [`Backend`] trait from `quillmark-core`.
 //! Callers typically reach it through the `quillmark` crate's `Quill` API.
 //!
-//! Richtext fields cross the seam as canonical corpus JSON and are lowered to
+//! Richtext fields cross the seam as canonical content JSON and are lowered to
 //! Typst markup by [`emit`] at codegen time — the only markup-producing path,
 //! never a markdown re-parse. The plate accesses fields via the
 //! `@local/quillmark-helper` virtual package. Unsigned AcroForm widgets (text,
@@ -16,9 +16,9 @@
 //! public API. The public lowering surface is [`emit`].
 
 mod compile;
-/// The corpus → Typst-markup lowering + its per-segment source map (the codegen
+/// The content → Typst-markup lowering + its per-segment source map (the codegen
 /// tier of the richtext seam, Option A). The one place that both lowers a
-/// [`RichText`](quillmark_richtext::RichText) and knows the resulting byte
+/// [`Content`](quillmark_content::Content) and knows the resulting byte
 /// layout, so the only place a source map can be produced. This is the sole
 /// markup-producing path in the render engine — no code parses markdown.
 pub mod emit;
@@ -31,7 +31,7 @@ mod world;
 use std::borrow::Cow;
 
 use quillmark_core::{
-    quill::{build_transform_schema, QUILLMARK_INLINE_KEY, RICHTEXT_MEDIA_TYPE},
+    quill::{build_transform_schema, QUILLMARK_INLINE_KEY, CONTENT_MEDIA_TYPE},
     session::SessionHandle,
     Backend, ChangeSet, CorpusHit, Diagnostic, LiveSession, OutputFormat, Quill, RenderError,
     RenderOptions, RenderResult, RenderedRegion, Severity,
@@ -194,7 +194,7 @@ fn page_hashes(document: &typst_layout::PagedDocument) -> Vec<u128> {
 }
 
 /// Prepare raw document data for the helper codegen. The seam already carries
-/// the render shape — richtext fields are canonical corpus JSON, not markdown
+/// the render shape — richtext fields are canonical content JSON, not markdown
 /// to re-parse (lowered to markup at codegen via [`emit::emit_richtext`]), dates
 /// are strings (lowered to `datetime(..)` at codegen) — so there is no
 /// per-field transform here. `meta` is the session's cached [`SchemaMeta`].
@@ -440,11 +440,11 @@ impl SessionHandle for TypstSession {
             })
     }
 
-    /// A point → corpus position in a content field — the fine-grained twin of
+    /// A point → content position in a content field — the fine-grained twin of
     /// [`field_at`](Self::field_at). Resolves the content glyph under `(x, y)`
-    /// to a cluster-exact USV offset in its field's `RichText`, degrading to
+    /// to a cluster-exact USV offset in its field's `Content`, degrading to
     /// the containing segment's start on origin-less ink. `None` off all
-    /// content ink or on scalar/widget ink (no corpus address). Widgets draw no
+    /// content ink or on scalar/widget ink (no content address). Widgets draw no
     /// spanned content ink, so — unlike `field_at` — they are not consulted.
     fn position_at(&self, page: usize, x: f32, y: f32) -> Option<CorpusHit> {
         overlay::position_at(
@@ -458,8 +458,8 @@ impl SessionHandle for TypstSession {
         )
     }
 
-    /// A corpus position → caret rect — the reverse of
-    /// [`position_at`](Self::position_at). Maps `pos` in `field`'s `RichText`
+    /// A content position → caret rect — the reverse of
+    /// [`position_at`](Self::position_at). Maps `pos` in `field`'s `Content`
     /// to the box of the glyph the caret sits at, page-indexed.
     fn locate(&self, field: &str, pos: usize) -> Option<RenderedRegion> {
         overlay::locate(
@@ -624,21 +624,21 @@ fn engine_err(code: &str, message: impl Into<String>) -> RenderError {
 }
 
 /// Check if a field schema indicates richtext content: `contentMediaType =
-/// application/quillmark-richtext+json` (the value crossing the seam is a
-/// canonical corpus object, lowered to markup at codegen).
+/// application/quillmark-content+json` (the value crossing the seam is a
+/// canonical content object, lowered to markup at codegen).
 fn is_richtext_field(field_schema: &serde_json::Value) -> bool {
     field_schema
         .get("contentMediaType")
         .and_then(|v| v.as_str())
-        .map(|s| s == RICHTEXT_MEDIA_TYPE)
+        .map(|s| s == CONTENT_MEDIA_TYPE)
         .unwrap_or(false)
 }
 
 /// Check if a field schema indicates an array of richtext elements.
 ///
 /// True when the field is `{type: array, items: {contentMediaType:
-/// application/quillmark-richtext+json}}` — i.e. an `array<richtext>` field. Each
-/// element is a corpus object lowered to a content block individually.
+/// application/quillmark-content+json}}` — i.e. an `array<richtext>` field. Each
+/// element is a content object lowered to a content block individually.
 fn is_richtext_array_field(field_schema: &serde_json::Value) -> bool {
     field_schema
         .get("type")
@@ -652,8 +652,8 @@ fn is_richtext_array_field(field_schema: &serde_json::Value) -> bool {
 }
 
 /// Check if a field schema is a richtext (or `array<richtext>`) field whose
-/// (element) corpus is `inline` — carries `quillmark:inline: true`
-/// ([`QUILLMARK_INLINE_KEY`]). An inline field's corpus lowers to pure inline
+/// (element) content is `inline` — carries `quillmark:inline: true`
+/// ([`QUILLMARK_INLINE_KEY`]). An inline field's content lowers to pure inline
 /// Typst markup (no `parbreak`); the flag sits on the richtext schema itself,
 /// and for an array on its `items` (mirroring `build_transform_schema`).
 fn is_inline_richtext_field(field_schema: &serde_json::Value) -> bool {
@@ -699,7 +699,7 @@ fn content_field_names(properties: &serde_json::Map<String, serde_json::Value>) 
 }
 
 /// Names of the `inline` richtext / `array<richtext(inline)>` fields — a subset
-/// of [`content_field_names`] whose corpus lowers to pure inline markup (#872).
+/// of [`content_field_names`] whose content lowers to pure inline markup (#872).
 fn inline_field_names(properties: &serde_json::Map<String, serde_json::Value>) -> Vec<String> {
     field_names_where(properties, is_inline_richtext_field)
 }
@@ -834,11 +834,11 @@ mod tests {
     use serde_json::json;
     use std::collections::HashMap;
 
-    /// A field's canonical corpus JSON, the shape the seam carries for a richtext
+    /// A field's canonical content JSON, the shape the seam carries for a richtext
     /// field — `import(markdown)` then the canonical serializer.
-    fn corpus(markdown: &str) -> serde_json::Value {
-        let rt = quillmark_richtext::import::from_markdown(markdown).expect("import");
-        quillmark_richtext::serial::to_canonical_value(&rt)
+    fn content(markdown: &str) -> serde_json::Value {
+        let rt = quillmark_content::import::from_markdown(markdown).expect("import");
+        quillmark_content::serial::to_canonical_value(&rt)
     }
 
     /// Direct teeth for the pixels-not-spans contract (#801): two compiles
@@ -882,9 +882,9 @@ mod tests {
             Quill::from_tree(FileTreeNode::Directory { files }).expect("quill")
         };
 
-        // The body crosses the seam as canonical corpus JSON, not markdown.
+        // The body crosses the seam as canonical content JSON, not markdown.
         let json =
-            serde_json::json!({ "body": corpus("A **markdown** body with real ink to lay out.") });
+            serde_json::json!({ "body": content("A **markdown** body with real ink to lay out.") });
         let hashes_of = |quill: &Quill| {
             let plate_content = read_plate(quill).expect("plate");
             let transform_schema = build_transform_schema(quill.config());
@@ -906,7 +906,7 @@ mod tests {
 
     /// A paragraph whose text opens with a line-anchored Typst token (`= `, `- `,
     /// `+ `, `N. `, `/ `) must render as literal text, not a heading/list/term.
-    /// The emitter prefixes a `\` at column 0; this compiles the corpus and asks
+    /// The emitter prefixes a `\` at column 0; this compiles the content and asks
     /// Typst's introspector how many of each block it actually produced — the
     /// end-to-end teeth behind `emit::opens_line_anchor`, run against the real
     /// Typst grammar so a future Typst version that changes line-anchoring fails
@@ -936,23 +936,23 @@ mod tests {
             );
             Quill::from_tree(FileTreeNode::Directory { files }).expect("quill")
         };
-        // Build the corpus as `Para` lines directly — an editor can place a
+        // Build the content as `Para` lines directly — an editor can place a
         // paragraph whose literal text opens with any of these tokens (markdown
         // import would instead parse `- `/`+ `/`N. ` as real lists, which is not
         // the bug). Each line is its own paragraph, so each starts at column 0.
-        use quillmark_richtext::model::{Line, LineKind, RichText};
+        use quillmark_content::model::{Line, LineKind, Content};
         let para = |_: usize| Line { kind: LineKind::Para, containers: vec![], continues: false };
-        let mut rt = RichText {
+        let mut rt = Content {
             text: "= Heading\n- bullet\n+ numbered\n1. dotted\n/ term: desc".to_string(),
             lines: (0..5).map(para).collect(),
             marks: vec![],
             islands: vec![],
         };
         rt.normalize();
-        assert_eq!(rt.validate(), Ok(()), "corpus invariants");
+        assert_eq!(rt.validate(), Ok(()), "content invariants");
         let q = quill();
         let json =
-            serde_json::json!({ "body": quillmark_richtext::serial::to_canonical_value(&rt) });
+            serde_json::json!({ "body": quillmark_content::serial::to_canonical_value(&rt) });
         let plate_content = read_plate(&q).expect("plate");
         let transform_schema = build_transform_schema(q.config());
         let schema_meta = SchemaMeta::from_schema_json(transform_schema.as_json());
@@ -1004,7 +1004,7 @@ mod tests {
         };
         let warnings_for = |inline: bool| {
             let q = quill(inline);
-            let json = serde_json::json!({ "subject": corpus("A subject line") });
+            let json = serde_json::json!({ "subject": content("A subject line") });
             let plate_content = read_plate(&q).expect("plate");
             let transform_schema = build_transform_schema(q.config());
             let schema_meta = SchemaMeta::from_schema_json(transform_schema.as_json());
@@ -1062,7 +1062,7 @@ mod tests {
         };
         let q = quill();
         // A body with a mark and (defensively) no island — plaintext drops the mark.
-        let json = serde_json::json!({ "subject": corpus("Hello **bold** world") });
+        let json = serde_json::json!({ "subject": content("Hello **bold** world") });
         let plate_content = read_plate(&q).expect("plate");
         let transform_schema = build_transform_schema(q.config());
         let schema_meta = SchemaMeta::from_schema_json(transform_schema.as_json());
@@ -1078,7 +1078,7 @@ mod tests {
     fn test_is_richtext_field() {
         let richtext_schema = json!({
             "type": "object",
-            "contentMediaType": RICHTEXT_MEDIA_TYPE
+            "contentMediaType": CONTENT_MEDIA_TYPE
         });
         assert!(is_richtext_field(&richtext_schema));
 
@@ -1094,7 +1094,7 @@ mod tests {
     fn test_is_richtext_array_field() {
         let rt_array = json!({
             "type": "array",
-            "items": { "type": "object", "contentMediaType": RICHTEXT_MEDIA_TYPE }
+            "items": { "type": "object", "contentMediaType": CONTENT_MEDIA_TYPE }
         });
         assert!(is_richtext_array_field(&rt_array));
 
@@ -1105,7 +1105,7 @@ mod tests {
         assert!(!is_richtext_array_field(&string_array));
 
         // A plain richtext scalar is not a richtext array.
-        let rt_scalar = json!({ "type": "object", "contentMediaType": RICHTEXT_MEDIA_TYPE });
+        let rt_scalar = json!({ "type": "object", "contentMediaType": CONTENT_MEDIA_TYPE });
         assert!(!is_richtext_array_field(&rt_scalar));
     }
 
@@ -1117,10 +1117,10 @@ mod tests {
             "type": "object",
             "properties": {
                 "title": { "type": "string" },
-                "intro": { "type": "object", "contentMediaType": RICHTEXT_MEDIA_TYPE },
+                "intro": { "type": "object", "contentMediaType": CONTENT_MEDIA_TYPE },
                 "sections": {
                     "type": "array",
-                    "items": { "type": "object", "contentMediaType": RICHTEXT_MEDIA_TYPE }
+                    "items": { "type": "object", "contentMediaType": CONTENT_MEDIA_TYPE }
                 }
             }
         }));
@@ -1139,10 +1139,10 @@ mod tests {
         let schema = QuillValue::from_json(json!({
             "type": "object",
             "properties": {
-                "subject": { "type": "object", "contentMediaType": RICHTEXT_MEDIA_TYPE },
+                "subject": { "type": "object", "contentMediaType": CONTENT_MEDIA_TYPE },
                 "sections": {
                     "type": "array",
-                    "items": { "type": "object", "contentMediaType": RICHTEXT_MEDIA_TYPE }
+                    "items": { "type": "object", "contentMediaType": CONTENT_MEDIA_TYPE }
                 },
                 "signature_block": {
                     "type": "array",
@@ -1153,7 +1153,7 @@ mod tests {
                 "indorsement_card": {
                     "type": "object",
                     "properties": {
-                        "$body": { "type": "object", "contentMediaType": RICHTEXT_MEDIA_TYPE },
+                        "$body": { "type": "object", "contentMediaType": CONTENT_MEDIA_TYPE },
                         "refs": {
                             "type": "array",
                             "items": { "type": "string" }

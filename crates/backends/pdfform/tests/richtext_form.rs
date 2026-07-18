@@ -1,7 +1,7 @@
 //! End-to-end acceptance test for the `richtext_form` fixture: a pdfform quill
-//! that binds richtext fields. It exercises the corpus → plaintext lowering —
-//! a richtext field crosses the seam as canonical corpus JSON and pdfform lowers
-//! it to `RichText.text` (markup dropped, island slots stripped) for the widget
+//! that binds richtext fields. It exercises the content → plaintext lowering —
+//! a richtext field crosses the seam as canonical content JSON and pdfform lowers
+//! it to `Content.text` (markup dropped, island slots stripped) for the widget
 //! `/V`. (No pdfform field carries rich formatting; Adobe-only `/RV` is
 //! deferred.)
 
@@ -9,7 +9,7 @@ use lopdf::Document as PdfDoc;
 use quillmark::{Document, OutputFormat, Quillmark, RenderOptions};
 
 // `headline` (inline richtext) and `bio` (block richtext) authored as markdown;
-// coercion imports each to a corpus, and pdfform lowers each to plaintext.
+// coercion imports each to a content, and pdfform lowers each to plaintext.
 const FILLED: &str = "~~~\n\
 $quill: richtext_form\n\
 $kind: main\n\
@@ -87,10 +87,10 @@ fn richtext_fields_lower_to_plaintext_field_values() {
 }
 
 /// Same render, but the richtext fields are written via the typed writer, so
-/// each is **stored as a canonical corpus object** rather than an authored
+/// each is **stored as a canonical content object** rather than an authored
 /// markdown string. This exercises coercion's object branch (re-validate +
 /// re-canonicalize) end-to-end and proves it lowers identically to the
-/// string-authored path — the corpus-from-write form renders the same PDF.
+/// string-authored path — the content-from-write form renders the same PDF.
 #[test]
 fn richtext_fields_written_as_corpus_render_identically() {
     let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("richtext_form"))
@@ -98,9 +98,9 @@ fn richtext_fields_written_as_corpus_render_identically() {
     let engine = Quillmark::new();
 
     // Start from the string-authored doc, then re-write each field through the
-    // schema-bound typed writer: `commit_field` stores the *canonical corpus
+    // schema-bound typed writer: `commit_field` stores the *canonical content
     // object* (decode → canonicalize) for a richtext-typed field, so the payload
-    // now carries corpus objects.
+    // now carries content objects.
     let mut doc = Document::parse(FILLED).expect("parse markdown").document;
     {
         let mut ed = quill.writer(&mut doc);
@@ -109,7 +109,7 @@ fn richtext_fields_written_as_corpus_render_identically() {
         ed.set("bio", "A **bold** claim and _emphasis_.")
             .expect("block richtext write");
     }
-    // Precondition: the fields are stored structurally as corpus objects now.
+    // Precondition: the fields are stored structurally as content objects now.
     let main = doc.main();
     assert!(main.payload().get("headline").unwrap().as_json().is_object());
     assert!(main.payload().get("bio").unwrap().as_json().is_object());

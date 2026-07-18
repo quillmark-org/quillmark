@@ -127,17 +127,17 @@ void changeSetKeys;
 void corpusHitKeys;
 
 // ── Re-export presence guard (#948) ─────────────────────────────────────────
-// The corpus edit vocabulary is DECLARED in the core build but consumed through
+// The content edit vocabulary is DECLARED in the core build but consumed through
 // the single runtime entry point. Importing every name from the runtime root
 // here asserts the re-export in `runtime/runtime.d.ts` stays present: drop any
 // one and this import stops resolving, failing `npm run typecheck`. Type-only —
 // no runtime code, no assignability claim, pure existence.
 import type {
-	RichText,
-	RichTextLine,
-	RichTextContainer,
-	RichTextMark,
-	RichTextIsland,
+	Content,
+	ContentLine,
+	ContentContainer,
+	ContentMark,
+	ContentIsland,
 	CardInput,
 	PathStep,
 	Addr,
@@ -152,11 +152,11 @@ import type {
 // Referencing each name in an exported tuple keeps the import "used" without a
 // runtime statement; an exported alias is never an unused-local error.
 export type CorpusExportsPresent = [
-	RichText,
-	RichTextLine,
-	RichTextContainer,
-	RichTextMark,
-	RichTextIsland,
+	Content,
+	ContentLine,
+	ContentContainer,
+	ContentMark,
+	ContentIsland,
 	CardInput,
 	PathStep,
 	Addr,

@@ -350,15 +350,15 @@ fn resolve_fields(
 fn resolve_value(value: Option<&QuillValue>, field: &FieldSchema) -> QuillValue {
     let present = value.filter(|v| !v.as_json().is_null());
     let Some(v) = present else {
-        // A corpus-bearing field (`richtext` or its literal sibling `plaintext`)
-        // commits the *corpus* form of its default (`default_corpus`, cached at
-        // load by `from_yaml`), so the seam carries canonical RichText-JSON the
+        // A content-bearing field (`richtext` or its literal sibling `plaintext`)
+        // commits the *content* form of its default (`default_corpus`, cached at
+        // load by `from_yaml`), so the seam carries canonical Content-JSON the
         // backend can classify. It must NOT fall through to the raw `default`:
         // `resolve_fields` runs after `coerce_and_validate`, so a bare authored
         // string injected here would reach the plate uncoerced and be misread. A
-        // corpus field with no cached `default_corpus` (only reachable via a
+        // content field with no cached `default_corpus` (only reachable via a
         // serde-built `QuillConfig`, never `from_yaml`) zero-fills to the empty
-        // corpus.
+        // content.
         if matches!(
             field.r#type,
             FieldType::RichText { .. } | FieldType::PlainText { .. }
@@ -368,7 +368,7 @@ fn resolve_value(value: Option<&QuillValue>, field: &FieldSchema) -> QuillValue 
                 .clone()
                 .unwrap_or_else(|| zero_value(field));
         }
-        // Non-corpus: `default_corpus` is always `None`, so use the raw
+        // Non-content: `default_corpus` is always `None`, so use the raw
         // `default`, then the type-empty zero.
         return field.default.clone().unwrap_or_else(|| zero_value(field));
     };

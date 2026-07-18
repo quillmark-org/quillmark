@@ -3043,7 +3043,7 @@ fn datetime_type_mismatch_reports_datetime_not_string() {
 #[test]
 fn richtext_type_mismatch_reports_richtext_not_string() {
     // The mismatch names the declared type verbatim (`richtext`), not the
-    // internal string-family collapse — a non-string, non-corpus default fails.
+    // internal string-family collapse — a non-string, non-content default fails.
     let yaml = example_default_yaml("    body:\n      type: richtext\n      default: 42\n");
     let errors = QuillConfig::from_yaml_with_warnings(&yaml).unwrap_err();
     let diag = errors
@@ -3174,15 +3174,15 @@ fn inline_richtext_single_line_example_loads_and_caches_corpus() {
     .expect("single-line inline example loads");
     let field = config.main.fields.get("tag").unwrap();
     assert_eq!(field.r#type, FieldType::RichText { inline: true });
-    // The load pass imports the markdown example into its corpus companion; the
+    // The load pass imports the markdown example into its content companion; the
     // authored `example` string is retained untouched (Alternative A).
-    let corpus = field
+    let content = field
         .example_corpus
         .as_ref()
         .expect("example_corpus cached");
     assert!(
-        corpus.as_json().is_object(),
-        "cached example is a corpus object"
+        content.as_json().is_object(),
+        "cached example is a content object"
     );
     assert_eq!(
         field.example.as_ref().unwrap().as_str(),
@@ -3197,13 +3197,13 @@ fn block_richtext_default_caches_corpus() {
     )
     .expect("block richtext default loads");
     let field = config.main.fields.get("body").unwrap();
-    let corpus = field
+    let content = field
         .default_corpus
         .as_ref()
         .expect("default_corpus cached");
     assert!(
-        corpus.as_json().is_object(),
-        "cached default is a corpus object"
+        content.as_json().is_object(),
+        "cached default is a content object"
     );
 }
 
@@ -3214,15 +3214,15 @@ fn array_of_inline_richtext_caches_each_element() {
     )
     .expect("array<inline richtext> loads");
     let field = config.main.fields.get("refs").unwrap();
-    let corpus = field
+    let content = field
         .example_corpus
         .as_ref()
         .expect("example_corpus cached");
-    let arr = corpus.as_json().as_array().expect("array of corpus");
+    let arr = content.as_json().as_array().expect("array of content");
     assert_eq!(arr.len(), 2);
     assert!(
         arr.iter().all(|e| e.is_object()),
-        "each element is a corpus object"
+        "each element is a content object"
     );
 }
 
@@ -3254,7 +3254,7 @@ fn inline_coercion_accepts_single_line_document_value() {
     let coerced = config.coerce_payload(&fields).expect("single line coerces");
     assert!(
         coerced.get("tag").unwrap().as_json().is_object(),
-        "coerced inline value is a corpus object"
+        "coerced inline value is a content object"
     );
 }
 
@@ -3264,30 +3264,30 @@ fn richtext_zero_value_is_empty_corpus() {
     let zero = zero_value(&field);
     assert!(
         zero.as_json().is_object(),
-        "richtext zero-fill is the empty corpus, not a string: {:?}",
+        "richtext zero-fill is the empty content, not a string: {:?}",
         zero.as_json()
     );
 }
 
 // ---------------------------------------------------------------------------
-// plaintext — the literal-codec corpus sibling of richtext
+// plaintext — the literal-codec content sibling of richtext
 // ---------------------------------------------------------------------------
 
 #[test]
 fn plaintext_field_caches_literal_corpus() {
     // A plaintext example is imported verbatim: markdown delimiters stay literal
-    // (no marks), and the cached companion is a mark-free corpus object.
+    // (no marks), and the cached companion is a mark-free content object.
     let config = quill_with_field(
         "    subject:\n      type: plaintext\n      example: \"a *literal* subject\"\n",
     )
     .expect("plaintext example loads");
     let field = config.main.fields.get("subject").unwrap();
     assert_eq!(field.r#type, FieldType::PlainText { inline: false });
-    let corpus = field.example_corpus.as_ref().expect("example_corpus cached");
-    let rt = quillmark_richtext::serial::from_canonical_value(corpus.as_json()).unwrap();
-    assert!(rt.is_plain(), "cached plaintext corpus is plain");
+    let content = field.example_corpus.as_ref().expect("example_corpus cached");
+    let rt = quillmark_content::serial::from_canonical_value(content.as_json()).unwrap();
+    assert!(rt.is_plain(), "cached plaintext content is plain");
     assert_eq!(
-        quillmark_richtext::to_plaintext(&rt),
+        quillmark_content::to_plaintext(&rt),
         "a *literal* subject",
         "the asterisks are literal, not emphasis"
     );
@@ -3303,10 +3303,10 @@ fn plaintext_coercion_imports_verbatim_not_as_markdown() {
     );
     let coerced = config.coerce_payload(&fields).expect("plaintext coerces");
     let value = coerced.get("subject").unwrap();
-    assert!(value.as_json().is_object(), "coerced value is a corpus object");
-    let rt = quillmark_richtext::serial::from_canonical_value(value.as_json()).unwrap();
+    assert!(value.as_json().is_object(), "coerced value is a content object");
+    let rt = quillmark_content::serial::from_canonical_value(value.as_json()).unwrap();
     assert!(rt.marks.is_empty(), "no marks: delimiters stayed literal");
-    assert_eq!(quillmark_richtext::to_plaintext(&rt), "*not bold* text");
+    assert_eq!(quillmark_content::to_plaintext(&rt), "*not bold* text");
 }
 
 #[test]
@@ -3327,20 +3327,20 @@ fn inline_plaintext_rejects_multiline_document_value() {
 
 #[test]
 fn plaintext_wire_corpus_with_marks_is_rejected_not_stripped() {
-    // A corpus object carrying a mark is not silently downgraded to plain — it
+    // A content object carrying a mark is not silently downgraded to plain — it
     // is rejected, mirroring the inline precedent and keeping coercion lossless.
     let config = quill_with_field("    subject:\n      type: plaintext\n").expect("loads");
-    let mut rt = quillmark_richtext::from_markdown("a **bold** word").unwrap();
+    let mut rt = quillmark_content::from_markdown("a **bold** word").unwrap();
     rt.normalize();
     let mut fields: indexmap::IndexMap<String, QuillValue> = indexmap::IndexMap::new();
     fields.insert(
         "subject".to_string(),
-        QuillValue::from_json(quillmark_richtext::serial::to_canonical_value(&rt)),
+        QuillValue::from_json(quillmark_content::serial::to_canonical_value(&rt)),
     );
     let err = config.coerce_payload(&fields).unwrap_err();
     assert!(
         err.to_string().contains("plaintext"),
-        "a mark-bearing corpus should fail a plaintext field, got: {err}"
+        "a mark-bearing content should fail a plaintext field, got: {err}"
     );
 }
 
@@ -3355,7 +3355,7 @@ fn plaintext_transform_schema_carries_media_type_and_plain_annotation() {
     assert_eq!(subject["type"], "object");
     assert_eq!(
         subject["contentMediaType"],
-        super::schema::RICHTEXT_MEDIA_TYPE
+        super::schema::CONTENT_MEDIA_TYPE
     );
     // Plus the editor-only annotations.
     assert_eq!(subject[super::schema::QUILLMARK_PLAIN_KEY], true);

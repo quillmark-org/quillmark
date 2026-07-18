@@ -1,7 +1,7 @@
 //! Canonical JSON serialization — the freeze.
 //!
-//! Byte-deterministic within this schema: equal [`RichText`] values (by
-//! `PartialEq` after [`RichText::normalize`]) serialize to byte-equal JSON,
+//! Byte-deterministic within this schema: equal [`Content`] values (by
+//! `PartialEq` after [`Content::normalize`]) serialize to byte-equal JSON,
 //! insensitive to the order marks/islands were discovered in. Three order
 //! sources are closed here and in `normalize`: mark order (canonical sort),
 //! island order (slot position), and object-key order inside island `props` /
@@ -13,7 +13,7 @@
 
 use crate::model::{
     sort_keys_owned, sorted_value, Container, Invariant, Island, Line, LineKind, Loss, Mark,
-    MarkKind, RichText,
+    MarkKind, Content,
 };
 use serde_json::{Map, Value};
 
@@ -25,7 +25,7 @@ pub enum ParseError {
     Shape(&'static str),
     /// The JSON itself did not parse.
     Json(String),
-    /// The value parsed but violates a corpus invariant.
+    /// The value parsed but violates a content invariant.
     Invalid(crate::model::Invariant),
 }
 
@@ -40,7 +40,7 @@ impl std::fmt::Display for ParseError {
 }
 impl std::error::Error for ParseError {}
 
-impl RichText {
+impl Content {
     /// Serialize to canonical JSON bytes. Normalizes a copy first, so the output
     /// is canonical regardless of the caller's mark/island order. Every object
     /// key is sorted recursively so the bytes do **not** depend on
@@ -51,11 +51,11 @@ impl RichText {
     }
 
     /// Parse canonical JSON, normalize (idempotent), and validate. Returns
-    /// [`ParseError::Invalid`] for a corpus that violates its invariants, so
+    /// [`ParseError::Invalid`] for a content that violates its invariants, so
     /// storage cannot silently round-trip a malformed value.
     /// `from_canonical_json(to_canonical_json(x))` round-trips to a canonical
     /// value and re-serializes to identical bytes.
-    pub fn from_canonical_json(s: &str) -> Result<RichText, ParseError> {
+    pub fn from_canonical_json(s: &str) -> Result<Content, ParseError> {
         let v: Value = serde_json::from_str(s).map_err(|e| ParseError::Json(e.to_string()))?;
         from_canonical_value(&v)
     }
@@ -78,7 +78,7 @@ impl RichText {
         Value::Object(root)
     }
 
-    fn from_value(v: &Value) -> Result<RichText, ParseError> {
+    fn from_value(v: &Value) -> Result<Content, ParseError> {
         let obj = v.as_object().ok_or(ParseError::Shape("root not object"))?;
         let text = obj
             .get("text")
@@ -97,7 +97,7 @@ impl RichText {
             .iter()
             .map(island_from_value)
             .collect::<Result<_, _>>()?;
-        Ok(RichText {
+        Ok(Content {
             text,
             lines,
             marks,
@@ -107,13 +107,13 @@ impl RichText {
 }
 
 /// The canonical richtext form as a structural [`Value`] — the recursively
-/// key-sorted tree [`RichText::to_canonical_json`] renders to bytes. A storage
+/// key-sorted tree [`Content::to_canonical_json`] renders to bytes. A storage
 /// layer embeds this as a nested object (never an escaped string): serializing
 /// the returned value with `serde_json` is byte-identical to that JSON
 /// (`to_canonical_value(rt).to_string() == rt.to_canonical_json()`), independent
 /// of the consumer's `preserve_order` feature. Normalizes a copy first, so the
 /// value is canonical whatever the caller's mark/island order.
-pub fn to_canonical_value(rt: &RichText) -> Value {
+pub fn to_canonical_value(rt: &Content) -> Value {
     let mut rt = rt.clone();
     rt.normalize();
     sort_keys_owned(rt.to_value())
@@ -121,11 +121,11 @@ pub fn to_canonical_value(rt: &RichText) -> Value {
 
 /// Parse the canonical richtext form from a structural [`Value`], normalize
 /// (idempotent), and validate — the [`Value`]-input counterpart to
-/// [`RichText::from_canonical_json`]. Returns [`ParseError::Invalid`] for a
-/// corpus that violates its invariants, so a storage layer parsing the embedded
+/// [`Content::from_canonical_json`]. Returns [`ParseError::Invalid`] for a
+/// content that violates its invariants, so a storage layer parsing the embedded
 /// object rejects a malformed value at load rather than round-tripping it.
-pub fn from_canonical_value(v: &Value) -> Result<RichText, ParseError> {
-    let mut rt = RichText::from_value(v)?;
+pub fn from_canonical_value(v: &Value) -> Result<Content, ParseError> {
+    let mut rt = Content::from_value(v)?;
     rt.normalize();
     rt.validate().map_err(ParseError::Invalid)?;
     Ok(rt)
@@ -141,7 +141,7 @@ fn arr<'a>(obj: &'a Map<String, Value>, key: &'static str) -> Result<&'a Vec<Val
 
 /// Encode a [`LineKind`] into its canonical `kind` fields (`"para"`,
 /// `{"kind":"heading","level":n}`, …). Public so the mark/line **op** wire
-/// ([`crate::ops`]) reuses the exact discriminant a `RichTextLine` carries,
+/// ([`crate::ops`]) reuses the exact discriminant a `ContentLine` carries,
 /// rather than forking the encoding.
 pub fn line_kind_to_value(kind: &LineKind) -> Value {
     let mut m = Map::new();
@@ -230,7 +230,7 @@ fn line_from_value(v: &Value) -> Result<Line, ParseError> {
 }
 
 /// Encode a [`Container`] into its canonical wire object. Public so the line-op
-/// wire ([`crate::ops`]) reuses the same container shape a `RichTextLine`
+/// wire ([`crate::ops`]) reuses the same container shape a `ContentLine`
 /// carries.
 pub fn container_to_value(c: &Container) -> Value {
     let mut m = Map::new();
@@ -271,7 +271,7 @@ pub fn container_from_value(v: &Value) -> Result<Container, ParseError> {
 
 /// Encode a [`Mark`] (`{start, end, type, …}`) into its canonical wire object.
 /// Public so the mark-op wire ([`crate::ops`]) reuses the exact `type`
-/// discriminant a `RichTextMark` carries.
+/// discriminant a `ContentMark` carries.
 pub fn mark_to_value(mark: &Mark) -> Value {
     let mut m = Map::new();
     m.insert("start".into(), Value::from(mark.start));
@@ -309,7 +309,7 @@ pub fn mark_to_value(mark: &Mark) -> Value {
 }
 
 /// Decode a [`Mark`] from its canonical wire object. The inverse of
-/// [`mark_to_value`]; the shared mark reader for the corpus decoder and the
+/// [`mark_to_value`]; the shared mark reader for the content decoder and the
 /// mark-op wire.
 pub fn mark_from_value(v: &Value) -> Result<Mark, ParseError> {
     let o = v.as_object().ok_or(ParseError::Shape("mark"))?;
@@ -361,7 +361,7 @@ pub fn mark_from_value(v: &Value) -> Result<Mark, ParseError> {
 // ranges are USV offsets into that text (0..cell_len). The marks ride the SAME
 // wire shape prose marks use (`mark_to_value`/`mark_from_value`), so nothing
 // forks the encoding. Import builds cells, export/emit render them, and
-// `RichText::normalize`/`validate` canonicalize/check the marks — all through
+// `Content::normalize`/`validate` canonicalize/check the marks — all through
 // these helpers.
 
 /// Parse a table-cell object `{text, marks}` leniently: its plain text plus the
@@ -384,7 +384,7 @@ pub fn parse_cell(v: &Value) -> (String, Vec<Mark>) {
 
 /// Build a table-cell object `{text, marks}` — the inverse of [`parse_cell`],
 /// reusing [`mark_to_value`]. Key order is fixed by the recursive
-/// [`sorted_value`] pass in [`RichText::normalize`], not here.
+/// [`sorted_value`] pass in [`Content::normalize`], not here.
 pub(crate) fn cell_to_value(text: &str, marks: &[Mark]) -> Value {
     let mut m = Map::new();
     m.insert("text".into(), Value::String(text.to_string()));
@@ -396,7 +396,7 @@ pub(crate) fn cell_to_value(text: &str, marks: &[Mark]) -> Value {
 }
 
 /// Every cell's `(text, marks)` in a table island's props — header then each
-/// body row, in order. For [`RichText::validate`]'s cell-mark invariant checks.
+/// body row, in order. For [`Content::validate`]'s cell-mark invariant checks.
 pub(crate) fn table_cells(props: &Value) -> Vec<(String, Vec<Mark>)> {
     let mut out = Vec::new();
     if let Some(h) = props.get("header").and_then(Value::as_array) {
@@ -634,8 +634,8 @@ mod tests {
     use super::*;
     use crate::model::{Line, LineKind};
 
-    fn sample() -> RichText {
-        RichText {
+    fn sample() -> Content {
+        Content {
             text: "hello world".into(),
             lines: vec![Line {
                 kind: LineKind::Para,
@@ -660,7 +660,7 @@ mod tests {
 
     #[test]
     fn island_props_key_order_does_not_leak() {
-        let mut one = RichText::empty();
+        let mut one = Content::empty();
         one.text = "\u{FFFC}".into();
         one.lines = vec![Line {
             kind: LineKind::Island,
@@ -696,7 +696,7 @@ mod tests {
         let bad =
             r#"{"text":"a\nb","lines":[{"kind":"para","containers":[]}],"marks":[],"islands":[]}"#;
         assert!(matches!(
-            RichText::from_canonical_json(bad),
+            Content::from_canonical_json(bad),
             Err(ParseError::Invalid(_))
         ));
     }
@@ -705,7 +705,7 @@ mod tests {
     fn reserved_unknown_tag_rejected() {
         // An Unknown mark may not reuse a built-in type name (would parse back
         // as the built-in, dropping attrs — non-injective).
-        let mut rt = RichText::empty();
+        let mut rt = Content::empty();
         rt.text = "abcd".into();
         rt.marks = vec![Mark {
             start: 0,
@@ -724,13 +724,13 @@ mod tests {
     #[test]
     fn unknown_loss_class_defaults_unrepresentable() {
         let json = r#"{"text":"￼","lines":[{"kind":"island","containers":[]}],"marks":[],"islands":[{"id":"i1","type":"widget","props":{},"loss":"future_class"}]}"#;
-        let rt = RichText::from_canonical_json(json).unwrap();
+        let rt = Content::from_canonical_json(json).unwrap();
         assert_eq!(rt.islands[0].loss, Loss::Unrepresentable);
     }
 
     #[test]
     fn unknown_mark_round_trips_opaque() {
-        let mut rt = RichText::empty();
+        let mut rt = Content::empty();
         rt.text = "abcd".into();
         rt.marks = vec![Mark {
             start: 0,
@@ -741,7 +741,7 @@ mod tests {
             },
         }];
         let json = rt.to_canonical_json();
-        let back = RichText::from_canonical_json(&json).unwrap();
+        let back = Content::from_canonical_json(&json).unwrap();
         assert_eq!(back.marks[0].kind, rt.marks[0].kind);
     }
 }

@@ -75,7 +75,7 @@ value verbatim — coercion is deferred to render. Typed
 commit is a schema-bound layer over that primitive: `Quill::writer(&mut doc)`
 binds the resolved schema, and its `set` / `set_all` resolve each field's `type`,
 coerce to the canonical form (`"3"` → `3`, a markdown string → a richtext
-corpus), and fail at the write on a mismatch — the default whenever a Quill is
+content), and fail at the write on a mismatch — the default whenever a Quill is
 in hand. A name the schema does not declare fails with `EditError::UnknownField`
 rather than falling to the opaque store: on the typed path an undeclared name is
 a typo, not a fallback, so it is refused at the write rather than surfacing later

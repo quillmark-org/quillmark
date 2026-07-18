@@ -194,6 +194,14 @@ title: Draft
     // write verbs do, rather than reading back as undefined/"".
     expect(() => doc.get({ card: 1, field: 'author' })).toThrow()
     expect(() => doc.getMarkdown({ card: 1 })).toThrow()
+
+    // A present field that is not richtext (a scalar storeField wrote) throws
+    // FieldRichtextDecode on getMarkdown — the projection surfaces the type
+    // mismatch instead of blanking, distinct from an absent field's undefined
+    // (#968). get still reads the raw value.
+    doc.storeField({ card: 0, field: 'qty' }, 3)
+    expect(doc.get({ card: 0, field: 'qty' })).toBe(3)
+    expect(() => doc.getMarkdown({ card: 0, field: 'qty' })).toThrow(/FieldRichtextDecode/)
   })
 
   it('single-card, $id, and seed-overlay reads (#956)', () => {

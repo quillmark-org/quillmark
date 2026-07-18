@@ -1,12 +1,12 @@
 use proptest::prelude::*;
 use quillmark_typst::emit::{escape_markup, escape_string};
 
-/// Markdown → Typst markup over the corpus pipeline: import to a `RichText`, then
+/// Markdown → Typst markup over the content pipeline: import to a `Content`, then
 /// lower it. This is the render path the former single-step `mark_to_typst`
 /// became — property-fuzzed here (no panic, escaping, formatting → Typst
 /// functions) exactly as that lowering was.
 fn mark_to_typst(markdown: &str) -> Result<String, String> {
-    let rt = quillmark_richtext::import::from_markdown(markdown).map_err(|e| e.to_string())?;
+    let rt = quillmark_content::import::from_markdown(markdown).map_err(|e| e.to_string())?;
     quillmark_typst::emit::emit_richtext(&rt)
         .map(|ec| ec.markup)
         .map_err(|e| e.to_string())
@@ -243,7 +243,7 @@ fn strike(text: &str) -> String {
 // `~~`->#strike) is content-independent, so the former proptests here fuzzed
 // fixed markers over irrelevant `[a-zA-Z0-9]` content -- deterministic unit
 // tests in a proptest costume. Collapsed to example tests covering the same
-// single/nested/adjacent/intraword mapping with named localization. The corpus
+// single/nested/adjacent/intraword mapping with named localization. The content
 // pipeline is fuzzed by emit_roundtrip_fuzz; adversarial escaping by the
 // escape_* proptests above.
 

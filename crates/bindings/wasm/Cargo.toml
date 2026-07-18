@@ -18,9 +18,9 @@ crate-type = ["cdylib", "rlib"]
 # version pin is needed. `typst` re-enables Typst via `quillmark/typst`.
 quillmark = { path = "../../quillmark", default-features = false }
 quillmark-core = { workspace = true }
-# The corpus codec (importMarkdown / exportMarkdown / rebase / mapPos) and the
+# The content codec (importMarkdown / exportMarkdown / rebase / mapPos) and the
 # change-bundle op wire live here; the addressed write surface lowers to it.
-quillmark-richtext = { workspace = true }
+quillmark-content = { workspace = true }
 wasm-bindgen = "0.2"
 serde = { workspace = true }
 serde_bytes = "0.11"

@@ -58,7 +58,7 @@
 // re-export keeps the identity: the exported `Quill` IS the core class.
 import { Quill, Document, init } from '../core/wasm.js';
 export { Quill, Document, init };
-// The document-free corpus codec — re-exported verbatim from the core build so
+// The document-free content codec — re-exported verbatim from the core build so
 // the runtime subpath exposes `exportMarkdown(body)` (the on-demand markdown
 // projection that replaces the eager `bodyMarkdown`), `importMarkdown`, and the
 // position-mapping pair (`rebase`, `mapPos`).

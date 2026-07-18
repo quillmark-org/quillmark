@@ -150,7 +150,7 @@
 
 /// Backend-generated plaintext table for every non-blank content field, keyed
 /// by schema address (a field name `subject`, an array element `refs.2`, or a
-/// card path `$cards.<kind>.<n>.<field>`). Each value is the richtext corpus
+/// card path `$cards.<kind>.<n>.<field>`). Each value is the richtext content
 /// text with island slots (tables/images) stripped and all formatting marks
 /// dropped — the same projection the pdfform backend lowers a richtext field
 /// to. A generated literal; blank fields are absent (they default to `""`).

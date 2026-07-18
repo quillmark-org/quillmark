@@ -28,7 +28,7 @@
 //! instance per declared kind.
 
 use indexmap::IndexMap;
-use quillmark_richtext::RichText;
+use quillmark_content::Content;
 
 use super::Quill;
 use crate::quill::CardSchema;
@@ -44,17 +44,17 @@ use crate::{Card, Document, Payload, QuillReference, QuillValue, SeedOverlay};
 /// empty`, honored only when the kind enables bodies. The `$quill` / `$kind`
 /// system metadata is attached by the caller.
 ///
-/// **Seed-commits-corpus**: a seeded richtext field commits the *corpus* form
+/// **Seed-commits-content**: a seeded richtext field commits the *content* form
 /// (the load-time [`example_corpus`](crate::quill::FieldSchema::example_corpus)
-/// cache), and the body is the corpus, so a seeded document is canonical from
+/// cache), and the body is the content, so a seeded document is canonical from
 /// birth rather than a markdown string re-imported at render. Overlay values
 /// (from a document's `$seed`) pass through as authored and canonicalize at the
 /// next `compile_data`.
-fn seed_parts(schema: &CardSchema, overlay: Option<&SeedOverlay>) -> (Payload, RichText) {
+fn seed_parts(schema: &CardSchema, overlay: Option<&SeedOverlay>) -> (Payload, Content) {
     // Drive by `schema.fields` (declaration order), so the result is in
     // declaration order natively — no merge-then-sort. Per field the precedence
     // is `overlay › example_corpus › example › absent`: a richtext-bearing field
-    // seeds from its pre-validated corpus companion, every other from its raw
+    // seeds from its pre-validated content companion, every other from its raw
     // `example`, and the overlay overrides either (and can supply a value for a
     // `default`-only field the base omits). An overlay key naming no schema
     // field is skipped — it is never iterated here.
@@ -69,23 +69,23 @@ fn seed_parts(schema: &CardSchema, overlay: Option<&SeedOverlay>) -> (Payload, R
         }
     }
 
-    // Body region as a corpus: an overlay body (authored markdown) is imported;
-    // otherwise the `body.example` corpus cache is used; else empty — and only
+    // Body region as a content: an overlay body (authored markdown) is imported;
+    // otherwise the `body.example` content cache is used; else empty — and only
     // when bodies are enabled for the kind.
     let body = if schema.body_enabled() {
         if let Some(overlay_body) = overlay.and_then(|o| o.body.clone()) {
-            crate::document::import_body(&overlay_body).unwrap_or_else(|_| RichText::empty())
-        } else if let Some(corpus) = schema.body.as_ref().and_then(|b| b.example_corpus.as_ref()) {
-            quillmark_richtext::serial::from_canonical_value(corpus.as_json())
-                .unwrap_or_else(|_| RichText::empty())
+            crate::document::import_body(&overlay_body).unwrap_or_else(|_| Content::empty())
+        } else if let Some(content) = schema.body.as_ref().and_then(|b| b.example_corpus.as_ref()) {
+            quillmark_content::serial::from_canonical_value(content.as_json())
+                .unwrap_or_else(|_| Content::empty())
         } else if let Some(example) = schema.body.as_ref().and_then(|b| b.example.as_ref()) {
-            // Fallback for a schema built outside the loader (no cached corpus).
-            crate::document::import_body(example).unwrap_or_else(|_| RichText::empty())
+            // Fallback for a schema built outside the loader (no cached content).
+            crate::document::import_body(example).unwrap_or_else(|_| Content::empty())
         } else {
-            RichText::empty()
+            Content::empty()
         }
     } else {
-        RichText::empty()
+        Content::empty()
     };
 
     (Payload::from_index_map(fields), body)

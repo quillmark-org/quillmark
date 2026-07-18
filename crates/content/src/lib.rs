@@ -1,36 +1,36 @@
-//! `RichText` — the canonical corpus content model for Quillmark (issue #831).
+//! `Content` — the canonical content content model for Quillmark (issue #831).
 //!
-//! One [`RichText`] per content field: a single text sequence carrying line
+//! One [`Content`] per content field: a single text sequence carrying line
 //! attributes, anchored marks, and embedded islands, over one coordinate space
 //! of Unicode scalar values. Markdown is demoted to a *projection* — import
 //! ([`import::from_markdown`]) and export ([`export::to_markdown`]) codecs — so
 //! every edit is a splice and all structure moves with it.
 //!
 //! `core`, `quillmark`, and both backends (`typst`, `pdfform`) consume this
-//! crate: the seam carries corpus JSON, storage embeds it structurally (see
-//! `prose/canon/DOCUMENT_STORAGE.md`), and the corpus edit surface
+//! crate: the seam carries content JSON, storage embeds it structurally (see
+//! `prose/canon/DOCUMENT_STORAGE.md`), and the content edit surface
 //! (`delta`, `ops`) drives per-field splices. See
 //! `prose/plans/richtext/` for the phase map that landed it.
 //!
 //! ## Layout
 //!
-//! - [`model`] — the [`RichText`] type, the mark set, normalization (the three
+//! - [`model`] — the [`Content`] type, the mark set, normalization (the three
 //!   Spike-A rules), and invariants. The freeze.
 //! - [`serial`] — canonical, byte-deterministic JSON. One encoding for the seam
 //!   and for storage.
-//! - [`import`] — markdown → corpus (normalize → pulldown → corpus).
-//! - [`export`] — corpus → markdown, per island loss class.
+//! - [`import`] — markdown → content (normalize → pulldown → content).
+//! - [`export`] — content → markdown, per island loss class.
 //! - [`delta`] — the per-field edit surface: a text-splice change set
 //!   (`retain`/`insert`/`delete`, CodeMirror `ChangeSet` semantics) plus the
-//!   cold-parse + corpus-diff stale-text writer with a block-move detector. The
+//!   cold-parse + content-diff stale-text writer with a block-move detector. The
 //!   text-splice channel is the positional core; mark and line-attribute edits
 //!   are separate op channels, not op attributes — see [`delta`].
 //! - [`ops`] — mark and line op channels:
-//!   [`RichText::apply_text_delta`], [`apply_mark_ops`](RichText::apply_mark_ops),
-//!   [`apply_line_ops`](RichText::apply_line_ops).
+//!   [`Content::apply_text_delta`], [`apply_mark_ops`](Content::apply_mark_ops),
+//!   [`apply_line_ops`](Content::apply_line_ops).
 //! - [`normalize`] — the markdown-string input primitive (line endings, bidi
 //!   strip, HTML-comment fence repair), applied at the import boundary.
-//! - [`usv`] — USV → UTF-8 byte-offset conversion for slicing the corpus.
+//! - [`usv`] — USV → UTF-8 byte-offset conversion for slicing the content.
 
 pub mod delta;
 pub mod export;
@@ -45,7 +45,7 @@ pub use delta::{diff_import, Assoc, Delta, Op};
 pub use export::{to_markdown, to_plaintext};
 pub use import::{from_markdown, from_plaintext};
 pub use model::{
-    Container, Invariant, Island, Line, LineKind, Loss, Mark, MarkKind, RichText, Usv,
+    Container, Invariant, Island, Line, LineKind, Loss, Mark, MarkKind, Content, Usv,
 };
 pub use normalize::normalize_markdown;
 pub use ops::{

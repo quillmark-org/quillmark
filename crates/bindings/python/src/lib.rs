@@ -26,7 +26,7 @@ fn _quillmark(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyOutputFormat>()?;
     m.add_class::<PySeverity>()?;
 
-    // The document-free corpus codec — the on-demand markdown projection
+    // The document-free content codec — the on-demand markdown projection
     // (`export_markdown`) plus `import_markdown` / `rebase` / `map_pos`.
     m.add_function(wrap_pyfunction!(types::import_markdown, m)?)?;
     m.add_function(wrap_pyfunction!(types::export_markdown, m)?)?;

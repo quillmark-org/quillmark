@@ -34,9 +34,9 @@ fn collect_md_files(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     }
 }
 
-// ── Corpus stability ──────────────────────────────────────────────────────────
+// ── Content stability ──────────────────────────────────────────────────────────
 
-/// For every parseable `.md` in the fixture corpus: `emit1 == emit2`.
+/// For every parseable `.md` in the fixture content: `emit1 == emit2`.
 #[test]
 fn parse_emit_parse_emit_stability_over_fixture_corpus() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");

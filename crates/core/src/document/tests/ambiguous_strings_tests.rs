@@ -1,4 +1,4 @@
-//! Regression corpus for YAML-ambiguous string values.
+//! Regression content for YAML-ambiguous string values.
 //!
 //! Every string in this module is "dangerous" to a YAML parser that lacks
 //! type-fidelity guarantees: bare `on`, `01234`, `2024-01-15`, etc. would be

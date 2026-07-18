@@ -250,8 +250,8 @@ pub struct FieldRegion {
     pub page: usize,
     /// `[x0, y0, x1, y1]` in PDF points (1/72″), bottom-left origin.
     pub rect: [f32; 4],
-    /// The corpus slice this box covers — USV `[start, end)` into the field's
-    /// `RichText` for content ink (one segment), `undefined` for a scalar
+    /// The content slice this box covers — USV `[start, end)` into the field's
+    /// `Content` for content ink (one segment), `undefined` for a scalar
     /// reference site or widget. Consumers key segment highlights on it;
     /// `fieldBoxes(field)` unions same-page segments for the whole-field box.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -279,7 +279,7 @@ impl From<quillmark_core::RenderedRegion> for FieldRegion {
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
 pub enum HitGranularity {
-    /// Cluster-exact — `pos` is the first corpus char of the cluster under the
+    /// Cluster-exact — `pos` is the first content char of the cluster under the
     /// point (an escaped/CJK/shaping cluster floors to its first char, so not
     /// sub-character). Place the caret at `pos` directly.
     Cluster,
@@ -299,9 +299,9 @@ impl From<quillmark_core::HitGranularity> for HitGranularity {
     }
 }
 
-/// A resolved point → corpus position: the field a click landed in and the USV
-/// offset into its `RichText`. The `LiveSession.positionAt` result, paired with
-/// `locate` (corpus position → caret rect). `pos` is cluster-exact and degrades
+/// A resolved point → content position: the field a click landed in and the USV
+/// offset into its `Content`. The `LiveSession.positionAt` result, paired with
+/// `locate` (content position → caret rect). `pos` is cluster-exact and degrades
 /// to the containing segment's start on origin-less ink; `granularity` reports
 /// which happened so a caret UI need not guess.
 #[cfg(any(feature = "typst", feature = "pdfform"))]
@@ -311,7 +311,7 @@ impl From<quillmark_core::HitGranularity> for HitGranularity {
 pub struct CorpusHit {
     /// Quill schema field path (same address space as `FieldRegion.field`).
     pub field: String,
-    /// USV offset into the field's `RichText`.
+    /// USV offset into the field's `Content`.
     pub pos: usize,
     /// Whether `pos` is cluster-exact or floored to the segment start
     /// (`HitGranularity`). `undefined` when the backend does not report it.

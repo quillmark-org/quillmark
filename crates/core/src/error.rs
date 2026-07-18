@@ -45,10 +45,10 @@ pub const MAX_INPUT_SIZE: usize = 10 * 1024 * 1024;
 pub const MAX_YAML_SIZE: usize = 1024 * 1024;
 
 /// Maximum nesting depth for markdown structures (100 levels). Owned by the
-/// markdown codecs in `quillmark-richtext` (the import guard) and re-exported
+/// markdown codecs in `quillmark-content` (the import guard) and re-exported
 /// here so the typst backend's markup converter shares one limit — a document
 /// that imports also renders, and vice versa.
-pub use quillmark_richtext::MAX_NESTING_DEPTH;
+pub use quillmark_content::MAX_NESTING_DEPTH;
 
 /// Re-exported from [`crate::document::limits::MAX_YAML_DEPTH`].
 pub use crate::document::limits::MAX_YAML_DEPTH;
@@ -233,7 +233,7 @@ pub enum ParseError {
         reason: String,
     },
 
-    /// A card body's markdown could not be imported into the corpus model —
+    /// A card body's markdown could not be imported into the content model —
     /// today only when container nesting exceeds
     /// [`MAX_NESTING_DEPTH`]. Code `parse::body_import`.
     #[error("{0}")]

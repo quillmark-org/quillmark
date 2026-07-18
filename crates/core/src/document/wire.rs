@@ -31,7 +31,7 @@ use super::payload::{MetaKey, Payload, PayloadItem};
 use super::Card;
 use crate::value::{PathSegment, QuillValue};
 use crate::version::QuillReference;
-use quillmark_richtext::RichText;
+use quillmark_content::Content;
 
 /// One entry in a [`CardWire`]'s `payload_items`: a user field or a comment.
 /// The `$` system entries are hoisted onto [`CardWire`] itself, never here.
@@ -124,8 +124,8 @@ pub struct CardWire {
     /// User fields and comments, in source order.
     #[serde(default, alias = "payload_items")]
     pub payload_items: Vec<PayloadItemWire>,
-    /// The card body as canonical RichText-JSON — the source-of-truth content
-    /// model (a corpus object, `{text, lines, marks, islands}`). The empty corpus
+    /// The card body as canonical Content-JSON — the source-of-truth content
+    /// model (a content object, `{text, lines, marks, islands}`). The empty content
     /// when absent. A markdown string is also accepted on input (imported), so an
     /// LLM/markdown writer can still hand a string here.
     ///
@@ -172,7 +172,7 @@ impl From<&Card> for CardWire {
             ext: None,
             seed: None,
             payload_items: Vec::new(),
-            body: quillmark_richtext::serial::to_canonical_value(card.body()),
+            body: quillmark_content::serial::to_canonical_value(card.body()),
         };
         for item in card.payload().items() {
             match item {
@@ -302,24 +302,24 @@ impl TryFrom<CardWire> for Card {
     }
 }
 
-/// Read a [`CardWire::body`] into a [`RichText`] corpus. The body is the source
-/// of truth in two accepted encodings: a **corpus object** (an editor / a
+/// Read a [`CardWire::body`] into a [`Content`] content. The body is the source
+/// of truth in two accepted encodings: a **content object** (an editor / a
 /// re-serialized card) is deserialized and validated; a **markdown string** (an
-/// LLM / markdown writer) is imported. `null`/absent is the empty corpus; any
+/// LLM / markdown writer) is imported. `null`/absent is the empty content; any
 /// other shape is an invalid `$body`.
-fn body_from_wire(body: &JsonValue) -> Result<RichText, WireError> {
+fn body_from_wire(body: &JsonValue) -> Result<Content, WireError> {
     let invalid = |reason: String| WireError::InvalidField {
         key: "$body".to_string(),
         reason,
     };
     match super::decode_richtext_value(body) {
         Some(result) => result.map_err(|e| invalid(e.into_message())),
-        // `null`/absent is the empty corpus; every other non-decodable shape is
+        // `null`/absent is the empty content; every other non-decodable shape is
         // an invalid `$body`.
         None => match body {
-            JsonValue::Null => Ok(RichText::empty()),
+            JsonValue::Null => Ok(Content::empty()),
             other => Err(invalid(format!(
-                "expected a richtext corpus object or a markdown string, got {}",
+                "expected a richtext content object or a markdown string, got {}",
                 match other {
                     JsonValue::Bool(_) => "a boolean",
                     JsonValue::Number(_) => "a number",
@@ -366,7 +366,7 @@ mod tests {
             fill: false,
             nested_comments: Vec::new(),
         }]);
-        let card = Card::from_parts(payload, quillmark_richtext::RichText::empty());
+        let card = Card::from_parts(payload, quillmark_content::Content::empty());
 
         let wire = CardWire::from(&card);
         let as_json = serde_json::to_value(&wire).unwrap();
@@ -384,24 +384,24 @@ mod tests {
         assert_eq!(back, card, "nested fill must survive Card → wire → Card");
     }
 
-    /// A richtext field stored as a canonical corpus object rides the wire
+    /// A richtext field stored as a canonical content object rides the wire
     /// **structurally and losslessly** — the same opaque-JSON `Field` carrier as
     /// any object value, so identity marks (an `underline` with no markdown
     /// projection) survive Card → wire → Card. This is the lossless carrier the
     /// card-yaml markdown projection (emit) deliberately is not.
     #[test]
     fn card_wire_round_trips_corpus_field_losslessly() {
-        use quillmark_richtext::model::{Mark, MarkKind};
+        use quillmark_content::model::{Mark, MarkKind};
 
         let mut card = Card::new("note").unwrap();
-        let mut corpus = quillmark_richtext::import::from_markdown("underlined intro").unwrap();
-        corpus.marks.push(Mark {
+        let mut content = quillmark_content::import::from_markdown("underlined intro").unwrap();
+        content.marks.push(Mark {
             start: 0,
             end: 10,
             kind: MarkKind::Underline,
         });
-        corpus.normalize();
-        let json = quillmark_richtext::serial::to_canonical_value(&corpus);
+        content.normalize();
+        let json = quillmark_content::serial::to_canonical_value(&content);
         let schema = crate::quill::FieldSchema::new(
             "intro".to_string(),
             crate::quill::FieldType::RichText { inline: false },
@@ -411,13 +411,13 @@ mod tests {
             .unwrap();
 
         let wire = CardWire::from(&card);
-        // Carried as the corpus object, verbatim — not a markdown projection.
+        // Carried as the content object, verbatim — not a markdown projection.
         let as_json = serde_json::to_value(&wire).unwrap();
         assert!(as_json["payloadItems"][0]["value"].is_object());
 
         let back = Card::try_from(wire).expect("wire → card");
-        assert_eq!(back, card, "corpus field must survive Card → wire → Card");
-        // Underline (corpus-only, no markdown form) is intact after the round-trip.
+        assert_eq!(back, card, "content field must survive Card → wire → Card");
+        // Underline (content-only, no markdown form) is intact after the round-trip.
         let read = back.field_richtext("intro").unwrap().unwrap();
         assert!(read.marks.iter().any(|m| matches!(m.kind, MarkKind::Underline)));
     }
@@ -452,7 +452,7 @@ mod tests {
         let mut payload = Payload::from_index_map(Default::default());
         payload.set_quill("memo@1.2.3".parse().unwrap());
         payload.set_kind("main");
-        let card = Card::from_parts(payload, quillmark_richtext::RichText::empty());
+        let card = Card::from_parts(payload, quillmark_content::Content::empty());
 
         let wire = CardWire::from(&card);
         assert_eq!(wire.quill.as_deref(), Some("memo@1.2.3"));

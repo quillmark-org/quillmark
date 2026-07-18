@@ -2,7 +2,7 @@ quill:
   name: richtext_form
   version: 0.1.0
   backend: pdfform
-  description: "PDF form that binds richtext fields, exercising the corpus → plaintext lowering (RichText.text minus island slots)."
+  description: "PDF form that binds richtext fields, exercising the content → plaintext lowering (Content.text minus island slots)."
 
 main:
   body:

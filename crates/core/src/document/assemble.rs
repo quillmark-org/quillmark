@@ -28,12 +28,12 @@ use crate::Diagnostic;
 use super::fences::find_metadata_blocks;
 use super::meta::{extract_meta_items, meta_key};
 use super::payload::{Payload, PayloadItem};
-use quillmark_richtext::RichText;
+use quillmark_content::Content;
 
-/// Import a sliced body string into the corpus, surfacing an over-nesting
-/// failure as a [`ParseError`]. The parse-time half of the one markdown→corpus
+/// Import a sliced body string into the content, surfacing an over-nesting
+/// failure as a [`ParseError`]. The parse-time half of the one markdown→content
 /// boundary ([`super::import_body`]).
-fn import_body_or_parse_error(md: &str) -> Result<RichText, ParseError> {
+fn import_body_or_parse_error(md: &str) -> Result<Content, ParseError> {
     super::import_body(md).map_err(|e| ParseError::BodyImport(e.to_string()))
 }
 use super::prescan::{prescan_fence_content, CommentPathSegment, NestedComment, PreItem};

@@ -2,9 +2,9 @@
 //!
 //! The four properties the freeze rests on:
 //!
-//! 1. **Round-trip modulo loss class** — for a corpus from import,
-//!    `import(export(rt)) == rt`. Markdown source is not canonical; the corpus
-//!    is, so round-trip is defined at the corpus. Our generator emits only
+//! 1. **Round-trip modulo loss class** — for a content from import,
+//!    `import(export(rt)) == rt`. Markdown source is not canonical; the content
+//!    is, so round-trip is defined at the content. Our generator emits only
 //!    lossless islands, so equality is exact.
 //! 2. **Canonical serialization** — byte-deterministic and a fixed point;
 //!    insensitive to mark/island discovery order.
@@ -12,11 +12,11 @@
 //!    survives a rewrite is carried forward.
 
 use proptest::prelude::*;
-use quillmark_richtext::delta::diff_import;
-use quillmark_richtext::export::to_markdown;
-use quillmark_richtext::import::from_markdown;
-use quillmark_richtext::model::{Line, Mark, MarkKind};
-use quillmark_richtext::{Delta, Island, LineKind, LineOp, Loss, MarkOp, Op, RichText};
+use quillmark_content::delta::diff_import;
+use quillmark_content::export::to_markdown;
+use quillmark_content::import::from_markdown;
+use quillmark_content::model::{Line, Mark, MarkKind};
+use quillmark_content::{Delta, Island, LineKind, LineOp, Loss, MarkOp, Op, Content};
 use serde_json::{json, Value};
 
 // ---------------------------------------------------------------------------
@@ -35,7 +35,7 @@ fn clean_word() -> impl Strategy<Value = String> {
 // escaping and USV bounds are exercised by the round-trip. The first char stays
 // alphanumeric, so a block marker never *leads* an item's content (`- >`, `- #`
 // would make pulldown build an empty nested block, not literal text — a
-// degenerate corpus no editor emits); but the tail now carries `&` and the
+// degenerate content no editor emits); but the tail now carries `&` and the
 // block-marker chars (`# > - . +`), exercising `&`-entity escaping (#848 part 2)
 // and a trailing-`#` heading run (#848 part 3) through the round-trip, not just
 // the pinned `export::tests::*` unit tests.
@@ -45,10 +45,10 @@ fn plain_word() -> impl Strategy<Value = String> {
 
 // `special_alt`/`special_url` carry the destination- and markup-terminating
 // chars #900 exposed, in *markdown source* form: a raw `]`/`[`/`\` would break
-// the markup at the source level (those live only in the direct-corpus
+// the markup at the source level (those live only in the direct-content
 // `image_and_link_specials_round_trip` property), so alt carries `&` and inline
 // delimiters as literal text, and the url is angle-wrapped in source so a space,
-// paren, or `&` reaches the corpus intact — the escape paths `clean_word` missed.
+// paren, or `&` reaches the content intact — the escape paths `clean_word` missed.
 fn special_alt() -> impl Strategy<Value = String> {
     (clean_word(), r"[a-z0-9&*_~#.+]{0,4}").prop_map(|(a, b)| format!("{a}{b}"))
 }
@@ -82,7 +82,7 @@ fn prose() -> impl Strategy<Value = String> {
 
 // Hard breaks join clean, non-empty *text* lines (the realistic case — an
 // address block, a signature). A mark that *spans* a hard break, or an empty
-// line adjacent to one, is a degenerate corpus markdown cannot represent (no
+// line adjacent to one, is a degenerate content markdown cannot represent (no
 // blank-then-forced-break syntax); those are recorded as documented codec
 // limits (see `export::tests::known_hard_break_limits`), not fuzzed here.
 fn hard_break_line() -> impl Strategy<Value = String> {
@@ -157,8 +157,8 @@ fn partial_overlap(marks: &[Mark]) -> bool {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(400))]
 
-    /// Property 1: the corpus is a fixed point of export∘import, and every
-    /// imported corpus satisfies its invariants.
+    /// Property 1: the content is a fixed point of export∘import, and every
+    /// imported content satisfies its invariants.
     #[test]
     fn corpus_round_trip_and_invariants(md in document()) {
         let rt = from_markdown(&md).unwrap();
@@ -203,20 +203,20 @@ proptest! {
             Mark { start: s1, end: e1, kind: ov_kind(k1i) },
             Mark { start: s2, end: e2, kind: ov_kind(k2i) },
         ];
-        let mut rt = RichText {
+        let mut rt = Content {
             text: text.clone(),
             lines: vec![Line { kind: LineKind::Para, containers: vec![], continues: false }],
             marks,
             islands: vec![],
         };
         rt.normalize();
-        prop_assert_eq!(rt.validate(), Ok(()), "hand-built corpus invalid");
+        prop_assert_eq!(rt.validate(), Ok(()), "hand-built content invalid");
 
         let md = to_markdown(&rt);
         let rt2 = from_markdown(&md).unwrap();
         prop_assert_eq!(rt2.validate(), Ok(()), "re-import invalid for {:?}", md);
         // The critical #848 invariant: overlap never corrupts the text (no
-        // unbalanced/unclosed delimiter leaks a literal `**`/`*` into the corpus).
+        // unbalanced/unclosed delimiter leaks a literal `**`/`*` into the content).
         prop_assert_eq!(&rt2.text, &rt.text, "overlap corrupted text: {:?}", md);
 
         // Distinct delimiters → an exact fixed point via close-and-reopen. Two
@@ -227,10 +227,10 @@ proptest! {
         if !asterisk_clash {
             prop_assert_eq!(&rt, &rt2, "distinct-delim overlap not a fixed point: {:?}", md);
         }
-        // Whatever the shape, the re-imported corpus is itself a genuine fixed
+        // Whatever the shape, the re-imported content is itself a genuine fixed
         // point (it lives in the `from_markdown` domain the contract covers).
         prop_assert_eq!(&rt2, &from_markdown(&to_markdown(&rt2)).unwrap(),
-            "re-imported overlap corpus not a fixed point: {:?}", md);
+            "re-imported overlap content not a fixed point: {:?}", md);
     }
 
     /// Editor marks over *mixed* text stay text-safe — the punctuation, symbol,
@@ -262,7 +262,7 @@ proptest! {
             .chain(std::iter::once('a'))
             .collect();
         let n = text.chars().count();
-        let mut rt = RichText {
+        let mut rt = Content {
             text: text.clone(),
             lines: vec![Line { kind: LineKind::Para, containers: vec![], continues: false }],
             marks: vec![],
@@ -288,7 +288,7 @@ proptest! {
             .filter(|op| matches!(op, MarkOp::Add { start, end, .. } if start < end))
             .collect();
         rt.apply_mark_ops(&ops).unwrap();
-        prop_assert_eq!(rt.validate(), Ok(()), "editor marks left corpus invalid");
+        prop_assert_eq!(rt.validate(), Ok(()), "editor marks left content invalid");
 
         let md = to_markdown(&rt);
         let rt2 = from_markdown(&md).unwrap();
@@ -299,7 +299,7 @@ proptest! {
         prop_assert_eq!(&rt2.text, &rt.text,
             "editor mark corrupted text.\n text: {:?}\n md:   {:?}\n out:  {:?}",
             rt.text, md, rt2.text);
-        // Text stays safe across a second export cycle too — a degraded corpus
+        // Text stays safe across a second export cycle too — a degraded content
         // never drifts the text further on re-save.
         prop_assert_eq!(&from_markdown(&to_markdown(&rt2)).unwrap().text, &rt.text,
             "text drifted on the second cycle: {:?}", md);
@@ -309,7 +309,7 @@ proptest! {
     /// destination-terminating specials — `]`/`[`/`\` in alt, spaces, unbalanced
     /// parens, `&`, `<`/`>`/`\` in a url — that the codec must escape so the
     /// island/link survives export∘import. The `clean_word` alt/url generator
-    /// never emitted them (the gap the issue found); the corpus is built directly
+    /// never emitted them (the gap the issue found); the content is built directly
     /// in the shape import produces (alt trimmed, no newline) to hit the escaper
     /// without fighting source-level markdown quirks.
     #[test]
@@ -319,10 +319,10 @@ proptest! {
         link_url in r"[a-z0-9 ()&<>\\]{0,10}",
     ) {
         // Import trims alt and never yields a leading/trailing-space alt; match
-        // that so the hand-built corpus stays inside the fixed-point domain.
+        // that so the hand-built content stays inside the fixed-point domain.
         let alt = alt.trim().to_string();
         let text = "lnk\u{FFFC}".to_string(); // link over "lnk", image slot after
-        let mut rt = RichText {
+        let mut rt = Content {
             text,
             lines: vec![Line { kind: LineKind::Para, containers: vec![], continues: false }],
             marks: vec![Mark { start: 0, end: 3, kind: MarkKind::Link { url: link_url } }],
@@ -335,7 +335,7 @@ proptest! {
             }],
         };
         rt.normalize();
-        prop_assert_eq!(rt.validate(), Ok(()), "hand-built corpus invalid");
+        prop_assert_eq!(rt.validate(), Ok(()), "hand-built content invalid");
         let md = to_markdown(&rt);
         let rt2 = from_markdown(&md).unwrap();
         prop_assert_eq!(&rt, &rt2, "alt/url specials not a fixed point.\n  md: {:?}", md);
@@ -346,7 +346,7 @@ proptest! {
     fn canonical_json_fixed_point(md in document()) {
         let rt = from_markdown(&md).unwrap();
         let json = rt.to_canonical_json();
-        let back = RichText::from_canonical_json(&json).unwrap();
+        let back = Content::from_canonical_json(&json).unwrap();
         prop_assert_eq!(back.to_canonical_json(), json);
     }
 
@@ -389,7 +389,7 @@ proptest! {
 
 // ---------------------------------------------------------------------------
 // Edit-channel invariant properties (issue #847): the three apply channels
-// preserve `validate()`. The corpus arriving at a channel is valid; a
+// preserve `validate()`. The content arriving at a channel is valid; a
 // successful apply must leave it valid. For `apply_text_delta` this includes
 // cascading island removal when a slot char is deleted (islands.len() stays in
 // sync with the slot count) and rejecting a raw slot insert.
@@ -412,7 +412,7 @@ proptest! {
     /// span an island slot; the cascade must drop the backing island so the
     /// slot/island counts stay in sync (the #847 corruption, now caught here).
     /// The insert charset includes `\r` and bidi controls (U+202E, U+2069):
-    /// `apply_text_delta` strips them, so the apply still leaves a valid corpus
+    /// `apply_text_delta` strips them, so the apply still leaves a valid content
     /// (issue #899 — before the fix these returned Ok over a broken invariant).
     /// U+FFFC (a raw slot) is excluded — that insert is rejected outright.
     #[test]
@@ -449,7 +449,7 @@ proptest! {
     }
 
     /// `apply_mark_ops` preserves `validate()`: an accepted Add over a clamped
-    /// range leaves the corpus valid (normalization trims edges / drops
+    /// range leaves the content valid (normalization trims edges / drops
     /// zero-width).
     #[test]
     fn apply_mark_ops_preserves_validate(
@@ -497,7 +497,7 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// Fixture corpus: the phase-1 codecs run against real fixture markdown bodies.
+// Fixture content: the phase-1 codecs run against real fixture markdown bodies.
 // ---------------------------------------------------------------------------
 
 fn fixture_body(name: &str) -> String {
@@ -509,7 +509,7 @@ fn fixture_body(name: &str) -> String {
 // Structured-table property (issue #880): an editor-built table island — one
 // whose shape markdown import never produces (ragged rows, an empty/short
 // header, an `aligns` array out of sync with the columns) — is a fixed point of
-// export∘import *after normalization*, and normalization always yields a corpus
+// export∘import *after normalization*, and normalization always yields a content
 // that `validate()` accepts. Cell content is drawn from import-produced cells
 // (so representability and canonical marks are guaranteed by construction);
 // the generator's entropy is the table *shape* plus in-cell literal specials
@@ -555,10 +555,10 @@ fn import_row(contents: &[String]) -> Vec<Value> {
     rt.islands[0].props["header"].as_array().unwrap().clone()
 }
 
-/// A single-table corpus with the given (possibly ill-shaped) props. `id` is the
+/// A single-table content with the given (possibly ill-shaped) props. `id` is the
 /// first-island id import mints (`isl-0`), so a re-imported table compares equal.
-fn table_corpus(aligns: Vec<&str>, header: Vec<Value>, rows: Vec<Vec<Value>>) -> RichText {
-    RichText {
+fn table_corpus(aligns: Vec<&str>, header: Vec<Value>, rows: Vec<Vec<Value>>) -> Content {
+    Content {
         text: "\u{FFFC}".into(),
         lines: vec![Line {
             kind: LineKind::Island,
@@ -578,7 +578,7 @@ fn table_corpus(aligns: Vec<&str>, header: Vec<Value>, rows: Vec<Vec<Value>>) ->
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(200))]
 
-    /// A structurally ill-shaped table island normalizes to a valid corpus and
+    /// A structurally ill-shaped table island normalizes to a valid content and
     /// is a fixed point of export∘import.
     #[test]
     fn table_island_normalizes_and_round_trips(
@@ -621,7 +621,7 @@ proptest! {
 
 #[test]
 fn fixture_bodies_import_and_are_valid() {
-    // Every prose resource imports to a valid corpus and is a fixed point.
+    // Every prose resource imports to a valid content and is a fixed point.
     for name in [
         "sample.md",
         "card_yaml_demo.md",
@@ -631,6 +631,6 @@ fn fixture_bodies_import_and_are_valid() {
         let rt = from_markdown(&md).unwrap_or_else(|e| panic!("import {name}: {e}"));
         assert_eq!(rt.validate(), Ok(()), "{name} invariants");
         let rt2 = from_markdown(&to_markdown(&rt)).unwrap();
-        assert_eq!(rt, rt2, "{name} corpus not a fixed point");
+        assert_eq!(rt, rt2, "{name} content not a fixed point");
     }
 }

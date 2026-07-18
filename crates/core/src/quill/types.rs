@@ -71,10 +71,10 @@ pub struct BodyCardSchema {
     /// Has no effect when `enabled` is false.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub example: Option<String>,
-    /// Canonical-corpus form of [`example`](Self::example), imported once at
+    /// Canonical-content form of [`example`](Self::example), imported once at
     /// quill load (`QuillConfig::from_yaml`) and cached here — a pure function of
     /// the Quill.yaml bytes, never serialized. Seeding commits this instead of
-    /// re-importing the markdown per document, so a seeded body is corpus from
+    /// re-importing the markdown per document, so a seeded body is content from
     /// birth. `None` when there is no example or the schema was built outside the
     /// loader (e.g. a hand-built test schema), in which case consumers fall back
     /// to importing `example`.
@@ -255,15 +255,15 @@ pub enum FieldType {
     /// Formatted as string; validates against the YAML 1.1 timestamp grammar
     /// (bare `YYYY-MM-DD` through full RFC 3339 with offset).
     DateTime,
-    /// Rich text — the canonical corpus content model ([`RichText`]). Surfaced
+    /// Rich text — the canonical content content model ([`Content`]). Surfaced
     /// as `type: richtext`; single-line shape is declared with the sibling `inline:` key.
     /// The transform schema marks it `contentMediaType:
-    /// application/quillmark-richtext+json` and, when inline, `quillmark:inline:
+    /// application/quillmark-content+json` and, when inline, `quillmark:inline:
     /// true`. The pre-richtext `markdown` spelling is not accepted — a
     /// Quill.yaml must declare `richtext` explicitly (`from_str` returns `None`
     /// for `markdown`, so the loader raises a schema load error).
     ///
-    /// [`RichText`]: quillmark_richtext::RichText
+    /// [`Content`]: quillmark_content::Content
     RichText {
         /// When `true`, the field is `richtext(inline)` — exactly one `Para`
         /// line, no container, no islands. Populated from the wire `inline:` key
@@ -271,23 +271,23 @@ pub enum FieldType {
         /// validation, and load-time example import.
         inline: bool,
     },
-    /// Plain text — the same [`RichText`] corpus as [`RichText`](FieldType::RichText),
+    /// Plain text — the same [`Content`] as the `richtext` codec produces,
     /// constrained mark-free and island-free (all `Para` lines, no containers),
     /// but authored and projected through a *literal* codec
     /// ([`from_plaintext`]/[`to_plaintext`]) rather than markdown: `*hi*` is four
     /// literal characters, verbatim both ways, never emphasis. Surfaced as
     /// `type: plaintext`; single-line shape is declared with the sibling
     /// `inline:` key, exactly as richtext. The transform schema marks it with the
-    /// same `contentMediaType: application/quillmark-richtext+json` (so it
+    /// same `contentMediaType: application/quillmark-content+json` (so it
     /// inherits the whole nav/region/preview stack with no backend edits) plus a
     /// `quillmark:plain: true` annotation (so editors mount a formatting-free
     /// surface). Enforced at coercion, validation (`NotPlain`), and load-time
-    /// example import via [`RichText::is_plain`].
+    /// example import via [`Content::is_plain`].
     ///
-    /// [`RichText`]: quillmark_richtext::RichText
-    /// [`RichText::is_plain`]: quillmark_richtext::RichText::is_plain
-    /// [`from_plaintext`]: quillmark_richtext::from_plaintext
-    /// [`to_plaintext`]: quillmark_richtext::to_plaintext
+    /// [`Content`]: quillmark_content::Content
+    /// [`Content::is_plain`]: quillmark_content::Content::is_plain
+    /// [`from_plaintext`]: quillmark_content::from_plaintext
+    /// [`to_plaintext`]: quillmark_content::to_plaintext
     PlainText {
         /// When `true`, the field is single-line plaintext — one `Para` line, no
         /// container. Populated from the wire `inline:` key at load, mirroring
@@ -414,16 +414,16 @@ pub struct FieldSchema {
     /// `integer[]`, `richtext[]`, …). For a typed table the element is an
     /// `object` carrying its own `properties`.
     pub items: Option<Box<FieldSchema>>,
-    /// Canonical-corpus form of [`default`](Self::default) for a richtext-bearing
+    /// Canonical-content form of [`default`](Self::default) for a richtext-bearing
     /// field, imported once at quill load and cached — never serialized. The
     /// render floor (`resolve_fields`) commits this for an absent field, so a
-    /// richtext default crosses the seam as corpus, not a re-imported string.
+    /// richtext default crosses the seam as content, not a re-imported string.
     /// `None` for a non-richtext field, a null/absent default, or a schema built
     /// outside the loader.
     pub default_corpus: Option<QuillValue>,
-    /// Canonical-corpus form of [`example`](Self::example) for a richtext-bearing
+    /// Canonical-content form of [`example`](Self::example) for a richtext-bearing
     /// field, imported once at quill load and cached — never serialized. Seeding
-    /// commits this so a seeded field is corpus from birth. `None` under the same
+    /// commits this so a seeded field is content from birth. `None` under the same
     /// conditions as [`default_corpus`](Self::default_corpus).
     pub example_corpus: Option<QuillValue>,
 }
@@ -510,7 +510,7 @@ impl FieldSchema {
             } else {
                 None
             },
-            // Corpus caches are populated by the loader's post-pass
+            // Content caches are populated by the loader's post-pass
             // (`QuillConfig::from_yaml`), which alone imports and validates the
             // markdown literals; a bare `from_quill_value` leaves them empty.
             default_corpus: None,

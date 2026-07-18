@@ -1,7 +1,7 @@
 //! End-to-end proof that a `plaintext` field lowers through the typst backend
 //! with **zero backend edits**: it rides the same `contentMediaType` as
 //! richtext, so `content_field_names` classifies it as content and the shared
-//! corpus-lowering path emits it. The literal codec means markdown delimiters
+//! content-lowering path emits it. The literal codec means markdown delimiters
 //! stay verbatim rather than becoming markup.
 
 #![cfg(feature = "typst")]
@@ -32,7 +32,7 @@ main:
     )
     .unwrap();
     // The backend pre-lowers a content field into the `data` dict, so the plate
-    // places the lowered corpus by referencing it directly.
+    // places the lowered content by referencing it directly.
     fs::write(
         quill_path.join("plate.typ"),
         "#import \"@local/quillmark-helper:0.1.0\": data\n= Doc\n#data.subject\n",
@@ -49,7 +49,7 @@ fn plaintext_field_lowers_through_typst_backend() {
     let engine = Quillmark::new();
     let quill = quillmark::quill_from_path(quill_path).expect("load quill");
     // Markdown delimiters in the value must be treated as literal characters by
-    // the plaintext codec, and the corpus must lower cleanly to typst content.
+    // the plaintext codec, and the content must lower cleanly to typst content.
     let md = "~~~card-yaml\n$quill: plain_quill\n$kind: main\n\
               subject: \"a *literal* subject with _no_ markup\"\n~~~\n";
     let parsed = Document::parse(md).expect("parse").document;

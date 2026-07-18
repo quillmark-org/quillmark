@@ -17,9 +17,9 @@
 
 use unicode_normalization::UnicodeNormalization;
 
-use quillmark_richtext::delta::diff_import;
-use quillmark_richtext::import::ImportError;
-use quillmark_richtext::{ApplyError, Delta, LineOp, MarkOp, RichText};
+use quillmark_content::delta::diff_import;
+use quillmark_content::import::ImportError;
+use quillmark_content::{ApplyError, Delta, LineOp, MarkOp, Content};
 
 use crate::document::meta::{validate_composable_kind, CardKindError};
 use crate::document::{Card, Document, Payload};
@@ -79,25 +79,25 @@ pub enum EditError {
     #[error("value nests deeper than the maximum of {max} levels")]
     ValueTooDeep { max: usize },
 
-    /// Markdown import failed — the corpus codec rejected the input for a body
+    /// Markdown import failed — the content codec rejected the input for a body
     /// *or* a field path (e.g. container nesting past
-    /// [`MAX_NESTING_DEPTH`](quillmark_richtext::MAX_NESTING_DEPTH)). Returned
+    /// [`MAX_NESTING_DEPTH`](quillmark_content::MAX_NESTING_DEPTH)). Returned
     /// instead of silently degrading the target to empty on a rejected import.
     #[error("markdown import failed: {0}")]
     Import(ImportError),
 
-    /// A richtext field value in the corpus-or-markdown encoding could not be
-    /// decoded: a JSON object that is not a canonical richtext corpus, a
+    /// A richtext field value in the content-or-markdown encoding could not be
+    /// decoded: a JSON object that is not a canonical richtext content, a
     /// markdown string that failed to import, or a shape that is neither
     /// object, string, nor null. Returned by
     /// [`Card::commit_field`](Card::commit_field) on a richtext field, by
-    /// [`Card::revise_field`](Card::revise_field) on a present non-corpus field,
+    /// [`Card::revise_field`](Card::revise_field) on a present non-content field,
     /// and by [`Card::apply_field_richtext_change`](Card::apply_field_richtext_change).
     #[error("richtext field '{field}' decode failed: {message}")]
     FieldRichtextDecode { field: String, message: String },
 
     /// A richtext field written under the `richtext(inline)` constraint decoded
-    /// to a multi-block corpus (more than one line, a container, or an island).
+    /// to a multi-block content (more than one line, a container, or an island).
     /// The write-time counterpart of the coercion/validation `richtext(inline)`
     /// check; returned by [`Card::commit_field`](Card::commit_field) when the
     /// field's schema is `richtext` with `inline: true`.
@@ -114,9 +114,9 @@ pub enum EditError {
     #[error("field '{field}' does not conform to its schema type: {message}")]
     FieldConform { field: String, message: String },
 
-    /// A corpus field-change bundle (text delta, line ops, mark ops) applied
+    /// A content field-change bundle (text delta, line ops, mark ops) applied
     /// out of bounds or broke an invariant normalization could not repair.
-    #[error("corpus apply failed: {0:?}")]
+    #[error("content apply failed: {0:?}")]
     CorpusApply(ApplyError),
 }
 
@@ -356,7 +356,7 @@ impl Card {
         payload.set_kind(kind);
         Ok(Card::from_parts(
             payload,
-            quillmark_richtext::RichText::empty(),
+            quillmark_content::Content::empty(),
         ))
     }
 
@@ -558,43 +558,43 @@ impl Card {
         removed
     }
 
-    /// Install the body corpus directly from a pre-built [`RichText`] — **value
-    /// semantics**, the native richtext writer. A corpus is valid by
+    /// Install the body content directly from a pre-built [`Content`] — **value
+    /// semantics**, the native richtext writer. A content is valid by
     /// construction, so this is infallible: no markdown import, no diff, no
     /// schema check; the identity anchors of the previous body are *gone*
     /// (install-this-exact-value, so a `to_markdown → install` round-trip cannot
-    /// resurrect them). Use it when the caller already holds a corpus (a decoded
+    /// resurrect them). Use it when the caller already holds a content (a decoded
     /// canonical-JSON body, another field's value, an editor's serialized state).
     /// For "here's new authored markdown," use [`revise_body`](Self::revise_body),
     /// which rebases surviving anchors; the cold-import path is spelled at the
     /// call site as `install_body(import_body(md)?)`.
-    pub fn install_body(&mut self, corpus: RichText) {
-        self.overwrite_body(corpus);
+    pub fn install_body(&mut self, content: Content) {
+        self.overwrite_body(content);
     }
 
-    /// Install a richtext field's corpus directly from a pre-built [`RichText`]
+    /// Install a richtext field's content directly from a pre-built [`Content`]
     /// — the field-level twin of [`install_body`](Self::install_body). Value
-    /// semantics: stores the canonical corpus JSON verbatim (identity marks and
-    /// corpus-only marks such as `underline` intact), no diff, no schema check
+    /// semantics: stores the canonical content JSON verbatim (identity marks and
+    /// content-only marks such as `underline` intact), no diff, no schema check
     /// (schema-blind, like [`apply_field_richtext_change`](Self::apply_field_richtext_change)
     /// — [`commit_field`](Self::commit_field) is the typed door). Returns
     /// [`EditError::InvalidFieldName`] for a malformed name.
-    pub fn install_field(&mut self, name: &str, corpus: RichText) -> Result<(), EditError> {
+    pub fn install_field(&mut self, name: &str, content: Content) -> Result<(), EditError> {
         if !is_valid_field_name(name) {
             return Err(EditError::InvalidFieldName(name.to_string()));
         }
-        self.store_field_corpus(name, &corpus);
+        self.store_field_corpus(name, &content);
         Ok(())
     }
 
-    /// Store `corpus` as the canonical corpus-JSON value of field `name` — the
-    /// one place a richtext field's corpus is committed to the payload, shared by
+    /// Store `content` as the canonical content-JSON value of field `name` — the
+    /// one place a richtext field's content is committed to the payload, shared by
     /// [`install_field`](Self::install_field), [`revise_field`](Self::revise_field),
     /// and [`apply_field_richtext_change`](Self::apply_field_richtext_change).
     /// Assumes `name` is already validated (all three callers check it or resolve
     /// an existing field first).
-    fn store_field_corpus(&mut self, name: &str, corpus: &RichText) {
-        let canonical = quillmark_richtext::serial::to_canonical_value(corpus);
+    fn store_field_corpus(&mut self, name: &str, content: &Content) {
+        let canonical = quillmark_content::serial::to_canonical_value(content);
         self.payload_mut()
             .insert_unchecked(name.to_string(), QuillValue::from_json(canonical));
     }
@@ -602,7 +602,7 @@ impl Card {
     /// Write-time commit: validate and normalize `value` per the field's schema
     /// `type` and store the canonical form. The typed sibling of the opaque
     /// [`store_field`](Self::store_field) — the one write verb for *every* field
-    /// type (richtext today, any future corpus model tomorrow), dispatching on
+    /// type (richtext today, any future content model tomorrow), dispatching on
     /// the [`FieldSchema`] rather than growing a per-type method.
     ///
     /// The two write disciplines: [`store_field`](Self::store_field) stores the
@@ -611,8 +611,8 @@ impl Card {
     /// editor blur/save, an agent write). Neither is forced on the other.
     ///
     /// Behavior by `type`:
-    /// - **richtext** — imports a markdown string / adopts a corpus object and
-    ///   stores canonical corpus JSON, so identity marks (anchors, island ids)
+    /// - **richtext** — imports a markdown string / adopts a content object and
+    ///   stores canonical content JSON, so identity marks (anchors, island ids)
     ///   live on the stored value from the write; a `richtext(inline)` schema
     ///   rejects a multi-block value with [`EditError::FieldRichtextNotInline`].
     /// - **scalars** (`string`/`integer`/`number`/`boolean`/`datetime`) — stores
@@ -622,7 +622,7 @@ impl Card {
     /// - **array** / **object** — coerces each element/property against the
     ///   element/property schema.
     /// - **null** — passes through unchanged (the null ≡ absent rule); nothing
-    ///   is coerced (a richtext `null` reads back as the empty corpus via
+    ///   is coerced (a richtext `null` reads back as the empty content via
     ///   [`field_richtext`](Self::field_richtext)).
     ///
     /// The caller supplies the `schema` because a [`Document`] holds only a
@@ -657,26 +657,26 @@ impl Card {
     /// Surviving identity anchors rebase; formatting marks are re-derived by the
     /// fresh import. A pathologically over-nested input (`> MAX_NESTING_DEPTH`)
     /// returns [`EditError::Import`] rather than silently degrading to the
-    /// empty corpus. Discard the receipt with `let _ = card.revise_body(md)?;`
+    /// empty content. Discard the receipt with `let _ = card.revise_body(md)?;`
     /// when caret stability is not needed.
     pub fn revise_body(&mut self, body: impl Into<String>) -> Result<Delta, EditError> {
-        let (corpus, delta) =
+        let (content, delta) =
             diff_import(self.body(), &body.into()).map_err(EditError::Import)?;
-        self.overwrite_body(corpus);
+        self.overwrite_body(content);
         Ok(delta)
     }
 
-    /// Decode the field's current corpus (an absent field imports from empty),
+    /// Decode the field's current content (an absent field imports from empty),
     /// diff `body` against it so surviving anchors rebase, and return the new
-    /// corpus with its text [`Delta`] — the shared preamble of
+    /// content with its text [`Delta`] — the shared preamble of
     /// [`revise_field`](Self::revise_field) and
     /// [`revise_field_checked`](Self::revise_field_checked). Neither stores; the
-    /// caller lands the diffed corpus (raw, or schema-checked).
+    /// caller lands the diffed content (raw, or schema-checked).
     fn diff_field(
         &self,
         name: &str,
         body: impl Into<String>,
-    ) -> Result<(RichText, Delta), EditError> {
+    ) -> Result<(Content, Delta), EditError> {
         if !is_valid_field_name(name) {
             return Err(EditError::InvalidFieldName(name.to_string()));
         }
@@ -688,7 +688,7 @@ impl Card {
                     message: e.into_message(),
                 })
             }
-            None => RichText::empty(),
+            None => Content::empty(),
         };
         diff_import(&base, &body.into()).map_err(EditError::Import)
     }
@@ -696,25 +696,25 @@ impl Card {
     /// Revise a richtext field from an authored markdown string — the
     /// field-level twin of [`revise_body`](Self::revise_body), and the
     /// field-level `diff_import` the write surface previously lacked (the only
-    /// field-corpus writers were the cold [`commit_field`](Self::commit_field)
+    /// field-content writers were the cold [`commit_field`](Self::commit_field)
     /// and the splice [`apply_field_richtext_change`](Self::apply_field_richtext_change),
     /// so an LLM rewriting a richtext field's markdown had no anchor-preserving
-    /// path). Decodes the field's current corpus as the diff base (an **absent**
+    /// path). Decodes the field's current content as the diff base (an **absent**
     /// field cold-imports from empty), rebases surviving anchors onto the new
-    /// text, re-stores the canonical corpus, and returns the text [`Delta`].
+    /// text, re-stores the canonical content, and returns the text [`Delta`].
     ///
-    /// Schema-blind by design — the corpus-writer stratum splices without the
+    /// Schema-blind by design — the content-writer stratum splices without the
     /// quill (like [`apply_field_richtext_change`](Self::apply_field_richtext_change));
     /// [`commit_field`](Self::commit_field) is the typed door that enforces
     /// `richtext(inline)`, and a violation otherwise surfaces at validate/render.
     ///
     /// Returns [`EditError::InvalidFieldName`] for a malformed name,
     /// [`EditError::FieldRichtextDecode`] when the field is present but is not a
-    /// richtext corpus (a scalar a `store_field` wrote), and
+    /// richtext content (a scalar a `store_field` wrote), and
     /// [`EditError::Import`] on an over-nested markdown input.
     pub fn revise_field(&mut self, name: &str, body: impl Into<String>) -> Result<Delta, EditError> {
-        let (corpus, delta) = self.diff_field(name, body)?;
-        self.store_field_corpus(name, &corpus);
+        let (content, delta) = self.diff_field(name, body)?;
+        self.store_field_corpus(name, &content);
         Ok(delta)
     }
 
@@ -724,7 +724,7 @@ impl Card {
     /// provides alone. [`revise_field`](Self::revise_field) rebases anchors but is
     /// schema-blind; [`commit_field`](Self::commit_field) enforces the schema but
     /// cold-imports (the previous value's anchors are gone). This does both: diff
-    /// the markdown against the field's current corpus so surviving anchors rebase
+    /// the markdown against the field's current content so surviving anchors rebase
     /// (as [`revise_field`](Self::revise_field)), then enforce `schema` on the
     /// *diffed result* through the same typed-conform path
     /// [`commit_field`](Self::commit_field) runs — so a `richtext(inline)` schema
@@ -735,12 +735,12 @@ impl Card {
     /// The primitive that [`TypedWriter::revise_field`](crate::TypedWriter::revise_field)
     /// and [`CardWriter::revise_field`](crate::CardWriter::revise_field) wrap: they
     /// resolve `schema` from the bound quill and call here. The schema runs on the
-    /// corpus the diff produced, so a non-richtext `schema` (nothing to preserve)
+    /// content the diff produced, so a non-richtext `schema` (nothing to preserve)
     /// fails with the same [`EditError::FieldConform`]
     /// [`commit_field`](Self::commit_field) would raise.
     ///
     /// Errors: [`EditError::InvalidFieldName`], [`EditError::FieldRichtextDecode`]
-    /// when the field is present but not a richtext corpus, [`EditError::Import`]
+    /// when the field is present but not a richtext content, [`EditError::Import`]
     /// on an over-nested markdown input, and the conform errors of
     /// [`commit_field`](Self::commit_field) on the diffed result. On any error the
     /// field is unchanged.
@@ -750,23 +750,23 @@ impl Card {
         body: impl Into<String>,
         schema: &FieldSchema,
     ) -> Result<Delta, EditError> {
-        let (corpus, delta) = self.diff_field(name, body)?;
-        // Enforce `schema` on the diffed (anchor-rebased) corpus through the same
-        // typed path `commit_field` uses: re-canonicalizing a corpus object keeps
+        let (content, delta) = self.diff_field(name, body)?;
+        // Enforce `schema` on the diffed (anchor-rebased) content through the same
+        // typed path `commit_field` uses: re-canonicalizing a content object keeps
         // its identity marks (`decode_richtext_value`), so the inline check fires
         // on the value anchors survived onto and the error surface is identical.
-        let canonical = quillmark_richtext::serial::to_canonical_value(&corpus);
+        let canonical = quillmark_content::serial::to_canonical_value(&content);
         let stored = resolve_field_write(name, QuillValue::from_json(canonical), schema)?;
         self.payload_mut().insert_unchecked(name.to_string(), stored);
         Ok(delta)
     }
 
-    /// Apply a committed field-change bundle to the body corpus — the native
+    /// Apply a committed field-change bundle to the body content — the native
     /// form-editor writer. Order is text delta → line ops → mark ops, each
-    /// followed by normalization ([`RichText::apply_field_change`]); mark
+    /// followed by normalization ([`Content::apply_field_change`]); mark
     /// ranges are in post-text-delta coordinates. Returns
     /// [`EditError::CorpusApply`] when an op is out of bounds; the apply is
-    /// all-or-nothing ([`RichText::apply_field_change`]), so the body is
+    /// all-or-nothing ([`Content::apply_field_change`]), so the body is
     /// unchanged on error — apply the bundle against the body the delta was
     /// computed from.
     pub fn apply_body_change(
@@ -780,15 +780,15 @@ impl Card {
             .map_err(EditError::CorpusApply)
     }
 
-    /// Splice a corpus field-change bundle into a **richtext-valued field**'s
-    /// stored corpus — the field-path twin of [`apply_body_change`](Self::apply_body_change),
+    /// Splice a content field-change bundle into a **richtext-valued field**'s
+    /// stored content — the field-path twin of [`apply_body_change`](Self::apply_body_change),
     /// and what lets identity marks (anchors, island ids) persist on field
-    /// content across incremental edits. Decodes the field's canonical corpus,
+    /// content across incremental edits. Decodes the field's canonical content,
     /// applies the text delta plus any line/mark ops in the same all-or-nothing
     /// bundle, and re-stores the canonical result.
     ///
     /// Returns [`EditError::FieldRichtextDecode`] when the field is absent or its
-    /// stored value is not a richtext corpus (the caller addresses a field it
+    /// stored value is not a richtext content (the caller addresses a field it
     /// knows is richtext, exactly as when writing it), and
     /// [`EditError::CorpusApply`] when the bundle applies out of bounds.
     pub fn apply_field_richtext_change(
@@ -798,7 +798,7 @@ impl Card {
         line_ops: &[LineOp],
         mark_ops: &[MarkOp],
     ) -> Result<(), EditError> {
-        let mut corpus = match self.field_richtext(name) {
+        let mut content = match self.field_richtext(name) {
             Some(Ok(rt)) => rt,
             Some(Err(e)) => {
                 return Err(EditError::FieldRichtextDecode {
@@ -813,10 +813,10 @@ impl Card {
                 })
             }
         };
-        corpus
+        content
             .apply_field_change(text_delta, line_ops, mark_ops)
             .map_err(EditError::CorpusApply)?;
-        self.store_field_corpus(name, &corpus);
+        self.store_field_corpus(name, &content);
         Ok(())
     }
 }

@@ -47,7 +47,7 @@ def test_payload_access(taro_md):
 def test_body_is_str(taro_md):
     """Test that body is a str (not None)."""
     doc = Document.from_markdown(taro_md)
-    # `body` is the canonical corpus (a dict); its markdown projection is the
+    # `body` is the canonical content (a dict); its markdown projection is the
     # on-demand `export_markdown(body)` codec.
     assert isinstance(doc.body, dict)
     assert isinstance(export_markdown(doc.body), str)
@@ -318,29 +318,29 @@ def test_document_authoring_text_helpers():
 
 
 def test_install_body_corpus_round_trip():
-    """`install(rt)` installs the corpus dict `body` reads back — value semantics,
+    """`install(rt)` installs the content dict `body` reads back — value semantics,
     lossless (not markdown-forced). The kwargs idiom of WASM `install`."""
     doc = Document.from_markdown(
         "~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: T\n~~~\n\n**bold** body\n"
     )
-    corpus = doc.body
-    assert isinstance(corpus, dict)
-    # Install the read-back corpus into a fresh doc: lossless.
+    content = doc.body
+    assert isinstance(content, dict)
+    # Install the read-back content into a fresh doc: lossless.
     doc2 = Document.from_markdown("~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: T\n~~~\n")
-    doc2.install(corpus)
-    assert doc2.body == corpus
+    doc2.install(content)
+    assert doc2.body == content
     # The cold markdown path is spelled with the codec; clearing installs empty.
     doc2.install(import_markdown("plain text"))
     assert "plain text" in export_markdown(doc2.body)
     doc2.install(import_markdown(""))
     assert export_markdown(doc2.body) == ""
-    # A markdown string cannot be installed directly (value semantics, corpus only).
+    # A markdown string cannot be installed directly (value semantics, content only).
     with pytest.raises((QuillmarkError, ValueError)):
         doc2.install("plain markdown")
 
 
 def test_addressed_card_body_and_field_projection():
-    """`install(rt, card=i)` writes a composable card's corpus body; a committed
+    """`install(rt, card=i)` writes a composable card's content body; a committed
     richtext field projects through `export_markdown` (the codec that replaces
     the retired `field_markdown` / `card_field_markdown`)."""
     md = (

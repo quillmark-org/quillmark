@@ -239,7 +239,7 @@ pub struct RenderedRegion {
     pub field: String,            // schema field path
     pub page: usize,              // 0-based
     pub rect: [f32; 4],           // [x0, y0, x1, y1], PDF pt, bottom-left origin
-    pub span: Option<[usize; 2]>, // USV [start, end) of the covered corpus; None for a scalar/widget
+    pub span: Option<[usize; 2]>, // USV [start, end) of the covered content; None for a scalar/widget
     pub revision: Option<u64>,    // live-session revision stamp; None off-session
 }
 ```

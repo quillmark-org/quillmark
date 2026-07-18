@@ -1,11 +1,11 @@
 //! USV → UTF-8 byte conversion, the one coordinate crossing storage needs.
 //!
-//! [`RichText`](crate::RichText) positions count Unicode scalar values (USV,
+//! [`Content`](crate::Content) positions count Unicode scalar values (USV,
 //! Rust `char`) throughout, including at the WASM boundary — the `wasm`
 //! binding's delta and hit-test APIs pass raw USV positions through and leave
 //! any UTF-16 conversion to the JS caller. Two coordinate spaces disagree here:
 //!
-//! - **Rust / storage** — UTF-8 bytes. Slicing the corpus needs a byte offset.
+//! - **Rust / storage** — UTF-8 bytes. Slicing the content needs a byte offset.
 //! - **USV** — the model's coordinate. One astral char is 1 USV / 4 UTF-8 bytes.
 
 /// USV index → UTF-8 byte offset into `text`. Saturates to `text.len()` for an

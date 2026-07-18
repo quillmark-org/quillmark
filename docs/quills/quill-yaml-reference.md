@@ -91,7 +91,7 @@ main:
 | `ui`          | object            | no       | UI rendering hints (see [UI Properties](#ui-properties)) |
 | `items`       | object            | for `array` | Element schema for an `array` field (a nested field schema). Required on every array. |
 | `properties`  | object            | for `object` | Nested field schemas for an `object` typed dictionary (or an array's `object`-typed `items`). Required on every `object` field. |
-| `inline`      | boolean           | no       | For `richtext` and `plaintext` only: constrain the corpus to a single paragraph/line (a one-line editor surface). |
+| `inline`      | boolean           | no       | For `richtext` and `plaintext` only: constrain the content to a single paragraph/line (a one-line editor surface). |
 
 ### Field Types
 
@@ -99,13 +99,13 @@ main:
 |------------|-------|
 | `string`   | Open scalar UTF-8 text — a value the template computes with (a URL, path, identifier, or reference key), not prose it lays out |
 | `enum`     | A closed set of string values; requires a `values:` list. Projects to JSON-Schema `{type: string, enum: […]}` |
-| `plaintext`| Navigable, **unformatted** prose over the canonical corpus — the same nav/regions as `richtext`, but a literal codec (delimiters stay literal, no markup). Add `inline: true` for the single-line variant |
+| `plaintext`| Navigable, **unformatted** prose over the canonical content — the same nav/regions as `richtext`, but a literal codec (delimiters stay literal, no markup). Add `inline: true` for the single-line variant |
 | `number`   | Numeric scalar (integers and decimals) |
 | `integer`  | Integer-only numeric scalar |
 | `boolean`  | `true` or `false` |
 | `array`    | Ordered list; requires an `items:` element schema |
 | `datetime` | Bare `YYYY-MM-DD` through full RFC 3339 with offset |
-| `richtext` | Rich, **formatted** prose over a canonical corpus; backends lower it to the target format. Markdown is its import/export projection. Add `inline: true` for the single-paragraph variant |
+| `richtext` | Rich, **formatted** prose over a canonical content; backends lower it to the target format. Markdown is its import/export projection. Add `inline: true` for the single-paragraph variant |
 | `object`   | Structured map; requires a `properties:` map |
 
 The four text-ish types form a 2×2 of **data vs content** and **open/plain vs
@@ -152,7 +152,7 @@ main:
     sections:
       type: array
       items:
-        type: richtext   # each element's corpus is lowered to backend markup
+        type: richtext   # each element's content is lowered to backend markup
 ```
 
 For a **typed table** — a list of structured rows — give `items` an `object` type with its own `properties:`. Coercion recurses into each element and converts property values to their declared types:
