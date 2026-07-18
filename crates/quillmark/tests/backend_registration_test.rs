@@ -100,7 +100,7 @@ fn test_render_with_custom_backend() {
 
     let markdown =
         "~~~card-yaml\n$quill: custom_backend_quill\n$kind: main\ntitle: Hello Custom Backend\n~~~\n\n# Test\n";
-    let parsed = Document::from_markdown(markdown).expect("parse failed");
+    let parsed = Document::parse(markdown).expect("parse failed").document;
     let result = engine
         .render(
             &quill,

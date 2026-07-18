@@ -37,7 +37,7 @@ fn render_ref(
         "~~~card-yaml\n$quill: {}\n$kind: main\n~~~\n\n# Content\n",
         quill_ref
     );
-    let doc = Document::from_markdown(&markdown).expect("parse failed");
+    let doc = Document::parse(&markdown).expect("parse failed").document;
     engine.render(
         &quill,
         &doc,
@@ -57,7 +57,7 @@ fn dry_run_ref(quill_path: &std::path::Path, quill_ref: &str) -> Result<(), Rend
         "~~~card-yaml\n$quill: {}\n$kind: main\n~~~\n\n# Content\n",
         quill_ref
     );
-    let doc = Document::from_markdown(&markdown).expect("parse failed");
+    let doc = Document::parse(&markdown).expect("parse failed").document;
     quill.dry_run(&doc)
 }
 

@@ -96,8 +96,9 @@ fn seeded_document_round_trips_through_markdown() {
     let doc = quill.seed_document();
 
     let markdown = doc.to_markdown();
-    let reparsed = crate::Document::from_markdown(&markdown)
-        .expect("seeded document must re-parse from its own markdown");
+    let reparsed = crate::Document::parse(&markdown)
+        .expect("seeded document must re-parse from its own markdown")
+        .document;
 
     // Main metadata, including `$kind: main`, survives the round trip.
     assert_eq!(
@@ -333,7 +334,7 @@ card_kinds:
 /// A minimal `seed_test` document carrying a raw `$seed` YAML block.
 fn doc_with_seed(seed_block: &str) -> Document {
     let md = format!("~~~card-yaml\n$quill: seed_test@1.0\n$kind: main\n{seed_block}~~~\n");
-    Document::from_markdown(&md).expect("doc should parse")
+    Document::parse(&md).expect("doc should parse").document
 }
 
 #[test]

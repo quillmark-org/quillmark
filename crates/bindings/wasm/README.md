@@ -264,7 +264,10 @@ Batch mutation: `doc.storeFields({}, {...})` / `doc.storeFields({ card: index },
 apply a whole object atomically — on any invalid field nothing is applied and
 the thrown error carries one diagnostic per offending field (`path` = field
 name). The address is first (never shape-overloaded, since `card` is a legal
-field name).
+field name), and parses strictly — a stray key throws rather than silently
+reading as `{}`. The main card is `{}`, or **`MAIN_CARD_ADDR`** (from
+`@quillmark/wasm/runtime`), a frozen alias that spells the intent:
+`doc.storeFields(MAIN_CARD_ADDR, {...})`.
 
 ### Typed writes: `commit*` is the default, `store*` is the quill-free primitive
 

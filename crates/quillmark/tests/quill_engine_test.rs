@@ -68,8 +68,9 @@ fn test_quill_render_succeeds_with_engine_loaded_quill() {
 
     let engine = Quillmark::new();
     let quill = quillmark::quill_from_path(quill_path).expect("Quill::from_path failed");
-    let parsed = Document::from_markdown("~~~card-yaml\n$quill: my_quill\n$kind: main\n~~~\n")
-        .expect("parse failed");
+    let parsed = Document::parse("~~~card-yaml\n$quill: my_quill\n$kind: main\n~~~\n")
+        .expect("parse failed")
+        .document;
     let result = engine.render(
         &quill,
         &parsed,

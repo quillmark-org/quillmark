@@ -45,7 +45,7 @@ fn load_tree_from_path(path: &Path) -> Result<FileTreeNode, Box<dyn StdError + S
 
 /// Maximum size of a single file loaded from a quill directory. Guards against
 /// memory exhaustion when rendering a quill from an untrusted source; mirrors
-/// the `MAX_INPUT_SIZE` guard on `Document::from_markdown`.
+/// the `MAX_INPUT_SIZE` guard on `Document::parse`.
 const MAX_QUILL_FILE_SIZE: u64 = 50 * 1024 * 1024;
 
 fn load_dir(

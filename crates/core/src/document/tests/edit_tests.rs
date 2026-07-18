@@ -10,17 +10,19 @@ use std::str::FromStr;
 // ── Helper ───────────────────────────────────────────────────────────────────
 
 fn make_doc() -> Document {
-    Document::from_markdown(
+    Document::parse(
         "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Hello\n~~~\n\nBody text.\n",
     )
     .unwrap()
+    .document
 }
 
 fn make_doc_with_cards() -> Document {
-    Document::from_markdown(
+    Document::parse(
         "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Hello\n~~~\n\nBody.\n\n~~~card-yaml\n$kind: note\nfoo: bar\n~~~\n\nCard body.\n\n~~~card-yaml\n$kind: summary\n~~~\n",
     )
     .unwrap()
+    .document
 }
 
 fn qv(s: &str) -> QuillValue {
@@ -356,7 +358,7 @@ fn test_set_card_kind_round_trips_via_markdown() {
     let mut doc = make_doc_with_cards();
     doc.set_card_kind(0, "annotation").unwrap();
     let md = doc.to_markdown();
-    let reparsed = crate::Document::from_markdown(&md).unwrap();
+    let reparsed = crate::Document::parse(&md).unwrap().document;
     assert_eq!(reparsed.cards()[0].kind(), Some("annotation"));
 }
 
@@ -409,7 +411,7 @@ fn test_document_new_blank_canvas() {
     doc.push_card(card).unwrap();
 
     // A built-from-blank document round-trips the canonical emitter.
-    let reparsed = Document::from_markdown(&doc.to_markdown()).unwrap();
+    let reparsed = Document::parse(&doc.to_markdown()).unwrap().document;
     assert_eq!(doc, reparsed);
 }
 
@@ -933,7 +935,7 @@ fn test_corpus_field_emits_as_markdown_projection() {
 
     // Re-parse: schema-less, so the field is now a plain string (identity lost
     // on disk — the intended boundary), but the markdown content survives.
-    let reparsed = Document::from_markdown(&md).unwrap();
+    let reparsed = Document::parse(&md).unwrap().document;
     assert_eq!(
         reparsed.main().payload().get("intro").unwrap().as_str(),
         Some("**bold** intro\n")
@@ -1254,7 +1256,7 @@ fn test_set_ext_round_trips_through_markdown() {
     doc.main_mut().store_ext(ext).expect("set_ext");
 
     let md = doc.to_markdown();
-    let reparsed = Document::from_markdown(&md).unwrap();
+    let reparsed = Document::parse(&md).unwrap().document;
     assert_eq!(
         reparsed.main().ext().unwrap()["agent"]["pinned"].as_bool(),
         Some(true)
@@ -1394,7 +1396,7 @@ fn deep_value(depth: usize) -> serde_json::Value {
 #[test]
 fn set_field_rejects_value_past_depth_limit() {
     let mut doc =
-        crate::document::Document::from_markdown("~~~\n$quill: q@1.0\n$kind: main\n~~~\n").unwrap();
+        crate::document::Document::parse("~~~\n$quill: q@1.0\n$kind: main\n~~~\n").unwrap().document;
     let ok = crate::value::QuillValue::from_json(deep_value(50));
     assert!(doc.main_mut().store_field("x", ok).is_ok());
 

@@ -9,7 +9,7 @@
 //! let quill = quill_from_path("path/to/quill").unwrap();
 //! let engine = Quillmark::new();
 //!
-//! let parsed = Document::from_markdown("~~~\n$quill: my_quill\n$kind: main\ntitle: Hello\n~~~\n\n# Hello World").unwrap();
+//! let parsed = Document::parse("~~~\n$quill: my_quill\n$kind: main\ntitle: Hello\n~~~\n\n# Hello World").unwrap().document;
 //! let result = engine.render(&quill, &parsed, &RenderOptions {
 //!     output_format: Some(OutputFormat::Pdf),
 //!     ..Default::default()
@@ -21,7 +21,7 @@
 // `Quill::from_tree`, or from disk with the `quill_from_path` helper below.
 pub use quillmark_core::{
     Artifact, Backend, Card, ChangeSet, Delta, Diagnostic, Document, LiveSession, Location,
-    OutputFormat, ParseError, ParseOutput, Quill, RenderError, RenderOptions, RenderResult,
+    OutputFormat, ParseError, Parsed, Quill, RenderError, RenderOptions, RenderResult,
     RichText, Severity,
 };
 

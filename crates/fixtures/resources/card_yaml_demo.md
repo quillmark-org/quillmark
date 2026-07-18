@@ -53,7 +53,7 @@ The parsing logic is implemented in `quillmark-core`:
 ```rust
 use quillmark_core::Document;
 
-let doc = Document::from_markdown(markdown_content)?;
+let doc = Document::parse(markdown_content)?.document;
 let title = doc.main().payload().get("title");
 let body_content = doc.main().body();
 ```

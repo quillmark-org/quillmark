@@ -48,7 +48,7 @@ fn richtext_fields_lower_to_plaintext_field_values() {
     let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("richtext_form"))
         .expect("load richtext_form quill");
     let engine = Quillmark::new();
-    let doc = Document::from_markdown(FILLED).expect("parse markdown");
+    let doc = Document::parse(FILLED).expect("parse markdown").document;
     let result = engine
         .render(
             &quill,
@@ -101,7 +101,7 @@ fn richtext_fields_written_as_corpus_render_identically() {
     // schema-bound typed writer: `commit_field` stores the *canonical corpus
     // object* (decode → canonicalize) for a richtext-typed field, so the payload
     // now carries corpus objects.
-    let mut doc = Document::from_markdown(FILLED).expect("parse markdown");
+    let mut doc = Document::parse(FILLED).expect("parse markdown").document;
     {
         let mut ed = quill.writer(&mut doc);
         ed.set("headline", "The **headline**")

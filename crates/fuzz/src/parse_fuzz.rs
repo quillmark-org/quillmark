@@ -4,13 +4,13 @@ use quillmark_core::Document;
 proptest! {
     #[test]
     fn fuzz_decompose_no_panic(s in "\\PC{0,1000}") {
-        let _ = Document::from_markdown(&s);
+        let _ = Document::parse(&s);
     }
 
     #[test]
     fn fuzz_decompose_with_fences(s in "~~~card-yaml[\\s\\S]*~~~[\\s\\S]*") {
         // Test inputs that look like card-yaml blocks
-        let result = Document::from_markdown(&s);
+        let result = Document::parse(&s).map(|p| p.document);
         // Should either succeed or return an error, but not panic
         match result {
             Ok(doc) => {
@@ -34,7 +34,7 @@ proptest! {
             kind_name
         );
 
-        let result = Document::from_markdown(&markdown);
+        let result = Document::parse(&markdown).map(|p| p.document);
         // Should handle composable cards without panic
         if let Ok(doc) = result {
             let _ = doc.cards();
@@ -52,7 +52,7 @@ proptest! {
         let markdown =
             format!("~~~card-yaml\n$quill: test_quill\n$kind: main\n{}\n~~~\n\nContent", payload);
 
-        let result = Document::from_markdown(&markdown);
+        let result = Document::parse(&markdown).map(|p| p.document);
         if let Ok(doc) = result {
             // payload has exactly the fields we provided (no BODY or CARDS keys)
             assert!(doc.main().payload().len() <= size);
@@ -76,7 +76,7 @@ proptest! {
             ));
         }
 
-        let result = Document::from_markdown(&markdown);
+        let result = Document::parse(&markdown).map(|p| p.document);
         if let Ok(doc) = result {
             // Should handle multiple cards
             let _ = doc.main().payload();

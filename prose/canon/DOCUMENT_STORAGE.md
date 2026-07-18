@@ -120,7 +120,7 @@ document written by the current writer.
 for a document the current writer serializes directly. A row still carrying
 a legacy schema tag migrates forward on read, and the `0.92.0 → 0.93.0` hop
 cold-imports the stored markdown `body` string through the same
-Markdown → richtext path `Document::from_markdown` uses. Byte-stability of
+Markdown → richtext path `Document::parse` uses. Byte-stability of
 *that* row across a crate upgrade is therefore conditional on
 `pulldown-cmark` parsing the body the same way: a forced parser or security
 bump can move the migrated bytes even though the schema tag does not
@@ -159,7 +159,7 @@ The V0_82_0 → V0_92_0 migration is structural — old payload items map 1:1,
 markers) and the new `seed` variant is never produced from an older blob.
 The V0_92_0 → V0_93_0 migration is the one hop that can fail: it
 cold-imports the stored markdown `body` string through the same
-Markdown → richtext path `Document::from_markdown` uses, so a
+Markdown → richtext path `Document::parse` uses, so a
 pathologically over-nested legacy body is rejected
 (`StorageError::Malformed`) rather than silently truncated. Migrations
 chain on read (`V0_81_0 → V0_82_0 → V0_92_0 → V0_93_0`), with only the

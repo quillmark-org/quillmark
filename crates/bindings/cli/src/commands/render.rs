@@ -73,7 +73,7 @@ pub fn execute(args: RenderArgs) -> Result<()> {
             let markdown = fs::read_to_string(markdown_path)?;
 
             // Parse markdown
-            let output = Document::from_markdown_with_warnings(&markdown)?;
+            let output = Document::parse(&markdown)?;
 
             if args.verbose {
                 println!("Markdown parsed successfully");

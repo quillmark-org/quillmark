@@ -1,7 +1,7 @@
 //! Regression coverage for the "string index N is not a character boundary"
 //! panic class.
 //!
-//! `Document::from_markdown` must not panic on multibyte-character inputs.
+//! `Document::parse` must not panic on multibyte-character inputs.
 //! The vulnerable input shape is a `markdown`-typed field containing a mix of:
 //!
 //! - en-dashes (`–`, U+2013, 3 bytes in UTF-8) used as bullet markers
@@ -14,7 +14,7 @@
 use quillmark::Document;
 
 fn assert_parses(input: &str) {
-    match Document::from_markdown(input) {
+    match Document::parse(input) {
         Ok(_) => {}
         Err(e) => panic!("expected parse to succeed on multibyte input, got: {e}\ninput:\n{input}"),
     }
@@ -77,7 +77,7 @@ fn multibyte_keys_do_not_panic_on_duplicate() {
     let md = "~~~card-yaml\n$quill: q@0.1\n$kind: main\nf\u{2014}o: 1\nf\u{2014}o: 2\n~~~\n";
     // We expect a duplicate-key parse error here, not a panic. The crucial
     // assertion is "did not panic"; the error is fine.
-    let _ = Document::from_markdown(md);
+    let _ = Document::parse(md);
 }
 
 #[test]
@@ -90,6 +90,6 @@ fn multibyte_in_value_with_yaml_error_does_not_panic() {
         "~~~card-yaml\n$quill: q@0.1\n$kind: main\nsystem_name: \u{201C}Service\u{201D}: Order API\n~~~\n",
     ];
     for input in inputs {
-        let _ = Document::from_markdown(input);
+        let _ = Document::parse(input);
     }
 }

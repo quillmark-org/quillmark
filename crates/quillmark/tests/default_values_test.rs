@@ -46,7 +46,7 @@ main:
     let md = "~~~card-yaml\n$quill: test_quill\n$kind: main\n\
               addr:\n  street: !must_fill\n  city: Pittsburgh\n\
               tags:\n  - alpha\n  - null\n  - gamma\n~~~\n\nbody\n";
-    let parsed = Document::from_markdown(md).expect("parse failed");
+    let parsed = Document::parse(md).expect("parse failed").document;
     let data = quill
         .compile_data(&parsed)
         .expect("compile_data should succeed");
@@ -104,7 +104,7 @@ main:
     // `status` is authored; `title` and `version` fall back to their defaults.
     let markdown =
         "~~~card-yaml\n$quill: test_quill\n$kind: main\nstatus: published\n~~~\n\n# Content\n";
-    let parsed = Document::from_markdown(markdown).expect("parse failed");
+    let parsed = Document::parse(markdown).expect("parse failed").document;
 
     assert!(
         quill.dry_run(&parsed).is_ok(),
@@ -159,7 +159,7 @@ main:
 
     let markdown =
         "~~~card-yaml\n$quill: test_quill\n$kind: main\nstatus: published\n~~~\n\n# Content\n";
-    let parsed = Document::from_markdown(markdown).expect("parse failed");
+    let parsed = Document::parse(markdown).expect("parse failed").document;
 
     // Render does not gate on absence.
     assert!(

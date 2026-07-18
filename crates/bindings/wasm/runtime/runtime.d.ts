@@ -17,6 +17,18 @@ export { Quill, Document, init } from '../core/wasm.js';
 // The document-free corpus codec, re-exported from the core build.
 export { importMarkdown, exportMarkdown, rebase, mapPos } from '../core/wasm.js';
 
+import type { CardAddr } from '../core/wasm.js';
+
+/**
+ * The main card's address — the default target of the card-scoped verbs
+ * (`storeFields` / `storeExt` / `commitFields` / …). A named, {@link CardAddr}-typed
+ * alias for the empty address `{}`, so a main-card write names its target:
+ * `doc.storeFields(MAIN_CARD_ADDR, fields)`. It IS `{}` (frozen at runtime), a
+ * pure alias — `{}` and `undefined` stay equally valid. A card selector only,
+ * never a field address.
+ */
+export declare const MAIN_CARD_ADDR: CardAddr;
+
 // Core-build types consumers read off `Quill`/`Document`.
 export type {
 	Card,
@@ -50,6 +62,7 @@ export type {
 	CardInput,
 	PathStep,
 	Addr,
+	CardAddr,
 	Delta,
 	Assoc,
 	LineOp,

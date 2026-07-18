@@ -22,7 +22,7 @@ fn render(format: OutputFormat, ppi: Option<f32>) -> Vec<quillmark_core::Artifac
     let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("sample_form"))
         .expect("load sample_form quill");
     let engine = Quillmark::new();
-    let doc = Document::from_markdown(FILLED).expect("parse markdown");
+    let doc = Document::parse(FILLED).expect("parse markdown").document;
     engine
         .render(
             &quill,

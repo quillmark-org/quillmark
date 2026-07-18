@@ -60,10 +60,11 @@ mod tests {
     fn test_normalize_document_basic() {
         use crate::document::Document;
 
-        let doc = Document::from_markdown(
+        let doc = Document::parse(
             "~~~card-yaml\n$quill: test\n$kind: main\ntitle: <<placeholder>>\n~~~\n\n<<content>> \u{202D}**bold**",
         )
-        .unwrap();
+        .unwrap()
+        .document;
         let normalized = super::normalize_document(doc).unwrap();
 
         assert_eq!(
@@ -84,8 +85,9 @@ mod tests {
     fn test_normalize_document_preserves_quill_tag() {
         use crate::document::Document;
 
-        let doc = Document::from_markdown("~~~card-yaml\n$quill: custom_quill\n$kind: main\n~~~\n")
-            .unwrap();
+        let doc = Document::parse("~~~card-yaml\n$quill: custom_quill\n$kind: main\n~~~\n")
+            .unwrap()
+            .document;
         let normalized = super::normalize_document(doc).unwrap();
 
         assert_eq!(normalized.quill_reference().name, "custom_quill");
@@ -96,8 +98,9 @@ mod tests {
         use crate::document::Document;
 
         let doc =
-            Document::from_markdown("~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\n<<content>>")
-                .unwrap();
+            Document::parse("~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\n<<content>>")
+                .unwrap()
+                .document;
         let normalized_once = super::normalize_document(doc).unwrap();
         let normalized_twice = super::normalize_document(normalized_once.clone()).unwrap();
 
@@ -111,10 +114,11 @@ mod tests {
     fn test_normalize_document_yaml_field_bidi_preserved() {
         use crate::document::Document;
 
-        let doc = Document::from_markdown(
+        let doc = Document::parse(
             "~~~card-yaml\n$quill: test\n$kind: main\ntitle: a\u{202D}b\n~~~\n",
         )
-        .unwrap();
+        .unwrap()
+        .document;
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(
             normalized
@@ -133,7 +137,7 @@ mod tests {
         use crate::document::Document;
 
         let md = "~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\nbody\n\n~~~card-yaml\n$kind: note\n~~~\ncard\u{202D}body\n";
-        let doc = Document::from_markdown(md).unwrap();
+        let doc = Document::parse(md).unwrap().document;
         assert_eq!(doc.cards().len(), 1, "expected 1 card");
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(normalized.cards()[0].body_markdown(), "cardbody\n");
@@ -144,7 +148,7 @@ mod tests {
         use crate::document::Document;
 
         let md = "~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\nbody\n\n~~~card-yaml\n$kind: note\nname: Ali\u{202D}ce\n~~~\n";
-        let doc = Document::from_markdown(md).unwrap();
+        let doc = Document::parse(md).unwrap().document;
         assert_eq!(doc.cards().len(), 1, "expected 1 card");
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(
@@ -163,7 +167,7 @@ mod tests {
         use crate::document::Document;
 
         let md = "~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\n~~~card-yaml\n$kind: note\n~~~\n<!-- comment -->Trailing text\n";
-        let doc = Document::from_markdown(md).unwrap();
+        let doc = Document::parse(md).unwrap().document;
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(normalized.cards()[0].body_markdown(), "Trailing text\n");
     }
@@ -173,7 +177,7 @@ mod tests {
         use crate::document::Document;
 
         let md = "~~~card-yaml\n$quill: test\n$kind: main\n~~~\n\n<!-- note -->Content here";
-        let doc = Document::from_markdown(md).unwrap();
+        let doc = Document::parse(md).unwrap().document;
         let normalized = super::normalize_document(doc).unwrap();
         assert_eq!(normalized.main().body_markdown(), "Content here\n");
     }

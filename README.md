@@ -42,7 +42,7 @@ title: Example
 # Hello World
 "#;
 
-let doc = Document::from_markdown(markdown)?;
+let doc = Document::parse(markdown)?.document;
 let result = engine.render(
     &quill,
     &doc,

@@ -17,7 +17,7 @@ fn test_card_count_limit_attack() {
             i, i
         ));
     }
-    let result = Document::from_markdown(&markdown);
+    let result = Document::parse(&markdown);
 
     // Should fail with card count limit error
     assert!(result.is_err(), "Should reject excessive card blocks");
@@ -39,7 +39,7 @@ fn test_unknown_dollar_metadata_rejected() {
     for key in injections {
         let markdown =
             format!("~~~card-yaml\n$quill: test_quill\n$kind: main\n{key}: injected\n~~~\n\nBody",);
-        let result = Document::from_markdown(&markdown);
+        let result = Document::parse(&markdown);
         assert!(
             result.is_err(),
             "Should reject unknown `$`-prefixed key '{}' in YAML",
@@ -78,7 +78,7 @@ fn test_card_name_validation() {
 fn test_yaml_error_location() {
     let markdown =
         "~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\nBody\n\n~~~card-yaml\n$kind: test\ninvalid yaml: {\n~~~\n\n";
-    let result = Document::from_markdown(markdown);
+    let result = Document::parse(markdown);
 
     assert!(result.is_err(), "Should reject invalid YAML");
     let err_msg = result.unwrap_err().to_string();

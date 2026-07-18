@@ -16,8 +16,8 @@ the blueprint serves LLM/MCP consumers.
 
 | Surface | Consumer | Entry |
 |---|---|---|
-| card-yaml Markdown | humans | `Document::from_markdown` |
-| annotated blueprint | LLMs / MCP | `blueprint()` → fill → `from_markdown` |
+| card-yaml Markdown | humans | `Document::parse` |
+| annotated blueprint | LLMs / MCP | `blueprint()` → fill → `parse` |
 | structured mutators | programs | `Document::new` → `store_fields` / `push_card` |
 
 All three produce the same `Document`; render, validation, storage, and

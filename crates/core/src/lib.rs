@@ -10,7 +10,7 @@
 //!
 //! // Parse markdown with a card-yaml metadata block
 //! let markdown = "~~~\n$quill: my_quill\n$kind: main\ntitle: Example\n~~~\n\n# Content";
-//! let doc = Document::from_markdown(markdown).unwrap();
+//! let doc = Document::parse(markdown).unwrap().document;
 //! let title = doc.main()
 //!     .payload()
 //!     .get("title")
@@ -26,7 +26,7 @@
 
 pub mod document;
 pub use document::{
-    Card, CardWire, Document, EditError, ParseOutput, Payload, PayloadItem, PayloadItemWire,
+    Card, CardWire, Document, EditError, Parsed, Payload, PayloadItem, PayloadItemWire,
     RichtextDecodeError, SeedOverlay, WireError,
 };
 

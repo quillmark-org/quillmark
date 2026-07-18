@@ -8,11 +8,13 @@ use crate::document::Document;
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn assert_round_trip(label: &str, src: &str) {
-    let a = Document::from_markdown(src)
-        .unwrap_or_else(|e| panic!("{}: from_markdown failed: {}", label, e));
+    let a = Document::parse(src)
+        .unwrap_or_else(|e| panic!("{}: parse failed: {}", label, e))
+        .document;
     let emitted = a.to_markdown();
-    let b = Document::from_markdown(&emitted)
-        .unwrap_or_else(|e| panic!("{}: re-parse failed: {}\nEmitted:\n{}", label, e, emitted));
+    let b = Document::parse(&emitted)
+        .unwrap_or_else(|e| panic!("{}: re-parse failed: {}\nEmitted:\n{}", label, e, emitted))
+        .document;
     assert_eq!(
         a, b,
         "{}: round-trip produced different Documents.\nEmitted:\n{}",
@@ -30,7 +32,7 @@ fn number_scientific_notation_round_trip() {
     assert_round_trip("1e10", src);
 
     // The parsed value must be a number (not a string).
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let v = doc.main().payload().get("big").unwrap();
     assert!(
         v.as_f64().is_some(),
@@ -47,7 +49,7 @@ fn large_integer_round_trip() {
     let src = "~~~card-yaml\n$quill: q\n$kind: main\nbig_int: 9999999999999\n~~~\n";
     assert_round_trip("large integer", src);
 
-    let doc = Document::from_markdown(src).unwrap();
+    let doc = Document::parse(src).unwrap().document;
     let v = doc.main().payload().get("big_int").unwrap();
     assert_eq!(
         v.as_i64(),
@@ -96,14 +98,16 @@ fn emitted_number_representation_matches_parse() {
             "~~~card-yaml\n$quill: q\n$kind: main\n{}: {}\n~~~\n",
             case.key, case.src_value
         );
-        let doc = Document::from_markdown(&src).unwrap();
+        let doc = Document::parse(&src).unwrap().document;
         let emitted = doc.to_markdown();
-        let doc2 = Document::from_markdown(&emitted).unwrap_or_else(|e| {
-            panic!(
-                "re-parse failed for {}: {}\nEmitted:\n{}",
-                case.src_value, e, emitted
-            )
-        });
+        let doc2 = Document::parse(&emitted)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "re-parse failed for {}: {}\nEmitted:\n{}",
+                    case.src_value, e, emitted
+                )
+            })
+            .document;
         let v1 = doc.main().payload().get(case.key).unwrap();
         let v2 = doc2.main().payload().get(case.key).unwrap();
         assert_eq!(

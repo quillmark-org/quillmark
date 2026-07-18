@@ -14,8 +14,9 @@ fn render(markdown: &str, format: OutputFormat) -> quillmark::RenderResult {
     let engine = Quillmark::new();
     let quill =
         quillmark::quill_from_path(quills_path("table_demo")).expect("table_demo should load");
-    let parsed = Document::from_markdown(markdown)
-        .unwrap_or_else(|e| panic!("document failed to parse: {e:?}\n---\n{markdown}"));
+    let parsed = Document::parse(markdown)
+        .unwrap_or_else(|e| panic!("document failed to parse: {e:?}\n---\n{markdown}"))
+        .document;
     engine
         .render(
             &quill,

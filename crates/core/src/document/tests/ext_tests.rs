@@ -9,7 +9,7 @@ use serde_json::json;
 use crate::document::{Document, MetaKey, PayloadItem};
 
 fn parse(src: &str) -> Document {
-    Document::from_markdown(src).expect("source should parse")
+    Document::parse(src).expect("source should parse").document
 }
 
 // ── Parser ─────────────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ $ext: {}
 
 #[test]
 fn ext_with_scalar_value_is_rejected() {
-    let err = Document::from_markdown(
+    let err = Document::parse(
         "\
 ~~~card-yaml
 $quill: q@1.0
@@ -77,7 +77,7 @@ $ext: just-a-string
 
 #[test]
 fn ext_with_sequence_value_is_rejected() {
-    let err = Document::from_markdown(
+    let err = Document::parse(
         "\
 ~~~card-yaml
 $quill: q@1.0
@@ -98,7 +98,7 @@ $ext:
 
 #[test]
 fn fill_on_ext_is_rejected() {
-    let err = Document::from_markdown(
+    let err = Document::parse(
         "\
 ~~~card-yaml
 $quill: q@1.0

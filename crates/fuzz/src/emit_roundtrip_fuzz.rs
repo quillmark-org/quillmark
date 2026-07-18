@@ -1,6 +1,6 @@
 //! Emit round-trip fuzz target.
 //!
-//! Property: for any input that `Document::from_markdown` accepts, the
+//! Property: for any input that `Document::parse` accepts, the
 //! emission and re-parse chain must be stable:
 //!
 //! ```text
@@ -32,19 +32,20 @@ proptest! {
     /// Arbitrary printable-Unicode input: parse→emit→re-parse must be stable.
     #[test]
     fn fuzz_emit_roundtrip_arbitrary(s in "\\PC{0,500}") {
-        let doc_a = match Document::from_markdown(&s) {
-            Ok(d) => d,
+        let doc_a = match Document::parse(&s) {
+            Ok(d) => d.document,
             Err(_) => return Ok(()), // invalid input — discard
         };
 
         let emit1 = doc_a.to_markdown();
 
-        let doc_b = Document::from_markdown(&emit1).unwrap_or_else(|e| {
+        let doc_b = Document::parse(&emit1).unwrap_or_else(|e| {
             panic!(
                 "emit_roundtrip: re-parse of emitted document failed.\nError: {}\nInput: {:.200}\nEmitted:\n{}",
                 e, s, emit1
             )
-        });
+        })
+        .document;
 
         prop_assert_eq!(
             &doc_a,
@@ -73,19 +74,20 @@ proptest! {
         let src = format!("~~~card-yaml\n$quill: {}\n$kind: main\n{}: \"{}\"\n~~~\n\nBody.\n",
             quill, key, value.replace('\\', "\\\\").replace('"', "\\\""));
 
-        let doc_a = match Document::from_markdown(&src) {
-            Ok(d) => d,
+        let doc_a = match Document::parse(&src) {
+            Ok(d) => d.document,
             Err(_) => return Ok(()),
         };
 
         let emit1 = doc_a.to_markdown();
 
-        let doc_b = Document::from_markdown(&emit1).unwrap_or_else(|e| {
+        let doc_b = Document::parse(&emit1).unwrap_or_else(|e| {
             panic!(
                 "fuzz payload-shaped: re-parse failed.\nError: {}\nSrc:\n{}\nEmitted:\n{}",
                 e, src, emit1
             )
-        });
+        })
+        .document;
 
         prop_assert_eq!(
             &doc_a,
@@ -115,19 +117,20 @@ proptest! {
             quill, card_kind, card_key, card_value
         );
 
-        let doc_a = match Document::from_markdown(&src) {
-            Ok(d) => d,
+        let doc_a = match Document::parse(&src) {
+            Ok(d) => d.document,
             Err(_) => return Ok(()),
         };
 
         let emit1 = doc_a.to_markdown();
 
-        let doc_b = Document::from_markdown(&emit1).unwrap_or_else(|e| {
+        let doc_b = Document::parse(&emit1).unwrap_or_else(|e| {
             panic!(
                 "fuzz with-cards: re-parse failed.\nError: {}\nEmitted:\n{}",
                 e, emit1
             )
-        });
+        })
+        .document;
 
         prop_assert_eq!(&doc_a, &doc_b);
 

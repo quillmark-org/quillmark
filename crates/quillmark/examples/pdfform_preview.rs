@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== pdfform backend: sample_form → PDF ===");
     let gf_quill =
         quillmark::quill_from_path(quills_path("sample_form")).expect("load sample_form quill");
-    let gf_doc = Document::from_markdown(SAMPLE_FORM_MD).expect("parse sample_form markdown");
+    let gf_doc = Document::parse(SAMPLE_FORM_MD).expect("parse sample_form markdown").document;
     let gf_result = engine
         .render(
             &gf_quill,
