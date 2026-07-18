@@ -107,7 +107,7 @@ export interface QuillMetadata {
 /// `quillmark_core::CardWire`) and its write-input twin `CardInput`. `Card` is
 /// the read shape *returned* by `Document.main` / `cards` / `removeCard` /
 /// `quill.seedCard` / `Document.makeCard`; `CardInput` is the shape *accepted*
-/// by `pushCard` / `insertCard` (referenced by name via `unchecked_param_type`).
+/// by `insertCard` (referenced by name via `unchecked_param_type`).
 /// They differ only in `body`: a read is always canonical `RichText`, a write
 /// also takes a markdown `string`.
 #[wasm_bindgen(typescript_custom_section)]
@@ -128,7 +128,7 @@ export type PayloadItem =
           /**
            * Paths to `!must_fill` markers nested *inside* `value` (the `value`
            * projection itself is fill-free). Absent when the field has no nested
-           * placeholders. Preserved across `pushCard` / `makeCard`.
+           * placeholders. Preserved across `insertCard` / `makeCard`.
            */
           nestedFills?: PathStep[][];
       }
@@ -138,7 +138,7 @@ export type PayloadItem =
  * A single card block, as read back from a document: returned by
  * `Document.main` / `Document.cards` / `Document.removeCard` / `Quill.seedCard`
  * / `Document.makeCard`. To feed a card *into* a document use `CardInput`
- * (which `pushCard` / `insertCard` accept); every `Card` is a valid `CardInput`,
+ * (which `insertCard` accepts); every `Card` is a valid `CardInput`,
  * so a card read from one document pushes straight into another.
  *
  * `$` system entries are hoisted to named fields: `kind` (the `$kind`, empty
@@ -165,7 +165,7 @@ export interface Card {
 
 /**
  * A card written *into* a document — the input twin of `Card`, accepted by
- * `Document.pushCard` / `Document.insertCard`. Like `Card` but `body` also
+ * `Document.insertCard`. Like `Card` but `body` also
  * takes a markdown `string` (imported to the corpus, so a markdown / LLM writer
  * needn't build the `RichText` shape), and every field but `kind` is optional —
  * an absent field defaults (no payload items, an empty body). Write one inline
@@ -611,7 +611,7 @@ impl Quill {
     /// layering an optional per-kind seed `overlay` over the schema-example
     /// base (`overlay › example › absent`). Returns `undefined` if `cardKind`
     /// is not declared in this quill's schema, else a `Card` that feeds
-    /// straight into `Document.pushCard` / `insertCard`.
+    /// straight into `Document.insertCard`.
     ///
     /// Pass `document.seedOverlay(cardKind)` as `overlay` so a card added to a
     /// template-derived document inherits its curated starting values; omit it
@@ -1153,19 +1153,6 @@ impl Document {
         Ok(())
     }
 
-    /// **Deprecated** — alias for `revise({}, markdown)`, kept one release cycle.
-    /// Revise the main card's body from a markdown string (edit semantics: a
-    /// `diff_import` that rebases surviving anchors). Discards the text delta;
-    /// call [`revise`](Document::revise) to receive it.
-    #[wasm_bindgen(js_name = replaceBody)]
-    pub fn replace_body(&mut self, body: &str) -> Result<(), JsValue> {
-        self.inner
-            .main_mut()
-            .revise_body(body)
-            .map(|_| ())
-            .map_err(|e| edit_error_to_js(&e))
-    }
-
     /// **Install** a richtext value at `addr` — **value semantics**, corpus only.
     /// Stores exactly `rt` (a canonical `RichText` corpus object); the identity
     /// anchors of any previous value are gone. An absent `addr.field` targets the
@@ -1303,14 +1290,17 @@ impl Document {
     }
 
     /// Build a composable card of `kind`, typed-commit `fields` onto it, set its
-    /// body from optional markdown, and append it — the ABI under
-    /// `writer.addCard`. Fuses `makeCard` + typed commit + `pushCard`
-    /// transactionally: the card is committed in full before it joins the
-    /// document, so a rejected field (or an invalid kind or body) leaves the
-    /// document untouched. Field errors throw the same per-field diagnostic
-    /// bundle as [`commitFields`](Self::commit_fields), including an
-    /// `[EditError::UnknownField]` per undeclared name; an invalid kind or body
-    /// throws a single-entry bundle keyed `$kind` / `$body`.
+    /// body from optional markdown, and place it — the ABI under `writer.addCard`.
+    /// `at` picks the position: absent appends, a number inserts at that index
+    /// (`0..=cards.length`), so a positioned typed insert is one atomic call
+    /// rather than `addCard` + `moveCard`. Fuses `makeCard` + typed commit +
+    /// insertion transactionally: the card is committed in full before it joins
+    /// the document, so a rejected field (or an invalid kind, body, or
+    /// out-of-range `at`) leaves the document untouched. Field errors throw the
+    /// same per-field diagnostic bundle as [`commitFields`](Self::commit_fields),
+    /// including an `[EditError::UnknownField]` per undeclared name; an invalid
+    /// kind or body, or an out-of-range position, throws a single-entry bundle
+    /// keyed `$kind` / `$body`.
     #[wasm_bindgen(js_name = addCard)]
     pub fn add_card(
         &mut self,
@@ -1320,6 +1310,7 @@ impl Document {
             JsValue,
         >,
         #[wasm_bindgen(unchecked_optional_param_type = "string")] body: Option<String>,
+        #[wasm_bindgen(unchecked_optional_param_type = "number")] at: Option<usize>,
     ) -> Result<(), JsValue> {
         let batch = match fields {
             Some(f) => js_value_to_field_batch(&f, "addCard")?,
@@ -1328,15 +1319,15 @@ impl Document {
         quill
             .inner
             .writer(&mut self.inner)
-            .add_card(kind, batch, body.as_deref())
+            .add_card(kind, batch, body.as_deref(), at)
             .map_err(edit_errors_to_js)
     }
 
     /// Build a fresh `Card` from a kind and a flat field map — the ergonomic
-    /// constructor for `pushCard` / `insertCard`. `fields` is an optional
+    /// constructor for `insertCard`. `fields` is an optional
     /// `Record<string, unknown>` (each entry becomes a card field, in
     /// insertion order); `body` defaults to `""`. Kind validity is checked by
-    /// `pushCard` / `insertCard`, not here.
+    /// `insertCard`, not here.
     #[wasm_bindgen(js_name = makeCard, unchecked_return_type = "Card")]
     pub fn make_card(
         kind: String,
@@ -1386,34 +1377,24 @@ impl Document {
         })
     }
 
-    /// Append a card to the end of the card list. Accepts a `CardInput` — a card
-    /// read back (`cards` / `removeCard` / `quill.seedCard`), a
-    /// [`makeCard`](Document::make_card) result, or a bare `{ kind, body }`
+    /// Insert a card — the single insertion verb: `at` absent appends, a number
+    /// inserts at that index (must be in `0..=cards.length`). Accepts a
+    /// `CardInput` — a card read back (`cards` / `removeCard` / `quill.seedCard`),
+    /// a [`makeCard`](Document::make_card) result, or a bare `{ kind, body }`
     /// (every returned `Card` is a valid `CardInput`). Throws if `card.kind` is
-    /// not a valid kind name.
-    #[wasm_bindgen(js_name = pushCard)]
-    pub fn push_card(
-        &mut self,
-        #[wasm_bindgen(unchecked_param_type = "CardInput")] card: JsValue,
-    ) -> Result<(), JsValue> {
-        let core_card = js_to_card(&card)?;
-        self.inner
-            .push_card(core_card)
-            .map_err(|e| edit_error_to_js(&e))
-    }
-
-    /// Insert a card at `index` (must be in `0..=cards.length`). Accepts a
-    /// `CardInput` (see [`pushCard`](Self::push_card)).
+    /// not a valid kind name, or if `at` is out of range.
     #[wasm_bindgen(js_name = insertCard)]
     pub fn insert_card(
         &mut self,
-        index: usize,
         #[wasm_bindgen(unchecked_param_type = "CardInput")] card: JsValue,
+        #[wasm_bindgen(unchecked_optional_param_type = "number")] at: Option<usize>,
     ) -> Result<(), JsValue> {
         let core_card = js_to_card(&card)?;
-        self.inner
-            .insert_card(index, core_card)
-            .map_err(|e| edit_error_to_js(&e))
+        match at {
+            Some(index) => self.inner.insert_card(index, core_card),
+            None => self.inner.push_card(core_card),
+        }
+        .map_err(|e| edit_error_to_js(&e))
     }
 
     #[wasm_bindgen(js_name = removeCard, unchecked_return_type = "Card | undefined")]
@@ -1799,8 +1780,7 @@ fn card_to_js(card: &quillmark_core::Card) -> Result<JsValue, JsValue> {
 
 /// Deserialize a `CardInput`-shaped JS value into a core
 /// [`Card`](quillmark_core::Card) via [`CardWire`](quillmark_core::CardWire).
-/// The single place WASM turns JS into a core card — used by `pushCard` /
-/// `insertCard`.
+/// The single place WASM turns JS into a core card — used by `insertCard`.
 fn js_to_card(value: &JsValue) -> Result<quillmark_core::Card, JsValue> {
     // `serde_wasm_bindgen` does not honor the core type's
     // `#[serde(deny_unknown_fields)]` (it looks up known fields rather than

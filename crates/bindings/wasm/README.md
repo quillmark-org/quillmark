@@ -89,7 +89,7 @@ is resolved at render time, not here. Loads no backend binary.
 A blank document: a main card carrying only `$quill`, an empty body, and no
 composable cards — the programmatic blank canvas. Absent fields resolve at
 render time (schema `default`, else type-empty zero), so nothing the caller
-did not set reaches the output. Build it up with `setFields` / `pushCard`.
+did not set reaches the output. Build it up with `setFields` / `insertCard`.
 For an example-filled starter use `quill.seedDocument()`. Throws on an
 invalid quill reference.
 
@@ -233,21 +233,21 @@ const markdown = doc.toMarkdown();
 For per-card seeding, `quill.seedMain()` returns just the `$kind: main` card
 and `quill.seedCard(kind)` returns a starter composable card (or `undefined`
 if the kind is not declared). Both return the read `Card` shape of
-`doc.main` / `doc.cards`, which `doc.pushCard` / `doc.insertCard` accept
-directly:
+`doc.main` / `doc.cards`, which `doc.insertCard` accepts directly:
 
 ```ts
-doc.pushCard(quill.seedCard("note"));                 // seed → push
-doc.pushCard(Document.makeCard("note", { x: 1 }));    // build from a flat map
-doc.pushCard({ kind: "note", body: "Plain **markdown**." });  // bare inline
+doc.insertCard(quill.seedCard("note"));                 // seed → append
+doc.insertCard(Document.makeCard("note", { x: 1 }));    // build from a flat map
+doc.insertCard({ kind: "note", body: "Plain **markdown**." });  // bare inline
+doc.insertCard({ kind: "note" }, 0);                    // insert at index 0
 ```
 
 Reads and writes are two aligned shapes. A read `Card` always has `body:
 RichText` (canonical corpus, never a raw string) — no narrowing, no guessing
 whether the body was normalized. The write shape `CardInput` widens `body` to
 `RichText | string` (a markdown string imports to the corpus) and makes every
-field but `kind` optional. Every `Card` is a valid `CardInput`, so `pushCard` /
-`insertCard` still take exactly what `cards` / `removeCard` / `seedCard` return.
+field but `kind` optional. Every `Card` is a valid `CardInput`, so `insertCard`
+still takes exactly what `cards` / `removeCard` / `seedCard` return.
 Build a fresh card from a flat field map with
 `Document.makeCard(kind, fields?, body?)`.
 

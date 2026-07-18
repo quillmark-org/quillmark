@@ -172,8 +172,8 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
 
     // Mutate
     doc.setField('title', 'New Title')
-    doc.pushCard(Document.makeCard('note', { author: 'Alice' }, 'Hello'))
-    doc.replaceBody('Updated body')
+    doc.insertCard(Document.makeCard('note', { author: 'Alice' }, 'Hello'))
+    doc.revise({}, 'Updated body')
 
     // Emit
     const emitted = doc.toMarkdown()
@@ -248,7 +248,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
   it('round-trips a mutated document with cards', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.setField('title', 'New Title')
-    doc.pushCard(Document.makeCard('note', { author: 'Alice' }, 'Hello'))
+    doc.insertCard(Document.makeCard('note', { author: 'Alice' }, 'Hello'))
 
     const restored = Document.fromJson(doc.toJson())
 
@@ -567,7 +567,7 @@ describe('Document editor surface — setFields / setCardFields', () => {
 
   it('setCardFields is the card-indexed twin of setFields', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.pushCard(Document.makeCard('note', { foo: 'bar' }))
+    doc.insertCard(Document.makeCard('note', { foo: 'bar' }))
     doc.setCardFields(0, { foo: 'baz', extra: 1 })
     expect(field(doc.cards[0], 'foo')).toBe('baz')
     expect(field(doc.cards[0], 'extra')).toBe(1)
@@ -575,7 +575,7 @@ describe('Document editor surface — setFields / setCardFields', () => {
   })
 })
 
-describe('Document editor surface — setQuillRef / replaceBody(deprecated) / install / revise', () => {
+describe('Document editor surface — setQuillRef / install / revise', () => {
   it('setQuillRef changes the quillRef', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.setQuillRef('new_quill')
@@ -585,12 +585,6 @@ describe('Document editor surface — setQuillRef / replaceBody(deprecated) / in
   it('setQuillRef throws on invalid reference', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     expect(() => doc.setQuillRef('INVALID QUILL REF WITH SPACES')).toThrow()
-  })
-
-  it('replaceBody (deprecated alias for revise) changes the body', () => {
-    const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.replaceBody('Brand new body.')
-    expect(exportMarkdown(doc.main.body)).toBe('Brand new body.\n')
   })
 
   it('revise({}, md) revises the main body and returns the text delta', () => {
@@ -826,42 +820,42 @@ $kind: summary
 Card two.
 `
 
-  it('pushCard appends a card', () => {
+  it('insertCard appends a card when at is omitted', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.pushCard(Document.makeCard('note', {}, 'My card.'))
+    doc.insertCard(Document.makeCard('note', {}, 'My card.'))
     expect(doc.cards.length).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
     expect(exportMarkdown(doc.cards[0].body)).toBe('My card.\n')
   })
 
-  it('pushCard throws on invalid kind', () => {
+  it('insertCard throws on invalid kind', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.pushCard({ kind: 'BadKind' })).toThrow(/InvalidKindName/)
+    expect(() => doc.insertCard({ kind: 'BadKind' })).toThrow(/InvalidKindName/)
   })
 
-  it('removeCard → pushCard round-trips a card with fields (read shape == write shape)', () => {
+  it('removeCard → insertCard round-trips a card with fields (read shape == write shape)', () => {
     // The whole point of the one-Card-shape change: a card returned by
-    // removeCard feeds straight back into pushCard with its fields intact.
+    // removeCard feeds straight back into insertCard with its fields intact.
     const doc = Document.fromMarkdown(MD_WITH_CARDS) // `note` (foo: bar) + `summary`
     const initialCount = doc.cards.length
     const removed = doc.removeCard(0) // the `note` card
     expect(doc.cards.length).toBe(initialCount - 1)
     expect(field(removed, 'foo')).toBe('bar')
 
-    doc.pushCard(removed) // re-push the returned card; fields must not drop
+    doc.insertCard(removed) // re-push the returned card; fields must not drop
     expect(doc.cards.length).toBe(initialCount)
     const repushed = doc.cards[doc.cards.length - 1]
     expect(repushed.kind).toBe('note')
     expect(field(repushed, 'foo')).toBe('bar')
   })
 
-  it('makeCard accepts any kind; pushCard is the kind gate', () => {
+  it('makeCard accepts any kind; insertCard is the kind gate', () => {
     // makeCard is pure data-shaping (permissive); the cards-list invariant is
     // enforced at insertion, not construction.
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const bad = Document.makeCard('BadKind', { x: 1 })
     expect(bad.kind).toBe('BadKind') // construction succeeds
-    expect(() => doc.pushCard(bad)).toThrow(/InvalidKindName/) // insertion rejects
+    expect(() => doc.insertCard(bad)).toThrow(/InvalidKindName/) // insertion rejects
   })
 
   it('makeCard treats fields and body as optional', () => {
@@ -876,19 +870,19 @@ Card two.
 
   it('a stale { kind, fields } object is a loud error, not a silent empty card', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.pushCard({ kind: 'note', fields: { x: 1 } })).toThrow()
+    expect(() => doc.insertCard({ kind: 'note', fields: { x: 1 } })).toThrow()
   })
 
   it('insertCard inserts at specified index', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARDS)
-    doc.insertCard(0, { kind: 'intro' })
+    doc.insertCard({ kind: 'intro' }, 0)
     expect(doc.cards[0].kind).toBe('intro')
     expect(doc.cards[1].kind).toBe('note')
   })
 
-  it('insertCard throws IndexOutOfRange when index > len', () => {
+  it('insertCard throws IndexOutOfRange when at > len', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.insertCard(5, { kind: 'note' })).toThrow(/IndexOutOfRange/)
+    expect(() => doc.insertCard({ kind: 'note' }, 5)).toThrow(/IndexOutOfRange/)
   })
 
   it('removeCard removes and returns the card', () => {
@@ -949,7 +943,7 @@ Card two.
 
     const two = Document.fromMarkdown(MD_WITH_CARDS)
     expect(two.cardCount).toBe(2)
-    two.pushCard({ kind: 'extra' })
+    two.insertCard({ kind: 'extra' })
     expect(two.cardCount).toBe(3)
     two.removeCard(0)
     expect(two.cardCount).toBe(2)
@@ -979,14 +973,14 @@ describe('Document.equals', () => {
   it('returns false after a body mutation', () => {
     const a = Document.fromMarkdown(TEST_MARKDOWN)
     const b = Document.fromMarkdown(TEST_MARKDOWN)
-    b.replaceBody('Different body')
+    b.revise({}, 'Different body')
     expect(a.equals(b)).toBe(false)
   })
 
   it('returns false after pushing a card', () => {
     const a = Document.fromMarkdown(TEST_MARKDOWN)
     const b = Document.fromMarkdown(TEST_MARKDOWN)
-    b.pushCard({ kind: 'note' })
+    b.insertCard({ kind: 'note' })
     expect(a.equals(b)).toBe(false)
   })
 
@@ -1087,8 +1081,8 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
 
     // Mutate
     doc.setField('author', 'Bob')
-    doc.replaceBody('New body text.')
-    doc.pushCard({ kind: 'note', body: 'Card content.' })
+    doc.revise({}, 'New body text.')
+    doc.insertCard({ kind: 'note', body: 'Card content.' })
     doc.setQuillRef('updated_quill')
 
     // Assert state
@@ -1161,7 +1155,7 @@ describe('Document editor surface — $ext mutators', () => {
 
   it('card-level ext mutators target the card at index', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.pushCard({ kind: 'note', body: 'x' })
+    doc.insertCard({ kind: 'note', body: 'x' })
     doc.setCardExt(0, { agent: { note: 'y' } })
     expect(doc.cards[0].ext.agent.note).toBe('y')
     expect(doc.removeCardExt(0).agent.note).toBe('y')
@@ -1170,7 +1164,7 @@ describe('Document editor surface — $ext mutators', () => {
 
   it('card-level namespace mutators preserve siblings and clear when empty', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    doc.pushCard({ kind: 'note', body: 'x' })
+    doc.insertCard({ kind: 'note', body: 'x' })
     doc.setCardExtNamespace(0, 'editor', { title: 'A' })
     doc.setCardExtNamespace(0, 'tutorial', ['step-1'])
     expect(doc.removeCardExtNamespace(0, 'tutorial')).toEqual(['step-1'])
@@ -1628,7 +1622,7 @@ title: !must_fill
 })
 
 describe('nested !must_fill', () => {
-  it('exposes nestedFills on a field item, surviving storage and pushCard', () => {
+  it('exposes nestedFills on a field item, surviving storage and insertCard', () => {
     const md = `~~~card-yaml
 $quill: q@0.1
 $kind: main
@@ -1645,11 +1639,11 @@ addr:
     const restored = Document.fromJson(doc.toJson())
     expect(restored.toMarkdown()).toContain('street: !must_fill')
 
-    // A card built with nestedFills survives pushCard → emit.
+    // A card built with nestedFills survives insertCard → emit.
     const doc2 = Document.fromMarkdown(
       '~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: x\n~~~\n',
     )
-    doc2.pushCard({
+    doc2.insertCard({
       kind: 'note',
       payloadItems: [
         {

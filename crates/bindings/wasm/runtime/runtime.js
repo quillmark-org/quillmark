@@ -588,18 +588,22 @@ export class DocumentWriter {
 	}
 	/**
 	 * Build a composable card of `kind`, typed-commit `fields` onto it, set its
-	 * body from optional markdown, and append it — the fused `makeCard` + typed
-	 * commit + `pushCard`. Transactional: the card is committed in full before it
-	 * joins the document, so a rejected field (throws a per-field diagnostic
-	 * bundle, `UnknownField` per undeclared name) or an invalid kind/body leaves
-	 * the document untouched. See `Document.addCard`.
+	 * body from optional markdown, and place it — the fused `makeCard` + typed
+	 * commit + insertion. `at` picks the position: omitted appends, a number
+	 * inserts at that index (`0..=cardCount`), so a positioned typed insert is one
+	 * atomic call rather than `addCard` + `moveCard`. Transactional: the card is
+	 * committed in full before it joins the document, so a rejected field (throws
+	 * a per-field diagnostic bundle, `UnknownField` per undeclared name) or an
+	 * invalid kind/body/position leaves the document untouched. See
+	 * `Document.addCard`.
 	 * @param {string} kind
 	 * @param {Record<string, unknown>} [fields]
 	 * @param {string} [body]
+	 * @param {number} [at] insertion index; appends when omitted
 	 * @returns {void}
 	 */
-	addCard(kind, fields, body) {
-		return this.#doc.addCard(this.#quill, kind, fields, body);
+	addCard(kind, fields, body, at) {
+		return this.#doc.addCard(this.#quill, kind, fields, body, at);
 	}
 	/**
 	 * Remove the composable card at `index`, returning it (or `undefined` if the
@@ -649,6 +653,15 @@ export class CardWriter {
 	/** The bound card index. */
 	get index() {
 		return this.#index;
+	}
+	/**
+	 * The bound card's `$kind` (empty string when it carries none), read through
+	 * the document — mirrors core `CardWriter::kind()`. Ephemeral like the cursor
+	 * itself: throws `IndexOutOfRange` if the bound index is out of range.
+	 * @returns {string}
+	 */
+	get kind() {
+		return this.#doc.card(this.#index).kind;
 	}
 	/**
 	 * Typed-commit one field on this card, per `Document.commitCardField`.

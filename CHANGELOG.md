@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **breaking** wasm: fold `pushCard` into `insertCard(card, at?)` — one insertion verb per lane, absent `at` appends; `insertCard`'s parameters reorder to `(card, at?)`. Delete the deprecated `replaceBody` alias (use `revise({}, md)` or `writer.setBody`) (#961)
+- feat(core,wasm): positioned card insert — `TypedWriter::add_card` / `writer.addCard` and the `addCard` ABI take an `at` position, so a positioned typed insert is one atomic call instead of `addCard` + `moveCard`; add `TypedWriter::remove_card` (mirrors JS `writer.removeCard`) and a JS `CardWriter.kind` getter (mirrors core `CardWriter::kind()`) (#961)
 - **breaking** core: `Payload::insert` / `insert_fill` now validate the field-name and value-depth invariant at the boundary and return `Result<_, FieldViolation>`, closing the `payload_mut().insert(...)` hole that let a direct caller build an invalid document; pre-validated internal callers use the new `pub(crate)` `insert_unchecked` / `insert_fill_unchecked` (#958)
 - feat(wasm,core): single-card reads — `doc.card(i)` (throws out of range), `doc.cardIndexById(id)` (first match; `$id` is non-unique), and `doc.seedOverlay(kind)`, backed by core `Document::card(i)` / `find_card(id)`. Reading one card, resolving a `$id`, or fetching a `$seed` overlay no longer serializes the whole `cards` array or main card (#956)
 - **breaking** core: parse warnings live only on `ParseOutput` — the redundant `Document::warnings` field + `warnings()` getter are dropped and `Document::from_main_and_cards` no longer takes a `warnings` param (`Document` `PartialEq` is now a plain derive). `from_markdown` / `from_markdown_with_warnings` are unchanged (#959)

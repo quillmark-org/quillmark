@@ -151,7 +151,7 @@ title: Draft
 
     // Edit the main card and append a composable card.
     doc.setField('title', 'Final')
-    doc.pushCard(Document.makeCard('note', { author: 'Alice' }, 'A note.'))
+    doc.insertCard(Document.makeCard('note', { author: 'Alice' }, 'A note.'))
     expect(doc.cardCount).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
 
@@ -178,7 +178,7 @@ title: Draft
 ~~~
 
 # Body`)
-    doc.pushCard(Document.makeCard('note', { author: 'Alice' }, 'A note body.'))
+    doc.insertCard(Document.makeCard('note', { author: 'Alice' }, 'A note body.'))
 
     // getCardField — value keyed by name; undefined when the field is absent.
     expect(doc.getCardField(0, 'author')).toBe('Alice')
@@ -204,9 +204,9 @@ title: Draft
 ~~~
 
 # Body`)
-    doc.pushCard({ kind: 'note', id: 'dup', body: 'A' })
-    doc.pushCard({ kind: 'note', id: 'other', body: 'B' })
-    doc.pushCard({ kind: 'note', id: 'dup', body: 'C' })
+    doc.insertCard({ kind: 'note', id: 'dup', body: 'A' })
+    doc.insertCard({ kind: 'note', id: 'other', body: 'B' })
+    doc.insertCard({ kind: 'note', id: 'dup', body: 'C' })
 
     // card(i) reads one whole card without materializing the cards array.
     expect(doc.card(1).kind).toBe('note')

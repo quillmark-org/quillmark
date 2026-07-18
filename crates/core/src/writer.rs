@@ -84,20 +84,26 @@ impl<'a> TypedWriter<'a> {
     }
 
     /// Build a composable card of `kind`, typed-commit `fields` onto it,
-    /// optionally set its body from markdown, and append it — the fused
-    /// [`Card::new`](crate::Card::new) + typed writes + [`push_card`]. The card is
-    /// committed in full *before* it joins the document, so it is transactional by
-    /// construction: a rejected field (or an invalid kind or body) leaves the
-    /// document untouched. Field errors use the all-or-nothing bundle of
-    /// [`set_all`](Self::set_all); an invalid kind or body surfaces as a
-    /// single-entry bundle keyed `$kind` / `$body`.
+    /// optionally set its body from markdown, and place it — the fused
+    /// [`Card::new`](crate::Card::new) + typed writes + insertion. `at` picks the
+    /// position: `None` appends ([`push_card`]), `Some(i)` inserts at index `i`
+    /// ([`insert_card`]), so a positioned typed insert is one atomic call rather
+    /// than `add_card` + [`move_card`](Document::move_card). The card is committed
+    /// in full *before* it joins the document, so it is transactional by
+    /// construction: a rejected field (or an invalid kind, body, or out-of-range
+    /// `at`) leaves the document untouched. Field errors use the all-or-nothing
+    /// bundle of [`set_all`](Self::set_all); an invalid kind or body, or an
+    /// out-of-range position, surfaces as a single-entry bundle keyed `$kind` /
+    /// `$body`.
     ///
     /// [`push_card`]: Document::push_card
+    /// [`insert_card`]: Document::insert_card
     pub fn add_card<K, V, I>(
         &mut self,
         kind: &str,
         fields: I,
         body: Option<&str>,
+        at: Option<usize>,
     ) -> Result<(), Vec<(String, EditError)>>
     where
         K: Into<String>,
@@ -111,10 +117,19 @@ impl<'a> TypedWriter<'a> {
             card.revise_body(md)
                 .map_err(|e| vec![("$body".to_string(), e)])?;
         }
-        self.doc
-            .push_card(card)
-            .map_err(|e| vec![("$kind".to_string(), e)])?;
+        match at {
+            Some(index) => self.doc.insert_card(index, card),
+            None => self.doc.push_card(card),
+        }
+        .map_err(|e| vec![("$kind".to_string(), e)])?;
         Ok(())
+    }
+
+    /// Remove the composable card at `index`, returning it — the tier-1 writer
+    /// spelling of [`Document::remove_card`], mirroring the JS `writer.removeCard`
+    /// sugar. `None` when `index` is out of range.
+    pub fn remove_card(&mut self, index: usize) -> Option<Card> {
+        self.doc.remove_card(index)
     }
 
     /// A schema-bound writer for the composable card at `index`. The card's
@@ -334,12 +349,50 @@ card_kinds:
         let config = config();
         let mut doc = blank_doc();
         let mut ed = TypedWriter::new(&config, &mut doc);
-        ed.add_card("note", [("body", "**hi**")], Some("card body"))
+        ed.add_card("note", [("body", "**hi**")], Some("card body"), None)
             .unwrap();
         assert_eq!(doc.cards().len(), 1);
         assert_eq!(doc.cards()[0].kind(), Some("note"));
         assert_eq!(doc.cards()[0].field_markdown("body").unwrap(), "**hi**\n");
         assert_eq!(doc.cards()[0].body_markdown(), "card body\n");
+    }
+
+    #[test]
+    fn add_card_at_inserts_and_remove_card_returns() {
+        let config = config();
+        let mut doc = blank_doc();
+        {
+            let mut ed = TypedWriter::new(&config, &mut doc);
+            ed.add_card("note", [("body", "a")], None, None).unwrap();
+            ed.add_card("note", [("body", "c")], None, None).unwrap();
+            // Positioned typed insert in one atomic call (was add_card + move_card).
+            ed.add_card("note", [("body", "b")], None, Some(1)).unwrap();
+        }
+        let bodies: Vec<String> = doc
+            .cards()
+            .iter()
+            .map(|c| c.field_markdown("body").unwrap())
+            .collect();
+        assert_eq!(bodies, ["a\n", "b\n", "c\n"]);
+
+        // An out-of-range position is transactional — nothing is inserted.
+        {
+            let mut ed = TypedWriter::new(&config, &mut doc);
+            let errs = ed
+                .add_card("note", [("body", "x")], None, Some(9))
+                .unwrap_err();
+            assert_eq!(errs[0].0, "$kind");
+        }
+        assert_eq!(doc.cards().len(), 3);
+
+        // remove_card returns the removed card; None out of range.
+        {
+            let mut ed = TypedWriter::new(&config, &mut doc);
+            let removed = ed.remove_card(1).unwrap();
+            assert_eq!(removed.field_markdown("body").unwrap(), "b\n");
+            assert!(ed.remove_card(5).is_none());
+        }
+        assert_eq!(doc.cards().len(), 2);
     }
 
     #[test]
@@ -349,7 +402,7 @@ card_kinds:
         let mut ed = TypedWriter::new(&config, &mut doc);
         // An undeclared field aborts the commit; the card never joins the document.
         let errs = ed
-            .add_card("note", [("stray", "x")], None)
+            .add_card("note", [("stray", "x")], None, None)
             .unwrap_err();
         assert_eq!(errs[0].0, "stray");
         assert_eq!(errs[0].1.variant_name(), "UnknownField");
@@ -362,7 +415,9 @@ card_kinds:
         let mut doc = blank_doc();
         let mut ed = TypedWriter::new(&config, &mut doc);
         // A reserved kind is refused before any card is built.
-        let errs = ed.add_card("$reserved", [] as [(&str, &str); 0], None).unwrap_err();
+        let errs = ed
+            .add_card("$reserved", [] as [(&str, &str); 0], None, None)
+            .unwrap_err();
         assert_eq!(errs[0].0, "$kind");
         assert_eq!(doc.cards().len(), 0);
     }

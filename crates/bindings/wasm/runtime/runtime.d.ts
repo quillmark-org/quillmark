@@ -509,11 +509,14 @@ export declare class DocumentWriter {
 	setBody(markdown: string): void;
 	/**
 	 * Build a composable card of `kind`, typed-commit `fields` onto it, set its
-	 * body from optional markdown, and append it — the fused `makeCard` + typed
-	 * commit + `pushCard`. Transactional: a rejected field (throws a per-field
-	 * diagnostic bundle) or an invalid kind/body leaves the document untouched.
+	 * body from optional markdown, and place it — the fused `makeCard` + typed
+	 * commit + insertion. `at` picks the position: omitted appends, a number
+	 * inserts at that index, so a positioned typed insert is one atomic call
+	 * rather than `addCard` + `moveCard`. Transactional: a rejected field (throws
+	 * a per-field diagnostic bundle) or an invalid kind/body/position leaves the
+	 * document untouched.
 	 */
-	addCard(kind: string, fields?: Record<string, unknown>, body?: string): void;
+	addCard(kind: string, fields?: Record<string, unknown>, body?: string, at?: number): void;
 	/** Remove the composable card at `index`, returning it (or `undefined`). */
 	removeCard(index: number): Card | undefined;
 	/**
@@ -535,6 +538,12 @@ export declare class CardWriter {
 	constructor(quill: Quill, doc: Document, index: number);
 	/** The bound card index. */
 	readonly index: number;
+	/**
+	 * The bound card's `$kind` (empty string when it carries none), read through
+	 * the document — mirrors core `CardWriter::kind()`. Throws `IndexOutOfRange`
+	 * if the bound index is out of range.
+	 */
+	readonly kind: string;
 	set(name: string, value: unknown): void;
 	setAll(fields: Record<string, unknown>): void;
 	/** Set this card's body from markdown (edit semantics), discarding the delta. */

@@ -1015,7 +1015,7 @@ impl PyWriter {
         quill
             .inner
             .writer(&mut doc.inner)
-            .add_card(kind, batch, body.as_deref())
+            .add_card(kind, batch, body.as_deref(), None)
             .map_err(convert_edit_errors)
     }
 
