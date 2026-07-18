@@ -315,9 +315,9 @@ $kind: main
 ",
     );
     let card = doc.main_mut();
-    card.set_seed_namespace("indorsement", json!({ "from": "A" }))
+    card.store_seed_namespace("indorsement", json!({ "from": "A" }))
         .unwrap();
-    card.set_seed_namespace("attachment", json!({ "label": "B" }))
+    card.store_seed_namespace("attachment", json!({ "label": "B" }))
         .unwrap();
     assert_eq!(card.seed().map(|m| m.len()), Some(2));
 
@@ -347,11 +347,11 @@ $kind: main
     let card = doc.main_mut();
 
     assert!(matches!(
-        card.set_seed_namespace("main", json!({ "from": "A" })),
+        card.store_seed_namespace("main", json!({ "from": "A" })),
         Err(crate::document::EditError::ReservedKind)
     ));
     assert!(matches!(
-        card.set_seed_namespace("Bad-Kind", json!({ "from": "A" })),
+        card.store_seed_namespace("Bad-Kind", json!({ "from": "A" })),
         Err(crate::document::EditError::InvalidKindName(_))
     ));
 

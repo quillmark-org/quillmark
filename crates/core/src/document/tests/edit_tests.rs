@@ -94,7 +94,7 @@ fn test_document_set_field_rejects_dollar_prefixed_names() {
     // field-name reservation (uppercase is accepted).
     for name in ["$body", "$cards", "$quill", "$kind"] {
         let mut doc = make_doc();
-        let result = doc.main_mut().set_field(name, qv("value"));
+        let result = doc.main_mut().store_field(name, qv("value"));
         assert_eq!(
             result,
             Err(EditError::InvalidFieldName(name.to_string())),
@@ -109,7 +109,7 @@ fn test_document_set_field_rejects_dollar_prefixed_names() {
 #[test]
 fn test_document_set_field_inserts() {
     let mut doc = make_doc();
-    doc.main_mut().set_field("author", qv("Alice")).unwrap();
+    doc.main_mut().store_field("author", qv("Alice")).unwrap();
     assert_eq!(
         doc.main().payload().get("author").unwrap().as_str(),
         Some("Alice")
@@ -119,7 +119,7 @@ fn test_document_set_field_inserts() {
 #[test]
 fn test_document_set_field_updates_existing() {
     let mut doc = make_doc();
-    doc.main_mut().set_field("title", qv("New Title")).unwrap();
+    doc.main_mut().store_field("title", qv("New Title")).unwrap();
     assert_eq!(
         doc.main().payload().get("title").unwrap().as_str(),
         Some("New Title")
@@ -151,7 +151,7 @@ fn test_document_field_legacy_uppercase_accepted() {
     let mut doc = make_doc();
     for name in ["BODY", "CARDS", "QUILL", "CARD"] {
         doc.main_mut()
-            .set_field(name, qv("v"))
+            .store_field(name, qv("v"))
             .unwrap_or_else(|e| panic!("expected {name} to be accepted, got {e:?}"));
         assert_eq!(
             doc.main().payload().get(name).unwrap().as_str().unwrap(),
@@ -377,7 +377,7 @@ fn test_card_new_invalid_kind_rejected() {
 #[test]
 fn test_card_set_field_valid() {
     let mut card = Card::new("note").unwrap();
-    card.set_field("content", qv("Some text")).unwrap();
+    card.store_field("content", qv("Some text")).unwrap();
     assert_eq!(
         card.payload().get("content").unwrap().as_str(),
         Some("Some text")
@@ -387,7 +387,7 @@ fn test_card_set_field_valid() {
 #[test]
 fn test_card_set_field_invalid_name() {
     let mut card = Card::new("note").unwrap();
-    let result = card.set_field("bad-name", qv("text"));
+    let result = card.store_field("bad-name", qv("text"));
     assert_eq!(
         result,
         Err(EditError::InvalidFieldName("bad-name".to_string()))
@@ -403,9 +403,9 @@ fn test_document_new_blank_canvas() {
     assert!(doc.cards().is_empty());
     assert_eq!(doc.main().body_markdown(), "");
 
-    doc.main_mut().set_fields([("title", "Hello")]).unwrap();
+    doc.main_mut().store_fields([("title", "Hello")]).unwrap();
     let mut card = Card::new("note").unwrap();
-    card.set_field("qty", 3).unwrap();
+    card.store_field("qty", 3).unwrap();
     doc.push_card(card).unwrap();
 
     // A built-from-blank document round-trips the canonical emitter.
@@ -418,7 +418,7 @@ fn test_document_new_blank_canvas() {
 #[test]
 fn test_card_set_fields_inserts_in_iterator_order() {
     let mut card = Card::new("note").unwrap();
-    card.set_fields([("b".to_string(), qv("two")), ("a".to_string(), qv("one"))])
+    card.store_fields([("b".to_string(), qv("two")), ("a".to_string(), qv("one"))])
         .unwrap();
     let keys: Vec<&String> = card.payload().iter().map(|(k, _)| k).collect();
     assert_eq!(keys, ["b", "a"]);
@@ -429,7 +429,7 @@ fn test_card_set_fields_inserts_in_iterator_order() {
 fn test_card_set_fields_collects_every_violation() {
     let mut card = Card::new("note").unwrap();
     let errors = card
-        .set_fields([
+        .store_fields([
             ("ok".to_string(), qv("fine")),
             ("bad-name".to_string(), qv("v")),
             ("also bad".to_string(), qv("v")),
@@ -455,8 +455,8 @@ fn test_card_set_fields_collects_every_violation() {
 #[test]
 fn test_card_set_fields_atomic_on_error() {
     let mut card = Card::new("note").unwrap();
-    card.set_field("existing", qv("old")).unwrap();
-    let result = card.set_fields([
+    card.store_field("existing", qv("old")).unwrap();
+    let result = card.store_fields([
         ("existing".to_string(), qv("new")),
         ("bad-name".to_string(), qv("v")),
     ]);
@@ -472,8 +472,8 @@ fn test_card_set_fields_atomic_on_error() {
 #[test]
 fn test_card_set_fields_clears_fill_and_repeated_name_last_wins() {
     let mut card = Card::new("note").unwrap();
-    card.set_fill("title", qv("draft")).unwrap();
-    card.set_fields([
+    card.store_fill("title", qv("draft")).unwrap();
+    card.store_fields([
         ("title".to_string(), qv("first")),
         ("title".to_string(), qv("final")),
     ])
@@ -487,13 +487,13 @@ fn test_card_set_fields_clears_fill_and_repeated_name_last_wins() {
 fn test_set_field_scalar_conversions() {
     // The `From` impls let scalars pass straight through `impl Into<QuillValue>`.
     let mut card = Card::new("note").unwrap();
-    card.set_field("name", "Alice").unwrap();
-    card.set_field("qty", 3).unwrap();
-    card.set_field("price", 2.5).unwrap();
-    card.set_field("active", true).unwrap();
-    card.set_field("tags", serde_json::json!(["a", "b"]))
+    card.store_field("name", "Alice").unwrap();
+    card.store_field("qty", 3).unwrap();
+    card.store_field("price", 2.5).unwrap();
+    card.store_field("active", true).unwrap();
+    card.store_field("tags", serde_json::json!(["a", "b"]))
         .unwrap();
-    card.set_fields([("count", 1), ("total", 2)]).unwrap();
+    card.store_fields([("count", 1), ("total", 2)]).unwrap();
     assert_eq!(card.payload().get("name").unwrap().as_str(), Some("Alice"));
     assert_eq!(card.payload().get("qty").unwrap().as_i64(), Some(3));
     assert_eq!(card.payload().get("price").unwrap().as_f64(), Some(2.5));
@@ -634,12 +634,73 @@ fn test_revise_field_diff_imports_and_returns_delta() {
         .any(|m| matches!(&m.kind, MarkKind::Anchor { id } if id == "c1")));
 
     // A present non-corpus scalar is a decode error.
-    card.set_field("count", crate::QuillValue::from_json(serde_json::json!(3)))
+    card.store_field("count", crate::QuillValue::from_json(serde_json::json!(3)))
         .unwrap();
     assert_eq!(
         card.revise_field("count", "x").unwrap_err().variant_name(),
         "FieldRichtextDecode"
     );
+}
+
+/// `revise_field_checked` is both anchor-preserving (rebases surviving anchors,
+/// like `revise_field`) and schema-enforcing (rejects a multi-block result on a
+/// `richtext(inline)` schema with `FieldRichtextNotInline`, like `commit_field`),
+/// returning the text delta — the typed, anchor-preserving field write.
+#[test]
+fn test_revise_field_checked_preserves_anchors_and_enforces_inline() {
+    use crate::quill::{FieldSchema, FieldType};
+    use quillmark_richtext::model::{Mark, MarkKind};
+
+    let inline = FieldSchema::new(
+        "subject".to_string(),
+        FieldType::RichText { inline: true },
+        None,
+    );
+
+    let mut card = Card::new("note").unwrap();
+    // Cold start against an absent field: a single line passes the inline check.
+    let delta = card
+        .revise_field_checked("subject", "hello target world", &inline)
+        .unwrap();
+    assert!(!delta.ops.is_empty());
+
+    // Anchor "target", then revise — the anchor rebases onto surviving text and
+    // the single-line result still conforms.
+    let mut base = card.field_richtext("subject").unwrap().unwrap();
+    base.marks.push(Mark {
+        start: 6,
+        end: 12, // "target"
+        kind: MarkKind::Anchor { id: "c1".into() },
+    });
+    base.normalize();
+    card.install_field("subject", base).unwrap();
+    card.revise_field_checked("subject", "why keep the target here", &inline)
+        .unwrap();
+    let read = card.field_richtext("subject").unwrap().unwrap();
+    assert!(
+        read.marks
+            .iter()
+            .any(|m| matches!(&m.kind, MarkKind::Anchor { id } if id == "c1")),
+        "anchor should rebase onto surviving text, unlike the cold commit_field"
+    );
+
+    // A multi-block result fails the inline check on the *diffed* corpus with the
+    // same FieldRichtextNotInline surface commit_field raises — and the field is
+    // left unchanged (the schema check runs before the store).
+    let before = card.field_markdown("subject").unwrap();
+    let err = card
+        .revise_field_checked("subject", "line one\n\nline two", &inline)
+        .unwrap_err();
+    assert_eq!(err.variant_name(), "FieldRichtextNotInline");
+    assert_eq!(card.field_markdown("subject").unwrap(), before);
+
+    // A block (non-inline) richtext schema accepts multi-block content.
+    let block = FieldSchema::new("body".to_string(), FieldType::RichText { inline: false }, None);
+    let d = card
+        .revise_field_checked("body", "para one\n\npara two", &block)
+        .unwrap();
+    assert!(!d.ops.is_empty());
+    assert!(card.field_markdown("body").unwrap().contains("para two"));
 }
 
 /// `commit_field` on a richtext field accepts a **canonical corpus object**,
@@ -841,7 +902,7 @@ fn test_field_richtext_absent_and_non_richtext() {
     assert!(card.field_richtext("missing").is_none());
     assert!(card.field_markdown("missing").is_none());
 
-    card.set_field("count", 3).unwrap();
+    card.store_field("count", 3).unwrap();
     assert!(card.field_richtext("count").unwrap().is_err());
     assert!(card.field_markdown("count").is_none());
 }
@@ -885,7 +946,7 @@ fn test_corpus_field_emits_as_markdown_projection() {
 fn test_non_corpus_object_field_emits_structurally() {
     let mut doc = Document::new(QuillReference::from_str("test_quill").unwrap());
     doc.main_mut()
-        .set_field(
+        .store_field(
             "addr",
             QuillValue::from_json(serde_json::json!({ "city": "Paris" })),
         )
@@ -914,7 +975,7 @@ fn test_noncanonical_order_corpus_field_stays_structural() {
 
     let mut doc = Document::new(QuillReference::from_str("test_quill").unwrap());
     doc.main_mut()
-        .set_field(
+        .store_field(
             "intro",
             QuillValue::from_json(serde_json::Value::Object(scrambled)),
         )
@@ -1078,7 +1139,7 @@ fn test_apply_field_richtext_change_rejects_non_richtext() {
         "FieldRichtextDecode"
     );
 
-    card.set_field("count", 3).unwrap();
+    card.store_field("count", 3).unwrap();
     assert_eq!(
         card.apply_field_richtext_change("count", &identity, &[], &[])
             .unwrap_err()
@@ -1098,8 +1159,8 @@ fn test_invariants_after_mutation_sequence() {
     let mut doc = make_doc();
 
     // 1. Add some payload fields
-    doc.main_mut().set_field("author", qv("Alice")).unwrap();
-    doc.main_mut().set_field("version", qv_int(3)).unwrap();
+    doc.main_mut().store_field("author", qv("Alice")).unwrap();
+    doc.main_mut().store_field("version", qv_int(3)).unwrap();
 
     // 2. Add cards
     let c1 = Card::new("note").unwrap();
@@ -1112,7 +1173,7 @@ fn test_invariants_after_mutation_sequence() {
     // 3. Mutate a card field
     doc.card_mut(0)
         .unwrap()
-        .set_field("text", qv("Hello"))
+        .store_field("text", qv("Hello"))
         .unwrap();
 
     // 4. Move cards around
@@ -1171,7 +1232,7 @@ fn test_set_ext_adds_map_and_strips_from_plate() {
         "presentation".to_string(),
         serde_json::json!({ "title": "Greeting" }),
     );
-    doc.main_mut().set_ext(ext).expect("set_ext");
+    doc.main_mut().store_ext(ext).expect("set_ext");
 
     // Surfaced through the typed accessor.
     assert_eq!(
@@ -1190,7 +1251,7 @@ fn test_set_ext_round_trips_through_markdown() {
     let mut doc = make_doc();
     let mut ext = serde_json::Map::new();
     ext.insert("agent".to_string(), serde_json::json!({ "pinned": true }));
-    doc.main_mut().set_ext(ext).expect("set_ext");
+    doc.main_mut().store_ext(ext).expect("set_ext");
 
     let md = doc.to_markdown();
     let reparsed = Document::from_markdown(&md).unwrap();
@@ -1205,7 +1266,7 @@ fn test_remove_ext_returns_previous_and_clears() {
     let mut doc = make_doc();
     let mut ext = serde_json::Map::new();
     ext.insert("agent".to_string(), serde_json::json!(1));
-    doc.main_mut().set_ext(ext).expect("set_ext");
+    doc.main_mut().store_ext(ext).expect("set_ext");
 
     let removed = doc.main_mut().remove_ext().unwrap();
     assert_eq!(removed["agent"].as_i64(), Some(1));
@@ -1218,10 +1279,10 @@ fn test_remove_ext_returns_previous_and_clears() {
 fn test_set_ext_namespace_preserves_siblings() {
     let mut doc = make_doc();
     doc.main_mut()
-        .set_ext_namespace("presentation", serde_json::json!({ "title": "A" }))
+        .store_ext_namespace("presentation", serde_json::json!({ "title": "A" }))
         .expect("set_ext_namespace");
     doc.main_mut()
-        .set_ext_namespace("agent", serde_json::json!({ "pinned": true }))
+        .store_ext_namespace("agent", serde_json::json!({ "pinned": true }))
         .expect("set_ext_namespace");
 
     let ext = doc.main().ext().unwrap();
@@ -1230,7 +1291,7 @@ fn test_set_ext_namespace_preserves_siblings() {
 
     // Replacing one namespace leaves the other intact.
     doc.main_mut()
-        .set_ext_namespace("presentation", serde_json::json!({ "title": "B" }))
+        .store_ext_namespace("presentation", serde_json::json!({ "title": "B" }))
         .expect("set_ext_namespace");
     let ext = doc.main().ext().unwrap();
     assert_eq!(ext["presentation"]["title"].as_str(), Some("B"));
@@ -1241,10 +1302,10 @@ fn test_set_ext_namespace_preserves_siblings() {
 fn test_remove_ext_namespace_preserves_siblings() {
     let mut doc = make_doc();
     doc.main_mut()
-        .set_ext_namespace("presentation", serde_json::json!({ "title": "A" }))
+        .store_ext_namespace("presentation", serde_json::json!({ "title": "A" }))
         .expect("set_ext_namespace");
     doc.main_mut()
-        .set_ext_namespace("tutorial", serde_json::json!(["step-1", "step-2"]))
+        .store_ext_namespace("tutorial", serde_json::json!(["step-1", "step-2"]))
         .expect("set_ext_namespace");
 
     // Dropping one namespace returns its value and leaves the rest intact.
@@ -1259,7 +1320,7 @@ fn test_remove_ext_namespace_preserves_siblings() {
 fn test_remove_ext_namespace_drops_ext_when_empty() {
     let mut doc = make_doc();
     doc.main_mut()
-        .set_ext_namespace("tutorial", serde_json::json!(["step-1"]))
+        .store_ext_namespace("tutorial", serde_json::json!(["step-1"]))
         .expect("set_ext_namespace");
 
     // Removing the last namespace clears `$ext` entirely — set/remove of a
@@ -1277,7 +1338,7 @@ fn test_remove_ext_namespace_is_noop_when_absent() {
 
     // `$ext` present but without the requested key.
     doc.main_mut()
-        .set_ext_namespace("presentation", serde_json::json!({ "title": "A" }))
+        .store_ext_namespace("presentation", serde_json::json!({ "title": "A" }))
         .expect("set_ext_namespace");
     assert!(doc.main_mut().remove_ext_namespace("tutorial").is_none());
     // The unrelated namespace is untouched.
@@ -1291,7 +1352,7 @@ fn test_remove_ext_namespace_is_noop_when_absent() {
 fn test_set_empty_ext_is_preserved() {
     let mut doc = make_doc();
     doc.main_mut()
-        .set_ext(serde_json::Map::new())
+        .store_ext(serde_json::Map::new())
         .expect("set_ext");
     assert!(doc.main().ext().is_some());
     let md = doc.to_markdown();
@@ -1303,7 +1364,7 @@ fn test_ext_mutators_work_on_composable_cards() {
     let mut doc = make_doc_with_cards();
     doc.card_mut(0)
         .unwrap()
-        .set_ext_namespace("agent", serde_json::json!({ "note": "x" }))
+        .store_ext_namespace("agent", serde_json::json!({ "note": "x" }))
         .expect("set_ext_namespace");
     assert_eq!(
         doc.cards()[0].ext().unwrap()["agent"]["note"].as_str(),
@@ -1335,24 +1396,24 @@ fn set_field_rejects_value_past_depth_limit() {
     let mut doc =
         crate::document::Document::from_markdown("~~~\n$quill: q@1.0\n$kind: main\n~~~\n").unwrap();
     let ok = crate::value::QuillValue::from_json(deep_value(50));
-    assert!(doc.main_mut().set_field("x", ok).is_ok());
+    assert!(doc.main_mut().store_field("x", ok).is_ok());
 
     let too_deep = crate::value::QuillValue::from_json(deep_value(150));
-    let err = doc.main_mut().set_field("y", too_deep).unwrap_err();
+    let err = doc.main_mut().store_field("y", too_deep).unwrap_err();
     assert!(
         matches!(err, crate::document::EditError::ValueTooDeep { max: 100 }),
         "expected ValueTooDeep, got {err:?}"
     );
     // set_fill and set_ext carry the same bound.
     let too_deep = crate::value::QuillValue::from_json(deep_value(150));
-    assert!(doc.main_mut().set_fill("y", too_deep).is_err());
+    assert!(doc.main_mut().store_fill("y", too_deep).is_err());
     let serde_json::Value::Object(map) = deep_value(150) else {
         unreachable!()
     };
-    assert!(doc.main_mut().set_ext(map).is_err());
+    assert!(doc.main_mut().store_ext(map).is_err());
     assert!(doc
         .main_mut()
-        .set_ext_namespace("ns", deep_value(150))
+        .store_ext_namespace("ns", deep_value(150))
         .is_err());
 }
 

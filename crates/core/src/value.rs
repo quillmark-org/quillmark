@@ -298,7 +298,7 @@ impl QuillValue {
 /// Scalar conversions mirror [`serde_json::Value`]'s and produce `fill =
 /// false` nodes (like [`QuillValue::from_json`]); a non-finite `f64` maps to
 /// null, matching serde_json. These back the `impl Into<QuillValue>` mutator
-/// parameters, so `card.set_field("qty", 3)` reads as written.
+/// parameters, so `card.store_field("qty", 3)` reads as written.
 macro_rules! impl_from_scalar {
     ($($ty:ty),* $(,)?) => {$(
         impl From<$ty> for QuillValue {

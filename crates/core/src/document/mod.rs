@@ -241,7 +241,7 @@ impl Card {
     /// - `None` — the field is absent.
     /// - `Some(Ok(rt))` — decoded corpus.
     /// - `Some(Err(_))` — the field is present but neither a corpus object nor
-    ///   an importable markdown string (e.g. a bare number a `set_field` wrote).
+    ///   an importable markdown string (e.g. a bare number a `store_field` wrote).
     ///
     /// A `Document` carries no schema, so this cannot itself tell a richtext
     /// field from a plain string field; the caller names a field it knows is

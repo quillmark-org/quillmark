@@ -9,7 +9,7 @@
 //! a schema field, and rejects a name the schema does not declare with
 //! [`EditError::UnknownField`] — on the typed path an undeclared name is a typo,
 //! not a fallback. Opaque storage stays available on purpose through the raw
-//! [`Card::set_field`](crate::Card::set_field) verb.
+//! [`Card::store_field`](crate::Card::store_field) verb.
 //!
 //! ```ignore
 //! let mut w = quill.writer(&mut doc);
@@ -48,7 +48,7 @@ impl<'a> TypedWriter<'a> {
     /// strict-commits it; a name the schema does not declare fails with
     /// [`EditError::UnknownField`] rather than falling to the opaque store — on
     /// the typed path it is a typo. For deliberate opaque storage use the raw
-    /// [`Card::set_field`](crate::Card::set_field). Other errors are those of
+    /// [`Card::store_field`](crate::Card::store_field). Other errors are those of
     /// [`Card::commit_field`](crate::Card::commit_field).
     pub fn set(&mut self, name: &str, value: impl Into<QuillValue>) -> Result<(), EditError> {
         let config = self.config;
@@ -59,12 +59,12 @@ impl<'a> TypedWriter<'a> {
     }
 
     /// Write several main-card fields atomically — the typed twin of
-    /// [`Card::set_fields`](crate::Card::set_fields). Every field is resolved
+    /// [`Card::store_fields`](crate::Card::store_fields). Every field is resolved
     /// (strict conform, or [`EditError::UnknownField`] for a name the schema does
     /// not declare) before any is applied; on any violation nothing is written
     /// and every offending field is returned as a `(name, error)` pair, so a
     /// caller submitting a whole form sees every typo in one pass the way
-    /// [`Card::set_fields`](crate::Card::set_fields) does.
+    /// [`Card::store_fields`](crate::Card::store_fields) does.
     pub fn set_all<K, V, I>(&mut self, fields: I) -> Result<(), Vec<(String, EditError)>>
     where
         K: Into<String>,
@@ -136,7 +136,7 @@ impl<'a> TypedWriter<'a> {
     /// `$kind` resolves its [`CardSchema`]; an unknown kind carries no schema, so
     /// every field on it is undeclared and its typed writes fail with
     /// [`EditError::UnknownField`] (write such a card opaquely through
-    /// [`Card::set_field`](crate::Card::set_field)). Returns
+    /// [`Card::store_field`](crate::Card::store_field)). Returns
     /// [`EditError::IndexOutOfRange`] when `index` is out of range.
     pub fn card(&mut self, index: usize) -> Result<CardWriter<'_>, EditError> {
         let config = self.config;
@@ -292,7 +292,7 @@ card_kinds:
         let mut doc = blank_doc();
         let mut ed = TypedWriter::new(&config, &mut doc);
         // Unknown field on the typed path is a typo, not a fallback: it fails
-        // here and nothing is written. Opaque storage is the raw `set_field`.
+        // here and nothing is written. Opaque storage is the raw `store_field`.
         let err = ed.set("notafield", "x").unwrap_err();
         assert_eq!(err.variant_name(), "UnknownField");
         assert!(doc.main().payload().get("notafield").is_none());

@@ -666,7 +666,7 @@ main:
     fn typed_card(tag: &str, fields: &[(&str, serde_json::Value)]) -> Card {
         let mut card = Card::new(tag).unwrap();
         for (k, v) in fields {
-            card.set_field(k, QuillValue::from_json(v.clone())).unwrap();
+            card.store_field(k, QuillValue::from_json(v.clone())).unwrap();
         }
         card
     }
