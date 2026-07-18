@@ -1428,7 +1428,7 @@ fn storage_dto_rejects_value_past_depth_limit() {
     // rejected with a clean error, not abort the process — the §8 bound
     // holds on the storage path, not just the markdown parse path.
     let stored = serde_json::json!({
-        "schema": "quillmark/document@0.82.0",
+        "schema": "quillmark/document@0.92.0",
         "main": {
             "payload": {"items": [
                 {"type": "quill", "value": "q@1.0"},
@@ -1450,7 +1450,7 @@ fn storage_dto_rejects_value_past_depth_limit() {
         unreachable!()
     };
     let stored = serde_json::json!({
-        "schema": "quillmark/document@0.82.0",
+        "schema": "quillmark/document@0.92.0",
         "main": {
             "payload": {"items": [
                 {"type": "quill", "value": "q@1.0"},
