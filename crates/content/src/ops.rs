@@ -1,10 +1,14 @@
 //! Mark and line op channels — structural edits separate from text splices.
 //!
 //! [`MarkOp`] and [`LineOp`] apply after [`Content::apply_text_delta`] in one
-//! bundle; mark ranges are in post-delta coordinates. Line split/join
-//! also splice `\n` in `text`; position mapping through the change log still
-//! composes [`Delta::map_pos`](crate::delta::Delta::map_pos) on the text delta
-//! channel — record `\n` edits there when mapping stale positions.
+//! bundle. Mark ranges are in **final-text coordinates**: mark ops run after
+//! line ops and validate against the post-line-op length, so a producer
+//! computes them in the only frame it can — the text as it stands once the
+//! delta and line ops have landed. Line split/join splice a `\n` in `text` and
+//! rebase marks through that one-char change with
+//! [`Delta::map_pos`](crate::delta::Delta::map_pos), the same mapping the
+//! text-delta channel uses, so a mark's coordinates track the splice rather
+//! than drifting.
 
 use crate::delta::{Assoc, Delta, Op};
 use crate::model::{Container, Island, Line, LineKind, Mark, MarkKind, Content, Usv, ISLAND_SLOT};
@@ -12,7 +16,7 @@ use crate::normalize::is_bidi_char;
 use crate::usv::char_to_byte;
 use std::borrow::Cow;
 
-/// A mark edit in post-text-delta coordinates.
+/// A mark edit in final-text coordinates (post-delta, post-line-op).
 #[derive(Debug, Clone, PartialEq)]
 pub enum MarkOp {
     /// Add a mark over `[start, end)`.
@@ -331,6 +335,16 @@ impl Content {
     /// insert of `\r` or a bidi control returned `Ok` while leaving a content
     /// that fails `validate()` (see issue #899).
     pub fn apply_text_delta(&mut self, delta: &Delta) -> Result<(), ApplyError> {
+        self.apply_text_delta_inner(delta)?;
+        self.normalize();
+        Ok(())
+    }
+
+    /// [`apply_text_delta`](Self::apply_text_delta) without the terminal
+    /// normalize — the stage [`apply_field_change`](Self::apply_field_change)
+    /// runs so a committed bundle canonicalizes once at the end, not after each
+    /// op.
+    fn apply_text_delta_inner(&mut self, delta: &Delta) -> Result<(), ApplyError> {
         // Reject before mutating: a raw slot in an insert would create a slot
         // with no backing island. Checked up front so the content is untouched
         // on this error.
@@ -353,12 +367,11 @@ impl Content {
         let delta = sanitized.as_ref();
 
         let old_chars: Vec<char> = self.text.chars().collect();
-        // A splice may name only the region it changes: pad a short delta with a
-        // trailing retain over the untouched remainder so a bare prepend applies
-        // against the whole content. An over-long delta still fails the check.
-        let extended = delta.extend_to_base(old_chars.len());
-        let delta = extended.as_ref();
         let old_lines = self.lines.clone();
+        // A splice may name only the region it changes: `try_apply` retains the
+        // untouched remainder implicitly, so a bare prepend applies against the
+        // whole content. An over-long delta (consuming more base than exists)
+        // still fails the base-length check.
         let new_text = delta
             .try_apply(&self.text)
             .map_err(|e| ApplyError::DeltaBaseMismatch {
@@ -366,16 +379,7 @@ impl Content {
                 actual: e.actual,
             })?;
 
-        for m in &mut self.marks {
-            if m.start == m.end {
-                let p = delta.map_pos(m.start, Assoc::Before);
-                m.start = p;
-                m.end = p;
-            } else {
-                m.start = delta.map_pos(m.start, Assoc::After);
-                m.end = delta.map_pos(m.end, Assoc::Before);
-            }
-        }
+        self.rebase_marks(delta);
         let new_len = new_text.chars().count();
         self.marks.retain(|m| {
             m.start <= m.end
@@ -393,12 +397,38 @@ impl Content {
                 segments: self.segment_count(),
             });
         }
+        Ok(())
+    }
+
+    /// Rebase every mark's range through `delta`'s
+    /// [`map_pos`](crate::delta::Delta::map_pos): a range mark's start biases
+    /// `After` and its end `Before` (an insertion at either edge grows text
+    /// *outside* the span), a point (zero-width) mark biases `Before`. The one
+    /// mapping the text-delta channel and line split/join both rebase marks by.
+    fn rebase_marks(&mut self, delta: &Delta) {
+        for m in &mut self.marks {
+            if m.start == m.end {
+                let p = delta.map_pos(m.start, Assoc::Before);
+                m.start = p;
+                m.end = p;
+            } else {
+                m.start = delta.map_pos(m.start, Assoc::After);
+                m.end = delta.map_pos(m.end, Assoc::Before);
+            }
+        }
+    }
+
+    /// Apply mark ops in final-text coordinates, then normalize.
+    pub fn apply_mark_ops(&mut self, ops: &[MarkOp]) -> Result<(), ApplyError> {
+        self.apply_mark_ops_inner(ops)?;
         self.normalize();
         Ok(())
     }
 
-    /// Apply mark ops in post-text-delta coordinates, then normalize.
-    pub fn apply_mark_ops(&mut self, ops: &[MarkOp]) -> Result<(), ApplyError> {
+    /// [`apply_mark_ops`](Self::apply_mark_ops) without the terminal normalize —
+    /// the bundle's final stage, canonicalized once by
+    /// [`apply_field_change`](Self::apply_field_change).
+    fn apply_mark_ops_inner(&mut self, ops: &[MarkOp]) -> Result<(), ApplyError> {
         let len = self.len_usv();
         for op in ops {
             match op {
@@ -470,12 +500,20 @@ impl Content {
                 }
             }
         }
-        self.normalize();
         Ok(())
     }
 
     /// Apply line ops — split/join splice `\n`; set ops touch metadata only.
     pub fn apply_line_ops(&mut self, ops: &[LineOp]) -> Result<(), ApplyError> {
+        self.apply_line_ops_inner(ops)?;
+        self.normalize();
+        Ok(())
+    }
+
+    /// [`apply_line_ops`](Self::apply_line_ops) without the terminal normalize —
+    /// a bundle stage canonicalized once by
+    /// [`apply_field_change`](Self::apply_field_change).
+    fn apply_line_ops_inner(&mut self, ops: &[LineOp]) -> Result<(), ApplyError> {
         for op in ops {
             match op {
                 LineOp::Split { at } => self.split_line(*at)?,
@@ -502,11 +540,11 @@ impl Content {
                 }
             }
         }
-        self.normalize();
         Ok(())
     }
 
-    /// One committed field edit bundle: text delta, then line ops, then marks.
+    /// One committed field edit bundle: text delta, then line ops, then marks,
+    /// canonicalized by a single terminal [`normalize`](Self::normalize).
     ///
     /// All-or-nothing: on any op's error `self` is left exactly as it was, so a
     /// caller need not snapshot-and-restore around a failed bundle. A bundle
@@ -516,6 +554,15 @@ impl Content {
     /// per-keystroke hot path) skips the clone: `apply_text_delta` validates the
     /// delta before mutating, so it is already atomic on the errors a caller can
     /// provoke.
+    ///
+    /// The stages run on their non-normalizing inner forms and `normalize` runs
+    /// once at the end. One terminal normalize suffices because split/join
+    /// rebase marks through their `\n` splice
+    /// ([`map_pos`](crate::delta::Delta::map_pos) semantics): the
+    /// formatting-edge `\n`-trim then commutes with the line ops (trim-per-stage
+    /// and trim-once converge), and `MarkOp::Remove` is coverage-set
+    /// subtraction, which commutes with `normalize`'s same-kind union
+    /// (`(A ∪ B) \ R = (A\R) ∪ (B\R)`). One canonicalization point, one pass.
     pub fn apply_field_change(
         &mut self,
         text_delta: &Delta,
@@ -526,9 +573,10 @@ impl Content {
             return self.apply_text_delta(text_delta);
         }
         let mut scratch = self.clone();
-        scratch.apply_text_delta(text_delta)?;
-        scratch.apply_line_ops(line_ops)?;
-        scratch.apply_mark_ops(mark_ops)?;
+        scratch.apply_text_delta_inner(text_delta)?;
+        scratch.apply_line_ops_inner(line_ops)?;
+        scratch.apply_mark_ops_inner(mark_ops)?;
+        scratch.normalize();
         *self = scratch;
         Ok(())
     }
@@ -561,6 +609,14 @@ impl Content {
         let line_idx = char_indices[..at].iter().filter(|&(_, c)| *c == '\n').count();
         self.text.insert(byte, '\n');
 
+        // Rebase marks through the one-char `\n` insertion — the same map_pos
+        // rule the text-delta channel uses, so a split does not drift a mark's
+        // coordinates (a mark spanning `at` grows by the inserted char; the
+        // terminal normalize trims any `\n` edge it lands on).
+        self.rebase_marks(&Delta {
+            ops: vec![Op::Retain(at), Op::Insert("\n".to_string())],
+        });
+
         let template = self
             .lines
             .get(line_idx)
@@ -589,6 +645,14 @@ impl Content {
         let nl = newline_at_line_boundary(&self.text, line)?;
         let byte = char_to_byte(&self.text, nl);
         self.text.remove(byte);
+
+        // Rebase marks through the one-char `\n` deletion, as the text-delta
+        // channel would: a mark spanning the boundary shrinks by one; one that
+        // covered only the `\n` collapses to zero-width and the terminal
+        // normalize drops it.
+        self.rebase_marks(&Delta {
+            ops: vec![Op::Retain(nl), Op::Delete(1)],
+        });
 
         self.lines.remove(line + 1);
 
@@ -645,11 +709,24 @@ fn sanitize_inserts(delta: &Delta) -> Cow<'_, Delta> {
     Cow::Owned(Delta { ops })
 }
 
-/// Walk `delta` over `old_chars` and mirror `\n` insert/delete in `lines`.
+/// Walk `delta` over `old_chars` and mirror `\n` insert/delete in `lines`,
+/// building the result in one forward pass — O(old_chars walked + inserts),
+/// no per-`\n` mid-`Vec` `remove`/`insert`.
+///
+/// The cursor sits *in* a line, `cur`; downstream of it is always the untouched
+/// original suffix (`rest`), because a split lands its clone right at the cursor
+/// and a delete drops the next original. So the three `\n` events reduce to:
+/// a retained `\n` finalizes `cur` and pulls the next original into it; a
+/// deleted `\n` drops the next original (merging it in), when one exists; an
+/// inserted `\n` finalizes `cur` and makes a clone (its `continues` cleared) the
+/// new `cur`. `cur == None` is the past-the-end state on a malformed corpus
+/// (more `\n` than lines), where a split clones a default line.
 fn sync_lines_for_delta(old_chars: &[char], old_lines: Vec<Line>, delta: &Delta) -> Vec<Line> {
-    let mut lines = old_lines;
+    let cap = old_lines.len();
+    let mut rest = old_lines.into_iter();
+    let mut out: Vec<Line> = Vec::with_capacity(cap);
+    let mut cur: Option<Line> = rest.next();
     let mut old = 0usize;
-    let mut line_idx = 0usize;
 
     for op in &delta.ops {
         match op {
@@ -659,7 +736,8 @@ fn sync_lines_for_delta(old_chars: &[char], old_lines: Vec<Line>, delta: &Delta)
                         break;
                     }
                     if old_chars[old] == '\n' {
-                        line_idx += 1;
+                        out.extend(cur.take());
+                        cur = rest.next();
                     }
                     old += 1;
                 }
@@ -669,8 +747,10 @@ fn sync_lines_for_delta(old_chars: &[char], old_lines: Vec<Line>, delta: &Delta)
                     if old >= old_chars.len() {
                         break;
                     }
-                    if old_chars[old] == '\n' && line_idx + 1 < lines.len() {
-                        lines.remove(line_idx + 1);
+                    // A deleted '\n' merges the next original into `cur` — drop
+                    // it. With no next original there is nothing to drop.
+                    if old_chars[old] == '\n' {
+                        rest.next();
                     }
                     old += 1;
                 }
@@ -678,24 +758,25 @@ fn sync_lines_for_delta(old_chars: &[char], old_lines: Vec<Line>, delta: &Delta)
             Op::Insert(s) => {
                 for c in s.chars() {
                     if c == '\n' {
-                        let template = lines
-                            .get(line_idx)
-                            .cloned()
-                            .unwrap_or_else(default_para_line);
-                        let mut new_line = template;
+                        let mut new_line = match cur.take() {
+                            Some(line) => {
+                                let clone = line.clone();
+                                out.push(line);
+                                clone
+                            }
+                            None => default_para_line(),
+                        };
                         new_line.continues = false;
-                        if line_idx < lines.len() {
-                            lines.insert(line_idx + 1, new_line);
-                        } else {
-                            lines.push(new_line);
-                        }
-                        line_idx += 1;
+                        cur = Some(new_line);
                     }
                 }
             }
         }
     }
-    lines
+
+    out.extend(cur);
+    out.extend(rest);
+    out
 }
 
 /// Walk `delta` over `old_chars` and drop any island whose [`ISLAND_SLOT`] char
@@ -1285,5 +1366,250 @@ mod tests {
         );
         assert!(matches!(err, Err(ApplyError::MarkOutOfRange { .. })));
         assert_eq!(rt, before, "failed bundle must not mutate the content");
+    }
+
+    // ── sync_lines_for_delta characterization (issue #926 finding 2) ─────────
+    //
+    // Pin the observable behavior of the line-sync walk — retain/insert/delete
+    // interleavings, the split template-clone rule, and the malformed-corpus
+    // guards — against a silent change to its internals.
+
+    /// A `Heading{level}` line, its level a visible tag so a test can trace
+    /// which original line landed where; `continues` distinguishes a clone.
+    fn tag_line(level: u8, continues: bool) -> Line {
+        Line {
+            kind: LineKind::Heading { level },
+            containers: Vec::new(),
+            continues,
+        }
+    }
+
+    /// `(tag, continues)` per line — `Heading{level}` reads its level, `Para` is
+    /// tag 0 (the default line), any other kind is 255.
+    fn tags(lines: &[Line]) -> Vec<(u8, bool)> {
+        lines
+            .iter()
+            .map(|l| match l.kind {
+                LineKind::Heading { level } => (level, l.continues),
+                LineKind::Para => (0, l.continues),
+                _ => (255, l.continues),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn sync_lines_retain_only_is_identity() {
+        let old_chars: Vec<char> = "a\nb\nc".chars().collect();
+        let lines = vec![tag_line(1, false), tag_line(2, false), tag_line(3, false)];
+        let d = Delta {
+            ops: vec![Op::Retain(5)],
+        };
+        assert_eq!(sync_lines_for_delta(&old_chars, lines.clone(), &d), lines);
+    }
+
+    #[test]
+    fn sync_lines_insert_newline_clones_split_line_and_clears_continues() {
+        // Split line 1 ("bc") mid-line: the first half stays the original line
+        // (keeps kind, containers, and its `continues: true`); the second half
+        // is a clone of it with `continues` forced false.
+        let old_chars: Vec<char> = "a\nbc".chars().collect();
+        let l1 = Line {
+            kind: LineKind::Heading { level: 5 },
+            containers: vec![Container::Quote],
+            continues: true,
+        };
+        let lines = vec![tag_line(1, false), l1.clone()];
+        // Retain(3)[a\nb] moves to line 1; Insert("\n") splits it; Retain(1)[c].
+        let d = Delta {
+            ops: vec![Op::Retain(3), Op::Insert("\n".into()), Op::Retain(1)],
+        };
+        let out = sync_lines_for_delta(&old_chars, lines, &d);
+        assert_eq!(out.len(), 3);
+        assert_eq!(out[1], l1, "first half is the untouched original line");
+        assert_eq!(out[2].kind, LineKind::Heading { level: 5 });
+        assert_eq!(out[2].containers, vec![Container::Quote]);
+        assert!(!out[2].continues, "the split clone starts a new block");
+    }
+
+    #[test]
+    fn sync_lines_delete_newline_drops_following_line() {
+        // Delete the first '\n' of "a\nb\nc": lines 0 and 1 merge, dropping line
+        // 1; the current line (0) and line 2 survive.
+        let old_chars: Vec<char> = "a\nb\nc".chars().collect();
+        let lines = vec![tag_line(1, false), tag_line(2, false), tag_line(3, false)];
+        let d = Delta {
+            ops: vec![Op::Retain(1), Op::Delete(1), Op::Retain(3)],
+        };
+        let out = sync_lines_for_delta(&old_chars, lines, &d);
+        assert_eq!(tags(&out), vec![(1, false), (3, false)]);
+    }
+
+    #[test]
+    fn sync_lines_delete_trailing_newline_without_following_line_is_guarded() {
+        // Malformed corpus: text "a\n" is two segments but `lines` has one
+        // entry. Deleting the '\n' when `line_idx + 1` is out of bounds removes
+        // nothing (the guard), leaving the single line intact.
+        let old_chars: Vec<char> = "a\n".chars().collect();
+        let lines = vec![tag_line(1, false)];
+        let d = Delta {
+            ops: vec![Op::Retain(1), Op::Delete(1)],
+        };
+        let out = sync_lines_for_delta(&old_chars, lines, &d);
+        assert_eq!(tags(&out), vec![(1, false)]);
+    }
+
+    #[test]
+    fn sync_lines_stops_at_end_of_old_chars() {
+        // A retain running past the end of old_chars stops at the end rather
+        // than indexing out of bounds (the `old >= old_chars.len()` guard).
+        let old_chars: Vec<char> = "a\nb".chars().collect();
+        let lines = vec![tag_line(1, false), tag_line(2, false)];
+        let d = Delta {
+            ops: vec![Op::Retain(99)],
+        };
+        assert_eq!(sync_lines_for_delta(&old_chars, lines.clone(), &d), lines);
+    }
+
+    #[test]
+    fn sync_lines_insert_two_newlines_adds_two_clones() {
+        // Inserting "\n\n" mid-line adds two lines, each carrying the split
+        // line's kind and containers with `continues: false`.
+        let old_chars: Vec<char> = "abc".chars().collect();
+        let src = Line {
+            kind: LineKind::Heading { level: 7 },
+            containers: vec![Container::Quote],
+            continues: false,
+        };
+        let d = Delta {
+            ops: vec![Op::Retain(1), Op::Insert("\n\n".into()), Op::Retain(2)],
+        };
+        let out = sync_lines_for_delta(&old_chars, vec![src], &d);
+        assert_eq!(out.len(), 3);
+        for l in &out {
+            assert_eq!(l.kind, LineKind::Heading { level: 7 });
+            assert_eq!(l.containers, vec![Container::Quote]);
+            assert!(!l.continues);
+        }
+    }
+
+    // ── line-op mark remap + terminal-normalize collapse (issue #926 finding 3) ──
+
+    #[test]
+    fn split_line_rebases_mark_across_the_split_point() {
+        // A strong mark spanning the split point grows by the inserted `\n`
+        // rather than staying at its old coordinates. "abcd", strong[1..3)
+        // ("bc"); split at 2 → "ab\ncd"; the mark must still cover "b"+"c",
+        // i.e. [1..4) over "ab\ncd".
+        let mut rt = from_markdown("abcd").unwrap();
+        rt.apply_mark_ops(&[MarkOp::Add {
+            start: 1,
+            end: 3,
+            kind: MarkKind::Strong,
+        }])
+        .unwrap();
+        rt.apply_line_ops(&[LineOp::Split { at: 2 }]).unwrap();
+        assert_eq!(rt.text, "ab\ncd");
+        let strong: Vec<_> = rt
+            .marks
+            .iter()
+            .filter(|m| matches!(m.kind, MarkKind::Strong))
+            .map(|m| (m.start, m.end))
+            .collect();
+        // [1..4) spans "b\nc"; normalize keeps the interior `\n` (a mark may
+        // legitimately span lines), trimming only leading/trailing boundaries.
+        assert_eq!(strong, vec![(1, 4)]);
+        assert_eq!(rt.validate(), Ok(()));
+    }
+
+    #[test]
+    fn join_line_rebases_marks_to_final_text_coordinates() {
+        // The issue's concrete drift case: "ab\ncd", strong[2..4) (over "\nc").
+        // Joining line 0 removes the `\n`; the remap + terminal normalize must
+        // land strong on "c" — coordinate [2..3) over "abcd" — not on "d"
+        // (the un-remapped-mark bug) nor on "cd".
+        let mut rt = from_markdown("ab").unwrap();
+        rt.apply_text_delta(&diff("ab", "ab\ncd")).unwrap();
+        rt.marks.push(Mark {
+            start: 2,
+            end: 4,
+            kind: MarkKind::Strong,
+        });
+        rt.normalize();
+        // Post-normalize the `\n` edge trims to [3..4) ("c"); either way the
+        // join must converge to strong on "c".
+        rt.apply_line_ops(&[LineOp::Join { line: 0 }]).unwrap();
+        assert_eq!(rt.text, "abcd");
+        let strong: Vec<_> = rt
+            .marks
+            .iter()
+            .filter(|m| matches!(m.kind, MarkKind::Strong))
+            .map(|m| (m.start, m.end))
+            .collect();
+        assert_eq!(strong, vec![(2, 3)], "strong lands on 'c', not 'd' or 'cd'");
+        assert_eq!(rt.validate(), Ok(()));
+    }
+
+    #[test]
+    fn field_change_terminal_normalize_matches_per_stage_normalize() {
+        // The collapse proof obligation: a bundle applied through
+        // `apply_field_change` (one terminal normalize) must equal applying the
+        // same stages each with its own normalize (the public wrappers). The
+        // remap through split/join is what makes the two converge.
+        let start = from_markdown("hello world").unwrap();
+        let text_delta = diff("hello world", "hello brave world");
+        let line_ops = vec![LineOp::Split { at: 5 }]; // after "hello"
+        let mark_ops = vec![MarkOp::Add {
+            start: 0,
+            end: 5,
+            kind: MarkKind::Strong,
+        }];
+
+        let mut bundled = start.clone();
+        bundled
+            .apply_field_change(&text_delta, &line_ops, &mark_ops)
+            .unwrap();
+
+        let mut staged = start;
+        staged.apply_text_delta(&text_delta).unwrap();
+        staged.apply_line_ops(&line_ops).unwrap();
+        staged.apply_mark_ops(&mark_ops).unwrap();
+
+        assert_eq!(bundled, staged, "terminal normalize diverged from per-stage");
+        assert_eq!(bundled.validate(), Ok(()));
+    }
+
+    #[test]
+    fn sync_lines_select_all_delete_collapses_to_first_line() {
+        // The motivating case (issue #926 finding 2): deleting a whole
+        // multi-line body drops every line but the first (each deleted '\n'
+        // merges the next line away).
+        let text: String = (0..50).map(|i| format!("line{i}\n")).collect();
+        let old_chars: Vec<char> = text.chars().collect();
+        let lines: Vec<Line> = (0..=50).map(|i| tag_line((i % 200) as u8, false)).collect();
+        assert_eq!(lines.len(), old_chars.iter().filter(|&&c| c == '\n').count() + 1);
+        let d = Delta {
+            ops: vec![Op::Delete(old_chars.len())],
+        };
+        let out = sync_lines_for_delta(&old_chars, lines, &d);
+        assert_eq!(tags(&out), vec![(0, false)], "only the first line survives");
+    }
+
+    #[test]
+    fn sync_lines_insert_newline_past_end_appends_default() {
+        // Malformed corpus: after a retain walks past the sole line (line_idx ==
+        // lines.len()), an inserted '\n' has no line to clone and appends a
+        // default Para.
+        let old_chars: Vec<char> = "a\n".chars().collect();
+        let lines = vec![tag_line(1, false)];
+        // Retain(2)[a\n] moves line_idx to 1 (== lines.len()); Insert("\n").
+        let d = Delta {
+            ops: vec![Op::Retain(2), Op::Insert("\n".into())],
+        };
+        let out = sync_lines_for_delta(&old_chars, lines, &d);
+        assert_eq!(out.len(), 2);
+        assert_eq!(tags(&out)[0], (1, false));
+        assert_eq!(out[1].kind, LineKind::Para);
+        assert!(out[1].containers.is_empty());
+        assert!(!out[1].continues);
     }
 }

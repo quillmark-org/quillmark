@@ -29,7 +29,7 @@ bindings) and never a storage option.
 1. **Versioned envelope** — every blob carries a `schema` tag; readers
    dispatch on it and reject unknown versions.
 2. **Frozen DTO per version** — each schema version has its own standalone
-   type tree (`DocumentV0_81_0`, `CardV0_81_0`, …). These are never changed
+   type tree (`DocumentV0_92_0`, `CardV0_92_0`, …). These are never changed
    once shipped.
 3. **Decoupled from the live model** — internal refactors of `Document` and
    its components only touch conversion code, never the wire format.
@@ -76,16 +76,15 @@ Parse-time warnings live on `Document` (`warnings: Vec<Diagnostic>`) but
 are excluded from `PartialEq` and not serialized, so they never reach this
 format.
 
-### Legacy schema (V0_81_0)
+### Legacy schema (V0_92_0)
 
-Documents written by `quillmark-core` `0.81.x` carry
-`"schema": "quillmark/document@0.81.0"` and a separate `sentinel` + `frontmatter`
-shape. Readers accept them and migrate forward to V0_82_0 on load via
-`From<DocumentV0_81_0> for DocumentV0_82_0`; writers do not produce this
-shape. The migration is structural — no defaults are invented and no
-field-level information is dropped — so a `0.81.x`-stored document and the
-same document re-parsed from its Markdown source produce equal `Document`
-values.
+Documents written before `0.93.0` carry
+`"schema": "quillmark/document@0.92.0"` and store the card `body` as a
+markdown string rather than the embedded canonical content. Readers accept
+them and migrate forward to V0_93_0 on load; writers do not produce this
+shape. The one hop that can reject is the body cold-import (see
+Byte-stability). Tags older than `@0.92.0` (`@0.81.0`, `@0.82.0`) have no
+reader; a blob carrying one is rejected as an unknown schema version.
 
 ## Byte-stability
 
@@ -142,28 +141,26 @@ current format was fixed in `0.93.0`, so the version tag is
 `quillmark/document@0.93.0`; every later patch release writes that same
 value, because patches do not change the format.
 
-The first schema version was `0.81.0`. `0.82.0` migrated `Document` to a
-unified payload-item list (typed `$` entries living alongside user fields
-and comments in a single `Vec<PayloadItem>` instead of a separate
-`sentinel + frontmatter` pair). `0.92.0` added two things to the `Field`/
-payload model: a per-field `nested_fills` list on the `Field` item, so
-`!must_fill` markers nested inside a field value survive a storage
-round-trip (the JSON `value` projection is fill-free), and the `seed`
-payload-item variant (the `$seed` per-card-kind overlay map). `0.93.0`
-leaves the payload model unchanged and instead embeds the card `body` as
-the **canonical richtext content** — structurally, as a nested object, not a
-markdown string (see Byte-stability).
+The oldest wire format still read is `0.92.0`: a unified payload-item list
+(typed `$` entries living alongside user fields and comments in a single
+`Vec<PayloadItem>`), a per-field `nested_fills` list so `!must_fill` markers
+nested inside a field value survive a storage round-trip (the JSON `value`
+projection is fill-free), and the `seed` payload-item variant (the `$seed`
+per-card-kind overlay map). `0.93.0` leaves the payload model unchanged and
+instead embeds the card `body` as the **canonical richtext content** —
+structurally, as a nested object, not a markdown string (see Byte-stability).
 
-The V0_82_0 → V0_92_0 migration is structural — old payload items map 1:1,
-`nested_fills` defaults to empty (no 0.82.0 document carried nested
-markers) and the new `seed` variant is never produced from an older blob.
 The V0_92_0 → V0_93_0 migration is the one hop that can fail: it
 cold-imports the stored markdown `body` string through the same
 Markdown → richtext path `Document::parse` uses, so a
 pathologically over-nested legacy body is rejected
-(`StorageError::Malformed`) rather than silently truncated. Migrations
-chain on read (`V0_81_0 → V0_82_0 → V0_92_0 → V0_93_0`), with only the
-newest DTO converting to the live `Document`.
+(`StorageError::Malformed`) rather than silently truncated. Only the newest
+DTO converts to the live `Document`; a `0.92.0` blob migrates one hop first.
+
+Schema tags older than `0.92.0` (`@0.81.0`, `@0.82.0`) have no reader: a
+blob carrying one is rejected as an unknown version. Their shims are retired
+because no stored population in those shapes remains on this lineage (see
+"Adding a Schema Version" on retiring a variant).
 
 ## Adding a Schema Version
 
@@ -197,12 +194,6 @@ When the `Document` wire format changes again:
        StoredDocument::V0_92_0(p) => Document::try_from(DocumentV0_NN_0::from(
            DocumentV0_93_0::try_from(p)?,
        )),
-       StoredDocument::V0_82_0(p) => Document::try_from(DocumentV0_NN_0::from(
-           DocumentV0_93_0::try_from(DocumentV0_92_0::from(p))?,
-       )),
-       StoredDocument::V0_81_0(p) => Document::try_from(DocumentV0_NN_0::from(
-           DocumentV0_93_0::try_from(DocumentV0_92_0::from(DocumentV0_82_0::from(p)))?,
-       )),
    }
    ```
    If the new hop is itself a `TryFrom`, thread a second `?` after
@@ -215,12 +206,18 @@ failing with a serde error before any `TryFrom` in the chain above runs.
 Design a new DTO's `Deserialize` to fail the same way if it embeds
 structured (non-string) data of its own.
 
-Old and new DTOs **coexist permanently** in `dto.rs`. Migrations chain
-(`V0_81_0 → V0_82_0 → V0_92_0 → V0_93_0 → V0_NN_0 → …`); only the newest DTO
-converts to the live `Document`, so each migration step stays small as
-versions accumulate. The cost of this design is one frozen type tree per
-schema version plus one migration function per version bump; the benefit
-is that a row written by any past version always loads.
+Old and new DTOs **coexist** in `dto.rs`, so a row written by any
+still-supported past version always loads. Migrations chain
+(`V0_92_0 → V0_93_0 → V0_NN_0 → …`); only the newest DTO converts to the live
+`Document`, so each migration step stays small as versions accumulate. The
+cost is one frozen type tree per schema version plus one migration function
+per version bump.
+
+A legacy variant may be **retired** — its DTO tree, migration, and tests
+deleted — once a product/release-history call confirms no stored population
+remains in that shape (the `0.81.0` and `0.82.0` shims were dropped this
+way). A row that later surfaces in a retired shape then fails as an unknown
+version, so retirement is reserved for shapes with no live rows.
 
 ## Gotchas
 
@@ -228,7 +225,7 @@ is that a row written by any past version always loads.
   `CARGO_PKG_VERSION` — bumping it is a deliberate act tied to a model change.
 - Unknown schema versions are rejected on read, never silently ignored.
 - DTO type names carry version suffixes with underscores
-  (`DocumentV0_81_0`); `non_camel_case_types` is allowed module-wide for this.
+  (`DocumentV0_92_0`); `non_camel_case_types` is allowed module-wide for this.
 
 ## Links
 

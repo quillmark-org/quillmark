@@ -8,7 +8,7 @@
 //!
 //! ## Why this is separate from the storage DTO
 //!
-//! The versioned storage DTO (`document::dto`, e.g. `CardV0_82_0`) is **frozen**
+//! The versioned storage DTO (`document::dto`, e.g. `CardV0_92_0`) is **frozen**
 //! per schema version so persisted documents keep loading forever. `CardWire`
 //! is the **current** API shape and is free to evolve with the bindings. They
 //! are structurally similar today, but coupling the live API to a frozen
