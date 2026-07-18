@@ -934,7 +934,7 @@ impl PyDocument {
     }
 }
 
-/// A `Document` bound to its `Quill` for typed writes — the tier-1 default,
+/// A `Document` bound to its `Quill` for typed writes — the schema-bound writer,
 /// from `Quill.writer(doc)`. Speaks names, values, and markdown; a consumer
 /// here never meets an address, a corpus dict, or a delta. It holds both objects
 /// by reference and re-borrows them per call (pyo3 objects carry no lifetime, so
@@ -1020,7 +1020,7 @@ impl PyWriter {
     }
 
     /// Remove the composable card at `index`, returning it as a dict (or `None`
-    /// if the index is out of range) — the tier-1 spelling of
+    /// if the index is out of range) — the writer spelling of
     /// `Document.remove_card`.
     fn remove_card<'py>(
         &self,

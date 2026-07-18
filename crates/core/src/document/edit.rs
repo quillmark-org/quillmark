@@ -79,11 +79,12 @@ pub enum EditError {
     #[error("value nests deeper than the maximum of {max} levels")]
     ValueTooDeep { max: usize },
 
-    /// Markdown body import failed — the corpus codec rejected the input
-    /// (e.g. container nesting past [`MAX_NESTING_DEPTH`](quillmark_richtext::MAX_NESTING_DEPTH)).
-    /// Returned instead of silently degrading the body to empty on a rejected import.
-    #[error("body import failed: {0}")]
-    BodyImport(ImportError),
+    /// Markdown import failed — the corpus codec rejected the input for a body
+    /// *or* a field path (e.g. container nesting past
+    /// [`MAX_NESTING_DEPTH`](quillmark_richtext::MAX_NESTING_DEPTH)). Returned
+    /// instead of silently degrading the target to empty on a rejected import.
+    #[error("markdown import failed: {0}")]
+    Import(ImportError),
 
     /// A richtext field value in the corpus-or-markdown encoding could not be
     /// decoded: a JSON object that is not a canonical richtext corpus, a
@@ -132,7 +133,7 @@ impl EditError {
             EditError::ReservedKind => "ReservedKind",
             EditError::IndexOutOfRange { .. } => "IndexOutOfRange",
             EditError::ValueTooDeep { .. } => "ValueTooDeep",
-            EditError::BodyImport(_) => "BodyImport",
+            EditError::Import(_) => "Import",
             EditError::FieldRichtextDecode { .. } => "FieldRichtextDecode",
             EditError::FieldRichtextNotInline(_) => "FieldRichtextNotInline",
             EditError::FieldConform { .. } => "FieldConform",
@@ -425,7 +426,7 @@ impl Card {
     }
 
     /// Remove a payload field; returns `Ok(None)` if the name is absent.
-    /// Removal has no tier — the one verb serves every write lane. Same
+    /// Removal has no lane — the one verb serves every write path. Same
     /// validation as [`Card::store_field`].
     pub fn remove_field(&mut self, name: &str) -> Result<Option<QuillValue>, EditError> {
         if !is_valid_field_name(name) {
@@ -655,12 +656,12 @@ impl Card {
     /// positions through across a whole-document replace ([`Delta::map_pos`]).
     /// Surviving identity anchors rebase; formatting marks are re-derived by the
     /// fresh import. A pathologically over-nested input (`> MAX_NESTING_DEPTH`)
-    /// returns [`EditError::BodyImport`] rather than silently degrading to the
+    /// returns [`EditError::Import`] rather than silently degrading to the
     /// empty corpus. Discard the receipt with `let _ = card.revise_body(md)?;`
     /// when caret stability is not needed.
     pub fn revise_body(&mut self, body: impl Into<String>) -> Result<Delta, EditError> {
         let (corpus, delta) =
-            diff_import(self.body(), &body.into()).map_err(EditError::BodyImport)?;
+            diff_import(self.body(), &body.into()).map_err(EditError::Import)?;
         self.overwrite_body(corpus);
         Ok(delta)
     }
@@ -689,7 +690,7 @@ impl Card {
             }
             None => RichText::empty(),
         };
-        diff_import(&base, &body.into()).map_err(EditError::BodyImport)
+        diff_import(&base, &body.into()).map_err(EditError::Import)
     }
 
     /// Revise a richtext field from an authored markdown string — the
@@ -710,7 +711,7 @@ impl Card {
     /// Returns [`EditError::InvalidFieldName`] for a malformed name,
     /// [`EditError::FieldRichtextDecode`] when the field is present but is not a
     /// richtext corpus (a scalar a `store_field` wrote), and
-    /// [`EditError::BodyImport`] on an over-nested markdown input.
+    /// [`EditError::Import`] on an over-nested markdown input.
     pub fn revise_field(&mut self, name: &str, body: impl Into<String>) -> Result<Delta, EditError> {
         let (corpus, delta) = self.diff_field(name, body)?;
         self.store_field_corpus(name, &corpus);
@@ -718,8 +719,9 @@ impl Card {
     }
 
     /// Revise a richtext field from markdown **with schema enforcement** — the
-    /// typed *and* anchor-preserving field write the tier split otherwise leaves
-    /// in a gap. [`revise_field`](Self::revise_field) rebases anchors but is
+    /// typed *and* anchor-preserving field write that neither
+    /// [`revise_field`](Self::revise_field) nor [`commit_field`](Self::commit_field)
+    /// provides alone. [`revise_field`](Self::revise_field) rebases anchors but is
     /// schema-blind; [`commit_field`](Self::commit_field) enforces the schema but
     /// cold-imports (the previous value's anchors are gone). This does both: diff
     /// the markdown against the field's current corpus so surviving anchors rebase
@@ -730,16 +732,15 @@ impl Card {
     /// the error surface unchanged, while the anchors survive. Returns the text
     /// [`Delta`] receipt.
     ///
-    /// This is the corpus lane's own verb (it returns a receipt and rebases
-    /// anchors), lifted to consult a schema — anchor preservation is a tier-2
-    /// concern, so the typed-anchor-preserving write lives here, not on the
-    /// receipt-free [`TypedWriter::set`](crate::TypedWriter::set). The schema runs
-    /// on the corpus the diff produced, so a non-richtext `schema` (nothing to
-    /// preserve) fails with the same [`EditError::FieldConform`]
+    /// The primitive that [`TypedWriter::revise_field`](crate::TypedWriter::revise_field)
+    /// and [`CardWriter::revise_field`](crate::CardWriter::revise_field) wrap: they
+    /// resolve `schema` from the bound quill and call here. The schema runs on the
+    /// corpus the diff produced, so a non-richtext `schema` (nothing to preserve)
+    /// fails with the same [`EditError::FieldConform`]
     /// [`commit_field`](Self::commit_field) would raise.
     ///
     /// Errors: [`EditError::InvalidFieldName`], [`EditError::FieldRichtextDecode`]
-    /// when the field is present but not a richtext corpus, [`EditError::BodyImport`]
+    /// when the field is present but not a richtext corpus, [`EditError::Import`]
     /// on an over-nested markdown input, and the conform errors of
     /// [`commit_field`](Self::commit_field) on the diffed result. On any error the
     /// field is unchanged.

@@ -453,7 +453,7 @@ export declare class LiveSession {
 	free(): void;
 }
 
-// ── Typed writer — the tier-1 front door ────────────────────────────────────
+// ── Typed writer — the schema-bound front door ───────────────────────────────
 
 // `quill.writer(doc)` is patched onto the re-exported `Quill` prototype (the
 // class is re-exported verbatim, so the method is declared by merging into the
@@ -472,12 +472,11 @@ declare module '../core/wasm.js' {
 }
 
 /**
- * A `Document` bound to its `Quill` for typed writes — the tier-1 default,
- * constructed via {@link Quill.writer}. Speaks names, values, and markdown; a
- * consumer here never meets an `Addr`, a corpus object, or a `Delta`. Bare
- * `set` / `setAll` / `setBody` / `addCard` / `card(i).set` instead of threading
- * the `quill` handle through every `commit*` call. Holds both handles by
- * reference and owns neither — nothing to `free()`.
+ * A `Document` bound to its `Quill` for typed writes — the schema-bound writer,
+ * constructed via {@link Quill.writer}. Speaks names, values, and markdown. Bare
+ * `set` / `setAll` / `setBody` / `reviseField` / `addCard` / `card(i).set`
+ * instead of threading the `quill` handle through the underscored ABI. Holds both
+ * handles by reference and owns neither — nothing to `free()`.
  *
  * Typed commit is the default whenever a quill is in hand: it resolves each
  * field's schema type and strict-commits it, throwing `UnknownField` for a name
@@ -507,6 +506,13 @@ export declare class DocumentWriter {
 	 * `Delta` receipt.
 	 */
 	setBody(markdown: string): void;
+	/**
+	 * Revise the richtext main-card field `name` from markdown — typed *and*
+	 * anchor-preserving. Surviving anchors rebase, then the diffed result is
+	 * schema-conformed (`richtext(inline)` rejects a multi-block result). Throws
+	 * `UnknownField` for a name the schema does not declare. Returns the `Delta`.
+	 */
+	reviseField(name: string, markdown: string): Delta;
 	/**
 	 * Build a composable card of `kind`, typed-commit `fields` onto it, set its
 	 * body from optional markdown, and place it — the fused `makeCard` + typed
@@ -548,4 +554,11 @@ export declare class CardWriter {
 	setAll(fields: Record<string, unknown>): void;
 	/** Set this card's body from markdown (edit semantics), discarding the delta. */
 	setBody(markdown: string): void;
+	/**
+	 * Revise the richtext field `name` on this card from markdown — typed *and*
+	 * anchor-preserving; the card twin of {@link DocumentWriter.reviseField}.
+	 * Throws `UnknownField` for an undeclared name and `IndexOutOfRange` if the
+	 * bound index is out of range. Returns the `Delta`.
+	 */
+	reviseField(name: string, markdown: string): Delta;
 }

@@ -32,35 +32,36 @@ The WASM binding is the reference surface; Python mirrors it and catches up
 on a best-effort basis (see its status notes below). New contract work lands
 in WASM first.
 
-## The write surface: two tiers over one primitive
+## The write surface: object placement over one primitive
 
-The mutation surface has a stated default, decided by one sentence:
+Placement decides where a mutation verb lives, in one sentence:
 
-> **Tier 1 speaks names, values, and markdown. Tier 2 speaks addresses,
-> corpora, and receipts.**
+> **If a verb needs a schema, it lives on the writer. `Document` is quill-free
+> data.**
 
-Tier 1 is the typed writer — `quill.writer(doc)`, mirroring core's
-`quill.writer(&mut doc)`. It is the documented default: bare
-`set` / `set_all` / `setBody` / `addCard` / `card(i)`, names and markdown in,
-diagnostics out — a consumer here never meets an `Addr`, a corpus object, or a
-`Delta`. Tier 2 is the corpus lane — the addressed `install` / `revise` /
-`applyChange` verbs plus the `importMarkdown` / `exportMarkdown` / `rebase` /
-`mapPos` codec — for the audience that has anchor identity to preserve.
+`quill.writer(doc)` (mirroring core's `quill.writer(&mut doc)`) is the one
+schema-bound door: bare `set` / `set_all` / `setBody` / `reviseField` / `addCard`
+/ `card(i)`, names and markdown in, diagnostics out. It resolves each field's type
+from the bound quill, so a name the schema does not declare is a typo
+(`UnknownField`), not a fallback.
 
-**The tiers are strata, not a partition.** Tier 1 is *sugar over* tier 2 and the
-typed-commit path — `writer.setBody(md)` is `revise({}, md)` with the receipt
-discarded; `writer.set` is `commitField` with the quill bound once. Anything
-tier 1 writes, tier 2 can write with more control, so the decision tree picks a
-*default*, not a *cage*: a live editor legitimately writes fields through the
-writer and bodies/splices through the addressed verbs in one interaction. Reads
-(`get` / `getMarkdown` / `isFill` / `getExt`) need no schema, so they sit on
-`Document`, not the writer. The quill-free `storeField` primitive stays the
-third lane — verbatim storage, coercion deferred to render.
+`Document` holds everything quill-free: the opaque `store*` primitive (verbatim,
+coercion deferred to render) and the addressed corpus lane — `install` / `revise`
+/ `applyChange` plus the `importMarkdown` / `exportMarkdown` / `rebase` / `mapPos`
+codec — which navigate by `Addr` and return `Delta` receipts but never consult a
+schema. Reads (`get` / `getMarkdown` / `isFill` / `getExt`) need no schema, so
+they sit on `Document` too.
+
+`reviseField` is the writer verb that is both typed *and* anchor-preserving: it
+rebases surviving anchors like the corpus `revise`, then conforms the diffed
+result to the field schema like `set`. Because it needs the schema, it lives on
+the writer — wrapping core's `Card::revise_field_checked` primitive, which
+`Document` does not expose.
 
 **The verb carries the lane.** One vocabulary rule, stated once here: **store**
 = verbatim (the quill-free opaque write, coercion deferred to render), **set** =
 typed (the writer's strict commit at the write), **install / revise / apply** =
-corpus (identity-aware). `remove_*` has no tier — one verb serves every lane.
+corpus (identity-aware). `remove_*` has no lane — one verb serves every write path.
 So `store_field` / `store_fields` / `store_fill` (+ `store_ext` / `store_seed_*`)
 are the opaque store, `set` / `set_all` / `set_body` the typed writer, and a name
 never needs per-verb disambiguation against its neighbor (the opaque batch
@@ -74,9 +75,11 @@ build and re-resolved at patch time ([PROGRAMMATIC.md](PROGRAMMATIC.md)), not a
 held handle.
 
 **The hand-written runtime is the real API; the wasm class is its ABI.** The
-`commit*` verbs are the stable ABI under the writer's `set` / `set_all` — dropped
-from the documented surface, not from the binary. This design commits to that
-split rather than merely tolerating it.
+quill-taking `_commitField` / `_commitFields` / `_addCard` / `_reviseField`
+methods are the stable ABI under the writer's `set` / `set_all` / `addCard` /
+`reviseField` — underscored and dropped from the `.d.ts`, not from the binary.
+The visible `Document` class then carries zero quill-taking methods, so the split
+is structural, not asserted.
 
 ### Parity table
 
@@ -89,6 +92,7 @@ ergonomic), nothing else admitted. Drift is a reviewable diff to this table.
 | Typed writer front door | `quill.writer(&mut doc)` | `quill.writer(doc)` | **idiom** — core holds `&mut Document` under the checker; the bindings re-borrow per call (pyo3/wasm objects carry no lifetime), so the guarantee becomes the ephemerality convention |
 | Scalar / batch write | `set` / `set_all` | `set` / `setAll` (JS), `set` / `set_all` (py) | identical |
 | Receipt-free body write | `set_body(md)` | `setBody(md)` / `set_body(md)` | identical — core also exposes the delta via `revise_body` |
+| Typed richtext field revise | `TypedWriter::revise_field(name, md)?` / `CardWriter::revise_field(..)?` | `writer.reviseField(name, md)` / `writer.card(i).reviseField(..)` | identical — typed *and* anchor-preserving, returns the `Delta`; both wrap the `Card::revise_field_checked` primitive |
 | Card creation | `add_card(kind, fields, body?, at?)` | `addCard(kind, fields?, body?, at?)` | identical — fused make + typed-commit + insert, transactional (`at` appends when absent, else inserts at the index — one atomic positioned insert, not `addCard` + `moveCard`) |
 | Card insertion | `push_card(card)` / `insert_card(i, card)` | `insertCard(card, at?)` | **idiom** — the binding folds core's append + positional-insert verbs into one; absent `at` appends |
 | Card removal (writer) | `writer.remove_card(i)` | `writer.removeCard(i)` | identical |
@@ -96,7 +100,7 @@ ergonomic), nothing else admitted. Drift is a reviewable diff to this table.
 | Cursor kind | `writer.card(i)?.kind()` | `writer.card(i).kind` | identical — the JS getter reads through `doc.card(i)` |
 | Reads (value / markdown / fill / `$ext`) | `field_markdown(..)` / `payload().get(..)` / `payload().is_fill(..)` / `card.ext()` (borrow chain; index for a card) | `doc.get(addr?)` / `doc.getMarkdown(addr?)` / `doc.isFill(addr)` / `doc.getExt(cardAddr?)` / `doc.getExtNamespace(cardAddr, ns)` (JS); name-keyed twins (py) | **idiom** / **FFI** — WASM fuses every read onto the one `Addr` (a bare string ⇒ `{field}`), *total over the field axis* (absent field → `undefined`, `isFill` → `false`; only an out-of-range card throws); Python stays name-keyed |
 | Reads (whole card / `$id` / seed) | `card(i)` / `find_card(id)` / `main().seed()` | `doc.card(i)` / `doc.cardIndexById(id)` / `doc.seedOverlay(kind)` | **idiom** — the bindings fuse each into one named verb on `Document`; `card(i)` throws out of range, `find_card`/`cardIndexById` return the first `$id` match (non-unique by design) |
-| Richtext ops | `revise_field(name, md)?` / `revise_field_checked(name, md, schema)?` (borrow chain) | `doc.revise({card, field}, md)` / `doc.reviseChecked(quill, {card, field}, md)` (addr literal) | **FFI** — same model, flattened navigation; the `*_checked` verb enforces the field schema on the diffed result (typed *and* anchor-preserving), keeping the `Delta` in the corpus lane |
+| Richtext revise (corpus lane) | `Card::revise_field(name, md)?` (schema-blind, borrow chain) | `doc.revise({card, field}, md)` (addr literal) | **FFI** — same model, flattened navigation; schema-blind, `Delta` in hand |
 | Opaque store | `store_field` / `store_fields` / `store_fill` | `storeField` / `storeFields` / `storeFill` (JS, `Addr`), `store_field` / `store_fields` / `store_card_field` (py, name-keyed) | identical — the quill-free verbatim write; WASM addresses with `Addr`, Python stays name-keyed |
 
 The single **idiom** row on the front door is the honest cost: the typed writer

@@ -112,8 +112,9 @@ describe('@quillmark/wasm/runtime — surface', () => {
 })
 
 // The typed-writer sugar binds a quill to a document once, so writes are bare
-// `set` / `setAll` / `card(i).set` — the JS twin of Rust's `quill.writer(doc)`,
-// forwarding to the `commit*` verbs (typed for a schema field, opaque otherwise).
+// `set` / `setAll` / `reviseField` / `card(i).set` — the JS twin of Rust's
+// `quill.writer(doc)`, forwarding to the underscored `_commit*` / `_reviseField`
+// ABI on the raw `Document` class (hidden from the `.d.ts`).
 describe('@quillmark/wasm/runtime — DocumentWriter / CardWriter (bind the quill once)', () => {
   const EDITOR_QUILL_YAML = `quill:
   name: editor_test
@@ -174,6 +175,22 @@ card_kinds:
     expect(ed.document.getMarkdown()).toBe('New **body**.\n')
   })
 
+  it('reviseField writes a richtext field typed, and returns a Delta', () => {
+    const ed = buildQuill().writer(blankDoc())
+    const delta = ed.reviseField('subject', 'Q3 **results**')
+    expect(ed.document.getMarkdown('subject')).toBe('Q3 **results**\n')
+    expect(delta).toBeTruthy() // the anchor-preserving receipt
+  })
+
+  it('reviseField rejects an undeclared name, and a non-inline result', () => {
+    const ed = buildQuill().writer(blankDoc())
+    expect(() => ed.reviseField('stray', 'x')).toThrow(/UnknownField/)
+    // `subject` is richtext(inline): a multi-block result is refused, field intact.
+    ed.reviseField('subject', 'kept')
+    expect(() => ed.reviseField('subject', 'a\n\nb')).toThrow(/FieldRichtextNotInline/)
+    expect(ed.document.getMarkdown('subject')).toBe('kept\n')
+  })
+
   it('addCard fuses make + typed commit + push, transactionally', () => {
     const ed = buildQuill().writer(blankDoc())
     // `body` here is the card's richtext FIELD; the third arg is the card body.
@@ -204,6 +221,11 @@ card_kinds:
     expect(exportMarkdown(fieldOf(doc.cards[0], 'body'))).toBe('Card **body**.\n')
     ed.card(0).setBody('Card body md.')
     expect(exportMarkdown(doc.cards[0].body)).toBe('Card body md.\n')
+    // card(i).reviseField is the typed, anchor-preserving field write.
+    const delta = ed.card(0).reviseField('body', 'Revised **field**.')
+    expect(exportMarkdown(fieldOf(doc.cards[0], 'body'))).toBe('Revised **field**.\n')
+    expect(delta).toBeTruthy()
+    expect(() => ed.card(0).reviseField('stray', 'x')).toThrow(/UnknownField/)
   })
 
   it('a bad card index throws at write time, not at card()', () => {

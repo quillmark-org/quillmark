@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- feat(core,wasm): typed, anchor-preserving field revise — `TypedWriter::revise_field` / `CardWriter::revise_field` and `writer.reviseField` / `writer.card(i).reviseField` wrap core `Card::revise_field_checked` (diff-rebase surviving anchors, then schema-conform the result); the schema-bound verb lives on the writer, where the schema is (#957, #966)
+- **breaking** wasm: the quill-taking `Document` methods become the hidden ABI under the writer — `commitField` / `commitFields` / `addCard` → `_commitField` / `_commitFields` / `_addCard`, dropped from the `.d.ts`; remove `doc.reviseChecked` (no runtime consumer — use `writer.reviseField`). The visible `Document` class then carries zero quill-taking methods (#966)
+- **breaking** core: rename `EditError::BodyImport` → `EditError::Import` (message `body import failed:` → `markdown import failed:`) — the variant also fires on field-path imports (`revise_field`), where "body" misnamed it (#966)
 - **breaking** wasm: fold `pushCard` into `insertCard(card, at?)` — one insertion verb per lane, absent `at` appends; `insertCard`'s parameters reorder to `(card, at?)`. Delete the deprecated `replaceBody` alias (use `revise({}, md)` or `writer.setBody`) (#961)
 - feat(core,wasm): positioned card insert — `TypedWriter::add_card` / `writer.addCard` and the `addCard` ABI take an `at` position, so a positioned typed insert is one atomic call instead of `addCard` + `moveCard`; add `TypedWriter::remove_card` (mirrors JS `writer.removeCard`) and a JS `CardWriter.kind` getter (mirrors core `CardWriter::kind()`) (#961)
 - **breaking** core: `Payload::insert` / `insert_fill` now validate the field-name and value-depth invariant at the boundary and return `Result<_, FieldViolation>`, closing the `payload_mut().insert(...)` hole that let a direct caller build an invalid document; pre-validated internal callers use the new `pub(crate)` `insert_unchecked` / `insert_fill_unchecked` (#958)
