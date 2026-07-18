@@ -16,3 +16,4 @@ Design docs: [`prose/canon/INDEX.md`](prose/canon/INDEX.md). Comments and docs f
 - `cargo test --workspace`
 - WASM: `./scripts/build-wasm.sh && cd crates/bindings/wasm && npm test`
 - Python: `cd crates/bindings/python && uv run maturin develop && uv run pytest`
+- Binding surfaces (`bindings/{python,wasm,cli}`) are slow to build locally; push and lean on PR CI to validate them rather than running the full binding suites on every change.
