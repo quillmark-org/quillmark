@@ -590,15 +590,16 @@ export declare class CardWriter {
  * A `Document` bound to its `Quill` for interpreted reads — the schema-plane read
  * view, constructed via {@link Quill.view} and the read twin of
  * {@link DocumentWriter}. One `get` reads each field by its declared type: a
- * richtext field to its markdown projection, every other type its canonical value
- * verbatim. Holds both handles by reference and owns neither — nothing to
- * `free()`.
+ * richtext field to its markdown projection, a plaintext field to its literal
+ * text, every other type its canonical value verbatim. Holds both handles by
+ * reference and owns neither — nothing to `free()`.
  *
- * The schema authority is the point: unlike the quill-free `Document.get` /
- * `getMarkdown`, a name the schema does not declare throws `UnknownField` (a
- * typo) rather than reading back `undefined`. A richtext field holding a value
- * that does not decode throws `FieldRichtextDecode`, as `getMarkdown` does. The
- * body read stays quill-free (a body's type is a format fact) and never throws.
+ * The schema authority is the point: unlike the quill-free transport `Document.get`,
+ * a name the schema does not declare throws `UnknownField` (a typo) rather than
+ * reading back `undefined`, and a content field holding a value that does not
+ * decode throws `FieldRichtextDecode`. A field's markdown lives here, not on the
+ * body-only `Document.getMarkdown`. The body read stays quill-free (a body's type
+ * is a format fact) and never throws.
  */
 export declare class DocumentView {
 	constructor(quill: Quill, doc: Document);

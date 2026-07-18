@@ -540,10 +540,9 @@ impl PyDocument {
 
     /// The main **body**'s markdown projection — the on-demand, lossy export
     /// (content-only marks do not survive markdown). A body's type is a format
-    /// fact, not a schema fact, so this read stays quill-free. Field projection is
-    /// retired: read a field's markdown with the schema-plane
-    /// `quill.view(doc).get(name)`, which has the schema to interpret by declared
-    /// type (#978). Mirrors WASM `Document.getMarkdown`.
+    /// fact, not a schema fact, so this read stays quill-free. A field's markdown
+    /// is read through the schema-plane `quill.view(doc).get(name)`, which
+    /// interprets by declared type (#978). Mirrors WASM `Document.getMarkdown`.
     fn get_markdown(&self) -> String {
         self.inner.main().body_markdown()
     }
@@ -566,9 +565,9 @@ impl PyDocument {
     }
 
     /// A composable card's **body** markdown — the card-indexed twin of
-    /// `get_markdown`. Field projection is retired: read a card field's markdown
-    /// with `quill.view(doc).card(index).get(name)` (#978). An out-of-range
-    /// `index` raises `IndexOutOfRange`. Mirrors WASM `Document.getCardMarkdown`.
+    /// `get_markdown`. A card field's markdown is read through
+    /// `quill.view(doc).card(index).get(name)` (#978). An out-of-range `index`
+    /// raises `IndexOutOfRange`. Mirrors WASM `Document.getCardMarkdown`.
     fn get_card_markdown(&self, index: usize) -> PyResult<String> {
         Ok(self.card_or_raise(index)?.body_markdown())
     }
@@ -1114,12 +1113,14 @@ impl PyCardWriter {
 /// A `Document` bound to its `Quill` for interpreted reads — the schema-plane
 /// read view, from `Quill.view(doc)` and the read twin of `Writer`. One `get`
 /// reads each field by its declared type: a richtext field to its markdown
-/// projection, every other type its canonical value verbatim. The schema
-/// authority is the point — unlike the quill-free `Document.get` / `get_markdown`,
-/// a name the schema does not declare raises `[EditError::UnknownField]` rather
-/// than reading back `None`. Holds both objects by reference and re-borrows them
-/// per call (pyo3 objects carry no lifetime), so it is ephemeral by convention:
-/// bind, read, discard. Mirrors WASM `quill.view(doc)`.
+/// projection, a plaintext field to its literal text, every other type its
+/// canonical value verbatim. The schema authority is the point — unlike the
+/// quill-free transport `Document.get`, a name the schema does not declare raises
+/// `[EditError::UnknownField]` rather than reading back `None`. A field's markdown
+/// lives here, not on the body-only `Document.get_markdown`. Holds both objects
+/// by reference and re-borrows them per call (pyo3 objects carry no lifetime), so
+/// it is ephemeral by convention: bind, read, discard. Mirrors WASM
+/// `quill.view(doc)`.
 #[pyclass(name = "View")]
 pub struct PyView {
     quill: Py<PyQuill>,
@@ -1437,8 +1438,9 @@ fn read_value_to_py<'py>(
 ) -> PyResult<Option<Bound<'py, PyAny>>> {
     match read {
         None => Ok(None),
-        Some(quillmark_core::ReadValue::Markdown(md)) => Ok(Some(md.into_bound_py_any(py)?)),
-        Some(quillmark_core::ReadValue::Plaintext(text)) => Ok(Some(text.into_bound_py_any(py)?)),
+        // Both content projections flatten to a Python str at the boundary.
+        Some(quillmark_core::ReadValue::Markdown(s))
+        | Some(quillmark_core::ReadValue::Plaintext(s)) => Ok(Some(s.into_bound_py_any(py)?)),
         Some(quillmark_core::ReadValue::Value(v)) => Ok(Some(quillvalue_to_py(py, &v)?)),
     }
 }

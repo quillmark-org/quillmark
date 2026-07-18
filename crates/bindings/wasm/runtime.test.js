@@ -251,8 +251,8 @@ card_kinds:
     // Transport reads stay quill-free on the Document.
     expect(ed.document.get('qty')).toBe(3)
     expect(ed.document.get('missing')).toBeUndefined()
-    // getMarkdown is now the body read; a field address throws — field markdown
-    // moved to the schema-plane view (#978).
+    // getMarkdown is the body read; a field address throws — a field's markdown
+    // reads through the schema-plane view (#978).
     expect(ed.document.getMarkdown()).toBe('Main **body**.')
     expect(() => ed.document.getMarkdown({ field: 'subject' })).toThrow(/body-only/)
     expect(quill.view(ed.document).get('subject')).toBe('Q3 **results**')

@@ -184,9 +184,9 @@ title: Draft
     expect(doc.get({ card: 0, field: 'author' })).toBe('Alice')
     expect(doc.get({ card: 0, field: 'missing' })).toBeUndefined()
 
-    // getMarkdown is the card body read (card address). Field projection is
-    // retired — a field address throws; field markdown moved to the schema-plane
-    // view, quill.view(doc).card(i).get(name) (#978).
+    // getMarkdown is the card body read (card address); a field address throws.
+    // A field's markdown reads through the schema-plane view,
+    // quill.view(doc).card(i).get(name) (#978).
     expect(doc.getMarkdown({ card: 0 })).toContain('A note body.')
     expect(() => doc.getMarkdown({ card: 0, field: 'author' })).toThrow(/body-only/)
 

@@ -877,10 +877,9 @@ impl Document {
     /// this read stays quill-free; a body is never absent.
     ///
     /// `addr` is an optional **card address** (`{ card }`, absent = main). A
-    /// present `field` throws: field projection is retired — read a field's
-    /// markdown with the schema-plane `quill.view(doc).get(field)`, which has the
-    /// schema to interpret by declared type (#978). An out-of-range `addr.card`
-    /// throws.
+    /// present `field` throws — a field's markdown is read through the
+    /// schema-plane `quill.view(doc).get(field)`, which interprets by declared
+    /// type (#978). An out-of-range `addr.card` throws.
     #[wasm_bindgen(js_name = getMarkdown, unchecked_return_type = "string")]
     pub fn get_markdown(
         &self,
@@ -889,8 +888,8 @@ impl Document {
         let addr = Addr::from_js(&addr)?;
         if addr.field.is_some() {
             return Err(WasmError::from(
-                "getMarkdown is body-only — field projection retired; read a field's \
-                 markdown with quill.view(doc).get(field)",
+                "getMarkdown is body-only — read a field's markdown with \
+                 quill.view(doc).get(field)",
             )
             .to_js_value());
         }
@@ -943,10 +942,9 @@ impl Document {
                 .map_err(|e| edit_error_to_js(&e))?;
                 match read {
                     None => Ok(JsValue::UNDEFINED),
-                    Some(quillmark_core::ReadValue::Markdown(md)) => Ok(JsValue::from_str(&md)),
-                    Some(quillmark_core::ReadValue::Plaintext(text)) => {
-                        Ok(JsValue::from_str(&text))
-                    }
+                    // Both content projections flatten to a JS string at the boundary.
+                    Some(quillmark_core::ReadValue::Markdown(s))
+                    | Some(quillmark_core::ReadValue::Plaintext(s)) => Ok(JsValue::from_str(&s)),
                     Some(quillmark_core::ReadValue::Value(v)) => {
                         serialize_or_throw(v.as_json(), "view.get")
                     }

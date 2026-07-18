@@ -399,8 +399,8 @@ def test_get_card_field_out_of_range():
 
 
 def test_get_card_markdown_body():
-    """get_card_markdown reads a card's body markdown. Field projection is retired
-    — read a card field's markdown via quill.view(doc).card(i).get(name) (#978)."""
+    """get_card_markdown reads a card's body markdown. A card field's markdown is
+    read via quill.view(doc).card(i).get(name) (#978)."""
     doc = Document.from_markdown(MD_WITH_CARDS)
     assert "Card one." in doc.get_card_markdown(0)
 

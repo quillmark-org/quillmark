@@ -750,14 +750,15 @@ Quill.prototype.writer = function writer(doc) {
 };
 
 // ── Typed-reader sugar: the schema-plane read view ──────────────────────────
-// The read twin of the writer above. `Document.get` / `getMarkdown` are
-// schema-free — a `Document` cannot say which fields are richtext, so an unknown
-// field name reads back `undefined` rather than as the typo it is. Binding the
-// quill's schema (`_viewGet` takes the handle, like the `commit*` verbs) lets one
-// `get` interpret by declared type: a richtext field to markdown, every other
-// type verbatim, and an unknown name throws `UnknownField`. Like the writer
-// classes these hold the caller's handles by reference, own no WASM object, and
-// have nothing to `free()`.
+// The read twin of the writer above. The transport `Document.get` is schema-free
+// — a `Document` cannot say which fields are richtext, so an unknown field name
+// reads back `undefined` rather than as the typo it is. Binding the quill's
+// schema (`_viewGet` takes the handle, like the `commit*` verbs) lets one `get`
+// interpret by declared type: a richtext field to markdown, a plaintext field to
+// its literal text, every other type verbatim, and an unknown name throws
+// `UnknownField`. A field's markdown lives here, not on the body-only
+// `getMarkdown`. Like the writer classes these hold the caller's handles by
+// reference, own no WASM object, and have nothing to `free()`.
 
 /**
  * A {@link Document} bound to its {@link Quill} for typed reads — the JS twin of
