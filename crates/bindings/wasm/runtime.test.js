@@ -175,13 +175,13 @@ card_kinds:
   it('setBody writes the main body from markdown, receipt-free', () => {
     const ed = buildQuill().writer(blankDoc())
     ed.setBody('New **body**.')
-    expect(ed.document.getMarkdown()).toBe('New **body**.\n')
+    expect(ed.document.getMarkdown()).toBe('New **body**.')
   })
 
   it('reviseField writes a richtext field typed, and returns a Delta', () => {
     const ed = buildQuill().writer(blankDoc())
     const delta = ed.reviseField('subject', 'Q3 **results**')
-    expect(ed.document.getMarkdown('subject')).toBe('Q3 **results**\n')
+    expect(ed.document.getMarkdown('subject')).toBe('Q3 **results**')
     expect(delta).toBeTruthy() // the anchor-preserving receipt
   })
 
@@ -191,7 +191,7 @@ card_kinds:
     // `subject` is richtext(inline): a multi-block result is refused, field intact.
     ed.reviseField('subject', 'kept')
     expect(() => ed.reviseField('subject', 'a\n\nb')).toThrow(/FieldRichtextNotInline/)
-    expect(ed.document.getMarkdown('subject')).toBe('kept\n')
+    expect(ed.document.getMarkdown('subject')).toBe('kept')
   })
 
   it('addCard fuses make + typed commit + push, transactionally', () => {
@@ -200,8 +200,8 @@ card_kinds:
     ed.addCard('note', { body: 'Field **body**.' }, 'Card body text.')
     expect(ed.document.cards).toHaveLength(1)
     expect(ed.document.cards[0].kind).toBe('note')
-    expect(exportMarkdown(fieldOf(ed.document.cards[0], 'body'))).toBe('Field **body**.\n')
-    expect(exportMarkdown(ed.document.cards[0].body)).toBe('Card body text.\n')
+    expect(exportMarkdown(fieldOf(ed.document.cards[0], 'body'))).toBe('Field **body**.')
+    expect(exportMarkdown(ed.document.cards[0].body)).toBe('Card body text.')
     // A typo aborts the commit; the card never joins the document.
     expect(() => ed.addCard('note', { stray: 'x' })).toThrow(/UnknownField/)
     expect(ed.document.cards).toHaveLength(1)
@@ -221,12 +221,12 @@ card_kinds:
     )
     const ed = buildQuill().writer(doc)
     ed.card(0).set('body', 'Card **body**.')
-    expect(exportMarkdown(fieldOf(doc.cards[0], 'body'))).toBe('Card **body**.\n')
+    expect(exportMarkdown(fieldOf(doc.cards[0], 'body'))).toBe('Card **body**.')
     ed.card(0).setBody('Card body md.')
-    expect(exportMarkdown(doc.cards[0].body)).toBe('Card body md.\n')
+    expect(exportMarkdown(doc.cards[0].body)).toBe('Card body md.')
     // card(i).reviseField is the typed, anchor-preserving field write.
     const delta = ed.card(0).reviseField('body', 'Revised **field**.')
-    expect(exportMarkdown(fieldOf(doc.cards[0], 'body'))).toBe('Revised **field**.\n')
+    expect(exportMarkdown(fieldOf(doc.cards[0], 'body'))).toBe('Revised **field**.')
     expect(delta).toBeTruthy()
     expect(() => ed.card(0).reviseField('stray', 'x')).toThrow(/UnknownField/)
   })
@@ -243,7 +243,7 @@ card_kinds:
     ed.set('qty', '3')
     ed.set('subject', 'Q3 **results**')
     expect(ed.document.get('qty')).toBe(3)
-    expect(ed.document.getMarkdown('subject')).toBe('Q3 **results**\n')
+    expect(ed.document.getMarkdown('subject')).toBe('Q3 **results**')
     expect(ed.document.get('missing')).toBeUndefined()
     expect(ed.document.getMarkdown('missing')).toBeUndefined()
   })

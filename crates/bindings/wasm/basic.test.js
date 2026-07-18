@@ -189,11 +189,11 @@ describe('Document.toMarkdown — fromMarkdown → mutate → emit → re-parse'
     // body is at EOF and has no F2 separator, so it survives byte-for-byte.
     const doc2 = Document.fromMarkdown(emitted)
     expect(field(doc2.main, 'title')).toBe('New Title')
-    expect(exportMarkdown(doc2.main.body)).toBe('Updated body\n')
+    expect(exportMarkdown(doc2.main.body)).toBe('Updated body')
     expect(doc2.cards.length).toBe(originalCardCount + 1)
     expect(doc2.cards[0].kind).toBe('note')
     expect(field(doc2.cards[0], 'author')).toBe('Alice')
-    expect(exportMarkdown(doc2.cards[0].body)).toBe('Hello\n')
+    expect(exportMarkdown(doc2.cards[0].body)).toBe('Hello')
   })
 
   it('ambiguous-string survival: YAML-keyword values are preserved as strings', () => {
@@ -256,7 +256,7 @@ describe('Document JSON DTO — toJson / fromJson', () => {
     expect(field(restored.main, 'title')).toBe('New Title')
     expect(restored.cards[0].kind).toBe('note')
     expect(field(restored.cards[0], 'author')).toBe('Alice')
-    expect(exportMarkdown(restored.cards[0].body)).toBe('Hello\n')
+    expect(exportMarkdown(restored.cards[0].body)).toBe('Hello')
   })
 
   it('toJson output is standard JSON parseable by the JSON global', () => {
@@ -603,7 +603,7 @@ describe('Document editor surface — setQuillRef / install / revise', () => {
   it('revise({}, md) revises the main body and returns the text delta', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const delta = doc.revise({}, 'Body from **markdown**.')
-    expect(exportMarkdown(doc.main.body)).toBe('Body from **markdown**.\n')
+    expect(exportMarkdown(doc.main.body)).toBe('Body from **markdown**.')
     // The receipt is a structured-clone-able change set.
     expect(Array.isArray(delta.ops)).toBe(true)
   })
@@ -616,7 +616,7 @@ describe('Document editor surface — setQuillRef / install / revise', () => {
     expect(typeof corpus).toBe('object')
     doc.install({}, corpus)
     expect(doc.main.body.text).toBe('Corpus body here.')
-    expect(exportMarkdown(doc.main.body)).toBe('Corpus **body** here.\n')
+    expect(exportMarkdown(doc.main.body)).toBe('Corpus **body** here.')
   })
 
   it('install({}, importMarkdown("")) clears the body', () => {
@@ -637,7 +637,7 @@ describe('Corpus codec — importMarkdown / exportMarkdown / rebase / mapPos', (
     const rt = importMarkdown('A **bold** line.')
     expect(typeof rt).toBe('object')
     expect(rt.text).toBe('A bold line.')
-    expect(exportMarkdown(rt)).toBe('A **bold** line.\n')
+    expect(exportMarkdown(rt)).toBe('A **bold** line.')
   })
 
   it('rebase computes a corpus + delta and mapPos maps a position through it', () => {
@@ -686,7 +686,7 @@ card_kinds:
     doc._commitField(quill, 'intro', 'A **bold** intro.')
     expect(typeof field(doc.main, 'intro')).toBe('object')
     // The markdown projection of a richtext field is exportMarkdown ∘ its corpus.
-    expect(exportMarkdown(field(doc.main, 'intro'))).toBe('A **bold** intro.\n')
+    expect(exportMarkdown(field(doc.main, 'intro'))).toBe('A **bold** intro.')
 
     doc._commitField(quill, 'qty', '3')
     expect(field(doc.main, 'qty')).toBe(3)
@@ -712,7 +712,7 @@ card_kinds:
     expect(field(doc.main, 'count')).toBe(3)
     // A committed richtext field projects through the codec.
     doc._commitField(quill, 'intro', 'plain intro')
-    expect(exportMarkdown(field(doc.main, 'intro'))).toBe('plain intro\n')
+    expect(exportMarkdown(field(doc.main, 'intro'))).toBe('plain intro')
   })
 
   it('commitField fails a strict mismatch and a richtext(inline) violation', () => {
@@ -733,7 +733,7 @@ card_kinds:
       { field: 'intro' },
       { markOps: [{ op: 'add', start: 8, end: 12, type: 'strong' }] },
     )
-    expect(exportMarkdown(field(doc.main, 'intro'))).toBe('make it **bold** here\n')
+    expect(exportMarkdown(field(doc.main, 'intro'))).toBe('make it **bold** here')
     // An out-of-bounds op leaves the value unchanged (all-or-nothing).
     expect(() =>
       doc.applyChange({ field: 'intro' }, { markOps: [{ op: 'add', start: 999, end: 1000, type: 'emph' }] }),
@@ -746,12 +746,12 @@ card_kinds:
     // export separates them with a blank line — two blocks.
     doc.revise({}, 'one two')
     doc.applyChange({}, { delta: { ops: [{ retain: 3 }, { insert: '\n' }, { retain: 4 }] } })
-    expect(exportMarkdown(doc.main.body)).toContain('\n\n')
+    expect(exportMarkdown(doc.main.body)).toContain('\n')
 
     // setContinues turns the boundary into a within-block hard break: one block,
     // no blank-line separator — and identity anchors ride through (op, not install).
     doc.applyChange({}, { lineOps: [{ op: 'setContinues', line: 1, continues: true }] })
-    expect(exportMarkdown(doc.main.body)).not.toContain('\n\n')
+    expect(exportMarkdown(doc.main.body)).not.toContain('\n')
     expect(doc.main.body.lines[1].continues).toBe(true)
 
     // `continues:true` on line 0 has nothing to continue — rejected, value intact.
@@ -767,7 +767,7 @@ card_kinds:
       '~~~card-yaml\n$quill: commit_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
     )
     doc._commitField(quill, { card: 0, field: 'body' }, 'Card **body**.')
-    expect(exportMarkdown(field(doc.cards[0], 'body'))).toBe('Card **body**.\n')
+    expect(exportMarkdown(field(doc.cards[0], 'body'))).toBe('Card **body**.')
     expect(() => doc._commitField(quill, { card: 9, field: 'body' }, 'x')).toThrow(/IndexOutOfRange/)
   })
 
@@ -776,7 +776,7 @@ card_kinds:
     const doc = blankDoc()
     doc._commitFields(quill, {}, { intro: 'A **bold** intro.', qty: '3' })
     // The values were coerced, not stored verbatim.
-    expect(exportMarkdown(field(doc.main, 'intro'))).toBe('A **bold** intro.\n')
+    expect(exportMarkdown(field(doc.main, 'intro'))).toBe('A **bold** intro.')
     expect(field(doc.main, 'qty')).toBe(3)
   })
 
@@ -806,7 +806,7 @@ card_kinds:
       '~~~card-yaml\n$quill: commit_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
     )
     doc._commitFields(quill, { card: 0 }, { body: 'Card **body**.' })
-    expect(exportMarkdown(field(doc.cards[0], 'body'))).toBe('Card **body**.\n')
+    expect(exportMarkdown(field(doc.cards[0], 'body'))).toBe('Card **body**.')
     // An undeclared field on the card aborts the batch.
     expect(() => doc._commitFields(quill, { card: 0 }, { stray: 'x' })).toThrow(/UnknownField/)
     expect(() => doc._commitFields(quill, { card: 9 }, { body: 'x' })).toThrow(/IndexOutOfRange/)
@@ -840,7 +840,7 @@ Card two.
     doc.insertCard(Document.makeCard('note', {}, 'My card.'))
     expect(doc.cards.length).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
-    expect(exportMarkdown(doc.cards[0].body)).toBe('My card.\n')
+    expect(exportMarkdown(doc.cards[0].body)).toBe('My card.')
   })
 
   it('insertCard throws on invalid kind', () => {
@@ -1059,7 +1059,7 @@ Card body.
   it('revise({card:0}, md) revises a card body and returns the delta', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARD)
     const delta = doc.revise({ card: 0 }, 'New card body.')
-    expect(exportMarkdown(doc.cards[0].body)).toBe('New card body.\n')
+    expect(exportMarkdown(doc.cards[0].body)).toBe('New card body.')
     expect(Array.isArray(delta.ops)).toBe(true)
   })
 
@@ -1075,7 +1075,7 @@ Card body.
     const doc = Document.fromMarkdown(MD_WITH_CARD)
     doc.install({ card: 0 }, corpus)
     expect(doc.cards[0].body.text).toBe(corpus.text)
-    expect(exportMarkdown(doc.cards[0].body)).toBe('Card body from **markdown**.\n')
+    expect(exportMarkdown(doc.cards[0].body)).toBe('Card body from **markdown**.')
   })
 
   it('install({card:0}, importMarkdown("")) clears the card body', () => {
@@ -1102,10 +1102,10 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
 
     // Assert state
     expect(field(doc.main, 'author')).toBe('Bob')
-    expect(exportMarkdown(doc.main.body)).toBe('New body text.\n')
+    expect(exportMarkdown(doc.main.body)).toBe('New body text.')
     expect(doc.cards.length).toBe(1)
     expect(doc.cards[0].kind).toBe('note')
-    expect(exportMarkdown(doc.cards[0].body)).toBe('Card content.\n')
+    expect(exportMarkdown(doc.cards[0].body)).toBe('Card content.')
     expect(doc.quillRef).toBe('updated_quill')
 
     // Original title still present

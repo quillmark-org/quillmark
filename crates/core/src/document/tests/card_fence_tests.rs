@@ -21,7 +21,7 @@ fn card_fence_parses_kind_fields_and_body() {
     let card = &doc.cards()[0];
     assert_eq!(card.kind(), Some("product"));
     assert_eq!(card.payload().get("name").unwrap().as_str(), Some("Widget"));
-    assert_eq!(card.body_markdown(), "Widget description.\n");
+    assert_eq!(card.body_markdown(), "Widget description.");
 }
 
 #[test]
@@ -76,8 +76,8 @@ fn card_fence_body_round_trips() {
     let a = Document::parse(src).unwrap().document;
     let b = Document::parse(&a.to_markdown()).unwrap().document;
     assert_eq!(a, b);
-    assert_eq!(a.main().body_markdown(), "Main body.\n");
-    assert_eq!(a.cards()[0].body_markdown(), "Card body.\n");
+    assert_eq!(a.main().body_markdown(), "Main body.");
+    assert_eq!(a.cards()[0].body_markdown(), "Card body.");
 }
 
 #[test]
@@ -295,7 +295,7 @@ The body.
         Some("Here is code:\n~~~\nlet x = 1;\n~~~\ndone\n"),
         "block scalar must keep the embedded tilde fence intact"
     );
-    assert_eq!(doc.main().body_markdown(), "The body.\n");
+    assert_eq!(doc.main().body_markdown(), "The body.");
 }
 
 #[test]

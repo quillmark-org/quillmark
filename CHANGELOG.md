@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **breaking** core,wasm,python: the markdown projection stops appending a trailing newline — `to_markdown` projects a *value*, not a file, so `field_markdown` / `body_markdown` (WASM `getMarkdown` / `exportMarkdown`, Python `export_markdown` / `get_markdown`) no longer grow a `\n`; `writer.set("subject", "Hello")` reads back as `"Hello"`, not `"Hello\n"`. `.qmd` files still end in one newline (owned by `Document::to_markdown`, the file writer) and the corpus fixed point is unchanged (import is newline-insensitive) (#965)
 - feat(core,wasm): typed, anchor-preserving field revise — `TypedWriter::revise_field` / `CardWriter::revise_field` and `writer.reviseField` / `writer.card(i).reviseField` wrap core `Card::revise_field_checked` (diff-rebase surviving anchors, then schema-conform the result); the schema-bound verb lives on the writer, where the schema is (#957, #966)
 - **breaking** wasm: the quill-taking `Document` methods become the hidden ABI under the writer — `commitField` / `commitFields` / `addCard` → `_commitField` / `_commitFields` / `_addCard`, dropped from the `.d.ts`; remove `doc.reviseChecked` (no runtime consumer — use `writer.reviseField`). The visible `Document` class then carries zero quill-taking methods (#966)
 - **breaking** core: rename `EditError::BodyImport` → `EditError::Import` (message `body import failed:` → `markdown import failed:`) — the variant also fires on field-path imports (`revise_field`), where "body" misnamed it (#966)

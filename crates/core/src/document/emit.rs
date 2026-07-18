@@ -108,9 +108,11 @@ impl Document {
 
         // ── Root block (card-yaml fence + global body) ────────────────────────
         // Bodies are corpora; the markdown surface is their export projection,
-        // so a `Document` → markdown → `Document` round-trip canonicalizes the body markdown (leading blank
-        // lines dropped, a single trailing `\n`). A blank line separates the
-        // closing fence from a non-empty body, the conventional card-yaml shape.
+        // so a `Document` → markdown → `Document` round-trip canonicalizes the
+        // body markdown (leading and trailing blank lines dropped — the
+        // projection is a value, not a file). A blank line separates the closing
+        // fence from a non-empty body, the conventional card-yaml shape; the
+        // file-final newline is added at the end of this method.
         emit_block(&mut out, self.main());
         append_body(&mut out, &self.main().body_markdown());
 
@@ -122,6 +124,14 @@ impl Document {
             ensure_blank_before_fence(&mut out);
             emit_block(&mut out, card);
             append_body(&mut out, &card.body_markdown());
+        }
+
+        // The body projection (`body_markdown`) emits no trailing newline — it is
+        // a value, not a file (issue #965) — so a document ending in a body ends
+        // without one. `.qmd` is a file; own its final newline here. A
+        // fence-terminated document already ends in `\n`, so this is then a no-op.
+        if !out.ends_with('\n') {
+            out.push('\n');
         }
 
         out

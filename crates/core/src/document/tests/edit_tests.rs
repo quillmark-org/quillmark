@@ -189,7 +189,7 @@ fn test_document_set_quill_ref() {
 fn test_document_replace_body() {
     let mut doc = make_doc();
     doc.main_mut().revise_body("New body content.").unwrap();
-    assert_eq!(doc.main().body_markdown(), "New body content.\n");
+    assert_eq!(doc.main().body_markdown(), "New body content.");
 }
 
 // ── Document::push_card ──────────────────────────────────────────────────────
@@ -260,7 +260,7 @@ fn test_document_card_mut() {
         let card = doc.card_mut(0).unwrap();
         card.revise_body("Updated card body.").unwrap();
     }
-    assert_eq!(doc.cards()[0].body_markdown(), "Updated card body.\n");
+    assert_eq!(doc.cards()[0].body_markdown(), "Updated card body.");
 }
 
 #[test]
@@ -536,7 +536,7 @@ fn test_card_remove_field_invalid_name_throws() {
 fn test_card_set_body() {
     let mut card = Card::new("note").unwrap();
     card.revise_body("Card body text.").unwrap();
-    assert_eq!(card.body_markdown(), "Card body text.\n");
+    assert_eq!(card.body_markdown(), "Card body text.");
 }
 
 // ── Card richtext body writers ───────────────────────────────────────────────
@@ -743,7 +743,7 @@ fn test_commit_field_richtext_markdown_null_and_rejects_bad() {
     let mut card = Card::new("note").unwrap();
 
     commit_richtext(&mut card, "intro", &serde_json::json!("**bold** intro"), false).unwrap();
-    assert_eq!(card.field_markdown("intro").unwrap(), "**bold** intro\n");
+    assert_eq!(card.field_markdown("intro").unwrap(), "**bold** intro");
 
     // null passes through (stored as null) and reads back as the empty corpus.
     commit_richtext(&mut card, "intro", &serde_json::Value::Null, false).unwrap();
@@ -774,7 +774,7 @@ fn test_commit_field_richtext_inline_enforced_at_write() {
 
     // One paragraph line: inline, accepted.
     commit_richtext(&mut card, "title", &serde_json::json!("A single line"), true).unwrap();
-    assert_eq!(card.field_markdown("title").unwrap(), "A single line\n");
+    assert_eq!(card.field_markdown("title").unwrap(), "A single line");
 
     // Two blocks: rejected at write, and nothing is stored over the good value.
     let err = commit_richtext(
@@ -785,7 +785,7 @@ fn test_commit_field_richtext_inline_enforced_at_write() {
     )
     .unwrap_err();
     assert_eq!(err.variant_name(), "FieldRichtextNotInline");
-    assert_eq!(card.field_markdown("title").unwrap(), "A single line\n");
+    assert_eq!(card.field_markdown("title").unwrap(), "A single line");
 }
 
 /// A multi-block element committed to an `array` of `richtext(inline)` items
@@ -925,10 +925,12 @@ fn test_corpus_field_emits_as_markdown_projection() {
     .unwrap();
 
     let md = doc.to_markdown();
-    // Projected to a quoted markdown scalar (the `body_markdown` projection,
-    // trailing newline and all), not a block mapping.
+    // Projected to a markdown scalar (the `body_markdown` projection — a value,
+    // not a file, so no trailing newline), not a block mapping. Still quoted here
+    // (the leading `*` is a YAML flow indicator), but the projection no longer
+    // grows a trailing `\n` inside the quotes (issue #965).
     assert!(
-        md.contains("intro: \"**bold** intro\\n\""),
+        md.contains("intro: \"**bold** intro\""),
         "expected markdown projection, got:\n{md}"
     );
     assert!(!md.contains("lines:"), "corpus object leaked into card-yaml:\n{md}");
@@ -938,7 +940,7 @@ fn test_corpus_field_emits_as_markdown_projection() {
     let reparsed = Document::parse(&md).unwrap().document;
     assert_eq!(
         reparsed.main().payload().get("intro").unwrap().as_str(),
-        Some("**bold** intro\n")
+        Some("**bold** intro")
     );
 }
 
