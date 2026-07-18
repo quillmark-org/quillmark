@@ -32,9 +32,9 @@ pub enum ParseError {
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ParseError::Shape(s) => write!(f, "richtext json shape: {s}"),
-            ParseError::Json(s) => write!(f, "richtext json parse: {s}"),
-            ParseError::Invalid(inv) => write!(f, "richtext invariant: {inv:?}"),
+            ParseError::Shape(s) => write!(f, "content json shape: {s}"),
+            ParseError::Json(s) => write!(f, "content json parse: {s}"),
+            ParseError::Invalid(inv) => write!(f, "content invariant: {inv:?}"),
         }
     }
 }

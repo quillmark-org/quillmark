@@ -32,7 +32,7 @@ fn quill(yaml: &str, plate: &str) -> Quill {
 /// The canonical content JSON the render seam carries for a richtext field, built
 /// from a hand-placed free-overlap content (normalize + validate happen inside
 /// `to_canonical_value`).
-fn overlap_corpus() -> serde_json::Value {
+fn overlap_content() -> serde_json::Value {
     use quillmark_content::model::Mark;
     let rt = Content {
         text: "abcdef".to_string(),
@@ -85,7 +85,7 @@ const PLATE: &str = r#"
 
 #[test]
 fn overlapping_wrap_and_code_compiles() {
-    let data = serde_json::json!({ "body": overlap_corpus() });
+    let data = serde_json::json!({ "body": overlap_content() });
     let session = TypstBackend
         .open(&quill(YAML, PLATE), &data)
         .expect("overlapping wrap+code content must compile");

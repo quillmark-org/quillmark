@@ -44,7 +44,7 @@ pub fn to_markdown(rt: &Content) -> String {
     // file: it emits no final newline, so `writer.set("subject", "Hello")` reads
     // back as `"Hello"`, not `"Hello\n"` (the read-back-grows-a-newline footgun,
     // issue #965). Writers of `.qmd` files own the file-final newline
-    // (`Document::to_markdown`); the corpus fixed point is defined at the corpus,
+    // (`Document::to_markdown`); the content fixed point is defined at the content,
     // and import is newline-insensitive, so dropping it is round-trip-invisible.
     while out.ends_with('\n') {
         out.pop();

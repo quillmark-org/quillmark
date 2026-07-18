@@ -390,7 +390,7 @@ mod tests {
     /// projection) survive Card → wire → Card. This is the lossless carrier the
     /// card-yaml markdown projection (emit) deliberately is not.
     #[test]
-    fn card_wire_round_trips_corpus_field_losslessly() {
+    fn card_wire_round_trips_content_field_losslessly() {
         use quillmark_content::model::{Mark, MarkKind};
 
         let mut card = Card::new("note").unwrap();

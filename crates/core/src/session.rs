@@ -1,5 +1,5 @@
 use crate::{
-    CorpusHit, Diagnostic, RenderError, RenderOptions, RenderResult, RenderedRegion, Severity,
+    ContentHit, Diagnostic, RenderError, RenderOptions, RenderResult, RenderedRegion, Severity,
 };
 pub use quillmark_content::{ApplyError, Assoc, Delta, LineOp, MarkOp, Op};
 
@@ -133,10 +133,10 @@ pub trait SessionHandle: Send + Sync + 'static {
     /// alone). `x`/`y` are PDF points, bottom-left origin on `page`. Returns
     /// the field plus a USV offset into its `Content`, cluster-exact and
     /// degrading to the containing segment's start on origin-less ink (see
-    /// [`CorpusHit`]). `None` off all content ink, on a scalar/widget (no
+    /// [`ContentHit`]). `None` off all content ink, on a scalar/widget (no
     /// content address), or when the backend maps no content. Default `None` —
     /// a backend that carries a per-segment source map overrides this.
-    fn position_at(&self, _page: usize, _x: f32, _y: f32) -> Option<CorpusHit> {
+    fn position_at(&self, _page: usize, _x: f32, _y: f32) -> Option<ContentHit> {
         None
     }
 
@@ -273,11 +273,11 @@ impl LiveSession {
     /// as [`field_at`](Self::field_at). The offset is cluster-exact and
     /// degrades to the containing segment's start on origin-less ink (list
     /// markers, a code fence's interior). `None` off all content ink, on a
-    /// scalar/widget, or for backends with no content map. See [`CorpusHit`].
+    /// scalar/widget, or for backends with no content map. See [`ContentHit`].
     ///
     /// Resolves against the current compile; the editor owns the caret it
     /// places and anchors it across later edits itself.
-    pub fn position_at(&self, page: usize, x: f32, y: f32) -> Option<CorpusHit> {
+    pub fn position_at(&self, page: usize, x: f32, y: f32) -> Option<ContentHit> {
         self.inner.position_at(page, x, y)
     }
 
@@ -427,8 +427,8 @@ mod tests {
                 span: Some([0, 3]),
             }]
         }
-        fn position_at(&self, _: usize, _: f32, _: f32) -> Option<CorpusHit> {
-            Some(CorpusHit {
+        fn position_at(&self, _: usize, _: f32, _: f32) -> Option<ContentHit> {
+            Some(ContentHit {
                 field: "subject".to_string(),
                 pos: 2,
                 granularity: Some(crate::HitGranularity::Cluster),

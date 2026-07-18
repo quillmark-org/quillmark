@@ -92,7 +92,7 @@ fn richtext_fields_lower_to_plaintext_field_values() {
 /// re-canonicalize) end-to-end and proves it lowers identically to the
 /// string-authored path — the content-from-write form renders the same PDF.
 #[test]
-fn richtext_fields_written_as_corpus_render_identically() {
+fn richtext_fields_written_as_content_render_identically() {
     let quill = quillmark::quill_from_path(quillmark_fixtures::quills_path("richtext_form"))
         .expect("load richtext_form quill");
     let engine = Quillmark::new();

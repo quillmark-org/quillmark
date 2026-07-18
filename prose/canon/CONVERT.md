@@ -4,8 +4,8 @@
 
 ## TL;DR
 
-The Typst backend lowers a richtext content (`Content`) to Typst markup with
-`emit_richtext`, which walks the content — lines, anchored marks, embedded
+The Typst backend lowers a `Content` value to Typst markup with
+`emit_content`, which walks the content — lines, anchored marks, embedded
 islands — and never re-parses markdown. Alongside the markup it records a
 per-segment source map (`content ↔ generated` byte windows). This is the only
 markup-producing path in the render engine. Markdown reaches the content once, at
@@ -16,7 +16,7 @@ this page documents how the backend lowers the content it produces.
 ## Pipeline
 
 ```
-emit_richtext(&Content) -> Result<Emission, EmitError>
+emit_content(&Content) -> Result<Emission, EmitError>
   ├─ block walk    lines → headings, paragraphs, code fences, lists, quotes, islands
   ├─ mark sweep    anchored marks → nested #strong[…] / #emph[…] / #link(…)[…] / …
   └─ source map    per-segment (content ↔ gen) windows + one (content, gen) pair per run
@@ -103,7 +103,7 @@ enum EscapeCtx { Markup, StringLit }
 ```
 
 A **run** is one plain-text stretch between marks, islands, and line breaks;
-`gen` slices exactly `escape_markup(corpus_slice)` (or `escape_string` for code /
+`gen` slices exactly `escape_markup(content_slice)` (or `escape_string` for code /
 string-literal runs). Structural bytes — mark delimiters, container syntax,
 `#linebreak()` — fall between runs, inside `gen` but under no run. This is the
 only place a per-segment source map can be produced, because it is the only place
@@ -126,7 +126,7 @@ markdown.
 ## Codegen integration
 
 `generate_lib_typ` (`helper.rs`) lowers each content field's content to a markup
-**block** binding `#let _qm_cN = [ .. ]` via `emit_richtext`, then rebases the
+**block** binding `#let _qm_cN = [ .. ]` via `emit_content`, then rebases the
 emitter's segment map from block-relative to `lib.typ`-relative offsets, yielding
 one `ContentMap { path, block, segments }` per content field. The generated
 `data` dict references `_qm_cN`; a blank content stays an empty string literal.

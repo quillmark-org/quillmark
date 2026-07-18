@@ -175,7 +175,7 @@ pub fn field_boxes(regions: &[RenderedRegion], field: &str) -> Vec<RenderedRegio
     by_page
 }
 
-/// How precisely a [`CorpusHit::pos`] resolved — the marker a caret UI reads to
+/// How precisely a [`ContentHit::pos`] resolved — the marker a caret UI reads to
 /// decide whether to trust the offset. The value is never sub-cluster; the two
 /// variants distinguish the finest this API offers from the segment floor it
 /// degrades to.
@@ -211,7 +211,7 @@ pub enum HitGranularity {
 /// those two happened, so a caret UI need not guess.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CorpusHit {
+pub struct ContentHit {
     /// The content field's schema path (same address space as
     /// [`RenderedRegion::field`]).
     pub field: String,
@@ -262,8 +262,8 @@ mod tests {
     }
 
     #[test]
-    fn corpus_hit_round_trips_through_json() {
-        let hit = CorpusHit {
+    fn content_hit_round_trips_through_json() {
+        let hit = ContentHit {
             field: "body".to_string(),
             pos: 42,
             granularity: Some(HitGranularity::Cluster),
@@ -271,7 +271,7 @@ mod tests {
         let json = serde_json::to_string(&hit).unwrap();
         assert!(json.contains("\"field\":\"body\"") && json.contains("\"pos\":42"));
         assert!(json.contains("\"granularity\":\"cluster\""), "{json}");
-        let back: CorpusHit = serde_json::from_str(&json).unwrap();
+        let back: ContentHit = serde_json::from_str(&json).unwrap();
         assert_eq!(back, hit);
     }
 
@@ -279,8 +279,8 @@ mod tests {
     /// additive-optional discipline, so a hit straight from a backend (no source
     /// map) parses the same as the earlier hit shape lacking it.
     #[test]
-    fn corpus_hit_omits_optionals_when_none() {
-        let hit = CorpusHit {
+    fn content_hit_omits_optionals_when_none() {
+        let hit = ContentHit {
             field: "body".to_string(),
             pos: 42,
             granularity: None,
@@ -290,22 +290,22 @@ mod tests {
             !json.contains("granularity"),
             "unreported granularity omitted: {json}"
         );
-        let back: CorpusHit = serde_json::from_str(&json).unwrap();
+        let back: ContentHit = serde_json::from_str(&json).unwrap();
         assert_eq!(back, hit);
     }
 
     /// The segment-floored variant serializes to its own tag, so a caret UI can
     /// tell a trusted cluster offset from a floored one.
     #[test]
-    fn corpus_hit_segment_granularity_tag() {
-        let hit = CorpusHit {
+    fn content_hit_segment_granularity_tag() {
+        let hit = ContentHit {
             field: "body".to_string(),
             pos: 7,
             granularity: Some(HitGranularity::Segment),
         };
         let json = serde_json::to_string(&hit).unwrap();
         assert!(json.contains("\"granularity\":\"segment\""), "{json}");
-        let back: CorpusHit = serde_json::from_str(&json).unwrap();
+        let back: ContentHit = serde_json::from_str(&json).unwrap();
         assert_eq!(back, hit);
     }
 

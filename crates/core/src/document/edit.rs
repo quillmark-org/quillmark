@@ -117,7 +117,7 @@ pub enum EditError {
     /// A content field-change bundle (text delta, line ops, mark ops) applied
     /// out of bounds or broke an invariant normalization could not repair.
     #[error("content apply failed: {0:?}")]
-    CorpusApply(ApplyError),
+    ContentApply(ApplyError),
 }
 
 impl EditError {
@@ -137,7 +137,7 @@ impl EditError {
             EditError::FieldRichtextDecode { .. } => "FieldRichtextDecode",
             EditError::FieldRichtextNotInline(_) => "FieldRichtextNotInline",
             EditError::FieldConform { .. } => "FieldConform",
-            EditError::CorpusApply(_) => "CorpusApply",
+            EditError::ContentApply(_) => "ContentApply",
         }
     }
 }
@@ -583,7 +583,7 @@ impl Card {
         if !is_valid_field_name(name) {
             return Err(EditError::InvalidFieldName(name.to_string()));
         }
-        self.store_field_corpus(name, &content);
+        self.store_field_content(name, &content);
         Ok(())
     }
 
@@ -593,7 +593,7 @@ impl Card {
     /// and [`apply_field_richtext_change`](Self::apply_field_richtext_change).
     /// Assumes `name` is already validated (all three callers check it or resolve
     /// an existing field first).
-    fn store_field_corpus(&mut self, name: &str, content: &Content) {
+    fn store_field_content(&mut self, name: &str, content: &Content) {
         let canonical = quillmark_content::serial::to_canonical_value(content);
         self.payload_mut()
             .insert_unchecked(name.to_string(), QuillValue::from_json(canonical));
@@ -714,7 +714,7 @@ impl Card {
     /// [`EditError::Import`] on an over-nested markdown input.
     pub fn revise_field(&mut self, name: &str, body: impl Into<String>) -> Result<Delta, EditError> {
         let (content, delta) = self.diff_field(name, body)?;
-        self.store_field_corpus(name, &content);
+        self.store_field_content(name, &content);
         Ok(delta)
     }
 
@@ -765,7 +765,7 @@ impl Card {
     /// form-editor writer. Order is text delta → line ops → mark ops, then one
     /// terminal normalization ([`Content::apply_field_change`]); mark ranges are
     /// in final-text coordinates. Returns
-    /// [`EditError::CorpusApply`] when an op is out of bounds; the apply is
+    /// [`EditError::ContentApply`] when an op is out of bounds; the apply is
     /// all-or-nothing ([`Content::apply_field_change`]), so the body is
     /// unchanged on error — apply the bundle against the body the delta was
     /// computed from.
@@ -777,7 +777,7 @@ impl Card {
     ) -> Result<(), EditError> {
         self.body_mut()
             .apply_field_change(text_delta, line_ops, mark_ops)
-            .map_err(EditError::CorpusApply)
+            .map_err(EditError::ContentApply)
     }
 
     /// Splice a content field-change bundle into a **richtext-valued field**'s
@@ -790,7 +790,7 @@ impl Card {
     /// Returns [`EditError::FieldRichtextDecode`] when the field is absent or its
     /// stored value is not a richtext content (the caller addresses a field it
     /// knows is richtext, exactly as when writing it), and
-    /// [`EditError::CorpusApply`] when the bundle applies out of bounds.
+    /// [`EditError::ContentApply`] when the bundle applies out of bounds.
     pub fn apply_field_richtext_change(
         &mut self,
         name: &str,
@@ -815,8 +815,8 @@ impl Card {
         };
         content
             .apply_field_change(text_delta, line_ops, mark_ops)
-            .map_err(EditError::CorpusApply)?;
-        self.store_field_corpus(name, &content);
+            .map_err(EditError::ContentApply)?;
+        self.store_field_content(name, &content);
         Ok(())
     }
 }

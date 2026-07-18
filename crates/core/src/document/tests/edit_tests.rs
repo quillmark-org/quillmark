@@ -710,7 +710,7 @@ fn test_revise_field_checked_preserves_anchors_and_enforces_inline() {
 /// and reads back through `field_richtext` — the typed door beside the
 /// value-semantics `install_field` / `body`.
 #[test]
-fn test_commit_field_richtext_corpus_object_reads_back() {
+fn test_commit_field_richtext_content_object_reads_back() {
     use quillmark_content::model::{Mark, MarkKind};
 
     let mut content = quillmark_content::import::from_markdown("underlined intro").unwrap();
@@ -915,7 +915,7 @@ fn test_field_richtext_absent_and_non_richtext() {
 /// markdown-clean. Re-parsing yields a string field (schema-less parse), the
 /// documented on-disk identity boundary; the content survives only via the DTO.
 #[test]
-fn test_corpus_field_emits_as_markdown_projection() {
+fn test_content_field_emits_as_markdown_projection() {
     let mut doc = Document::new(QuillReference::from_str("test_quill").unwrap());
     commit_richtext(
         doc.main_mut(),
@@ -948,7 +948,7 @@ fn test_corpus_field_emits_as_markdown_projection() {
 /// A plain object field that is *not* a canonical content emits structurally
 /// (unchanged) — projection fires only on genuine content objects.
 #[test]
-fn test_non_corpus_object_field_emits_structurally() {
+fn test_non_content_object_field_emits_structurally() {
     let mut doc = Document::new(QuillReference::from_str("test_quill").unwrap());
     doc.main_mut()
         .store_field(
@@ -967,7 +967,7 @@ fn test_non_corpus_object_field_emits_structurally() {
 /// the old guard this projected to a flattened markdown scalar, breaking the
 /// field's round-trip. Issue #905.
 #[test]
-fn test_noncanonical_order_corpus_field_stays_structural() {
+fn test_noncanonical_order_content_field_stays_structural() {
     // A real content, then its top-level keys rebuilt in reverse (same content,
     // non-canonical bytes).
     let rt = quillmark_content::import::from_markdown("**bold**").unwrap();
@@ -1070,7 +1070,7 @@ fn test_apply_body_change_applies_bundle() {
     assert_eq!((strong.start, strong.end), (3, 4));
 }
 
-/// An out-of-range mark op surfaces as `EditError::CorpusApply` rather than a
+/// An out-of-range mark op surfaces as `EditError::ContentApply` rather than a
 /// panic or a silent no-op.
 #[test]
 fn test_apply_body_change_reports_out_of_range() {
@@ -1091,8 +1091,8 @@ fn test_apply_body_change_reports_out_of_range() {
         }],
     );
     match result {
-        Err(EditError::CorpusApply(_)) => {}
-        other => panic!("expected CorpusApply, got {other:?}"),
+        Err(EditError::ContentApply(_)) => {}
+        other => panic!("expected ContentApply, got {other:?}"),
     }
 }
 

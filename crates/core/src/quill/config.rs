@@ -1788,10 +1788,10 @@ impl QuillConfig {
         // violations and malformed richtext literals surface as load errors, and
         // where seeding and the render floor later read a pre-validated content
         // instead of re-importing the markdown per document.
-        populate_card_corpus(&mut main, "main", &mut errors);
+        populate_card_content(&mut main, "main", &mut errors);
         for card in &mut card_kinds {
             let label = format!("card_kinds.{}", card.name);
-            populate_card_corpus(card, &label, &mut errors);
+            populate_card_content(card, &label, &mut errors);
         }
 
         if !errors.is_empty() {
@@ -1835,34 +1835,34 @@ fn example_contains_fence_line(text: &str) -> bool {
 /// a content companion. Both `richtext` and its literal-codec sibling `plaintext`
 /// are content leaves; a scalar (`string`, `integer`, `enum`, …) never carries
 /// one; an `array<richtext>` or an `object` with a content property does.
-fn field_contains_corpus(field: &FieldSchema) -> bool {
+fn field_contains_content(field: &FieldSchema) -> bool {
     match &field.r#type {
         FieldType::RichText { .. } | FieldType::PlainText { .. } => true,
-        FieldType::Array => field.items.as_deref().is_some_and(field_contains_corpus),
+        FieldType::Array => field.items.as_deref().is_some_and(field_contains_content),
         FieldType::Object => field
             .properties
             .as_ref()
-            .is_some_and(|p| p.values().any(|f| field_contains_corpus(f))),
+            .is_some_and(|p| p.values().any(|f| field_contains_content(f))),
         _ => false,
     }
 }
 
-/// Populate a field's `default_corpus` / `example_corpus` companion caches from
+/// Populate a field's `default_content` / `example_content` companion caches from
 /// its markdown literals. No-op for a non-richtext field; a failed import or a
 /// `richtext(inline)` violation is appended to `errors` as a load diagnostic.
-fn populate_field_corpus(field: &mut FieldSchema, owner: &str, errors: &mut Vec<Diagnostic>) {
-    if !field_contains_corpus(field) {
+fn populate_field_content(field: &mut FieldSchema, owner: &str, errors: &mut Vec<Diagnostic>) {
+    if !field_contains_content(field) {
         return;
     }
     if let Some(default) = field.default.clone() {
-        match literal_corpus(&default, field, &format!("{owner} `default`")) {
-            Ok(content) => field.default_corpus = content,
+        match literal_content(&default, field, &format!("{owner} `default`")) {
+            Ok(content) => field.default_content = content,
             Err(d) => errors.push(d),
         }
     }
     if let Some(example) = field.example.clone() {
-        match literal_corpus(&example, field, &format!("{owner} `example`")) {
-            Ok(content) => field.example_corpus = content,
+        match literal_content(&example, field, &format!("{owner} `example`")) {
+            Ok(content) => field.example_content = content,
             Err(d) => errors.push(d),
         }
     }
@@ -1872,9 +1872,9 @@ fn populate_field_corpus(field: &mut FieldSchema, owner: &str, errors: &mut Vec<
 /// `default`/`example`, and the card's `body.example` (block richtext — no
 /// inline constraint; skipped when the body is disabled, since its example is
 /// inert).
-fn populate_card_corpus(card: &mut CardSchema, label: &str, errors: &mut Vec<Diagnostic>) {
+fn populate_card_content(card: &mut CardSchema, label: &str, errors: &mut Vec<Diagnostic>) {
     for (name, field) in card.fields.iter_mut() {
-        populate_field_corpus(field, &format!("{label} field `{name}`"), errors);
+        populate_field_content(field, &format!("{label} field `{name}`"), errors);
     }
     let body_enabled = card.body.as_ref().is_none_or(|b| b.enabled != Some(false));
     if body_enabled {
@@ -1882,7 +1882,7 @@ fn populate_card_corpus(card: &mut CardSchema, label: &str, errors: &mut Vec<Dia
             if let Some(example) = body.example.clone() {
                 match crate::document::import_body(&example) {
                     Ok(rt) => {
-                        body.example_corpus = Some(QuillValue::from_json(
+                        body.example_content = Some(QuillValue::from_json(
                             quillmark_content::serial::to_canonical_value(&rt),
                         ));
                     }
@@ -1905,7 +1905,7 @@ fn populate_card_corpus(card: &mut CardSchema, label: &str, errors: &mut Vec<Dia
 /// only their richtext leaves and passing other elements through unchanged.
 /// `Ok(None)` when the literal carries no importable richtext (a null value, or
 /// a field the gate already cleared as non-richtext); `Err` is a load error.
-fn literal_corpus(
+fn literal_content(
     value: &QuillValue,
     field: &FieldSchema,
     label: &str,
@@ -1924,7 +1924,7 @@ fn literal_corpus(
                         crate::document::RichtextDecodeError::BadMarkdown(m) => {
                             format!("markdown import failed: {m}")
                         }
-                        crate::document::RichtextDecodeError::NotCorpus(m) => {
+                        crate::document::RichtextDecodeError::NotContent(m) => {
                             format!("not a valid richtext content: {m}")
                         }
                     };
@@ -1981,7 +1981,7 @@ fn literal_corpus(
             let Some(items) = field.items.as_deref() else {
                 return Ok(None);
             };
-            if !field_contains_corpus(items) {
+            if !field_contains_content(items) {
                 return Ok(None);
             }
             let arr = json.as_array().cloned().unwrap_or_default();
@@ -1989,7 +1989,7 @@ fn literal_corpus(
             for (idx, elem) in arr.iter().enumerate() {
                 let elem_v = QuillValue::from_json(elem.clone());
                 let content =
-                    literal_corpus(&elem_v, items, &format!("{label}[{idx}]"))?.unwrap_or(elem_v);
+                    literal_content(&elem_v, items, &format!("{label}[{idx}]"))?.unwrap_or(elem_v);
                 out.push(content.into_json());
             }
             Ok(Some(QuillValue::from_json(serde_json::Value::Array(out))))
@@ -1998,7 +1998,7 @@ fn literal_corpus(
             let Some(props) = field.properties.as_ref() else {
                 return Ok(None);
             };
-            if !props.values().any(|f| field_contains_corpus(f)) {
+            if !props.values().any(|f| field_contains_content(f)) {
                 return Ok(None);
             }
             let obj = json.as_object().cloned().unwrap_or_default();
@@ -2007,7 +2007,7 @@ fn literal_corpus(
                 let converted = match props.get(k) {
                     Some(pschema) => {
                         let pv = QuillValue::from_json(v.clone());
-                        literal_corpus(&pv, pschema, &format!("{label}.{k}"))?
+                        literal_content(&pv, pschema, &format!("{label}.{k}"))?
                             .map(QuillValue::into_json)
                             .unwrap_or_else(|| v.clone())
                     }

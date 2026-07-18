@@ -43,7 +43,7 @@ impl Document {
     ///
     ///    **Content-field carve-out.** A richtext field committed as a canonical
     ///    content object (and the card `$body`) is *intentionally* markdown-lossy
-    ///    on markdown emit: it projects to its markdown form (`project_corpus_field`),
+    ///    on markdown emit: it projects to its markdown form (`project_content_field`),
     ///    so identity marks (anchors, island ids) and content-only marks
     ///    (`underline`) do not survive a `to_markdown`→`from_markdown` round-trip.
     ///    On-disk identity is markdown-lossy by design; the storage DTO is the
@@ -249,7 +249,7 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
                 // its content carries no user nested-comments/fills, so the
                 // projected scalar routes through the plain string path.
                 if !*fill {
-                    if let Some(markdown) = project_corpus_field(value.as_json()) {
+                    if let Some(markdown) = project_content_field(value.as_json()) {
                         emit_field(
                             out,
                             key,
@@ -318,7 +318,7 @@ fn emit_payload_items(out: &mut String, items: &[PayloadItem]) {
 /// (`from_markdown` is schema-less and stores a markdown-authored richtext field
 /// as a plain string), so on a parse-originated document this projects only the
 /// fields the writer deliberately committed as content.
-fn project_corpus_field(value: &JsonValue) -> Option<String> {
+fn project_content_field(value: &JsonValue) -> Option<String> {
     if !value.is_object() {
         return None;
     }

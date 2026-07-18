@@ -58,7 +58,7 @@ pub(crate) fn position_at(
     page: usize,
     x: f32,
     y: f32,
-) -> Option<quillmark_core::CorpusHit> {
+) -> Option<quillmark_core::ContentHit> {
     span_scan::position_at(doc, world, helper, windows, page, x, y)
 }
 

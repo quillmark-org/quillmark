@@ -1,4 +1,4 @@
-//! `Content` — the canonical content content model for Quillmark (issue #831).
+//! `Content` — the canonical content model for Quillmark (issue #831).
 //!
 //! One [`Content`] per content field: a single text sequence carrying line
 //! attributes, anchored marks, and embedded islands, over one coordinate space

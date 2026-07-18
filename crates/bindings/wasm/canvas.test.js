@@ -135,7 +135,7 @@ describe('LiveSession canvas preview', () => {
     const cy = (y0 + y1) / 2
 
     // Forward: scan across the segment's ink until a point resolves (glyph
-    // layout decides which x lands on ink), then assert the CorpusHit crosses
+    // layout decides which x lands on ink), then assert the ContentHit crosses
     // the JS boundary with the right shape.
     let hit = null
     for (let f = 0.1; f <= 0.9 && !hit; f += 0.1) {

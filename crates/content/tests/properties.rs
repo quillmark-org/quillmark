@@ -160,7 +160,7 @@ proptest! {
     /// Property 1: the content is a fixed point of export∘import, and every
     /// imported content satisfies its invariants.
     #[test]
-    fn corpus_round_trip_and_invariants(md in document()) {
+    fn content_round_trip_and_invariants(md in document()) {
         let rt = from_markdown(&md).unwrap();
         prop_assert_eq!(rt.validate(), Ok(()), "invariants for {:?}", md);
 
@@ -295,7 +295,7 @@ proptest! {
         // The guarantee: no clipped/dropped mark leaks a delimiter into the text.
         // (Mark *fidelity* is not promised — an unrepresentable editor mark is
         // degraded away — only that the text survives. The import-domain
-        // fixed-point contract is covered by `corpus_round_trip_and_invariants`.)
+        // fixed-point contract is covered by `content_round_trip_and_invariants`.)
         prop_assert_eq!(&rt2.text, &rt.text,
             "editor mark corrupted text.\n text: {:?}\n md:   {:?}\n out:  {:?}",
             rt.text, md, rt2.text);
@@ -556,7 +556,7 @@ fn import_row(contents: &[String]) -> Vec<Value> {
 
 /// A single-table content with the given (possibly ill-shaped) props. `id` is the
 /// first-island id import mints (`isl-0`), so a re-imported table compares equal.
-fn table_corpus(aligns: Vec<&str>, header: Vec<Value>, rows: Vec<Vec<Value>>) -> Content {
+fn table_content(aligns: Vec<&str>, header: Vec<Value>, rows: Vec<Vec<Value>>) -> Content {
     Content {
         text: "\u{FFFC}".into(),
         lines: vec![Line {
@@ -600,7 +600,7 @@ proptest! {
             .max(row_cells.iter().map(Vec::len).max().unwrap_or(0));
         prop_assume!(cols >= 1);
 
-        let mut rt = table_corpus(aligns.clone(), header_cells, row_cells);
+        let mut rt = table_content(aligns.clone(), header_cells, row_cells);
         rt.normalize();
         prop_assert_eq!(rt.validate(), Ok(()), "normalized table invalid");
 

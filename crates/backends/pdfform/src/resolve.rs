@@ -255,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn richtext_corpus_lowers_to_plaintext() {
+    fn richtext_content_lowers_to_plaintext() {
         // A richtext field crosses the seam as canonical content JSON; the widget
         // value is its plaintext — markup dropped (marks live off the text),
         // island slots stripped.

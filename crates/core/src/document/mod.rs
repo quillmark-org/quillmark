@@ -38,7 +38,7 @@ pub(crate) fn import_body(md: &str) -> Result<Content, ImportError> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RichtextDecodeError {
     /// A JSON object that is not a valid canonical content.
-    NotCorpus(String),
+    NotContent(String),
     /// A markdown string that failed to import.
     BadMarkdown(String),
 }
@@ -47,7 +47,7 @@ impl RichtextDecodeError {
     /// The inner failure message, without an encoding-specific prefix.
     pub fn into_message(self) -> String {
         match self {
-            RichtextDecodeError::NotCorpus(m) | RichtextDecodeError::BadMarkdown(m) => m,
+            RichtextDecodeError::NotContent(m) | RichtextDecodeError::BadMarkdown(m) => m,
         }
     }
 }
@@ -69,7 +69,7 @@ pub(crate) fn decode_richtext_value(
     match value {
         serde_json::Value::Object(_) => Some(
             quillmark_content::serial::from_canonical_value(value)
-                .map_err(|e| RichtextDecodeError::NotCorpus(e.to_string())),
+                .map_err(|e| RichtextDecodeError::NotContent(e.to_string())),
         ),
         serde_json::Value::String(md) => {
             Some(import_body(md).map_err(|e| RichtextDecodeError::BadMarkdown(e.to_string())))
@@ -257,7 +257,7 @@ impl Card {
             Some(result) => result,
             None => match value {
                 serde_json::Value::Null => Ok(Content::empty()),
-                _ => Err(RichtextDecodeError::NotCorpus(
+                _ => Err(RichtextDecodeError::NotContent(
                     "expected a richtext content object or a markdown string".to_string(),
                 )),
             },

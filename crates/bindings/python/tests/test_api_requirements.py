@@ -279,16 +279,16 @@ def test_remove_card_then_push_card_round_trips_fields():
     assert export_markdown(doc.cards[0]["body"]) == "Body"
 
 
-def test_push_card_accepts_corpus_dict_body():
+def test_push_card_accepts_content_dict_body():
     """`body` on a pushed card may be the canonical content dict (the shape
     `cards()`/`remove_card` emit), not just a markdown string — exercises
     `py_dict_to_card`'s content-dict input path."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.push_card({"kind": "note", "body": "**Bold** body."})
-    corpus_body = doc.cards[0]["body"]
-    assert isinstance(corpus_body, dict)
+    content_body = doc.cards[0]["body"]
+    assert isinstance(content_body, dict)
 
-    doc.push_card({"kind": "note", "body": corpus_body})
+    doc.push_card({"kind": "note", "body": content_body})
     assert export_markdown(doc.cards[1]["body"]) == export_markdown(doc.cards[0]["body"])
 
 
@@ -689,7 +689,7 @@ def test_writer_card_cursor_set_and_body():
         ed.card(9).set("author", "x")
 
 
-def test_writer_set_coerces_richtext_to_corpus():
+def test_writer_set_coerces_richtext_to_content():
     """A richtext field commits the canonical content, not the authored markdown."""
     quill = _richtext_form_quill()
     doc = Document("richtext_form@0.1.0")
@@ -791,7 +791,7 @@ def test_revise_field_and_apply_change_splice():
     assert export_markdown(field(doc.main, "bio")) == "make it **bold** here"
 
 
-def test_corpus_codec_rebase_and_map_pos():
+def test_content_codec_rebase_and_map_pos():
     """The document-free codec round-trips and maps a position through a rebase."""
     rt = import_markdown("hello world")
     assert rt["text"] == "hello world"

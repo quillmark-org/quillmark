@@ -317,7 +317,7 @@ def test_document_authoring_text_helpers():
     assert isinstance(instr, str) and "taro" in instr
 
 
-def test_install_body_corpus_round_trip():
+def test_install_body_content_round_trip():
     """`install(rt)` installs the content dict `body` reads back — value semantics,
     lossless (not markdown-forced). The kwargs idiom of WASM `install`."""
     doc = Document.from_markdown(

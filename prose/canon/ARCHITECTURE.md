@@ -39,7 +39,7 @@ High-level API: `Quillmark` (the engine — a backend registry + render dispatch
 
 ### `backends/quillmark-typst`
 
-Implements `Backend` for PDF, SVG, and PNG. Lowers each richtext content field's content to Typst markup at codegen (`emit::emit_richtext`), recording a per-segment source map. Resolves fonts and assets. See [CONVERT.md](CONVERT.md) and [PLATE_DATA.md](PLATE_DATA.md).
+Implements `Backend` for PDF, SVG, and PNG. Lowers each content field's `Content` value to Typst markup at codegen (`emit::emit_content`), recording a per-segment source map. Resolves fonts and assets. See [CONVERT.md](CONVERT.md) and [PLATE_DATA.md](PLATE_DATA.md).
 
 ### `backends/quillmark-pdfform`
 

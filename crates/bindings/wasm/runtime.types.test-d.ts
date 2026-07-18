@@ -21,7 +21,7 @@ import type {
 	PaintResult as CanonicalPaintResult,
 	FieldRegion as CanonicalFieldRegion,
 	ChangeSet as CanonicalChangeSet,
-	CorpusHit as CanonicalCorpusHit
+	ContentHit as CanonicalContentHit
   // The BUILT copy (synced from `runtime/runtime.d.ts` by build-wasm.sh / the
   // cp step), because only there does the d.ts's own `../core/wasm.js` import
   // resolve to the generated `pkg/core` build. The two copies are byte-identical.
@@ -37,7 +37,7 @@ import type {
 	PaintResult as TypstPaintResult,
 	FieldRegion as TypstFieldRegion,
 	ChangeSet as TypstChangeSet,
-	CorpusHit as TypstCorpusHit
+	ContentHit as TypstContentHit
 } from '../../../pkg/backends/typst/wasm';
 
 // One mutual-assignability pair per hoisted type: typst → canonical and
@@ -102,10 +102,10 @@ const changeSetB: TypstChangeSet = {} as CanonicalChangeSet;
 void changeSetA;
 void changeSetB;
 
-const corpusHitA: CanonicalCorpusHit = {} as TypstCorpusHit;
-const corpusHitB: TypstCorpusHit = {} as CanonicalCorpusHit;
-void corpusHitA;
-void corpusHitB;
+const contentHitA: CanonicalContentHit = {} as TypstContentHit;
+const contentHitB: TypstContentHit = {} as CanonicalContentHit;
+void contentHitA;
+void contentHitB;
 
 const renderResultKeys: KeysEqual<CanonicalRenderResult, TypstRenderResult> = true;
 const renderOptionsKeys: KeysEqual<CanonicalRenderOptions, TypstRenderOptions> = true;
@@ -115,7 +115,7 @@ const paintOptionsKeys: KeysEqual<CanonicalPaintOptions, TypstPaintOptions> = tr
 const paintResultKeys: KeysEqual<CanonicalPaintResult, TypstPaintResult> = true;
 const fieldRegionKeys: KeysEqual<CanonicalFieldRegion, TypstFieldRegion> = true;
 const changeSetKeys: KeysEqual<CanonicalChangeSet, TypstChangeSet> = true;
-const corpusHitKeys: KeysEqual<CanonicalCorpusHit, TypstCorpusHit> = true;
+const contentHitKeys: KeysEqual<CanonicalContentHit, TypstContentHit> = true;
 void renderResultKeys;
 void renderOptionsKeys;
 void artifactKeys;
@@ -124,7 +124,7 @@ void paintOptionsKeys;
 void paintResultKeys;
 void fieldRegionKeys;
 void changeSetKeys;
-void corpusHitKeys;
+void contentHitKeys;
 
 // ── Re-export presence guard (#948) ─────────────────────────────────────────
 // The content edit vocabulary is DECLARED in the core build but consumed through
@@ -151,7 +151,7 @@ import type {
 
 // Referencing each name in an exported tuple keeps the import "used" without a
 // runtime statement; an exported alias is never an unused-local error.
-export type CorpusExportsPresent = [
+export type ContentExportsPresent = [
 	Content,
 	ContentLine,
 	ContentContainer,

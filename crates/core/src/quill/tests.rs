@@ -3167,7 +3167,7 @@ fn inline_richtext_example_over_one_para_is_a_load_error() {
 }
 
 #[test]
-fn inline_richtext_single_line_example_loads_and_caches_corpus() {
+fn inline_richtext_single_line_example_loads_and_caches_content() {
     let config = quill_with_field(
         "    tag:\n      type: richtext\n      inline: true\n      example: \"a *bold* motto\"\n",
     )
@@ -3177,9 +3177,9 @@ fn inline_richtext_single_line_example_loads_and_caches_corpus() {
     // The load pass imports the markdown example into its content companion; the
     // authored `example` string is retained untouched (Alternative A).
     let content = field
-        .example_corpus
+        .example_content
         .as_ref()
-        .expect("example_corpus cached");
+        .expect("example_content cached");
     assert!(
         content.as_json().is_object(),
         "cached example is a content object"
@@ -3191,16 +3191,16 @@ fn inline_richtext_single_line_example_loads_and_caches_corpus() {
 }
 
 #[test]
-fn block_richtext_default_caches_corpus() {
+fn block_richtext_default_caches_content() {
     let config = quill_with_field(
         "    body:\n      type: richtext\n      default: \"## Heading\\n\\nBody.\"\n",
     )
     .expect("block richtext default loads");
     let field = config.main.fields.get("body").unwrap();
     let content = field
-        .default_corpus
+        .default_content
         .as_ref()
-        .expect("default_corpus cached");
+        .expect("default_content cached");
     assert!(
         content.as_json().is_object(),
         "cached default is a content object"
@@ -3215,9 +3215,9 @@ fn array_of_inline_richtext_caches_each_element() {
     .expect("array<inline richtext> loads");
     let field = config.main.fields.get("refs").unwrap();
     let content = field
-        .example_corpus
+        .example_content
         .as_ref()
-        .expect("example_corpus cached");
+        .expect("example_content cached");
     let arr = content.as_json().as_array().expect("array of content");
     assert_eq!(arr.len(), 2);
     assert!(
@@ -3259,7 +3259,7 @@ fn inline_coercion_accepts_single_line_document_value() {
 }
 
 #[test]
-fn richtext_zero_value_is_empty_corpus() {
+fn richtext_zero_value_is_empty_content() {
     let field = FieldSchema::new("x".to_string(), FieldType::RichText { inline: false }, None);
     let zero = zero_value(&field);
     assert!(
@@ -3274,7 +3274,7 @@ fn richtext_zero_value_is_empty_corpus() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn plaintext_field_caches_literal_corpus() {
+fn plaintext_field_caches_literal_content() {
     // A plaintext example is imported verbatim: markdown delimiters stay literal
     // (no marks), and the cached companion is a mark-free content object.
     let config = quill_with_field(
@@ -3283,7 +3283,7 @@ fn plaintext_field_caches_literal_corpus() {
     .expect("plaintext example loads");
     let field = config.main.fields.get("subject").unwrap();
     assert_eq!(field.r#type, FieldType::PlainText { inline: false });
-    let content = field.example_corpus.as_ref().expect("example_corpus cached");
+    let content = field.example_content.as_ref().expect("example_content cached");
     let rt = quillmark_content::serial::from_canonical_value(content.as_json()).unwrap();
     assert!(rt.is_plain(), "cached plaintext content is plain");
     assert_eq!(
@@ -3326,7 +3326,7 @@ fn inline_plaintext_rejects_multiline_document_value() {
 }
 
 #[test]
-fn plaintext_wire_corpus_with_marks_is_rejected_not_stripped() {
+fn plaintext_wire_content_with_marks_is_rejected_not_stripped() {
     // A content object carrying a mark is not silently downgraded to plain — it
     // is rejected, mirroring the inline precedent and keeping coercion lossless.
     let config = quill_with_field("    subject:\n      type: plaintext\n").expect("loads");

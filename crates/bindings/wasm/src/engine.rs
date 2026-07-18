@@ -3,7 +3,7 @@
 use crate::error::WasmError;
 use crate::types::Diagnostic;
 #[cfg(any(feature = "typst", feature = "pdfform"))]
-use crate::types::{ChangeSet, CorpusHit, FieldRegion, RenderOptions, RenderResult};
+use crate::types::{ChangeSet, ContentHit, FieldRegion, RenderOptions, RenderResult};
 use js_sys::{Array, Uint8Array};
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 use serde::Deserialize;
@@ -1281,7 +1281,7 @@ impl Document {
         #[wasm_bindgen(unchecked_param_type = "Content")] rt: JsValue,
     ) -> Result<(), JsValue> {
         let addr = Addr::from_js_or_string(&addr)?;
-        let content = js_to_corpus(rt, "install")?;
+        let content = js_to_content(rt, "install")?;
         let card = self.addr_card_mut(&addr)?;
         match &addr.field {
             None => {
@@ -1723,7 +1723,7 @@ impl Addr {
 /// Decode a JS value as a canonical `Content` content object — the `install`
 /// input (value semantics, content only). Rejects a markdown string: the cold
 /// path is spelled `install(addr, importMarkdown(md))`.
-fn js_to_corpus(value: JsValue, ctx: &str) -> Result<quillmark_core::Content, JsValue> {
+fn js_to_content(value: JsValue, ctx: &str) -> Result<quillmark_core::Content, JsValue> {
     let json = js_value_to_json(value, ctx)?;
     if !json.is_object() {
         return Err(WasmError::from(format!(
@@ -1775,7 +1775,7 @@ pub fn import_markdown(markdown: &str) -> Result<JsValue, JsValue> {
 pub fn export_markdown(
     #[wasm_bindgen(unchecked_param_type = "Content")] rt: JsValue,
 ) -> Result<String, JsValue> {
-    let content = js_to_corpus(rt, "exportMarkdown")?;
+    let content = js_to_content(rt, "exportMarkdown")?;
     Ok(quillmark_content::to_markdown(&content))
 }
 
@@ -1789,7 +1789,7 @@ pub fn rebase(
     #[wasm_bindgen(unchecked_param_type = "Content")] base: JsValue,
     markdown: &str,
 ) -> Result<JsValue, JsValue> {
-    let base = js_to_corpus(base, "rebase")?;
+    let base = js_to_content(base, "rebase")?;
     let (content, delta) = quillmark_content::diff_import(&base, markdown)
         .map_err(|e| WasmError::from(format!("rebase: {e}")).to_js_value())?;
     let out = serde_json::json!({
@@ -2257,9 +2257,9 @@ impl LiveSession {
     /// bottom-left origin — the same space as `fieldAt`. The offset is
     /// cluster-exact and degrades to the containing segment's start on
     /// origin-less ink (list markers, a code fence's interior). See
-    /// `CorpusHit`.
+    /// `ContentHit`.
     #[wasm_bindgen(js_name = positionAt)]
-    pub fn position_at(&self, page: usize, x: f32, y: f32) -> Option<CorpusHit> {
+    pub fn position_at(&self, page: usize, x: f32, y: f32) -> Option<ContentHit> {
         self.inner.position_at(page, x, y).map(Into::into)
     }
 

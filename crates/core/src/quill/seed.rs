@@ -45,7 +45,7 @@ use crate::{Card, Document, Payload, QuillReference, QuillValue, SeedOverlay};
 /// system metadata is attached by the caller.
 ///
 /// **Seed-commits-content**: a seeded richtext field commits the *content* form
-/// (the load-time [`example_corpus`](crate::quill::FieldSchema::example_corpus)
+/// (the load-time [`example_content`](crate::quill::FieldSchema::example_content)
 /// cache), and the body is the content, so a seeded document is canonical from
 /// birth rather than a markdown string re-imported at render. Overlay values
 /// (from a document's `$seed`) pass through as authored and canonicalize at the
@@ -53,7 +53,7 @@ use crate::{Card, Document, Payload, QuillReference, QuillValue, SeedOverlay};
 fn seed_parts(schema: &CardSchema, overlay: Option<&SeedOverlay>) -> (Payload, Content) {
     // Drive by `schema.fields` (declaration order), so the result is in
     // declaration order natively — no merge-then-sort. Per field the precedence
-    // is `overlay › example_corpus › example › absent`: a richtext-bearing field
+    // is `overlay › example_content › example › absent`: a richtext-bearing field
     // seeds from its pre-validated content companion, every other from its raw
     // `example`, and the overlay overrides either (and can supply a value for a
     // `default`-only field the base omits). An overlay key naming no schema
@@ -62,7 +62,7 @@ fn seed_parts(schema: &CardSchema, overlay: Option<&SeedOverlay>) -> (Payload, C
     for (name, field) in &schema.fields {
         let value = overlay
             .and_then(|o| o.fields.get(name))
-            .or(field.example_corpus.as_ref())
+            .or(field.example_content.as_ref())
             .or(field.example.as_ref());
         if let Some(value) = value {
             fields.insert(name.clone(), value.clone());
@@ -75,7 +75,7 @@ fn seed_parts(schema: &CardSchema, overlay: Option<&SeedOverlay>) -> (Payload, C
     let body = if schema.body_enabled() {
         if let Some(overlay_body) = overlay.and_then(|o| o.body.clone()) {
             crate::document::import_body(&overlay_body).unwrap_or_else(|_| Content::empty())
-        } else if let Some(content) = schema.body.as_ref().and_then(|b| b.example_corpus.as_ref()) {
+        } else if let Some(content) = schema.body.as_ref().and_then(|b| b.example_content.as_ref()) {
             quillmark_content::serial::from_canonical_value(content.as_json())
                 .unwrap_or_else(|_| Content::empty())
         } else if let Some(example) = schema.body.as_ref().and_then(|b| b.example.as_ref()) {

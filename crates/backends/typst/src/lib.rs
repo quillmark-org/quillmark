@@ -33,7 +33,7 @@ use std::borrow::Cow;
 use quillmark_core::{
     quill::{build_transform_schema, QUILLMARK_INLINE_KEY, CONTENT_MEDIA_TYPE},
     session::SessionHandle,
-    Backend, ChangeSet, CorpusHit, Diagnostic, LiveSession, OutputFormat, Quill, RenderError,
+    Backend, ChangeSet, ContentHit, Diagnostic, LiveSession, OutputFormat, Quill, RenderError,
     RenderOptions, RenderResult, RenderedRegion, Severity,
 };
 
@@ -195,7 +195,7 @@ fn page_hashes(document: &typst_layout::PagedDocument) -> Vec<u128> {
 
 /// Prepare raw document data for the helper codegen. The seam already carries
 /// the render shape — richtext fields are canonical content JSON, not markdown
-/// to re-parse (lowered to markup at codegen via [`emit::emit_richtext`]), dates
+/// to re-parse (lowered to markup at codegen via [`emit::emit_content`]), dates
 /// are strings (lowered to `datetime(..)` at codegen) — so there is no
 /// per-field transform here. `meta` is the session's cached [`SchemaMeta`].
 ///
@@ -446,7 +446,7 @@ impl SessionHandle for TypstSession {
     /// the containing segment's start on origin-less ink. `None` off all
     /// content ink or on scalar/widget ink (no content address). Widgets draw no
     /// spanned content ink, so — unlike `field_at` — they are not consulted.
-    fn position_at(&self, page: usize, x: f32, y: f32) -> Option<CorpusHit> {
+    fn position_at(&self, page: usize, x: f32, y: f32) -> Option<ContentHit> {
         overlay::position_at(
             &self.document,
             &self.world,

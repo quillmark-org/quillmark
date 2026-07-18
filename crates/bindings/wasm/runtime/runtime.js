@@ -491,7 +491,7 @@ export class LiveSession {
 	 * @param {number} page
 	 * @param {number} x
 	 * @param {number} y
-	 * @returns {import('./runtime.d.ts').CorpusHit | undefined}
+	 * @returns {import('./runtime.d.ts').ContentHit | undefined}
 	 */
 	positionAt(page, x, y) {
 		return this.#inner.positionAt(page, x, y);

@@ -79,7 +79,7 @@ pub struct BodyCardSchema {
     /// loader (e.g. a hand-built test schema), in which case consumers fall back
     /// to importing `example`.
     #[serde(skip)]
-    pub example_corpus: Option<QuillValue>,
+    pub example_content: Option<QuillValue>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -255,7 +255,7 @@ pub enum FieldType {
     /// Formatted as string; validates against the YAML 1.1 timestamp grammar
     /// (bare `YYYY-MM-DD` through full RFC 3339 with offset).
     DateTime,
-    /// Rich text — the canonical content content model ([`Content`]). Surfaced
+    /// Rich text — the canonical content model ([`Content`]). Surfaced
     /// as `type: richtext`; single-line shape is declared with the sibling `inline:` key.
     /// The transform schema marks it `contentMediaType:
     /// application/quillmark-content+json` and, when inline, `quillmark:inline:
@@ -389,7 +389,7 @@ impl<'de> Deserialize<'de> for FieldType {
 ///
 /// `Serialize`/`Deserialize` are hand-written (below) rather than derived: the
 /// wire folds a sibling `inline:` key into the `FieldType` enum, `name` rides
-/// the map key, and the `*_corpus` caches never serialize.
+/// the map key, and the `*_content` caches never serialize.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FieldSchema {
     /// The map key carries this on the wire; not serialized, to avoid duplication.
@@ -420,12 +420,12 @@ pub struct FieldSchema {
     /// richtext default crosses the seam as content, not a re-imported string.
     /// `None` for a non-richtext field, a null/absent default, or a schema built
     /// outside the loader.
-    pub default_corpus: Option<QuillValue>,
+    pub default_content: Option<QuillValue>,
     /// Canonical-content form of [`example`](Self::example) for a richtext-bearing
     /// field, imported once at quill load and cached — never serialized. Seeding
     /// commits this so a seeded field is content from birth. `None` under the same
-    /// conditions as [`default_corpus`](Self::default_corpus).
-    pub example_corpus: Option<QuillValue>,
+    /// conditions as [`default_content`](Self::default_content).
+    pub example_content: Option<QuillValue>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -463,8 +463,8 @@ impl FieldSchema {
             enum_values: None,
             properties: None,
             items: None,
-            default_corpus: None,
-            example_corpus: None,
+            default_content: None,
+            example_content: None,
         }
     }
 
@@ -513,8 +513,8 @@ impl FieldSchema {
             // Content caches are populated by the loader's post-pass
             // (`QuillConfig::from_yaml`), which alone imports and validates the
             // markdown literals; a bare `from_quill_value` leaves them empty.
-            default_corpus: None,
-            example_corpus: None,
+            default_content: None,
+            example_content: None,
         })
     }
 
@@ -592,7 +592,7 @@ impl Serialize for FieldSchema {
         use serde::ser::SerializeMap;
         // `inline: true` is projected back out of the enum — the flag's single
         // carrier — so the wire round-trips. `name` rides the map key; the
-        // `*_corpus` caches are load-time derivations, never serialized.
+        // `*_content` caches are load-time derivations, never serialized.
         let inline = matches!(self.r#type, FieldType::RichText { inline: true }).then_some(true);
         let len = 1
             + inline.is_some() as usize
