@@ -568,35 +568,46 @@ export class DocumentWriter {
 	}
 	/**
 	 * Typed-commit one main-card field (strict coerce, mismatch throws now).
-	 * Throws `UnknownField` for a name the schema does not declare. See
-	 * `Document.commitField`.
+	 * Throws `UnknownField` for a name the schema does not declare.
 	 * @param {string} name
 	 * @param {unknown} value
 	 * @returns {void}
 	 */
 	set(name, value) {
-		return this.#doc.commitField(this.#quill, name, value);
+		return this.#doc._commitField(this.#quill, name, value);
 	}
 	/**
 	 * Typed-commit several main-card fields atomically — nothing is applied on
 	 * error (throws a per-field diagnostic bundle, including an `UnknownField`
-	 * for each undeclared name). See `Document.commitFields`.
+	 * for each undeclared name).
 	 * @param {Record<string, unknown>} fields
 	 * @returns {void}
 	 */
 	setAll(fields) {
-		return this.#doc.commitFields(this.#quill, MAIN_CARD_ADDR, fields);
+		return this.#doc._commitFields(this.#quill, MAIN_CARD_ADDR, fields);
 	}
 	/**
 	 * Set the main body from markdown (edit semantics: surviving anchors rebase),
 	 * discarding the text delta — the receipt-free body write. Call
-	 * `doc.revise({}, md)` for the {@link Delta} receipt (the corpus-lane
-	 * spelling). Markdown in, no corpus or receipt in sight.
+	 * `doc.revise({}, md)` for the {@link Delta} receipt.
 	 * @param {string} markdown
 	 * @returns {void}
 	 */
 	setBody(markdown) {
 		this.#doc.revise({}, markdown);
+	}
+	/**
+	 * Revise the richtext main-card field `name` from markdown — typed *and*
+	 * anchor-preserving. Surviving anchors rebase, then the diffed result is
+	 * schema-conformed (`richtext(inline)` rejects a multi-block result). Throws
+	 * `UnknownField` for a name the schema does not declare. Returns the text
+	 * {@link Delta}.
+	 * @param {string} name
+	 * @param {string} markdown
+	 * @returns {import('../core/wasm.js').Delta}
+	 */
+	reviseField(name, markdown) {
+		return this.#doc._reviseField(this.#quill, name, markdown);
 	}
 	/**
 	 * Build a composable card of `kind`, typed-commit `fields` onto it, set its
@@ -606,8 +617,7 @@ export class DocumentWriter {
 	 * atomic call rather than `addCard` + `moveCard`. Transactional: the card is
 	 * committed in full before it joins the document, so a rejected field (throws
 	 * a per-field diagnostic bundle, `UnknownField` per undeclared name) or an
-	 * invalid kind/body/position leaves the document untouched. See
-	 * `Document.addCard`.
+	 * invalid kind/body/position leaves the document untouched.
 	 * @param {string} kind
 	 * @param {Record<string, unknown>} [fields]
 	 * @param {string} [body]
@@ -615,11 +625,11 @@ export class DocumentWriter {
 	 * @returns {void}
 	 */
 	addCard(kind, fields, body, at) {
-		return this.#doc.addCard(this.#quill, kind, fields, body, at);
+		return this.#doc._addCard(this.#quill, kind, fields, body, at);
 	}
 	/**
 	 * Remove the composable card at `index`, returning it (or `undefined` if the
-	 * index is out of range) — the tier-1 spelling of `Document.removeCard`.
+	 * index is out of range) — the writer spelling of `Document.removeCard`.
 	 * @param {number} index
 	 * @returns {import('../core/wasm.js').Card | undefined}
 	 */
@@ -676,26 +686,25 @@ export class CardWriter {
 		return this.#doc.card(this.#index).kind;
 	}
 	/**
-	 * Typed-commit one field on this card, per `Document.commitField` addressed
-	 * at `{ card, field }`. Throws `UnknownField` for an undeclared name and
-	 * `IndexOutOfRange` if the bound index is out of range.
+	 * Typed-commit one field on this card, addressed at `{ card, field }`. Throws
+	 * `UnknownField` for an undeclared name and `IndexOutOfRange` if the bound
+	 * index is out of range.
 	 * @param {string} name
 	 * @param {unknown} value
 	 * @returns {void}
 	 */
 	set(name, value) {
-		return this.#doc.commitField(this.#quill, { card: this.#index, field: name }, value);
+		return this.#doc._commitField(this.#quill, { card: this.#index, field: name }, value);
 	}
 	/**
-	 * Typed-commit several fields on this card atomically, per
-	 * `Document.commitFields` addressed at `{ card }`. Throws a per-field
-	 * diagnostic bundle on error and `IndexOutOfRange` if the bound index is out
-	 * of range.
+	 * Typed-commit several fields on this card atomically, addressed at
+	 * `{ card }`. Throws a per-field diagnostic bundle on error and
+	 * `IndexOutOfRange` if the bound index is out of range.
 	 * @param {Record<string, unknown>} fields
 	 * @returns {void}
 	 */
 	setAll(fields) {
-		return this.#doc.commitFields(this.#quill, { card: this.#index }, fields);
+		return this.#doc._commitFields(this.#quill, { card: this.#index }, fields);
 	}
 	/**
 	 * Set this card's body from markdown (edit semantics), discarding the delta —
@@ -706,10 +715,22 @@ export class CardWriter {
 	setBody(markdown) {
 		this.#doc.revise({ card: this.#index }, markdown);
 	}
+	/**
+	 * Revise the richtext field `name` on this card from markdown — typed *and*
+	 * anchor-preserving; the card twin of {@link DocumentWriter.reviseField}.
+	 * Throws `UnknownField` for an undeclared name and `IndexOutOfRange` if the
+	 * bound index is out of range. Returns the text {@link Delta}.
+	 * @param {string} name
+	 * @param {string} markdown
+	 * @returns {import('../core/wasm.js').Delta}
+	 */
+	reviseField(name, markdown) {
+		return this.#doc._reviseField(this.#quill, { card: this.#index, field: name }, markdown);
+	}
 }
 
 // ── `quill.writer(doc)` — the typed front door ──────────────────────────────
-// The tier-1 default: bind the quill's schema to a document and issue bare
+// The schema-bound writer: bind the quill's schema to a document and issue bare
 // typed writes. Mirrors core's `quill.writer(&mut doc)` — the schema grants the
 // typing, so the quill (not the document) is the factory. Patched onto the
 // re-exported `Quill` prototype rather than wrapped: `Quill === CoreQuill`

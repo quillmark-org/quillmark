@@ -29,6 +29,7 @@ use crate::document::edit::resolve_field_write;
 use crate::document::{Card, Document, EditError};
 use crate::quill::{CardSchema, FieldSchema, QuillConfig};
 use crate::value::QuillValue;
+use crate::Delta;
 
 /// A [`Document`] bound to its [`QuillConfig`] for typed writes. Construct with
 /// [`Quill::writer`](crate::Quill::writer). Writes target the main card; use
@@ -78,9 +79,23 @@ impl<'a> TypedWriter<'a> {
     /// Revise the main card's body from markdown (edit semantics: surviving
     /// anchors rebase), discarding the text delta — the receipt-free body write.
     /// Call [`Card::revise_body`](crate::Card::revise_body) on `doc.main_mut()`
-    /// for the [`Delta`](crate::Delta) receipt (the tier-2 spelling).
+    /// for the [`Delta`] receipt.
     pub fn set_body(&mut self, markdown: &str) -> Result<(), EditError> {
         self.doc.main_mut().revise_body(markdown).map(|_| ())
+    }
+
+    /// Revise a richtext field on the main card from markdown — typed *and*
+    /// anchor-preserving. Resolves the field's schema and defers to
+    /// [`Card::revise_field_checked`](crate::Card::revise_field_checked), so
+    /// surviving anchors rebase and the diffed result is schema-conformed
+    /// (`richtext(inline)` rejects a multi-block result). Returns the text
+    /// [`Delta`]. A name the schema does not declare fails with
+    /// [`EditError::UnknownField`], as [`set`](Self::set).
+    pub fn revise_field(&mut self, name: &str, markdown: &str) -> Result<Delta, EditError> {
+        match self.config.main.fields.get(name) {
+            Some(schema) => self.doc.main_mut().revise_field_checked(name, markdown, schema),
+            None => Err(EditError::UnknownField(name.to_string())),
+        }
     }
 
     /// Build a composable card of `kind`, typed-commit `fields` onto it,
@@ -125,7 +140,7 @@ impl<'a> TypedWriter<'a> {
         Ok(())
     }
 
-    /// Remove the composable card at `index`, returning it — the tier-1 writer
+    /// Remove the composable card at `index`, returning it — the writer
     /// spelling of [`Document::remove_card`], mirroring the JS `writer.removeCard`
     /// sugar. `None` when `index` is out of range.
     pub fn remove_card(&mut self, index: usize) -> Option<Card> {
@@ -178,6 +193,18 @@ impl CardWriter<'_> {
     /// delta — the card twin of [`TypedWriter::set_body`].
     pub fn set_body(&mut self, markdown: &str) -> Result<(), EditError> {
         self.card.revise_body(markdown).map(|_| ())
+    }
+
+    /// Revise a richtext field on this card from markdown — typed *and*
+    /// anchor-preserving; the card twin of [`TypedWriter::revise_field`].
+    /// Resolves the field against the card's [`CardSchema`]; an undeclared name —
+    /// or any field when the card kind is unknown — fails with
+    /// [`EditError::UnknownField`].
+    pub fn revise_field(&mut self, name: &str, markdown: &str) -> Result<Delta, EditError> {
+        match self.schema.and_then(|s| s.fields.get(name)) {
+            Some(schema) => self.card.revise_field_checked(name, markdown, schema),
+            None => Err(EditError::UnknownField(name.to_string())),
+        }
     }
 
     /// Write several fields on this card atomically — see
@@ -443,5 +470,47 @@ card_kinds:
             ed.card(9),
             Err(EditError::IndexOutOfRange { .. })
         ));
+    }
+
+    #[test]
+    fn revise_field_is_typed_and_rejects_unknown_and_non_inline() {
+        let config = config();
+        let mut doc = blank_doc();
+        let mut ed = TypedWriter::new(&config, &mut doc);
+        // Typed richtext write lands the corpus and returns a Delta receipt.
+        let _delta = ed.revise_field("subject", "Hello").unwrap();
+        assert_eq!(doc.main().field_markdown("subject").unwrap(), "Hello\n");
+
+        // Unknown name is a typo, not a fallback.
+        let mut ed = TypedWriter::new(&config, &mut doc);
+        assert_eq!(
+            ed.revise_field("nope", "x").unwrap_err().variant_name(),
+            "UnknownField"
+        );
+        // richtext(inline) rejects a multi-block result; the field is unchanged.
+        let err = ed.revise_field("subject", "a\n\nb").unwrap_err();
+        assert_eq!(err.variant_name(), "FieldRichtextNotInline");
+        assert_eq!(doc.main().field_markdown("subject").unwrap(), "Hello\n");
+    }
+
+    #[test]
+    fn card_writer_revise_field_resolves_card_schema() {
+        let config = config();
+        let mut doc = blank_doc();
+        doc.push_card(Card::new("note").unwrap()).unwrap();
+
+        let mut ed = TypedWriter::new(&config, &mut doc);
+        ed.card(0).unwrap().revise_field("body", "**hi**").unwrap();
+        assert_eq!(doc.cards()[0].field_markdown("body").unwrap(), "**hi**\n");
+
+        let mut ed = TypedWriter::new(&config, &mut doc);
+        assert_eq!(
+            ed.card(0)
+                .unwrap()
+                .revise_field("stray", "x")
+                .unwrap_err()
+                .variant_name(),
+            "UnknownField"
+        );
     }
 }

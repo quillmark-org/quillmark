@@ -542,14 +542,14 @@ fn test_card_set_body() {
 // ── Card richtext body writers ───────────────────────────────────────────────
 
 /// A body markdown import past the container-nesting limit now returns
-/// `EditError::BodyImport` instead of silently degrading to the empty corpus.
+/// `EditError::Import` instead of silently degrading to the empty corpus.
 #[test]
 fn test_replace_body_reports_import_error() {
     let mut card = Card::new("note").unwrap();
     let deep = ">".repeat(crate::error::MAX_NESTING_DEPTH + 5);
     match card.revise_body(&deep) {
-        Err(EditError::BodyImport(_)) => {}
-        other => panic!("expected BodyImport, got {other:?}"),
+        Err(EditError::Import(_)) => {}
+        other => panic!("expected Import, got {other:?}"),
     }
 }
 

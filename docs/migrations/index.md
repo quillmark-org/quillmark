@@ -35,7 +35,10 @@ guides in order.
   renamed `Parsed`; a document-only caller writes `parse(md)?.document`) (#964).
   Additive, no action:
   single-card reads `card(i)` / `cardIndexById(id)` / `seedOverlay(kind)` backed
-  by core `Document::card(i)` / `find_card(id)` (#956).
+  by core `Document::card(i)` / `find_card(id)` (#956). The typed writer becomes
+  the one schema-bound door: `writer.reviseField` (typed *and* anchor-preserving)
+  lands, the quill-taking `commit*` ABI is underscored and hidden from the
+  `.d.ts`, and `EditError::BodyImport` renames to `Import` (#957, #966).
 - [0.93 → 0.94](0.93-to-0.94.md) — `type: richtext(inline)` retires; declare
   `type: richtext` with `inline: true` instead. Blueprint still emits
   `richtext(inline)<markdown>`; `build_transform_schema` gains

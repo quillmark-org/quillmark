@@ -1071,9 +1071,9 @@ impl Document {
     }
 
     /// Remove a field at `addr`, returning the removed value or `undefined`. A
-    /// bare string is `Addr` shorthand for `{ field }`. Removal has no tier — the
-    /// one verb serves every write lane. A body address throws; throws on an
-    /// out-of-range card or a malformed name.
+    /// bare string is `Addr` shorthand for `{ field }`. One `remove` verb serves
+    /// every write lane. A body address throws; throws on an out-of-range card or
+    /// a malformed name.
     #[wasm_bindgen(js_name = removeField)]
     pub fn remove_field(
         &mut self,
@@ -1257,60 +1257,39 @@ impl Document {
         serialize_or_throw(&delta, "revise")
     }
 
-    /// **Revise** the richtext **field** at `addr` from markdown *with schema
-    /// enforcement* — typed *and* anchor-preserving, the write [`revise`](Self::revise)
-    /// (schema-blind) and [`commitField`](Self::commit_field) (cold, anchors lost)
-    /// leave in a gap. Diffs the markdown against the field's current corpus so
-    /// surviving anchors rebase (as `revise`), then enforces the field's schema —
-    /// resolved from `quill` — on the *diffed result*: a `richtext(inline)` field
-    /// rejects a multi-block result with `[EditError::FieldRichtextNotInline]`
-    /// (the error surface `commitField` raises, unchanged) while anchors survive.
-    /// Returns the text [`Delta`].
+    /// Revise the richtext field at `addr` from markdown, typed *and*
+    /// anchor-preserving — the ABI under `writer.reviseField`. Resolves the
+    /// field's schema from `quill` (main card, or the addressed card's `$kind`)
+    /// and defers to [`TypedWriter::revise_field`](quillmark_core::TypedWriter::revise_field):
+    /// surviving anchors rebase (as [`revise`](Self::revise)), then the diffed
+    /// result is schema-conformed, so a `richtext(inline)` field rejects a
+    /// multi-block result with `[EditError::FieldRichtextNotInline]`. Returns the
+    /// text [`Delta`].
     ///
-    /// The receipt stays in the corpus lane — anchor preservation is a tier-2
-    /// concern, so the typed-anchor-preserving write lives here, not on the
-    /// receipt-free `writer.set`. `addr` must name a field (a bare string is
-    /// `{ field }`); a **body** address throws (a body carries no field schema —
-    /// use [`revise`](Self::revise)). A name the schema does not declare throws
-    /// `[EditError::UnknownField]`. Throws on an out-of-range card.
-    #[wasm_bindgen(js_name = reviseChecked, unchecked_return_type = "Delta")]
-    pub fn revise_checked(
+    /// `addr` must name a field (a bare string is `{ field }`); a body address
+    /// throws (a body carries no field schema — use [`revise`](Self::revise)). A
+    /// name the schema does not declare throws `[EditError::UnknownField]`. Throws
+    /// on an out-of-range card. Hidden from the `.d.ts`; the visible verb is
+    /// `writer.reviseField` in the runtime layer.
+    #[wasm_bindgen(js_name = _reviseField, skip_typescript, unchecked_return_type = "Delta")]
+    pub fn revise_field_abi(
         &mut self,
         quill: &Quill,
         #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
         markdown: &str,
     ) -> Result<JsValue, JsValue> {
         let addr = Addr::from_js_or_string(&addr)?;
-        let field = addr.require_field("reviseChecked")?.to_string();
-        // Resolve the field's schema (main card, or the addressed card's $kind)
-        // and clone it, dropping the quill borrow before the mutable card borrow.
-        let schema = {
-            let config = quill.inner.config();
-            match addr.card {
-                None => config.main.fields.get(&field).cloned(),
-                Some(index) => {
-                    let cards = self.inner.cards();
-                    let card = cards.get(index).ok_or_else(|| {
-                        edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange {
-                            index,
-                            len: cards.len(),
-                        })
-                    })?;
-                    card.kind()
-                        .and_then(|k| config.card_kind(k))
-                        .and_then(|s| s.fields.get(&field))
-                        .cloned()
-                }
-            }
-        };
-        let schema = schema.ok_or_else(|| {
-            edit_error_to_js(&quillmark_core::EditError::UnknownField(field.clone()))
-        })?;
-        let delta = self
-            .addr_card_mut(&addr)?
-            .revise_field_checked(&field, markdown, &schema)
-            .map_err(|e| edit_error_to_js(&e))?;
-        serialize_or_throw(&delta, "reviseChecked")
+        let field = addr.require_field("reviseField")?.to_string();
+        let mut writer = quill.inner.writer(&mut self.inner);
+        let delta = match addr.card {
+            None => writer.revise_field(&field, markdown),
+            Some(index) => writer
+                .card(index)
+                .map_err(|e| edit_error_to_js(&e))?
+                .revise_field(&field, markdown),
+        }
+        .map_err(|e| edit_error_to_js(&e))?;
+        serialize_or_throw(&delta, "reviseField")
     }
 
     /// **Apply** a committed corpus edit `bundle` (`{ delta?, lineOps?, markOps? }`)
@@ -1363,7 +1342,7 @@ impl Document {
     ///
     /// The `quill` handle is passed per call because a `Document` carries only a
     /// `$quill` reference, not the resolved schema.
-    #[wasm_bindgen(js_name = commitField)]
+    #[wasm_bindgen(js_name = _commitField, skip_typescript)]
     pub fn commit_field(
         &mut self,
         quill: &Quill,
@@ -1395,7 +1374,7 @@ impl Document {
     /// including an `[EditError::UnknownField]` for any name the schema does not
     /// declare, so a whole-form submit sees every typo in one pass. Throws on an
     /// out-of-range card.
-    #[wasm_bindgen(js_name = commitFields)]
+    #[wasm_bindgen(js_name = _commitFields, skip_typescript)]
     pub fn commit_fields(
         &mut self,
         quill: &Quill,
@@ -1428,7 +1407,7 @@ impl Document {
     /// including an `[EditError::UnknownField]` per undeclared name; an invalid
     /// kind or body, or an out-of-range position, throws a single-entry bundle
     /// keyed `$kind` / `$body`.
-    #[wasm_bindgen(js_name = addCard)]
+    #[wasm_bindgen(js_name = _addCard, skip_typescript)]
     pub fn add_card(
         &mut self,
         quill: &Quill,

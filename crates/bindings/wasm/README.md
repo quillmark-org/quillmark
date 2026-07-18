@@ -271,19 +271,22 @@ reading as `{}`. The main card is `{}`, or **`MAIN_CARD_ADDR`** (from
 
 ### Typed writes: `commit*` is the default, `store*` is the quill-free primitive
 
-A `Document` holds only a `$quill` *reference*, not the resolved schema, so it
-mutates through two layers (**store** = verbatim, **set/commit** = typed):
+A `Document` holds only a `$quill` *reference*, not the resolved schema, so typed
+writes go through the schema-bound writer while the quill-free opaque store sits
+on `Document` itself (**store** = verbatim, **set** = typed):
 
-- **`commit*` — the schema-bound default whenever a quill is in hand.**
-  `doc.commitField(quill, addr, value)` / `doc.commitFields(quill, cardAddr, {...})`
-  (a card field is `{ card, field }`) resolve each field's schema `type`, coerce
-  the value to its canonical form (`"3"` → `3`, a markdown string → a richtext
-  corpus), and **fail now** on a mismatch instead of at render. A name the schema
+- **`quill.writer(doc)` — the typed door whenever a quill is in hand.** Bind the
+  schema once and issue bare `set` / `setAll` / `setBody` / `reviseField` /
+  `addCard` / `card(i)`. Each resolves the field's schema `type`, coerces the
+  value to its canonical form (`"3"` → `3`, a markdown string → a richtext
+  corpus), and **fails now** on a mismatch instead of at render. A name the schema
   does not declare throws `UnknownField` rather than falling to the opaque store —
   on the typed path an undeclared name is a typo, not a fallback. The batch form
-  is all-or-nothing: an undeclared name aborts the whole write and its per-field
-  diagnostics name every offending field, so a whole-form submit surfaces every
-  typo `storeFields` would silently absorb.
+  (`setAll`) is all-or-nothing: an undeclared name aborts the whole write and its
+  per-field diagnostics name every offending field, so a whole-form submit
+  surfaces every typo `storeFields` would silently absorb. (The raw wasm class
+  carries the quill-taking `_commitField` / `_commitFields` / `_addCard` /
+  `_reviseField` ABI the writer delegates to, hidden from the `.d.ts`.)
 
 - **`store*` — the deliberate quill-free primitive.** `doc.storeField(addr, value)`
   / `doc.storeFields(cardAddr, {...})` (and `storeFill`) validate only the field
@@ -296,21 +299,20 @@ mutates through two layers (**store** = verbatim, **set/commit** = typed):
   and only surfaces at `quill.validate` / render.
 
 Per-keystroke cost is the same either way (both mutate the in-memory `Document`
-in place; no seam is crossed), so steering to `commit*` buys the type check for
+in place; no seam is crossed), so steering to the writer buys the type check for
 free.
 
 #### `DocumentWriter` / `CardWriter` — bind the quill once
 
-The `commit*` verbs take the `quill` handle per call (the document carries no
-schema). When you hold both a quill and a document — a form editor, an MCP
-writer — bind them once with the writer sugar and issue bare verbs:
+`quill.writer(doc)` binds the quill's schema to the document once, so a form
+editor or MCP writer that holds both issues bare verbs (the writer forwards to
+the per-call `_commit*` ABI):
 
 ```ts
-import { DocumentWriter } from "@quillmark/wasm";
-
-const ed = new DocumentWriter(quill, doc);          // JS twin of Rust `quill.writer(doc)`
+const ed = quill.writer(doc);                       // Rust `quill.writer(doc)` twin; new DocumentWriter(quill, doc) also works
 ed.set("subject", "Q3 results");                    // strict-committed to the schema type
 ed.setAll({ qty: "3", subject: "Q3" });             // all-or-nothing batch
+ed.reviseField("subject", "Q3 **results**");        // typed AND anchor-preserving; returns a Delta
 ed.set("titel", "x");                               // throws UnknownField — a typo, not a fallback
 ed.card(2).set("body", "**note**");                 // composable card, resolved by its $kind
 ```
@@ -459,10 +461,10 @@ compilation failures. The same shape applies to every throw site:
 
 - `Document.fromMarkdown` — parse errors (missing root `$quill` metadata, YAML
   errors, `parse::input_too_large` for inputs > 10 MB).
-- `Document` mutators (`storeField`, `commitField`, etc.) — `EditError`
+- `Document` mutators (`storeField`, the writer's `set`, etc.) — `EditError`
   variants (`InvalidFieldName`, `InvalidKindName`, `ReservedKind`,
-  `IndexOutOfRange`, `ValueTooDeep`) appear in `diagnostics[0].message` with
-  the `[EditError::<Variant>]` prefix.
+  `IndexOutOfRange`, `ValueTooDeep`, `Import`) appear in `diagnostics[0].message`
+  with the `[EditError::<Variant>]` prefix.
 - `engine.render` / `session.render` — backend compilation failures and
   validation errors.
 

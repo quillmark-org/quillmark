@@ -90,11 +90,11 @@ uses to hold not-yet-conforming input, and the way to store a value opaquely on
 purpose. Reach for the opaque `store_*` for those; reach for the writer by
 default. `Quill::writer(&mut doc)` is the documented front door in every
 surface — `quill.writer(doc)` in WASM and Python alike (the schema-bound
-`DocumentWriter` / `Writer` with `set` / `set_all` / `set_body` /
+`DocumentWriter` / `Writer` with `set` / `set_all` / `set_body` / `revise_field` /
 `add_card` / `card(i)`); the quill owns the schema, so it is the factory. The
-`commitField` / `commitFields` verbs (addressed by `Addr`) are the stable ABI
-underneath it, and `storeField` / `storeFields` remain the quill-free opaque
-store. See [BINDINGS.md](BINDINGS.md) for the two-tier write surface, the
+`_commitField` / `_commitFields` / `_reviseField` verbs (addressed by `Addr`) are
+the stable ABI underneath it, and `storeField` / `storeFields` remain the
+quill-free opaque store. See [BINDINGS.md](BINDINGS.md) for the write surface, the
 `store` / `set` / `install·revise·apply` vocabulary rule, and the
 core-vs-bindings parity table.
 

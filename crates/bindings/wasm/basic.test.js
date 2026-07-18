@@ -651,7 +651,9 @@ describe('Corpus codec — importMarkdown / exportMarkdown / rebase / mapPos', (
   })
 })
 
-describe('Document editor surface — commitField / commitCardField', () => {
+// The typed-commit ABI is `_commitField` / `_commitFields` (hidden from the
+// `.d.ts`); `quill.writer(doc)` delegates here. These exercise the ABI directly.
+describe('Document typed-commit ABI — _commitField / _commitFields', () => {
   const COMMIT_QUILL_YAML = `quill:
   name: commit_test
   version: "1.0"
@@ -681,19 +683,19 @@ card_kinds:
   it('commitField resolves the schema type: richtext string → corpus, integer "3" → 3', () => {
     const quill = buildQuill()
     const doc = blankDoc()
-    doc.commitField(quill, 'intro', 'A **bold** intro.')
+    doc._commitField(quill, 'intro', 'A **bold** intro.')
     expect(typeof field(doc.main, 'intro')).toBe('object')
     // The markdown projection of a richtext field is exportMarkdown ∘ its corpus.
     expect(exportMarkdown(field(doc.main, 'intro'))).toBe('A **bold** intro.\n')
 
-    doc.commitField(quill, 'qty', '3')
+    doc._commitField(quill, 'qty', '3')
     expect(field(doc.main, 'qty')).toBe(3)
   })
 
   it('commitField rejects an unknown field as a typo and writes nothing', () => {
     const quill = buildQuill()
     const doc = blankDoc()
-    expect(() => doc.commitField(quill, 'stray', 'x')).toThrow(/UnknownField/)
+    expect(() => doc._commitField(quill, 'stray', 'x')).toThrow(/UnknownField/)
     expect(hasField(doc.main, 'stray')).toBe(false)
     // Opaque storage stays available on purpose through the raw verb.
     doc.storeField('stray', 'x')
@@ -709,15 +711,15 @@ card_kinds:
     doc.storeField('count', 3)
     expect(field(doc.main, 'count')).toBe(3)
     // A committed richtext field projects through the codec.
-    doc.commitField(quill, 'intro', 'plain intro')
+    doc._commitField(quill, 'intro', 'plain intro')
     expect(exportMarkdown(field(doc.main, 'intro'))).toBe('plain intro\n')
   })
 
   it('commitField fails a strict mismatch and a richtext(inline) violation', () => {
     const quill = buildQuill()
     const doc = blankDoc()
-    expect(() => doc.commitField(quill, 'qty', 'not-a-number')).toThrow(/FieldConform/)
-    expect(() => doc.commitField(quill, 'subject', 'line one\n\nline two'))
+    expect(() => doc._commitField(quill, 'qty', 'not-a-number')).toThrow(/FieldConform/)
+    expect(() => doc._commitField(quill, 'subject', 'line one\n\nline two'))
       .toThrow(/FieldRichtextNotInline/)
   })
 
@@ -764,15 +766,15 @@ card_kinds:
     const doc = Document.fromMarkdown(
       '~~~card-yaml\n$quill: commit_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
     )
-    doc.commitField(quill, { card: 0, field: 'body' }, 'Card **body**.')
+    doc._commitField(quill, { card: 0, field: 'body' }, 'Card **body**.')
     expect(exportMarkdown(field(doc.cards[0], 'body'))).toBe('Card **body**.\n')
-    expect(() => doc.commitField(quill, { card: 9, field: 'body' }, 'x')).toThrow(/IndexOutOfRange/)
+    expect(() => doc._commitField(quill, { card: 9, field: 'body' }, 'x')).toThrow(/IndexOutOfRange/)
   })
 
   it('commitFields typed-commits a batch', () => {
     const quill = buildQuill()
     const doc = blankDoc()
-    doc.commitFields(quill, {}, { intro: 'A **bold** intro.', qty: '3' })
+    doc._commitFields(quill, {}, { intro: 'A **bold** intro.', qty: '3' })
     // The values were coerced, not stored verbatim.
     expect(exportMarkdown(field(doc.main, 'intro'))).toBe('A **bold** intro.\n')
     expect(field(doc.main, 'qty')).toBe(3)
@@ -783,7 +785,7 @@ card_kinds:
     const doc = blankDoc()
     // `qty` is a schema field; `titel` is a typo the schema does not own — the
     // undeclared name aborts the all-or-nothing batch and nothing is applied.
-    expect(() => doc.commitFields(quill, {}, { qty: '5', titel: 'oops' })).toThrow(/UnknownField/)
+    expect(() => doc._commitFields(quill, {}, { qty: '5', titel: 'oops' })).toThrow(/UnknownField/)
     expect(hasField(doc.main, 'qty')).toBe(false)
     expect(hasField(doc.main, 'titel')).toBe(false)
   })
@@ -793,7 +795,7 @@ card_kinds:
     const doc = blankDoc()
     // `subject` is richtext(inline); a multi-block value violates it, so nothing
     // is applied — `qty` must not linger.
-    expect(() => doc.commitFields(quill, {}, { qty: '5', subject: 'line one\n\nline two' }))
+    expect(() => doc._commitFields(quill, {}, { qty: '5', subject: 'line one\n\nline two' }))
       .toThrow(/FieldRichtextNotInline/)
     expect(hasField(doc.main, 'qty')).toBe(false)
   })
@@ -803,11 +805,11 @@ card_kinds:
     const doc = Document.fromMarkdown(
       '~~~card-yaml\n$quill: commit_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
     )
-    doc.commitFields(quill, { card: 0 }, { body: 'Card **body**.' })
+    doc._commitFields(quill, { card: 0 }, { body: 'Card **body**.' })
     expect(exportMarkdown(field(doc.cards[0], 'body'))).toBe('Card **body**.\n')
     // An undeclared field on the card aborts the batch.
-    expect(() => doc.commitFields(quill, { card: 0 }, { stray: 'x' })).toThrow(/UnknownField/)
-    expect(() => doc.commitFields(quill, { card: 9 }, { body: 'x' })).toThrow(/IndexOutOfRange/)
+    expect(() => doc._commitFields(quill, { card: 0 }, { stray: 'x' })).toThrow(/UnknownField/)
+    expect(() => doc._commitFields(quill, { card: 9 }, { body: 'x' })).toThrow(/IndexOutOfRange/)
   })
 })
 
