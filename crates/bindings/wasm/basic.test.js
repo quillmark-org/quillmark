@@ -573,6 +573,19 @@ describe('Document editor surface — setFields / setCardFields', () => {
     expect(field(doc.cards[0], 'extra')).toBe(1)
     expect(() => doc.storeFields({ card: 99 }, { foo: 'v' })).toThrow(/IndexOutOfRange/)
   })
+
+  it('an address with an unknown key throws instead of parsing as {}', () => {
+    const doc = Document.fromMarkdown(TEST_MARKDOWN)
+    // `Addr::from_js` rejects a stray key: a typo, or the fields object misread
+    // as an address, is caught loud rather than silently parsed as the empty
+    // main-card address.
+    expect(() => doc.storeFields({ crad: 0 }, { title: 'x' })).toThrow(/unknown key/)
+    // The swapped-arg failure this guards: fields handed where the address
+    // belongs. Their keys are unknown to `Addr`, so the write throws instead of
+    // parsing as `{}` and writing an empty batch to main.
+    expect(() => doc.storeFields({ title: 'x' })).toThrow(/unknown key/)
+    expect(field(doc.main, 'title')).not.toBe('x')
+  })
 })
 
 describe('Document editor surface — setQuillRef / install / revise', () => {

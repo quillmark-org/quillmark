@@ -64,6 +64,18 @@ export { Quill, Document, init };
 // position-mapping pair (`rebase`, `mapPos`).
 export { importMarkdown, exportMarkdown, rebase, mapPos } from '../core/wasm.js';
 
+// ── The main-card address ───────────────────────────────────────────────────
+/**
+ * The main card's address — the default target of the card-scoped verbs
+ * (`storeFields` / `storeExt` / `commitFields` / …). A named, `CardAddr`-typed
+ * alias for the empty address `{}`, so a main-card write names its target:
+ * `doc.storeFields(MAIN_CARD_ADDR, fields)`. It IS `{}` (frozen), a pure alias —
+ * `{}` and `undefined` stay equally valid. Card axis only: a card selector,
+ * never a field address.
+ * @type {import('../core/wasm.js').CardAddr}
+ */
+export const MAIN_CARD_ADDR = Object.freeze({});
+
 /**
  * Narrow an unknown caught value to a `QuillmarkError` — the error every
  * fallible method in this package throws: a real `Error` with a non-empty
@@ -573,7 +585,7 @@ export class DocumentWriter {
 	 * @returns {void}
 	 */
 	setAll(fields) {
-		return this.#doc.commitFields(this.#quill, {}, fields);
+		return this.#doc.commitFields(this.#quill, MAIN_CARD_ADDR, fields);
 	}
 	/**
 	 * Set the main body from markdown (edit semantics: surviving anchors rebase),
