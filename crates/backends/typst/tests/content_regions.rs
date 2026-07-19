@@ -547,9 +547,9 @@ main:
 #[test]
 fn card_dates_surface_per_instance_regions_through_laundering() {
     // The driving case: card dates. `scalar_windows` deliberately does not
-    // chase the shared `card.<field>` loop variable, so under value-level
-    // tagging a card date surfaced *no* region. The value-object fixes this —
-    // each card instance emits its own `text(..)` node in its own generated
+    // chase the shared `card.<field>` loop variable, so a card date needs its
+    // own per-instance node to surface a region — which the value-object gives
+    // it: each card instance emits its own `text(..)` node in its own generated
     // block, so two cards yield two distinct windows keyed by their per-kind
     // ordinal address. And because a closure's body ink is born at its lexical
     // definition site, laundering the value through `#let d = card.at("on")`

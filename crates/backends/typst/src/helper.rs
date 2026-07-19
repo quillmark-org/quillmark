@@ -205,7 +205,7 @@ impl<'m> Codegen<'m> {
     ///   node's** lexical site inside the generated helper, per emission —
     ///   pinning per-instance identity a shared wrapper would collapse. Wrapping
     ///   `v.display` (not a re-literalized date) inherits `v`'s type, so a
-    ///   date-only `v` throws Typst's native `[hour]`-pattern error for free.
+    ///   date-only `v` throws Typst's native `[hour]`-pattern error.
     ///
     /// Records a **segment-less** window over that `text(..)` node keyed by
     /// `path` — one whole-placement region per instance when the date renders,
