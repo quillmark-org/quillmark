@@ -35,7 +35,7 @@ main:
       type: string
       description: Name of the recipient
     date:
-      type: datetime   # accepts bare YYYY-MM-DD as well as full ISO 8601
+      type: date       # a bare calendar date (YYYY-MM-DD); use `datetime` for wall-clock time-of-day
       description: Letter date
 ```
 

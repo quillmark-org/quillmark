@@ -26,7 +26,7 @@ The Typst backend injects a virtual package `@local/quillmark-helper:<version>` 
 
 #data.title                  // plain field access
 #data.at("$body")            // $body is automatically converted to content
-#data.date                   // date fields are auto-converted to datetime
+#data.date                   // date/datetime fields are auto-converted to datetime
 #for card in data.at("$cards") {
   if card.at("$kind") == "indorsement" {
     // ... per-kind handling using card.<field> and card.at("$body")
@@ -43,5 +43,5 @@ Helper contents (generated in `backends/typst/helper.rs` from `lib.typ.template`
   - a scalar richtext field (`{type: object, contentMediaType: application/quillmark-content+json}`) — one `Content` object, lowered in place.
   - `array<richtext>` (`{type: array, items: {type: object, contentMediaType: application/quillmark-content+json}}`) — each array element lowered individually.
   Each non-blank content is emitted as a markup **block** binding (`#let _qm_cN = [ .. ]`) that `data` references; a blank content stays an empty string literal. A `richtext(inline)` field (`quillmark:inline: true`, classified by `inline_field_names`) instead lowers via `emit::emit_content_inline` to **pure inline** markup — the single `Para`'s content with no block terminator, so no `parbreak` — so the value composes in an inline slot (`par(..)`, a grid cell) without Typst's "parbreak may not occur inside of a paragraph" warning. A `plaintext` field rides the *same* media type (plus an editor-only `quillmark:plain: true`), so `content_field_names` classifies it identically and it lowers through this exact path — the codec differs only at authoring/coercion (literal `from_plaintext`), never at codegen.
-- Date fields (`format: date-time`) are emitted as `datetime(year:, month:, day:)` constructors (date-only).
+- `date` fields (`format: date`) are emitted as three-component `datetime(year:, month:, day:)` constructors; `datetime` fields (`format: date-time`) as the six-component `datetime(year:, .., second:)`, carrying the authored wall-clock time (seconds zero-filled). The two markers are the distinct transform-schema `format` stamps the backend keys its per-type lowering on.
 - `plaintext(field)`: the sanctioned content→`str` coercion. Where `data.<field>` is Typst **content**, `plaintext(field)` returns the content field's plain text — the content text with island slots stripped and marks dropped (the same projection pdfform lowers a richtext field to). It reads a generated `_qm-plaintext` literal keyed by schema address (`subject`, `refs.2`, `$cards.<kind>.<n>.<field>`); `""` for a blank field or an address with no content. Use it when a plate/package needs a string (string ops, an `assert(type(item) == str)` consumer) for any content field (`richtext` or `plaintext`). Note the name collision: this Typst helper is distinct from the `plaintext` **field type** — the helper projects *any* content to a `str`, while the field type declares a field's content plain from the start.

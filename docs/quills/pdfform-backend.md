@@ -148,7 +148,7 @@ A bound field's kind is derived from the **capability of the resolved schema fie
 |---|---|
 | has `enum` values (any spelling) | **choice**, options = the enum values |
 | `boolean` | **checkbox** |
-| `string`, `number`, `integer`, `datetime`, `richtext`, `plaintext` | **text** |
+| `string`, `number`, `integer`, `date`, `datetime`, `richtext`, `plaintext` | **text** |
 | array of the above (scalar or prose) | **text** — elements joined with newlines |
 | `object`, or array of objects | **load error** `pdfform::unbindable_field` |
 

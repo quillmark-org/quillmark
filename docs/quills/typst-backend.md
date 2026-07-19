@@ -13,7 +13,7 @@ Plates are plain Typst code. Document metadata reaches the plate as a JSON dicti
 #data.at("title", default: "Untitled")       // safe with default
 ```
 
-Fields declared `type: richtext` in `Quill.yaml` arrive as Typst content (their content lowered to markup, ready to render); `type: datetime` fields arrive as Typst `datetime` values (the helper parses the string and calls Typst's `datetime()`).
+Fields declared `type: richtext` in `Quill.yaml` arrive as Typst content (their content lowered to markup, ready to render); `type: date` and `type: datetime` fields arrive as Typst `datetime` values — the backend emits a `datetime()` constructor at codegen, three-component for a `date` and six-component (carrying the wall-clock time) for a `datetime`.
 
 ### Checking for Optional Fields
 

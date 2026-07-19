@@ -100,14 +100,15 @@ Form: **`# <type>[<format>]`**
 
 - **Type slot** (mandatory, first): one of
   `string`, `integer`, `number`, `boolean`, `array`, `object`,
-  `richtext`, `plaintext`, `datetime`, `enum`.
+  `richtext`, `plaintext`, `date`, `datetime`, `enum`.
   Every field is labeled — there is no "self-evident" exemption.
   (`object` requires a `properties` map; freeform untyped objects are not
   supported. `object` also appears in the format slot of typed-table fields
   as `array<object>`.)
 - **Format slot** (optional, in `<…>` angle brackets): refines the type
   when the refinement carries information beyond the type name itself.
-  - `datetime<YYYY-MM-DD[Thh:mm:ss]>`
+  - `date<YYYY-MM-DD>` — a bare calendar date; `datetime<YYYY-MM-DDThh:mm[:ss]>`
+    — an offset-less wall-clock datetime (no offset/space/fractional forms)
   - `richtext<markdown>`, `richtext(inline)<markdown>` — the `<markdown>` slot
     names the surface encoding an author writes over the content model
   - `plaintext<plain>`, `plaintext(inline)<plain>` — the `<plain>` slot names
@@ -159,7 +160,7 @@ Examples:
 | `notes: "" # string` | Endorsed empty string (the "skippable" cell, now Endorsed) |
 | `bio: !must_fill # richtext<markdown>` | Unendorsed richtext — bare marker (see "Richtext fields") |
 | `recipient: !must_fill # array<string>` | Unendorsed array of strings |
-| `date: !must_fill # datetime<YYYY-MM-DD[Thh:mm:ss]>` | Unendorsed datetime |
+| `date: !must_fill # date<YYYY-MM-DD>` | Unendorsed date |
 | `severity: !must_fill # enum<low \| medium \| high>` | Unendorsed enum |
 | `$quill: cmu_letter@0.1.0 # keep verbatim` | quill binding metadata, emitted verbatim; the inline reminder guards against dropping the line |
 | `$kind: skill` followed by `# composable (0..N)` | repeat the entire `~~~` … `~~~` block per instance |
@@ -201,7 +202,7 @@ The marker is stamped where the LLM types the value:
 
 | Type | Marker position | Example |
 |---|---|---|
-| `string`, `integer`, `number`, `boolean`, `datetime`, `enum`, `plaintext` | On the field | `name: !must_fill # string` |
+| `string`, `integer`, `number`, `boolean`, `date`, `datetime`, `enum`, `plaintext` | On the field | `name: !must_fill # string` |
 | `array<scalar>` | On the field | `recipient: !must_fill # array<string>` |
 | `richtext` | On the field (bare; no block scalar) | `bio: !must_fill # richtext<markdown>` |
 | `object` (typed dict) | Per-property recursion | leaves carry `!must_fill` |
@@ -406,7 +407,7 @@ address: !must_fill # array<string>
 # e.g. www.ece.cmu.edu
 url: "" # string
 # The date to appear on the letter.
-date: !must_fill # datetime<YYYY-MM-DD[Thh:mm:ss]>
+date: !must_fill # date<YYYY-MM-DD>
 ~~~
 
 Write main body here.

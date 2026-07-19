@@ -42,7 +42,12 @@ guides in order.
   `getMarkdown` / `get_markdown` stop conflating absent with
   present-but-not-richtext: a present field that does not decode now throws
   `FieldRichtextDecode` instead of reading back blank — absence returns, mismatch
-  raises (#968).
+  raises (#968). The `datetime` field type splits into strict `date` and
+  `datetime`: `date` accepts a bare `YYYY-MM-DD` and rejects any time component,
+  `datetime` accepts offset-less wall-clock `YYYY-MM-DDThh:mm[:ss]` and rejects
+  offsets/space/fractional/bare-date (offsets are rejected, never dropped). Most
+  `datetime` fields hold a bare date and rename to `type: date` with no data
+  change (#991).
 - [0.93 → 0.94](0.93-to-0.94.md) — `type: richtext(inline)` retires; declare
   `type: richtext` with `inline: true` instead. Blueprint still emits
   `richtext(inline)<markdown>`; `build_transform_schema` gains

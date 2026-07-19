@@ -104,7 +104,8 @@ main:
 | `integer`  | Integer-only numeric scalar |
 | `boolean`  | `true` or `false` |
 | `array`    | Ordered list; requires an `items:` element schema |
-| `datetime` | Bare `YYYY-MM-DD` through full RFC 3339 with offset |
+| `date`     | A strict calendar date `YYYY-MM-DD`; rejects any time component |
+| `datetime` | A strict offset-less wall-clock datetime `YYYY-MM-DDThh:mm[:ss]`; rejects offsets, the space separator, fractional seconds, and bare dates |
 | `richtext` | Rich, **formatted** prose over a canonical content; backends lower it to the target format. Markdown is its import/export projection. Add `inline: true` for the single-paragraph variant |
 | `object`   | Structured map; requires a `properties:` map |
 
@@ -497,7 +498,7 @@ main:
       description: Describe the risk or blocker. Only needed when status is not on_track.
 
     date:
-      type: datetime
+      type: date
       ui:
         group: Header
 
@@ -522,7 +523,7 @@ card_kinds:
       name:
         type: string
       target_date:
-        type: datetime
+        type: date
       completed:
         type: boolean
         default: false
