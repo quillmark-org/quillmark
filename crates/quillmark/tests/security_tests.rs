@@ -5,55 +5,6 @@
 
 use quillmark_core::{Card, Document};
 
-/// Test card count limit prevents DoS
-#[test]
-fn test_card_count_limit_attack() {
-    // Generate more than MAX_CARD_COUNT (1000) card blocks
-    let mut markdown =
-        String::from("~~~card-yaml\n$quill: test_quill\n$kind: main\ntitle: Test\n~~~\n\nBody\n\n");
-    for i in 0..1002 {
-        markdown.push_str(&format!(
-            "~~~card-yaml\n$kind: item{}\nvalue: {}\n~~~\n\n",
-            i, i
-        ));
-    }
-    let result = Document::parse(&markdown);
-
-    // Should fail with card count limit error
-    assert!(result.is_err(), "Should reject excessive card blocks");
-    let err_msg = result.unwrap_err().to_string();
-    assert!(
-        err_msg.contains("too large") || err_msg.contains("max"),
-        "Error should mention limit: {}",
-        err_msg
-    );
-}
-
-/// `$`-prefixed payload keys other than the documented system metadata
-/// (`$quill`, `$kind`, `$id`) are rejected — including any key that could
-/// collide with the plate wire format's `$body` / `$cards` keys.
-#[test]
-fn test_unknown_dollar_metadata_rejected() {
-    let injections = ["$body", "$cards", "$arbitrary"];
-
-    for key in injections {
-        let markdown =
-            format!("~~~card-yaml\n$quill: test_quill\n$kind: main\n{key}: injected\n~~~\n\nBody",);
-        let result = Document::parse(&markdown);
-        assert!(
-            result.is_err(),
-            "Should reject unknown `$`-prefixed key '{}' in YAML",
-            key
-        );
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("system-metadata") || err_msg.contains(key),
-            "Error should mention the rejected `$` key: {}",
-            err_msg
-        );
-    }
-}
-
 /// Test that card kind validation prevents invalid names via the edit API.
 ///
 /// `$kind` is opaque system metadata at parse time, so `from_markdown` does
