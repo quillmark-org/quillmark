@@ -100,8 +100,10 @@ is structural, not asserted.
 ### Parity table
 
 Every binding verb is *identical* to its core twin or names its one forced
-difference — **FFI** (a wasm-bindgen / pyo3 constraint) or **idiom** (a language
-ergonomic), nothing else admitted. Drift is a reviewable diff to this table.
+difference — **FFI** (a wasm-bindgen / pyo3 constraint), **idiom** (a language
+ergonomic), or **scope** (a lane a binding omits by intent — Python is Tier 1 +
+storage + render, [#970](https://github.com/borb-sh/quillmark/issues/970)),
+nothing else admitted. Drift is a reviewable diff to this table.
 
 | Concept | Core | Bindings | Class |
 |---|---|---|---|
@@ -110,16 +112,16 @@ ergonomic), nothing else admitted. Drift is a reviewable diff to this table.
 | Interpreted read | `view.get(name)?` → `ReadValue` (richtext → markdown, plaintext → literal text, else canonical); `view.card(i)?.get(..)?` | `view.get(addr)` / `view.card(i).get(name)` (JS), `view.get(name)` / `view.card(i).get(name)` (py) | **idiom** / **FFI** — one `get` interprets by declared type; absent → `undefined`/`None`, unknown name → `UnknownField`, undecodable content → `FieldRichtextDecode`; a field's markdown reads here, not on the body-only `getMarkdown` (#978). Body read (`view.getBody` / absent-field addr) stays quill-free |
 | Scalar / batch write | `set` / `set_all` | `set` / `setAll` (JS), `set` / `set_all` (py) | identical |
 | Receipt-free body write | `set_body(md)` | `setBody(md)` / `set_body(md)` | identical — core also exposes the delta via `revise_body` |
-| Typed richtext field revise | `TypedWriter::revise_field(name, md)?` / `CardWriter::revise_field(..)?` | `writer.reviseField(name, md)` / `writer.card(i).reviseField(..)` | identical — typed *and* anchor-preserving, returns the `Delta`; both wrap the `Card::revise_field_checked` primitive |
+| Typed richtext field revise | `TypedWriter::revise_field(name, md)?` / `CardWriter::revise_field(..)?` | `writer.reviseField(name, md)` / `writer.card(i).reviseField(..)` (JS); `writer.revise_field(name, md)` / `writer.card(i).revise_field(..)` (py) | **idiom** — typed *and* anchor-preserving; both wrap `Card::revise_field_checked`. JS returns the `Delta`; Python discards it (the position-mapping receipt is an editor concern, WASM-only) |
 | Card creation | `add_card(kind, fields, body?, at?)` | `addCard(kind, fields?, body?, at?)` | identical — fused make + typed-commit + insert, transactional (`at` appends when absent, else inserts at the index — one atomic positioned insert, not `addCard` + `moveCard`) |
 | Card insertion | `push_card(card)` / `insert_card(i, card)` | `insertCard(card, at?)` | **idiom** — the binding folds core's append + positional-insert verbs into one; absent `at` appends |
 | Card removal (writer) | `writer.remove_card(i)` | `writer.removeCard(i)` | identical |
 | Card cursor | `writer.card(i)?` (eager check) | `writer.card(i)` (lazy check) | **FFI** — no borrow to validate against; the index is checked at the write |
 | Cursor kind | `writer.card(i)?.kind()` | `writer.card(i).kind` | identical — the JS getter reads through `doc.card(i)` |
-| Reads (value / body markdown / fill / `$ext`) | `body_markdown(..)` / `payload().get(..)` / `payload().is_fill(..)` / `card.ext()` (borrow chain; index for a card) | `doc.get(addr?)` / `doc.getMarkdown(cardAddr?)` / `doc.isFill(addr)` / `doc.getExt(cardAddr?)` / `doc.getExtNamespace(cardAddr, ns)` (JS); name-keyed twins (py) | **idiom** / **FFI** — WASM fuses the transport reads onto the one `Addr` (a bare string ⇒ `{field}` for `get`/`isFill`), *total over the field axis* (absent field → `undefined`, `isFill` → `false`; only an out-of-range card throws). `getMarkdown` is the **body** read (a `CardAddr`; a present `field` throws) — a field's markdown reads through the schema-plane `view.get` (#978); Python stays name-keyed |
+| Reads (value / body markdown / fill / `$ext`) | `body_markdown(..)` / `payload().get(..)` / `payload().is_fill(..)` / `card.ext()` (borrow chain; index for a card) | `doc.get(addr?)` / `doc.getMarkdown(cardAddr?)` / `doc.isFill(addr)` / `doc.getExt(cardAddr?)` / `doc.getExtNamespace(cardAddr, ns)` (JS) | **idiom** / **FFI** / **scope** — WASM fuses the transport reads onto the one `Addr` (a bare string ⇒ `{field}` for `get`/`isFill`), *total over the field axis* (absent field → `undefined`, `isFill` → `false`; only an out-of-range card throws); `getMarkdown` is the **body** read (a `CardAddr`; a present `field` throws). Python has no quill-free field read — interpreted field reads go through `quill.view(doc).get` (#978, #970), and `$ext` / body content read off the `main` / `cards` dict snapshots |
 | Reads (whole card / `$id` / seed) | `card(i)` / `find_card(id)` / `main().seed()` | `doc.card(i)` / `doc.cardIndexById(id)` / `doc.seedOverlay(kind)` | **idiom** — the bindings fuse each into one named verb on `Document`; `card(i)` throws out of range, `find_card`/`cardIndexById` return the first `$id` match (non-unique by design) |
-| Richtext revise (content lane) | `Card::revise_field(name, md)?` (schema-blind, borrow chain) | `doc.revise({card, field}, md)` (addr literal) | **FFI** — same model, flattened navigation; schema-blind, `Delta` in hand |
-| Opaque store | `store_field` / `store_fields` / `store_fill` | `storeField` / `storeFields` / `storeFill` (JS, `Addr`), `store_field` / `store_fields` / `store_card_field` (py, name-keyed) | identical — the quill-free verbatim write; WASM addresses with `Addr`, Python stays name-keyed |
+| Richtext revise (content lane) | `Card::revise_field(name, md)?` (schema-blind, borrow chain) | `doc.revise({card, field}, md)` (addr literal, JS) | **FFI** / **scope** — same model, flattened navigation, schema-blind, `Delta` in hand; WASM-only. Python's anchor-preserving write is the typed `writer.revise_field` (#970) |
+| Opaque store | `store_field` / `store_fields` / `store_fill` | `storeField` / `storeFields` / `storeFill` (JS, `Addr`) | **scope** — the quill-free verbatim write, WASM-only; Python has no opaque field store (the typed writer is the only field write, #970). A field write without a loadable quill operates on the storage DTO directly |
 | Parse + warnings | `Document::parse(md) -> Parsed { document, warnings }` | `Document.fromMarkdown(md)` → `doc.warnings` getter | **FFI** — the wrapper fuses `Parsed` + `Document` into one session object: `fromMarkdown` returns the document directly and stashes the parse `warnings` on it (`doc.warnings`). That getter is a deliberate asymmetry with core, where warnings live only on `Parsed`: it is session state, so `equals` and the storage DTO exclude it and `loadJson`/`fromJson` clear it (a reloaded document carries no parse warnings) |
 
 The single **idiom** row on the front door is the honest cost: the typed writer
@@ -128,12 +130,25 @@ claimed. See the as-built [0.93 → 0.94 migration](../../docs/migrations/0.93-t
 
 ## Python — `bindings/quillmark-python`
 
-PyO3 bindings published as `quillmark` on PyPI. A `snake_case` surface mirroring
-the shared model; one-shot `engine.render` (no canvas).
+PyO3 bindings published as `quillmark` on PyPI. A `snake_case` surface over the
+shared model; one-shot `engine.render` (no canvas).
 
-> **Status: experimental, second-class binding.** The Python surface lags the
-> WASM binding in coverage and in error-shape uniformity. Do not gate releases
-> on Python parity.
+> **Scope: Tier 1 + storage + render ([#970](https://github.com/borb-sh/quillmark/issues/970)).**
+> Field I/O flows through `quill.writer(doc)` / `quill.view(doc)` exclusively;
+> `Document` is quill-free data and structure (parse, the storage DTO,
+> `insert_card` / `remove_card` / `move_card` / `make_card`, `remove_field`,
+> `$ext` / `$seed`). The opaque store (`store_field` / `store_fields` /
+> `store_fill`) and the anchor-preserving content lane (`install` / `revise` /
+> `apply_change` + the `import_markdown` / `export_markdown` / `rebase` /
+> `map_pos` codec) are **WASM-only by scope, not by lag** — their audience,
+> storage/migration tooling holding no quill and live editors preserving anchor
+> identity, is not a Python audience. A field write without a loadable quill
+> operates on the storage DTO directly.
+
+Every Python verb is identical to its core/WASM twin or names its one difference
+in the parity table above: `card=None` selectors fold the composable-card `$ext`
+/ `remove_field` twins onto one axis, and `revise_field` discards the `Delta`
+(an editor receipt). No half-mirrored lane remains to drift.
 
 ## WebAssembly — `bindings/quillmark-wasm`
 

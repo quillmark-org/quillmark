@@ -34,11 +34,20 @@ result.artifacts[0].save("output.pdf")
 
 ## API surface
 
-The Python surface mirrors the [`@quillmark/wasm`](../wasm) package for the
-shared document model. Names follow `snake_case` conventions; the underlying
-concepts (and shapes of return values) are the same. Python renders in one
-shot via `engine.render`; the iterative render-session and canvas-preview
-surface is WASM-only (see `prose/canon/PREVIEW.md`).
+Python is a **Tier-1 binding**: field I/O flows through `quill.writer(doc)` and
+`quill.view(doc)`, the schema-bound write/read front doors. `Document` carries
+the quill-free surface — parse, storage, structure, `$ext` / `$seed`, and
+`remove_field`. There is no opaque field store and no anchor-preserving content
+lane (`install` / `revise` / `apply_change` + the `import_markdown` /
+`export_markdown` / `rebase` / `map_pos` codec); those are WASM-only by scope,
+serving live editors that Python does not target. See
+[`prose/canon/BINDINGS.md`](../../../prose/canon/BINDINGS.md).
+
+Names follow `snake_case`; the shared model (the `Document` / `Card` shapes,
+`Diagnostic`s, the storage DTO) is identical to the
+[`@quillmark/wasm`](../wasm) package's. Python renders in one shot via
+`engine.render`; the iterative render-session and canvas-preview surface is
+WASM-only (see `prose/canon/PREVIEW.md`).
 
 **Capability principle:** a `Quill` is portable, declarative config data —
 `quill.metadata` is a pure, infallible snapshot of the `quill:` section.
@@ -71,6 +80,43 @@ diags   = quill.validate(parsed)          # list of validation::* diagnostic dic
 seed    = quill.seed_document()           # starter Document seeded from `example:` values
 main    = quill.seed_main()               # just the $kind: main card (dict, like doc.main)
 card    = quill.seed_card("note")         # one starter composable card (dict), None if kind undeclared
+
+writer  = quill.writer(doc)               # schema-bound typed write front door
+reader  = quill.view(doc)                 # schema-bound interpreted read front door
+```
+
+### `Writer` — `quill.writer(doc)`
+
+The typed write front door. Resolves each field's type from the bound quill, so a
+name the schema does not declare is a typo (`UnknownField`), not a fallback. Holds
+both handles by reference and owns neither — ephemeral by convention: bind, write,
+discard.
+
+```python
+w = quill.writer(doc)
+w.set("title", "On Taro")                 # typed-commit one field (mismatch raises now)
+w.set_all({"title": "T", "author": "A"})  # atomic batch; one diagnostic per bad field
+w.set_body("A **taro** essay.")           # typed body write (edit semantics)
+w.revise_field("bio", "make it **bold**") # typed *and* anchor-preserving richtext write
+w.add_card("quotes", {"author": "Basho"}, "…", at=None)  # make + typed commit + insert (at appends/inserts)
+w.remove_card(0)
+w.card(0).set("author", "Issa")           # a CardWriter: .index, .kind, .set, .set_all, .set_body, .revise_field
+```
+
+### `View` — `quill.view(doc)`
+
+The interpreted read front door and the read twin of `Writer`. One `get` reads
+each field by its declared type: a richtext field to its markdown projection,
+every other type its canonical value verbatim.
+
+```python
+v = quill.view(doc)
+v.get("bio")                              # richtext → markdown str; scalar → its value; absent → None
+                                          # undeclared name raises UnknownField; undecodable content raises FieldRichtextDecode
+v.get_body()                              # the main body markdown (quill-free body read)
+v.card(0).kind                            # the composable card's $kind
+v.card(0).get("author")                   # a card field, interpreted by its $kind schema
+v.card(0).get_body()
 ```
 
 ### `RenderResult` / `Artifact`
@@ -108,14 +154,26 @@ Document.blueprint_instruction("taro")           # LLM/MCP blueprint header for 
 doc.clone()
 doc.equals(other)
 doc.card_count
-doc.main; doc.cards; doc.body; doc.warnings
+doc.main; doc.cards; doc.body; doc.warnings      # total-read snapshots (dicts); body is a content dict
+doc.set_quill_ref("other@1.0")
 
-doc.store_field("title", "New")                  # opaque store (store = verbatim; the typed write is the writer)
-doc.store_fields({"title": "New", "author": "A"})  # atomic batch; one diagnostic per bad field
-doc.push_card(Document.make_card("note", {"x": 1}, "..."))  # or pass a Card from cards/remove_card/seed_card
-# insert_card, remove_card, move_card, set_card_kind,
-# store_card_field, store_card_fields, remove_card_field, replace_card_body, ...
+# Structure (quill-free — a card kind is a name, not a schema fact):
+doc.insert_card(Document.make_card("note", {"x": 1}, "..."), at=None)  # at appends/inserts
+doc.remove_card(0)                               # returns the Card dict, or None
+doc.move_card(2, 0); doc.set_card_kind(0, "summary")
+doc.remove_field("title")                        # remove has no lane; card=i targets a composable card
+
+# Out-of-band consumer state (never rendered):
+doc.store_ext({"agent": {"pinned": True}})       # whole $ext map; card=i for a composable card
+doc.store_ext_namespace("agent", {"n": 1})       # one slot, siblings preserved; card=i too
+doc.remove_ext_namespace("agent"); doc.remove_ext()
+doc.store_seed_namespace("note", {"tag": "T"})   # per-kind $seed overlay; new cards spawn with it
+doc.remove_seed_namespace("note")
 ```
+
+Setting a field's value is the writer's job (`quill.writer(doc).set(...)`) — a
+field write needs the schema, and `Document` is quill-free. Reading a field's
+interpreted value is the view's (`quill.view(doc).get(...)`).
 
 ## Schema model
 

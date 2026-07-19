@@ -14,7 +14,4 @@ crate-type = ["cdylib"]
 pyo3 = { version = "~0.26", features = ["extension-module", "abi3-py310"] }
 quillmark = { workspace = true, default-features = true }
 quillmark-core = { workspace = true }
-# The content codec (import_markdown / export_markdown / rebase / map_pos) and
-# the change-bundle op wire; the addressed write surface lowers to it.
-quillmark-content = { workspace = true }
 serde_json = { workspace = true }

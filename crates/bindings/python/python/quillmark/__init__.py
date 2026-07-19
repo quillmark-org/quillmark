@@ -2,6 +2,8 @@
 
 from ._quillmark import (
     Artifact,
+    CardView,
+    CardWriter,
     Diagnostic,
     Document,
     Location,
@@ -11,14 +13,14 @@ from ._quillmark import (
     QuillmarkError,
     RenderResult,
     Severity,
-    import_markdown,
-    export_markdown,
-    rebase,
-    map_pos,
+    View,
+    Writer,
 )
 
 __all__ = [
     "Artifact",
+    "CardView",
+    "CardWriter",
     "Diagnostic",
     "Document",
     "Location",
@@ -28,10 +30,14 @@ __all__ = [
     "QuillmarkError",
     "RenderResult",
     "Severity",
-    "import_markdown",
-    "export_markdown",
-    "rebase",
-    "map_pos",
+    "View",
+    "Writer",
 ]
 
-__version__ = "0.1.0"
+try:
+    from importlib.metadata import version as _version
+
+    __version__ = _version("quillmark")
+except Exception:  # pragma: no cover — source tree without installed metadata
+    __version__ = "0.0.0"
+
