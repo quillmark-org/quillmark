@@ -112,7 +112,13 @@ jobs:
         # --workspace: bare `cargo publish` operates on default-members, which
         # exclude crates/content — the leaf every published crate depends on.
         # publish = false members (fixtures, fuzz, bindings) are skipped; cargo
-        # orders the rest by dependency.
+        # orders the rest by dependency and skips versions already on the
+        # registry, so a re-run resumes a partially-uploaded release.
+        #
+        # Each published crate needs its own crates.io Trusted Publisher (this
+        # repo + this workflow + the Publish environment). A crate missing one
+        # 403s ("access token is not valid for crate <name>") when the ordered
+        # publish reaches it — add the config on crates.io, then re-run.
         run: cargo publish --workspace --locked --no-verify
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}

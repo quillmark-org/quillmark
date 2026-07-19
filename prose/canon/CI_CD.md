@@ -6,7 +6,7 @@
 
 Four workflows. `ci.yml` runs lint/test/wasm on every PR and non-tag push. `release-prepare.yml` computes the next version, bumps the workspace, and opens a release PR. `release.yml` tags and publishes to crates.io, npm, and PyPI when that PR merges. `docs.yml` builds MkDocs and deploys to GitHub Pages on stable releases.
 
-Published crates: `quillmark-core`, `quillmark`, `quillmark-pdf`, `quillmark-typst`, `quillmark-pdfform`, `quillmark-cli`. Not published: `quillmark-fixtures`, `quillmark-fuzz`, `quillmark-python`, `quillmark-wasm`.
+Published crates, in dependency order: `quillmark-content`, `quillmark-core`, `quillmark-pdf`, `quillmark-pdfform`, `quillmark-typst`, `quillmark`, `quillmark-cli`. Not published: `quillmark-fixtures`, `quillmark-fuzz`, `quillmark-python`, `quillmark-wasm`.
 
 ---
 
@@ -51,12 +51,17 @@ The PR uses a GitHub App token (`TAGGER_APP_ID`/`TAGGER_PRIVATE_KEY`) so CI runs
 
 | Target | Registry | Command |
 |--------|----------|---------|
-| Rust crates | crates.io | `cargo publish --locked --no-verify` via `rust-lang/crates-io-auth-action` |
+| Rust crates | crates.io | `cargo publish --workspace --locked --no-verify` via `rust-lang/crates-io-auth-action` |
 | WASM | npm | `npm publish --access public --provenance` (Trusted Publisher) |
 | Python | PyPI | `pypa/gh-action-pypi-publish` over prebuilt wheels |
 
+- **Rust crates**: `--workspace` reaches every publishable member, including `quillmark-content` — the leaf the default-members exclude — and skips the `publish = false` members (fixtures, fuzz, bindings). Cargo orders the rest by dependency and skips any version already on the registry with a warning, so re-running resumes a partially-uploaded release instead of erroring.
 - **WASM**: restores the `wasm-release-` cache (`wasm-release` profile), builds via `./scripts/build-wasm.sh`, runs `npx vitest run`, publishes `@quillmark/wasm`. Pre-release versions (containing `-`) publish with `--tag next` so they land on the `next` dist-tag instead of `latest`.
 - **Python**: `maturin-action` builds wheels for Linux (x86_64, aarch64), Windows (x64), macOS (aarch64) across Python 3.10–3.12, plus an sdist; artifacts are gathered and uploaded with `skip-existing`.
+
+### Trusted Publishing scope (crates.io)
+
+`crates-io-auth-action` mints an OIDC token scoped to exactly the crates carrying a matching Trusted Publisher config — repo `borb-sh/quillmark`, workflow `release.yml`, environment `Publish`. That config is **per crate**. A publishable crate without one draws `403 … the provided access token is not valid for crate <name>` the moment the dependency-ordered publish reaches it, after earlier crates have already gone up (crates.io versions are immutable, so those uploads stand). Every crate in the published list carries its own config; a new publishable crate needs one added on crates.io before its first release, and the partial-upload skip above makes the re-run that finishes the batch safe.
 
 ---
 
