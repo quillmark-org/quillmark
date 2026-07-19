@@ -47,7 +47,11 @@ guides in order.
   `datetime` accepts offset-less wall-clock `YYYY-MM-DDThh:mm[:ss]` and rejects
   offsets/space/fractional/bare-date (offsets are rejected, never dropped). Most
   `datetime` fields hold a bare date and rename to `type: date` with no data
-  change (#991).
+  change (#991). A present date field then arrives in the plate as a
+  click-to-edit **value-object**, not a bare `datetime`: render with
+  `(data.d.display)("…")` (parens required), reach the native datetime through
+  `data.d.value`, and audit vendored packages that call `.display()` on a date
+  (#990).
 - [0.93 → 0.94](0.93-to-0.94.md) — `type: richtext(inline)` retires; declare
   `type: richtext` with `inline: true` instead. Blueprint still emits
   `richtext(inline)<markdown>`; `build_transform_schema` gains

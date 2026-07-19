@@ -5,10 +5,13 @@
 //! runtime data processing. Richtext fields carry canonical content JSON, lowered
 //! here to markup **block bindings** (`#let _qm_cN = [ .. ]`) via
 //! [`emit_content`]; the document data is a Typst **literal**
-//! (`#let data = ( .. )`) whose content fields reference those blocks, date
-//! fields are `datetime(..)` constructors, `$cards` carry a per-kind-ordinal
-//! `$path`, and everything else is a value literal Typst judges equal to the
-//! former `json()` parse; the schema address tables are a generated literal
+//! (`#let data = ( .. )`) whose content fields reference those blocks, present
+//! date fields reference a `date` value-object block (`#let _qm_dN = { let v =
+//! datetime(..); (value: v, display: (..args) => text(v.display(..args))) }`,
+//! blank ⇒ `none`), `$cards` carry a per-kind-ordinal `$path`, and everything
+//! else is a value literal Typst judges equal to the former `json()` parse
+//! (date cells excepted — their block carries the `datetime`, not the data
+//! literal); the schema address tables are a generated literal
 //! `_qm-meta`, and each content field's plaintext projection a generated literal
 //! `_qm-plaintext` (backing the `plaintext(field)` helper, #873). See
 //! [`generate_lib_typ`].
@@ -135,6 +138,11 @@ struct Codegen<'m> {
     blocks: String,
     windows: Vec<(String, Range<usize>, Vec<SegmentMap>)>,
     counter: usize,
+    /// The `_qm_dN` date value-object counter — independent of `counter` so the
+    /// two ID spaces never collide and each stays a pure function of emission
+    /// order (sorted keys, semantic card order), preserving the #801
+    /// byte-identical-source invariant.
+    date_counter: usize,
     emit_error: Option<EmitError>,
     /// `(schema address, plaintext)` per non-blank content field — the content
     /// text with island slots stripped and marks dropped, keyed by the same
@@ -150,6 +158,7 @@ impl<'m> Codegen<'m> {
             blocks: String::new(),
             windows: Vec::new(),
             counter: 0,
+            date_counter: 0,
             emit_error: None,
             plaintext: Vec::new(),
         }
@@ -182,6 +191,50 @@ impl<'m> Codegen<'m> {
             .map(|s| rebase_segment(s, markup_at))
             .collect();
         self.windows.push((path.to_string(), start..end, segments));
+        id
+    }
+
+    /// Bind a present date/datetime as a **value-object** block and return its
+    /// identifier — the date sibling of [`content_block`](Self::content_block).
+    /// The object exposes two projections over the date encoded once in `v`:
+    ///
+    /// - `value` — the native `datetime` (`v`) for math, comparison, and
+    ///   datetime-consuming packages; and
+    /// - `display` — a closure `(..args) => text(v.display(..args))`. It returns
+    ///   *content*, not a string, so its glyphs are born at **this `text(..)`
+    ///   node's** lexical site inside the generated helper, per emission —
+    ///   pinning per-instance identity a shared wrapper would collapse. Wrapping
+    ///   `v.display` (not a re-literalized date) inherits `v`'s type, so a
+    ///   date-only `v` throws Typst's native `[hour]`-pattern error for free.
+    ///
+    /// Records a **segment-less** window over that `text(..)` node keyed by
+    /// `path` — one whole-placement region per instance when the date renders,
+    /// so a card date defeats the loop-variable blindness `scalar_windows` does
+    /// not chase (its ink resolves to this per-instance node, not the shared
+    /// `card.<field>` reference site). Rebased into `self.blocks` coordinates
+    /// like [`content_block`](Self::content_block); the whole date cell in the
+    /// data literal is just the returned `_qm_dN` reference.
+    ///
+    /// Plates call it as `(data.<field>.display)(..)` — the paren form, since
+    /// Typst reserves dict-key method sugar (`d.display(..)`) for built-in dict
+    /// methods (pinned in `span_scan`'s spike 1).
+    fn date_object(&mut self, path: &str, constructor: &str) -> String {
+        let id = format!("_qm_d{}", self.date_counter);
+        self.date_counter += 1;
+        self.blocks.push_str("#let ");
+        self.blocks.push_str(&id);
+        self.blocks.push_str(" = { let v = ");
+        self.blocks.push_str(constructor);
+        self.blocks.push_str("; (value: v, display: (..args) => ");
+        // The window covers exactly the `text(..)` call — the node whose span
+        // the produced glyphs carry (span_scan spike 2). Empty segments make it
+        // a whole-placement region, like a scalar site.
+        let text_start = self.blocks.len();
+        self.blocks.push_str("text(v.display(..args))");
+        let text_end = self.blocks.len();
+        self.blocks.push_str(") }\n");
+        self.windows
+            .push((path.to_string(), text_start..text_end, Vec::new()));
         id
     }
 
@@ -312,9 +365,10 @@ impl<'m> Codegen<'m> {
     /// [`Self::content_field`]; a blank content stays an empty string literal.
     /// `is_inline` picks pure-inline lowering (no `parbreak`) for a
     /// `richtext(inline)` field, per element for an `array<richtext(inline)>`.
-    /// A `date_kind` field becomes a `datetime(..)` constructor (or `none`) —
-    /// three-component for a `date`, six-component for a `datetime`. Everything
-    /// else is a plain value literal.
+    /// A `date_kind` field references a value-object block via
+    /// [`date_object`](Self::date_object) (or `none` when blank) — the `datetime`
+    /// is three-component for a `date`, six-component for a `datetime`.
+    /// Everything else is a plain value literal.
     fn emit_field(
         &mut self,
         path: &str,
@@ -346,7 +400,13 @@ impl<'m> Codegen<'m> {
             }
         } else if let Some(kind) = date_kind {
             match value {
-                serde_json::Value::String(s) => datetime_literal(s, kind),
+                // A present date lowers to a value-object block; blank or
+                // (defensively) unparseable ⇒ `none`, so `!= none` guards are
+                // untouched. Coercion has already rejected malformed values.
+                serde_json::Value::String(s) => match datetime_constructor(s, kind) {
+                    Some(ctor) => self.date_object(path, &ctor),
+                    None => "none".to_string(),
+                },
                 serde_json::Value::Null => "none".to_string(),
                 other => lit(other),
             }
@@ -426,19 +486,18 @@ fn plaintext_literal(entries: &[(String, String)]) -> String {
     )
 }
 
-/// A coerced date/datetime string as a Typst `datetime(..)` constructor,
-/// reusing the same parse the coercion layer validates with. A `date` lowers to
-/// the three-component date-only form; a `datetime` lowers to the six-component
-/// wall-clock form, seconds zero-filled — carrying the authored time-of-day
-/// through rather than truncating it. Empty or (defensively) unparseable ⇒
-/// `none` — coercion has already rejected malformed values upstream.
-fn datetime_literal(s: &str, kind: DateKind) -> String {
+/// The `datetime(..)` constructor for a coerced date/datetime string — the `v`
+/// a [`date_object`](Codegen::date_object) captures — or `None` for empty or
+/// (defensively) unparseable input, which the caller lowers to `none`. Reuses
+/// the same parse the coercion layer validates with. A `date` lowers to the
+/// three-component date-only form; a `datetime` to the six-component wall-clock
+/// form, seconds zero-filled — carrying the authored time-of-day through rather
+/// than truncating it. Coercion has already rejected malformed values upstream.
+fn datetime_constructor(s: &str, kind: DateKind) -> Option<String> {
     if s.is_empty() {
-        return "none".to_string();
+        return None;
     }
-    // An unparseable value is defensively `none` — coercion has already rejected
-    // malformed values upstream, so this fallback is shared across both arities.
-    let constructor = match kind {
+    match kind {
         DateKind::Date => quillmark_core::quill::parse_date(s)
             .map(|(year, month, day)| format!("datetime(year: {year}, month: {month}, day: {day})")),
         DateKind::DateTime => {
@@ -449,8 +508,7 @@ fn datetime_literal(s: &str, kind: DateKind) -> String {
                 )
             })
         }
-    };
-    constructor.unwrap_or_else(|| "none".to_string())
+    }
 }
 
 /// Serialize a JSON value as a Typst literal expression, mirroring the value
@@ -777,11 +835,12 @@ mod tests {
         &rest[..end]
     }
 
-    /// A `date` field becomes a three-component `datetime(..)`; a `datetime`
-    /// field a six-component one carrying the wall-clock time (seconds
-    /// zero-filled when omitted); null stays `none`.
+    /// A present `date`/`datetime` field lowers to a value-object block whose
+    /// `v` is the `datetime(..)` (three-component for a `date`, six-component
+    /// wall-clock for a `datetime`, seconds zero-filled), referenced from the
+    /// data literal; a null field stays `none` inline, with no block.
     #[test]
-    fn date_and_datetime_fields_become_datetime_constructors() {
+    fn date_and_datetime_fields_become_value_object_blocks() {
         let meta = meta_from(serde_json::json!({
             "properties": {
                 "issued": { "type": "string", "format": "date" },
@@ -794,18 +853,36 @@ mod tests {
             "at": "2026-07-03T09:30",
             "signed": null
         });
-        let (lib, _) = generate_lib_typ(&data, &meta).unwrap();
+        let (lib, windows) = generate_lib_typ(&data, &meta).unwrap();
+        // Keys emit in sorted order (`at` < `issued` < `signed`), so `_qm_d0`
+        // is the six-component `datetime` field and `_qm_d1` the three-component
+        // date. Each captures its `datetime` once, with the region-bearing
+        // `text(v.display(..))` closure.
         assert!(
-            lib.contains("\"issued\": datetime(year: 2026, month: 7, day: 3)"),
+            lib.contains(
+                "#let _qm_d0 = { let v = datetime(year: 2026, month: 7, day: 3, \
+                 hour: 9, minute: 30, second: 0); \
+                 (value: v, display: (..args) => text(v.display(..args))) }"
+            ),
             "{lib}"
         );
         assert!(
             lib.contains(
-                "\"at\": datetime(year: 2026, month: 7, day: 3, hour: 9, minute: 30, second: 0)"
+                "#let _qm_d1 = { let v = datetime(year: 2026, month: 7, day: 3); \
+                 (value: v, display: (..args) => text(v.display(..args))) }"
             ),
             "{lib}"
         );
-        assert!(lib.contains("\"signed\": none"));
+        // The data literal references the blocks; the null field stays inline.
+        assert!(lib.contains("\"at\": _qm_d0"), "{lib}");
+        assert!(lib.contains("\"issued\": _qm_d1"), "{lib}");
+        assert!(lib.contains("\"signed\": none"), "{lib}");
+        // Present dates surface a window keyed by their schema path; the null
+        // field contributes none.
+        let paths: Vec<&str> = windows.iter().map(|w| w.path.as_str()).collect();
+        assert!(paths.contains(&"issued"), "{paths:?}");
+        assert!(paths.contains(&"at"), "{paths:?}");
+        assert!(!paths.contains(&"signed"), "{paths:?}");
     }
 
     /// Cards get a per-kind-ordinal `$path`, and content/date fields resolve
@@ -831,11 +908,22 @@ mod tests {
             ]
         });
         let (lib, windows) = generate_lib_typ(&data, &meta).unwrap();
+        // Each card instance gets its own per-instance windows: the body block
+        // and — for the first card's present date — a value-object window keyed
+        // by the card's full address, the per-instance identity that defeats the
+        // shared-loop-variable blindness.
         let paths: Vec<&str> = windows.iter().map(|w| w.path.as_str()).collect();
-        assert_eq!(paths, vec!["$cards.note.0.$body", "$cards.note.1.$body"]);
+        assert!(paths.contains(&"$cards.note.0.$body"), "{paths:?}");
+        assert!(paths.contains(&"$cards.note.1.$body"), "{paths:?}");
+        assert!(paths.contains(&"$cards.note.0.on"), "{paths:?}");
         assert!(lib.contains("\"$path\": \"$cards.note.0.\""));
         assert!(lib.contains("\"$path\": \"$cards.note.1.\""));
-        assert!(lib.contains("\"on\": datetime(year: 2026, month: 1, day: 2)"));
+        // The first card's date is a value-object block referenced from its cell.
+        assert!(
+            lib.contains("let v = datetime(year: 2026, month: 1, day: 2);"),
+            "{lib}"
+        );
+        assert!(lib.contains("\"on\": _qm_d0"), "{lib}");
     }
 
     /// The address tables round-trip into the `_qm-meta` literal.
@@ -881,27 +969,33 @@ mod tests {
             "properties": {
                 "body": richtext_field(),
                 "note": richtext_field(),
+                "issued": { "type": "string", "format": "date" },
                 "extra": { "type": "object" }
             },
             "$defs": {
                 "note_card": {
                     "properties": {
-                        "$body": richtext_field()
+                        "$body": richtext_field(),
+                        "on": { "type": "string", "format": "date" }
                     }
                 }
             }
         }));
         // `content` is a pure function, so inlining it in both orderings yields
-        // the same content values — the point is the *key* order differs.
+        // the same content values — the point is the *key* order differs. The
+        // date value-object path is deterministic too: its `_qm_dN` IDs key on
+        // sorted emission order, so a reorder must not renumber them.
         let a = serde_json::json!({
             "body": content("The body."),
             "note": content("The note."),
+            "issued": "2026-01-02",
             "extra": { "x": 1, "y": 2 },
-            "$cards": [ { "$kind": "note", "$body": content("Card body"), "tag": "t" } ]
+            "$cards": [ { "$kind": "note", "$body": content("Card body"), "on": "2027-03-04", "tag": "t" } ]
         });
         let b = serde_json::json!({
-            "$cards": [ { "tag": "t", "$body": content("Card body"), "$kind": "note" } ],
+            "$cards": [ { "tag": "t", "on": "2027-03-04", "$body": content("Card body"), "$kind": "note" } ],
             "extra": { "y": 2, "x": 1 },
+            "issued": "2026-01-02",
             "note": content("The note."),
             "body": content("The body.")
         });

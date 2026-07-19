@@ -13,7 +13,25 @@ Plates are plain Typst code. Document metadata reaches the plate as a JSON dicti
 #data.at("title", default: "Untitled")       // safe with default
 ```
 
-Fields declared `type: richtext` in `Quill.yaml` arrive as Typst content (their content lowered to markup, ready to render); `type: date` and `type: datetime` fields arrive as Typst `datetime` values — the backend emits a `datetime()` constructor at codegen, three-component for a `date` and six-component (carrying the wall-clock time) for a `datetime`.
+Fields declared `type: richtext` in `Quill.yaml` arrive as Typst content (their content lowered to markup, ready to render). `type: date` and `type: datetime` fields arrive as a **value-object** (see below). Everything else is a plain JSON-shaped value.
+
+### Dates
+
+A present `type: date` / `type: datetime` field arrives as a small value-object with two projections; a blank date is `none` (so `#if data.field != none` guards are unchanged):
+
+```typst
+#(data.issued.display)("[day padding:none] [month repr:long] [year]")  // rendered, click-to-edit
+#(data.issued.display)()                                                // rendered, ISO default
+#data.issued.value                                                      // native datetime (math, compare, pkgs)
+#data.issued.value.display("[year]")                                    // native string (no region)
+#data.issued.value.year()                                              // components: int
+#if data.issued != none { .. }                                          // presence
+```
+
+- **`display` renders and is clickable.** It is a closure returning Typst *content*, so its glyphs carry a region keyed on the field's schema path — the atomic, picker-editable click-to-edit target. Note the **parentheses**: `(data.issued.display)(..)`, not `data.issued.display(..)`. Typst reserves dict-key method sugar for built-in dict methods, so the stored closure must be called through the parenthesized form. The date it wraps is the field's declared type, so a `date`-only field's `display` inherits Typst's native error on a `[hour]` pattern.
+- **`.value` is the native escape hatch.** It is the underlying `datetime` for arithmetic, comparison, `.year()`/`.weekday()`/… components, and any datetime-consuming package. `data.issued.value.display("…")` returns a native `str` (no region).
+
+One rule: **native anything → `.value`; region render → `(…display)(…)`.** A package that formats a date internally still needs `.value` when it does native `datetime` work, but placing `(data.issued.display)(..)` — even deep inside a package — keeps the region, because the closure's ink is born at its generated definition site, not the call site.
 
 ### Checking for Optional Fields
 

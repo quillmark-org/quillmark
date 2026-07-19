@@ -74,12 +74,20 @@
 /// Formats a date in CMU civilian format: "Month Day, Year"
 /// Guidelines section 3.2: Date format is "Month Day, Year" (e.g., November 29, 2025)
 ///
-/// - date (str|datetime): Date to format
-/// -> str
+/// - date (str|datetime|dictionary): Date to format — a raw string, a native
+///   `datetime`, or a Quillmark date value-object.
+/// -> str | content
 #let display-date(date) = {
   if type(date) == str {
     date
-  } else {
+  } else if type(date) == datetime {
+    // A bare `datetime` — the `today()` fallback for a blank date — keeps
+    // native method sugar (returns `str`).
     date.display("[month repr:long] [day padding:none], [year]")
+  } else {
+    // A Quillmark date field crosses as a value-object dict whose `display` key
+    // is a closure returning region-bearing content; grabbing `.display` off a
+    // native datetime is a compile error, so the dict takes the paren form.
+    (date.display)("[month repr:long] [day padding:none], [year]")
   }
 }

@@ -140,13 +140,14 @@
 {content_blocks}
 
 /// Document data as a dictionary — a backend-generated Typst literal. Content
-/// fields reference their `_qm_cN` block bindings; `date` fields are
-/// `datetime(year:, month:, day:)` constructors and `datetime` fields the
-/// six-component `datetime(year:, .., second:)`; `$cards` carry their
-/// per-kind-ordinal `$path` prefix; everything else is a value literal Typst
-/// judges equal to the former `json()` parse. No runtime processing: the
-/// former `__meta__` strip, content insertion, date parsing, and card loop are
-/// gone — the backend did that work at generation time.
+/// fields reference their `_qm_cN` block bindings; present `date`/`datetime`
+/// fields reference a `_qm_dN` value-object block — `(value: datetime(..),
+/// display: (..args) => text(..))`, blank ⇒ `none` — so the `datetime` lives in
+/// the block, not this literal; `$cards` carry their per-kind-ordinal `$path`
+/// prefix; everything else is a value literal Typst judges equal to the former
+/// `json()` parse (date cells excepted). No runtime processing: the former
+/// `__meta__` strip, content insertion, date parsing, and card loop are gone —
+/// the backend did that work at generation time.
 #let data = {data_literal}
 
 /// Backend-generated plaintext table for every non-blank content field, keyed

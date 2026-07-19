@@ -91,8 +91,10 @@
 ///
 /// - String: shown as-is (use for fixed text like placeholders).
 /// - datetime: USAF style `DD Month YYYY`; DAF style `Month DD, YYYY`.
+/// - dictionary: a Quillmark date value-object; its `display` closure renders
+///   region-bearing content in the same style.
 ///
-/// - date (str|datetime): Date to format for display
+/// - date (str|datetime|dictionary): Date to format for display
 /// - memo-style (str): `"usaf"` or `"daf"`
 /// -> content
 #let display-date(date, memo-style: "usaf") = {
@@ -108,7 +110,16 @@
     } else {
       "[day padding:none] [month repr:long] [year]"
     }
-    date.display(pattern)
+    // A Quillmark date field crosses as a value-object dict whose `display` key
+    // is a closure returning region-bearing content (click-to-edit); a bare
+    // `datetime` — the `today()` fallback for a blank date — keeps native
+    // method sugar. Grabbing `.display` off a native datetime without calling
+    // it is a compile error, so dispatch on the shape.
+    if type(date) == datetime {
+      date.display(pattern)
+    } else {
+      (date.display)(pattern)
+    }
   }
 }
 

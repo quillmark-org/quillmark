@@ -799,10 +799,12 @@ fn forward_pos(helper: &Source, segmap: &SegmentMap, pos: usize) -> usize {
 /// value laundered through `#let s = data.x` carries the binding's span, and
 /// card fields read from the per-card loop variable (`card.from`) have one
 /// shared expression site across every card instance — no per-instance
-/// identity exists in span data; a card *content* field is covered by its
-/// per-instance generated eval site instead. Content-field references also
-/// match harmlessly: their glyphs carry the helper eval-site span, which no
-/// plate window contains.
+/// identity exists in span data; a card *content* or *date* field is covered by
+/// its per-instance generated site instead (a content block, or a date
+/// value-object's `text(..)` closure — #990). Content- and date-field
+/// references also match harmlessly: their rendered glyphs carry the helper
+/// site's span, which no plate window contains, so a scalar window over
+/// `data.issued` is inert once its ink migrates to the generated closure.
 pub(crate) fn scalar_windows(source: &Source, fields: &[String]) -> Vec<(String, Range<usize>)> {
     let mut anchors: Vec<(String, Range<usize>, Range<usize>)> = Vec::new();
     collect_anchors(&LinkedNode::new(source.root()), fields, &mut anchors);
@@ -1909,6 +1911,49 @@ typst:
                 .trim(),
             "2026-01-02",
             "the no-arg call forwards an empty spread and takes datetime's default format"
+        );
+    }
+
+    /// #990 spike 5 (the last go/no-go gate) — **the paren-call form is NOT
+    /// uniform across the value-object dict and a native `datetime`; the mixed
+    /// call site needs a normalization shim.**
+    ///
+    /// The value-object migration parenthesizes every date `.display(` call
+    /// site — including inside the vendored `display-date` helper. But that
+    /// helper also receives a **native** `datetime` (both target quills fall
+    /// back to `datetime.today()` for a blank date:
+    /// `usaf_memo/.../frontmatter.typ:45`, `cmu_letter/plate.typ:9`), so the
+    /// parenthesized call would have to dispatch on *both* shapes. It cannot:
+    /// grabbing `.display` off a native datetime without calling it — the
+    /// `(dt.display)` the dict needs — is a hard compile error ("cannot access
+    /// fields on type datetime"), because a native datetime exposes `display`
+    /// only as method-call sugar, not as a first-class field. Spike 1's paren
+    /// hint holds *only on a dict*.
+    ///
+    /// So a uniform paren edit is impossible at the mixed site. The migration
+    /// instead dispatches on `type(date)` in `display-date`: `datetime` keeps
+    /// `date.display(pattern)` (native sugar, `str`); the value-object dict
+    /// takes `(date.display)(pattern)` (the closure, region-bearing `content`).
+    #[test]
+    fn spike_990_native_datetime_rejects_the_paren_display_grab() {
+        const NATIVE: &str = "#set page(width: 400pt, height: 400pt, margin: 20pt)\n\
+             #let dt = datetime(year: 2026, month: 1, day: 2)\n";
+        // Grabbing `.display` off a native datetime is a compile error — so the
+        // dict's paren form does not carry over to the today() fallback.
+        let err = compile_frame_text(&format!("{NATIVE}#(dt.display)(\"[year]\")"))
+            .expect_err("the paren grab on a native datetime must be a compile error");
+        assert!(
+            err.contains("cannot access fields on type datetime"),
+            "the failure is the native-datetime field-access restriction: {err}"
+        );
+        // Native method sugar still works on a datetime — the branch the shim
+        // keeps for the today() fallback.
+        assert_eq!(
+            compile_frame_text(&format!("{NATIVE}#dt.display(\"[year]\")"))
+                .expect("native method sugar compiles on a datetime")
+                .trim(),
+            "2026",
+            "a native datetime keeps method-call sugar"
         );
     }
 

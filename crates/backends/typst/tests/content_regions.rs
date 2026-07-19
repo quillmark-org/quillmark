@@ -486,6 +486,150 @@ card_kinds:
 }
 
 #[test]
+fn date_field_display_surfaces_a_clickable_region() {
+    // #990: a present date lowers to a value-object whose `display` closure
+    // returns `text(v.display(..))` — content born at a generated `text(..)`
+    // node inside a recorded segment-less window. Rendering it through the
+    // shipping `(data.<field>.display)(..)` call surfaces one whole-placement
+    // region keyed by the schema path, and a click resolves back to it: the
+    // atomic, picker-editable click-to-edit target the issue is about.
+    const YAML: &str = r#"
+quill:
+  name: date_region
+  version: 0.1.0
+  backend: typst
+  description: date value-object region test
+typst:
+  plate_file: plate.typ
+main:
+  fields:
+    issued:
+      type: date
+      description: the memo date
+"#;
+    const PLATE: &str = r#"
+#import "@local/quillmark-helper:0.1.0": data
+#set page(width: 612pt, height: 792pt, margin: 72pt)
+#set text(size: 11pt)
+
+#(data.issued.display)("[day padding:none] [month repr:long] [year]")
+"#;
+    let data = serde_json::json!({ "issued": "2026-01-02" });
+
+    let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
+    let regions = session.regions();
+    let issued: Vec<_> = regions.iter().filter(|r| r.field == "issued").collect();
+    assert_eq!(
+        issued.len(),
+        1,
+        "the rendered date surfaces exactly one whole-placement region: {regions:?}"
+    );
+    let [x0, y0, x1, y1] = issued[0].rect;
+    assert!(
+        x1 > x0 && y1 > y0,
+        "the date region has positive area: {:?}",
+        issued[0].rect
+    );
+    // It is segment-less (a scalar/widget-shaped site) — no content span.
+    assert!(
+        issued[0].span.is_none(),
+        "a date region is whole-placement, carrying no content span: {:?}",
+        issued[0]
+    );
+    let (cx, cy) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+    assert_eq!(
+        session.field_at(issued[0].page, cx, cy).as_deref(),
+        Some("issued"),
+        "a click on the date ink routes to its schema path"
+    );
+}
+
+#[test]
+fn card_dates_surface_per_instance_regions_through_laundering() {
+    // The driving case: card dates. `scalar_windows` deliberately does not
+    // chase the shared `card.<field>` loop variable, so under value-level
+    // tagging a card date surfaced *no* region. The value-object fixes this —
+    // each card instance emits its own `text(..)` node in its own generated
+    // block, so two cards yield two distinct windows keyed by their per-kind
+    // ordinal address. And because a closure's body ink is born at its lexical
+    // definition site, laundering the value through `#let d = card.at("on")`
+    // (or into a package) keeps it attributable — the region rides the value's
+    // closure, not the reference site. A blank card date stays `none`, so its
+    // guard skips and it draws no ink and surfaces no region.
+    const YAML: &str = r#"
+quill:
+  name: card_date_region
+  version: 0.1.0
+  backend: typst
+  description: per-instance card date region test
+typst:
+  plate_file: plate.typ
+card_kinds:
+  stamp:
+    description: a dated stamp
+    fields:
+      on:
+        type: date
+        description: the stamp date
+"#;
+    const PLATE: &str = r#"
+#import "@local/quillmark-helper:0.1.0": data
+#set page(width: 612pt, height: 792pt, margin: 72pt)
+#set text(size: 11pt)
+
+#for card in data.at("$cards", default: ()) {
+  let d = card.at("on", default: none)
+  if d != none {
+    (d.display)("[day padding:none] [month repr:long] [year]")
+  } else {
+    [—]
+  }
+  parbreak()
+}
+"#;
+    let data = serde_json::json!({
+        "$cards": [
+            {"$kind": "stamp", "on": "2026-01-02"},
+            {"$kind": "stamp"},                       // blank date → none
+            {"$kind": "stamp", "on": "2028-03-04"},
+        ],
+    });
+
+    let session = TypstBackend.open(&quill(YAML, PLATE), &data).expect("open");
+    let fields: std::collections::HashSet<String> =
+        session.regions().into_iter().map(|r| r.field).collect();
+    // Each present card date is its own per-instance region — the loop-variable
+    // blindness is defeated.
+    assert!(
+        fields.contains("$cards.stamp.0.on"),
+        "first card's date regions per-instance: {fields:?}"
+    );
+    assert!(
+        fields.contains("$cards.stamp.2.on"),
+        "third card's date regions per-instance: {fields:?}"
+    );
+    // The blank card's date is `none`: its guard skips, it draws no ink, so no
+    // region — present-and-empty is absent, not a zero-area box.
+    assert!(
+        !fields.contains("$cards.stamp.1.on"),
+        "a blank card date surfaces no region: {fields:?}"
+    );
+    // A click on the first card's date resolves to its canonical address.
+    let regions = session.regions();
+    let first = regions
+        .iter()
+        .find(|r| r.field == "$cards.stamp.0.on")
+        .expect("first card date region present");
+    let cx = (first.rect[0] + first.rect[2]) / 2.0;
+    let cy = (first.rect[1] + first.rect[3]) / 2.0;
+    assert_eq!(
+        session.field_at(first.page, cx, cy).as_deref(),
+        Some("$cards.stamp.0.on"),
+        "a click on a laundered card date routes to its per-instance schema path"
+    );
+}
+
+#[test]
 fn form_field_unknown_path_fails_the_compile() {
     // `field:` validates against the schema address tables — a typo'd path
     // is a loud compile error, not a silent no-region widget.

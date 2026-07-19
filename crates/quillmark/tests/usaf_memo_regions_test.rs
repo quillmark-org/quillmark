@@ -117,3 +117,44 @@ fn usaf_memo_regions_cover_body_signature_and_cards() {
         "the sidecar is opt-in; exports carry no regions by default"
     );
 }
+
+/// #990 end-to-end on the flagship quill: a real memo date surfaces a clickable
+/// region even though the **vendored package** places it. The plate hands
+/// `data.date` to `frontmatter`, which formats it deep inside `utils.typ`'s
+/// `display-date` — the exact laundered shape that left the memo date's ink
+/// `Foreign` under value-level tagging. The date value-object's `display`
+/// closure is born in the generated helper, so its glyphs carry a helper span
+/// that resolves to the recorded window regardless of where the package calls
+/// it, and the region keys on the schema path `date`.
+#[test]
+fn usaf_memo_date_region_rides_the_vendored_display() {
+    let engine = Quillmark::new();
+    let quill =
+        quillmark::quill_from_path(quills_path("usaf_memo")).expect("usaf_memo should load");
+    let parsed = quill.seed_document();
+    let mut session = engine.open(&quill, &parsed).expect("open a session");
+
+    // The seed leaves the date blank (→ a native `today()` fallback, no field
+    // region). Commit a real date and it renders through the same vendored path.
+    let mut edited = quill.compile_data(&parsed).expect("compile seed data");
+    edited["date"] = serde_json::json!("2026-01-02");
+    session.apply(&edited).expect("apply a real memo date");
+
+    let regions = session.regions();
+    let date = regions
+        .iter()
+        .find(|r| r.field == "date")
+        .unwrap_or_else(|| panic!("a real memo date must surface a `date` region: {regions:?}"));
+    assert!(
+        date.rect[2] > date.rect[0] && date.rect[3] > date.rect[1],
+        "the date region has positive area: {:?}",
+        date.rect
+    );
+    let cx = (date.rect[0] + date.rect[2]) / 2.0;
+    let cy = (date.rect[1] + date.rect[3]) / 2.0;
+    assert_eq!(
+        session.field_at(date.page, cx, cy).as_deref(),
+        Some("date"),
+        "a click on the vendored-placed memo date routes to its schema path"
+    );
+}
