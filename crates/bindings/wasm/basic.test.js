@@ -472,20 +472,20 @@ title: Mismatch Test
 // Document editor surface
 // ---------------------------------------------------------------------------
 
-describe('Document editor surface — setField / removeField', () => {
-  it('setField inserts a new payload field', () => {
+describe('Document editor surface — storeField / removeField', () => {
+  it('storeField inserts a new payload field', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.storeField('subtitle', 'A subtitle')
     expect(field(doc.main, 'subtitle')).toBe('A subtitle')
   })
 
-  it('setField updates an existing field', () => {
+  it('storeField updates an existing field', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.storeField('title', 'Updated')
     expect(field(doc.main, 'title')).toBe('Updated')
   })
 
-  it('setField accepts uppercase field names verbatim (lowercase is canonical, not enforced)', () => {
+  it('storeField accepts uppercase field names verbatim (lowercase is canonical, not enforced)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     for (const name of ['BODY', 'CARDS', 'Title', 'MixedCase_1']) {
       doc.storeField(name, 'x')
@@ -493,14 +493,14 @@ describe('Document editor surface — setField / removeField', () => {
     }
   })
 
-  it('setField throws EditError::InvalidFieldName for `$`-prefixed names', () => {
+  it('storeField throws EditError::InvalidFieldName for `$`-prefixed names', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     for (const name of ['$body', '$cards', '$quill', '$kind']) {
       expect(() => doc.storeField(name, 'x')).toThrow(/InvalidFieldName/)
     }
   })
 
-  it('setField throws EditError::InvalidFieldName for an invalid name (hyphen)', () => {
+  it('storeField throws EditError::InvalidFieldName for an invalid name (hyphen)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     expect(() => doc.storeField('bad-name', 'x')).toThrow(/InvalidFieldName/)
   })
@@ -540,8 +540,8 @@ describe('Document blank-canvas constructor', () => {
   })
 })
 
-describe('Document editor surface — setFields / setCardFields', () => {
-  it('setFields applies every entry, in object order', () => {
+describe('Document editor surface — storeFields', () => {
+  it('storeFields applies every entry, in object order', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.storeFields({}, { subtitle: 'A subtitle', pages: 3 })
     expect(field(doc.main, 'subtitle')).toBe('A subtitle')
@@ -552,7 +552,7 @@ describe('Document editor surface — setFields / setCardFields', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     try {
       doc.storeFields({}, { ok_field: 'v', 'bad-name': 'v', 'also bad': 'v' })
-      throw new Error('setFields should have thrown')
+      throw new Error('storeFields should have thrown')
     } catch (err) {
       expect(err.diagnostics.map((d) => d.path)).toEqual(['bad-name', 'also bad'])
       expect(err.message).toMatch(/InvalidFieldName/)
@@ -560,12 +560,12 @@ describe('Document editor surface — setFields / setCardFields', () => {
     expect(hasField(doc.main, 'ok_field')).toBe(false)
   })
 
-  it('setFields rejects a non-object argument', () => {
+  it('storeFields rejects a non-object argument', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     expect(() => doc.storeFields({}, 'not an object')).toThrow(/plain object/)
   })
 
-  it('setCardFields is the card-indexed twin of setFields', () => {
+  it('storeFields({ card }) is the card-indexed twin of storeFields', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.insertCard(Document.makeCard('note', { foo: 'bar' }))
     doc.storeFields({ card: 0 }, { foo: 'baz', extra: 1 })
@@ -1117,13 +1117,13 @@ describe('Document editor surface — parse→mutate→read round-trip', () => {
 })
 
 describe('Document editor surface — $ext mutators', () => {
-  it('setExt adds an opaque map readable via card.ext', () => {
+  it('storeExt adds an opaque map readable via card.ext', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.storeExt({}, { editor: { title: 'Greeting' } })
     expect(doc.main.ext.editor.title).toBe('Greeting')
   })
 
-  it('setExt rejects non-object values', () => {
+  it('storeExt rejects non-object values', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     expect(() => doc.storeExt({}, 'nope')).toThrow(/must be a plain object/)
     expect(() => doc.storeExt({}, 42)).toThrow(/must be a plain object/)
@@ -1136,7 +1136,7 @@ describe('Document editor surface — $ext mutators', () => {
     expect(reparsed.main.ext.agent.pinned).toBe(true)
   })
 
-  it('setExtNamespace preserves sibling namespaces', () => {
+  it('storeExtNamespace preserves sibling namespaces', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     doc.storeExtNamespace({}, 'editor', { title: 'A' })
     doc.storeExtNamespace({}, 'agent', { pinned: true })

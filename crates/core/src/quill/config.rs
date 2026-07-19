@@ -1271,16 +1271,6 @@ impl QuillConfig {
         chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
     }
 
-    fn is_valid_card_identifier(name: &str) -> bool {
-        let mut chars = name.chars();
-        match chars.next() {
-            Some(c) if c.is_ascii_lowercase() || c == '_' => {}
-            _ => return false,
-        }
-
-        chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-    }
-
     fn is_valid_quill_name(name: &str) -> bool {
         name == "__default__" || Self::is_snake_case_identifier(name)
     }
@@ -1652,7 +1642,7 @@ impl QuillConfig {
                 }
                 Some(card_kinds_table) => {
                     for (card_name, card_value) in card_kinds_table {
-                        if !Self::is_valid_card_identifier(card_name) {
+                        if !crate::document::is_valid_kind_name(card_name) {
                             errors.push(
                                 Diagnostic::new(
                                     Severity::Error,

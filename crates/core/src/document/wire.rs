@@ -263,39 +263,18 @@ impl TryFrom<CardWire> for Card {
         if let Some(id) = wire.id {
             payload.set_id(id);
         }
-        if let Some(ext) = wire.ext {
-            let as_value = JsonValue::Object(ext);
-            if crate::value::json_depth_exceeds(&as_value, crate::document::limits::MAX_YAML_DEPTH)
-            {
-                return Err(WireError::InvalidField {
-                    key: "$ext".to_string(),
-                    reason: format!(
-                        "nests deeper than the maximum of {} levels",
-                        crate::document::limits::MAX_YAML_DEPTH
-                    ),
-                });
+        let too_deep = |key: &str| {
+            let key = key.to_string();
+            move |max| WireError::InvalidField {
+                key,
+                reason: format!("nests deeper than the maximum of {} levels", max),
             }
-            let JsonValue::Object(ext) = as_value else {
-                unreachable!("constructed as Object above")
-            };
-            payload.set_ext(ext);
+        };
+        if let Some(ext) = wire.ext {
+            payload.set_ext(crate::value::depth_check_meta_map(ext, too_deep("$ext"))?);
         }
         if let Some(seed) = wire.seed {
-            let as_value = JsonValue::Object(seed);
-            if crate::value::json_depth_exceeds(&as_value, crate::document::limits::MAX_YAML_DEPTH)
-            {
-                return Err(WireError::InvalidField {
-                    key: "$seed".to_string(),
-                    reason: format!(
-                        "nests deeper than the maximum of {} levels",
-                        crate::document::limits::MAX_YAML_DEPTH
-                    ),
-                });
-            }
-            let JsonValue::Object(seed) = as_value else {
-                unreachable!("constructed as Object above")
-            };
-            payload.set_seed(seed);
+            payload.set_seed(crate::value::depth_check_meta_map(seed, too_deep("$seed"))?);
         }
         let body = body_from_wire(&wire.body)?;
         Ok(Card::from_parts(payload, body))

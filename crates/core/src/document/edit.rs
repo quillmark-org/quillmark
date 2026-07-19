@@ -179,12 +179,7 @@ fn check_field(name: &str, value: &serde_json::Value) -> Result<(), EditError> {
 /// Depth-bound an out-of-band meta map (`$ext` / `$seed`). Both ride the same
 /// recursive emit/DTO paths, so they carry the same §8 depth bound.
 fn check_meta_depth(map: &serde_json::Map<String, serde_json::Value>) -> Result<(), EditError> {
-    let as_value = serde_json::Value::Object(map.clone());
-    if crate::value::json_depth_exceeds(&as_value, crate::document::limits::MAX_YAML_DEPTH) {
-        return Err(EditError::ValueTooDeep {
-            max: crate::document::limits::MAX_YAML_DEPTH,
-        });
-    }
+    crate::value::depth_check_meta_map(map.clone(), |max| EditError::ValueTooDeep { max })?;
     Ok(())
 }
 

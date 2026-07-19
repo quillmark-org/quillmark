@@ -473,7 +473,7 @@ error when any is exceeded:
 
 Markdown block nesting depth (100) is enforced at import time by the
 markdown→content parser (`Document::parse`); the Typst backend re-checks
-at render as a backstop for corpora built without importing.
+at render as a backstop for content built without importing.
 
 ## 9. Emission Contract
 

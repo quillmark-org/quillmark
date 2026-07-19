@@ -1528,7 +1528,7 @@ mod tests {
         // ATX headings are single-line: `## a  \nb` is a heading plus a separate
         // paragraph, never a heading with a continuation. (The heading→space
         // canonicalization in HardBreak handling is defensive for editor-built
-        // corpora, unreachable via markdown import.)
+        // content, unreachable via markdown import.)
         let rt = imp("## a  \nb");
         assert_eq!(rt.text, "a\nb");
         assert_eq!(rt.lines.len(), 2);

@@ -225,7 +225,7 @@ impl MarkKind {
 
 /// A `serde_json::Value` rendered to a string with object keys recursively
 /// sorted — order-insensitive, so it is a stable comparison/grouping key.
-pub(crate) fn canonical_json_string(v: &JsonValue) -> String {
+fn canonical_json_string(v: &JsonValue) -> String {
     serde_json::to_string(&sorted_value(v)).unwrap_or_default()
 }
 
@@ -393,9 +393,8 @@ impl Content {
 
     /// Whether the content carries no renderable content: the text is empty or
     /// whitespace-only. An island slot ([`ISLAND_SLOT`], U+FFFC) is not
-    /// whitespace, so an island-bearing content is never blank. This is the
-    /// content analogue of the old `body.trim().is_empty()` string check —
-    /// body-disabled validation and round-trip emit key on it.
+    /// whitespace, so an island-bearing content is never blank. Body-disabled
+    /// validation and round-trip emit key on it.
     pub fn is_blank(&self) -> bool {
         self.text.trim().is_empty()
     }

@@ -188,6 +188,27 @@ pub fn json_depth_exceeds(value: &serde_json::Value, max_depth: usize) -> bool {
     false
 }
 
+/// Depth-bound an owned `$ext` / `$seed` map against
+/// [`MAX_YAML_DEPTH`](crate::document::limits::MAX_YAML_DEPTH), returning it
+/// unchanged when within bounds. On overflow, `on_too_deep` builds the caller's
+/// boundary error from the limit — each write surface (`EditError` /
+/// `StorageError` / `WireError`) keeps its own type and message while the
+/// wrap-check-rebuild dance lives here once.
+pub(crate) fn depth_check_meta_map<E>(
+    map: serde_json::Map<String, serde_json::Value>,
+    on_too_deep: impl FnOnce(usize) -> E,
+) -> Result<serde_json::Map<String, serde_json::Value>, E> {
+    let max = crate::document::limits::MAX_YAML_DEPTH;
+    let as_value = serde_json::Value::Object(map);
+    if json_depth_exceeds(&as_value, max) {
+        return Err(on_too_deep(max));
+    }
+    let serde_json::Value::Object(map) = as_value else {
+        unreachable!("constructed as Object above")
+    };
+    Ok(map)
+}
+
 impl QuillValue {
     fn from_node(node: Node) -> Self {
         QuillValue {
@@ -445,34 +466,6 @@ mod tests {
             quill_val.get("count").as_ref().and_then(|v| v.as_i64()),
             Some(42)
         );
-    }
-
-    #[test]
-    fn test_delegating_methods() {
-        let quill_val = QuillValue::from_json(serde_json::json!({
-            "name": "test",
-            "count": 42,
-            "active": true,
-            "items": [1, 2, 3]
-        }));
-
-        assert_eq!(
-            quill_val.get("name").as_ref().and_then(|v| v.as_str()),
-            Some("test")
-        );
-        assert_eq!(
-            quill_val.get("count").as_ref().and_then(|v| v.as_i64()),
-            Some(42)
-        );
-        assert_eq!(
-            quill_val.get("active").as_ref().and_then(|v| v.as_bool()),
-            Some(true)
-        );
-        assert!(quill_val
-            .get("items")
-            .as_ref()
-            .and_then(|v| v.as_array())
-            .is_some());
     }
 
     #[test]

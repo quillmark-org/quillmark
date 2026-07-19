@@ -117,7 +117,7 @@ card_kinds:
     expect(field(quill.seedCard('note', overlay), 'author')).toBe('Custom Author')
     expect(field(quill.seedCard('note'), 'author')).toBe('A. Author')
 
-    // setSeedNamespace writes an overlay; main.seed reads it back; remove clears.
+    // storeSeedNamespace writes an overlay; main.seed reads it back; remove clears.
     const doc2 = Document.fromMarkdown('~~~\n$quill: seed_core@1.0.0\n$kind: main\n~~~\n')
     doc2.storeSeedNamespace('note', { author: 'Written' })
     expect(doc2.main.seed?.note.author).toBe('Written')

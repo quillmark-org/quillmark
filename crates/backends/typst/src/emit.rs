@@ -290,7 +290,7 @@ pub fn emit_content(rt: &Content) -> Result<Emission, EmitError> {
 /// [`emit_content`], so it still renders rather than silently dropping structure.
 ///
 /// [`is_inline`]: quillmark_content::Content::is_inline
-pub fn emit_content_inline(rt: &Content) -> Result<Emission, EmitError> {
+pub(crate) fn emit_content_inline(rt: &Content) -> Result<Emission, EmitError> {
     if !rt.is_inline() {
         return emit_content(rt);
     }

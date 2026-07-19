@@ -88,10 +88,10 @@ fn test_edit_error_display() {
         .contains("3"));
 }
 
-// ── `$`-prefixed names: Document::set_field ──────────────────────────────────
+// ── `$`-prefixed names: Document::store_field ──────────────────────────────────
 
 #[test]
-fn test_document_set_field_rejects_dollar_prefixed_names() {
+fn test_document_store_field_rejects_dollar_prefixed_names() {
     // `$`-prefixed keys are reserved for system metadata — the only
     // field-name reservation (uppercase is accepted).
     for name in ["$body", "$cards", "$quill", "$kind"] {
@@ -106,10 +106,10 @@ fn test_document_set_field_rejects_dollar_prefixed_names() {
     }
 }
 
-// ── Document::set_field (happy path) ─────────────────────────────────────────
+// ── Document::store_field (happy path) ─────────────────────────────────────────
 
 #[test]
-fn test_document_set_field_inserts() {
+fn test_document_store_field_inserts() {
     let mut doc = make_doc();
     doc.main_mut().store_field("author", qv("Alice")).unwrap();
     assert_eq!(
@@ -119,7 +119,7 @@ fn test_document_set_field_inserts() {
 }
 
 #[test]
-fn test_document_set_field_updates_existing() {
+fn test_document_store_field_updates_existing() {
     let mut doc = make_doc();
     doc.main_mut().store_field("title", qv("New Title")).unwrap();
     assert_eq!(
@@ -374,10 +374,10 @@ fn test_card_new_invalid_kind_rejected() {
     }
 }
 
-// ── Card::set_field ──────────────────────────────────────────────────────────
+// ── Card::store_field ──────────────────────────────────────────────────────────
 
 #[test]
-fn test_card_set_field_valid() {
+fn test_card_store_field_valid() {
     let mut card = Card::new("note").unwrap();
     card.store_field("content", qv("Some text")).unwrap();
     assert_eq!(
@@ -387,7 +387,7 @@ fn test_card_set_field_valid() {
 }
 
 #[test]
-fn test_card_set_field_invalid_name() {
+fn test_card_store_field_invalid_name() {
     let mut card = Card::new("note").unwrap();
     let result = card.store_field("bad-name", qv("text"));
     assert_eq!(
@@ -415,10 +415,10 @@ fn test_document_new_blank_canvas() {
     assert_eq!(doc, reparsed);
 }
 
-// ── Card::set_fields ─────────────────────────────────────────────────────────
+// ── Card::store_fields ─────────────────────────────────────────────────────────
 
 #[test]
-fn test_card_set_fields_inserts_in_iterator_order() {
+fn test_card_store_fields_inserts_in_iterator_order() {
     let mut card = Card::new("note").unwrap();
     card.store_fields([("b".to_string(), qv("two")), ("a".to_string(), qv("one"))])
         .unwrap();
@@ -428,7 +428,7 @@ fn test_card_set_fields_inserts_in_iterator_order() {
 }
 
 #[test]
-fn test_card_set_fields_collects_every_violation() {
+fn test_card_store_fields_collects_every_violation() {
     let mut card = Card::new("note").unwrap();
     let errors = card
         .store_fields([
@@ -455,7 +455,7 @@ fn test_card_set_fields_collects_every_violation() {
 }
 
 #[test]
-fn test_card_set_fields_atomic_on_error() {
+fn test_card_store_fields_atomic_on_error() {
     let mut card = Card::new("note").unwrap();
     card.store_field("existing", qv("old")).unwrap();
     let result = card.store_fields([
@@ -472,7 +472,7 @@ fn test_card_set_fields_atomic_on_error() {
 }
 
 #[test]
-fn test_card_set_fields_clears_fill_and_repeated_name_last_wins() {
+fn test_card_store_fields_clears_fill_and_repeated_name_last_wins() {
     let mut card = Card::new("note").unwrap();
     card.store_fill("title", qv("draft")).unwrap();
     card.store_fields([
@@ -486,7 +486,7 @@ fn test_card_set_fields_clears_fill_and_repeated_name_last_wins() {
 }
 
 #[test]
-fn test_set_field_scalar_conversions() {
+fn test_store_field_scalar_conversions() {
     // The `From` impls let scalars pass straight through `impl Into<QuillValue>`.
     let mut card = Card::new("note").unwrap();
     card.store_field("name", "Alice").unwrap();
@@ -1230,7 +1230,7 @@ fn test_invariants_after_mutation_sequence() {
 // ── $ext mutators ──────────────────────────────────────────────────────────────
 
 #[test]
-fn test_set_ext_adds_map_and_strips_from_plate() {
+fn test_store_ext_adds_map_and_strips_from_plate() {
     let mut doc = make_doc();
     let mut ext = serde_json::Map::new();
     ext.insert(
@@ -1252,7 +1252,7 @@ fn test_set_ext_adds_map_and_strips_from_plate() {
 }
 
 #[test]
-fn test_set_ext_round_trips_through_markdown() {
+fn test_store_ext_round_trips_through_markdown() {
     let mut doc = make_doc();
     let mut ext = serde_json::Map::new();
     ext.insert("agent".to_string(), serde_json::json!({ "pinned": true }));
@@ -1281,7 +1281,7 @@ fn test_remove_ext_returns_previous_and_clears() {
 }
 
 #[test]
-fn test_set_ext_namespace_preserves_siblings() {
+fn test_store_ext_namespace_preserves_siblings() {
     let mut doc = make_doc();
     doc.main_mut()
         .store_ext_namespace("presentation", serde_json::json!({ "title": "A" }))
@@ -1397,7 +1397,7 @@ fn deep_value(depth: usize) -> serde_json::Value {
 }
 
 #[test]
-fn set_field_rejects_value_past_depth_limit() {
+fn store_field_rejects_value_past_depth_limit() {
     let mut doc =
         crate::document::Document::parse("~~~\n$quill: q@1.0\n$kind: main\n~~~\n").unwrap().document;
     let ok = crate::value::QuillValue::from_json(deep_value(50));
@@ -1409,7 +1409,7 @@ fn set_field_rejects_value_past_depth_limit() {
         matches!(err, crate::document::EditError::ValueTooDeep { max: 100 }),
         "expected ValueTooDeep, got {err:?}"
     );
-    // set_fill and set_ext carry the same bound.
+    // store_fill and store_ext carry the same bound.
     let too_deep = crate::value::QuillValue::from_json(deep_value(150));
     assert!(doc.main_mut().store_fill("y", too_deep).is_err());
     let serde_json::Value::Object(map) = deep_value(150) else {

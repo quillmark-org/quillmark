@@ -168,8 +168,8 @@ def test_seed_card_with_overlay_layers_over_example(tmp_path):
     assert "NOTE TAG" in bare and "PINNED" not in bare
 
 
-def test_document_seed_and_set_seed_namespace_round_trip(tmp_path):
-    """main['seed'][kind] reads what set_seed_namespace wrote; the overlay
+def test_document_seed_and_store_seed_namespace_round_trip(tmp_path):
+    """main['seed'][kind] reads what store_seed_namespace wrote; the overlay
     feeds straight back into seed_card; remove_seed_namespace clears it."""
 
     def seed_of(document, kind):

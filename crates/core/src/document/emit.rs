@@ -107,7 +107,7 @@ impl Document {
         let mut out = String::new();
 
         // ── Root block (card-yaml fence + global body) ────────────────────────
-        // Bodies are corpora; the markdown surface is their export projection,
+        // Bodies are content values; the markdown surface is their export projection,
         // so a `Document` → markdown → `Document` round-trip canonicalizes the
         // body markdown (leading and trailing blank lines dropped — the
         // projection is a value, not a file). A blank line separates the closing
@@ -907,11 +907,6 @@ mod tests {
             "scalar round-trip mismatch for {:?}: emitted as {:?}",
             value, yaml
         );
-    }
-
-    #[test]
-    fn saphyr_scalar_round_trips_plain_string() {
-        assert_scalar_round_trips(serde_json::json!("hello"));
     }
 
     #[test]

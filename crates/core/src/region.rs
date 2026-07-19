@@ -273,6 +273,17 @@ mod tests {
         assert!(json.contains("\"granularity\":\"cluster\""), "{json}");
         let back: ContentHit = serde_json::from_str(&json).unwrap();
         assert_eq!(back, hit);
+
+        // The segment-floored variant serializes to its own tag, so a caret UI
+        // can tell a trusted cluster offset from a floored one.
+        let seg = ContentHit {
+            field: "body".to_string(),
+            pos: 7,
+            granularity: Some(HitGranularity::Segment),
+        };
+        let json = serde_json::to_string(&seg).unwrap();
+        assert!(json.contains("\"granularity\":\"segment\""), "{json}");
+        assert_eq!(serde_json::from_str::<ContentHit>(&json).unwrap(), seg);
     }
 
     /// `granularity` omits when `None` and defaults back on read — the
@@ -290,21 +301,6 @@ mod tests {
             !json.contains("granularity"),
             "unreported granularity omitted: {json}"
         );
-        let back: ContentHit = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, hit);
-    }
-
-    /// The segment-floored variant serializes to its own tag, so a caret UI can
-    /// tell a trusted cluster offset from a floored one.
-    #[test]
-    fn content_hit_segment_granularity_tag() {
-        let hit = ContentHit {
-            field: "body".to_string(),
-            pos: 7,
-            granularity: Some(HitGranularity::Segment),
-        };
-        let json = serde_json::to_string(&hit).unwrap();
-        assert!(json.contains("\"granularity\":\"segment\""), "{json}");
         let back: ContentHit = serde_json::from_str(&json).unwrap();
         assert_eq!(back, hit);
     }

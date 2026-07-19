@@ -605,17 +605,9 @@ fn depth_check_meta_map(
     value: serde_json::Map<String, serde_json::Value>,
     key: &str,
 ) -> Result<serde_json::Map<String, serde_json::Value>, StorageError> {
-    let as_value = serde_json::Value::Object(value);
-    if crate::value::json_depth_exceeds(&as_value, crate::document::limits::MAX_YAML_DEPTH) {
-        return Err(StorageError::Malformed(format!(
-            "{key} nests deeper than the maximum of {} levels",
-            crate::document::limits::MAX_YAML_DEPTH
-        )));
-    }
-    let serde_json::Value::Object(value) = as_value else {
-        unreachable!("constructed as Object above")
-    };
-    Ok(value)
+    crate::value::depth_check_meta_map(value, |max| {
+        StorageError::Malformed(format!("{key} nests deeper than the maximum of {} levels", max))
+    })
 }
 
 impl From<NestedCommentV0_92_0> for NestedComment {

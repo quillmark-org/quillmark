@@ -333,7 +333,7 @@ $kind: main
 }
 
 #[test]
-fn set_seed_namespace_rejects_invalid_and_reserved_kinds() {
+fn store_seed_namespace_rejects_invalid_and_reserved_kinds() {
     // `$seed` is keyed by composable card-kind, so the writer must reject
     // names that could never name a composable card (unlike free-form `$ext`).
     let mut doc = parse(

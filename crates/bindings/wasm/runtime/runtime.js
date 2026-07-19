@@ -60,8 +60,8 @@ import { Quill, Document, init } from '../core/wasm.js';
 export { Quill, Document, init };
 // The document-free content codec — re-exported verbatim from the core build so
 // the runtime subpath exposes `exportMarkdown(body)` (the on-demand markdown
-// projection that replaces the eager `bodyMarkdown`), `importMarkdown`, and the
-// position-mapping pair (`rebase`, `mapPos`).
+// projection), `importMarkdown`, and the position-mapping pair (`rebase`,
+// `mapPos`).
 export { importMarkdown, exportMarkdown, rebase, mapPos } from '../core/wasm.js';
 
 // ── The main-card address ───────────────────────────────────────────────────

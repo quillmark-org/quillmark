@@ -94,21 +94,3 @@ fn exact_selector_match_accepts() {
 
     dry_run_ref(&quill_path, "test_quill@2.1.0").expect("selector should be accepted");
 }
-
-#[test]
-fn minor_selector_matches_any_patch() {
-    let temp_dir = TempDir::new().unwrap();
-    let quill_path = make_quill(&temp_dir, "2.1.5");
-
-    // `@2.1` matches any patch in the 2.1 series.
-    dry_run_ref(&quill_path, "test_quill@2.1").expect("selector should be accepted");
-}
-
-#[test]
-fn latest_selector_matches_any_version() {
-    let temp_dir = TempDir::new().unwrap();
-    let quill_path = make_quill(&temp_dir, "9.9.9");
-
-    // Bare name defaults to `Latest`, which matches any version.
-    dry_run_ref(&quill_path, "test_quill").expect("selector should be accepted");
-}

@@ -5,7 +5,7 @@ mod errors;
 mod types;
 
 pub use enums::{PyOutputFormat, PySeverity};
-pub use errors::{convert_edit_error, convert_render_error, QuillmarkError};
+pub use errors::QuillmarkError;
 pub use types::{
     PyArtifact, PyCardView, PyCardWriter, PyDiagnostic, PyDocument, PyLocation, PyQuill,
     PyQuillmark, PyRenderResult, PyView, PyWriter,

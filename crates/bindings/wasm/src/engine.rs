@@ -1593,9 +1593,8 @@ impl Document {
 
 impl Document {
     /// Resolve a mutable composable card by index, mapping out-of-range to the
-    /// same `IndexOutOfRange` JS error the other card mutators throw. Shared by
-    /// the card-indexed `$ext` mutators so they don't each re-spell the bounds
-    /// check.
+    /// same `IndexOutOfRange` JS error the other card mutators throw. The
+    /// index-taking half of [`addr_card_mut`](Self::addr_card_mut).
     fn card_mut_or_throw(&mut self, index: usize) -> Result<&mut quillmark_core::Card, JsValue> {
         let len = self.inner.cards().len();
         self.inner.card_mut(index).ok_or_else(|| {
@@ -1769,8 +1768,8 @@ pub fn import_markdown(markdown: &str) -> Result<JsValue, JsValue> {
 }
 
 /// Export a canonical `Content` content to its markdown projection — the pure
-/// codec that replaces the eager `bodyMarkdown` / `fieldMarkdown` precomputes
-/// (`exportMarkdown(card.body)`). Throws if `rt` is not a canonical content.
+/// on-demand codec behind `exportMarkdown(card.body)`. Throws if `rt` is not a
+/// canonical content.
 #[wasm_bindgen(js_name = exportMarkdown)]
 pub fn export_markdown(
     #[wasm_bindgen(unchecked_param_type = "Content")] rt: JsValue,
@@ -1847,7 +1846,7 @@ fn edit_errors_to_js(errors: Vec<(String, quillmark_core::EditError)>) -> JsValu
 }
 
 /// Deserialize a plain JS object into the `(name, value)` batch
-/// `Card::set_fields` consumes. Key order is preserved (`preserve_order`
+/// `Card::store_fields` consumes. Key order is preserved (`preserve_order`
 /// is on workspace-wide) so field insertion order follows the object.
 fn js_value_to_field_batch(
     value: &JsValue,

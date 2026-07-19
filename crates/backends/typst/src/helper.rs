@@ -259,7 +259,7 @@ impl<'m> Codegen<'m> {
             Ok(rt) if !rt.is_blank() => {
                 // Record the plaintext projection (content text minus island
                 // slots, marks dropped) for `plaintext(field)`, keyed by the same
-                // address the content block windows on. Blank corpora are skipped
+                // address the content block windows on. Blank content values are skipped
                 // — `plaintext` defaults them to `""`.
                 let plain = quillmark_content::export::to_plaintext(&rt);
                 if !plain.is_empty() {

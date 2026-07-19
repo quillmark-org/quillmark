@@ -12,9 +12,9 @@
 //! source is not canonical, but the content is, so round-trip is defined at the
 //! content, not the string.
 //!
-//! ## Documented codec limits (degenerate, non-authorable corpora)
+//! ## Documented codec limits (degenerate, non-authorable content values)
 //!
-//! The fixed point holds for corpora a well-behaved producer emits. Two
+//! The fixed point holds for the content a well-behaved producer emits. Two
 //! degenerate shapes markdown cannot represent do **not** round-trip, and are
 //! recorded here rather than hidden (see `tests::known_hard_break_limits`):
 //!
@@ -793,7 +793,6 @@ fn delim_open(kind: &MarkKind) -> String {
         MarkKind::Emph => "*".into(),
         MarkKind::Underline => "<u>".into(),
         MarkKind::Strike => "~~".into(),
-        MarkKind::Unknown { .. } => String::new(),
         // Code/Link/Anchor handled elsewhere.
         _ => String::new(),
     }

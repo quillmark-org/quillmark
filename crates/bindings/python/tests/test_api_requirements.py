@@ -305,14 +305,14 @@ def test_move_card_out_of_range():
         doc.move_card(10, 0)
 
 
-def test_set_ext_adds_map():
+def test_store_ext_adds_map():
     """store_ext stores an opaque map readable via card['ext']."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.store_ext({"presentation": {"title": "Greeting"}})
     assert doc.main["ext"] == {"presentation": {"title": "Greeting"}}
 
 
-def test_set_ext_rejects_non_dict():
+def test_store_ext_rejects_non_dict():
     """store_ext raises for non-dict values."""
     doc = Document.from_markdown(SIMPLE_MD)
     with pytest.raises(ValueError, match="must be a dict"):
@@ -327,7 +327,7 @@ def test_ext_round_trips_through_markdown():
     assert reparsed.main["ext"]["agent"]["pinned"] is True
 
 
-def test_set_ext_namespace_preserves_siblings():
+def test_store_ext_namespace_preserves_siblings():
     """store_ext_namespace merges without clobbering other namespaces."""
     doc = Document.from_markdown(SIMPLE_MD)
     doc.store_ext_namespace("presentation", {"title": "A"})
