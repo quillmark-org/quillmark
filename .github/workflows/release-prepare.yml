@@ -109,23 +109,37 @@ jobs:
           LAST=$(git tag -l --sort=-v:refname \
             | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
 
-          # Build the seed section: a commit list maintainers refine in the PR.
+          [ -f CHANGELOG.md ] || printf '# Changelog\n\n' > CHANGELOG.md
+
+          # A curated "## Unreleased" section is the seed body: its entries
+          # become the version section (and the GitHub Release notes), with the
+          # raw commit list riding below in an HTML comment as a coverage
+          # cross-check — invisible in rendered notes if left unedited. With no
+          # curated section, the commit list is the seed body itself.
+          # Only the first "## Unreleased" is consumed; any later one is
+          # stray data and passes through untouched rather than corrupting
+          # the seed.
+          awk '!done && /^## Unreleased$/{f=1; done=1; next} /^## /{f=0} f' CHANGELOG.md > unreleased.md
+          awk '!done && /^## Unreleased$/{f=1; done=1; next} /^## /{f=0} !f' CHANGELOG.md > CHANGELOG.stripped
+
           {
             echo "## v${VERSION} - ${DATE}"
             echo
-            if [ -n "$LAST" ]; then
-              git log --no-merges --pretty='- %s' "${LAST}..HEAD"
+            if grep -q '[^[:space:]]' unreleased.md; then
+              sed -e '/./,$!d' unreleased.md
+              echo "<!-- seed: commits since ${LAST:-the first commit} — confirm the entries above cover them, then delete this comment"
+              git log --no-merges --pretty='- %s' ${LAST:+"${LAST}..HEAD"}
+              echo "-->"
             else
-              git log --no-merges --pretty='- %s'
+              git log --no-merges --pretty='- %s' ${LAST:+"${LAST}..HEAD"}
             fi
             echo
           } > entry.md
 
           # Splice the new section in directly after the "# Changelog" title.
-          [ -f CHANGELOG.md ] || printf '# Changelog\n\n' > CHANGELOG.md
-          { head -n1 CHANGELOG.md; echo; cat entry.md; tail -n +2 CHANGELOG.md; } \
+          { head -n1 CHANGELOG.stripped; echo; cat entry.md; tail -n +2 CHANGELOG.stripped; } \
             > CHANGELOG.new && mv CHANGELOG.new CHANGELOG.md
-          rm entry.md
+          rm -f entry.md unreleased.md CHANGELOG.stripped
 
           echo "Seeded changelog entry for v${VERSION}:"
           cat CHANGELOG.md
@@ -148,7 +162,7 @@ jobs:
             --title "chore(release): v${VERSION}" \
             --body "Automated version bump to \`v${VERSION}\`.
 
-          **Before merging:** review and edit the \`v${VERSION}\` section at the top of \`CHANGELOG.md\` on this branch — it is seeded with the raw commit list. The final section becomes the GitHub Release notes.
+          **Before merging:** review and edit the \`v${VERSION}\` section at the top of \`CHANGELOG.md\` on this branch — seeded from the curated \`## Unreleased\` section when one exists (raw commits ride in an HTML comment as a coverage check), else from the raw commit list. The final section becomes the GitHub Release notes.
 
           Merging this PR will tag and publish the release." \
             --base main \
