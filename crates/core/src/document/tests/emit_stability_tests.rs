@@ -38,7 +38,7 @@ fn collect_md_files(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
 
 /// For every parseable `.md` in the fixture content: `emit1 == emit2`.
 #[test]
-fn parse_emit_parse_emit_stability_over_fixture_corpus() {
+fn parse_emit_parse_emit_stability_over_fixtures() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let resources_dir = std::path::Path::new(manifest_dir)
         .join("..")

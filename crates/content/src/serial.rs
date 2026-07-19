@@ -32,9 +32,9 @@ pub enum ParseError {
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ParseError::Shape(s) => write!(f, "richtext json shape: {s}"),
-            ParseError::Json(s) => write!(f, "richtext json parse: {s}"),
-            ParseError::Invalid(inv) => write!(f, "richtext invariant: {inv:?}"),
+            ParseError::Shape(s) => write!(f, "content json shape: {s}"),
+            ParseError::Json(s) => write!(f, "content json parse: {s}"),
+            ParseError::Invalid(inv) => write!(f, "content invariant: {inv:?}"),
         }
     }
 }
@@ -106,7 +106,7 @@ impl Content {
     }
 }
 
-/// The canonical richtext form as a structural [`Value`] — the recursively
+/// The canonical content form as a structural [`Value`] — the recursively
 /// key-sorted tree [`Content::to_canonical_json`] renders to bytes. A storage
 /// layer embeds this as a nested object (never an escaped string): serializing
 /// the returned value with `serde_json` is byte-identical to that JSON
@@ -119,7 +119,7 @@ pub fn to_canonical_value(rt: &Content) -> Value {
     sort_keys_owned(rt.to_value())
 }
 
-/// Parse the canonical richtext form from a structural [`Value`], normalize
+/// Parse the canonical content form from a structural [`Value`], normalize
 /// (idempotent), and validate — the [`Value`]-input counterpart to
 /// [`Content::from_canonical_json`]. Returns [`ParseError::Invalid`] for a
 /// content that violates its invariants, so a storage layer parsing the embedded

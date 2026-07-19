@@ -133,7 +133,7 @@ export interface RenderOptions {
 }
 
 /**
- * How precisely a {@link CorpusHit.pos} resolved — the marker a caret UI reads
+ * How precisely a {@link ContentHit.pos} resolved — the marker a caret UI reads
  * to decide whether to trust the offset. Never sub-cluster: `'cluster'` is the
  * finest, `'segment'` the floor it degrades to on origin-less ink.
  *
@@ -147,7 +147,7 @@ export interface RenderOptions {
 export type HitGranularity = 'cluster' | 'segment';
 
 /** A click resolved to a field and USV offset into its Content. */
-export interface CorpusHit {
+export interface ContentHit {
 	field: string;
 	pos: number;
 	/**
@@ -433,7 +433,7 @@ export declare class LiveSession {
 	 * Fine-grained click → content position (caret placement). Same PDF-point
 	 * space as {@link fieldAt}; `undefined` off all content ink.
 	 */
-	positionAt(page: number, x: number, y: number): CorpusHit | undefined;
+	positionAt(page: number, x: number, y: number): ContentHit | undefined;
 	/** Content position → caret rect — reverse of {@link positionAt}. */
 	locate(field: string, pos: number): FieldRegion | undefined;
 	/** Page geometry in points (1/72″). Report-only; the painter sizes the canvas. */

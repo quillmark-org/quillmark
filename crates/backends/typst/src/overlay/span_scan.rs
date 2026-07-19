@@ -77,7 +77,7 @@ use typst::syntax::{DiagSpan, DiagSpanKind, FileId, LinkedNode, Source, Span, Sy
 use typst::World;
 use typst_layout::PagedDocument;
 
-use quillmark_core::{CorpusHit, HitGranularity, RenderedRegion};
+use quillmark_core::{ContentHit, HitGranularity, RenderedRegion};
 
 use crate::emit::SegmentMap;
 use crate::world::QuillWorld;
@@ -646,7 +646,7 @@ pub(crate) fn position_at(
     page: usize,
     x: f32,
     y: f32,
-) -> Option<CorpusHit> {
+) -> Option<ContentHit> {
     if windows.is_empty() {
         return None;
     }
@@ -667,7 +667,7 @@ pub(crate) fn position_at(
     let window = &windows[hit.window];
     let segmap = &window.segments[hit.seg?];
     let (pos, granularity) = invert_hit(helper, segmap, &hit.node, hit.offset);
-    Some(CorpusHit {
+    Some(ContentHit {
         field: window.path.clone(),
         pos,
         granularity: Some(granularity),
@@ -688,7 +688,7 @@ fn invert_hit(
     node: &Range<usize>,
     offset: u16,
 ) -> (usize, HitGranularity) {
-    let Some((corpus_r, gen_r, ctx)) = segmap
+    let Some((content_r, gen_r, ctx)) = segmap
         .runs
         .iter()
         .find(|(_, g, _)| g.start <= node.start && node.end <= g.end)
@@ -701,7 +701,7 @@ fn invert_hit(
         .min(gen_r.end.saturating_sub(1))
         .max(gen_r.start);
     let gen_text = &helper.text()[gen_r.clone()];
-    let pos = corpus_r.start + crate::emit::invert_gen_offset(gen_text, *ctx, abs - gen_r.start);
+    let pos = content_r.start + crate::emit::invert_gen_offset(gen_text, *ctx, abs - gen_r.start);
     (pos, HitGranularity::Cluster)
 }
 
@@ -772,9 +772,9 @@ fn forward_pos(helper: &Source, segmap: &SegmentMap, pos: usize) -> usize {
         .iter()
         .find(|(c, _, _)| c.start <= pos && pos < c.end)
     {
-        Some((corpus_r, gen_r, ctx)) => {
+        Some((content_r, gen_r, ctx)) => {
             let gen_text = &helper.text()[gen_r.clone()];
-            gen_r.start + crate::emit::forward_corpus_offset(gen_text, *ctx, pos - corpus_r.start)
+            gen_r.start + crate::emit::forward_content_offset(gen_text, *ctx, pos - content_r.start)
         }
         None => segmap.gen.start,
     }
@@ -1140,8 +1140,7 @@ main:
     // transparency arm (#829). The tests below drive the production
     // `Classifier::classify_seg` and `run_scan_machine` directly, pinning a
     // transparent same-window arm that still suspends across fields against
-    // the shipped code, not a re-derived copy. See
-    // `prose/plans/richtext/phase-2.md` § PR-F for background.
+    // the shipped code, not a re-derived copy.
     // -----------------------------------------------------------------
 
     /// Every drawn item's span in a frame, geometry dropped — classification
@@ -1582,8 +1581,7 @@ main:
     // -----------------------------------------------------------------
     // Does `glyph.span.1` give usable per-character intra-node offsets, and
     // where does it degrade (raw string literals, list/enum numbering,
-    // shaping clusters)? See `prose/plans/richtext/phase-2.md` § PR-F for the
-    // full write-up; this test pins the empirical findings so a future Typst
+    // shaping clusters)? This test pins the empirical findings so a future Typst
     // upgrade cannot silently change them unnoticed.
     // -----------------------------------------------------------------
 

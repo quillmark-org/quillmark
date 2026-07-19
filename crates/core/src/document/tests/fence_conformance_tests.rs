@@ -97,7 +97,7 @@ fn assert_conformant(label: &str, md: &str) {
 // ── Synthetic edge-case content ────────────────────────────────────────────────
 
 #[test]
-fn scanner_agrees_with_commonmark_on_synthetic_corpus() {
+fn scanner_agrees_with_commonmark_on_synthetic_inputs() {
     let cases: &[(&str, &str)] = &[
         ("bare root", "~~~\n$quill: q\n$kind: main\n~~~\n\nBody.\n"),
         (
@@ -204,7 +204,7 @@ fn collect_md(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
 }
 
 #[test]
-fn scanner_agrees_with_commonmark_on_fixture_corpus() {
+fn scanner_agrees_with_commonmark_on_fixtures() {
     let fixtures_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|p| p.parent())

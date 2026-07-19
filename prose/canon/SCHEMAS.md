@@ -32,7 +32,7 @@ Supported field types:
 The text-ish types form a **data vs content** × **open/plain vs closed/formatted**
 2×2: `enum` (closed data), `string` (open data), `plaintext` (plain content),
 `richtext` (formatted content). Navigation/regions are a property of the content
-content model, so `plaintext` and `richtext` share the entire nav/region/preview
+model, so `plaintext` and `richtext` share the entire nav/region/preview
 stack and the same backend lowering (both carry `contentMediaType:
 application/quillmark-content+json`); `plaintext` additionally carries
 `quillmark:plain: true`, an editor-only annotation backends ignore.
@@ -46,7 +46,7 @@ application/quillmark-content+json`); `plaintext` additionally carries
 - Fails fast (`Err`) on the first value that cannot be coerced
 - Coercion rules per type: array wrapping plus element-wise coercion against the `items` schema (a bad element fails at its indexed path, e.g. `counts[1]`); boolean from string/int/float; number/integer from string or from boolean (`true→1`, `false→0`); string unwraps a length-1 string array into the bare string (else identity); richtext commits the canonical content form (the model) — an authored markdown string imports (via `quillmark-content::import`), an editor-supplied content object revalidates and re-canonicalizes, and the length-1-array-unwrap / bare-scalar-stringify leniencies feed the import; date/datetime format validation; object property recursion
 - **`inline` richtext enforcement.** A `richtext` field with `inline: true` requires its content to be exactly one `Para` line, in no container, with no islands (`Content::is_inline`). The empty content satisfies it, so a blank or zero-filled inline field passes. The constraint is checked in three places: coercion (`CoercionError` for a document value), validation (`richtext::not_inline`, the `TypeMismatch` fatality class, as a backstop for a content that bypassed coercion), and load-time example import (a schema literal that violates it is a load error). Blueprint still annotates inline fields as `richtext(inline)<markdown>`; `build_transform_schema` emits `quillmark:inline: true`
-- **`plaintext` coercion and enforcement.** A `plaintext` value rides the same content as `richtext`, but a string is imported through the **literal** codec (`from_plaintext`, verbatim — no markdown parse, no escaping) and an editor-supplied content object is validated **plain** (`Content::is_plain`: no marks, no islands, all `Para` lines) rather than markdown-decoded. A formatted wire content is rejected, not stripped — mirroring the `inline` precedent, checked in the same three places (coercion `CoercionError`; validation `plaintext::not_plain`, `TypeMismatch` fatality class; load-time literal import). An `inline: true` plaintext field additionally requires a single line. The load-time content caches (`default_corpus`/`example_corpus`) and the render-floor zero (the empty content) cover `plaintext` exactly as `richtext` — both are content leaves (`field_contains_corpus`)
+- **`plaintext` coercion and enforcement.** A `plaintext` value rides the same content as `richtext`, but a string is imported through the **literal** codec (`from_plaintext`, verbatim — no markdown parse, no escaping) and an editor-supplied content object is validated **plain** (`Content::is_plain`: no marks, no islands, all `Para` lines) rather than markdown-decoded. A formatted wire content is rejected, not stripped — mirroring the `inline` precedent, checked in the same three places (coercion `CoercionError`; validation `plaintext::not_plain`, `TypeMismatch` fatality class; load-time literal import). An `inline: true` plaintext field additionally requires a single line. The load-time content caches (`default_content`/`example_content`) and the render-floor zero (the empty content) cover `plaintext` exactly as `richtext` — both are content leaves (`field_contains_content`)
 - **`enum` domain validation.** An `enum` field (or the deprecated `enum:` modifier on `string`) coerces as a string; domain membership is a *value* check (`validation::enum_violation`), not a type check, so an out-of-domain string is well-typed but invalid. `type: enum` requires a non-empty `values:` list; `enum:`/`values:` on any type other than `string`/`enum` is a load error (`quill::field_parse_error`), closing the pre-promotion silent no-op. Both spellings populate one carrier (`FieldSchema::enum_values`) and project identically to `{type: string, enum: […]}`
 - **Null short-circuits coercion.** A null value (`field:`, `field: null`,
   `field: ~`) passes coercion unchanged for *every* type — null ≡ absent, so
@@ -194,8 +194,8 @@ else type-empty zero), exactly as for any authored document.
 canonical **content** form, not the authored markdown string, so a seeded
 document is content from birth — matching what an editor round-trip produces and
 what storage embeds. The content is imported once at quill load into a
-`#[serde(skip)]` companion cache on the schema (`FieldSchema::default_corpus` /
-`example_corpus`, `BodyCardSchema::example_corpus`), a pure function of the
+`#[serde(skip)]` companion cache on the schema (`FieldSchema::default_content` /
+`example_content`, `BodyCardSchema::example_content`), a pure function of the
 `Quill.yaml` bytes; seeding and the render floor read that cache rather than
 re-importing markdown per document. The authored markdown literal is retained
 untouched — it is the source of truth the schema emits and the blueprint prints;

@@ -879,7 +879,7 @@ main:
 }
 
 #[test]
-fn position_at_and_locate_round_trip_a_corpus_offset() {
+fn position_at_and_locate_round_trip_a_content_offset() {
     // The two navigation directions compose: a click resolves to a content
     // position inside the field, and locating that position returns a caret
     // rect back on the same page, inside the field's region. A click off all

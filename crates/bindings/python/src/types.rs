@@ -446,7 +446,7 @@ impl PyDocument {
         card: Option<usize>,
         field: Option<&str>,
     ) -> PyResult<()> {
-        let content = py_to_corpus(&rt)?;
+        let content = py_to_content(&rt)?;
         let target = self.addr_card_mut(card)?;
         match field {
             None => {
@@ -1742,7 +1742,7 @@ fn py_dict_to_card(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::Card> {
 /// Decode a Python value as a canonical `Content` content dict — the `install`
 /// input (value semantics, content only). Rejects a markdown string: the cold
 /// path is `install(import_markdown(md))`.
-fn py_to_corpus(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::Content> {
+fn py_to_content(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::Content> {
     let json = py_to_json(value)?;
     if !json.is_object() {
         return Err(PyValueError::new_err(
@@ -1788,7 +1788,7 @@ pub fn import_markdown<'py>(py: Python<'py>, markdown: &str) -> PyResult<Bound<'
 /// precomputes (`export_markdown(doc.body)`). Raises if `rt` is not a content.
 #[pyfunction]
 pub fn export_markdown(rt: Bound<'_, PyAny>) -> PyResult<String> {
-    let content = py_to_corpus(&rt)?;
+    let content = py_to_content(&rt)?;
     Ok(quillmark_content::to_markdown(&content))
 }
 
@@ -1801,7 +1801,7 @@ pub fn rebase<'py>(
     base: Bound<'_, PyAny>,
     markdown: &str,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let base = py_to_corpus(&base)?;
+    let base = py_to_content(&base)?;
     let (content, delta) = quillmark_content::diff_import(&base, markdown)
         .map_err(|e| PyValueError::new_err(format!("rebase: {e}")))?;
     let out = serde_json::json!({

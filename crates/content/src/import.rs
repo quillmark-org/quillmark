@@ -507,7 +507,7 @@ impl Builder {
                     }
                 }
                 // Html/InlineHtml already stripped or rewritten by the fixer;
-                // math/footnotes/etc. produce no content content.
+                // math/footnotes/etc. produce no content.
                 _ => {}
             }
         }
@@ -1485,7 +1485,7 @@ mod tests {
     }
 
     #[test]
-    fn import_and_editor_corpus_same_canonical_bytes() {
+    fn import_and_editor_content_same_canonical_bytes() {
         // The freeze's central promise: equal content → equal bytes, whatever
         // the producer. Import of "a\n\n**b**" must byte-match a hand-built
         // editor content of the same content.

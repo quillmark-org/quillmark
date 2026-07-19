@@ -35,7 +35,7 @@ fn assert_round_trip(label: &str, src: &str) {
 /// Every top-level `.md` file under `crates/fixtures/resources` — files
 /// without a root `~~~card-yaml` block are skipped at parse time.
 #[test]
-fn fixture_corpus_round_trip() {
+fn fixtures_round_trip() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
 
     let resources_dir = std::path::Path::new(manifest_dir)
@@ -122,7 +122,7 @@ fn fixture_corpus_round_trip() {
     );
 
     eprintln!(
-        "fixture_corpus_round_trip: {} passed, {} skipped",
+        "fixtures_round_trip: {} passed, {} skipped",
         passed, skipped
     );
 }

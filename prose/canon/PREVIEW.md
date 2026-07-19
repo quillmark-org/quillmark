@@ -117,7 +117,7 @@ keeps the pageable document is a *mode* to add, not a second type.
 or selection across edits is the **editor's** job: its own transaction mapping
 (a ProseMirror / CodeMirror `StepMap`) carries positions through local edits, so
 the session holds no change log, no revision stamp, and no per-field delta path
-(#886 removed them; `FieldRegion` / `CorpusHit` carry no `revision`). Geometry
+(#886 removed them; `FieldRegion` / `ContentHit` carry no `revision`). Geometry
 (`regions`, `positionAt`, `locate`) is read against the current compile and
 re-read after each committed `apply`. `positionAt` (point → content position) and
 `locate` (content position → caret rect) are exact inverses over that compile —
@@ -291,7 +291,7 @@ class LiveSession {
   fieldBoxes(field: string): FieldRegion[];  // derived whole-field box: one union rect per page (content only)
   fieldAt(page: number, x: number, y: number): string | undefined;
                                         // point → field; PDF pt, bottom-left
-  positionAt(page: number, x: number, y: number): CorpusHit | undefined;
+  positionAt(page: number, x: number, y: number): ContentHit | undefined;
                                         // point → { field, pos }; cluster-exact USV offset
   locate(field: string, pos: number): FieldRegion | undefined;
                                         // content pos → caret rect
@@ -329,7 +329,7 @@ interface FieldRegion {
   span?: [number, number];// USV [start,end) of the covered content; absent for scalar/widget
 }
 
-interface CorpusHit {
+interface ContentHit {
   field: string;
   pos: number;            // USV offset into the field's Content (cluster floor)
   granularity?: 'cluster' | 'segment';  // was pos cluster-exact or floored to the segment start?

@@ -719,7 +719,7 @@ fn sanitize_inserts(delta: &Delta) -> Cow<'_, Delta> {
 /// a retained `\n` finalizes `cur` and pulls the next original into it; a
 /// deleted `\n` drops the next original (merging it in), when one exists; an
 /// inserted `\n` finalizes `cur` and makes a clone (its `continues` cleared) the
-/// new `cur`. `cur == None` is the past-the-end state on a malformed corpus
+/// new `cur`. `cur == None` is the past-the-end state on a malformed content
 /// (more `\n` than lines), where a split clones a default line.
 fn sync_lines_for_delta(old_chars: &[char], old_lines: Vec<Line>, delta: &Delta) -> Vec<Line> {
     let cap = old_lines.len();
@@ -1192,7 +1192,7 @@ mod tests {
     }
 
     /// A single-line content `a￼b` (one inline island slot, one backing island).
-    fn corpus_with_island() -> Content {
+    fn content_with_island() -> Content {
         let mut rt = Content::empty();
         rt.text = format!("a{ISLAND_SLOT}b");
         rt.lines = vec![Line {
@@ -1207,7 +1207,7 @@ mod tests {
 
     #[test]
     fn delete_slot_cascades_island_removal() {
-        let mut rt = corpus_with_island();
+        let mut rt = content_with_island();
         // Delete the slot char at index 1 (`a￼b` -> `ab`).
         let d = Delta {
             ops: vec![Op::Retain(1), Op::Delete(1), Op::Retain(1)],
@@ -1371,7 +1371,7 @@ mod tests {
     // ── sync_lines_for_delta characterization (issue #926 finding 2) ─────────
     //
     // Pin the observable behavior of the line-sync walk — retain/insert/delete
-    // interleavings, the split template-clone rule, and the malformed-corpus
+    // interleavings, the split template-clone rule, and the malformed-content
     // guards — against a silent change to its internals.
 
     /// A `Heading{level}` line, its level a visible tag so a test can trace
@@ -1446,7 +1446,7 @@ mod tests {
 
     #[test]
     fn sync_lines_delete_trailing_newline_without_following_line_is_guarded() {
-        // Malformed corpus: text "a\n" is two segments but `lines` has one
+        // Malformed content: text "a\n" is two segments but `lines` has one
         // entry. Deleting the '\n' when `line_idx + 1` is out of bounds removes
         // nothing (the guard), leaving the single line intact.
         let old_chars: Vec<char> = "a\n".chars().collect();
@@ -1596,7 +1596,7 @@ mod tests {
 
     #[test]
     fn sync_lines_insert_newline_past_end_appends_default() {
-        // Malformed corpus: after a retain walks past the sole line (line_idx ==
+        // Malformed content: after a retain walks past the sole line (line_idx ==
         // lines.len()), an inserted '\n' has no line to clone and appends a
         // default Para.
         let old_chars: Vec<char> = "a\n".chars().collect();

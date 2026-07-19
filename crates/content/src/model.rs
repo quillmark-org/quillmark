@@ -7,7 +7,7 @@
 //! commits to. Everything an editor disagrees on (edge-expand,
 //! adjacent-merge-at-insertion) is *not* encoded — the model only ever stores
 //! the resulting range, so the stored form is identical whatever the editor
-//! did. See `prose/plans/richtext/phase-0.md` § Spike A.
+//! did.
 
 use crate::normalize::is_bidi_char;
 use serde_json::Value as JsonValue;

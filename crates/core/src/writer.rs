@@ -15,7 +15,7 @@
 //! let mut w = quill.writer(&mut doc);
 //! w.set("subject", "Q3 results")?;       // richtext(inline) → strict content commit
 //! w.set("qty", "3")?;                    // integer → strict coerce, stores 3
-//! w.card(2)?.set("desc", corpus_json)?;  // card kind → CardSchema → field type
+//! w.card(2)?.set("desc", content_json)?;  // card kind → CardSchema → field type
 //! w.set_all([("a", "1"), ("b", "2")])?;  // batched, all-or-nothing
 //! ```
 //!

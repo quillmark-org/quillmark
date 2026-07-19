@@ -982,7 +982,7 @@ main:
     }
 
     #[test]
-    fn rejects_richtext_inline_with_multi_block_corpus() {
+    fn rejects_richtext_inline_with_multi_block_content() {
         // A pre-built two-paragraph content reaches the validator directly (no
         // coercion), so the validation-layer NotInline backstop must fire.
         let config = config_with("    tag:\n      type: richtext\n      inline: true", "");
@@ -997,7 +997,7 @@ main:
     }
 
     #[test]
-    fn accepts_richtext_inline_single_para_corpus() {
+    fn accepts_richtext_inline_single_para_content() {
         let config = config_with("    tag:\n      type: richtext\n      inline: true", "");
         let rt = quillmark_content::import::from_markdown("one line only").unwrap();
         let content = quillmark_content::serial::to_canonical_value(&rt);

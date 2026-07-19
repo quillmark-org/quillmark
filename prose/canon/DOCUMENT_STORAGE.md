@@ -43,7 +43,7 @@ ordered payload — typed `$` system metadata, user fields, and YAML
 comments interleaved in source order — as a single discriminated-union
 item list. This is what makes inline-comment preservation symmetric across
 the `$`/non-`$` boundary. The payload shape is unchanged since `0.92.0`;
-`body` is the canonical richtext content embedded structurally (a nested
+`body` is the canonical `Content` embedded structurally (a nested
 object, not a markdown string) — see Byte-stability.
 
 ```json
@@ -101,7 +101,7 @@ insertion-ordered `serde_json`: `serde_json::Value` inside payload field
 values keeps YAML insertion order via the workspace's
 `serde_json/preserve_order` feature, and no whole-envelope key sort is
 applied. Every `body` subtree, by contrast, is the recursively key-sorted
-**canonical richtext form** (`CanonicalRichText` in `dto.rs`) — byte-identical
+**canonical content form** (`CanonicalContent` in `dto.rs`) — byte-identical
 to `rt.to_canonical_json()` and independent of `preserve_order`, even in a
 consumer crate graph that lacks the feature. Sortedness is semantic
 *inside* the content (mark/island/attribute order carries no meaning, so the
@@ -147,7 +147,7 @@ The oldest wire format still read is `0.92.0`: a unified payload-item list
 nested inside a field value survive a storage round-trip (the JSON `value`
 projection is fill-free), and the `seed` payload-item variant (the `$seed`
 per-card-kind overlay map). `0.93.0` leaves the payload model unchanged and
-instead embeds the card `body` as the **canonical richtext content** —
+instead embeds the card `body` as the **canonical content** —
 structurally, as a nested object, not a markdown string (see Byte-stability).
 
 The V0_92_0 → V0_93_0 migration is the one hop that can fail: it
@@ -200,7 +200,7 @@ When the `Document` wire format changes again:
    `DocumentV0_NN_0::try_from(...)` in every arm.
 
 A new frozen DTO can also reject at parse time through a custom
-`Deserialize` rather than through a `TryFrom` migration — `CanonicalRichText`
+`Deserialize` rather than through a `TryFrom` migration — `CanonicalContent`
 (the `body` field's type) normalizes and validates the embedded content,
 failing with a serde error before any `TryFrom` in the chain above runs.
 Design a new DTO's `Deserialize` to fail the same way if it embeds

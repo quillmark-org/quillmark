@@ -270,7 +270,7 @@ impl From<quillmark_core::RenderedRegion> for FieldRegion {
     }
 }
 
-/// How precisely a `CorpusHit.pos` resolved — the marker a caret UI reads to
+/// How precisely a `ContentHit.pos` resolved — the marker a caret UI reads to
 /// decide whether to trust the offset. Never sub-cluster: `cluster` is the
 /// finest this API offers, `segment` the floor it degrades to on origin-less
 /// ink.
@@ -308,7 +308,7 @@ impl From<quillmark_core::HitGranularity> for HitGranularity {
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
-pub struct CorpusHit {
+pub struct ContentHit {
     /// Quill schema field path (same address space as `FieldRegion.field`).
     pub field: String,
     /// USV offset into the field's `Content`.
@@ -321,9 +321,9 @@ pub struct CorpusHit {
 }
 
 #[cfg(any(feature = "typst", feature = "pdfform"))]
-impl From<quillmark_core::CorpusHit> for CorpusHit {
-    fn from(h: quillmark_core::CorpusHit) -> Self {
-        CorpusHit {
+impl From<quillmark_core::ContentHit> for ContentHit {
+    fn from(h: quillmark_core::ContentHit) -> Self {
+        ContentHit {
             field: h.field,
             pos: h.pos,
             granularity: h.granularity.map(Into::into),

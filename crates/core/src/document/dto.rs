@@ -13,7 +13,7 @@
 //! ## Schema versions
 //!
 //! - **`quillmark/document@0.93.0`** — current. The V0_92_0 payload model with
-//!   the card `body` stored as the **canonical richtext content** embedded
+//!   the card `body` stored as the **canonical content** embedded
 //!   structurally (a nested object byte-identical to `to_canonical_json`), not a
 //!   markdown string. The envelope carries two byte disciplines: the outer
 //!   structure stays compact `serde_json` in frozen struct + payload-insertion
@@ -49,7 +49,7 @@ use crate::value::QuillValue;
 use crate::version::QuillReference;
 
 /// Schema version for the V0_93_0 wire format. Newly serialized documents carry
-/// this tag. Stores the card `body` as the canonical richtext content embedded
+/// this tag. Stores the card `body` as the canonical content embedded
 /// structurally (byte-identical to `to_canonical_json`) rather than a markdown string;
 /// the payload shape is unchanged from V0_92_0.
 pub const SCHEMA_V0_93_0: &str = "quillmark/document@0.93.0";
@@ -79,7 +79,7 @@ pub fn peek_schema_version(json: &str) -> Option<String> {
 #[serde(tag = "schema")]
 pub enum StoredDocument {
     /// Current (V0_93_0) document model — the V0_92_0 payload with the card
-    /// `body` embedded as the canonical richtext content (a nested object).
+    /// `body` embedded as the canonical content (a nested object).
     #[serde(rename = "quillmark/document@0.93.0")]
     V0_93_0(DocumentV0_93_0),
     /// Legacy (V0_92_0) document model — unified payload items with per-field
@@ -136,19 +136,19 @@ pub struct DocumentV0_93_0 {
 }
 
 /// Frozen `0.93.0` representation of a [`Card`]. The `body` is the canonical
-/// richtext content embedded structurally (see [`CanonicalRichText`]); the
+/// content embedded structurally (see [`CanonicalContent`]); the
 /// payload is not part of this freeze and reuses the V0_92_0 shape.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CardV0_93_0 {
     pub payload: PayloadV0_93_0,
-    pub body: CanonicalRichText,
+    pub body: CanonicalContent,
 }
 
 /// The V0_93_0 payload shape — identical to V0_92_0. Aliased rather than copied
 /// because payload is outside this freeze; a future payload change forks it.
 pub type PayloadV0_93_0 = PayloadV0_92_0;
 
-/// A card body embedded as the **canonical richtext content**. Its serde *is* the
+/// A card body embedded as the **canonical content**. Its serde *is* the
 /// frozen canonical serializer (`quillmark_content::serial`), delegated to — not
 /// a hand-mirrored DTO tree that could drift from the frozen wire format:
 ///
@@ -164,9 +164,9 @@ pub type PayloadV0_93_0 = PayloadV0_92_0;
 /// [`Document`] is normalized at construction; the serializer normalizes a copy
 /// regardless, so a hand-built value cannot leak non-canonical bytes.
 #[derive(Debug, Clone, PartialEq)]
-pub struct CanonicalRichText(pub Content);
+pub struct CanonicalContent(pub Content);
 
-impl Serialize for CanonicalRichText {
+impl Serialize for CanonicalContent {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -175,7 +175,7 @@ impl Serialize for CanonicalRichText {
     }
 }
 
-impl<'de> Deserialize<'de> for CanonicalRichText {
+impl<'de> Deserialize<'de> for CanonicalContent {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -183,7 +183,7 @@ impl<'de> Deserialize<'de> for CanonicalRichText {
         let value = serde_json::Value::deserialize(deserializer)?;
         let rt = quillmark_content::serial::from_canonical_value(&value)
             .map_err(serde::de::Error::custom)?;
-        Ok(CanonicalRichText(rt))
+        Ok(CanonicalContent(rt))
     }
 }
 
@@ -299,10 +299,10 @@ impl From<&Document> for DocumentV0_93_0 {
 impl From<&Card> for CardV0_93_0 {
     fn from(card: &Card) -> Self {
         // The body is already a normalized content on the live model; embed it
-        // directly. `CanonicalRichText`'s serializer emits the canonical form.
+        // directly. `CanonicalContent`'s serializer emits the canonical form.
         CardV0_93_0 {
             payload: PayloadV0_92_0::from(card.payload()),
-            body: CanonicalRichText(card.body().clone()),
+            body: CanonicalContent(card.body().clone()),
         }
     }
 }
@@ -474,7 +474,7 @@ impl TryFrom<CardV0_93_0> for Card {
     fn try_from(card: CardV0_93_0) -> Result<Self, Self::Error> {
         let payload = Payload::try_from(card.payload)?;
         validate_dto_payload(&payload)?;
-        // `body` is already a normalized, validated content — `CanonicalRichText`
+        // `body` is already a normalized, validated content — `CanonicalContent`
         // enforced that on deserialize (and the V0_92 → V0_93 migration produced
         // it via cold import). Take it directly.
         Ok(Card::from_parts(payload, card.body.0))
@@ -513,7 +513,7 @@ impl TryFrom<CardV0_92_0> for CardV0_93_0 {
             .map_err(|e| StorageError::Malformed(format!("card body: {e}")))?;
         Ok(CardV0_93_0 {
             payload: card.payload,
-            body: CanonicalRichText(body),
+            body: CanonicalContent(body),
         })
     }
 }
@@ -706,7 +706,7 @@ This body and the metadata above are an indorsement card.
     }
 
     #[test]
-    fn corpus_field_survives_storage_round_trip_losslessly() {
+    fn content_field_survives_storage_round_trip_losslessly() {
         // A richtext field stored as a canonical content object is the case the
         // card-yaml markdown projection is lossy for; the storage DTO is the
         // lossless carrier, so identity marks (an `underline` with no markdown
@@ -1080,8 +1080,8 @@ title: Hi
     }
 
     #[test]
-    fn deserialize_rejects_invalid_corpus_body() {
-        // `CanonicalRichText`'s Deserialize validates: a structurally-embedded
+    fn deserialize_rejects_invalid_content_body() {
+        // `CanonicalContent`'s Deserialize validates: a structurally-embedded
         // body whose `lines` count disagrees with its text is rejected at load,
         // never silently round-tripped.
         let blob = r#"{
