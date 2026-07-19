@@ -1,17 +1,10 @@
-"""Tests for Document."""
+"""Tests for Document — the quill-free transport surface (parse, storage,
+structure). Field I/O is the writer/view surface; see test_api_requirements.py."""
 
 import pytest
 
-from quillmark import (
-    Document,
-    QuillmarkError,
-    import_markdown,
-    export_markdown,
-    rebase,
-    map_pos,
-)
+from quillmark import Document, QuillmarkError
 
-import os
 from pathlib import Path
 
 
@@ -29,6 +22,7 @@ def has_field(card, key):
         i["type"] == "field" and i["key"] == key for i in card["payload_items"]
     )
 
+
 WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
 RESOURCES_PATH = WORKSPACE_ROOT / "crates" / "fixtures" / "resources"
 QUILLS_PATH = RESOURCES_PATH / "quills"
@@ -44,21 +38,20 @@ def test_payload_access(taro_md):
     assert not has_field(doc.main, "$quill")
 
 
-def test_body_is_str(taro_md):
-    """Test that body is a str (not None)."""
+def test_body_is_content_dict(taro_md):
+    """`body` is the canonical content dict (source of truth); its `text` carries
+    the plain USV text quill-free. The markdown projection is
+    `quill.view(doc).get_body()`."""
     doc = Document.from_markdown(taro_md)
-    # `body` is the canonical content (a dict); its markdown projection is the
-    # on-demand `export_markdown(body)` codec.
     assert isinstance(doc.body, dict)
-    assert isinstance(export_markdown(doc.body), str)
-    assert "nutty" in export_markdown(doc.body)
+    assert "nutty" in doc.body["text"]
 
 
 def test_body_empty_when_absent():
-    """Test that body is empty string when no body content."""
+    """Test that body text is empty when no body content."""
     md = "~~~card-yaml\n$quill: taro\n$kind: main\nauthor: Test\ntitle: Test\nice_cream: Vanilla\n~~~\n"
     doc = Document.from_markdown(md)
-    assert export_markdown(doc.body) == ""
+    assert doc.body["text"] == ""
 
 
 def test_cards_access():
@@ -72,7 +65,7 @@ def test_cards_access():
     card = doc.cards[0]
     assert card["kind"] == "note"
     assert field(card, "foo") == "bar"
-    assert "Card body." in export_markdown(card["body"])
+    assert "Card body." in card["body"]["text"]
 
 
 def test_cards_empty_when_none():
@@ -197,9 +190,9 @@ def test_clone_isolates_mutations(taro_md):
     doc = Document.from_markdown(taro_md)
     cloned = doc.clone()
 
-    cloned.store_field("title", "Updated Title")
-    assert field(doc.main, "title") != "Updated Title"
-    assert field(cloned.main, "title") == "Updated Title"
+    cloned.remove_field("title")
+    assert has_field(doc.main, "title")
+    assert not has_field(cloned.main, "title")
 
 
 def test_copy_module_clones(taro_md):
@@ -214,8 +207,8 @@ def test_copy_module_clones(taro_md):
     assert shallow == doc
     assert deep == doc
 
-    shallow.store_field("title", "Shallow Edit")
-    assert field(doc.main, "title") != "Shallow Edit"
+    shallow.remove_field("title")
+    assert has_field(doc.main, "title")
 
 
 def test_equals_and_eq(taro_md):
@@ -232,7 +225,7 @@ def test_eq_after_mutation(taro_md):
     doc1 = Document.from_markdown(taro_md)
     doc2 = Document.from_markdown(taro_md)
 
-    doc2.store_field("title", "Different")
+    doc2.remove_field("title")
     assert doc1 != doc2
 
 
@@ -256,37 +249,37 @@ def test_repr_includes_quill_ref(taro_md):
     assert "taro" in text
 
 
-def test_remove_card_field_returns_value():
-    """remove_card_field removes and returns the field's value."""
+def test_remove_field_on_card_returns_value():
+    """remove_field(name, card=i) removes and returns a composable card field's
+    value — `remove` has no lane, one verb over the whole card axis."""
     md = (
         "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\nBody.\n\n"
         "~~~card-yaml\n$kind: note\nfoo: bar\nbaz: qux\n~~~\n"
     )
     doc = Document.from_markdown(md)
 
-    removed = doc.remove_card_field(0, "foo")
+    removed = doc.remove_field("foo", card=0)
     assert removed == "bar"
     assert not has_field(doc.cards[0], "foo")
     assert field(doc.cards[0], "baz") == "qux"
 
 
-def test_remove_card_field_absent_returns_none():
-    """remove_card_field returns None when the field doesn't exist."""
+def test_remove_field_on_card_absent_returns_none():
+    """remove_field(name, card=i) returns None when the field doesn't exist."""
     md = (
         "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n\nBody.\n\n"
         "~~~card-yaml\n$kind: note\n~~~\n"
     )
     doc = Document.from_markdown(md)
-    assert doc.remove_card_field(0, "missing") is None
+    assert doc.remove_field("missing", card=0) is None
 
 
-def test_remove_card_field_out_of_range():
-    """remove_card_field raises EditError for an out-of-range card index."""
-
+def test_remove_field_on_card_out_of_range():
+    """remove_field(name, card=i) raises EditError for an out-of-range card index."""
     md = "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n"
     doc = Document.from_markdown(md)
     with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
-        doc.remove_card_field(0, "foo")
+        doc.remove_field("foo", card=0)
 
 
 def test_diagnostic_str_is_canonical_pretty_text():
@@ -317,44 +310,33 @@ def test_document_authoring_text_helpers():
     assert isinstance(instr, str) and "taro" in instr
 
 
-def test_install_body_content_round_trip():
-    """`install(rt)` installs the content dict `body` reads back — value semantics,
-    lossless (not markdown-forced). The kwargs idiom of WASM `install`."""
-    doc = Document.from_markdown(
-        "~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: T\n~~~\n\n**bold** body\n"
-    )
-    content = doc.body
-    assert isinstance(content, dict)
-    # Install the read-back content into a fresh doc: lossless.
-    doc2 = Document.from_markdown("~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: T\n~~~\n")
-    doc2.install(content)
-    assert doc2.body == content
-    # The cold markdown path is spelled with the codec; clearing installs empty.
-    doc2.install(import_markdown("plain text"))
-    assert "plain text" in export_markdown(doc2.body)
-    doc2.install(import_markdown(""))
-    assert export_markdown(doc2.body) == ""
-    # A markdown string cannot be installed directly (value semantics, content only).
+def _nest(levels, leaf):
+    """Wrap `leaf` in `levels` nested {"a": …} objects, built iteratively."""
+    v = leaf
+    for _ in range(levels):
+        v = {"a": v}
+    return v
+
+
+def test_depth_bound_matches_core_container_levels():
+    """py_to_json_at and core's json_depth_exceeds reject the identical shape.
+
+    The cutoff is container levels (100), not nodes: a scalar leaf at the
+    bottom is not charged a level, so exactly 100 nested objects are accepted
+    and 101 are rejected — whether the deepest container holds a scalar or
+    another (non-empty) container. Exercised through `make_card`, whose field
+    values cross the same `py_to_json` boundary the writer's `set` does.
+    """
+    # Scalar-terminated: 100 objects with a scalar leaf is at the limit.
+    Document.make_card("note", {"ok_scalar": _nest(100, 1)})
     with pytest.raises((QuillmarkError, ValueError)):
-        doc2.install("plain markdown")
+        Document.make_card("note", {"deep_scalar": _nest(101, 1)})
 
-
-def test_addressed_card_body_and_field_projection():
-    """`install(rt, card=i)` writes a composable card's content body; a committed
-    richtext field projects through `export_markdown` (the codec that replaces
-    the retired `field_markdown` / `card_field_markdown`)."""
-    md = (
-        "~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: Main\n~~~\n\nMain body.\n\n"
-        "~~~card-yaml\n$kind: note\nfoo: bar\n~~~\n\nCard body.\n"
-    )
-    doc = Document.from_markdown(md)
-    doc.install(import_markdown("**new** card body"), card=0)
-    assert "**new** card body" in export_markdown(doc.cards[0]["body"])
-    # A revise on a card body returns a Delta receipt.
-    delta = doc.revise("plain card body", card=0)
-    assert isinstance(delta["ops"], list)
-    # An absent field has no value to project.
-    assert field(doc.main, "missing") is None
+    # Container-terminated: the deepest container, not its contents, occupies
+    # the last level, so the boundary is identical.
+    Document.make_card("note", {"ok_container": _nest(99, [1, 2, 3])})
+    with pytest.raises((QuillmarkError, ValueError)):
+        Document.make_card("note", {"deep_container": _nest(100, [1, 2, 3])})
 
 
 def test_nested_fill_exposed_as_nested_fills():
@@ -372,46 +354,13 @@ def test_nested_fill_exposed_as_nested_fills():
     assert "street: !must_fill" in restored.to_markdown()
 
 
-def _nest(levels, leaf):
-    """Wrap `leaf` in `levels` nested {"a": …} objects, built iteratively."""
-    v = leaf
-    for _ in range(levels):
-        v = {"a": v}
-    return v
-
-
-def test_depth_bound_matches_core_container_levels():
-    """py_to_json_at and core's json_depth_exceeds reject the identical shape.
-
-    The cutoff is container levels (100), not nodes: a scalar leaf at the
-    bottom is not charged a level, so exactly 100 nested objects are accepted
-    and 101 are rejected — whether the deepest container holds a scalar or
-    another (non-empty) container. Pins the scalar-leaf boundary the core test
-    `value.rs::depth_check_counts_container_levels_not_the_scalar_leaf` also pins.
-    """
-    doc = Document.from_markdown(
-        "~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: x\n~~~\n"
-    )
-
-    # Scalar-terminated: 100 objects with a scalar leaf is at the limit.
-    doc.store_field("ok_scalar", _nest(100, 1))
-    with pytest.raises((QuillmarkError, ValueError)):
-        doc.store_field("deep_scalar", _nest(101, 1))
-
-    # Container-terminated: the deepest container, not its contents, occupies
-    # the last level, so the boundary is identical.
-    doc.store_field("ok_container", _nest(99, [1, 2, 3]))
-    with pytest.raises((QuillmarkError, ValueError)):
-        doc.store_field("deep_container", _nest(100, [1, 2, 3]))
-
-
-def test_nested_fill_push_card_round_trip():
-    """A card dict carrying `nestedFills` can be pushed and the nested marker
+def test_nested_fill_insert_card_round_trip():
+    """A card dict carrying `nestedFills` can be inserted and the nested marker
     is reconstructed on emit (the dict -> Card serde path reads it back)."""
     doc = Document.from_markdown(
         "~~~card-yaml\n$quill: q@0.1\n$kind: main\ntitle: x\n~~~\n"
     )
-    doc.push_card(
+    doc.insert_card(
         {
             "kind": "note",
             "payload_items": [

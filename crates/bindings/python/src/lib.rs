@@ -11,6 +11,11 @@ pub use types::{
     PyQuillmark, PyRenderResult, PyView, PyWriter,
 };
 
+// Python is Tier 1 + storage + render: field I/O flows through `quill.writer(doc)`
+// / `quill.view(doc)`. The opaque store and the anchor-preserving content lane
+// (`install` / `revise` / `apply_change` + the `importMarkdown` / `exportMarkdown`
+// / `rebase` / `mapPos` codec) are WASM-only by scope. See prose/canon/BINDINGS.md.
+
 #[pymodule]
 fn _quillmark(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyQuillmark>()?;
@@ -27,13 +32,6 @@ fn _quillmark(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     m.add_class::<PyOutputFormat>()?;
     m.add_class::<PySeverity>()?;
-
-    // The document-free content codec — the on-demand markdown projection
-    // (`export_markdown`) plus `import_markdown` / `rebase` / `map_pos`.
-    m.add_function(wrap_pyfunction!(types::import_markdown, m)?)?;
-    m.add_function(wrap_pyfunction!(types::export_markdown, m)?)?;
-    m.add_function(wrap_pyfunction!(types::rebase, m)?)?;
-    m.add_function(wrap_pyfunction!(types::map_pos, m)?)?;
 
     m.add("QuillmarkError", m.py().get_type::<QuillmarkError>())?;
 

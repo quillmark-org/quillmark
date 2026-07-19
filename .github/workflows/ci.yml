@@ -124,3 +124,37 @@ jobs:
         working-directory: crates/bindings/wasm
         run: npm run typecheck
 
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # `maturin develop` builds the pyo3 extension in the DEBUG (dev) profile —
+      # far faster to compile than the release build a `pip install -e` (maturin
+      # PEP-517 default) would trigger, and opt-level is irrelevant to test
+      # outcomes. Matches `cargo test --workspace` (also debug) and the documented
+      # dev flow (CLAUDE.md / README). The top-level CARGO_PROFILE_DEV_DEBUG=0 env
+      # strips debuginfo, so this stays lean.
+      - name: Build extension (debug)
+        working-directory: crates/bindings/python
+        run: |
+          uv venv --python 3.12
+          source .venv/bin/activate
+          uv pip install pytest maturin
+          maturin develop
+
+      - name: Test Python
+        working-directory: crates/bindings/python
+        run: .venv/bin/pytest -q
+

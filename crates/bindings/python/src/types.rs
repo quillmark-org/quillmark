@@ -423,88 +423,13 @@ impl PyDocument {
     }
 
     /// Main card's global body as canonical Content-JSON — the source-of-truth
-    /// content model (a content dict, `{text, lines, marks, islands}`). For the
-    /// markdown projection call the codec `export_markdown(doc.body)`.
+    /// content model (a content dict, `{text, lines, marks, islands}`). The
+    /// quill-free total-read snapshot; for the markdown projection use
+    /// `quill.view(doc).get_body()`.
     #[getter]
     fn body<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let wire = quillmark_core::CardWire::from(self.inner.main());
         json_to_py(py, &wire.body)
-    }
-
-    /// **Install** a richtext value at the address `(card, field)` — value
-    /// semantics, content only. `rt` is a canonical content dict; the identity
-    /// anchors of any previous value are gone. An absent `field` targets the
-    /// body, an absent `card` the main card. For "here's new markdown," use
-    /// [`revise`](Self::revise); the cold path is `install(import_markdown(md))`,
-    /// which spells anchor loss at the call site. The kwargs idiom of WASM
-    /// `doc.install(addr, rt)`. Raises on an out-of-range card, a malformed field
-    /// name, or an `rt` that is not a canonical content dict.
-    #[pyo3(signature = (rt, card=None, field=None))]
-    fn install(
-        &mut self,
-        rt: Bound<'_, PyAny>,
-        card: Option<usize>,
-        field: Option<&str>,
-    ) -> PyResult<()> {
-        let content = py_to_content(&rt)?;
-        let target = self.addr_card_mut(card)?;
-        match field {
-            None => {
-                target.install_body(content);
-                Ok(())
-            }
-            Some(name) => target.install_field(name, content).map_err(convert_edit_error),
-        }
-    }
-
-    /// **Revise** the richtext value at `(card, field)` from a markdown string —
-    /// edit semantics, the default write path, returning the text `Delta` dict.
-    /// Imports the markdown, diffs it against the current value, rebases surviving
-    /// anchors, and returns the change to map positions through (`map_pos`). An
-    /// absent `field` targets the body, an absent `card` the main card; an absent
-    /// field cold-imports from empty. The kwargs idiom of WASM
-    /// `doc.revise(addr, md)`. Raises on an out-of-range card, a malformed field
-    /// name, a present non-content field value, or an over-nested markdown input.
-    #[pyo3(signature = (markdown, card=None, field=None))]
-    fn revise<'py>(
-        &mut self,
-        py: Python<'py>,
-        markdown: &str,
-        card: Option<usize>,
-        field: Option<&str>,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let target = self.addr_card_mut(card)?;
-        let delta = match field {
-            None => target.revise_body(markdown),
-            Some(name) => target.revise_field(name, markdown),
-        }
-        .map_err(convert_edit_error)?;
-        json_to_py(py, &delta_to_json(&delta))
-    }
-
-    /// **Apply** a committed content edit `bundle` (`{delta?, line_ops?, mark_ops?}`)
-    /// at `(card, field)` — the editor splice: text delta, then line ops, then
-    /// mark ops (mark ranges in final-text coordinates), each all-or-nothing. An
-    /// absent `field` targets the body, an absent `card` the main card. The kwargs
-    /// idiom of WASM `doc.applyChange(addr, bundle)`. Raises on an out-of-range
-    /// card, a field that is not richtext, a malformed bundle, or an out-of-bounds
-    /// op (the value is unchanged on a failed apply).
-    #[pyo3(signature = (bundle, card=None, field=None))]
-    fn apply_change(
-        &mut self,
-        bundle: Bound<'_, PyAny>,
-        card: Option<usize>,
-        field: Option<&str>,
-    ) -> PyResult<()> {
-        let (delta, line_ops, mark_ops) = parse_change_bundle(&bundle)?;
-        let target = self.addr_card_mut(card)?;
-        match field {
-            None => target.apply_body_change(&delta, &line_ops, &mark_ops),
-            Some(name) => {
-                target.apply_field_richtext_change(name, &delta, &line_ops, &mark_ops)
-            }
-        }
-        .map_err(convert_edit_error)
     }
 
     /// Main (entry) card as a dict with `kind`, `quill`, `id`, `payload_items`,
@@ -525,102 +450,19 @@ impl PyDocument {
     }
 
 
-    /// Read a main-card field's stored value — a dict for a richtext content, a
-    /// scalar/list/dict otherwise, or `None` when the field is absent. The
-    /// quill-free transport read: it needs no schema, so it lives on `Document`,
-    /// not the typed writer. For the interpreted read (a richtext field projected
-    /// to markdown, a scalar as its value) use `quill.view(doc).get(name)`.
-    /// Mirrors WASM `Document.get`.
-    fn get<'py>(&self, py: Python<'py>, name: &str) -> PyResult<Option<Bound<'py, PyAny>>> {
-        match self.inner.main().payload().get(name) {
-            Some(v) => Ok(Some(quillvalue_to_py(py, v)?)),
-            None => Ok(None),
-        }
-    }
-
-    /// The main **body**'s markdown projection — the on-demand, lossy export
-    /// (content-only marks do not survive markdown). A body's type is a format
-    /// fact, not a schema fact, so this read stays quill-free. A field's markdown
-    /// is read through the schema-plane `quill.view(doc).get(name)`, which
-    /// interprets by declared type (#978). Mirrors WASM `Document.getMarkdown`.
-    fn get_markdown(&self) -> String {
-        self.inner.main().body_markdown()
-    }
-
-    /// Read a composable card's field value — the card-indexed twin of `get`: a
-    /// dict for a richtext content, a scalar/list/dict otherwise, or `None` when
-    /// the field is absent. An out-of-range `index` raises `IndexOutOfRange`, as
-    /// the card write verbs do — a bad index is a boundary error, not an absent
-    /// field. Mirrors WASM `Document.getCardField`.
-    fn get_card_field<'py>(
-        &self,
+    /// Remove a payload field, returning its previous value (or `None` when
+    /// absent). `card` selects the target: `None` the main card, `Some(i)` the
+    /// composable card at `i` (out-of-range raises `IndexOutOfRange`). `remove`
+    /// has no lane — one verb serves every write path.
+    #[pyo3(signature = (name, card=None))]
+    fn remove_field<'py>(
+        &mut self,
         py: Python<'py>,
-        index: usize,
         name: &str,
-    ) -> PyResult<Option<Bound<'py, PyAny>>> {
-        match self.card_or_raise(index)?.payload().get(name) {
-            Some(v) => Ok(Some(quillvalue_to_py(py, v)?)),
-            None => Ok(None),
-        }
-    }
-
-    /// A composable card's **body** markdown — the card-indexed twin of
-    /// `get_markdown`. A card field's markdown is read through
-    /// `quill.view(doc).card(index).get(name)` (#978). An out-of-range `index`
-    /// raises `IndexOutOfRange`. Mirrors WASM `Document.getCardMarkdown`.
-    fn get_card_markdown(&self, index: usize) -> PyResult<String> {
-        Ok(self.card_or_raise(index)?.body_markdown())
-    }
-
-    /// Store an opaque value on a main-card field, clearing any `!must_fill`
-    /// marker. The quill-free primitive: it holds only the `$quill` *reference*,
-    /// stores the value verbatim, and defers coercion/validation to render.
-    /// Reach for it deliberately — standalone data with no quill in hand,
-    /// quill-agnostic storage/migration, or a store-now-validate-later editor
-    /// holding not-yet-conforming input. When a quill *is* in hand, prefer the
-    /// typed writer (`quill.writer(doc).set(name, value)`) so a mismatch surfaces
-    /// at the write. Raises `QuillmarkError` on a malformed name. Mirrors WASM
-    /// `storeField`.
-    fn store_field(&mut self, name: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
-        let qv = py_to_quillvalue(&value)?;
-        self.inner
-            .main_mut()
-            .store_field(name, qv)
-            .map_err(convert_edit_error)
-    }
-
-    fn store_fill(&mut self, name: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
-        let qv = py_to_quillvalue(&value)?;
-        self.inner
-            .main_mut()
-            .store_fill(name, qv)
-            .map_err(convert_edit_error)
-    }
-
-    /// Set several main-card payload fields atomically from a mapping,
-    /// clearing any `!must_fill` marker on each key. Nothing is applied on
-    /// error; the raised `QuillmarkError` carries one diagnostic per
-    /// offending field (`path` = field name), so externally-sourced names
-    /// (database columns, form keys) surface every violation in one pass.
-    ///
-    /// The batched quill-free primitive (see `store_field`) — stores every value
-    /// opaquely, deferring coercion to render. Prefer the typed writer
-    /// (`quill.writer(doc).set_all(fields)`) whenever a quill is in hand: it
-    /// typed-commits the batch and reports per-field routing, so a form
-    /// submitting a card is not silently stripped of schema typing. Mirrors WASM
-    /// `storeFields`.
-    fn store_fields(&mut self, fields: Bound<'_, PyDict>) -> PyResult<()> {
-        let batch = pydict_to_field_batch(&fields)?;
-        self.inner
-            .main_mut()
-            .store_fields(batch)
-            .map_err(convert_edit_errors)
-    }
-
-    fn remove_field<'py>(&mut self, py: Python<'py>, name: &str) -> PyResult<Bound<'py, PyAny>> {
+        card: Option<usize>,
+    ) -> PyResult<Bound<'py, PyAny>> {
         match self
-            .inner
-            .main_mut()
+            .addr_card_mut(card)?
             .remove_field(name)
             .map_err(convert_edit_error)?
         {
@@ -629,49 +471,67 @@ impl PyDocument {
         }
     }
 
-    /// Replace the opaque `$ext` map on the main card. `value` must be a dict;
-    /// raises `ValueError` otherwise. `$ext` carries out-of-band consumer state
-    /// and never reaches the rendered output. Pass `{}` for an explicit empty
-    /// `$ext`.
-    fn store_ext(&mut self, value: Bound<'_, PyAny>) -> PyResult<()> {
+    /// Replace the opaque `$ext` map on a card. `value` must be a dict; raises
+    /// `ValueError` otherwise. `card` selects the target: `None` the main card,
+    /// `Some(i)` the composable card at `i` (out-of-range raises `IndexOutOfRange`).
+    /// `$ext` carries out-of-band consumer state and never reaches the rendered
+    /// output; pass `{}` for an explicit empty `$ext`. Prefer `store_ext_namespace`
+    /// to write one slot without clobbering sibling consumers'.
+    #[pyo3(signature = (value, card=None))]
+    fn store_ext(&mut self, value: Bound<'_, PyAny>, card: Option<usize>) -> PyResult<()> {
         let map = py_to_object(&value, "store_ext")?;
-        self.inner
-            .main_mut()
+        self.addr_card_mut(card)?
             .store_ext(map)
             .map_err(convert_edit_error)?;
         Ok(())
     }
 
-    /// Remove the `$ext` map from the main card *entirely*, returning the
-    /// previous map or `None`. This is a blunt escape hatch that discards every
-    /// namespace at once — prefer `remove_ext_namespace` to clear only your own
-    /// slot while leaving sibling consumers' state intact.
-    fn remove_ext<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        ext_map_to_py(py, self.inner.main_mut().remove_ext())
+    /// Remove the `$ext` map from a card *entirely*, returning the previous map or
+    /// `None`. `card` selects the target (`None` main, `Some(i)` composable,
+    /// out-of-range raises). A blunt escape hatch that discards every namespace at
+    /// once — prefer `remove_ext_namespace` to clear only your own slot.
+    #[pyo3(signature = (card=None))]
+    fn remove_ext<'py>(
+        &mut self,
+        py: Python<'py>,
+        card: Option<usize>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let prev = self.addr_card_mut(card)?.remove_ext();
+        ext_map_to_py(py, prev)
     }
 
-    /// Merge `value` into the main card's `$ext` map under `namespace`, creating
-    /// the map when absent and replacing any existing value at that key. Sibling
+    /// Merge `value` into a card's `$ext` map under `namespace`, creating the map
+    /// when absent and replacing any existing value at that key. Sibling
     /// namespaces are preserved so independent consumers don't clobber each other.
-    fn store_ext_namespace(&mut self, namespace: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
+    /// `card` selects the target (`None` main, `Some(i)` composable, out-of-range
+    /// raises).
+    #[pyo3(signature = (namespace, value, card=None))]
+    fn store_ext_namespace(
+        &mut self,
+        namespace: &str,
+        value: Bound<'_, PyAny>,
+        card: Option<usize>,
+    ) -> PyResult<()> {
         let json = py_to_json(&value)?;
-        self.inner
-            .main_mut()
+        self.addr_card_mut(card)?
             .store_ext_namespace(namespace, json)
             .map_err(convert_edit_error)?;
         Ok(())
     }
 
-    /// Remove `namespace` from the main card's `$ext` map, returning the value
-    /// stored there or `None`. This is the recommended way to clear `$ext`
-    /// state: sibling namespaces survive, and when the last namespace is removed
-    /// the `$ext` entry is dropped entirely (not left as `$ext: {}`).
+    /// Remove `namespace` from a card's `$ext` map, returning the value stored
+    /// there or `None`; sibling namespaces survive, and the `$ext` entry drops
+    /// entirely once its last namespace is removed (not left as `$ext: {}`).
+    /// `card` selects the target (`None` main, `Some(i)` composable, out-of-range
+    /// raises).
+    #[pyo3(signature = (namespace, card=None))]
     fn remove_ext_namespace<'py>(
         &mut self,
         py: Python<'py>,
         namespace: &str,
+        card: Option<usize>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        ext_value_to_py(py, self.inner.main_mut().remove_ext_namespace(namespace))
+        ext_value_to_py(py, self.addr_card_mut(card)?.remove_ext_namespace(namespace))
     }
 
     /// Merge a card-kind's seed `overlay` into the main card's `$seed` map
@@ -697,60 +557,6 @@ impl PyDocument {
         ext_value_to_py(py, self.inner.main_mut().remove_seed_namespace(card_kind))
     }
 
-    /// Replace the `$ext` map on the composable card at `index`. Raises on
-    /// out-of-range index or non-dict value. Named to mirror `store_ext` on the
-    /// main card; `set_card_ext_namespace` is the sibling-safe alternative.
-    fn store_card_ext(&mut self, index: usize, value: Bound<'_, PyAny>) -> PyResult<()> {
-        let map = py_to_object(&value, "store_card_ext")?;
-        self.card_mut_or_raise(index)?
-            .store_ext(map)
-            .map_err(convert_edit_error)?;
-        Ok(())
-    }
-
-    /// Remove the `$ext` map from the composable card at `index` *entirely*,
-    /// returning the previous map or `None`. Raises if `index` is out of range.
-    /// Prefer `remove_card_ext_namespace` to clear only one consumer's slot.
-    fn remove_card_ext<'py>(
-        &mut self,
-        py: Python<'py>,
-        index: usize,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let prev = self.card_mut_or_raise(index)?.remove_ext();
-        ext_map_to_py(py, prev)
-    }
-
-    /// Merge `value` into the composable card's `$ext` map under `namespace`,
-    /// preserving sibling namespaces. The card-indexed twin of
-    /// `store_ext_namespace`. Raises if `index` is out of range.
-    fn store_card_ext_namespace(
-        &mut self,
-        index: usize,
-        namespace: &str,
-        value: Bound<'_, PyAny>,
-    ) -> PyResult<()> {
-        let json = py_to_json(&value)?;
-        self.card_mut_or_raise(index)?
-            .store_ext_namespace(namespace, json)
-            .map_err(convert_edit_error)?;
-        Ok(())
-    }
-
-    /// Remove `namespace` from the composable card's `$ext` map, returning the
-    /// value stored there or `None`; clears `$ext` entirely once empty. The
-    /// card-indexed twin of `remove_ext_namespace`. Raises if out of range.
-    fn remove_card_ext_namespace<'py>(
-        &mut self,
-        py: Python<'py>,
-        index: usize,
-        namespace: &str,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        let removed = self
-            .card_mut_or_raise(index)?
-            .remove_ext_namespace(namespace);
-        ext_value_to_py(py, removed)
-    }
-
     fn set_quill_ref(&mut self, ref_str: &str) -> PyResult<()> {
         let qr: quillmark_core::QuillReference = ref_str.parse().map_err(|e| {
             PyValueError::new_err(format!("invalid QuillReference '{}': {}", ref_str, e))
@@ -759,32 +565,11 @@ impl PyDocument {
         Ok(())
     }
 
-    /// **Deprecated** — alias for `revise(markdown)`, kept one release cycle.
-    /// Revise the main card's body from a markdown string (edit semantics, a
-    /// `diff_import` that rebases surviving anchors). Discards the text delta;
-    /// call [`revise`](Self::revise) to receive it.
-    fn replace_body(&mut self, body: &str) -> PyResult<()> {
-        self.inner
-            .main_mut()
-            .revise_body(body)
-            .map(|_| ())
-            .map_err(convert_edit_error)
-    }
-
-    /// **Deprecated** — alias for `revise(markdown, card=index)`, kept one
-    /// release cycle. Revise the composable card body from a markdown string.
-    fn update_card_body(&mut self, index: usize, body: &str) -> PyResult<()> {
-        self.card_mut_or_raise(index)?
-            .revise_body(body)
-            .map(|_| ())
-            .map_err(convert_edit_error)
-    }
-
     /// Build a fresh `Card` dict from a kind and a flat field mapping — the
-    /// ergonomic constructor for `push_card` / `insert_card`. `fields` maps
-    /// field name → value (each becomes a card field, in insertion order);
-    /// `body` defaults to `""`. Kind validity is checked by `push_card` /
-    /// `insert_card`, not here. Mirrors WASM `Document.makeCard`.
+    /// ergonomic constructor for `insert_card`. `fields` maps field name → value
+    /// (each becomes a card field, in insertion order); `body` defaults to `""`.
+    /// Kind validity is checked by `insert_card`, not here. Mirrors WASM
+    /// `Document.makeCard`.
     #[staticmethod]
     #[pyo3(signature = (kind, fields=None, body=None))]
     fn make_card<'py>(
@@ -821,16 +606,19 @@ impl PyDocument {
         card_to_pydict(py, &card)
     }
 
-    fn push_card(&mut self, card: Bound<'_, PyAny>) -> PyResult<()> {
+    /// Place a composable card. `at` picks the position: `None` appends, `Some(i)`
+    /// inserts at index `i` (`0..=card_count`; out of range raises
+    /// `IndexOutOfRange`). `card` is a `Card` dict — from `make_card`, `cards`,
+    /// `remove_card`, or `seed_card`. The one insertion verb per lane, folding
+    /// core's `push_card` + `insert_card`. Mirrors WASM `insertCard(card, at?)`.
+    #[pyo3(signature = (card, at=None))]
+    fn insert_card(&mut self, card: Bound<'_, PyAny>, at: Option<usize>) -> PyResult<()> {
         let core_card = py_dict_to_card(&card)?;
-        self.inner.push_card(core_card).map_err(convert_edit_error)
-    }
-
-    fn insert_card(&mut self, index: usize, card: Bound<'_, PyAny>) -> PyResult<()> {
-        let core_card = py_dict_to_card(&card)?;
-        self.inner
-            .insert_card(index, core_card)
-            .map_err(convert_edit_error)
+        match at {
+            None => self.inner.push_card(core_card),
+            Some(index) => self.inner.insert_card(index, core_card),
+        }
+        .map_err(convert_edit_error)
     }
 
     fn remove_card<'py>(
@@ -856,57 +644,11 @@ impl PyDocument {
             .map_err(convert_edit_error)
     }
 
-    /// Store an opaque value on the composable card at `index` — the
-    /// card-indexed twin of `store_field`, and the same quill-free primitive.
-    /// Prefer the typed writer (`quill.writer(doc).card(index).set(...)`) when a
-    /// quill is in hand. Raises on an out-of-range index or a malformed name.
-    /// Mirrors WASM `storeField` with a card address.
-    fn store_card_field(
-        &mut self,
-        index: usize,
-        name: &str,
-        value: Bound<'_, PyAny>,
-    ) -> PyResult<()> {
-        let qv = py_to_quillvalue(&value)?;
-        self.card_mut_or_raise(index)?
-            .store_field(name, qv)
-            .map_err(convert_edit_error)
-    }
-
-    /// Batched twin of `store_card_field`: set several fields on the composable
-    /// card at `index` atomically. Same all-or-nothing, one-diagnostic-per-field
-    /// contract as `store_fields`, and the same quill-free-primitive framing —
-    /// prefer the typed writer (`quill.writer(doc).card(index).set_all(...)`)
-    /// when a quill is in hand. Mirrors WASM `storeFields` with a card address.
-    fn store_card_fields(&mut self, index: usize, fields: Bound<'_, PyDict>) -> PyResult<()> {
-        let batch = pydict_to_field_batch(&fields)?;
-        self.card_mut_or_raise(index)?
-            .store_fields(batch)
-            .map_err(convert_edit_errors)
-    }
-
-    fn remove_card_field<'py>(
-        &mut self,
-        py: Python<'py>,
-        index: usize,
-        name: &str,
-    ) -> PyResult<Bound<'py, PyAny>> {
-        match self
-            .card_mut_or_raise(index)?
-            .remove_field(name)
-            .map_err(convert_edit_error)?
-        {
-            Some(v) => quillvalue_to_py(py, &v),
-            None => py.None().into_bound_py_any(py),
-        }
-    }
-
 }
 
 impl PyDocument {
     /// Resolve a mutable composable card by index, raising the same
-    /// `IndexOutOfRange` error the other card mutators raise. Shared by the
-    /// card-indexed `$ext` mutators so they don't each re-spell the bounds check.
+    /// `IndexOutOfRange` error the other card mutators raise.
     fn card_mut_or_raise(&mut self, index: usize) -> PyResult<&mut quillmark_core::Card> {
         let len = self.inner.cards().len();
         self.inner.card_mut(index).ok_or_else(|| {
@@ -914,19 +656,9 @@ impl PyDocument {
         })
     }
 
-    /// Resolve a composable card by index for a read, raising the same
-    /// `IndexOutOfRange` error the card mutators raise. The immutable twin of
-    /// `card_mut_or_raise`, shared by the card-indexed reads.
-    fn card_or_raise(&self, index: usize) -> PyResult<&quillmark_core::Card> {
-        let len = self.inner.cards().len();
-        self.inner.cards().get(index).ok_or_else(|| {
-            convert_edit_error(quillmark_core::EditError::IndexOutOfRange { index, len })
-        })
-    }
-
-    /// Resolve the card an address targets: the main card when `card` is `None`,
-    /// else the composable card at that index (out-of-range raises). The static
-    /// address axis the addressed content verbs share.
+    /// Resolve the card a `card=` selector targets: the main card when `None`,
+    /// else the composable card at that index (out-of-range raises). The shared
+    /// address axis of the `card=`-parametrized `$ext` / `remove_field` verbs.
     fn addr_card_mut(&mut self, card: Option<usize>) -> PyResult<&mut quillmark_core::Card> {
         match card {
             None => Ok(self.inner.main_mut()),
@@ -983,8 +715,7 @@ impl PyWriter {
     }
 
     /// Set the main body from markdown (edit semantics: anchors rebase),
-    /// discarding the delta — the receipt-free body write. Use `doc.revise(md)`
-    /// for the delta receipt.
+    /// discarding the delta — the receipt-free body write.
     fn set_body(&self, py: Python<'_>, markdown: &str) -> PyResult<()> {
         let quill = self.quill.borrow(py);
         let mut doc = self.doc.borrow_mut(py);
@@ -995,17 +726,41 @@ impl PyWriter {
             .map_err(convert_edit_error)
     }
 
+    /// Revise the richtext main-card field `name` from markdown — typed *and*
+    /// anchor-preserving. Surviving anchors rebase, then the diffed result is
+    /// schema-conformed (a `richtext(inline)` field rejects a multi-block result
+    /// with `[EditError::FieldRichtextNotInline]`). Raises
+    /// `[EditError::UnknownField]` for a name the schema does not declare. The
+    /// only field write that preserves a JS editor's anchors on a shared document
+    /// (`set` cold-imports). The text `Delta` is discarded — the position-mapping
+    /// receipt is an editor concern, and that lane is WASM-only; core and WASM
+    /// return it.
+    fn revise_field(&self, py: Python<'_>, name: &str, markdown: &str) -> PyResult<()> {
+        let quill = self.quill.borrow(py);
+        let mut doc = self.doc.borrow_mut(py);
+        quill
+            .inner
+            .writer(&mut doc.inner)
+            .revise_field(name, markdown)
+            .map(|_| ())
+            .map_err(convert_edit_error)
+    }
+
     /// Build a composable card of `kind`, typed-commit `fields` onto it, set its
-    /// body from optional markdown, and append it — the fused `make_card` + typed
-    /// commit + `push_card`. Transactional: a rejected field (raises a per-field
-    /// diagnostic bundle) or an invalid kind/body leaves the document untouched.
-    #[pyo3(signature = (kind, fields=None, body=None))]
+    /// body from optional markdown, and place it — the fused `make_card` + typed
+    /// commit + insertion. `at` picks the position: `None` appends, `Some(i)`
+    /// inserts at index `i`, so a positioned typed insert is one atomic call
+    /// rather than `add_card` + `move_card`. Transactional: a rejected field
+    /// (raises a per-field diagnostic bundle) or an invalid kind/body/position
+    /// leaves the document untouched.
+    #[pyo3(signature = (kind, fields=None, body=None, at=None))]
     fn add_card(
         &self,
         py: Python<'_>,
         kind: &str,
         fields: Option<Bound<'_, PyDict>>,
         body: Option<String>,
+        at: Option<usize>,
     ) -> PyResult<()> {
         let batch = match fields {
             Some(f) => pydict_to_field_batch(&f)?,
@@ -1016,7 +771,7 @@ impl PyWriter {
         quill
             .inner
             .writer(&mut doc.inner)
-            .add_card(kind, batch, body.as_deref(), None)
+            .add_card(kind, batch, body.as_deref(), at)
             .map_err(convert_edit_errors)
     }
 
@@ -1066,6 +821,18 @@ impl PyCardWriter {
         self.index
     }
 
+    /// The bound card's `$kind`, or `None` when it carries none. Raises
+    /// `[EditError::IndexOutOfRange]` if the bound index is out of range. Mirrors
+    /// core `CardWriter::kind()` / WASM `writer.card(i).kind`.
+    #[getter]
+    fn kind(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let quill = self.quill.borrow(py);
+        let mut doc = self.doc.borrow_mut(py);
+        let mut writer = quill.inner.writer(&mut doc.inner);
+        let card = writer.card(self.index).map_err(convert_edit_error)?;
+        Ok(card.kind().map(|k| k.to_string()))
+    }
+
     /// Typed-commit one field on this card, resolving its type from the card's
     /// `$kind` schema. Raises `[EditError::UnknownField]` for an undeclared name
     /// and `[EditError::IndexOutOfRange]` for a bad index.
@@ -1108,16 +875,34 @@ impl PyCardWriter {
             .set_body(markdown)
             .map_err(convert_edit_error)
     }
+
+    /// Revise the richtext field `name` on this card from markdown — typed *and*
+    /// anchor-preserving; the card twin of `Writer.revise_field`. Raises
+    /// `[EditError::UnknownField]` for an undeclared name and
+    /// `[EditError::IndexOutOfRange]` for a bad index. The `Delta` is discarded
+    /// (see `Writer.revise_field`).
+    fn revise_field(&self, py: Python<'_>, name: &str, markdown: &str) -> PyResult<()> {
+        let quill = self.quill.borrow(py);
+        let mut doc = self.doc.borrow_mut(py);
+        let mut writer = quill.inner.writer(&mut doc.inner);
+        writer
+            .card(self.index)
+            .map_err(convert_edit_error)?
+            .revise_field(name, markdown)
+            .map(|_| ())
+            .map_err(convert_edit_error)
+    }
 }
 
 /// A `Document` bound to its `Quill` for interpreted reads — the schema-plane
 /// read view, from `Quill.view(doc)` and the read twin of `Writer`. One `get`
 /// reads each field by its declared type: a richtext field to its markdown
 /// projection, a plaintext field to its literal text, every other type its
-/// canonical value verbatim. The schema authority is the point — unlike the
-/// quill-free transport `Document.get`, a name the schema does not declare raises
-/// `[EditError::UnknownField]` rather than reading back `None`. A field's markdown
-/// lives here, not on the body-only `Document.get_markdown`. Holds both objects
+/// canonical value verbatim. The schema authority is the point: a name the schema
+/// does not declare raises `[EditError::UnknownField]` (a typo, as on the write
+/// side) rather than reading back `None`, and a content field holding an
+/// undecodable value raises `[EditError::FieldRichtextDecode]`. This is the field
+/// read surface — `Document` carries no quill-free field read. Holds both objects
 /// by reference and re-borrows them per call (pyo3 objects carry no lifetime), so
 /// it is ephemeral by convention: bind, read, discard. Mirrors WASM
 /// `quill.view(doc)`.
@@ -1515,7 +1300,7 @@ fn card_to_pydict<'py>(
     }
 
     // `body` is the canonical content (source of truth); the markdown projection
-    // is the on-demand `export_markdown(body)` codec. The reverse path
+    // is the schema-plane `quill.view(doc).get_body()` read. The reverse path
     // (`py_dict_to_card`) reads `body`.
     d.set_item("body", json_to_py(py, &wire.body)?)?;
     Ok(d)
@@ -1561,11 +1346,11 @@ fn py_to_quillvalue(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::QuillV
     Ok(quillmark_core::QuillValue::from_json(json))
 }
 
-/// Convert a Python mapping to the `(name, value)` batch `Card::store_fields`
-/// consumes. Value-conversion failures (depth bound, unsupported type) are
-/// collected — not fail-fast — into one `QuillmarkError` with a per-field
-/// `path`, matching the batch contract of the mutator itself. Non-string
-/// keys are a caller bug and raise `ValueError` directly.
+/// Convert a Python mapping to the `(name, value)` batch the typed writer's
+/// `set_all` / `add_card` consume. Value-conversion failures (depth bound,
+/// unsupported type) are collected — not fail-fast — into one `QuillmarkError`
+/// with a per-field `path`, matching the batch contract of the writer itself.
+/// Non-string keys are a caller bug and raise `ValueError` directly.
 fn pydict_to_field_batch(
     fields: &Bound<'_, PyDict>,
 ) -> PyResult<Vec<(String, quillmark_core::QuillValue)>> {
@@ -1737,98 +1522,3 @@ fn py_dict_to_card(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::Card> {
     quillmark_core::Card::try_from(wire).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
-// ── Addressed-write helpers + content codec ──────────────────────────────────────
-
-/// Decode a Python value as a canonical `Content` content dict — the `install`
-/// input (value semantics, content only). Rejects a markdown string: the cold
-/// path is `install(import_markdown(md))`.
-fn py_to_content(value: &Bound<'_, PyAny>) -> PyResult<quillmark_core::Content> {
-    let json = py_to_json(value)?;
-    if !json.is_object() {
-        return Err(PyValueError::new_err(
-            "expected a Content content dict; for markdown use import_markdown(md) first",
-        ));
-    }
-    quillmark_content::serial::from_canonical_value(&json)
-        .map_err(|e| PyValueError::new_err(format!("not a canonical Content content: {e}")))
-}
-
-/// Serialize a [`Delta`](quillmark_core::Delta) to its JSON wire (`{ops: [...]}`).
-fn delta_to_json(delta: &quillmark_core::Delta) -> serde_json::Value {
-    serde_json::to_value(delta).unwrap_or(serde_json::Value::Null)
-}
-
-/// Lower an `apply_change` bundle (`{delta?, line_ops?, mark_ops?}`) to core ops
-/// via the shared richtext reader (which accepts both snake_case and camelCase
-/// keys), mapping its message to a `ValueError`.
-fn parse_change_bundle(
-    value: &Bound<'_, PyAny>,
-) -> PyResult<(
-    quillmark_core::Delta,
-    Vec<quillmark_core::LineOp>,
-    Vec<quillmark_core::MarkOp>,
-)> {
-    let json = py_to_json(value)?;
-    quillmark_content::change_bundle_from_value(&json).map_err(PyValueError::new_err)
-}
-
-/// Import a markdown string to a canonical `Content` content dict — the pure,
-/// document-free codec. Pair with `install(import_markdown(md))` to spell the
-/// cold (anchor-losing) write; prefer `revise` for edit semantics. Raises on an
-/// over-nested input.
-#[pyfunction]
-pub fn import_markdown<'py>(py: Python<'py>, markdown: &str) -> PyResult<Bound<'py, PyAny>> {
-    let content = quillmark_content::from_markdown(markdown)
-        .map_err(|e| PyValueError::new_err(format!("import_markdown: {e}")))?;
-    json_to_py(py, &quillmark_content::serial::to_canonical_value(&content))
-}
-
-/// Export a canonical `Content` content dict to its markdown projection — the
-/// pure codec that replaces the eager `body_markdown` / `field_markdown`
-/// precomputes (`export_markdown(doc.body)`). Raises if `rt` is not a content.
-#[pyfunction]
-pub fn export_markdown(rt: Bound<'_, PyAny>) -> PyResult<String> {
-    let content = py_to_content(&rt)?;
-    Ok(quillmark_content::to_markdown(&content))
-}
-
-/// Rebase `markdown` onto a `base` content dict — the pure, document-free twin of
-/// `revise`: cold-import + `diff_import`, returning `{content, delta}` (surviving
-/// anchors rebased). Raises on an over-nested input or a non-content `base`.
-#[pyfunction]
-pub fn rebase<'py>(
-    py: Python<'py>,
-    base: Bound<'_, PyAny>,
-    markdown: &str,
-) -> PyResult<Bound<'py, PyAny>> {
-    let base = py_to_content(&base)?;
-    let (content, delta) = quillmark_content::diff_import(&base, markdown)
-        .map_err(|e| PyValueError::new_err(format!("rebase: {e}")))?;
-    let out = serde_json::json!({
-        "content": quillmark_content::serial::to_canonical_value(&content),
-        "delta": delta_to_json(&delta),
-    });
-    json_to_py(py, &out)
-}
-
-/// Map a base content position through a `delta` (a `{ops: [...]}` dict) to its
-/// new position — the pure position-mapping codec for holding a caret stable
-/// across a `revise`. `assoc` is `"before"` or `"after"` (`"after"` moves past a
-/// same-position insertion). Raises on a malformed `delta`.
-#[pyfunction]
-#[pyo3(signature = (delta, pos, assoc="before"))]
-pub fn map_pos(delta: Bound<'_, PyAny>, pos: usize, assoc: &str) -> PyResult<usize> {
-    let json = py_to_json(&delta)?;
-    let delta: quillmark_core::Delta = serde_json::from_value(json)
-        .map_err(|e| PyValueError::new_err(format!("map_pos: invalid delta: {e}")))?;
-    let assoc = match assoc {
-        "before" => quillmark_core::Assoc::Before,
-        "after" => quillmark_core::Assoc::After,
-        _ => {
-            return Err(PyValueError::new_err(
-                "map_pos: assoc must be \"before\" or \"after\"",
-            ))
-        }
-    };
-    Ok(delta.map_pos(pos, assoc))
-}
