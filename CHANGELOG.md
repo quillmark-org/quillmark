@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.95.1 - 2026-07-19
+
+
+
 ## v0.95.0 - 2026-07-19
 
 - release: re-cut to finish binding dists after the first publish run cancelled mid-flight
