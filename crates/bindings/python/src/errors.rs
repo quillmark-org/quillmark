@@ -12,27 +12,23 @@ use quillmark_core::{Diagnostic, EditError, RenderError, Severity};
 create_exception!(_quillmark, QuillmarkError, PyException);
 
 pub fn convert_edit_error(err: EditError) -> PyErr {
-    let message = format!("[EditError::{}] {}", err.variant_name(), err);
-    raise_with_diagnostics(
-        vec![Diagnostic::new(Severity::Error, message.clone())],
-        message,
-    )
+    let diagnostic =
+        Diagnostic::new(Severity::Error, err.to_string()).with_code(err.code().to_string());
+    let message = diagnostic.message.clone();
+    raise_with_diagnostics(vec![diagnostic], message)
 }
 
 /// Batched-mutator twin of [`convert_edit_error`]: one diagnostic per
-/// offending field, each with `path` set to the field name. The exception
-/// message embeds the first diagnostic (same shape as WASM's
-/// `WasmError::message`), so the `[EditError::<Variant>]` prefix contract
-/// holds for batches too.
+/// offending field, each carrying the `edit::` code and `path` set to the
+/// field name. The exception message follows the shared count-based rule
+/// (same shape as WASM's `WasmError::message`).
 pub fn convert_edit_errors(errors: Vec<(String, EditError)>) -> PyErr {
     let diags: Vec<Diagnostic> = errors
         .into_iter()
         .map(|(name, err)| {
-            Diagnostic::new(
-                Severity::Error,
-                format!("[EditError::{}] {}", err.variant_name(), err),
-            )
-            .with_path(name)
+            Diagnostic::new(Severity::Error, err.to_string())
+                .with_code(err.code().to_string())
+                .with_path(name)
         })
         .collect();
     let message = RenderError::summary_message(&diags);

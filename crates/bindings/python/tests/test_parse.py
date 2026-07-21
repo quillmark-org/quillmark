@@ -5,6 +5,8 @@ import pytest
 
 from quillmark import Document, QuillmarkError
 
+from conftest import raises_edit_code
+
 from pathlib import Path
 
 
@@ -278,7 +280,7 @@ def test_remove_field_on_card_out_of_range():
     """remove_field(name, card=i) raises EditError for an out-of-range card index."""
     md = "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n"
     doc = Document.from_markdown(md)
-    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+    with raises_edit_code("edit::index_out_of_range"):
         doc.remove_field("foo", card=0)
 
 

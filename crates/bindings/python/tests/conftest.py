@@ -5,14 +5,25 @@ These fixtures prefer using the canonical repository fixtures located in
 original simple fallbacks are used so tests remain robust in odd layouts.
 """
 
+from contextlib import contextmanager
 from pathlib import Path
 import pytest
 
-from quillmark import Quillmark
+from quillmark import Quillmark, QuillmarkError
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
 RESOURCES_PATH = WORKSPACE_ROOT / "crates" / "fixtures" / "resources"
 QUILLS_PATH = RESOURCES_PATH / "quills"
+
+
+@contextmanager
+def raises_edit_code(code):
+    """Assert the block raises `QuillmarkError` whose primary diagnostic carries
+    the given namespaced `edit::` code. Mutator identity rides on `code`, not on
+    message text, so tests route on it — see prose/canon/ERROR.md."""
+    with pytest.raises(QuillmarkError) as exc_info:
+        yield exc_info
+    assert exc_info.value.diagnostics[0].code == code
 
 
 def _latest_version(quill_dir: Path) -> Path:

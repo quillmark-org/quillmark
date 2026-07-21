@@ -15,7 +15,7 @@ from quillmark import (
     OutputFormat,
     QuillmarkError,
 )
-from conftest import QUILLS_PATH, _latest_version
+from conftest import QUILLS_PATH, _latest_version, raises_edit_code
 
 
 def field(card, key):
@@ -195,7 +195,7 @@ def test_insert_card_appends():
 def test_insert_card_invalid_kind():
     """insert_card raises EditError for an invalid kind."""
     doc = Document.from_markdown(SIMPLE_MD)
-    with pytest.raises(QuillmarkError, match="InvalidKindName"):
+    with raises_edit_code("edit::invalid_kind_name"):
         doc.insert_card({"kind": "BadKind"})
 
 
@@ -237,7 +237,7 @@ def test_make_card_accepts_any_kind_insert_card_is_the_gate():
     card = Document.make_card("BadKind", {"x": 1})
     assert card["kind"] == "BadKind"  # construction succeeds
     doc = Document.from_markdown(SIMPLE_MD)
-    with pytest.raises(QuillmarkError, match="InvalidKindName"):
+    with raises_edit_code("edit::invalid_kind_name"):
         doc.insert_card(card)
 
 
@@ -261,7 +261,7 @@ def test_insert_card_at_front():
 def test_insert_card_out_of_range():
     """insert_card raises EditError when at > len."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
-    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+    with raises_edit_code("edit::index_out_of_range"):
         doc.insert_card({"kind": "note"}, at=5)
 
 
@@ -301,7 +301,7 @@ def test_move_card_last_to_first():
 def test_move_card_out_of_range():
     """move_card raises EditError for an out-of-range index."""
     doc = Document.from_markdown(MD_WITH_CARDS)
-    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+    with raises_edit_code("edit::index_out_of_range"):
         doc.move_card(10, 0)
 
 
@@ -387,13 +387,13 @@ def test_card_ext_namespace_mutators():
 def test_card_ext_mutators_out_of_range():
     """Card ext mutators raise IndexOutOfRange for a bad card index."""
     doc = Document.from_markdown(SIMPLE_MD)  # 0 cards
-    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+    with raises_edit_code("edit::index_out_of_range"):
         doc.store_ext({}, card=0)
-    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+    with raises_edit_code("edit::index_out_of_range"):
         doc.remove_ext(card=0)
-    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+    with raises_edit_code("edit::index_out_of_range"):
         doc.store_ext_namespace("a", {}, card=0)
-    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+    with raises_edit_code("edit::index_out_of_range"):
         doc.remove_ext_namespace("a", card=0)
 
 
@@ -532,7 +532,7 @@ def test_writer_set_rejects_unknown_field():
     """An undeclared name is a typo on the typed path — it raises, nothing lands."""
     quill = _taro_quill()
     doc = Document("taro@0.1.0")
-    with pytest.raises(QuillmarkError, match="UnknownField"):
+    with raises_edit_code("edit::unknown_field"):
         quill.writer(doc).set("stray", "x")
     assert not has_field(doc.main, "stray")
 
@@ -542,7 +542,7 @@ def test_writer_set_all_reports_every_unknown_field():
     (path = field name) — externally-sourced keys surface every violation at once."""
     quill = _taro_quill()
     doc = Document("taro@0.1.0")
-    with pytest.raises(QuillmarkError, match="UnknownField") as exc_info:
+    with raises_edit_code("edit::unknown_field") as exc_info:
         quill.writer(doc).set_all({"title": "ok", "stray1": "x", "stray2": "y"})
     paths = [d.path for d in exc_info.value.diagnostics]
     assert "stray1" in paths and "stray2" in paths
@@ -558,7 +558,7 @@ def test_writer_add_card_transactional():
     ed.add_card("quotes", {"author": "Basho"}, "A quote body.")
     assert len(doc.cards) == 1
     assert field(doc.cards[0], "author") == "Basho"
-    with pytest.raises(QuillmarkError, match="UnknownField"):
+    with raises_edit_code("edit::unknown_field"):
         ed.add_card("quotes", {"stray": "x"})
     assert len(doc.cards) == 1  # nothing joined the document
 
@@ -572,7 +572,7 @@ def test_writer_add_card_positioned():
     ed.add_card("quotes", {"author": "Second"}, at=0)  # insert at the front
     assert field(doc.cards[0], "author") == "Second"
     assert field(doc.cards[1], "author") == "First"
-    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+    with raises_edit_code("edit::index_out_of_range"):
         ed.add_card("quotes", {"author": "x"}, at=99)
     assert len(doc.cards) == 2  # the out-of-range insert landed nothing
 
@@ -585,7 +585,7 @@ def test_writer_card_cursor_set_and_body():
     ed.add_card("quotes", {"author": "Basho"})
     ed.card(0).set("author", "Issa")
     assert field(doc.cards[0], "author") == "Issa"
-    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+    with raises_edit_code("edit::index_out_of_range"):
         ed.card(9).set("author", "x")
 
 
@@ -597,7 +597,7 @@ def test_writer_card_kind_getter():
     ed.add_card("quotes", {"author": "Basho"})
     assert ed.card(0).index == 0
     assert ed.card(0).kind == "quotes"
-    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+    with raises_edit_code("edit::index_out_of_range"):
         _ = ed.card(9).kind
 
 
@@ -615,7 +615,7 @@ def test_writer_set_rejects_inline_violation():
     """A richtext(inline) field rejects multi-block content at the write."""
     quill = _richtext_form_quill()
     doc = Document("richtext_form@0.1.0")
-    with pytest.raises(QuillmarkError, match="FieldRichtextNotInline"):
+    with raises_edit_code("edit::field_richtext_not_inline"):
         quill.writer(doc).set("headline", "line one\n\nline two")
 
 
@@ -623,7 +623,7 @@ def test_writer_set_all_is_all_or_nothing():
     """A mid-batch inline violation aborts set_all — nothing lingers."""
     quill = _richtext_form_quill()
     doc = Document("richtext_form@0.1.0")
-    with pytest.raises(QuillmarkError, match="FieldRichtextNotInline"):
+    with raises_edit_code("edit::field_richtext_not_inline"):
         quill.writer(doc).set_all({"bio": "ok", "headline": "line one\n\nline two"})
     assert not has_field(doc.main, "bio")
 
@@ -642,9 +642,9 @@ def test_writer_revise_field_rejects_inline_and_unknown():
     rejects an undeclared name — same guards as `set`."""
     quill = _richtext_form_quill()
     doc = Document("richtext_form@0.1.0")
-    with pytest.raises(QuillmarkError, match="FieldRichtextNotInline"):
+    with raises_edit_code("edit::field_richtext_not_inline"):
         quill.writer(doc).revise_field("headline", "line one\n\nline two")
-    with pytest.raises(QuillmarkError, match="UnknownField"):
+    with raises_edit_code("edit::unknown_field"):
         quill.writer(doc).revise_field("nope", "x")
 
 
@@ -687,7 +687,7 @@ def test_view_absence_returns_none_unknown_name_raises():
     quill = _richtext_form_quill()
     v = quill.view(Document("richtext_form@0.1.0"))
     assert v.get("bio") is None  # absent, not a typo
-    with pytest.raises(QuillmarkError, match="UnknownField"):
+    with raises_edit_code("edit::unknown_field"):
         v.get("nope")  # typo, not absent
 
 
@@ -700,7 +700,7 @@ def test_view_richtext_holding_scalar_raises_mismatch():
     doc = Document.from_markdown(
         "~~~card-yaml\n$quill: richtext_form@0.1.0\n$kind: main\nbio: 3\n~~~\n"
     )
-    with pytest.raises(QuillmarkError, match="FieldRichtextDecode"):
+    with raises_edit_code("edit::field_richtext_decode"):
         quill.view(doc).get("bio")
 
 
@@ -722,7 +722,7 @@ def test_view_card_cursor_reads_through_kind_schema():
     assert v.card(0).kind == "quotes"
     assert v.card(0).get("author") == "Basho"
     assert v.card(0).get_body() == "A quote body."
-    with pytest.raises(QuillmarkError, match="UnknownField"):
+    with raises_edit_code("edit::unknown_field"):
         v.card(0).get("stray")
-    with pytest.raises(QuillmarkError, match="IndexOutOfRange"):
+    with raises_edit_code("edit::index_out_of_range"):
         v.card(9).get("author")

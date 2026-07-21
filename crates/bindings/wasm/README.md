@@ -462,10 +462,11 @@ compilation failures. The same shape applies to every throw site:
 
 - `Document.fromMarkdown` — parse errors (missing root `$quill` metadata, YAML
   errors, `parse::input_too_large` for inputs > 10 MB).
-- `Document` mutators (`storeField`, the writer's `set`, etc.) — `EditError`
-  variants (`InvalidFieldName`, `InvalidKindName`, `ReservedKind`,
-  `IndexOutOfRange`, `ValueTooDeep`, `Import`) appear in `diagnostics[0].message`
-  with the `[EditError::<Variant>]` prefix.
+- `Document` mutators (`storeField`, the writer's `set`, etc.) — mutator
+  failures carry a namespaced `edit::*` `code` on `diagnostics[0]`
+  (`edit::invalid_field_name`, `edit::unknown_field`, `edit::index_out_of_range`,
+  `edit::field_conform`, …). Route on `diagnostics[0].code`, never on message
+  text.
 - `engine.render` / `session.render` — backend compilation failures and
   validation errors.
 
