@@ -79,6 +79,17 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
   It validates clean (no `TypeMismatch`) and zero-fills at render
   (authored › `default:` › type-zero — see
   [Zero-filled render](#zero-filled-render)).
+- **Null ≡ absent is a 1.0 commitment, not a stopgap.** The identification is
+  chosen and final: `field: null` and an omitted field are one state,
+  indistinguishable by design. The consequences are accepted, not worked
+  around — "explicitly cleared" and "never touched" cannot be told apart, so
+  there is no uniform "blank, not default" for a non-string type, and
+  `removeField` (drop the key) stays the sole unset verb; a present-null
+  carries no distinct "cleared" signal. The tri-state alternative (absent /
+  null / value) is foreclosed: it doubles every field's state space for one
+  rarely-authored distinction, breaks YAML round-trip sanity (a loaded-then-
+  saved document must not sprout `field: null` lines), and buys nothing the
+  ladder does not already give. The simpler model is the contract.
 - **`!must_fill` marker → non-fatal warning.** For every `!must_fill` marker
   present — root or nested, main card or composable card —
   `Quill::validate` emits `validation::must_fill` at **`Severity::Warning`**,

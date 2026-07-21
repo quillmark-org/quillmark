@@ -121,10 +121,9 @@ pub enum EditError {
 }
 
 impl EditError {
-    /// The bare variant name (e.g. `"InvalidFieldName"`). The wasm and Python
-    /// bindings each surface it as the `[EditError::<Variant>]` message prefix;
-    /// defined once here so a new variant cannot drift between the two
-    /// binding error mappers.
+    /// The bare variant name (e.g. `"InvalidFieldName"`). Retained as the
+    /// stable variant discriminator behind [`code`](Self::code); defined once
+    /// here so a new variant cannot drift between the two binding error mappers.
     pub fn variant_name(&self) -> &'static str {
         match self {
             EditError::InvalidFieldName(_) => "InvalidFieldName",
@@ -138,6 +137,27 @@ impl EditError {
             EditError::FieldRichtextNotInline(_) => "FieldRichtextNotInline",
             EditError::FieldConform { .. } => "FieldConform",
             EditError::ContentApply(_) => "ContentApply",
+        }
+    }
+
+    /// The namespaced diagnostic `code` (e.g. `"edit::invalid_field_name"`),
+    /// one per variant. This is the machine-routable identity both bindings
+    /// stamp onto the `Diagnostic` they raise — the `edit::*` peer of
+    /// `parse::*`, `validation::*`, and the rest of the taxonomy in
+    /// `prose/canon/ERROR.md`. Consumers route on this, not on message text.
+    pub fn code(&self) -> &'static str {
+        match self {
+            EditError::InvalidFieldName(_) => "edit::invalid_field_name",
+            EditError::UnknownField(_) => "edit::unknown_field",
+            EditError::InvalidKindName(_) => "edit::invalid_kind_name",
+            EditError::ReservedKind => "edit::reserved_kind",
+            EditError::IndexOutOfRange { .. } => "edit::index_out_of_range",
+            EditError::ValueTooDeep { .. } => "edit::value_too_deep",
+            EditError::Import(_) => "edit::import",
+            EditError::FieldRichtextDecode { .. } => "edit::field_richtext_decode",
+            EditError::FieldRichtextNotInline(_) => "edit::field_richtext_not_inline",
+            EditError::FieldConform { .. } => "edit::field_conform",
+            EditError::ContentApply(_) => "edit::content_apply",
         }
     }
 }

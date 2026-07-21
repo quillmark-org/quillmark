@@ -206,9 +206,11 @@ except QuillmarkError as exc:
         print(str(d))   # canonical pretty-printed text (matches CLI / WASM)
 ```
 
-`EditError`-shaped failures (invalid field names, kind names, out-of-range
-indices) prefix the message with `[EditError::<Variant>]` — the same format
-WASM uses — so callers can pattern-match on the message when they need to.
+Mutator failures (invalid field names, kind names, out-of-range indices) carry
+a namespaced `edit::*` `code` on `diagnostics[0]` — `edit::invalid_field_name`,
+`edit::unknown_field`, `edit::index_out_of_range`, `edit::field_conform`, … —
+the same taxonomy WASM uses. Route on `diagnostics[0].code`, never on message
+text.
 
 ## Changelog
 

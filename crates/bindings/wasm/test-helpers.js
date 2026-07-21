@@ -1,8 +1,25 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { expect } from 'vitest'
 
 const enc = new TextEncoder()
+
+/**
+ * Invoke `fn`, expect it to throw, and assert the thrown error's primary
+ * diagnostic carries the namespaced `edit::*` `code`. Mutator identity rides on
+ * `diagnostics[0].code`, not on message text — see prose/canon/ERROR.md.
+ */
+export function expectEditCode(fn, code) {
+  let thrown
+  try {
+    fn()
+  } catch (err) {
+    thrown = err
+  }
+  expect(thrown, 'expected a throw, got none').toBeDefined()
+  expect(thrown.diagnostics[0].code).toBe(code)
+}
 
 // Minimal font shipped with quillmark fixtures, loaded once. The Typst world
 // rejects compilation when no fonts are present, so every test quill needs at

@@ -21,8 +21,8 @@ severity.
 `into_diagnostics()` consumes). There is no failure taxonomy beyond the
 diagnostics themselves: the machine-routable identity of a failure is each
 diagnostic's namespaced `code` (`parse::*`, `validation::*`, `quill::*`,
-`typst::*`, `pdfform::*`, `backend::*`, `engine::*`) — consumers route on
-codes, not on a type. Multi-problem stages (validation, quill config, backend
+`edit::*`, `typst::*`, `pdfform::*`, `backend::*`, `engine::*`) — consumers
+route on codes, not on a type. Multi-problem stages (validation, quill config, backend
 compilation) carry several diagnostics so every problem reaches the caller in
 one pass. `Display` follows the count-based message rule shared with both
 bindings: the primary diagnostic's message for a single diagnostic, an
@@ -34,6 +34,15 @@ document is well-formed but paired with the wrong quill (see
 for a backend session that does not override the incremental-`apply` seam
 (both built-in backends override it); `engine::backend_not_found` — the
 quill's declared backend is not registered.
+
+**`edit::*` — mutator diagnostics.** Document and card mutators fail with the
+`EditError` enum (`crates/core/src/document/edit.rs`), one namespaced code per
+variant via `EditError::code()` (`edit::invalid_field_name`,
+`edit::unknown_field`, `edit::index_out_of_range`, `edit::field_conform`, …).
+Both bindings stamp that code onto the `Diagnostic` they raise — the mutator
+peer of the render-path namespaces. Identity is the code, never message text:
+routing coercion-vs-undeclared is `edit::field_conform` vs.
+`edit::unknown_field`, read off `diagnostics[0].code`.
 
 **`RenderResult`**: successful result carrying artifacts, output format, and non-fatal `Vec<Diagnostic>` warnings
 
@@ -70,7 +79,7 @@ warnings in Typst sources).
 Python and WASM bindings delegate to core types:
 
 - **Python**: `PyDiagnostic` wraps `Diagnostic`. Every raised exception is `QuillmarkError` (a single type). Every exception carries a `diagnostics` list; `str(exc)` follows the shared count-based message rule.
-- **WASM**: `WasmError` carries a single `diagnostics: Vec<Diagnostic>` (always non-empty). The thrown JS `Error` has a `.diagnostics` array attached and a `.message` derived from `diagnostics` by the same count-based rule. Consumers read `err.diagnostics[0]` for the primary diagnostic and iterate `err.diagnostics` for the rest. Parse failures (`Document.fromMarkdown`) carry the same shape — including the `parse::input_too_large` diagnostic for inputs over `MAX_INPUT_SIZE` (10 MB) and the various `EditError::*` variants for post-parse mutators.
+- **WASM**: `WasmError` carries a single `diagnostics: Vec<Diagnostic>` (always non-empty). The thrown JS `Error` has a `.diagnostics` array attached and a `.message` derived from `diagnostics` by the same count-based rule. Consumers read `err.diagnostics[0]` for the primary diagnostic and iterate `err.diagnostics` for the rest. Parse failures (`Document.fromMarkdown`) carry the same shape — including the `parse::input_too_large` diagnostic for inputs over `MAX_INPUT_SIZE` (10 MB) and the `edit::*` codes for post-parse mutators.
 
 ## Backend Error Mapping
 

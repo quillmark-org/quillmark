@@ -17,7 +17,7 @@ import {
   rebase,
   mapPos,
 } from '@quillmark-wasm'
-import { makeQuill } from './test-helpers.js'
+import { makeQuill, expectEditCode } from './test-helpers.js'
 
 /** Read a field value from a card's payloadItems list by key. */
 const field = (card, key) =>
@@ -493,16 +493,16 @@ describe('Document editor surface — storeField / removeField', () => {
     }
   })
 
-  it('storeField throws EditError::InvalidFieldName for `$`-prefixed names', () => {
+  it('storeField throws edit::invalid_field_name for `$`-prefixed names', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     for (const name of ['$body', '$cards', '$quill', '$kind']) {
-      expect(() => doc.storeField(name, 'x')).toThrow(/InvalidFieldName/)
+      expectEditCode(() => doc.storeField(name, 'x'), 'edit::invalid_field_name')
     }
   })
 
-  it('storeField throws EditError::InvalidFieldName for an invalid name (hyphen)', () => {
+  it('storeField throws edit::invalid_field_name for an invalid name (hyphen)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.storeField('bad-name', 'x')).toThrow(/InvalidFieldName/)
+    expectEditCode(() => doc.storeField('bad-name', 'x'), 'edit::invalid_field_name')
   })
 
   it('removeField returns the removed value', () => {
@@ -517,10 +517,10 @@ describe('Document editor surface — storeField / removeField', () => {
     expect(doc.removeField('nonexistent')).toBeUndefined()
   })
 
-  it('removeField throws EditError::InvalidFieldName for `$`-prefixed names', () => {
+  it('removeField throws edit::invalid_field_name for `$`-prefixed names', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     for (const name of ['$body', '$cards', '$quill', '$kind']) {
-      expect(() => doc.removeField(name)).toThrow(/InvalidFieldName/)
+      expectEditCode(() => doc.removeField(name), 'edit::invalid_field_name')
     }
   })
 })
@@ -571,7 +571,7 @@ describe('Document editor surface — storeFields', () => {
     doc.storeFields({ card: 0 }, { foo: 'baz', extra: 1 })
     expect(field(doc.cards[0], 'foo')).toBe('baz')
     expect(field(doc.cards[0], 'extra')).toBe(1)
-    expect(() => doc.storeFields({ card: 99 }, { foo: 'v' })).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.storeFields({ card: 99 }, { foo: 'v' }), 'edit::index_out_of_range')
   })
 
   it('an address with an unknown key throws instead of parsing as {}', () => {
@@ -695,7 +695,7 @@ card_kinds:
   it('commitField rejects an unknown field as a typo and writes nothing', () => {
     const quill = buildQuill()
     const doc = blankDoc()
-    expect(() => doc._commitField(quill, 'stray', 'x')).toThrow(/UnknownField/)
+    expectEditCode(() => doc._commitField(quill, 'stray', 'x'), 'edit::unknown_field')
     expect(hasField(doc.main, 'stray')).toBe(false)
     // Opaque storage stays available on purpose through the raw verb.
     doc.storeField('stray', 'x')
@@ -718,9 +718,11 @@ card_kinds:
   it('commitField fails a strict mismatch and a richtext(inline) violation', () => {
     const quill = buildQuill()
     const doc = blankDoc()
-    expect(() => doc._commitField(quill, 'qty', 'not-a-number')).toThrow(/FieldConform/)
-    expect(() => doc._commitField(quill, 'subject', 'line one\n\nline two'))
-      .toThrow(/FieldRichtextNotInline/)
+    expectEditCode(() => doc._commitField(quill, 'qty', 'not-a-number'), 'edit::field_conform')
+    expectEditCode(
+      () => doc._commitField(quill, 'subject', 'line one\n\nline two'),
+      'edit::field_richtext_not_inline',
+    )
   })
 
   it('revise({field}) rebases a richtext field anchor and applyChange splices it', () => {
@@ -768,7 +770,7 @@ card_kinds:
     )
     doc._commitField(quill, { card: 0, field: 'body' }, 'Card **body**.')
     expect(exportMarkdown(field(doc.cards[0], 'body'))).toBe('Card **body**.')
-    expect(() => doc._commitField(quill, { card: 9, field: 'body' }, 'x')).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc._commitField(quill, { card: 9, field: 'body' }, 'x'), 'edit::index_out_of_range')
   })
 
   it('commitFields typed-commits a batch', () => {
@@ -785,7 +787,7 @@ card_kinds:
     const doc = blankDoc()
     // `qty` is a schema field; `titel` is a typo the schema does not own — the
     // undeclared name aborts the all-or-nothing batch and nothing is applied.
-    expect(() => doc._commitFields(quill, {}, { qty: '5', titel: 'oops' })).toThrow(/UnknownField/)
+    expectEditCode(() => doc._commitFields(quill, {}, { qty: '5', titel: 'oops' }), 'edit::unknown_field')
     expect(hasField(doc.main, 'qty')).toBe(false)
     expect(hasField(doc.main, 'titel')).toBe(false)
   })
@@ -795,8 +797,10 @@ card_kinds:
     const doc = blankDoc()
     // `subject` is richtext(inline); a multi-block value violates it, so nothing
     // is applied — `qty` must not linger.
-    expect(() => doc._commitFields(quill, {}, { qty: '5', subject: 'line one\n\nline two' }))
-      .toThrow(/FieldRichtextNotInline/)
+    expectEditCode(
+      () => doc._commitFields(quill, {}, { qty: '5', subject: 'line one\n\nline two' }),
+      'edit::field_richtext_not_inline',
+    )
     expect(hasField(doc.main, 'qty')).toBe(false)
   })
 
@@ -808,8 +812,8 @@ card_kinds:
     doc._commitFields(quill, { card: 0 }, { body: 'Card **body**.' })
     expect(exportMarkdown(field(doc.cards[0], 'body'))).toBe('Card **body**.')
     // An undeclared field on the card aborts the batch.
-    expect(() => doc._commitFields(quill, { card: 0 }, { stray: 'x' })).toThrow(/UnknownField/)
-    expect(() => doc._commitFields(quill, { card: 9 }, { body: 'x' })).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc._commitFields(quill, { card: 0 }, { stray: 'x' }), 'edit::unknown_field')
+    expectEditCode(() => doc._commitFields(quill, { card: 9 }, { body: 'x' }), 'edit::index_out_of_range')
   })
 })
 
@@ -845,7 +849,7 @@ Card two.
 
   it('insertCard throws on invalid kind', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.insertCard({ kind: 'BadKind' })).toThrow(/InvalidKindName/)
+    expectEditCode(() => doc.insertCard({ kind: 'BadKind' }), 'edit::invalid_kind_name')
   })
 
   it('removeCard → insertCard round-trips a card with fields (read shape == write shape)', () => {
@@ -870,7 +874,7 @@ Card two.
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const bad = Document.makeCard('BadKind', { x: 1 })
     expect(bad.kind).toBe('BadKind') // construction succeeds
-    expect(() => doc.insertCard(bad)).toThrow(/InvalidKindName/) // insertion rejects
+    expectEditCode(() => doc.insertCard(bad), 'edit::invalid_kind_name') // insertion rejects
   })
 
   it('makeCard treats fields and body as optional', () => {
@@ -897,7 +901,7 @@ Card two.
 
   it('insertCard throws IndexOutOfRange when at > len', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.insertCard({ kind: 'note' }, 5)).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.insertCard({ kind: 'note' }, 5), 'edit::index_out_of_range')
   })
 
   it('removeCard removes and returns the card', () => {
@@ -929,7 +933,7 @@ Card two.
 
   it('moveCard throws IndexOutOfRange on out-of-range index', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARDS) // 2 cards
-    expect(() => doc.moveCard(5, 0)).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.moveCard(5, 0), 'edit::index_out_of_range')
   })
 
   it('setCardKind renames the kind in place', () => {
@@ -943,13 +947,13 @@ Card two.
   it('setCardKind throws InvalidKindName for empty/uppercase/dashed kinds', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARDS)
     for (const bad of ['', 'BadKind', 'with-dash']) {
-      expect(() => doc.setCardKind(0, bad)).toThrow(/InvalidKindName/)
+      expectEditCode(() => doc.setCardKind(0, bad), 'edit::invalid_kind_name')
     }
   })
 
   it('setCardKind throws IndexOutOfRange when index >= len', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARDS) // 2 cards
-    expect(() => doc.setCardKind(5, 'annotation')).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.setCardKind(5, 'annotation'), 'edit::index_out_of_range')
   })
 
   it('cardCount reports composable card count without allocating', () => {
@@ -1036,7 +1040,7 @@ Card body.
 
   it('setCardField throws IndexOutOfRange when card absent', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.storeField({ card: 0, field: 'title' }, 'x')).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.storeField({ card: 0, field: 'title' }, 'x'), 'edit::index_out_of_range')
   })
 
   it('removeCardField returns the removed value and deletes the key', () => {
@@ -1053,7 +1057,7 @@ Card body.
 
   it('removeCardField throws IndexOutOfRange when card absent', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.removeField({ card: 0, field: 'foo' })).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.removeField({ card: 0, field: 'foo' }), 'edit::index_out_of_range')
   })
 
   it('revise({card:0}, md) revises a card body and returns the delta', () => {
@@ -1065,7 +1069,7 @@ Card body.
 
   it('revise({card:0}, md) throws IndexOutOfRange when card absent', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.revise({ card: 0 }, 'x')).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.revise({ card: 0 }, 'x'), 'edit::index_out_of_range')
   })
 
   it('install({card:0}, rt) installs a content into a card body', () => {
@@ -1086,7 +1090,7 @@ Card body.
 
   it('install({card:0}, ...) throws IndexOutOfRange when card absent', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.install({ card: 0 }, importMarkdown('x'))).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.install({ card: 0 }, importMarkdown('x')), 'edit::index_out_of_range')
   })
 })
 
@@ -1190,10 +1194,10 @@ describe('Document editor surface — $ext mutators', () => {
 
   it('card-level ext mutators throw IndexOutOfRange', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.storeExt({ card: 5 }, {})).toThrow(/IndexOutOfRange/)
-    expect(() => doc.removeExt({ card: 5 })).toThrow(/IndexOutOfRange/)
-    expect(() => doc.storeExtNamespace({ card: 5 }, 'a', {})).toThrow(/IndexOutOfRange/)
-    expect(() => doc.removeExtNamespace({ card: 5 }, 'a')).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.storeExt({ card: 5 }, {}), 'edit::index_out_of_range')
+    expectEditCode(() => doc.removeExt({ card: 5 }), 'edit::index_out_of_range')
+    expectEditCode(() => doc.storeExtNamespace({ card: 5 }, 'a', {}), 'edit::index_out_of_range')
+    expectEditCode(() => doc.removeExtNamespace({ card: 5 }, 'a'), 'edit::index_out_of_range')
   })
 })
 

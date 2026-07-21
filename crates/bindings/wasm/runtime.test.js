@@ -28,7 +28,12 @@ import {
 // `pkg/core` is NOT a public package subpath, it is the build the root
 // re-exports.
 import { Quill as CoreQuill, Document as CoreDocument } from '../../../pkg/core/wasm.js'
-import { makeQuill, makeSampleFormQuill, SAMPLE_FORM_MARKDOWN } from './test-helpers.js'
+import {
+  makeQuill,
+  makeSampleFormQuill,
+  SAMPLE_FORM_MARKDOWN,
+  expectEditCode,
+} from './test-helpers.js'
 
 const TEST_PLATE = `#import "@local/quillmark-helper:0.1.0": data
 #let title = data.title
@@ -163,13 +168,13 @@ card_kinds:
 
   it('set rejects an undeclared name as a typo, not a fallback', () => {
     const ed = buildQuill().writer(blankDoc())
-    expect(() => ed.set('stray', 'x')).toThrow(/UnknownField/)
+    expectEditCode(() => ed.set('stray', 'x'), 'edit::unknown_field')
     expect(fieldOf(ed.document.main, 'stray')).toBeUndefined()
   })
 
   it('setAll aborts the whole batch on a typo, applying nothing', () => {
     const ed = buildQuill().writer(blankDoc())
-    expect(() => ed.setAll({ qty: '5', titel: 'oops' })).toThrow(/UnknownField/)
+    expectEditCode(() => ed.setAll({ qty: '5', titel: 'oops' }), 'edit::unknown_field')
     expect(fieldOf(ed.document.main, 'qty')).toBeUndefined()
     expect(fieldOf(ed.document.main, 'titel')).toBeUndefined()
   })
@@ -191,10 +196,10 @@ card_kinds:
   it('reviseField rejects an undeclared name, and a non-inline result', () => {
     const quill = buildQuill()
     const ed = quill.writer(blankDoc())
-    expect(() => ed.reviseField('stray', 'x')).toThrow(/UnknownField/)
+    expectEditCode(() => ed.reviseField('stray', 'x'), 'edit::unknown_field')
     // `subject` is richtext(inline): a multi-block result is refused, field intact.
     ed.reviseField('subject', 'kept')
-    expect(() => ed.reviseField('subject', 'a\n\nb')).toThrow(/FieldRichtextNotInline/)
+    expectEditCode(() => ed.reviseField('subject', 'a\n\nb'), 'edit::field_richtext_not_inline')
     expect(quill.view(ed.document).get('subject')).toBe('kept')
   })
 
@@ -207,7 +212,7 @@ card_kinds:
     expect(exportMarkdown(fieldOf(ed.document.cards[0], 'body'))).toBe('Field **body**.')
     expect(exportMarkdown(ed.document.cards[0].body)).toBe('Card body text.')
     // A typo aborts the commit; the card never joins the document.
-    expect(() => ed.addCard('note', { stray: 'x' })).toThrow(/UnknownField/)
+    expectEditCode(() => ed.addCard('note', { stray: 'x' }), 'edit::unknown_field')
     expect(ed.document.cards).toHaveLength(1)
   })
 
@@ -232,14 +237,14 @@ card_kinds:
     const delta = ed.card(0).reviseField('body', 'Revised **field**.')
     expect(exportMarkdown(fieldOf(doc.cards[0], 'body'))).toBe('Revised **field**.')
     expect(delta).toBeTruthy()
-    expect(() => ed.card(0).reviseField('stray', 'x')).toThrow(/UnknownField/)
+    expectEditCode(() => ed.card(0).reviseField('stray', 'x'), 'edit::unknown_field')
   })
 
   it('a bad card index throws at write time, not at card()', () => {
     const ed = buildQuill().writer(blankDoc())
     const cardEd = ed.card(9) // lazy: constructing the CardWriter never throws
     expect(cardEd).toBeInstanceOf(CardWriter)
-    expect(() => cardEd.set('body', 'x')).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => cardEd.set('body', 'x'), 'edit::index_out_of_range')
   })
 
   it('get reads raw values quill-free; getMarkdown is body-only (field half retired)', () => {
@@ -258,7 +263,7 @@ card_kinds:
     expect(quill.view(ed.document).get('subject')).toBe('Q3 **results**')
     // view.get carries schema authority: an unknown name throws (vs `undefined`
     // from the quill-free transport `Document.get` above).
-    expect(() => quill.view(ed.document).get('missing')).toThrow(/UnknownField/)
+    expectEditCode(() => quill.view(ed.document).get('missing'), 'edit::unknown_field')
   })
 })
 
@@ -321,14 +326,14 @@ card_kinds:
     const quill = buildQuill()
     const v = quill.view(Document.fromMarkdown('~~~card-yaml\n$quill: view_test\n~~~\n\nBody.'))
     expect(v.get('subject')).toBeUndefined() // absent, not a typo
-    expect(() => v.get('nope')).toThrow(/UnknownField/) // typo, not absent
+    expectEditCode(() => v.get('nope'), 'edit::unknown_field') // typo, not absent
   })
 
   it('a richtext field holding a scalar throws FieldRichtextDecode', () => {
     const quill = buildQuill()
     const doc = Document.fromMarkdown('~~~card-yaml\n$quill: view_test\n~~~\n\nBody.')
     doc.storeField('subject', 3) // opaque write puts a bare number under richtext
-    expect(() => quill.view(doc).get('subject')).toThrow(/FieldRichtextDecode/)
+    expectEditCode(() => quill.view(doc).get('subject'), 'edit::field_richtext_decode')
   })
 
   it('an absent field addr reads the body markdown, quill-free', () => {
@@ -344,14 +349,14 @@ card_kinds:
     expect(v.card(0).kind).toBe('note')
     expect(v.card(0).get('body')).toBe('A *card* field.')
     expect(v.card(0).getBody()).toBe('Card body.')
-    expect(() => v.card(0).get('nope')).toThrow(/UnknownField/)
+    expectEditCode(() => v.card(0).get('nope'), 'edit::unknown_field')
   })
 
   it('a bad card index throws at read time, not at card()', () => {
     const quill = buildQuill()
     const cardView = quill.view(seededDoc(quill)).card(9)
     expect(cardView).toBeInstanceOf(CardView)
-    expect(() => cardView.get('body')).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => cardView.get('body'), 'edit::index_out_of_range')
   })
 })
 

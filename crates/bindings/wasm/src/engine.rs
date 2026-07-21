@@ -849,7 +849,7 @@ impl Document {
     /// the **body content** when `addr.field` is absent. A bare string is `Addr`
     /// shorthand for `{ field }`. Reads are total over the field axis: an absent
     /// field is `undefined`; only an out-of-range `addr.card` throws
-    /// `[EditError::IndexOutOfRange]`. Reads need no schema, so they live on
+    /// `edit::index_out_of_range`. Reads need no schema, so they live on
     /// `Document`, not the typed writer; for the markdown projection of a
     /// richtext value use [`getMarkdown`](Self::get_markdown).
     #[wasm_bindgen(js_name = get, unchecked_return_type = "unknown")]
@@ -908,9 +908,9 @@ impl Document {
     /// `undefined` for an **absent** field. An absent `addr.field` reads the body
     /// markdown — quill-free, mirroring [`getMarkdown`](Self::get_markdown), since
     /// a body's type is a format fact, not a schema fact. A name the schema does
-    /// not declare throws `[EditError::UnknownField]` (the authority `getMarkdown`
+    /// not declare throws `edit::unknown_field` (the authority `getMarkdown`
     /// lacks — there an unknown name reads back `undefined`); a `richtext` field
-    /// holding a value that does not decode throws `[EditError::FieldRichtextDecode]`;
+    /// holding a value that does not decode throws `edit::field_richtext_decode`;
     /// an out-of-range `addr.card` throws.
     ///
     /// The `quill` handle is passed per call because a `Document` carries only a
@@ -1014,7 +1014,7 @@ impl Document {
     /// A single composable card by index — the whole `Card`, the card-indexed
     /// twin of the [`main`](Self::main) getter, so reading one card need not
     /// materialize every card via [`cards`](Self::cards). An out-of-range
-    /// `index` throws `[EditError::IndexOutOfRange]`, matching the card write
+    /// `index` throws `edit::index_out_of_range`, matching the card write
     /// verbs.
     #[wasm_bindgen(js_name = card, unchecked_return_type = "Card")]
     pub fn card(&self, index: usize) -> Result<JsValue, JsValue> {
@@ -1323,12 +1323,12 @@ impl Document {
     /// and defers to [`TypedWriter::revise_field`](quillmark_core::TypedWriter::revise_field):
     /// surviving anchors rebase (as [`revise`](Self::revise)), then the diffed
     /// result is schema-conformed, so a `richtext(inline)` field rejects a
-    /// multi-block result with `[EditError::FieldRichtextNotInline]`. Returns the
+    /// multi-block result with `edit::field_richtext_not_inline`. Returns the
     /// text [`Delta`].
     ///
     /// `addr` must name a field (a bare string is `{ field }`); a body address
     /// throws (a body carries no field schema — use [`revise`](Self::revise)). A
-    /// name the schema does not declare throws `[EditError::UnknownField]`. Throws
+    /// name the schema does not declare throws `edit::unknown_field`. Throws
     /// on an out-of-range card. Hidden from the `.d.ts`; the visible verb is
     /// `writer.reviseField` in the runtime layer.
     #[wasm_bindgen(js_name = _reviseField, skip_typescript, unchecked_return_type = "Delta")]
@@ -1393,12 +1393,12 @@ impl Document {
     /// address throws — a body has no field schema; write it with `writer.setBody`
     /// / `revise`. A field declared in the schema is strict-committed (a mismatch
     /// throws now, not at render); a name the schema does not declare throws
-    /// `[EditError::UnknownField]` rather than falling to the opaque store — on
+    /// `edit::unknown_field` rather than falling to the opaque store — on
     /// the typed path it is a typo. Use [`storeField`](Document::store_field) for
-    /// opaque storage. Also throws `[EditError::FieldConform]` /
-    /// `[EditError::FieldRichtextDecode]` / `[EditError::FieldRichtextNotInline]`
-    /// on a typed mismatch, `[EditError::InvalidFieldName]` on a malformed name,
-    /// and `[EditError::IndexOutOfRange]` on an out-of-range card.
+    /// opaque storage. Also throws `edit::field_conform` /
+    /// `edit::field_richtext_decode` / `edit::field_richtext_not_inline`
+    /// on a typed mismatch, `edit::invalid_field_name` on a malformed name,
+    /// and `edit::index_out_of_range` on an out-of-range card.
     ///
     /// The `quill` handle is passed per call because a `Document` carries only a
     /// `$quill` reference, not the resolved schema.
@@ -1431,7 +1431,7 @@ impl Document {
     /// the same per-field-diagnostic error contract as
     /// [`storeFields`](Document::store_fields) — nothing is applied on error and
     /// the thrown error's `diagnostics` carry one entry per offending field,
-    /// including an `[EditError::UnknownField]` for any name the schema does not
+    /// including an `edit::unknown_field` for any name the schema does not
     /// declare, so a whole-form submit sees every typo in one pass. Throws on an
     /// out-of-range card.
     #[wasm_bindgen(js_name = _commitFields, skip_typescript)]
@@ -1464,7 +1464,7 @@ impl Document {
     /// the document, so a rejected field (or an invalid kind, body, or
     /// out-of-range `at`) leaves the document untouched. Field errors throw the
     /// same per-field diagnostic bundle as [`commitFields`](Self::commit_fields),
-    /// including an `[EditError::UnknownField]` per undeclared name; an invalid
+    /// including an `edit::unknown_field` per undeclared name; an invalid
     /// kind or body, or an out-of-range position, throws a single-entry bundle
     /// keyed `$kind` / `$body`.
     #[wasm_bindgen(js_name = _addCard, skip_typescript)]
@@ -1824,22 +1824,29 @@ pub fn map_pos(
 
 // ── Edit helpers ──────────────────────────────────────────────────────────────
 
-/// Maps `EditError` to a JS `Error` with the variant name and details in the message.
+/// Maps `EditError` to a JS `Error` carrying one diagnostic with the mutator's
+/// namespaced `edit::` code and its `Display` text as the message.
 fn edit_error_to_js(err: &quillmark_core::EditError) -> JsValue {
-    WasmError::from(format!("[EditError::{}] {}", err.variant_name(), err)).to_js_value()
+    let diagnostic = quillmark_core::Diagnostic::new(
+        quillmark_core::Severity::Error,
+        err.to_string(),
+    )
+    .with_code(err.code().to_string());
+    WasmError {
+        diagnostics: vec![diagnostic],
+    }
+    .to_js_value()
 }
 
 /// Batched-mutator twin of [`edit_error_to_js`]: one diagnostic per offending
-/// field, each with `path` set to the field name.
+/// field, each carrying the `edit::` code and `path` set to the field name.
 fn edit_errors_to_js(errors: Vec<(String, quillmark_core::EditError)>) -> JsValue {
     let diagnostics: Vec<quillmark_core::Diagnostic> = errors
         .into_iter()
         .map(|(name, err)| {
-            quillmark_core::Diagnostic::new(
-                quillmark_core::Severity::Error,
-                format!("[EditError::{}] {}", err.variant_name(), err),
-            )
-            .with_path(name)
+            quillmark_core::Diagnostic::new(quillmark_core::Severity::Error, err.to_string())
+                .with_code(err.code().to_string())
+                .with_path(name)
         })
         .collect();
     WasmError { diagnostics }.to_js_value()
