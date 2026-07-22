@@ -66,3 +66,10 @@ YAML round-trip sanity and the simpler model, tri-state foreclosed.
 - ERROR.md lists `edit::`; the unreleased migration guide covers the break.
 - Consumer routing (coercion vs. undeclared — `edit::field_conform` vs.
   `edit::unknown_field`) needs only `code`, never message text.
+
+## Status
+
+**Shipped** at `4162ec2`: `EditError::code()` in core beside `variant_name()`,
+both binding converters set `code` and drop the prefix, `edit::*` in ERROR.md's
+namespace list with its own section, the migration entry, and the null ≡ absent
+ratification in `SCHEMAS.md`. All acceptance criteria hold; nothing remains.

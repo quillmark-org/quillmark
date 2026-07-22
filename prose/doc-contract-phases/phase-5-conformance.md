@@ -1,6 +1,6 @@
-# Phase 4 — conformance suite, frozen at 1.0
+# Phase 5 — conformance suite, frozen at 1.0
 
-> **Gate**: phases 1–3 settled. Fixtures written against a moving surface
+> **Gate**: phases 1–4 settled. Fixtures written against a moving surface
 > get written twice.
 
 ## Goal
@@ -23,8 +23,22 @@ pre-1.0 the diffs are the pivot log.
   and the freeze signal dies. The Typst `typst::<message-prefix>`
   convention — identity derived from prose — is exactly what the frozen
   set excludes.
-- Every grammar edge ruled in phase 2 (card bodies, `$ext`, nested indices)
-  and both branches of every phase-3 constraint appear as fixtures.
+
+## Fixture inventory
+
+- Every grammar edge ruled in phase 2 (card bodies, `$ext`, nested indices,
+  the coercion ruling) and both sides of phase 3's top-level-only `source`
+  decision.
+- **The geometry lane** — the boundary's highest-traffic addresses:
+  per document, the `regions()` / `fieldAt` address strings parse as
+  `DocPath` and match expected paths. Address grammar and routing, not
+  pixels; paint stays outside the frozen set.
+- **A fixture quill whose `validate()` is non-empty** — `!must_fill` card
+  fields, so card-path diagnostics are exercised end-to-end. The reference
+  fixture cannot produce one, which is why the editor's `Diagnostic.path`
+  routing shipped best-effort (#1004); this fixture retires that caveat.
+- `fieldStates()` fixtures assert `{value, source}` rows only — the lean
+  shape is the frozen shape.
 
 ## Delivery
 
