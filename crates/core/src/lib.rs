@@ -57,7 +57,10 @@ pub use session::{ApplyError, Assoc, ChangeSet, Delta, LineOp, LiveSession, Mark
 pub use quillmark_content::Content;
 
 pub mod quill;
-pub use quill::{zero_value, FileTreeNode, Quill, QuillIgnore, STANDARD_METADATA_KEYS};
+pub use quill::{
+    zero_value, CardStates, FieldSource, FieldState, FieldStates, FileTreeNode, MainStates, Quill,
+    QuillIgnore, STANDARD_METADATA_KEYS,
+};
 
 pub mod value;
 pub use value::{json_depth_exceeds, PathSegment, QuillValue};
