@@ -9,7 +9,7 @@ use indexmap::IndexMap;
 use super::{seed, CardSchema, FieldSchema, FieldType, Quill, QuillConfig};
 use crate::normalize::normalize_document;
 use crate::quill::zero_value;
-use crate::value::PathSegment;
+use crate::path::DocPath;
 use crate::{
     Card, Diagnostic, Document, Payload, QuillValue, RenderError, SeedOverlay, Severity, Version,
 };
@@ -204,7 +204,7 @@ impl Quill {
                         format!("`$seed` overlay targets unknown card kind `{kind}`"),
                     )
                     .with_code("validation::seed_unknown_kind".to_string())
-                    .with_path(format!("$seed.{kind}"))
+                    .with_path(DocPath::new().field("$seed").field(kind).to_string())
                     .with_hint(format!(
                         "Remove the `{kind}` overlay, or rename it to a declared card kind."
                     )),
@@ -218,7 +218,7 @@ impl Quill {
                         format!("`$seed.{kind}` must be a mapping of field overrides"),
                     )
                     .with_code("validation::seed_overlay_shape".to_string())
-                    .with_path(format!("$seed.{kind}")),
+                    .with_path(DocPath::new().field("$seed").field(kind).to_string()),
                 );
                 continue;
             };
@@ -226,7 +226,7 @@ impl Quill {
                 if field == "$body" {
                     continue;
                 }
-                let field_path = format!("$seed.{kind}.{field}");
+                let field_path = DocPath::new().field("$seed").field(kind).field(field);
                 let Some(field_schema) = card_schema.fields.get(field) else {
                     diags.push(
                         Diagnostic::new(
@@ -234,7 +234,7 @@ impl Quill {
                             format!("`$seed.{kind}.{field}` is not a field of card kind `{kind}`"),
                         )
                         .with_code("validation::seed_unknown_field".to_string())
-                        .with_path(field_path),
+                        .with_path(field_path.to_string()),
                     );
                     continue;
                 };
@@ -434,58 +434,38 @@ fn rebuild_payload_with_meta(source: &Card, fields: IndexMap<String, QuillValue>
 /// consumer treats any outstanding marker as "not done".
 fn validate_fills(doc: &Document) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    collect_fill_diags(doc.main(), "", &mut diags);
+    collect_fill_diags(doc.main(), &DocPath::new(), &mut diags);
     for (index, card) in doc.cards().iter().enumerate() {
-        let kind = card.kind().unwrap_or("");
-        let base = format!("cards.{kind}[{index}]");
-        collect_fill_diags(card, &base, &mut diags);
+        collect_fill_diags(card, &DocPath::card(card.kind(), index), &mut diags);
     }
     diags
 }
 
 /// Append a `validation::must_fill` warning for each marker in `card`'s fields.
-fn collect_fill_diags(card: &Card, base: &str, out: &mut Vec<Diagnostic>) {
+fn collect_fill_diags(card: &Card, base: &DocPath, out: &mut Vec<Diagnostic>) {
     let payload = card.payload();
     for (key, value) in payload {
-        let field_path = if base.is_empty() {
-            key.clone()
-        } else {
-            format!("{base}.{key}")
-        };
+        let field_path = base.field(key);
         // Root marker (the field-level `fill` flag) plus any nested markers
-        // carried on the value tree.
+        // carried on the value tree, each rebased onto the field path.
         if payload.is_fill(key) {
             out.push(fill_warning(&field_path));
         }
         for nested in value.nonroot_fill_paths() {
-            out.push(fill_warning(&render_fill_path(&field_path, &nested)));
+            let nested_path = nested.iter().fold(field_path.clone(), |p, s| p.segment(s));
+            out.push(fill_warning(&nested_path));
         }
     }
 }
 
-/// Render `base` extended by a value-relative path into the document-model path
-/// grammar (`addr.street`, `recipients[0].name`).
-fn render_fill_path(base: &str, segs: &[PathSegment]) -> String {
-    let mut s = base.to_string();
-    for seg in segs {
-        match seg {
-            PathSegment::Key(k) => {
-                s.push('.');
-                s.push_str(k);
-            }
-            PathSegment::Index(i) => s.push_str(&format!("[{i}]")),
-        }
-    }
-    s
-}
-
-fn fill_warning(path: &str) -> Diagnostic {
+fn fill_warning(path: &DocPath) -> Diagnostic {
+    let path = path.to_string();
     Diagnostic::new(
         Severity::Warning,
         format!("Field `{path}` is marked `!must_fill` — a placeholder awaiting a value."),
     )
     .with_code("validation::must_fill".to_string())
-    .with_path(path.to_string())
+    .with_path(path)
     .with_hint(
         "Replace the value and drop the `!must_fill` marker, or remove the marker if the \
          current value is intended."

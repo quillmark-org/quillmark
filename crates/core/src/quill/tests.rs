@@ -3421,7 +3421,7 @@ fn enum_membership_is_validated_on_a_document_value() {
     let errs = super::validation::validate_field(
         field,
         &QuillValue::from_json(serde_json::json!("green")),
-        "color",
+        &crate::path::DocPath::new().field("color"),
     );
     assert!(
         errs.iter().any(|e| e.code() == "validation::enum_violation"),
@@ -3431,7 +3431,7 @@ fn enum_membership_is_validated_on_a_document_value() {
     let ok = super::validation::validate_field(
         field,
         &QuillValue::from_json(serde_json::json!("red")),
-        "color",
+        &crate::path::DocPath::new().field("color"),
     );
     assert!(ok.is_empty(), "an in-domain value validates, got: {ok:?}");
 }

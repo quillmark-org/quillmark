@@ -62,6 +62,9 @@ pub use quill::{zero_value, FileTreeNode, Quill, QuillIgnore, STANDARD_METADATA_
 pub mod value;
 pub use value::{json_depth_exceeds, PathSegment, QuillValue};
 
+pub mod path;
+pub use path::{DocPath, DocSeg};
+
 pub mod normalize;
 
 pub mod version;

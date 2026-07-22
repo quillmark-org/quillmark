@@ -63,6 +63,10 @@ export { Quill, Document, init };
 // projection), `importMarkdown`, and the position-mapping pair (`rebase`,
 // `mapPos`).
 export { importMarkdown, exportMarkdown, rebase, mapPos } from '../core/wasm.js';
+// The document-model path parser/serializer: `parseDocPath(str) => DocPathSeg[]`
+// and its inverse `formatDocPath`, so a consumer routes on `Diagnostic.path`
+// segments instead of reverse-engineering the grammar.
+export { parseDocPath, formatDocPath } from '../core/wasm.js';
 
 // ── The main-card address ───────────────────────────────────────────────────
 /**
