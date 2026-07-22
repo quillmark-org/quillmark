@@ -10,8 +10,7 @@ faster from the code itself, in the fewest words that stay correct. This skill
 is the house voice: dense, present-tense, declarative, unsold.
 
 It covers comment and doc *content*. For canon *structure* — the `prose/canon/`
-doc spine (Title → Implementation anchor → TL;DR), one concept per page — use
-**`maintain-canon`**.
+doc spine and tiers — use **`maintain-canon`**.
 
 ## Prime directive: correctness over brevity
 

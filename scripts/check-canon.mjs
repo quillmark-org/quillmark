@@ -1,9 +1,6 @@
 #!/usr/bin/env node
-// Canon spine lint. Enforces the doc spine and link invariants specified in
-// prose/README.md ("Canon doc spine"): every canon doc opens Title → anchor
-// blockquote (line 3, with an **Implementation** line pointing at a folder,
-// never a file) → `## TL;DR`; canon never links into proposals/ or plans/;
-// references never link out to other prose docs. Zero dependencies.
+// Canon spine lint — enforces the doc spine and link invariants specified in
+// prose/README.md ("Canon doc spine"). Zero dependencies.
 //
 // Usage: node scripts/check-canon.mjs
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
@@ -12,10 +9,12 @@ import { join } from 'node:path';
 const problems = [];
 const fail = (file, msg) => problems.push(`${file}: ${msg}`);
 
-// A path with a source-file extension inside an Implementation anchor.
-const FILE_IN_ANCHOR = /[\w/-]+\.(?:rs|m?[jt]s|py|typ|md|ya?ml|toml|json|sh|wasm)\b/;
-// A markdown link target into the proposal/plan tiers.
-const PLAN_LINK = /\]\([^)]*\b(?:proposals|plans)\//;
+// A file path — a slashed token with a dotted basename — inside an anchor.
+// Keys on path shape, not an extension list, so a new file type can't slip past.
+const FILE_IN_ANCHOR = /[\w-]+\/[\w/-]*\.[a-z0-9]+\b/;
+// A markdown link target into the proposal/plan tiers, segment-anchored so a
+// path like `parked-proposals/` doesn't trip it.
+const PLAN_LINK = /\]\([^)]*\/(?:proposals|plans)\//;
 // A relative markdown link target to a .md file (an outbound prose link).
 const PROSE_LINK = /\]\((?!https?:)[^)]*\.md(?=[)#])/;
 
@@ -34,22 +33,17 @@ for (const name of mdFiles('prose/canon')) {
 
   if (!lines[0]?.startsWith('# ')) fail(file, 'line 1 is not a `# Title`');
 
-  // Anchor blockquote: contiguous `>` lines from line 3. The **Implementation**
-  // entry is its line plus continuation lines up to the next `> **Key**:` line.
+  // Anchor blockquote: contiguous `>` lines from line 3. Only Implementation
+  // lines carry a path, so the file check scans the whole quote.
   if (!lines[2]?.startsWith('> ')) {
     fail(file, 'line 3 is not the anchor blockquote');
   } else {
-    let quote = [];
+    const quote = [];
     for (let i = 2; i < lines.length && lines[i].startsWith('>'); i++) quote.push(lines[i]);
-    const start = quote.findIndex((l) => l.startsWith('> **Implementation**:'));
-    if (start === -1) {
+    if (!quote.some((l) => l.startsWith('> **Implementation**:')))
       fail(file, 'anchor blockquote has no `> **Implementation**:` line');
-    } else {
-      let impl = quote[start];
-      for (let i = start + 1; i < quote.length && !/^> \*\*\w+\*\*:/.test(quote[i]); i++) impl += '\n' + quote[i];
-      const m = impl.match(FILE_IN_ANCHOR);
-      if (m) fail(file, `Implementation anchor names a file (\`${m[0]}\`) — anchors point at folders or modules`);
-    }
+    const m = quote.join('\n').match(FILE_IN_ANCHOR);
+    if (m) fail(file, `Implementation anchor names a file (\`${m[0]}\`) — anchors point at folders or modules`);
   }
 
   const firstH2 = lines.find((l) => l.startsWith('## '));

@@ -12,18 +12,14 @@ re-document implementation detail that the code already carries.
 
 ## Structure
 
-`prose/README.md` is the single source of truth for structure: the four prose
-tiers (`canon/`, `references/`, `proposals/`, `plans/`), the canon doc spine
-(Title → `Implementation` anchor → `## TL;DR`), and the link invariants (canon
-never references proposals or plans; references never link out to other prose
-docs). Read it before editing canon. `scripts/check-canon.mjs` enforces the
-spine and link invariants in CI.
+`prose/README.md` is the single source of truth for prose structure — the four
+tiers, the canon doc spine, and the link invariants. Read it before editing
+canon; `scripts/check-canon.mjs` enforces it in CI.
 
 ## Principles
 
 One topic per page; one canonical per topic. Prefer deletion with consolidation
 over duplicates. Keep pages skimmable and high-level; include minimal code.
-Reference folders, not files or line numbers — they rot.
 
 ## Workflow
 
