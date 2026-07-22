@@ -46,6 +46,21 @@ jobs:
           echo "next=$NEXT" >> "$GITHUB_OUTPUT"
           echo "Releasing v${NEXT}"
 
+      # release-prepare.yml seeds each version section with a coverage
+      # cross-check comment for the merging maintainer to delete; a skipped
+      # deletion must not reach main's CHANGELOG.md or the tagged commit, so
+      # strip it here unconditionally rather than leaving it a manual step.
+      - name: Strip leftover seed coverage comment
+        run: |
+          ./scripts/strip-seed-comment.sh CHANGELOG.md
+          if ! git diff --quiet -- CHANGELOG.md; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add CHANGELOG.md
+            git commit -m "chore(release): strip seed coverage comment"
+            git push origin main
+          fi
+
       - name: Tag and push
         run: |
           VERSION="${{ steps.version.outputs.next }}"
@@ -62,9 +77,15 @@ jobs:
           awk -v v="## v${VERSION}" \
             '$0 ~ "^"v {f=1; next} /^## / && f {exit} f {print}' \
             CHANGELOG.md > notes.md || true
-          # Fall back to a generic note if the section is missing or empty
-          # (e.g. an RC with no curated changelog).
-          [ -s notes.md ] || echo "Release v${VERSION}" > notes.md
+          # Defense in depth: the previous step already strips CHANGELOG.md,
+          # but the Release body must stay comment-free even if that step's
+          # push race-loses to a concurrent run.
+          ./scripts/strip-seed-comment.sh notes.md
+          # Fall back to a generic note if the section is missing or made of
+          # only whitespace (e.g. an RC with no curated changelog, or every
+          # curated line was the now-stripped seed comment) — `-s` alone is
+          # true for a whitespace-only file and would publish blank notes.
+          grep -q '[^[:space:]]' notes.md || echo "Release v${VERSION}" > notes.md
 
       - name: Create GitHub Release
         env:

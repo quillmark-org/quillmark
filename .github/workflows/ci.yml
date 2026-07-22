@@ -57,6 +57,28 @@ jobs:
       - name: Tests
         run: cargo test --workspace --all-features --locked
 
+  release-tooling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Guards scripts/strip-seed-comment.sh, the tool release.yml and
+      # release-prepare.yml rely on to keep the release-prepare coverage
+      # comment out of published Release notes and merged CHANGELOG.md.
+      - name: Test strip-seed-comment.sh strips the comment and collapses to one blank line
+        run: |
+          printf '## v1.0.0 - 2026-01-01\n\n- entry one\n\n<!-- seed: commits since v0.9.0 — confirm the entries above cover them, then delete this comment\n- commit a\n- commit b\n-->\n\n## v0.9.0 - 2025-12-01\n\n- old entry\n' > fixture.md
+          printf '## v1.0.0 - 2026-01-01\n\n- entry one\n\n## v0.9.0 - 2025-12-01\n\n- old entry\n' > fixture.expected.md
+          ./scripts/strip-seed-comment.sh fixture.md
+          diff fixture.expected.md fixture.md
+
+      - name: Test strip-seed-comment.sh is a no-op without a seed comment
+        run: |
+          printf '## v1.0.0 - 2026-01-01\n\n- entry one\n' > clean.md
+          cp clean.md clean.expected.md
+          ./scripts/strip-seed-comment.sh clean.md
+          diff clean.expected.md clean.md
+
   wasm:
     runs-on: ubuntu-latest
     steps:
