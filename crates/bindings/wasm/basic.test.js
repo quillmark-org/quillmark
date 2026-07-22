@@ -1776,9 +1776,10 @@ addr:
 // ---------------------------------------------------------------------------
 //
 // For every declared field: the value the render projection would use and the
-// source rung it came from ("authored" | "default" | "zero"). Value and
-// provenance only — diagnostics stay validate(), guidance stays the schema. The
-// body rides the fields map under the `$body` key. See prose/canon/SCHEMAS.md
+// source rung it came from ("authored" | "default" | "zero"). Rows are an
+// ordered array carrying their own `name`; the card body is a `body` sibling,
+// not a row in `fields`. Value and provenance only — diagnostics stay
+// validate(), guidance stays the schema. See prose/canon/SCHEMAS.md
 // § "Value sources and projections".
 
 describe('quill.fieldStates', () => {
@@ -1815,6 +1816,9 @@ card_kinds:
   const buildQuill = () =>
     Quill.fromTree(makeQuill({ name: 'field_states_test', quillYaml: QUILL_YAML }))
 
+  // Rows are an ordered array now; look one up by its `name`.
+  const byName = (rows, name) => rows.find((r) => r.name === name)
+
   it('tags main rows with their authored / default / zero source', () => {
     const quill = buildQuill()
     const md = `~~~card-yaml
@@ -1825,15 +1829,18 @@ title: Hello
 `
     const f = quill.fieldStates(Document.fromMarkdown(md)).main.fields
 
-    expect(f.title.source).toBe('authored')
-    expect(f.title.value).toBe('Hello')
-    expect(f.status.source).toBe('default')
-    expect(f.status.value).toBe('draft')
-    expect(f.notes.source).toBe('zero')
-    expect(f.notes.value).toBe('')
+    // Declaration order is structural — the array order is the contract.
+    expect(f.map((r) => r.name)).toEqual(['title', 'status', 'notes', 'count', 'author'])
+
+    expect(byName(f, 'title').source).toBe('authored')
+    expect(byName(f, 'title').value).toBe('Hello')
+    expect(byName(f, 'status').source).toBe('default')
+    expect(byName(f, 'status').value).toBe('draft')
+    expect(byName(f, 'notes').source).toBe('zero')
+    expect(byName(f, 'notes').value).toBe('')
   })
 
-  it('carries the body under the $body row with a source', () => {
+  it('carries the body as a `body` sibling, never a row in fields', () => {
     const quill = buildQuill()
     const authored = `~~~card-yaml
 $quill: field_states_test
@@ -1844,8 +1851,11 @@ title: T
 Hello body.
 `
     const withBody = quill.fieldStates(Document.fromMarkdown(authored))
-    expect(withBody.main.fields.$body).toBeDefined()
-    expect(withBody.main.fields.$body.source).toBe('authored')
+    expect(withBody.main.body).toBeDefined()
+    expect(withBody.main.body.source).toBe('authored')
+    // Not smuggled into the fields array under any `body` / `$body` name.
+    expect(byName(withBody.main.fields, 'body')).toBeUndefined()
+    expect(byName(withBody.main.fields, '$body')).toBeUndefined()
 
     const blank = `~~~card-yaml
 $quill: field_states_test
@@ -1854,7 +1864,7 @@ title: T
 ~~~
 `
     const noBody = quill.fieldStates(Document.fromMarkdown(blank))
-    expect(noBody.main.fields.$body.source).toBe('zero')
+    expect(noBody.main.body.source).toBe('zero')
   })
 
   it('carries value and source only — no diagnostics, no example', () => {
@@ -1866,11 +1876,12 @@ title: T
 ~~~
 `
     const f = quill.fieldStates(Document.fromMarkdown(md)).main.fields
-    // Each row is exactly { value, source } — schema guidance (example:) and
-    // diagnostics are read from quill.schema / quill.validate, not duplicated here.
-    expect(Object.keys(f.author).sort()).toEqual(['source', 'value'])
-    expect('example' in f.author).toBe(false)
-    expect('diagnostics' in f.author).toBe(false)
+    // Each row is exactly { name, value, source } — schema guidance (example:)
+    // and diagnostics read from quill.schema / quill.validate, not duplicated.
+    const author = byName(f, 'author')
+    expect(Object.keys(author).sort()).toEqual(['name', 'source', 'value'])
+    expect('example' in author).toBe(false)
+    expect('diagnostics' in author).toBe(false)
   })
 
   it('reports kind and index on a card entry', () => {
@@ -1892,8 +1903,8 @@ Note body.
     const card = states.cards[0]
     expect(card.kind).toBe('note')
     expect(card.index).toBe(0)
-    expect(card.fields.label.source).toBe('authored')
-    expect(card.fields.label.value).toBe('L')
+    expect(byName(card.fields, 'label').source).toBe('authored')
+    expect(byName(card.fields, 'label').value).toBe('L')
   })
 
   it('keeps a render-uncoercible value raw (byte-for-byte with the plate)', () => {
@@ -1908,7 +1919,7 @@ count: "not-a-number"
     // A value the render coercion cannot conform is kept raw and Authored,
     // exactly as compile_data leaves it — the error surfaces via validate(),
     // not this view (which carries no diagnostics).
-    const row = quill.fieldStates(Document.fromMarkdown(md)).main.fields.count
+    const row = byName(quill.fieldStates(Document.fromMarkdown(md)).main.fields, 'count')
     expect(row.source).toBe('authored')
     expect(row.value).toBe('not-a-number')
     expect('diagnostics' in row).toBe(false)

@@ -1962,34 +1962,37 @@ const FIELDSTATES_TS: &'static str = r#"
 export type FieldSource = "authored" | "default" | "zero";
 
 /**
- * One resolved field: the value the render projection would use and the
- * `FieldSource` rung it came from. The card body rides its card's `fields` map
- * under the `$body` key as an ordinary `FieldState`. Diagnostics stay
- * `Quill.validate`'s; schema guidance (`example:`, labels) reads from
- * `Quill.schema`.
+ * One resolved row: its `name`, the value the render projection would use, and
+ * the `FieldSource` rung it came from. Rows are an ordered array — declaration
+ * order is structural, not object-key order. The card body is a `body` sibling
+ * on its card, never a row in `fields`. Diagnostics stay `Quill.validate`'s;
+ * schema guidance (`example:`, labels) reads from `Quill.schema`.
  */
 export interface FieldState {
+    name: string;
     value: unknown;
     source: FieldSource;
 }
 
 /**
- * The main card's resolved fields, keyed by field name in declaration order,
- * with `$body` under its key when the main enables a body.
+ * The main card's resolved rows in declaration order, plus its body row —
+ * `null` when the main enables no body.
  */
 export interface MainFieldStates {
-    fields: Record<string, FieldState>;
+    fields: FieldState[];
+    body: FieldState | null;
 }
 
 /**
- * One composable card's resolved fields (`$body` under its key when the kind
- * enables a body), with its authored `kind` (`null` for an unknown-kind card)
- * and its document-array `index`.
+ * One composable card's resolved rows in declaration order, with its authored
+ * `kind` (`null` for an unknown-kind card), its document-array `index`, and its
+ * body row — `null` when the kind enables no body.
  */
 export interface CardFieldStates {
     kind: string | null;
     index: number;
-    fields: Record<string, FieldState>;
+    fields: FieldState[];
+    body: FieldState | null;
 }
 
 /**

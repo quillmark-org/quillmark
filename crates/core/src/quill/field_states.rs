@@ -20,11 +20,6 @@ use super::compose::resolve_value_sourced;
 use super::{CardSchema, Leniency, Quill, QuillConfig};
 use crate::{Card, Document, QuillValue};
 
-/// Engine-owned universal key for a card's body row, collision-proof against a
-/// payload field literally named `body` — a user field can never be
-/// `$`-prefixed, and `Payload::to_index_map` drops `$` entries.
-const BODY_KEY: &str = "$body";
-
 /// The rung of the commitment ladder that produced a [`FieldState::value`].
 /// Serializes lowercase (`"authored" | "default" | "zero"`).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
@@ -38,29 +33,36 @@ pub enum FieldSource {
     Zero,
 }
 
-/// One resolved field: the value the render projection would use and its
-/// [`FieldSource`].
+/// One resolved row: its `name`, the value the render projection would use, and
+/// the [`FieldSource`] rung that value came from. A row carries its own name so
+/// declaration order is structural — an ordered array, not JSON object key
+/// order. The card body is a [`MainStates::body`] / [`CardStates::body`]
+/// sibling, never a row in `fields`, so a consumer iterating declared fields
+/// never trips over it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FieldState {
+    pub name: String,
     pub value: QuillValue,
     pub source: FieldSource,
 }
 
-/// The main card's resolved fields, keyed by name in declaration order (with
-/// `$body` under its key when the main enables a body).
+/// The main card's resolved rows in declaration order, plus its body row when
+/// the main enables a body.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MainStates {
-    pub fields: IndexMap<String, FieldState>,
+    pub fields: Vec<FieldState>,
+    pub body: Option<FieldState>,
 }
 
-/// One composable card's resolved fields, with its authored `kind` (present even
-/// for an unknown kind, which carries its fields verbatim) and its
-/// document-array `index`.
+/// One composable card's resolved rows, with its authored `kind` (present even
+/// for an unknown kind, which carries its fields verbatim), its document-array
+/// `index`, and its body row when the kind enables a body.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CardStates {
     pub kind: Option<String>,
     pub index: usize,
-    pub fields: IndexMap<String, FieldState>,
+    pub fields: Vec<FieldState>,
+    pub body: Option<FieldState>,
 }
 
 /// The whole resolved-value view: the main card and every composable card.
@@ -82,9 +84,8 @@ impl Quill {
     /// [`compile_data`]: Quill::compile_data
     pub fn field_states(&self, doc: &Document) -> FieldStates {
         let config = self.config();
-        let main = MainStates {
-            fields: resolve_card_fields(&config.main, doc.main()),
-        };
+        let (fields, body) = resolve_card_fields(&config.main, doc.main());
+        let main = MainStates { fields, body };
         let cards = doc
             .cards()
             .iter()
@@ -96,8 +97,8 @@ impl Quill {
 }
 
 /// Resolve one card (main or a schema-declared kind) into its ordered
-/// [`FieldState`] rows.
-fn resolve_card_fields(schema: &CardSchema, card: &Card) -> IndexMap<String, FieldState> {
+/// [`FieldState`] rows and its body row (present iff the kind enables a body).
+fn resolve_card_fields(schema: &CardSchema, card: &Card) -> (Vec<FieldState>, Option<FieldState>) {
     // Mirror `compile_data`'s pipeline per-field so the value is byte-for-byte
     // with the plate: coerce under Render leniency (the schema looked up by the
     // authored name, as `coerce_payload` does), then NFC-normalize the key
@@ -121,19 +122,18 @@ fn resolve_card_fields(schema: &CardSchema, card: &Card) -> IndexMap<String, Fie
         resolved_input.insert(name, entry);
     }
 
-    let mut fields = IndexMap::new();
+    let mut fields = Vec::new();
 
     // Declared rows in schema **declaration order** — the canon ordering
-    // contract, carried by the `IndexMap`. (Not the validation walker, which
-    // sorts alphabetically.)
+    // contract, now carried structurally by the row array. (Not the validation
+    // walker, which sorts alphabetically.)
     for (name, field_schema) in &schema.fields {
         let (value, source) = resolve_value_sourced(resolved_input.get(name), field_schema);
-        fields.insert(name.clone(), FieldState { value, source });
-    }
-
-    // The body row, present iff the kind enables a body.
-    if schema.body_enabled() {
-        fields.insert(BODY_KEY.to_string(), body_state(card));
+        fields.push(FieldState {
+            name: name.clone(),
+            value,
+            source,
+        });
     }
 
     // Undeclared authored fields, appended in authored order under their NFC
@@ -141,17 +141,18 @@ fn resolve_card_fields(schema: &CardSchema, card: &Card) -> IndexMap<String, Fie
     // these reach the plate too — value verbatim, source Authored.
     for (name, value) in &resolved_input {
         if !schema.fields.contains_key(name) {
-            fields.insert(
-                name.clone(),
-                FieldState {
-                    value: value.clone(),
-                    source: FieldSource::Authored,
-                },
-            );
+            fields.push(FieldState {
+                name: name.clone(),
+                value: value.clone(),
+                source: FieldSource::Authored,
+            });
         }
     }
 
-    fields
+    // The body is a sibling row, not an entry in `fields` — present iff the kind
+    // enables a body.
+    let body = schema.body_enabled().then(|| body_state(card));
+    (fields, body)
 }
 
 /// Resolve one composable card. A card whose `$kind` names a schema resolves
@@ -163,35 +164,42 @@ fn card_states(config: &QuillConfig, card: &Card, index: usize) -> CardStates {
     // card reports what it *claimed* to be.
     let kind = card.kind().map(String::from);
     match card.kind().and_then(|k| config.card_kind(k)) {
-        Some(schema) => CardStates {
-            kind,
-            index,
-            fields: resolve_card_fields(schema, card),
-        },
+        Some(schema) => {
+            let (fields, body) = resolve_card_fields(schema, card);
+            CardStates {
+                kind,
+                index,
+                fields,
+                body,
+            }
+        }
         None => {
+            // An unknown-kind card carries its authored fields verbatim — no
+            // schema, no ladder, and `to_index_map` drops `$` keys, so no body.
             let fields = card
                 .payload()
                 .to_index_map()
                 .into_iter()
-                .map(|(name, value)| {
-                    (
-                        name,
-                        FieldState {
-                            value,
-                            source: FieldSource::Authored,
-                        },
-                    )
+                .map(|(name, value)| FieldState {
+                    name,
+                    value,
+                    source: FieldSource::Authored,
                 })
                 .collect();
-            CardStates { kind, index, fields }
+            CardStates {
+                kind,
+                index,
+                fields,
+                body: None,
+            }
         }
     }
 }
 
-/// The `$body` row. The value is byte-identical to the plate's `$body`
-/// (canonical Content-JSON of the card body). A body has no `default:` rung, so
-/// its source is only ever [`Authored`](FieldSource::Authored) (non-blank) or
-/// [`Zero`](FieldSource::Zero) (blank).
+/// The body row (`name: "body"`). The value is byte-identical to the plate's
+/// `$body` (canonical Content-JSON of the card body). A body has no `default:`
+/// rung, so its source is only ever [`Authored`](FieldSource::Authored)
+/// (non-blank) or [`Zero`](FieldSource::Zero) (blank).
 fn body_state(card: &Card) -> FieldState {
     let value = QuillValue::from_json(quillmark_content::serial::to_canonical_value(card.body()));
     let source = if card.body().is_blank() {
@@ -199,7 +207,11 @@ fn body_state(card: &Card) -> FieldState {
     } else {
         FieldSource::Authored
     };
-    FieldState { value, source }
+    FieldState {
+        name: "body".to_string(),
+        value,
+        source,
+    }
 }
 
 #[cfg(test)]
@@ -224,6 +236,18 @@ mod tests {
 
     fn parse(md: &str) -> Document {
         Document::parse(md).expect("document should parse").document
+    }
+
+    /// Look up a resolved row by name — rows are an ordered array now.
+    fn row<'a>(fields: &'a [FieldState], name: &str) -> &'a FieldState {
+        fields
+            .iter()
+            .find(|f| f.name == name)
+            .unwrap_or_else(|| panic!("no row `{name}`"))
+    }
+
+    fn has_row(fields: &[FieldState], name: &str) -> bool {
+        fields.iter().any(|f| f.name == name)
     }
 
     const QUILL: &str = r#"
@@ -272,14 +296,14 @@ card_kinds:
         let states = quill.field_states(&doc);
         let f = &states.main.fields;
 
-        assert_eq!(f["title"].source, FieldSource::Authored);
-        assert_eq!(f["title"].value.as_json(), &serde_json::json!("Hello"));
+        assert_eq!(row(f, "title").source, FieldSource::Authored);
+        assert_eq!(row(f, "title").value.as_json(), &serde_json::json!("Hello"));
 
-        assert_eq!(f["status"].source, FieldSource::Default);
-        assert_eq!(f["status"].value.as_json(), &serde_json::json!("draft"));
+        assert_eq!(row(f, "status").source, FieldSource::Default);
+        assert_eq!(row(f, "status").value.as_json(), &serde_json::json!("draft"));
 
-        assert_eq!(f["notes"].source, FieldSource::Zero);
-        assert_eq!(f["notes"].value.as_json(), &serde_json::json!(""));
+        assert_eq!(row(f, "notes").source, FieldSource::Zero);
+        assert_eq!(row(f, "notes").value.as_json(), &serde_json::json!(""));
     }
 
     #[test]
@@ -288,7 +312,7 @@ card_kinds:
         // intro absent → its richtext `default:` (committed as content).
         let doc = parse("~~~card-yaml\n$quill: fs_test@1.0\n$kind: main\ntitle: T\n~~~\n");
         let states = quill.field_states(&doc);
-        let intro = &states.main.fields["intro"];
+        let intro = row(&states.main.fields, "intro");
 
         assert_eq!(intro.source, FieldSource::Default);
         // The value is the content form of the default, byte-equal to the plate.
@@ -303,7 +327,8 @@ card_kinds:
         let quill = quill_from_yaml(QUILL);
         // `status:` is a present-null → treated as absent → default rung.
         let doc = parse("~~~card-yaml\n$quill: fs_test@1.0\n$kind: main\ntitle: T\nstatus:\n~~~\n");
-        let status = &quill.field_states(&doc).main.fields["status"];
+        let states = quill.field_states(&doc);
+        let status = row(&states.main.fields, "status");
         assert_eq!(status.source, FieldSource::Default);
         assert_eq!(status.value.as_json(), &serde_json::json!("draft"));
     }
@@ -321,27 +346,33 @@ card_kinds:
         let states = quill.field_states(&doc);
         let plate = quill.compile_data(&doc).expect("compile");
 
-        // Every declared main row equals its plate field; `$body` equals plate `$body`.
+        // Every declared main row equals its plate field; the body equals plate `$body`.
         for name in ["title", "status", "notes", "intro", "recipients"] {
             assert_eq!(
-                states.main.fields[name].value.as_json(),
+                row(&states.main.fields, name).value.as_json(),
                 &plate[name],
                 "main row `{name}` must be byte-for-byte with the plate"
             );
         }
-        assert_eq!(states.main.fields[BODY_KEY].value.as_json(), &plate["$body"]);
+        assert_eq!(
+            states.main.body.as_ref().unwrap().value.as_json(),
+            &plate["$body"]
+        );
 
-        // The card's declared rows equal its plate card; `$body` equals plate `$body`.
+        // The card's declared rows equal its plate card; the body equals plate `$body`.
         let plate_card = &plate["$cards"][0];
         let card = &states.cards[0];
         for name in ["author", "tag"] {
             assert_eq!(
-                card.fields[name].value.as_json(),
+                row(&card.fields, name).value.as_json(),
                 &plate_card[name],
                 "card row `{name}` must be byte-for-byte with the plate"
             );
         }
-        assert_eq!(card.fields[BODY_KEY].value.as_json(), &plate_card["$body"]);
+        assert_eq!(
+            card.body.as_ref().unwrap().value.as_json(),
+            &plate_card["$body"]
+        );
     }
 
     #[test]
@@ -365,10 +396,10 @@ card_kinds:
         let doc = Document::from_main_and_cards(main, Vec::new());
         let states = quill.field_states(&doc);
 
-        assert!(!states.main.fields.contains_key("cafe\u{301}"));
-        let row = &states.main.fields["caf\u{e9}"];
-        assert_eq!(row.source, FieldSource::Authored);
-        assert_eq!(row.value.as_json(), &serde_json::json!("hot"));
+        assert!(!has_row(&states.main.fields, "cafe\u{301}"));
+        let r = row(&states.main.fields, "caf\u{e9}");
+        assert_eq!(r.source, FieldSource::Authored);
+        assert_eq!(r.value.as_json(), &serde_json::json!("hot"));
     }
 
     // ── The body row ─────────────────────────────────────────────────────────
@@ -380,12 +411,13 @@ card_kinds:
         let authored =
             parse("~~~card-yaml\n$quill: fs_test@1.0\n$kind: main\ntitle: T\n~~~\n\nHello body.\n");
         assert_eq!(
-            quill.field_states(&authored).main.fields[BODY_KEY].source,
+            quill.field_states(&authored).main.body.unwrap().source,
             FieldSource::Authored
         );
 
         let blank = parse("~~~card-yaml\n$quill: fs_test@1.0\n$kind: main\ntitle: T\n~~~\n");
-        let body = &quill.field_states(&blank).main.fields[BODY_KEY];
+        let states = quill.field_states(&blank);
+        let body = states.main.body.as_ref().unwrap();
         assert_eq!(body.source, FieldSource::Zero);
         assert!(body.value.as_json().is_object(), "blank body is empty content");
     }
@@ -416,12 +448,10 @@ card_kinds:
             "~~~card-yaml\n$quill: bd_test@1.0\n$kind: main\ntitle: T\n~~~\n\n\
              ~~~card-yaml\n$kind: stamp\nlabel: L\n~~~\nStray prose.\n",
         );
-        let card = &quill.field_states(&doc).cards[0];
-        assert!(
-            !card.fields.contains_key(BODY_KEY),
-            "a body-disabled kind has no `$body` row"
-        );
-        assert!(card.fields.contains_key("label"), "declared rows still present");
+        let states = quill.field_states(&doc);
+        let card = &states.cards[0];
+        assert!(card.body.is_none(), "a body-disabled kind has no body row");
+        assert!(has_row(&card.fields, "label"), "declared rows still present");
     }
 
     // ── Unknown-kind card ────────────────────────────────────────────────────
@@ -433,14 +463,15 @@ card_kinds:
             "~~~card-yaml\n$quill: fs_test@1.0\n$kind: main\ntitle: T\n~~~\n\n\
              ~~~card-yaml\n$kind: mystery\nfoo: bar\n~~~\nUnread body.\n",
         );
-        let card = &quill.field_states(&doc).cards[0];
+        let states = quill.field_states(&doc);
+        let card = &states.cards[0];
 
         assert_eq!(card.kind.as_deref(), Some("mystery"));
         assert_eq!(card.index, 0);
-        // Authored fields only — no `$body` row, no ladder.
-        assert_eq!(card.fields["foo"].source, FieldSource::Authored);
-        assert_eq!(card.fields["foo"].value.as_json(), &serde_json::json!("bar"));
-        assert!(!card.fields.contains_key(BODY_KEY));
+        // Authored fields only — no body row, no ladder.
+        assert_eq!(row(&card.fields, "foo").source, FieldSource::Authored);
+        assert_eq!(row(&card.fields, "foo").value.as_json(), &serde_json::json!("bar"));
+        assert!(card.body.is_none());
     }
 
     // ── Undeclared authored field ────────────────────────────────────────────
@@ -451,9 +482,10 @@ card_kinds:
         let doc = parse(
             "~~~card-yaml\n$quill: fs_test@1.0\n$kind: main\ntitle: T\nextra: whatever\n~~~\n",
         );
-        let row = &quill.field_states(&doc).main.fields["extra"];
-        assert_eq!(row.source, FieldSource::Authored);
-        assert_eq!(row.value.as_json(), &serde_json::json!("whatever"));
+        let states = quill.field_states(&doc);
+        let r = row(&states.main.fields, "extra");
+        assert_eq!(r.source, FieldSource::Authored);
+        assert_eq!(r.value.as_json(), &serde_json::json!("whatever"));
     }
 
     // ── Wire shape ───────────────────────────────────────────────────────────
@@ -472,14 +504,17 @@ card_kinds:
     }
 
     #[test]
-    fn field_state_is_value_and_source_only() {
+    fn field_state_is_name_value_and_source_only() {
         let state = FieldState {
-            value: QuillValue::from_json(serde_json::json!("x")),
+            name: "x".to_string(),
+            value: QuillValue::from_json(serde_json::json!("v")),
             source: FieldSource::Authored,
         };
         let json = serde_json::to_value(&state).unwrap();
         let obj = json.as_object().unwrap();
-        assert_eq!(obj.len(), 2, "only value + source on the wire: {json}");
-        assert!(obj.contains_key("value") && obj.contains_key("source"));
+        assert_eq!(obj.len(), 3, "only name + value + source on the wire: {json}");
+        assert!(
+            obj.contains_key("name") && obj.contains_key("value") && obj.contains_key("source")
+        );
     }
 }

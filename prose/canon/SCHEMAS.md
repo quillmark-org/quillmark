@@ -165,10 +165,11 @@ blank for every type except `enum`, whose zero is the first declared variant
 observable data: for every declared field, the value `compile_data` would emit
 into the plate, tagged with its source rung (`authored` / `default` / `zero`) —
 byte-for-byte with the plate on every fixture. The shape is nested: a `main`
-card and a `cards` list, each field keyed by name in declaration order. The card
-body rides the `fields` map under the universal `$body` key as an ordinary field
-row — present iff the kind enables a body (`enabled: false` undeclares it, so
-there is no row), its source only ever `authored` (non-blank) or `zero` (blank).
+card and a `cards` list, each card's `fields` an ordered array of `{ name,
+value, source }` rows in declaration order — order is structural, not object-key
+order. The card body is a `body` sibling on the card, not a row in `fields` —
+present iff the kind enables a body (`enabled: false` undeclares it, so `body` is
+`null`), its source only ever `authored` (non-blank) or `zero` (blank).
 Source is one **top-level** rung per field; a nested zero-fill inside an authored
 dict or array is a projection detail of the value, not a per-subpath source.
 
