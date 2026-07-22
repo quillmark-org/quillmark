@@ -139,36 +139,45 @@ fn resolve_card_fields(
     card: &Card,
     base: &DocPath,
 ) -> IndexMap<String, FieldState> {
-    let authored = card.payload().to_index_map();
-
-    // Per-field render-leniency coercion of the authored declared fields — the
-    // same `conform_value(Render)` `compile_data` runs over the whole payload,
-    // done here per-field so a failure anchors to its row. On `Ok` the coerced
-    // value feeds the ladder; on `Err` the raw authored value is kept (the
-    // ladder still reads it as Authored) and a `validation::coercion_failed`
-    // diagnostic is parked for the row. Same code/hint as compose.rs's
-    // `coercion_error`, but WITH a path — the compile-data coercion is pathless.
-    let mut coerced: IndexMap<String, QuillValue> = IndexMap::new();
+    // Mirror `compile_data`'s pipeline per-field: coerce (the schema looked up
+    // by the authored name, as `coerce_payload` does), then NFC-normalize the
+    // key (`normalize_document` runs between coercion and the ladder), then
+    // resolve. Every validated ingress (parse, the mutators) restricts field
+    // names to ASCII — NFC-invariant — so the normalization only respells keys
+    // on a directly-constructed payload (`Payload::from_index_map`), under the
+    // same NFC key the plate carries.
+    //
+    // The coercion is the same `conform_value(Render)` `compile_data` runs over
+    // the whole payload, done here per-field so a failure anchors to its row:
+    // on `Ok` the coerced value feeds the ladder; on `Err` the raw authored
+    // value is kept (the ladder still reads it as Authored) and a
+    // `validation::coercion_failed` diagnostic is parked for the row. Same
+    // code/hint as compose.rs's `coercion_error`, but WITH a path — the
+    // compile-data coercion is pathless.
+    let mut resolved_input: IndexMap<String, QuillValue> = IndexMap::new();
     let mut coercion_diags: HashMap<String, Diagnostic> = HashMap::new();
-    for (name, value) in &authored {
-        let Some(field_schema) = schema.fields.get(name) else {
-            continue;
+    for (raw_name, value) in card.payload().to_index_map() {
+        let name = crate::normalize::normalize_field_name(&raw_name);
+        let entry = match schema.fields.get(&raw_name) {
+            Some(field_schema) => {
+                let field_path = base.field(&name);
+                match QuillConfig::conform_value(
+                    &value,
+                    field_schema,
+                    &field_path.to_string(),
+                    Leniency::Render,
+                ) {
+                    Ok(coerced_value) => coerced_value,
+                    Err(e) => {
+                        coercion_diags
+                            .insert(name.clone(), coercion_failed_diagnostic(&e, &field_path));
+                        value
+                    }
+                }
+            }
+            None => value,
         };
-        let field_path = base.field(name);
-        match QuillConfig::conform_value(
-            value,
-            field_schema,
-            &field_path.to_string(),
-            Leniency::Render,
-        ) {
-            Ok(coerced_value) => {
-                coerced.insert(name.clone(), coerced_value);
-            }
-            Err(e) => {
-                coerced.insert(name.clone(), value.clone());
-                coercion_diags.insert(name.clone(), coercion_failed_diagnostic(&e, &field_path));
-            }
-        }
+        resolved_input.insert(name, entry);
     }
 
     let mut fields = IndexMap::new();
@@ -177,7 +186,7 @@ fn resolve_card_fields(
     // contract, carried by the `IndexMap`. (Not the validation walker, which
     // sorts alphabetically.)
     for (name, field_schema) in &schema.fields {
-        let (value, source) = resolve_value_sourced(coerced.get(name), field_schema);
+        let (value, source) = resolve_value_sourced(resolved_input.get(name), field_schema);
         let mut diagnostics = Vec::new();
         if let Some(d) = coercion_diags.remove(name) {
             diagnostics.push(d);
@@ -198,10 +207,10 @@ fn resolve_card_fields(
         fields.insert(BODY_KEY.to_string(), body_state(schema, card));
     }
 
-    // Undeclared authored fields, appended in authored order: the schema is a
-    // floor, not an allowlist, so these reach the plate too — value verbatim,
-    // source Authored, no example.
-    for (name, value) in &authored {
+    // Undeclared authored fields, appended in authored order under their NFC
+    // keys (matching the plate's): the schema is a floor, not an allowlist, so
+    // these reach the plate too — value verbatim, source Authored, no example.
+    for (name, value) in &resolved_input {
         if !schema.fields.contains_key(name) {
             fields.insert(
                 name.clone(),
@@ -387,7 +396,7 @@ mod tests {
 
     use super::*;
     use crate::quill::FileTreeNode;
-    use crate::{Document, Quill};
+    use crate::{Card, Document, Payload, Quill};
     use std::collections::HashMap as StdHashMap;
 
     /// Build a minimal [`Quill`] from inline `Quill.yaml` with no filesystem deps.
@@ -523,6 +532,33 @@ card_kinds:
             );
         }
         assert_eq!(card.fields[BODY_KEY].value.as_json(), &plate_card["$body"]);
+    }
+
+    #[test]
+    fn non_nfc_key_on_a_constructed_payload_rows_under_its_nfc_spelling() {
+        // Every validated ingress (parse, the mutators) restricts field names
+        // to ASCII, so a non-NFC key only enters through direct construction
+        // (`Payload::from_index_map`). Render NFC-normalizes it between
+        // coercion and the ladder; the view mirrors that, rowing it under the
+        // NFC key the plate carries — not the raw decomposed one.
+        let quill = quill_from_yaml(QUILL);
+        let mut map = IndexMap::new();
+        // `e` + U+0301 combining acute — NFC-composes to U+00E9.
+        map.insert(
+            "cafe\u{301}".to_string(),
+            QuillValue::from_json(serde_json::json!("hot")),
+        );
+        let mut payload = Payload::from_index_map(map);
+        payload.set_quill("fs_test@1.0".parse().unwrap());
+        payload.set_kind("main");
+        let main = Card::from_parts(payload, quillmark_content::Content::empty());
+        let doc = Document::from_main_and_cards(main, Vec::new());
+        let states = quill.field_states(&doc);
+
+        assert!(!states.main.fields.contains_key("cafe\u{301}"));
+        let row = &states.main.fields["caf\u{e9}"];
+        assert_eq!(row.source, FieldSource::Authored);
+        assert_eq!(row.value.as_json(), &serde_json::json!("hot"));
     }
 
     // ── The body row ─────────────────────────────────────────────────────────
