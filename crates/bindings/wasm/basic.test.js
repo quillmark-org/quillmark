@@ -16,8 +16,10 @@ import {
   exportMarkdown,
   rebase,
   mapPos,
+  parseDocPath,
+  formatDocPath,
 } from '@quillmark-wasm'
-import { makeQuill } from './test-helpers.js'
+import { makeQuill, expectEditCode } from './test-helpers.js'
 
 /** Read a field value from a card's payloadItems list by key. */
 const field = (card, key) =>
@@ -429,10 +431,11 @@ describe('Quillmark.quill', () => {
     expect(svg.artifacts[0].mimeType).toBe('image/svg+xml')
   })
 
-  it('session.regions() is always a non-null array', () => {
+  it('session.regions() is always a non-null array, keyed by DocPath', () => {
     // Regions are a session-level query, not on the render result. The document
-    // body is a markdown content field, so it auto-tags one schema-field region
-    // keyed `$body`; the result is always an array, never undefined.
+    // body is a markdown content field, so it auto-tags one region; its address
+    // is the canonical DocPath `main.body` (the backend's plate-space `$body` is
+    // translated at the session boundary). The result is always an array.
     const engine = new Quillmark()
     const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
@@ -440,7 +443,9 @@ describe('Quillmark.quill', () => {
     const session = engine.open(quill, doc)
     const regions = session.regions()
     expect(Array.isArray(regions)).toBe(true)
-    expect(regions.some((r) => r.field === '$body')).toBe(true)
+    expect(regions.some((r) => r.field === 'main.body')).toBe(true)
+    // No plate-space ordinal grammar crosses the boundary.
+    expect(regions.some((r) => r.field.startsWith('$cards.') || r.field === '$body')).toBe(false)
     session.free()
   })
 
@@ -493,16 +498,16 @@ describe('Document editor surface — storeField / removeField', () => {
     }
   })
 
-  it('storeField throws EditError::InvalidFieldName for `$`-prefixed names', () => {
+  it('storeField throws edit::invalid_field_name for `$`-prefixed names', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     for (const name of ['$body', '$cards', '$quill', '$kind']) {
-      expect(() => doc.storeField(name, 'x')).toThrow(/InvalidFieldName/)
+      expectEditCode(() => doc.storeField(name, 'x'), 'edit::invalid_field_name')
     }
   })
 
-  it('storeField throws EditError::InvalidFieldName for an invalid name (hyphen)', () => {
+  it('storeField throws edit::invalid_field_name for an invalid name (hyphen)', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.storeField('bad-name', 'x')).toThrow(/InvalidFieldName/)
+    expectEditCode(() => doc.storeField('bad-name', 'x'), 'edit::invalid_field_name')
   })
 
   it('removeField returns the removed value', () => {
@@ -517,10 +522,10 @@ describe('Document editor surface — storeField / removeField', () => {
     expect(doc.removeField('nonexistent')).toBeUndefined()
   })
 
-  it('removeField throws EditError::InvalidFieldName for `$`-prefixed names', () => {
+  it('removeField throws edit::invalid_field_name for `$`-prefixed names', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     for (const name of ['$body', '$cards', '$quill', '$kind']) {
-      expect(() => doc.removeField(name)).toThrow(/InvalidFieldName/)
+      expectEditCode(() => doc.removeField(name), 'edit::invalid_field_name')
     }
   })
 })
@@ -554,8 +559,11 @@ describe('Document editor surface — storeFields', () => {
       doc.storeFields({}, { ok_field: 'v', 'bad-name': 'v', 'also bad': 'v' })
       throw new Error('storeFields should have thrown')
     } catch (err) {
-      expect(err.diagnostics.map((d) => d.path)).toEqual(['bad-name', 'also bad'])
-      expect(err.message).toMatch(/InvalidFieldName/)
+      expect(err.diagnostics.map((d) => d.path)).toEqual(['main.bad-name', 'main.also bad'])
+      expect(err.diagnostics.map((d) => d.code)).toEqual([
+        'edit::invalid_field_name',
+        'edit::invalid_field_name',
+      ])
     }
     expect(hasField(doc.main, 'ok_field')).toBe(false)
   })
@@ -571,7 +579,7 @@ describe('Document editor surface — storeFields', () => {
     doc.storeFields({ card: 0 }, { foo: 'baz', extra: 1 })
     expect(field(doc.cards[0], 'foo')).toBe('baz')
     expect(field(doc.cards[0], 'extra')).toBe(1)
-    expect(() => doc.storeFields({ card: 99 }, { foo: 'v' })).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.storeFields({ card: 99 }, { foo: 'v' }), 'edit::index_out_of_range')
   })
 
   it('an address with an unknown key throws instead of parsing as {}', () => {
@@ -651,6 +659,59 @@ describe('Content codec — importMarkdown / exportMarkdown / rebase / mapPos', 
   })
 })
 
+describe('Document-model path — parseDocPath / formatDocPath', () => {
+  // Every emitted shape routes on tagged segments, not on a regex.
+  const cases = [
+    ['main.title', [{ seg: 'main' }, { seg: 'field', name: 'title' }]],
+    [
+      'main.recipients[0].name',
+      [
+        { seg: 'main' },
+        { seg: 'field', name: 'recipients' },
+        { seg: 'index', index: 0 },
+        { seg: 'field', name: 'name' },
+      ],
+    ],
+    ['main.body', [{ seg: 'main' }, { seg: 'body' }]],
+    ['cards[3]', [{ seg: 'card', kind: null, index: 3 }]],
+    [
+      'cards.indorsement[0].signature_block',
+      [
+        { seg: 'card', kind: 'indorsement', index: 0 },
+        { seg: 'field', name: 'signature_block' },
+      ],
+    ],
+    [
+      'cards.skills[2].body',
+      [{ seg: 'card', kind: 'skills', index: 2 }, { seg: 'body' }],
+    ],
+  ]
+
+  it('parseDocPath and formatDocPath round-trip every emitted shape', () => {
+    for (const [rendered, segs] of cases) {
+      expect(parseDocPath(rendered)).toEqual(segs)
+      expect(formatDocPath(segs)).toBe(rendered)
+    }
+  })
+
+  it('a card diagnostic routes on the head segment, no string parsing', () => {
+    const [head] = parseDocPath('cards.indorsement[0].signature_block')
+    expect(head.seg).toBe('card')
+    expect(head.kind).toBe('indorsement')
+    expect(head.index).toBe(0)
+  })
+
+  it('parseDocPath throws on a malformed path', () => {
+    expect(() => parseDocPath('cards[')).toThrow()
+    expect(() => parseDocPath('')).toThrow()
+  })
+
+  it('formatDocPath throws on an empty segment array', () => {
+    // Symmetric with parseDocPath(''), which throws "empty path".
+    expect(() => formatDocPath([])).toThrow()
+  })
+})
+
 // The typed-commit ABI is `_commitField` / `_commitFields` (hidden from the
 // `.d.ts`); `quill.writer(doc)` delegates here. These exercise the ABI directly.
 describe('Document typed-commit ABI — _commitField / _commitFields', () => {
@@ -695,7 +756,7 @@ card_kinds:
   it('commitField rejects an unknown field as a typo and writes nothing', () => {
     const quill = buildQuill()
     const doc = blankDoc()
-    expect(() => doc._commitField(quill, 'stray', 'x')).toThrow(/UnknownField/)
+    expectEditCode(() => doc._commitField(quill, 'stray', 'x'), 'edit::unknown_field')
     expect(hasField(doc.main, 'stray')).toBe(false)
     // Opaque storage stays available on purpose through the raw verb.
     doc.storeField('stray', 'x')
@@ -718,9 +779,11 @@ card_kinds:
   it('commitField fails a strict mismatch and a richtext(inline) violation', () => {
     const quill = buildQuill()
     const doc = blankDoc()
-    expect(() => doc._commitField(quill, 'qty', 'not-a-number')).toThrow(/FieldConform/)
-    expect(() => doc._commitField(quill, 'subject', 'line one\n\nline two'))
-      .toThrow(/FieldRichtextNotInline/)
+    expectEditCode(() => doc._commitField(quill, 'qty', 'not-a-number'), 'edit::field_conform')
+    expectEditCode(
+      () => doc._commitField(quill, 'subject', 'line one\n\nline two'),
+      'edit::field_richtext_not_inline',
+    )
   })
 
   it('revise({field}) rebases a richtext field anchor and applyChange splices it', () => {
@@ -768,7 +831,32 @@ card_kinds:
     )
     doc._commitField(quill, { card: 0, field: 'body' }, 'Card **body**.')
     expect(exportMarkdown(field(doc.cards[0], 'body'))).toBe('Card **body**.')
-    expect(() => doc._commitField(quill, { card: 9, field: 'body' }, 'x')).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc._commitField(quill, { card: 9, field: 'body' }, 'x'), 'edit::index_out_of_range')
+  })
+
+  it('a mutator diagnostic carries the DocPath it anchors to', () => {
+    const quill = buildQuill()
+    const doc = Document.fromMarkdown(
+      '~~~card-yaml\n$quill: commit_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
+    )
+    // The path a diagnostic thrown by `fn` carries.
+    const pathOf = (fn) => {
+      try {
+        fn()
+      } catch (err) {
+        return err.diagnostics[0].path
+      }
+      throw new Error('expected a throw, got none')
+    }
+    // A main field conform error anchors at the rooted main field DocPath…
+    expect(pathOf(() => doc._commitField(quill, 'qty', 'not-a-number'))).toBe('main.qty')
+    // …a card field is kind-qualified with its absolute index…
+    expect(pathOf(() => doc._commitField(quill, { card: 0, field: 'stray' }, 'x'))).toBe(
+      'cards.note[0].stray',
+    )
+    // …and a structural out-of-range op anchors at the array slot.
+    expect(pathOf(() => doc.setCardKind(9, 'note'))).toBe('cards[9]')
+    expect(pathOf(() => doc.moveCard(9, 0))).toBe('cards[9]')
   })
 
   it('commitFields typed-commits a batch', () => {
@@ -785,7 +873,7 @@ card_kinds:
     const doc = blankDoc()
     // `qty` is a schema field; `titel` is a typo the schema does not own — the
     // undeclared name aborts the all-or-nothing batch and nothing is applied.
-    expect(() => doc._commitFields(quill, {}, { qty: '5', titel: 'oops' })).toThrow(/UnknownField/)
+    expectEditCode(() => doc._commitFields(quill, {}, { qty: '5', titel: 'oops' }), 'edit::unknown_field')
     expect(hasField(doc.main, 'qty')).toBe(false)
     expect(hasField(doc.main, 'titel')).toBe(false)
   })
@@ -795,8 +883,10 @@ card_kinds:
     const doc = blankDoc()
     // `subject` is richtext(inline); a multi-block value violates it, so nothing
     // is applied — `qty` must not linger.
-    expect(() => doc._commitFields(quill, {}, { qty: '5', subject: 'line one\n\nline two' }))
-      .toThrow(/FieldRichtextNotInline/)
+    expectEditCode(
+      () => doc._commitFields(quill, {}, { qty: '5', subject: 'line one\n\nline two' }),
+      'edit::field_richtext_not_inline',
+    )
     expect(hasField(doc.main, 'qty')).toBe(false)
   })
 
@@ -808,8 +898,8 @@ card_kinds:
     doc._commitFields(quill, { card: 0 }, { body: 'Card **body**.' })
     expect(exportMarkdown(field(doc.cards[0], 'body'))).toBe('Card **body**.')
     // An undeclared field on the card aborts the batch.
-    expect(() => doc._commitFields(quill, { card: 0 }, { stray: 'x' })).toThrow(/UnknownField/)
-    expect(() => doc._commitFields(quill, { card: 9 }, { body: 'x' })).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc._commitFields(quill, { card: 0 }, { stray: 'x' }), 'edit::unknown_field')
+    expectEditCode(() => doc._commitFields(quill, { card: 9 }, { body: 'x' }), 'edit::index_out_of_range')
   })
 })
 
@@ -845,7 +935,7 @@ Card two.
 
   it('insertCard throws on invalid kind', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.insertCard({ kind: 'BadKind' })).toThrow(/InvalidKindName/)
+    expectEditCode(() => doc.insertCard({ kind: 'BadKind' }), 'edit::invalid_kind_name')
   })
 
   it('removeCard → insertCard round-trips a card with fields (read shape == write shape)', () => {
@@ -870,7 +960,7 @@ Card two.
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
     const bad = Document.makeCard('BadKind', { x: 1 })
     expect(bad.kind).toBe('BadKind') // construction succeeds
-    expect(() => doc.insertCard(bad)).toThrow(/InvalidKindName/) // insertion rejects
+    expectEditCode(() => doc.insertCard(bad), 'edit::invalid_kind_name') // insertion rejects
   })
 
   it('makeCard treats fields and body as optional', () => {
@@ -897,7 +987,7 @@ Card two.
 
   it('insertCard throws IndexOutOfRange when at > len', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.insertCard({ kind: 'note' }, 5)).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.insertCard({ kind: 'note' }, 5), 'edit::index_out_of_range')
   })
 
   it('removeCard removes and returns the card', () => {
@@ -929,7 +1019,7 @@ Card two.
 
   it('moveCard throws IndexOutOfRange on out-of-range index', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARDS) // 2 cards
-    expect(() => doc.moveCard(5, 0)).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.moveCard(5, 0), 'edit::index_out_of_range')
   })
 
   it('setCardKind renames the kind in place', () => {
@@ -943,13 +1033,13 @@ Card two.
   it('setCardKind throws InvalidKindName for empty/uppercase/dashed kinds', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARDS)
     for (const bad of ['', 'BadKind', 'with-dash']) {
-      expect(() => doc.setCardKind(0, bad)).toThrow(/InvalidKindName/)
+      expectEditCode(() => doc.setCardKind(0, bad), 'edit::invalid_kind_name')
     }
   })
 
   it('setCardKind throws IndexOutOfRange when index >= len', () => {
     const doc = Document.fromMarkdown(MD_WITH_CARDS) // 2 cards
-    expect(() => doc.setCardKind(5, 'annotation')).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.setCardKind(5, 'annotation'), 'edit::index_out_of_range')
   })
 
   it('cardCount reports composable card count without allocating', () => {
@@ -1036,7 +1126,7 @@ Card body.
 
   it('setCardField throws IndexOutOfRange when card absent', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.storeField({ card: 0, field: 'title' }, 'x')).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.storeField({ card: 0, field: 'title' }, 'x'), 'edit::index_out_of_range')
   })
 
   it('removeCardField returns the removed value and deletes the key', () => {
@@ -1053,7 +1143,7 @@ Card body.
 
   it('removeCardField throws IndexOutOfRange when card absent', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.removeField({ card: 0, field: 'foo' })).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.removeField({ card: 0, field: 'foo' }), 'edit::index_out_of_range')
   })
 
   it('revise({card:0}, md) revises a card body and returns the delta', () => {
@@ -1065,7 +1155,7 @@ Card body.
 
   it('revise({card:0}, md) throws IndexOutOfRange when card absent', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.revise({ card: 0 }, 'x')).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.revise({ card: 0 }, 'x'), 'edit::index_out_of_range')
   })
 
   it('install({card:0}, rt) installs a content into a card body', () => {
@@ -1086,7 +1176,7 @@ Card body.
 
   it('install({card:0}, ...) throws IndexOutOfRange when card absent', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN) // 0 cards
-    expect(() => doc.install({ card: 0 }, importMarkdown('x'))).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.install({ card: 0 }, importMarkdown('x')), 'edit::index_out_of_range')
   })
 })
 
@@ -1190,10 +1280,10 @@ describe('Document editor surface — $ext mutators', () => {
 
   it('card-level ext mutators throw IndexOutOfRange', () => {
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
-    expect(() => doc.storeExt({ card: 5 }, {})).toThrow(/IndexOutOfRange/)
-    expect(() => doc.removeExt({ card: 5 })).toThrow(/IndexOutOfRange/)
-    expect(() => doc.storeExtNamespace({ card: 5 }, 'a', {})).toThrow(/IndexOutOfRange/)
-    expect(() => doc.removeExtNamespace({ card: 5 }, 'a')).toThrow(/IndexOutOfRange/)
+    expectEditCode(() => doc.storeExt({ card: 5 }, {}), 'edit::index_out_of_range')
+    expectEditCode(() => doc.removeExt({ card: 5 }), 'edit::index_out_of_range')
+    expectEditCode(() => doc.storeExtNamespace({ card: 5 }, 'a', {}), 'edit::index_out_of_range')
+    expectEditCode(() => doc.removeExtNamespace({ card: 5 }, 'a'), 'edit::index_out_of_range')
   })
 })
 
@@ -1403,7 +1493,7 @@ count: "not-a-number"
     const diags = quill.validate(Document.fromMarkdown(md))
     const mismatch = diags.find((d) => d.code === 'validation::type_mismatch')
     expect(mismatch).toBeDefined()
-    expect(mismatch.path).toBe('count')
+    expect(mismatch.path).toBe('main.count')
     expect(typeof mismatch.hint).toBe('string')
   })
 
@@ -1625,7 +1715,7 @@ title: !must_fill
         (d) =>
           d.code === 'validation::must_fill' &&
           d.severity === 'warning' &&
-          d.path === 'title' &&
+          d.path === 'main.title' &&
           typeof d.hint === 'string' &&
           d.hint.includes('!must_fill'),
       ),
@@ -1679,5 +1769,172 @@ addr:
     )
     const title = doc.main.payloadItems.find((i) => i.key === 'title')
     expect(title.nestedFills).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// quill.fieldStates — the resolved-value view
+// ---------------------------------------------------------------------------
+//
+// For every declared field: the value the render projection would use and the
+// source rung it came from ("authored" | "default" | "zero"). Rows are an
+// ordered array carrying their own `name`; the card body is a `body` sibling,
+// not a row in `fields`. Value and provenance only — diagnostics stay
+// validate(), guidance stays the schema. See prose/canon/SCHEMAS.md
+// § "Value sources and projections".
+
+describe('quill.fieldStates', () => {
+  const QUILL_YAML = `quill:
+  name: field_states_test
+  version: "1.0"
+  backend: typst
+  description: Resolved-field view coverage
+
+main:
+  body:
+    example: "Example body prose."
+  fields:
+    title:
+      type: string
+    status:
+      type: string
+      default: draft
+    notes:
+      type: string
+    count:
+      type: integer
+    author:
+      type: string
+      example: A. Author
+
+card_kinds:
+  note:
+    fields:
+      label:
+        type: string
+`
+
+  const buildQuill = () =>
+    Quill.fromTree(makeQuill({ name: 'field_states_test', quillYaml: QUILL_YAML }))
+
+  // Rows are an ordered array now; look one up by its `name`.
+  const byName = (rows, name) => rows.find((r) => r.name === name)
+
+  it('tags main rows with their authored / default / zero source', () => {
+    const quill = buildQuill()
+    const md = `~~~card-yaml
+$quill: field_states_test
+$kind: main
+title: Hello
+~~~
+`
+    const f = quill.fieldStates(Document.fromMarkdown(md)).main.fields
+
+    // Declaration order is structural — the array order is the contract.
+    expect(f.map((r) => r.name)).toEqual(['title', 'status', 'notes', 'count', 'author'])
+
+    expect(byName(f, 'title').source).toBe('authored')
+    expect(byName(f, 'title').value).toBe('Hello')
+    expect(byName(f, 'status').source).toBe('default')
+    expect(byName(f, 'status').value).toBe('draft')
+    expect(byName(f, 'notes').source).toBe('zero')
+    expect(byName(f, 'notes').value).toBe('')
+  })
+
+  it('carries the body as a `body` sibling, never a row in fields', () => {
+    const quill = buildQuill()
+    const authored = `~~~card-yaml
+$quill: field_states_test
+$kind: main
+title: T
+~~~
+
+Hello body.
+`
+    const withBody = quill.fieldStates(Document.fromMarkdown(authored))
+    expect(withBody.main.body).toBeDefined()
+    expect(withBody.main.body.source).toBe('authored')
+    // Not smuggled into the fields array under any `body` / `$body` name.
+    expect(byName(withBody.main.fields, 'body')).toBeUndefined()
+    expect(byName(withBody.main.fields, '$body')).toBeUndefined()
+
+    const blank = `~~~card-yaml
+$quill: field_states_test
+$kind: main
+title: T
+~~~
+`
+    const noBody = quill.fieldStates(Document.fromMarkdown(blank))
+    expect(noBody.main.body.source).toBe('zero')
+  })
+
+  it('carries value and source only — no diagnostics, no example', () => {
+    const quill = buildQuill()
+    const md = `~~~card-yaml
+$quill: field_states_test
+$kind: main
+title: T
+~~~
+`
+    const f = quill.fieldStates(Document.fromMarkdown(md)).main.fields
+    // Each row is exactly { name, value, source } — schema guidance (example:)
+    // and diagnostics read from quill.schema / quill.validate, not duplicated.
+    const author = byName(f, 'author')
+    expect(Object.keys(author).sort()).toEqual(['name', 'source', 'value'])
+    expect('example' in author).toBe(false)
+    expect('diagnostics' in author).toBe(false)
+  })
+
+  it('reports kind and index on a card entry', () => {
+    const quill = buildQuill()
+    const md = `~~~card-yaml
+$quill: field_states_test
+$kind: main
+title: T
+~~~
+
+~~~card-yaml
+$kind: note
+label: L
+~~~
+Note body.
+`
+    const states = quill.fieldStates(Document.fromMarkdown(md))
+    expect(states.cards.length).toBe(1)
+    const card = states.cards[0]
+    expect(card.kind).toBe('note')
+    expect(card.index).toBe(0)
+    expect(byName(card.fields, 'label').source).toBe('authored')
+    expect(byName(card.fields, 'label').value).toBe('L')
+  })
+
+  it('keeps a render-uncoercible value raw (byte-for-byte with the plate)', () => {
+    const quill = buildQuill()
+    const md = `~~~card-yaml
+$quill: field_states_test
+$kind: main
+title: T
+count: "not-a-number"
+~~~
+`
+    // A value the render coercion cannot conform is kept raw and Authored,
+    // exactly as compile_data leaves it — the error surfaces via validate(),
+    // not this view (which carries no diagnostics).
+    const row = byName(quill.fieldStates(Document.fromMarkdown(md)).main.fields, 'count')
+    expect(row.source).toBe('authored')
+    expect(row.value).toBe('not-a-number')
+    expect('diagnostics' in row).toBe(false)
+  })
+
+  it('result is JSON.stringify-able', () => {
+    const quill = buildQuill()
+    const md = `~~~card-yaml
+$quill: field_states_test
+$kind: main
+title: T
+~~~
+`
+    const states = quill.fieldStates(Document.fromMarkdown(md))
+    expect(typeof JSON.stringify(states)).toBe('string')
   })
 })

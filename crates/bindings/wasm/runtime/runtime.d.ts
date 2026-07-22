@@ -16,6 +16,9 @@
 export { Quill, Document, init } from '../core/wasm.js';
 // The document-free content codec, re-exported from the core build.
 export { importMarkdown, exportMarkdown, rebase, mapPos } from '../core/wasm.js';
+// The document-model path parser/serializer — route on `Diagnostic.path`
+// segments instead of regexing the string.
+export { parseDocPath, formatDocPath } from '../core/wasm.js';
 
 import type { CardAddr } from '../core/wasm.js';
 
@@ -42,6 +45,7 @@ export type {
 	QuillCardBody,
 	QuillFieldUi,
 	QuillCardUi,
+	QuillGroupUi,
 	QuillMetadata
 } from '../core/wasm.js';
 
@@ -59,6 +63,9 @@ export type {
 	ContentContainer,
 	ContentMark,
 	ContentIsland,
+	TableProps,
+	ImageProps,
+	TableCell,
 	CardInput,
 	PathStep,
 	Addr,
@@ -67,7 +74,22 @@ export type {
 	Assoc,
 	LineOp,
 	MarkOp,
-	ChangeBundle
+	ChangeBundle,
+	DocPathSeg
+} from '../core/wasm.js';
+
+// The resolved-value view — the return shape of `quill.fieldStates(doc)`. Value
+// + source rung per declared field (the body rides the fields map under
+// `$body`); diagnostics stay `quill.validate`, guidance stays `quill.schema`.
+// Declared in the core build's generated `.d.ts` via a
+// `typescript_custom_section`; re-exported here so the single public entry
+// point names them.
+export type {
+	FieldSource,
+	FieldState,
+	MainFieldStates,
+	CardFieldStates,
+	FieldStates
 } from '../core/wasm.js';
 
 // ── Error contract ──────────────────────────────────────────────────────────

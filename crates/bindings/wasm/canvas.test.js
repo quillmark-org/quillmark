@@ -128,9 +128,9 @@ describe('LiveSession canvas preview', () => {
     const session = openSession()
 
     // A content field surfaces one span-bearing region per segment (#829); the
-    // body's heading is one.
-    const bodyRegion = session.regions().find((r) => r.field === '$body' && r.span)
-    expect(bodyRegion, 'a $body segment region carries a span').toBeTruthy()
+    // body's heading is one. The address is the canonical DocPath `main.body`.
+    const bodyRegion = session.regions().find((r) => r.field === 'main.body' && r.span)
+    expect(bodyRegion, 'a main.body segment region carries a span').toBeTruthy()
     const [x0, y0, x1, y1] = bodyRegion.rect
     const cy = (y0 + y1) / 2
 
@@ -142,16 +142,16 @@ describe('LiveSession canvas preview', () => {
       hit = session.positionAt(bodyRegion.page, x0 + (x1 - x0) * f, cy)
     }
     expect(hit, 'positionAt resolves a point on the body ink').toBeTruthy()
-    expect(hit.field).toBe('$body')
+    expect(hit.field).toBe('main.body')
     expect(typeof hit.pos).toBe('number')
     const [start, end] = bodyRegion.span
     expect(hit.pos).toBeGreaterThanOrEqual(start)
     expect(hit.pos).toBeLessThanOrEqual(end)
 
-    // Reverse: content position → caret rect on the same field.
-    const caret = session.locate('$body', hit.pos)
+    // Reverse: content position → caret rect on the same field (DocPath in).
+    const caret = session.locate('main.body', hit.pos)
     expect(caret, 'locate reverses positionAt').toBeTruthy()
-    expect(caret.field).toBe('$body')
+    expect(caret.field).toBe('main.body')
     expect(caret.rect[2]).toBeGreaterThanOrEqual(caret.rect[0])
 
     // A click far off any ink resolves to nothing (wasm maps `None` to undefined).

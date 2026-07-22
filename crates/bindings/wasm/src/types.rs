@@ -242,9 +242,12 @@ pub struct ChangeSet {
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
 pub struct FieldRegion {
-    /// Quill schema field path (e.g. `"signature_block"`,
-    /// `"$cards.indorsement.1.from"`), not any backend widget name. The address
-    /// the editor uses for this field.
+    /// Canonical `DocPath` field address (e.g. `"signature_block"`,
+    /// `"cards.indorsement[1].from"`, `"main.body"`) — the same grammar
+    /// `parseDocPath` reads and `Diagnostic.path` carries. The session resolves
+    /// the backend's plate-space per-kind ordinal to this absolute-index form,
+    /// so one parser routes every address. Feed it back to `fieldBoxes` /
+    /// `locate`; hit-test the click direction with `fieldAt` / `positionAt`.
     pub field: String,
     /// 0-based page index.
     pub page: usize,
@@ -309,7 +312,7 @@ impl From<quillmark_core::HitGranularity> for HitGranularity {
 #[tsify(into_wasm_abi, from_wasm_abi)]
 #[serde(rename_all = "camelCase")]
 pub struct ContentHit {
-    /// Quill schema field path (same address space as `FieldRegion.field`).
+    /// Canonical `DocPath` field address (same grammar as `FieldRegion.field`).
     pub field: String,
     /// USV offset into the field's `Content`.
     pub pos: usize,

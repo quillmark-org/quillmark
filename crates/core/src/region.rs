@@ -93,10 +93,14 @@
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderedRegion {
-    /// Quill schema field path, e.g. `"signature_block"` or
-    /// `"$cards.indorsement.1.from"` — the author-facing field address (the
-    /// card form is kind + 0-based ordinal, `$cards.<kind>.<n>.<field>`), not
-    /// any backend widget name.
+    /// The field's plate-space schema address as the backend keys it —
+    /// `"signature_block"` or `"$cards.<kind>.<ordinal>.<field>"` (a per-kind
+    /// ordinal). This is the backend-native form; a binding that owns the
+    /// document's card kinds translates it to a canonical
+    /// [`DocPath`] at its boundary
+    /// ([`plate_addr_to_doc_path`]), so its consumers see one absolute-index
+    /// grammar. A core consumer reading `RenderedRegion` directly sees the
+    /// plate-space form.
     pub field: String,
     /// 0-based page index.
     pub page: usize,
@@ -173,6 +177,109 @@ pub fn field_boxes(regions: &[RenderedRegion], field: &str) -> Vec<RenderedRegio
     }
     by_page.sort_by_key(|r| r.page);
     by_page
+}
+
+// ── Address translation: plate-space geometry ⇄ DocPath ─────────────────────
+//
+// A backend keys a region on the **plate-space** address its compiled plate
+// composes (`$path` = `$cards.<kind>.<ordinal>.`, `crates/backends/typst`), a
+// grammar with a `$cards` sigil, dot separators, and **per-kind ordinals**.
+// That grammar is the template-author contract inside the plate and stays
+// there; it must not cross to a consumer, which speaks one canonical
+// [`DocPath`]. The session owns the translation, resolving the per-kind ordinal
+// to the document-array absolute index (and back) against the ordered card
+// kinds of the current compile — so `regions` / `fieldAt` / `positionAt` /
+// `locate` speak `DocPath`, never `$cards.` ordinals.
+
+use crate::path::{DocPath, DocSeg};
+
+/// The absolute document-array index of the `ord`-th (0-based) card of `kind`,
+/// scanning `card_kinds` (the current compile's ordered card kinds; `None` is a
+/// kindless card) in order. `None` when fewer than `ord + 1` cards of that kind
+/// exist.
+fn abs_card_index(card_kinds: &[Option<&str>], kind: &str, ord: usize) -> Option<usize> {
+    card_kinds
+        .iter()
+        .enumerate()
+        .filter(|(_, k)| **k == Some(kind))
+        .nth(ord)
+        .map(|(i, _)| i)
+}
+
+/// The per-kind ordinal of the card at absolute index `abs` — how many cards of
+/// the same kind precede it, matching the plate's `emit_cards` counter. `None`
+/// when `abs` is out of range or the card is kindless.
+fn per_kind_ordinal(card_kinds: &[Option<&str>], abs: usize) -> Option<usize> {
+    let kind = (*card_kinds.get(abs)?)?;
+    Some(
+        card_kinds[..abs]
+            .iter()
+            .filter(|k| **k == Some(kind))
+            .count(),
+    )
+}
+
+/// Translate a backend plate-space geometry address into a canonical
+/// [`DocPath`], resolving the per-kind ordinal to the absolute card index via
+/// `card_kinds`. The grammar handled is exactly what geometry emits: `$body`
+/// (main body), a bare `<field>` (main field), `$cards.<kind>.<ord>.<field>`
+/// (card field), and `$cards.<kind>.<ord>.$body` (card body). `None` for an
+/// address outside that grammar or one naming a card the kind list cannot
+/// place — the caller keeps the original string.
+pub fn plate_addr_to_doc_path(addr: &str, card_kinds: &[Option<&str>]) -> Option<DocPath> {
+    if addr == "$body" {
+        return Some(DocPath::main_body());
+    }
+    if let Some(rest) = addr.strip_prefix("$cards.") {
+        let mut it = rest.splitn(3, '.');
+        let kind = it.next()?;
+        let ord: usize = it.next()?.parse().ok()?;
+        let tail = it.next()?;
+        let abs = abs_card_index(card_kinds, kind, ord)?;
+        let card = DocPath::card(Some(kind), abs);
+        return Some(if tail == "$body" {
+            card.body()
+        } else {
+            card.field(tail)
+        });
+    }
+    // A plate-space bare main field (`subject`) roots at `main` in `DocPath`
+    // space (`main.subject`), so a consumer always receives a parsed, rooted
+    // path. An unrecognized `$`-token (never a main field) does not translate.
+    if addr.starts_with('$') {
+        return None;
+    }
+    Some(DocPath::main().field(addr))
+}
+
+/// Translate a canonical [`DocPath`] geometry address back to the backend
+/// plate-space form (`main.body` → `$body`, `cards.<kind>[<abs>].<field>` →
+/// `$cards.<kind>.<ord>.<field>`), resolving the absolute card index to its
+/// per-kind ordinal via `card_kinds`. `None` when the path is not a geometry
+/// address (a document-model shape geometry never keys) or names a card the
+/// kind list cannot place. The inverse of [`plate_addr_to_doc_path`], for the
+/// `field`-taking queries (`locate`, `fieldBoxes`).
+pub fn doc_path_to_plate_addr(path: &DocPath, card_kinds: &[Option<&str>]) -> Option<String> {
+    match path.segs() {
+        [DocSeg::Main, DocSeg::Body] => Some("$body".to_string()),
+        [DocSeg::Main, DocSeg::Field { name }] => Some(name.clone()),
+        [DocSeg::Card {
+            kind: Some(kind),
+            index,
+        }, rest @ ..] => {
+            // The path must actually name the card that sits at `index`.
+            if card_kinds.get(*index).copied().flatten() != Some(kind.as_str()) {
+                return None;
+            }
+            let ord = per_kind_ordinal(card_kinds, *index)?;
+            match rest {
+                [DocSeg::Field { name }] => Some(format!("$cards.{kind}.{ord}.{name}")),
+                [DocSeg::Body] => Some(format!("$cards.{kind}.{ord}.$body")),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
 }
 
 /// How precisely a [`ContentHit::pos`] resolved — the marker a caret UI reads to
@@ -347,5 +454,70 @@ mod tests {
             span: None,
         }];
         assert!(field_boxes(&regions, "subject").is_empty());
+    }
+
+    // ── Plate-space ⇄ DocPath translation ────────────────────────────────────
+
+    /// Two `note` cards interleaved with one `annotation`: the per-kind ordinal
+    /// is not the absolute index once kinds interleave, so the two grammars
+    /// genuinely differ and the kind list is load-bearing.
+    const KINDS: &[Option<&str>] = &[Some("note"), Some("annotation"), Some("note")];
+
+    fn to_doc(addr: &str) -> Option<String> {
+        plate_addr_to_doc_path(addr, KINDS).map(|p| p.to_string())
+    }
+    fn to_plate(path: &str) -> Option<String> {
+        doc_path_to_plate_addr(&path.parse().unwrap(), KINDS)
+    }
+
+    #[test]
+    fn plate_to_docpath_resolves_the_absolute_index() {
+        // The 2nd `note` (ordinal 1) sits at absolute index 2.
+        assert_eq!(to_doc("$cards.note.1.on").as_deref(), Some("cards.note[2].on"));
+        // The 1st `note` (ordinal 0) is absolute 0; the `annotation` is absolute 1.
+        assert_eq!(to_doc("$cards.note.0.on").as_deref(), Some("cards.note[0].on"));
+        assert_eq!(
+            to_doc("$cards.annotation.0.text").as_deref(),
+            Some("cards.annotation[1].text")
+        );
+        // Bodies and main.
+        assert_eq!(to_doc("$body").as_deref(), Some("main.body"));
+        assert_eq!(
+            to_doc("$cards.note.1.$body").as_deref(),
+            Some("cards.note[2].body")
+        );
+        // A plate-space bare main field roots at `main` in DocPath space.
+        assert_eq!(to_doc("signature_block").as_deref(), Some("main.signature_block"));
+    }
+
+    #[test]
+    fn docpath_to_plate_is_the_inverse() {
+        for plate in [
+            "$body",
+            "signature_block",
+            "$cards.note.0.on",
+            "$cards.note.1.on",
+            "$cards.annotation.0.text",
+            "$cards.note.1.$body",
+        ] {
+            let doc = to_doc(plate).unwrap();
+            assert_eq!(to_plate(&doc).as_deref(), Some(plate), "round-trip {plate}");
+        }
+    }
+
+    #[test]
+    fn translation_rejects_unplaceable_and_foreign_shapes() {
+        // A 3rd `note` (ordinal 2) does not exist — only two notes.
+        assert_eq!(to_doc("$cards.note.2.on"), None);
+        // A DocPath whose kind disagrees with the slot does not translate back.
+        assert_eq!(
+            doc_path_to_plate_addr(&"cards.annotation[0].x".parse().unwrap(), KINDS),
+            None
+        );
+        // A document-model shape geometry never keys (nested main field).
+        assert_eq!(
+            doc_path_to_plate_addr(&"recipients[0].name".parse().unwrap(), KINDS),
+            None
+        );
     }
 }

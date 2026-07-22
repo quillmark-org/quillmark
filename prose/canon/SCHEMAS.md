@@ -79,6 +79,17 @@ Validation is implemented by a native walker over `QuillConfig` in `quill/valida
   It validates clean (no `TypeMismatch`) and zero-fills at render
   (authored › `default:` › type-zero — see
   [Zero-filled render](#zero-filled-render)).
+- **Null ≡ absent is a 1.0 commitment, not a stopgap.** The identification is
+  chosen and final: `field: null` and an omitted field are one state,
+  indistinguishable by design. The consequences are accepted, not worked
+  around — "explicitly cleared" and "never touched" cannot be told apart, so
+  there is no uniform "blank, not default" for a non-string type, and
+  `removeField` (drop the key) stays the sole unset verb; a present-null
+  carries no distinct "cleared" signal. The tri-state alternative (absent /
+  null / value) is foreclosed: it doubles every field's state space for one
+  rarely-authored distinction, breaks YAML round-trip sanity (a loaded-then-
+  saved document must not sprout `field: null` lines), and buys nothing the
+  ladder does not already give. The simpler model is the contract.
 - **`!must_fill` marker → non-fatal warning.** For every `!must_fill` marker
   present — root or nested, main card or composable card —
   `Quill::validate` emits `validation::must_fill` at **`Severity::Warning`**,
@@ -131,7 +142,14 @@ field maps rather than a sort key):
 | `blueprint` document | Endorsed: `default:`; Unendorsed: `example:` else zero, stamped `!must_fill` | zero (under the marker) | annotated string — [BLUEPRINT.md](BLUEPRINT.md) |
 | seeding | `example:` › absent | (deferred to render floor) | committed `Document` — [Document seeding](#document-seeding) |
 | add-card (into a document) | `$seed` overlay › `example:` › absent | (deferred to render floor) | a new composable `Card` — [Document seeding](#document-seeding) |
-| editor (consumer-side) | authored / `default:` / missing (uncollapsed; `example:` as guidance) | — | a `Document`-payload × schema join the UI consumer performs directly (no engine projection); completeness comes from `Quill::validate` |
+| editor (consumer-side) | authored › `default:` › zero, resolved per field and **tagged with its source rung** | zero | the engine's [`fieldStates()`](#the-resolved-field-view-fieldstates) resolved-value view — value and source rung per field |
+
+The consumer-side `Document`-payload × schema join is a **non-goal**:
+[`fieldStates()`](#the-resolved-field-view-fieldstates) supersedes it. The
+editor reads value and source rung from one engine call rather than re-cutting
+the ladder in consumer code. Completeness and errors stay `Quill::validate`'s
+(a consumer merges it with its own diagnostic producers regardless), and schema
+guidance — `example:`, labels, groups — reads from `Quill::schema`.
 
 Two seams are deliberate, not uniform: on `blueprint` the floor still
 zero-fills like every other projection (an Unendorsed cell with no `example`
@@ -140,6 +158,27 @@ carries bare null/empty under its marker), but the projection additionally
 rides *alongside* the value rather than replacing it; and `zero` is honestly
 blank for every type except `enum`, whose zero is the first declared variant
 (there is no empty enum member). Both are detailed below.
+
+### The resolved-value view (`fieldStates()`)
+
+`Quill::field_states(doc)` (WASM `fieldStates`) cuts the render ladder into
+observable data: for every declared field, the value `compile_data` would emit
+into the plate, tagged with its source rung (`authored` / `default` / `zero`) —
+byte-for-byte with the plate on every fixture. The shape is nested: a `main`
+card and a `cards` list, each card's `fields` an ordered array of `{ name,
+value, source }` rows in declaration order — order is structural, not object-key
+order. The card body is a `body` sibling on the card, not a row in `fields` —
+present iff the kind enables a body (`enabled: false` undeclares it, so `body` is
+`null`), its source only ever `authored` (non-blank) or `zero` (blank).
+Source is one **top-level** rung per field; a nested zero-fill inside an authored
+dict or array is a projection detail of the value, not a per-subpath source.
+
+Value and provenance only. The view carries no diagnostics — completeness and
+errors stay `Quill::validate`'s, which a consumer merges with its own producers
+(session warnings, render errors) regardless, so bucketing here would delete no
+consumer code. Schema guidance (`example:`, labels, groups) reads from
+`Quill::schema`. Python is out of scope until a Python consumer names a call
+site (the Tier-1 cut, [BINDINGS.md](BINDINGS.md)).
 
 ## Zero-filled render
 
@@ -224,12 +263,16 @@ path's "`default:` wins" rule applies to authored and blank documents, where no
   fills the body when bodies are enabled.
 - **The main card** carries `$quill` and `$kind: main`, so a seed round-trips
   through Markdown like an authored document.
-- **Provenance is untracked.** A seeded `example` is committed as ordinary
-  authored content, indistinguishable from hand-authored input. Carrying no
-  `!must_fill` marker, it reads as done — an Unendorsed field seeded with an
-  `example` raises no `validation::must_fill` warning. Whether a field's
-  value came from seeding or later authoring is not recorded; correctness
-  and renderability do not depend on the distinction.
+- **Provenance is untracked in the persisted document.** A seeded `example` is
+  committed as ordinary authored content, indistinguishable from hand-authored
+  input. Carrying no `!must_fill` marker, it reads as done — an Unendorsed field
+  seeded with an `example` raises no `validation::must_fill` warning. Whether a
+  field's value came from seeding or later authoring is not recorded; correctness
+  and renderability do not depend on the distinction. The commitment *rung* is a
+  separate axis and is reported on read: the
+  [`fieldStates()`](#the-resolved-field-view-fieldstates) projection tags each
+  field `authored` / `default` / `zero` — a seeded and a hand-authored value both
+  read as `authored`, both being document content.
 
 Seeding is the **filled-out twin of the blueprint**
 ([BLUEPRINT.md](BLUEPRINT.md) § "The blueprint and its filled-out twin"): the

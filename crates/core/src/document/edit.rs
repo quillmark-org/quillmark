@@ -121,10 +121,9 @@ pub enum EditError {
 }
 
 impl EditError {
-    /// The bare variant name (e.g. `"InvalidFieldName"`). The wasm and Python
-    /// bindings each surface it as the `[EditError::<Variant>]` message prefix;
-    /// defined once here so a new variant cannot drift between the two
-    /// binding error mappers.
+    /// The bare variant name (e.g. `"InvalidFieldName"`). Retained as the
+    /// stable variant discriminator behind [`code`](Self::code); defined once
+    /// here so a new variant cannot drift between the two binding error mappers.
     pub fn variant_name(&self) -> &'static str {
         match self {
             EditError::InvalidFieldName(_) => "InvalidFieldName",
@@ -138,6 +137,56 @@ impl EditError {
             EditError::FieldRichtextNotInline(_) => "FieldRichtextNotInline",
             EditError::FieldConform { .. } => "FieldConform",
             EditError::ContentApply(_) => "ContentApply",
+        }
+    }
+
+    /// The namespaced diagnostic `code` (e.g. `"edit::invalid_field_name"`),
+    /// one per variant. This is the machine-routable identity both bindings
+    /// stamp onto the `Diagnostic` they raise — the `edit::*` peer of
+    /// `parse::*`, `validation::*`, and the rest of the taxonomy in
+    /// `prose/canon/ERROR.md`. Consumers route on this, not on message text.
+    pub fn code(&self) -> &'static str {
+        match self {
+            EditError::InvalidFieldName(_) => "edit::invalid_field_name",
+            EditError::UnknownField(_) => "edit::unknown_field",
+            EditError::InvalidKindName(_) => "edit::invalid_kind_name",
+            EditError::ReservedKind => "edit::reserved_kind",
+            EditError::IndexOutOfRange { .. } => "edit::index_out_of_range",
+            EditError::ValueTooDeep { .. } => "edit::value_too_deep",
+            EditError::Import(_) => "edit::import",
+            EditError::FieldRichtextDecode { .. } => "edit::field_richtext_decode",
+            EditError::FieldRichtextNotInline(_) => "edit::field_richtext_not_inline",
+            EditError::FieldConform { .. } => "edit::field_conform",
+            EditError::ContentApply(_) => "edit::content_apply",
+        }
+    }
+
+    /// The [`DocPath`](crate::path::DocPath) this error anchors to, relative to
+    /// `base` — the card root the mutator ran against (`main` for a main-card
+    /// mutator, `cards.<kind>[i]` for a composable card, `cards[i]` for a
+    /// structural op on the array; empty only for a card built before it is
+    /// placed, which has no index yet).
+    ///
+    /// A field-named variant anchors at its field under `base`
+    /// (`main.<field>`, `cards.<kind>[i].<field>`, or a bare `<field>` when
+    /// `base` is empty — the pre-placement card);
+    /// [`IndexOutOfRange`](Self::IndexOutOfRange) at the document-array slot
+    /// `cards[index]`, base-independent — a structural op names a slot, not a
+    /// field; and the remaining variants (kind errors, depth, content
+    /// apply/import) anchor at `base` itself when it names a card, else carry no
+    /// anchor (a config-space `$seed` error keeps an empty base). Both
+    /// bindings route through this so a mutator diagnostic is addressable the
+    /// same way a validation diagnostic is.
+    pub fn doc_path(&self, base: &crate::path::DocPath) -> Option<crate::path::DocPath> {
+        use crate::path::DocPath;
+        match self {
+            EditError::InvalidFieldName(f)
+            | EditError::UnknownField(f)
+            | EditError::FieldRichtextNotInline(f)
+            | EditError::FieldConform { field: f, .. }
+            | EditError::FieldRichtextDecode { field: f, .. } => Some(base.field(f)),
+            EditError::IndexOutOfRange { index, .. } => Some(DocPath::card(None, *index)),
+            _ => (!base.segs().is_empty()).then(|| base.clone()),
         }
     }
 }
@@ -813,5 +862,75 @@ impl Card {
             .map_err(EditError::ContentApply)?;
         self.store_field_content(name, &content);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::path::DocPath;
+
+    #[test]
+    fn field_error_anchors_under_the_card_base() {
+        // A main field write: the `main` base roots the field path.
+        let main = DocPath::main();
+        assert_eq!(
+            EditError::FieldConform {
+                field: "font_size".into(),
+                message: "x".into(),
+            }
+            .doc_path(&main)
+            .unwrap()
+            .to_string(),
+            "main.font_size"
+        );
+        // A card field write: the card root qualifies the field.
+        let card = DocPath::card(Some("indorsement"), 1);
+        assert_eq!(
+            EditError::UnknownField("signature_block".into())
+                .doc_path(&card)
+                .unwrap()
+                .to_string(),
+            "cards.indorsement[1].signature_block"
+        );
+    }
+
+    #[test]
+    fn index_out_of_range_anchors_at_the_array_slot() {
+        // Structural op: names a slot, base-independent.
+        for base in [DocPath::main(), DocPath::card(Some("note"), 0)] {
+            assert_eq!(
+                EditError::IndexOutOfRange { index: 4, len: 2 }
+                    .doc_path(&base)
+                    .unwrap()
+                    .to_string(),
+                "cards[4]"
+            );
+        }
+    }
+
+    #[test]
+    fn kind_and_depth_errors_anchor_at_base_or_nowhere() {
+        // A kind error on a structural op carries the slot base it was given.
+        assert_eq!(
+            EditError::ReservedKind
+                .doc_path(&DocPath::card(None, 2))
+                .unwrap()
+                .to_string(),
+            "cards[2]"
+        );
+        // A config-space `$seed` depth error keeps an empty base — no anchor.
+        assert_eq!(
+            EditError::ValueTooDeep { max: 8 }.doc_path(&DocPath::new()),
+            None
+        );
+        // A main-card depth error roots at `main` (its base names the card).
+        assert_eq!(
+            EditError::ValueTooDeep { max: 8 }
+                .doc_path(&DocPath::main())
+                .unwrap()
+                .to_string(),
+            "main"
+        );
     }
 }

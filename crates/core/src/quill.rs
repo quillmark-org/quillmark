@@ -3,6 +3,7 @@
 mod blueprint;
 mod compose;
 mod config;
+mod field_states;
 mod fill;
 mod formats;
 mod ignore;
@@ -17,6 +18,7 @@ pub(crate) mod validation;
 
 pub use config::{CoercionError, QuillConfig};
 pub(crate) use config::Leniency;
+pub use field_states::{CardStates, FieldSource, FieldState, FieldStates, MainStates};
 pub use fill::zero_value;
 pub use formats::{parse_date, parse_datetime};
 pub use ignore::QuillIgnore;

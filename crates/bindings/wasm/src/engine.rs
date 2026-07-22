@@ -25,9 +25,23 @@ export interface QuillFieldUi {
     multiline?: boolean;
 }
 
+/** One entry in a card's `ui.groups` registry: a display-label override for the
+ * group id (the map key). An empty object carries no override — the consumer
+ * derives the label from the id (`memo_for` → "Memo For"), as it does a field
+ * label from its key. */
+export interface QuillGroupUi {
+    title?: string;
+}
+
 /** UI layout hints for a card (main or named card kind). */
 export interface QuillCardUi {
     title?: string;
+    /** The card's group registry: the ordered table of contents naming every
+     * group a field's `ui.group` may reference. The map key is the group id, and
+     * key order is declaration order — the display-order contract, the same one
+     * `fields` key order carries. Absent when the card declares no groups (or
+     * uses the deprecated implicit-group form). */
+    groups?: Record<string, QuillGroupUi>;
 }
 
 /** Body namespace for a card (main or named card kind). */
@@ -221,14 +235,44 @@ export type ContentMark = { start: number; end: number } & (
     | { type: string; attrs: unknown }
 );
 
-/** A structured object (table, figure, …) occupying one island slot in `Content.text`. */
-export interface ContentIsland {
+/** A cell in a `TableProps` — its plain `text` plus the `marks` over it. `marks`
+ * rides the same wire shape as prose `ContentMark`, but each mark's `start`/`end`
+ * are USV offsets into this cell's `text` (`0..text.length`), not into
+ * `Content.text`. */
+export interface TableCell {
+    text: string;
+    marks: ContentMark[];
+}
+
+/** `props` of a `type: "table"` island: a pipe table normalized to one column
+ * count that `header`, every row of `rows`, and `aligns` all share. */
+export interface TableProps {
+    header: TableCell[];
+    rows: TableCell[][];
+    /** Per-column alignment, one entry per column. */
+    aligns: ("none" | "left" | "center" | "right")[];
+}
+
+/** `props` of a `type: "image"` island. */
+export interface ImageProps {
+    url: string;
+    alt: string;
+}
+
+/** A structured object occupying one island slot in `Content.text`. `type` is an
+ * open set: the engine pins `props` as `TableProps` for `table` and `ImageProps`
+ * for `image`; an island of any other type round-trips with opaque `props`. Like
+ * `ContentMark`, the open `type` arm means a discriminant check does not itself
+ * narrow `props` — key off `type` and read `props` as the matching shape. */
+export type ContentIsland = {
     id: string;
-    type: string;
-    props: unknown;
     /** How faithfully the markdown projection can carry this island. */
     loss: "lossless" | "degraded" | "unrepresentable";
-}
+} & (
+    | { type: "table"; props: TableProps }
+    | { type: "image"; props: ImageProps }
+    | { type: string; props: unknown }
+);
 
 /**
  * A write address — one navigation concept for the whole `Document` surface. An
@@ -374,6 +418,20 @@ pub struct LiveSession {
     /// pipeline as `open`. The config alone — schemas, not the quill's
     /// font/package bytes, which the backend session already owns.
     config: quillmark_core::quill::QuillConfig,
+    /// The current compile's ordered card kinds (`None` = a kindless card), the
+    /// lookup that resolves a geometry region's plate-space per-kind ordinal to
+    /// its `DocPath` absolute index. Refreshed on every committed `apply`, so it
+    /// tracks the document the geometry reflects.
+    card_kinds: Vec<Option<String>>,
+}
+
+/// The ordered card kinds of `doc` — the geometry-translation lookup a
+/// [`LiveSession`] retains.
+fn card_kinds_of(doc: &quillmark_core::Document) -> Vec<Option<String>> {
+    doc.cards()
+        .iter()
+        .map(|c| c.kind().map(String::from))
+        .collect()
 }
 
 /// Typed in-memory Quillmark document.
@@ -412,6 +470,7 @@ impl Quillmark {
             inner: session,
             backend_id: quill.inner.backend_id().to_string(),
             config: quill.inner.config().clone(),
+            card_kinds: card_kinds_of(&doc.inner),
         })
     }
 
@@ -434,12 +493,18 @@ impl Quillmark {
         let mut warnings: Vec<Diagnostic> =
             doc.parse_warnings.iter().cloned().map(Into::into).collect();
         warnings.extend(result.warnings.into_iter().map(Into::into));
+        // The regions sidecar keys on `DocPath` like `session.regions()`, so a
+        // consumer sees one address grammar however it reads geometry.
+        let kinds: Vec<Option<&str>> = doc.inner.cards().iter().map(|c| c.kind()).collect();
         Ok(RenderResult {
             artifacts: result.artifacts.into_iter().map(Into::into).collect(),
             warnings,
             output_format: result.output_format.into(),
             render_time_ms: now_ms() - start,
-            regions: result.regions.into_iter().map(Into::into).collect(),
+            regions: regions_to_docpath(result.regions, &kinds)
+                .into_iter()
+                .map(Into::into)
+                .collect(),
         })
     }
 
@@ -597,6 +662,25 @@ impl Quill {
             .serialize_missing_as_null(true);
         diags.serialize(&serializer).map_err(|e| {
             WasmError::from(format!("validate: serialization failed: {e}")).to_js_value()
+        })
+    }
+
+    /// The resolved-value view of `doc` against this quill's schema — for every
+    /// declared field the value the render projection would use and the
+    /// `FieldSource` rung it came from (`"authored" | "default" | "zero"`), in
+    /// one call. The card body rides the `fields` map under the `$body` key.
+    ///
+    /// Value and provenance only: completeness and errors stay `validate`'s
+    /// (a consumer merges it with its own diagnostic producers regardless), and
+    /// schema guidance reads from `Quill.schema`.
+    #[wasm_bindgen(js_name = fieldStates, unchecked_return_type = "FieldStates")]
+    pub fn field_states(&self, doc: &Document) -> Result<JsValue, JsValue> {
+        let states = self.inner.field_states(&doc.inner);
+        let serializer = serde_wasm_bindgen::Serializer::new()
+            .serialize_maps_as_objects(true)
+            .serialize_missing_as_null(true);
+        states.serialize(&serializer).map_err(|e| {
+            WasmError::from(format!("fieldStates: serialization failed: {e}")).to_js_value()
         })
     }
 
@@ -849,7 +933,7 @@ impl Document {
     /// the **body content** when `addr.field` is absent. A bare string is `Addr`
     /// shorthand for `{ field }`. Reads are total over the field axis: an absent
     /// field is `undefined`; only an out-of-range `addr.card` throws
-    /// `[EditError::IndexOutOfRange]`. Reads need no schema, so they live on
+    /// `edit::index_out_of_range`. Reads need no schema, so they live on
     /// `Document`, not the typed writer; for the markdown projection of a
     /// richtext value use [`getMarkdown`](Self::get_markdown).
     #[wasm_bindgen(js_name = get, unchecked_return_type = "unknown")]
@@ -908,9 +992,9 @@ impl Document {
     /// `undefined` for an **absent** field. An absent `addr.field` reads the body
     /// markdown — quill-free, mirroring [`getMarkdown`](Self::get_markdown), since
     /// a body's type is a format fact, not a schema fact. A name the schema does
-    /// not declare throws `[EditError::UnknownField]` (the authority `getMarkdown`
+    /// not declare throws `edit::unknown_field` (the authority `getMarkdown`
     /// lacks — there an unknown name reads back `undefined`); a `richtext` field
-    /// holding a value that does not decode throws `[EditError::FieldRichtextDecode]`;
+    /// holding a value that does not decode throws `edit::field_richtext_decode`;
     /// an out-of-range `addr.card` throws.
     ///
     /// The `quill` handle is passed per call because a `Document` carries only a
@@ -922,6 +1006,7 @@ impl Document {
         #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
     ) -> Result<JsValue, JsValue> {
         let addr = Addr::from_js_or_string(&addr)?;
+        let base = self.addr_base(&addr);
         let view = quill.inner.view(&self.inner);
         match &addr.field {
             // Absent field = body: quill-free markdown, the getMarkdown body read.
@@ -929,17 +1014,18 @@ impl Document {
                 None => view.get_body(),
                 Some(index) => view
                     .card(index)
-                    .map_err(|e| edit_error_to_js(&e))?
+                    .map_err(|e| edit_error_to_js(&e, &base))?
                     .get_body(),
             })),
             Some(field) => {
                 let read = match addr.card {
                     None => view.get(field),
-                    Some(index) => {
-                        view.card(index).map_err(|e| edit_error_to_js(&e))?.get(field)
-                    }
+                    Some(index) => view
+                        .card(index)
+                        .map_err(|e| edit_error_to_js(&e, &base))?
+                        .get(field),
                 }
-                .map_err(|e| edit_error_to_js(&e))?;
+                .map_err(|e| edit_error_to_js(&e, &base))?;
                 match read {
                     None => Ok(JsValue::UNDEFINED),
                     // Both content projections flatten to a JS string at the boundary.
@@ -1014,7 +1100,7 @@ impl Document {
     /// A single composable card by index — the whole `Card`, the card-indexed
     /// twin of the [`main`](Self::main) getter, so reading one card need not
     /// materialize every card via [`cards`](Self::cards). An out-of-range
-    /// `index` throws `[EditError::IndexOutOfRange]`, matching the card write
+    /// `index` throws `edit::index_out_of_range`, matching the card write
     /// verbs.
     #[wasm_bindgen(js_name = card, unchecked_return_type = "Card")]
     pub fn card(&self, index: usize) -> Result<JsValue, JsValue> {
@@ -1084,9 +1170,10 @@ impl Document {
         let field = addr.require_field("storeField")?.to_string();
         let json = js_value_to_json(value, "storeField")?;
         let qv = quillmark_core::QuillValue::from_json(json);
+        let base = self.addr_base(&addr);
         self.addr_card_mut(&addr)?
             .store_field(&field, qv)
-            .map_err(|e| edit_error_to_js(&e))
+            .map_err(|e| edit_error_to_js(&e, &base))
     }
 
     /// Store a field verbatim at `addr` and mark it `!must_fill` — the opaque
@@ -1103,9 +1190,10 @@ impl Document {
         let field = addr.require_field("storeFill")?.to_string();
         let json = js_value_to_json(value, "storeFill")?;
         let qv = quillmark_core::QuillValue::from_json(json);
+        let base = self.addr_base(&addr);
         self.addr_card_mut(&addr)?
             .store_fill(&field, qv)
-            .map_err(|e| edit_error_to_js(&e))
+            .map_err(|e| edit_error_to_js(&e, &base))
     }
 
     /// Store several fields verbatim and atomically on the card `addr` targets —
@@ -1125,9 +1213,10 @@ impl Document {
         let addr = Addr::from_js(&addr)?;
         addr.require_card_only("storeFields")?;
         let batch = js_value_to_field_batch(&fields, "storeFields")?;
+        let base = self.addr_base(&addr);
         self.addr_card_mut(&addr)?
             .store_fields(batch)
-            .map_err(edit_errors_to_js)
+            .map_err(|errs| edit_errors_to_js(errs, &base))
     }
 
     /// Remove a field at `addr`, returning the removed value or `undefined`. A
@@ -1141,10 +1230,11 @@ impl Document {
     ) -> Result<JsValue, JsValue> {
         let addr = Addr::from_js_or_string(&addr)?;
         let field = addr.require_field("removeField")?.to_string();
+        let base = self.addr_base(&addr);
         let removed = self
             .addr_card_mut(&addr)?
             .remove_field(&field)
-            .map_err(|e| edit_error_to_js(&e))?;
+            .map_err(|e| edit_error_to_js(&e, &base))?;
         Ok(match removed {
             Some(v) => serialize_or_throw(v.as_json(), "removeField")?,
             None => JsValue::UNDEFINED,
@@ -1165,9 +1255,10 @@ impl Document {
         let addr = Addr::from_js(&addr)?;
         addr.require_card_only("storeExt")?;
         let map = js_value_to_object(&value, "storeExt")?;
+        let base = self.addr_base(&addr);
         self.addr_card_mut(&addr)?
             .store_ext(map)
-            .map_err(|e| edit_error_to_js(&e))
+            .map_err(|e| edit_error_to_js(&e, &base))
     }
 
     /// Remove the `$ext` map on the card `addr` targets *entirely*, returning the
@@ -1198,9 +1289,10 @@ impl Document {
         let addr = Addr::from_js(&addr)?;
         addr.require_card_only("storeExtNamespace")?;
         let json = js_value_to_json(value, "storeExtNamespace")?;
+        let base = self.addr_base(&addr);
         self.addr_card_mut(&addr)?
             .store_ext_namespace(ns, json)
-            .map_err(|e| edit_error_to_js(&e))
+            .map_err(|e| edit_error_to_js(&e, &base))
     }
 
     /// Remove `$ext[ns]` on the card `addr` targets, returning its value or
@@ -1230,10 +1322,12 @@ impl Document {
         overlay: JsValue,
     ) -> Result<(), JsValue> {
         let json = js_value_to_json(overlay, "storeSeedNamespace")?;
+        // Main-only: `$seed` is config-space, so a kind/depth error here carries
+        // no field anchor (empty base → `doc_path` returns `None`).
         self.inner
             .main_mut()
             .store_seed_namespace(card_kind, json)
-            .map_err(|e| edit_error_to_js(&e))
+            .map_err(|e| edit_error_to_js(&e, &quillmark_core::DocPath::new()))
     }
 
     /// Remove `cardKind` from the main card's `$seed` map, returning its
@@ -1282,13 +1376,16 @@ impl Document {
     ) -> Result<(), JsValue> {
         let addr = Addr::from_js_or_string(&addr)?;
         let content = js_to_content(rt, "install")?;
+        let base = self.addr_base(&addr);
         let card = self.addr_card_mut(&addr)?;
         match &addr.field {
             None => {
                 card.install_body(content);
                 Ok(())
             }
-            Some(field) => card.install_field(field, content).map_err(|e| edit_error_to_js(&e)),
+            Some(field) => card
+                .install_field(field, content)
+                .map_err(|e| edit_error_to_js(&e, &base)),
         }
     }
 
@@ -1308,12 +1405,13 @@ impl Document {
         markdown: &str,
     ) -> Result<JsValue, JsValue> {
         let addr = Addr::from_js_or_string(&addr)?;
+        let base = self.addr_base(&addr);
         let card = self.addr_card_mut(&addr)?;
         let delta = match &addr.field {
             None => card.revise_body(markdown),
             Some(field) => card.revise_field(field, markdown),
         }
-        .map_err(|e| edit_error_to_js(&e))?;
+        .map_err(|e| edit_error_to_js(&e, &base))?;
         serialize_or_throw(&delta, "revise")
     }
 
@@ -1323,12 +1421,12 @@ impl Document {
     /// and defers to [`TypedWriter::revise_field`](quillmark_core::TypedWriter::revise_field):
     /// surviving anchors rebase (as [`revise`](Self::revise)), then the diffed
     /// result is schema-conformed, so a `richtext(inline)` field rejects a
-    /// multi-block result with `[EditError::FieldRichtextNotInline]`. Returns the
+    /// multi-block result with `edit::field_richtext_not_inline`. Returns the
     /// text [`Delta`].
     ///
     /// `addr` must name a field (a bare string is `{ field }`); a body address
     /// throws (a body carries no field schema — use [`revise`](Self::revise)). A
-    /// name the schema does not declare throws `[EditError::UnknownField]`. Throws
+    /// name the schema does not declare throws `edit::unknown_field`. Throws
     /// on an out-of-range card. Hidden from the `.d.ts`; the visible verb is
     /// `writer.reviseField` in the runtime layer.
     #[wasm_bindgen(js_name = _reviseField, skip_typescript, unchecked_return_type = "Delta")]
@@ -1340,15 +1438,16 @@ impl Document {
     ) -> Result<JsValue, JsValue> {
         let addr = Addr::from_js_or_string(&addr)?;
         let field = addr.require_field("reviseField")?.to_string();
+        let base = self.addr_base(&addr);
         let mut writer = quill.inner.writer(&mut self.inner);
         let delta = match addr.card {
             None => writer.revise_field(&field, markdown),
             Some(index) => writer
                 .card(index)
-                .map_err(|e| edit_error_to_js(&e))?
+                .map_err(|e| edit_error_to_js(&e, &base))?
                 .revise_field(&field, markdown),
         }
-        .map_err(|e| edit_error_to_js(&e))?;
+        .map_err(|e| edit_error_to_js(&e, &base))?;
         serialize_or_throw(&delta, "reviseField")
     }
 
@@ -1368,6 +1467,7 @@ impl Document {
     ) -> Result<(), JsValue> {
         let addr = Addr::from_js_or_string(&addr)?;
         let (delta, line_ops, mark_ops) = parse_change_bundle(&bundle)?;
+        let base = self.addr_base(&addr);
         let card = self.addr_card_mut(&addr)?;
         match &addr.field {
             None => card.apply_body_change(&delta, &line_ops, &mark_ops),
@@ -1375,7 +1475,7 @@ impl Document {
                 card.apply_field_richtext_change(field, &delta, &line_ops, &mark_ops)
             }
         }
-        .map_err(|e| edit_error_to_js(&e))
+        .map_err(|e| edit_error_to_js(&e, &base))
     }
 
     /// Typed field write at `addr`, resolving the field's schema `type` from
@@ -1393,12 +1493,12 @@ impl Document {
     /// address throws — a body has no field schema; write it with `writer.setBody`
     /// / `revise`. A field declared in the schema is strict-committed (a mismatch
     /// throws now, not at render); a name the schema does not declare throws
-    /// `[EditError::UnknownField]` rather than falling to the opaque store — on
+    /// `edit::unknown_field` rather than falling to the opaque store — on
     /// the typed path it is a typo. Use [`storeField`](Document::store_field) for
-    /// opaque storage. Also throws `[EditError::FieldConform]` /
-    /// `[EditError::FieldRichtextDecode]` / `[EditError::FieldRichtextNotInline]`
-    /// on a typed mismatch, `[EditError::InvalidFieldName]` on a malformed name,
-    /// and `[EditError::IndexOutOfRange]` on an out-of-range card.
+    /// opaque storage. Also throws `edit::field_conform` /
+    /// `edit::field_richtext_decode` / `edit::field_richtext_not_inline`
+    /// on a typed mismatch, `edit::invalid_field_name` on a malformed name,
+    /// and `edit::index_out_of_range` on an out-of-range card.
     ///
     /// The `quill` handle is passed per call because a `Document` carries only a
     /// `$quill` reference, not the resolved schema.
@@ -1413,14 +1513,15 @@ impl Document {
         let field = addr.require_field("commitField")?.to_string();
         let json = js_value_to_json(value, "commitField")?;
         let qv = quillmark_core::QuillValue::from_json(json);
+        let base = self.addr_base(&addr);
         let mut writer = quill.inner.writer(&mut self.inner);
         match addr.card {
-            None => writer.set(&field, qv).map_err(|e| edit_error_to_js(&e)),
+            None => writer.set(&field, qv).map_err(|e| edit_error_to_js(&e, &base)),
             Some(index) => writer
                 .card(index)
-                .map_err(|e| edit_error_to_js(&e))?
+                .map_err(|e| edit_error_to_js(&e, &base))?
                 .set(&field, qv)
-                .map_err(|e| edit_error_to_js(&e)),
+                .map_err(|e| edit_error_to_js(&e, &base)),
         }
     }
 
@@ -1431,7 +1532,7 @@ impl Document {
     /// the same per-field-diagnostic error contract as
     /// [`storeFields`](Document::store_fields) — nothing is applied on error and
     /// the thrown error's `diagnostics` carry one entry per offending field,
-    /// including an `[EditError::UnknownField]` for any name the schema does not
+    /// including an `edit::unknown_field` for any name the schema does not
     /// declare, so a whole-form submit sees every typo in one pass. Throws on an
     /// out-of-range card.
     #[wasm_bindgen(js_name = _commitFields, skip_typescript)]
@@ -1444,14 +1545,17 @@ impl Document {
         let addr = Addr::from_js(&addr)?;
         addr.require_card_only("commitFields")?;
         let batch = js_value_to_field_batch(&fields, "commitFields")?;
+        let base = self.addr_base(&addr);
         let mut writer = quill.inner.writer(&mut self.inner);
         match addr.card {
-            None => writer.set_all(batch).map_err(edit_errors_to_js),
+            None => writer
+                .set_all(batch)
+                .map_err(|errs| edit_errors_to_js(errs, &base)),
             Some(index) => writer
                 .card(index)
-                .map_err(|e| edit_error_to_js(&e))?
+                .map_err(|e| edit_error_to_js(&e, &base))?
                 .set_all(batch)
-                .map_err(edit_errors_to_js),
+                .map_err(|errs| edit_errors_to_js(errs, &base)),
         }
     }
 
@@ -1464,7 +1568,7 @@ impl Document {
     /// the document, so a rejected field (or an invalid kind, body, or
     /// out-of-range `at`) leaves the document untouched. Field errors throw the
     /// same per-field diagnostic bundle as [`commitFields`](Self::commit_fields),
-    /// including an `[EditError::UnknownField]` per undeclared name; an invalid
+    /// including an `edit::unknown_field` per undeclared name; an invalid
     /// kind or body, or an out-of-range position, throws a single-entry bundle
     /// keyed `$kind` / `$body`.
     #[wasm_bindgen(js_name = _addCard, skip_typescript)]
@@ -1482,11 +1586,14 @@ impl Document {
             Some(f) => js_value_to_field_batch(&f, "addCard")?,
             None => Vec::new(),
         };
+        // The card is built before it joins the document, so its field errors
+        // anchor at bare names (empty base); `$kind` / `$body` structural keys
+        // ride the same serializer.
         quill
             .inner
             .writer(&mut self.inner)
             .add_card(kind, batch, body.as_deref(), at)
-            .map_err(edit_errors_to_js)
+            .map_err(|errs| edit_errors_to_js(errs, &quillmark_core::DocPath::new()))
     }
 
     /// Build a fresh `Card` from a kind and a flat field map — the ergonomic
@@ -1556,11 +1663,17 @@ impl Document {
         #[wasm_bindgen(unchecked_optional_param_type = "number")] at: Option<usize>,
     ) -> Result<(), JsValue> {
         let core_card = js_to_card(&card)?;
+        // A kind error anchors at the target slot; an out-of-range `at` at
+        // `cards[at]` via the error itself. `push` (append) has no slot yet, so
+        // its kind error carries no anchor (empty base).
+        let base = at.map_or_else(quillmark_core::DocPath::new, |i| {
+            quillmark_core::DocPath::card(None, i)
+        });
         match at {
             Some(index) => self.inner.insert_card(index, core_card),
             None => self.inner.push_card(core_card),
         }
-        .map_err(|e| edit_error_to_js(&e))
+        .map_err(|e| edit_error_to_js(&e, &base))
     }
 
     #[wasm_bindgen(js_name = removeCard, unchecked_return_type = "Card | undefined")]
@@ -1574,9 +1687,10 @@ impl Document {
     /// Move the card at `from` to position `to`. `from == to` is a no-op.
     #[wasm_bindgen(js_name = moveCard)]
     pub fn move_card(&mut self, from: usize, to: usize) -> Result<(), JsValue> {
+        // An out-of-range `from`/`to` anchors at `cards[index]` via the error.
         self.inner
             .move_card(from, to)
-            .map_err(|e| edit_error_to_js(&e))
+            .map_err(|e| edit_error_to_js(&e, &quillmark_core::DocPath::new()))
     }
 
     /// Replace the kind of the card at `index`. Payload and body are untouched;
@@ -1584,9 +1698,11 @@ impl Document {
     /// Throws if `index` is out of range or `newKind` is invalid.
     #[wasm_bindgen(js_name = setCardKind)]
     pub fn set_card_kind(&mut self, index: usize, new_kind: &str) -> Result<(), JsValue> {
+        // Both an out-of-range index and an invalid `newKind` anchor at the
+        // target slot `cards[index]`.
         self.inner
             .set_card_kind(index, new_kind)
-            .map_err(|e| edit_error_to_js(&e))
+            .map_err(|e| edit_error_to_js(&e, &quillmark_core::DocPath::card(None, index)))
     }
 
 }
@@ -1598,7 +1714,10 @@ impl Document {
     fn card_mut_or_throw(&mut self, index: usize) -> Result<&mut quillmark_core::Card, JsValue> {
         let len = self.inner.cards().len();
         self.inner.card_mut(index).ok_or_else(|| {
-            edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
+            edit_error_to_js(
+                &quillmark_core::EditError::IndexOutOfRange { index, len },
+                &quillmark_core::DocPath::new(),
+            )
         })
     }
 
@@ -1609,7 +1728,10 @@ impl Document {
     fn card_or_throw(&self, index: usize) -> Result<&quillmark_core::Card, JsValue> {
         let len = self.inner.cards().len();
         self.inner.cards().get(index).ok_or_else(|| {
-            edit_error_to_js(&quillmark_core::EditError::IndexOutOfRange { index, len })
+            edit_error_to_js(
+                &quillmark_core::EditError::IndexOutOfRange { index, len },
+                &quillmark_core::DocPath::new(),
+            )
         })
     }
 
@@ -1630,6 +1752,21 @@ impl Document {
         match addr.card {
             None => Ok(self.inner.main()),
             Some(index) => self.card_or_throw(index),
+        }
+    }
+
+    /// The `DocPath` card root an [`Addr`] targets — `main` for the main card,
+    /// `cards.<kind>[i]` for a composable one (kind read off the live card,
+    /// `None` when the index is out of range, where the error self-anchors at
+    /// `cards[i]` anyway). The base every addressed mutator passes to
+    /// [`edit_error_to_js`], computed before the mutable borrow.
+    fn addr_base(&self, addr: &Addr) -> quillmark_core::DocPath {
+        match addr.card {
+            None => quillmark_core::DocPath::main(),
+            Some(index) => quillmark_core::DocPath::card(
+                self.inner.cards().get(index).and_then(|c| c.kind()),
+                index,
+            ),
         }
     }
 }
@@ -1798,6 +1935,118 @@ pub fn rebase(
     serialize_or_throw(&out, "rebase")
 }
 
+/// The structured form of a `Diagnostic.path` — one tagged segment per
+/// `DocPathSeg`. Emitted here as the single source of truth for the parser
+/// boundary so a consumer routes on segments instead of splitting the string.
+#[wasm_bindgen(typescript_custom_section)]
+const DOCPATH_TS: &'static str = r#"
+/**
+ * One segment of a parsed `Diagnostic.path` (see `parseDocPath`). The head
+ * carries the document-model root — `main` (only before `body`), a `card`
+ * (`kind: null` is the unknown-kind `cards[i]` form), or a `field`; the tail is
+ * `field` / `index` / a terminal `body`.
+ */
+export type DocPathSeg =
+    | { seg: "main" }
+    | { seg: "card"; kind: string | null; index: number }
+    | { seg: "field"; name: string }
+    | { seg: "index"; index: number }
+    | { seg: "body" };
+"#;
+
+/// TypeScript declarations for the resolved-value view (`Quill.fieldStates`).
+/// Emitted here as the single source of truth.
+#[wasm_bindgen(typescript_custom_section)]
+const FIELDSTATES_TS: &'static str = r#"
+/** The commitment-ladder rung that produced a `FieldState.value`. */
+export type FieldSource = "authored" | "default" | "zero";
+
+/**
+ * One resolved row: its `name`, the value the render projection would use, and
+ * the `FieldSource` rung it came from. Rows are an ordered array — declaration
+ * order is structural, not object-key order. The card body is a `body` sibling
+ * on its card, never a row in `fields`. Diagnostics stay `Quill.validate`'s;
+ * schema guidance (`example:`, labels) reads from `Quill.schema`.
+ */
+export interface FieldState {
+    name: string;
+    value: unknown;
+    source: FieldSource;
+}
+
+/**
+ * The main card's resolved rows in declaration order, plus its body row —
+ * `null` when the main enables no body.
+ */
+export interface MainFieldStates {
+    fields: FieldState[];
+    body: FieldState | null;
+}
+
+/**
+ * One composable card's resolved rows in declaration order, with its authored
+ * `kind` (`null` for an unknown-kind card), its document-array `index`, and its
+ * body row — `null` when the kind enables no body.
+ */
+export interface CardFieldStates {
+    kind: string | null;
+    index: number;
+    fields: FieldState[];
+    body: FieldState | null;
+}
+
+/**
+ * The resolved-value view (`Quill.fieldStates`): the main card and every
+ * composable card. Value and provenance only — completeness and errors stay
+ * `Quill.validate`.
+ */
+export interface FieldStates {
+    main: MainFieldStates;
+    cards: CardFieldStates[];
+}
+"#;
+
+/// Parse a canonical document-model `Diagnostic.path`
+/// (`cards.<kind>[<i>].<field>`, `main.body`, `recipients[0].name`) into its
+/// structured [`DocPathSeg`] segments — the exported inverse of the engine's
+/// one path serializer, so a consumer routes on segments instead of regexing
+/// the string. Throws on a malformed path.
+#[wasm_bindgen(js_name = parseDocPath, unchecked_return_type = "DocPathSeg[]")]
+pub fn parse_doc_path(path: &str) -> Result<JsValue, JsValue> {
+    let doc_path = path
+        .parse::<quillmark_core::DocPath>()
+        .map_err(|e| WasmError::from(e.to_string()).to_js_value())?;
+    // Via `serde_json::Value` so the tagged segments cross as plain objects,
+    // sidestepping serde-wasm-bindgen's tagged-enum handling; `missing_as_null`
+    // so an unknown-kind card's `kind` is JS `null`, not `undefined` — the
+    // `DocPathSeg` contract is `kind: string | null`.
+    let json = serde_json::to_value(&doc_path)
+        .map_err(|e| WasmError::from(format!("parseDocPath: {e}")).to_js_value())?;
+    let serializer = serde_wasm_bindgen::Serializer::new()
+        .serialize_maps_as_objects(true)
+        .serialize_missing_as_null(true);
+    json.serialize(&serializer)
+        .map_err(|e| WasmError::from(format!("parseDocPath: {e}")).to_js_value())
+}
+
+/// Serialize structured [`DocPathSeg`] segments back to the canonical path
+/// string — the inverse of `parseDocPath`, for a consumer that builds a path
+/// rather than reads one. Throws on a segment array the deserializer rejects,
+/// and on an empty segment array (symmetric with `parseDocPath("")`, which
+/// throws "empty path").
+#[wasm_bindgen(js_name = formatDocPath)]
+pub fn format_doc_path(
+    #[wasm_bindgen(unchecked_param_type = "DocPathSeg[]")] segs: JsValue,
+) -> Result<String, JsValue> {
+    let json = js_value_to_json(segs, "formatDocPath")?;
+    let doc_path: quillmark_core::DocPath = serde_json::from_value(json)
+        .map_err(|e| WasmError::from(format!("formatDocPath: {e}")).to_js_value())?;
+    if doc_path.segs().is_empty() {
+        return Err(WasmError::from("formatDocPath: empty path").to_js_value());
+    }
+    Ok(doc_path.to_string())
+}
+
 /// Map a base content position through a `delta` to its new position — the pure
 /// position-mapping codec an editor bridge composes to hold a caret stable
 /// across a `revise`. `assoc` decides the side of a same-position insertion
@@ -1824,22 +2073,38 @@ pub fn map_pos(
 
 // ── Edit helpers ──────────────────────────────────────────────────────────────
 
-/// Maps `EditError` to a JS `Error` with the variant name and details in the message.
-fn edit_error_to_js(err: &quillmark_core::EditError) -> JsValue {
-    WasmError::from(format!("[EditError::{}] {}", err.variant_name(), err)).to_js_value()
+/// Maps `EditError` to a JS `Error` carrying one diagnostic with the mutator's
+/// namespaced `edit::` code, its `Display` text as the message, and the
+/// `DocPath` it anchors to relative to `base` — the card root the mutator ran
+/// against (empty for main, `cards.<kind>[i]` for a card). One envelope shape
+/// for every producer: `{ severity, code, message, path? }`.
+fn edit_error_to_js(err: &quillmark_core::EditError, base: &quillmark_core::DocPath) -> JsValue {
+    let mut diagnostic =
+        quillmark_core::Diagnostic::new(quillmark_core::Severity::Error, err.to_string())
+            .with_code(err.code().to_string());
+    if let Some(path) = err.doc_path(base) {
+        diagnostic = diagnostic.with_path(path.to_string());
+    }
+    WasmError {
+        diagnostics: vec![diagnostic],
+    }
+    .to_js_value()
 }
 
 /// Batched-mutator twin of [`edit_error_to_js`]: one diagnostic per offending
-/// field, each with `path` set to the field name.
-fn edit_errors_to_js(errors: Vec<(String, quillmark_core::EditError)>) -> JsValue {
+/// field, each carrying the `edit::` code and its `DocPath` — the field keyed
+/// under `base` (a `$kind` / `$body` structural batch key rides the same
+/// serializer as an opaque head).
+fn edit_errors_to_js(
+    errors: Vec<(String, quillmark_core::EditError)>,
+    base: &quillmark_core::DocPath,
+) -> JsValue {
     let diagnostics: Vec<quillmark_core::Diagnostic> = errors
         .into_iter()
         .map(|(name, err)| {
-            quillmark_core::Diagnostic::new(
-                quillmark_core::Severity::Error,
-                format!("[EditError::{}] {}", err.variant_name(), err),
-            )
-            .with_path(name)
+            quillmark_core::Diagnostic::new(quillmark_core::Severity::Error, err.to_string())
+                .with_code(err.code().to_string())
+                .with_path(base.field(&name).to_string())
         })
         .collect();
     WasmError { diagnostics }.to_js_value()
@@ -2125,6 +2390,53 @@ export interface PaintResult {
 }
 "#;
 
+/// A backend plate-space geometry address → its `DocPath` string, keeping the
+/// original when it does not fit the geometry grammar. `kinds` is the compile's
+/// ordered card kinds — build it once per query and pass the slice, never per
+/// region.
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+fn plate_to_docpath(addr: &str, kinds: &[Option<&str>]) -> String {
+    quillmark_core::plate_addr_to_doc_path(addr, kinds)
+        .map(|p| p.to_string())
+        .unwrap_or_else(|| addr.to_string())
+}
+
+/// A `DocPath` address (from a consumer) → its plate-space form for the backend,
+/// keeping the original when it does not parse or place.
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+fn docpath_to_plate(addr: &str, kinds: &[Option<&str>]) -> String {
+    addr.parse::<quillmark_core::DocPath>()
+        .ok()
+        .and_then(|p| quillmark_core::doc_path_to_plate_addr(&p, kinds))
+        .unwrap_or_else(|| addr.to_string())
+}
+
+/// Rewrite every region's plate-space `field` to its `DocPath` string — the one
+/// funnel both the session queries (`regions`) and the render sidecar route
+/// through, so a `FieldRegion` that crosses the boundary always speaks `DocPath`.
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+fn regions_to_docpath(
+    regions: Vec<quillmark_core::RenderedRegion>,
+    kinds: &[Option<&str>],
+) -> Vec<quillmark_core::RenderedRegion> {
+    regions
+        .into_iter()
+        .map(|mut r| {
+            r.field = plate_to_docpath(&r.field, kinds);
+            r
+        })
+        .collect()
+}
+
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+impl LiveSession {
+    /// The card-kind lookup as `&[Option<&str>]` for the core translators —
+    /// built once per query.
+    fn kinds(&self) -> Vec<Option<&str>> {
+        self.card_kinds.iter().map(|k| k.as_deref()).collect()
+    }
+}
+
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 #[wasm_bindgen]
 impl LiveSession {
@@ -2176,6 +2488,9 @@ impl LiveSession {
             .inner
             .apply(&json_data)
             .map_err(|e| WasmError::from(e).to_js_value())?;
+        // The apply committed, so geometry now reflects `doc` — refresh the
+        // card-kind lookup the address translation reads.
+        self.card_kinds = card_kinds_of(&doc.inner);
         Ok(ChangeSet {
             page_count: cs.page_count,
             dirty_pages: cs.dirty_pages,
@@ -2197,21 +2512,29 @@ impl LiveSession {
             warnings: result.warnings.into_iter().map(Into::into).collect(),
             output_format: result.output_format.into(),
             render_time_ms: now_ms() - start,
-            regions: result.regions.into_iter().map(Into::into).collect(),
+            // Same `DocPath` grammar as `regions()` — one address grammar per session.
+            regions: regions_to_docpath(result.regions, &self.kinds())
+                .into_iter()
+                .map(Into::into)
+                .collect(),
         })
     }
 
     /// Schema-field geometry for this compiled session — each content field's
     /// **first placement** (one region per page it touches) plus widget and
-    /// scalar-reference-site regions, keyed on the quill schema field path; a
-    /// field may still appear more than once (group by `field`, see
-    /// `FieldRegion`). A session-level query: no render, no byte artifact. An
-    /// interactive preview reads it to scroll to / highlight the focused
-    /// field over a `paint`-ed canvas; the click direction is `fieldAt`.
+    /// scalar-reference-site regions, keyed on the canonical `DocPath` address
+    /// (`parseDocPath`-routable; the session resolves the backend's plate-space
+    /// per-kind ordinal to it); a field may still appear more than once (group
+    /// by `field`, see `FieldRegion`). A session-level query: no render, no byte
+    /// artifact. An interactive preview reads it to scroll to / highlight the
+    /// focused field over a `paint`-ed canvas; the click direction is `fieldAt`.
     /// Empty for backends that place no schema fields.
     #[wasm_bindgen(js_name = regions, unchecked_return_type = "FieldRegion[]")]
     pub fn regions(&self) -> Result<JsValue, JsValue> {
-        let regions: Vec<FieldRegion> = self.inner.regions().into_iter().map(Into::into).collect();
+        let regions: Vec<FieldRegion> = regions_to_docpath(self.inner.regions(), &self.kinds())
+            .into_iter()
+            .map(Into::into)
+            .collect();
         serialize_or_throw(&regions, "regions")
     }
 
@@ -2226,9 +2549,10 @@ impl LiveSession {
     /// `regions()`.
     #[wasm_bindgen(js_name = fieldBoxes, unchecked_return_type = "FieldRegion[]")]
     pub fn field_boxes(&self, field: &str) -> Result<JsValue, JsValue> {
-        let boxes: Vec<FieldRegion> = self
-            .inner
-            .field_boxes(field)
+        // `field` is a DocPath address; the backend filters in plate space.
+        let kinds = self.kinds();
+        let plate = docpath_to_plate(field, &kinds);
+        let boxes: Vec<FieldRegion> = regions_to_docpath(self.inner.field_boxes(&plate), &kinds)
             .into_iter()
             .map(Into::into)
             .collect();
@@ -2237,8 +2561,8 @@ impl LiveSession {
 
     /// The schema field whose content is under a point on `page` — the
     /// forward (click → field) direction: hit-test a click against the
-    /// compiled document and get back the field address to focus in the
-    /// editor, or `undefined` off any field's ink. `x`/`y` are PDF points
+    /// compiled document and get back the `DocPath` field address to focus in
+    /// the editor, or `undefined` off any field's ink. `x`/`y` are PDF points
     /// with a **bottom-left** origin, the same space as `FieldRegion.rect` —
     /// from a canvas click, invert the overlay transform documented on
     /// `FieldRegion`: `x = clickPx.x / renderScale`,
@@ -2246,7 +2570,9 @@ impl LiveSession {
     /// *every* placement answers, not just the first.
     #[wasm_bindgen(js_name = fieldAt)]
     pub fn field_at(&self, page: usize, x: f32, y: f32) -> Option<String> {
-        self.inner.field_at(page, x, y)
+        self.inner
+            .field_at(page, x, y)
+            .map(|f| plate_to_docpath(&f, &self.kinds()))
     }
 
     /// A point → **content position** — the fine-grained click direction:
@@ -2259,7 +2585,10 @@ impl LiveSession {
     /// `ContentHit`.
     #[wasm_bindgen(js_name = positionAt)]
     pub fn position_at(&self, page: usize, x: f32, y: f32) -> Option<ContentHit> {
-        self.inner.position_at(page, x, y).map(Into::into)
+        self.inner.position_at(page, x, y).map(|mut hit| {
+            hit.field = plate_to_docpath(&hit.field, &self.kinds());
+            hit.into()
+        })
     }
 
     /// A content position → **caret rect** — the reverse of `positionAt`: given
@@ -2269,7 +2598,14 @@ impl LiveSession {
     /// places no tracked content or the offset maps to no drawn glyph.
     #[wasm_bindgen(js_name = locate)]
     pub fn locate(&self, field: &str, pos: usize) -> Option<FieldRegion> {
-        self.inner.locate(field, pos).map(Into::into)
+        // `field` is a DocPath address; the backend resolves in plate space and
+        // the returned region's field translates back.
+        let kinds = self.kinds();
+        let plate = docpath_to_plate(field, &kinds);
+        self.inner.locate(&plate, pos).map(|mut r| {
+            r.field = plate_to_docpath(&r.field, &kinds);
+            r.into()
+        })
     }
 
     /// Page dimensions in points (1 pt = 1/72 inch).

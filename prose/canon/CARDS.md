@@ -105,6 +105,8 @@ See [`markdown-spec.md`](../references/markdown-spec.md) §3 for the full syntax
 - **All backends**: cards are delivered as `data.$cards`, an array of objects each containing a `$kind` discriminator, the card's payload fields, and a `$body` key with the card's body Markdown.
 - **`Quill::compile_data()`** returns the fully coerced and validated JSON, including `$cards`.
 
+The sigiled `data.$cards` here is plate JSON — glue delivered to the backend. It is a **different namespace** from the unsigiled `cards` in a `Diagnostic.path` (`cards.<kind>[<index>]`, the document-model anchor — see [ERROR.md](ERROR.md) § "Document-model paths"). The plate key is not renamed off `$cards`; the two namespaces are documented apart.
+
 ## Out-of-band Metadata (`$ext`)
 
 Per-card editor state — display renames, collapse flags, agent

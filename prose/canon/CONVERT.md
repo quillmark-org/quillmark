@@ -79,6 +79,24 @@ Anchor and unknown marks emit nothing; unknown island types emit nothing
 content — raw HTML other than `<u>`, HTML comments, `<br>`, math, footnotes, task
 lists, definition lists (markdown-spec §6.3) — is simply absent here.
 
+### Island props
+
+An island's `props` is a per-type canonical object — the shape this lowering
+reads and the shape the WASM boundary pins:
+
+- **`table`** → `{ header: Cell[], rows: Cell[][], aligns: Align[] }`. `header`
+  and each row hold `Cell = { text, marks }` (marks lowered through the sweep
+  above); `aligns` is one `none | left | center | right` per column. Import
+  normalizes to a single column count — header, every row, and `aligns` padded
+  to the widest — so `columns:` and `align:` agree.
+- **`image`** → `{ url, alt }`; `alt` is the empty string when the source omits it.
+
+The `KnownIslandType` dispatch (`crates/content/src/island.rs`) owns these
+shapes engine-side; the WASM surface pins them as `TableProps` / `ImageProps` /
+`TableCell` and types `ContentIsland.props` per the open `type`
+(`crates/bindings/wasm/src/engine.rs`). An island of any other type keeps opaque
+`props` and lowers to nothing, as above.
+
 ## Mark sweep
 
 Marks anchor freely and may overlap (Peritext semantics from an editor); Typst

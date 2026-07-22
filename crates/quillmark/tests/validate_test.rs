@@ -70,7 +70,7 @@ fn validate_forwards_type_mismatch_with_path_and_hint() {
         .iter()
         .find(|d| d.code.as_deref() == Some("validation::type_mismatch"))
         .expect("expected a type_mismatch diagnostic");
-    assert_eq!(diag.path.as_deref(), Some("count"));
+    assert_eq!(diag.path.as_deref(), Some("main.count"));
     assert!(diag.hint.is_some(), "type_mismatch should carry a hint");
 }
 
@@ -112,8 +112,8 @@ fn validate_warns_on_must_fill_marker() {
         .filter_map(|d| d.path.clone())
         .collect();
     assert!(
-        marked.contains(&"title".to_string())
-            && marked.contains(&"count".to_string())
+        marked.contains(&"main.title".to_string())
+            && marked.contains(&"main.count".to_string())
             && marked.contains(&"cards.note[0].label".to_string()),
         "main-card and composable-card !must_fill markers should all warn; \
          got paths: {marked:?}"

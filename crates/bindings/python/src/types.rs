@@ -688,7 +688,7 @@ impl PyWriter {
     }
 
     /// Typed-commit one main-card field (strict coerce, mismatch raises now).
-    /// Raises `[EditError::UnknownField]` for a name the schema does not declare.
+    /// Raises `edit::unknown_field` for a name the schema does not declare.
     fn set(&self, py: Python<'_>, name: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
         let qv = py_to_quillvalue(&value)?;
         let quill = self.quill.borrow(py);
@@ -702,7 +702,7 @@ impl PyWriter {
 
     /// Typed-commit several main-card fields atomically — nothing is applied on
     /// error, and the raised `QuillmarkError` carries one diagnostic per offending
-    /// field (an `[EditError::UnknownField]` per undeclared name).
+    /// field (an `edit::unknown_field` per undeclared name).
     fn set_all(&self, py: Python<'_>, fields: Bound<'_, PyDict>) -> PyResult<()> {
         let batch = pydict_to_field_batch(&fields)?;
         let quill = self.quill.borrow(py);
@@ -729,8 +729,8 @@ impl PyWriter {
     /// Revise the richtext main-card field `name` from markdown — typed *and*
     /// anchor-preserving. Surviving anchors rebase, then the diffed result is
     /// schema-conformed (a `richtext(inline)` field rejects a multi-block result
-    /// with `[EditError::FieldRichtextNotInline]`). Raises
-    /// `[EditError::UnknownField]` for a name the schema does not declare. The
+    /// with `edit::field_richtext_not_inline`). Raises
+    /// `edit::unknown_field` for a name the schema does not declare. The
     /// only field write that preserves a JS editor's anchors on a shared document
     /// (`set` cold-imports). The text `Delta` is discarded — the position-mapping
     /// receipt is an editor concern, and that lane is WASM-only; core and WASM
@@ -805,7 +805,7 @@ impl PyWriter {
 
 /// A composable card bound to its `Quill` for typed writes, from `Writer.card`.
 /// Same verbs as `Writer`, targeting the card at its bound index; each write
-/// raises `[EditError::IndexOutOfRange]` if that index is out of range.
+/// raises `edit::index_out_of_range` if that index is out of range.
 #[pyclass(name = "CardWriter")]
 pub struct PyCardWriter {
     quill: Py<PyQuill>,
@@ -822,7 +822,7 @@ impl PyCardWriter {
     }
 
     /// The bound card's `$kind`, or `None` when it carries none. Raises
-    /// `[EditError::IndexOutOfRange]` if the bound index is out of range. Mirrors
+    /// `edit::index_out_of_range` if the bound index is out of range. Mirrors
     /// core `CardWriter::kind()` / WASM `writer.card(i).kind`.
     #[getter]
     fn kind(&self, py: Python<'_>) -> PyResult<Option<String>> {
@@ -834,8 +834,8 @@ impl PyCardWriter {
     }
 
     /// Typed-commit one field on this card, resolving its type from the card's
-    /// `$kind` schema. Raises `[EditError::UnknownField]` for an undeclared name
-    /// and `[EditError::IndexOutOfRange]` for a bad index.
+    /// `$kind` schema. Raises `edit::unknown_field` for an undeclared name
+    /// and `edit::index_out_of_range` for a bad index.
     fn set(&self, py: Python<'_>, name: &str, value: Bound<'_, PyAny>) -> PyResult<()> {
         let qv = py_to_quillvalue(&value)?;
         let quill = self.quill.borrow(py);
@@ -878,8 +878,8 @@ impl PyCardWriter {
 
     /// Revise the richtext field `name` on this card from markdown — typed *and*
     /// anchor-preserving; the card twin of `Writer.revise_field`. Raises
-    /// `[EditError::UnknownField]` for an undeclared name and
-    /// `[EditError::IndexOutOfRange]` for a bad index. The `Delta` is discarded
+    /// `edit::unknown_field` for an undeclared name and
+    /// `edit::index_out_of_range` for a bad index. The `Delta` is discarded
     /// (see `Writer.revise_field`).
     fn revise_field(&self, py: Python<'_>, name: &str, markdown: &str) -> PyResult<()> {
         let quill = self.quill.borrow(py);
@@ -899,9 +899,9 @@ impl PyCardWriter {
 /// reads each field by its declared type: a richtext field to its markdown
 /// projection, a plaintext field to its literal text, every other type its
 /// canonical value verbatim. The schema authority is the point: a name the schema
-/// does not declare raises `[EditError::UnknownField]` (a typo, as on the write
+/// does not declare raises `edit::unknown_field` (a typo, as on the write
 /// side) rather than reading back `None`, and a content field holding an
-/// undecodable value raises `[EditError::FieldRichtextDecode]`. This is the field
+/// undecodable value raises `edit::field_richtext_decode`. This is the field
 /// read surface — `Document` carries no quill-free field read. Holds both objects
 /// by reference and re-borrows them per call (pyo3 objects carry no lifetime), so
 /// it is ephemeral by convention: bind, read, discard. Mirrors WASM
@@ -923,8 +923,8 @@ impl PyView {
     /// Read a main-card field, interpreted by its declared type: a richtext field
     /// to its markdown projection (a `str`), every other type its canonical value
     /// (scalar/list/dict), or `None` when the field is absent. Raises
-    /// `[EditError::UnknownField]` for a name the schema does not declare (a typo,
-    /// as on the write side) and `[EditError::FieldRichtextDecode]` for a richtext
+    /// `edit::unknown_field` for a name the schema does not declare (a typo,
+    /// as on the write side) and `edit::field_richtext_decode` for a richtext
     /// field holding a value that does not decode.
     fn get<'py>(&self, py: Python<'py>, name: &str) -> PyResult<Option<Bound<'py, PyAny>>> {
         let quill = self.quill.borrow(py);
@@ -958,7 +958,7 @@ impl PyView {
 
 /// A composable card bound to its `Quill` for interpreted reads, from
 /// `View.card`. Same verbs as `View`, reading the card at its bound index; each
-/// read raises `[EditError::IndexOutOfRange]` if that index is out of range.
+/// read raises `edit::index_out_of_range` if that index is out of range.
 #[pyclass(name = "CardView")]
 pub struct PyCardView {
     quill: Py<PyQuill>,
@@ -975,7 +975,7 @@ impl PyCardView {
     }
 
     /// The bound card's `$kind`, or `None` when it carries none. Raises
-    /// `[EditError::IndexOutOfRange]` if the bound index is out of range.
+    /// `edit::index_out_of_range` if the bound index is out of range.
     #[getter]
     fn kind(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let quill = self.quill.borrow(py);
@@ -986,8 +986,8 @@ impl PyCardView {
     }
 
     /// Read a field on this card, interpreted by its declared type — the
-    /// card-indexed twin of `View.get`. Raises `[EditError::UnknownField]` for an
-    /// undeclared name and `[EditError::IndexOutOfRange]` for a bad index.
+    /// card-indexed twin of `View.get`. Raises `edit::unknown_field` for an
+    /// undeclared name and `edit::index_out_of_range` for a bad index.
     fn get<'py>(&self, py: Python<'py>, name: &str) -> PyResult<Option<Bound<'py, PyAny>>> {
         let quill = self.quill.borrow(py);
         let doc = self.doc.borrow(py);
@@ -1001,7 +1001,7 @@ impl PyCardView {
     }
 
     /// This card's body markdown — the card twin of `View.get_body`. Raises
-    /// `[EditError::IndexOutOfRange]` if the bound index is out of range.
+    /// `edit::index_out_of_range` if the bound index is out of range.
     fn get_body(&self, py: Python<'_>) -> PyResult<String> {
         let doc = self.doc.borrow(py);
         let card = doc

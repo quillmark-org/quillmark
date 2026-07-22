@@ -46,7 +46,10 @@ pub mod types;
 pub use types::{Artifact, OutputFormat, RenderOptions};
 
 pub mod region;
-pub use region::{field_boxes, ContentHit, HitGranularity, RenderedRegion};
+pub use region::{
+    doc_path_to_plate_addr, field_boxes, plate_addr_to_doc_path, ContentHit, HitGranularity,
+    RenderedRegion,
+};
 
 pub mod session;
 pub use session::{ApplyError, Assoc, ChangeSet, Delta, LineOp, LiveSession, MarkOp, Op};
@@ -57,10 +60,16 @@ pub use session::{ApplyError, Assoc, ChangeSet, Delta, LineOp, LiveSession, Mark
 pub use quillmark_content::Content;
 
 pub mod quill;
-pub use quill::{zero_value, FileTreeNode, Quill, QuillIgnore, STANDARD_METADATA_KEYS};
+pub use quill::{
+    zero_value, CardStates, FieldSource, FieldState, FieldStates, FileTreeNode, MainStates, Quill,
+    QuillIgnore, STANDARD_METADATA_KEYS,
+};
 
 pub mod value;
 pub use value::{json_depth_exceeds, PathSegment, QuillValue};
+
+pub mod path;
+pub use path::{DocPath, DocSeg};
 
 pub mod normalize;
 

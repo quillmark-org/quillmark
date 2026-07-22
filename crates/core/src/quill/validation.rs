@@ -2,6 +2,7 @@ use indexmap::IndexMap;
 
 use crate::document::Document;
 use crate::error::{Diagnostic, Severity};
+use crate::path::DocPath;
 use crate::quill::formats::{is_valid_date, is_valid_datetime};
 use crate::quill::{CardSchema, FieldSchema, FieldType, QuillConfig};
 use crate::value::QuillValue;
@@ -281,34 +282,32 @@ pub fn validate_typed_document(
     doc: &Document,
 ) -> Result<(), Vec<ValidationError>> {
     let main_fields = doc.main().payload().to_index_map();
-    let mut errors = validate_fields_for_card_indexmap(&config.main, &main_fields, "");
+    let mut errors = validate_fields_for_card_indexmap(&config.main, &main_fields, &DocPath::main());
 
     // Enforce body.enabled on the main card. Whitespace-only bodies are
     // treated as empty — only meaningful prose triggers the diagnostic.
     if !config.main.body_enabled() && !doc.main().body().is_blank() {
         errors.push(ValidationError::BodyDisabled {
-            path: "main.body".to_string(),
+            path: DocPath::main_body().to_string(),
             card: "main".to_string(),
         });
     }
 
     for (index, card) in doc.cards().iter().enumerate() {
         let card_name = card.kind().unwrap_or("").to_string();
-        let item_path = format!("cards[{index}]");
-        // NOTE: `cards[N]` is the document-instance-side path (the cards
-        // array on a Document). Card-kind definitions live under
-        // `card_kinds:` in Quill.yaml, but instances on a document are
-        // still a `cards` list.
 
         let Some(card_schema) = config.card_kind(card_name.as_str()) else {
+            // An unknown-kind card has no kind to qualify with: `cards[<i>]`,
+            // the sole bare-index root. (A document's cards are always a
+            // `cards` list; the kind *definitions* live under `card_kinds:`.)
             errors.push(ValidationError::UnknownCard {
-                path: item_path,
+                path: DocPath::card(None, index).to_string(),
                 card: card_name,
             });
             continue;
         };
 
-        let card_path = format!("cards.{card_name}[{index}]");
+        let card_path = DocPath::card(Some(&card_name), index);
         let card_fields = card.payload().to_index_map();
         errors.extend(validate_fields_for_card_indexmap(
             card_schema,
@@ -318,7 +317,7 @@ pub fn validate_typed_document(
 
         if !card_schema.body_enabled() && !card.body().is_blank() {
             errors.push(ValidationError::BodyDisabled {
-                path: format!("{card_path}.body"),
+                path: card_path.body().to_string(),
                 card: card_name,
             });
         }
@@ -334,7 +333,7 @@ pub fn validate_typed_document(
 fn validate_fields_for_card_indexmap(
     card: &CardSchema,
     fields: &IndexMap<String, QuillValue>,
-    base_path: &str,
+    base: &DocPath,
 ) -> Vec<ValidationError> {
     let mut errors = Vec::new();
     let mut field_names: Vec<&String> = card.fields.keys().collect();
@@ -342,7 +341,7 @@ fn validate_fields_for_card_indexmap(
 
     for field_name in field_names {
         let schema = &card.fields[field_name];
-        let path = child_path(base_path, field_name);
+        let path = base.field(field_name);
         // Absence is a completeness concern, not a well-formedness one: an
         // absent field — like a present-null one — is zero-filled at render and
         // raises nothing here.
@@ -375,7 +374,7 @@ enum ValueContext {
 fn validate_value(
     field: &FieldSchema,
     value: &QuillValue,
-    path: &str,
+    path: &DocPath,
     ctx: ValueContext,
 ) -> Vec<ValidationError> {
     // Null ≡ absent: a present-null value in a document is treated as omitted
@@ -450,7 +449,7 @@ fn validate_value(
                 // their properties via the Object branch.
                 if let Some(item_schema) = &field.items {
                     for (idx, item) in items.iter().enumerate() {
-                        let row_path = format!("{}[{}]", path, idx);
+                        let row_path = path.index(idx);
                         errors.extend(validate_value(
                             item_schema,
                             &QuillValue::from_json(item.clone()),
@@ -470,7 +469,7 @@ fn validate_value(
                     property_names.sort();
                     for property_name in property_names {
                         let property_schema = &properties[property_name];
-                        let property_path = child_path(path, property_name);
+                        let property_path = path.field(property_name);
                         // Absent object property: completeness, not
                         // well-formedness. Like a top-level absent field, it
                         // zero-fills at render and raises nothing here.
@@ -578,7 +577,7 @@ fn validate_value(
 pub(crate) fn validate_field(
     field: &FieldSchema,
     value: &QuillValue,
-    path: &str,
+    path: &DocPath,
 ) -> Vec<ValidationError> {
     validate_value(field, value, path, ValueContext::Document)
 }
@@ -593,7 +592,7 @@ pub(crate) fn validate_field(
 pub(crate) fn validate_schema_literal(
     schema: &FieldSchema,
     value: &QuillValue,
-    path: &str,
+    path: &DocPath,
 ) -> Vec<ValidationError> {
     validate_value(schema, value, path, ValueContext::SchemaLiteral)
 }
@@ -610,14 +609,6 @@ fn expected_type_name(field_type: &FieldType) -> &'static str {
         FieldType::Boolean => "boolean",
         FieldType::Array => "array",
         FieldType::Object => "object",
-    }
-}
-
-fn child_path(parent: &str, child: &str) -> String {
-    if parent.is_empty() {
-        child.to_string()
-    } else {
-        format!("{parent}.{child}")
     }
 }
 
@@ -699,7 +690,7 @@ main:
         assert!(has_error(&errors, |e| matches!(
             e,
             ValidationError::TypeMismatch { path, expected, actual, source_token, .. }
-            if path == "title" && expected == "string" && actual == "array" && source_token == "[…]"
+            if path == "main.title" && expected == "string" && actual == "array" && source_token == "[…]"
         )));
     }
 
@@ -718,7 +709,7 @@ main:
         assert!(has_error(&errors, |e| matches!(
             e,
             ValidationError::TypeMismatch { path, expected, actual, source_token, .. }
-            if path == "count" && expected == "integer" && actual == "number" && source_token == "9.5"
+            if path == "main.count" && expected == "integer" && actual == "number" && source_token == "9.5"
         )));
     }
 
@@ -996,7 +987,7 @@ main:
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
             e,
-            ValidationError::NotInline { path } if path == "tag"
+            ValidationError::NotInline { path } if path == "main.tag"
         )));
     }
 
