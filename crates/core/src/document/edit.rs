@@ -161,7 +161,8 @@ impl EditError {
         }
     }
 
-    /// The [`DocPath`] this error anchors to, relative to `base` — the card root
+    /// The [`DocPath`](crate::path::DocPath) this error anchors to, relative to
+    /// `base` — the card root
     /// the mutator ran against (empty for a main-card mutator, `cards.<kind>[i]`
     /// for a composable card, `cards[i]` for a structural op on the array).
     ///

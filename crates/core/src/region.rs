@@ -97,7 +97,7 @@ pub struct RenderedRegion {
     /// `"signature_block"` or `"$cards.<kind>.<ordinal>.<field>"` (a per-kind
     /// ordinal). This is the backend-native form; a binding that owns the
     /// document's card kinds translates it to a canonical
-    /// [`DocPath`](crate::DocPath) at its boundary
+    /// [`DocPath`] at its boundary
     /// ([`plate_addr_to_doc_path`]), so its consumers see one absolute-index
     /// grammar. A core consumer reading `RenderedRegion` directly sees the
     /// plate-space form.
