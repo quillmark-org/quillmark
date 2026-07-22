@@ -1,7 +1,15 @@
 # Quill Resource File Structure and API
 
 > **Implementation**: `crates/core/src/quill/` (the `Quill` type and its
-> operations), `crates/quillmark/src/load.rs` (filesystem loading)
+> operations), `crates/quillmark/src/` (filesystem loading)
+
+## TL;DR
+
+A `Quill` is a loaded template bundle — file tree plus parsed `Quill.yaml`
+config — tagged with its declared backend id but holding no backend and
+needing no engine. It carries the pure config-read operations (`validate`,
+`schema`, `blueprint`, `seed_*`, `compile_data`, `dry_run`); rendering is the
+engine's job.
 
 ## The `Quill` type
 

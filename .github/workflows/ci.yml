@@ -22,6 +22,16 @@ env:
   CARGO_PROFILE_TEST_DEBUG: 0
 
 jobs:
+  canon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Enforces the canon doc spine and prose link invariants specified in
+      # prose/README.md. Zero deps; runs on the runner's preinstalled node.
+      - name: Check canon spine
+        run: node scripts/check-canon.mjs
+
   lint:
     runs-on: ubuntu-latest
     steps:

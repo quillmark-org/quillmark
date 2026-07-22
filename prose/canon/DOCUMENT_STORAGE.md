@@ -2,7 +2,7 @@
 
 > **Implementation**: `crates/core/src/document/`
 
-## Overview
+## TL;DR
 
 `Document` is the typed in-memory model of a Quillmark Markdown file. Its
 layout tracks the evolving Quillmark model and is **not** a stable interface.

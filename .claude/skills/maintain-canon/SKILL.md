@@ -10,24 +10,14 @@ high level — enough that a human or AI can get the gist without reading the
 whole codebase. Canon describes *what is* and points into the code; it does not
 re-document implementation detail that the code already carries.
 
-## Meta-structure
+## Structure
 
-- `prose/canon/` — settled truth. One concept per page. Indexed by `INDEX.md`.
-- `prose/proposals/` — fleshed-out proposed changes, not yet implemented.
-
-Canon never references proposals or plans.
-
-## Doc spine
-
-Every canon doc opens with a `# Title`, then a one-line `Implementation`
-blockquote anchor, then a `## TL;DR` of two or three sentences. Title, the
-anchor, and the TL;DR are mandatory; other sections (When to use, How, Gotchas,
-Links) are optional — add them when they help.
-
-- The `Implementation` anchor points at a folder or module, never a file and
-  never a line number. It is the navigational hook from concept to code.
-- No `Status` line — membership in canon means settled and implemented. Mark
-  status only for genuine exceptions (e.g. a draft specification).
+`prose/README.md` is the single source of truth for structure: the four prose
+tiers (`canon/`, `references/`, `proposals/`, `plans/`), the canon doc spine
+(Title → `Implementation` anchor → `## TL;DR`), and the link invariants (canon
+never references proposals or plans; references never link out to other prose
+docs). Read it before editing canon. `scripts/check-canon.mjs` enforces the
+spine and link invariants in CI.
 
 ## Principles
 

@@ -2,6 +2,14 @@
 
 > **Implementation**: `crates/core/src/`
 
+## TL;DR
+
+Every failure travels as a `Diagnostic`: severity, namespaced `code`, message,
+optional text `location` and document-model `path`. `RenderError` carries a
+non-empty `Vec<Diagnostic>` and has no failure taxonomy beyond them —
+consumers route on codes, not types. Warnings ride the same currency and
+never block.
+
 ## Types
 
 **`Severity`**: `Error` | `Warning`. Fatality is this two-value ladder and

@@ -3,7 +3,7 @@
 > **Implementation**: `crates/core/src/quill/`
 > **Related**: [SCHEMAS.md](SCHEMAS.md), [QUILL.md](QUILL.md)
 
-## Overview
+## TL;DR
 
 Cards are structured-data blocks inline within document content. All cards are stored in a single `$cards` array on the plate JSON, discriminated by each card's `$kind` value.
 

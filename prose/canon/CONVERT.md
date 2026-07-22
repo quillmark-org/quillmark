@@ -1,6 +1,6 @@
 # Content → Typst Lowering
 
-> **Implementation**: `crates/backends/typst/src/emit.rs`
+> **Implementation**: `crates/backends/typst/src/` (the `emit` module)
 
 ## TL;DR
 
