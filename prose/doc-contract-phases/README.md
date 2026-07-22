@@ -24,14 +24,15 @@ to any of them breaks the pinned consumer while upstream CI stays green.
   **per-kind ordinals**: different syntax *and* different index semantics from
   document-model paths. This is the boundary's highest-traffic parsed string —
   the editor parses it on every diagnostic route and pointer interaction and
-  bridges ordinals→absolute indices itself. *Open — phase 2's remaining work.*
+  bridges ordinals→absolute indices itself. *Cured — phase 2.*
 - **Consumer-side resolution** — the commitment ladder is engine semantics, but
   the editor shims the default rung (schema `default:` bound as a control
   placeholder) because no engine projection exposes resolved values. *Phase 3.*
 - **Untyped reach-arounds** — the typed surface is narrower than what its
   consumer reads: `QuillCardUi` omits `groups` (the editor casts around it),
   `ContentIsland.props` is `unknown` (the codec keeps hand-written shapes the
-  surface does not pin). *Phase 4.*
+  surface does not pin). *Cured engine-side — phase 4; editor deletions land
+  in `quillmark-editor`.*
 - **No executable cross-repo check** — nothing runs the same expectations in
   both repos. *Phase 5.*
 

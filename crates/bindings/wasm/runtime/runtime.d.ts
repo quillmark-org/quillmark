@@ -45,6 +45,7 @@ export type {
 	QuillCardBody,
 	QuillFieldUi,
 	QuillCardUi,
+	QuillGroupUi,
 	QuillMetadata
 } from '../core/wasm.js';
 
@@ -62,6 +63,9 @@ export type {
 	ContentContainer,
 	ContentMark,
 	ContentIsland,
+	TableProps,
+	ImageProps,
+	TableCell,
 	CardInput,
 	PathStep,
 	Addr,

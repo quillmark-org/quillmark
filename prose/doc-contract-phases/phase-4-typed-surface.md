@@ -40,3 +40,22 @@ surface pins. Two known instances:
   boundary types instead of tracking them by hand.
 - Additive only — no break. Ships with 0.96 or after, independent of
   phases 1–3.
+
+## Status
+
+**Shipped** the engine side. `QuillCardUi` gains
+`groups?: Record<string, QuillGroupUi>` — the canonical mapping form
+(`UiCardSchema`'s serializer) the wire already carried, just untyped.
+`ContentIsland.props` is typed per the open `type` as `TableProps` /
+`ImageProps` (with `TableCell`), an open discriminated union mirroring
+`ContentMark` so an unschematized island type keeps opaque `props` — the shapes
+`KnownIslandType` already owns engine-side, now pinned at the boundary. (Like
+`ContentMark`, the open arm means TS does not auto-narrow `props` on a
+discriminant check; the value is single-source shapes, not narrowing ergonomics.) All four
+new types re-export from `@quillmark/wasm` and are held present by the
+`runtime.types.test-d.ts` drift guard. The audit found no third gap:
+`title` / `group` / `compact` / `multiline` are the only other emitted `ui`
+keys, all already typed. Canon home: [CONVERT.md](../canon/CONVERT.md) § Island
+props. The consumer-side half — the editor's `groups` cast and its codec's
+hand-written island schemas — deletes in `quillmark-editor` against these types,
+as phase 2's `parsePath` removal does; the ledger seams retire there.

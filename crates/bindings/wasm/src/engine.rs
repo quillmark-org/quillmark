@@ -25,9 +25,23 @@ export interface QuillFieldUi {
     multiline?: boolean;
 }
 
+/** One entry in a card's `ui.groups` registry: a display-label override for the
+ * group id (the map key). An empty object carries no override — the consumer
+ * derives the label from the id (`memo_for` → "Memo For"), as it does a field
+ * label from its key. */
+export interface QuillGroupUi {
+    title?: string;
+}
+
 /** UI layout hints for a card (main or named card kind). */
 export interface QuillCardUi {
     title?: string;
+    /** The card's group registry: the ordered table of contents naming every
+     * group a field's `ui.group` may reference. The map key is the group id, and
+     * key order is declaration order — the display-order contract, the same one
+     * `fields` key order carries. Absent when the card declares no groups (or
+     * uses the deprecated implicit-group form). */
+    groups?: Record<string, QuillGroupUi>;
 }
 
 /** Body namespace for a card (main or named card kind). */
@@ -221,14 +235,44 @@ export type ContentMark = { start: number; end: number } & (
     | { type: string; attrs: unknown }
 );
 
-/** A structured object (table, figure, …) occupying one island slot in `Content.text`. */
-export interface ContentIsland {
+/** A cell in a `TableProps` — its plain `text` plus the `marks` over it. `marks`
+ * rides the same wire shape as prose `ContentMark`, but each mark's `start`/`end`
+ * are USV offsets into this cell's `text` (`0..text.length`), not into
+ * `Content.text`. */
+export interface TableCell {
+    text: string;
+    marks: ContentMark[];
+}
+
+/** `props` of a `type: "table"` island: a pipe table normalized to one column
+ * count that `header`, every row of `rows`, and `aligns` all share. */
+export interface TableProps {
+    header: TableCell[];
+    rows: TableCell[][];
+    /** Per-column alignment, one entry per column. */
+    aligns: ("none" | "left" | "center" | "right")[];
+}
+
+/** `props` of a `type: "image"` island. */
+export interface ImageProps {
+    url: string;
+    alt: string;
+}
+
+/** A structured object occupying one island slot in `Content.text`. `type` is an
+ * open set: the engine pins `props` as `TableProps` for `table` and `ImageProps`
+ * for `image`; an island of any other type round-trips with opaque `props`. Like
+ * `ContentMark`, the open `type` arm means a discriminant check does not itself
+ * narrow `props` — key off `type` and read `props` as the matching shape. */
+export type ContentIsland = {
     id: string;
-    type: string;
-    props: unknown;
     /** How faithfully the markdown projection can carry this island. */
     loss: "lossless" | "degraded" | "unrepresentable";
-}
+} & (
+    | { type: "table"; props: TableProps }
+    | { type: "image"; props: ImageProps }
+    | { type: string; props: unknown }
+);
 
 /**
  * A write address — one navigation concept for the whole `Document` surface. An
