@@ -152,8 +152,12 @@ pub enum MarkKind {
 /// embed — occupying one [`ISLAND_SLOT`] in the content.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Island {
-    /// Minted, `$id`-style stable id — once islands mint their own ids, this
-    /// becomes the sole source of hash nondeterminism; text stays deterministic.
+    /// Deterministically minted, session-stable id — `isl-{n}` by import
+    /// position (`import::mint_island`). Part of the canonical form and thus
+    /// hash input; deterministic by contract, never ambient, so equal content
+    /// hashes equal (`DOCUMENT_STORAGE.md` § Island-id determinism). Edits keep
+    /// it stable rather than re-deriving it, so [`Content::validate`] enforces
+    /// uniqueness, not positional equality.
     pub id: String,
     /// Island type discriminator (`"table"`, `"image"`, …). Unknown types
     /// round-trip opaque.
@@ -327,10 +331,12 @@ pub enum Invariant {
     /// would break the exported table). `cell` is the flat header-then-rows
     /// index; `normalize` rewrites the newline to a space.
     TableCellNewline { cell: usize },
-    /// Two islands share an `id`. Ids are a minted, stable identity (the sole
-    /// source of hash nondeterminism); import mints them by index so they never
-    /// collide, but a hand-built or round-tripped content can. Downstream code
-    /// that keys islands by id would otherwise silently pick the wrong one.
+    /// Two islands share an `id`. Ids are deterministic, session-stable
+    /// identities (hash input, so never ambient); import mints them by index so
+    /// they never collide, but a hand-built or round-tripped content can.
+    /// Downstream code that keys islands by id would otherwise silently pick the
+    /// wrong one. Uniqueness is the id invariant `validate` enforces — positional
+    /// equality is not, since edits keep an island's id stable across renumbers.
     IslandIdCollision { id: String },
     /// A table island's `header` prop is present but not a JSON array — it
     /// cannot carry column cells. `normalize` rewrites a non-array header to an
@@ -536,8 +542,9 @@ impl Content {
         // hold no `\n`, so the edge-on-newline rule does not apply.
         let mut seen_ids = std::collections::HashSet::with_capacity(self.islands.len());
         for island in &self.islands {
-            // Ids are a minted, stable identity — the sole source of hash
-            // nondeterminism — so two islands may not share one.
+            // Ids are deterministic, session-stable identities (hash input), so
+            // two islands may not share one. Uniqueness — not `id == isl-{i}` —
+            // is the invariant: edits keep an island's id across renumbers.
             if !seen_ids.insert(island.id.as_str()) {
                 return Err(Invariant::IslandIdCollision {
                     id: island.id.clone(),

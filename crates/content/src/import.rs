@@ -26,9 +26,11 @@
 //!   empty paragraph, empty `- ` item, or empty `>` quote each yields one empty
 //!   line so the structure survives, rather than vanishing.
 //! - **Island ids are minted sequentially** (`isl-0`, `isl-1`, …) so import is a
-//!   pure, deterministic function. Real minting (the hash-nondeterminism source)
-//!   is not yet implemented; sequential ids round-trip (export drops them,
-//!   re-import re-mints the same sequence).
+//!   pure, deterministic function of its markdown. This positional scheme is
+//!   normative: ids are hash input, so a producer must derive them
+//!   deterministically and never from an ambient source (`DOCUMENT_STORAGE.md`
+//!   § Island-id determinism). Sequential ids round-trip — export drops them,
+//!   re-import re-mints the same sequence.
 //! - **Tables and images are islands.** Tables are block islands (their own
 //!   `Island` line); images are inline island slots. Both `Lossless` — pipe
 //!   tables and `![alt](url)` carry them faithfully.
@@ -404,7 +406,9 @@ impl Builder {
 
     /// Mint an island of a *known* type — the importer can only produce the
     /// closed set, so an unknown type can enter the system through storage
-    /// deserialization but never through import.
+    /// deserialization but never through import. The `isl-{seq}` id is the
+    /// normative deterministic scheme (`DOCUMENT_STORAGE.md` § Island-id
+    /// determinism); minting by position keeps import a pure function.
     fn mint_island(&mut self, kind: KnownIslandType, props: serde_json::Value, loss: Loss) {
         let id = format!("isl-{}", self.island_seq);
         self.island_seq += 1;
@@ -1419,6 +1423,27 @@ mod tests {
         assert_eq!(rt.islands.len(), 1);
         assert_eq!(rt.islands[0].island_type, "table");
         assert_eq!(rt.islands[0].loss, Loss::Lossless);
+    }
+
+    #[test]
+    fn island_ids_are_deterministic_and_positional() {
+        // Island-id determinism (DOCUMENT_STORAGE.md § Island-id determinism):
+        // ids derive from mint position, so the same markdown imports to
+        // byte-identical canonical JSON — ids included — and the ids are exactly
+        // the `isl-{n}` sequence. This is the contract that keeps content-hashes
+        // stable across producers; a random/ambient id would break it.
+        let md = "![a](x)\n\n| h |\n|---|\n| c |";
+        let a = imp(md);
+        let b = imp(md);
+        assert_eq!(a.to_canonical_json(), b.to_canonical_json());
+        assert!(
+            a.islands.len() >= 2,
+            "expected an image and a table island, got {}",
+            a.islands.len()
+        );
+        for (i, island) in a.islands.iter().enumerate() {
+            assert_eq!(island.id, format!("isl-{i}"));
+        }
     }
 
     #[test]

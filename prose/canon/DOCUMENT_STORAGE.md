@@ -133,6 +133,33 @@ change. Two ways to manage this:
   guarantee is required) or an accepted, logged hash movement on
   not-yet-migrated rows.
 
+## Island-id determinism
+
+An island's `id` is part of the canonical form (`{id, type, props, loss}`),
+so it is hash input like every other field, and byte-stability's promise —
+equal content → equal bytes, *whatever the producer* — requires that equal
+islands carry equal ids. The rule: **an id is a deterministic function of
+content, never drawn from an ambient source** (RNG, wall-clock, UUID,
+allocation identity, session or process state). An ambient id would make
+re-importing the same markdown yield different bytes for the same document,
+silently breaking divergence detection and cache keys.
+
+The normative scheme is the importer's positional `isl-{n}` — the nth island
+minted takes `isl-{n-1}` (`mint_island`), so cold import is a pure function
+of its markdown; export drops ids and re-import re-mints the same sequence.
+Ids then travel with their island across edits — deleting a slot drops that
+island and survivors keep their ids — so an id is *stable within a session*,
+not re-derived from position. The invariant that holds for every `Content`,
+checked by `Content::validate`, is therefore **uniqueness**
+(`Invariant::IslandIdCollision`), not `id == isl-{index}`: after an edit
+`isl-1` may legitimately sit at index 0.
+
+This resolves the id in favor of keeping "canonical bytes == hash input"
+exact — no id-stripping in the hash, no separate hash form. Any future
+id-minting producer (a live editor, a richer island type) is bound by the
+same rule: continue the positional sequence for appended islands; never mint
+an ambient id.
+
 ## Schema Versioning
 
 The schema version is tied to the **crate version at which the `Document`
