@@ -179,9 +179,9 @@ impl EditError {
         match self {
             EditError::InvalidFieldName(f)
             | EditError::UnknownField(f)
-            | EditError::FieldRichtextNotInline(f) => Some(base.field(f)),
-            EditError::FieldConform { field, .. }
-            | EditError::FieldRichtextDecode { field, .. } => Some(base.field(field)),
+            | EditError::FieldRichtextNotInline(f)
+            | EditError::FieldConform { field: f, .. }
+            | EditError::FieldRichtextDecode { field: f, .. } => Some(base.field(f)),
             EditError::IndexOutOfRange { index, .. } => Some(DocPath::card(None, *index)),
             _ => (!base.segs().is_empty()).then(|| base.clone()),
         }

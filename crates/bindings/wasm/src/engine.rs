@@ -449,12 +449,18 @@ impl Quillmark {
         let mut warnings: Vec<Diagnostic> =
             doc.parse_warnings.iter().cloned().map(Into::into).collect();
         warnings.extend(result.warnings.into_iter().map(Into::into));
+        // The regions sidecar keys on `DocPath` like `session.regions()`, so a
+        // consumer sees one address grammar however it reads geometry.
+        let kinds: Vec<Option<&str>> = doc.inner.cards().iter().map(|c| c.kind()).collect();
         Ok(RenderResult {
             artifacts: result.artifacts.into_iter().map(Into::into).collect(),
             warnings,
             output_format: result.output_format.into(),
             render_time_ms: now_ms() - start,
-            regions: result.regions.into_iter().map(Into::into).collect(),
+            regions: regions_to_docpath(result.regions, &kinds)
+                .into_iter()
+                .map(Into::into)
+                .collect(),
         })
     }
 
@@ -2337,37 +2343,50 @@ export interface PaintResult {
 }
 "#;
 
+/// A backend plate-space geometry address → its `DocPath` string, keeping the
+/// original when it does not fit the geometry grammar. `kinds` is the compile's
+/// ordered card kinds — build it once per query and pass the slice, never per
+/// region.
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+fn plate_to_docpath(addr: &str, kinds: &[Option<&str>]) -> String {
+    quillmark_core::plate_addr_to_doc_path(addr, kinds)
+        .map(|p| p.to_string())
+        .unwrap_or_else(|| addr.to_string())
+}
+
+/// A `DocPath` address (from a consumer) → its plate-space form for the backend,
+/// keeping the original when it does not parse or place.
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+fn docpath_to_plate(addr: &str, kinds: &[Option<&str>]) -> String {
+    addr.parse::<quillmark_core::DocPath>()
+        .ok()
+        .and_then(|p| quillmark_core::doc_path_to_plate_addr(&p, kinds))
+        .unwrap_or_else(|| addr.to_string())
+}
+
+/// Rewrite every region's plate-space `field` to its `DocPath` string — the one
+/// funnel both the session queries (`regions`) and the render sidecar route
+/// through, so a `FieldRegion` that crosses the boundary always speaks `DocPath`.
+#[cfg(any(feature = "typst", feature = "pdfform"))]
+fn regions_to_docpath(
+    regions: Vec<quillmark_core::RenderedRegion>,
+    kinds: &[Option<&str>],
+) -> Vec<quillmark_core::RenderedRegion> {
+    regions
+        .into_iter()
+        .map(|mut r| {
+            r.field = plate_to_docpath(&r.field, kinds);
+            r
+        })
+        .collect()
+}
+
 #[cfg(any(feature = "typst", feature = "pdfform"))]
 impl LiveSession {
-    /// The card-kind lookup as `&[Option<&str>]` for the core translators.
+    /// The card-kind lookup as `&[Option<&str>]` for the core translators —
+    /// built once per query.
     fn kinds(&self) -> Vec<Option<&str>> {
         self.card_kinds.iter().map(|k| k.as_deref()).collect()
-    }
-
-    /// A backend plate-space geometry address → its `DocPath` string, keeping
-    /// the original when it does not fit the geometry grammar.
-    fn plate_to_docpath(&self, addr: &str) -> String {
-        quillmark_core::plate_addr_to_doc_path(addr, &self.kinds())
-            .map(|p| p.to_string())
-            .unwrap_or_else(|| addr.to_string())
-    }
-
-    /// A `DocPath` address (from a consumer) → its plate-space form for the
-    /// backend, keeping the original when it does not parse or place.
-    fn docpath_to_plate(&self, addr: &str) -> String {
-        addr.parse::<quillmark_core::DocPath>()
-            .ok()
-            .and_then(|p| quillmark_core::doc_path_to_plate_addr(&p, &self.kinds()))
-            .unwrap_or_else(|| addr.to_string())
-    }
-
-    /// A region with its plate-space `field` rewritten to its `DocPath` string.
-    fn region_to_docpath(
-        &self,
-        mut r: quillmark_core::RenderedRegion,
-    ) -> quillmark_core::RenderedRegion {
-        r.field = self.plate_to_docpath(&r.field);
-        r
     }
 }
 
@@ -2446,7 +2465,11 @@ impl LiveSession {
             warnings: result.warnings.into_iter().map(Into::into).collect(),
             output_format: result.output_format.into(),
             render_time_ms: now_ms() - start,
-            regions: result.regions.into_iter().map(Into::into).collect(),
+            // Same `DocPath` grammar as `regions()` — one address grammar per session.
+            regions: regions_to_docpath(result.regions, &self.kinds())
+                .into_iter()
+                .map(Into::into)
+                .collect(),
         })
     }
 
@@ -2461,11 +2484,9 @@ impl LiveSession {
     /// Empty for backends that place no schema fields.
     #[wasm_bindgen(js_name = regions, unchecked_return_type = "FieldRegion[]")]
     pub fn regions(&self) -> Result<JsValue, JsValue> {
-        let regions: Vec<FieldRegion> = self
-            .inner
-            .regions()
+        let regions: Vec<FieldRegion> = regions_to_docpath(self.inner.regions(), &self.kinds())
             .into_iter()
-            .map(|r| self.region_to_docpath(r).into())
+            .map(Into::into)
             .collect();
         serialize_or_throw(&regions, "regions")
     }
@@ -2482,12 +2503,11 @@ impl LiveSession {
     #[wasm_bindgen(js_name = fieldBoxes, unchecked_return_type = "FieldRegion[]")]
     pub fn field_boxes(&self, field: &str) -> Result<JsValue, JsValue> {
         // `field` is a DocPath address; the backend filters in plate space.
-        let plate = self.docpath_to_plate(field);
-        let boxes: Vec<FieldRegion> = self
-            .inner
-            .field_boxes(&plate)
+        let kinds = self.kinds();
+        let plate = docpath_to_plate(field, &kinds);
+        let boxes: Vec<FieldRegion> = regions_to_docpath(self.inner.field_boxes(&plate), &kinds)
             .into_iter()
-            .map(|r| self.region_to_docpath(r).into())
+            .map(Into::into)
             .collect();
         serialize_or_throw(&boxes, "fieldBoxes")
     }
@@ -2505,7 +2525,7 @@ impl LiveSession {
     pub fn field_at(&self, page: usize, x: f32, y: f32) -> Option<String> {
         self.inner
             .field_at(page, x, y)
-            .map(|f| self.plate_to_docpath(&f))
+            .map(|f| plate_to_docpath(&f, &self.kinds()))
     }
 
     /// A point → **content position** — the fine-grained click direction:
@@ -2519,7 +2539,7 @@ impl LiveSession {
     #[wasm_bindgen(js_name = positionAt)]
     pub fn position_at(&self, page: usize, x: f32, y: f32) -> Option<ContentHit> {
         self.inner.position_at(page, x, y).map(|mut hit| {
-            hit.field = self.plate_to_docpath(&hit.field);
+            hit.field = plate_to_docpath(&hit.field, &self.kinds());
             hit.into()
         })
     }
@@ -2533,10 +2553,12 @@ impl LiveSession {
     pub fn locate(&self, field: &str, pos: usize) -> Option<FieldRegion> {
         // `field` is a DocPath address; the backend resolves in plate space and
         // the returned region's field translates back.
-        let plate = self.docpath_to_plate(field);
-        self.inner
-            .locate(&plate, pos)
-            .map(|r| self.region_to_docpath(r).into())
+        let kinds = self.kinds();
+        let plate = docpath_to_plate(field, &kinds);
+        self.inner.locate(&plate, pos).map(|mut r| {
+            r.field = plate_to_docpath(&r.field, &kinds);
+            r.into()
+        })
     }
 
     /// Page dimensions in points (1 pt = 1/72 inch).

@@ -94,11 +94,13 @@
 #[serde(rename_all = "camelCase")]
 pub struct RenderedRegion {
     /// The field's plate-space schema address as the backend keys it —
-    /// `"signature_block"` or `"$cards.<kind>.<ordinal>.<field>"`. Internal to
-    /// the region system: the session translates it to a canonical
-    /// [`DocPath`](crate::DocPath) before it crosses to a consumer (`regions` /
-    /// `fieldAt` / `positionAt` / `locate`), so no consumer sees the per-kind
-    /// ordinal grammar.
+    /// `"signature_block"` or `"$cards.<kind>.<ordinal>.<field>"` (a per-kind
+    /// ordinal). This is the backend-native form; a binding that owns the
+    /// document's card kinds translates it to a canonical
+    /// [`DocPath`](crate::DocPath) at its boundary
+    /// ([`plate_addr_to_doc_path`]), so its consumers see one absolute-index
+    /// grammar. A core consumer reading `RenderedRegion` directly sees the
+    /// plate-space form.
     pub field: String,
     /// 0-based page index.
     pub page: usize,
