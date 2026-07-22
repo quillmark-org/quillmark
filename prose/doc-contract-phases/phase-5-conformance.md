@@ -64,3 +64,33 @@ the fixtures nearly subsume it. A rider here, not a centerpiece.
 - No fixture asserts message text.
 - The 1.0 release notes name the fixture freeze as the release's meaning;
   the migration-guide policy for post-1.0 fixture diffs is written down.
+
+## Status
+
+**Shipped** the engine half. `conformance/conformance.json` is the
+language-neutral source of truth: a `contractVersion` stamp, one `Quill.yaml`
+-only conformance quill, an operation-script DSL of state fixtures (fieldStates
+values + sources, validation diagnostics, mutator `edit::*` errors), and
+`DocPath` grammar fixtures (parse + round-trip, plus the plate-space geometry
+translation for interleaved-kind absolute indices). The inventory is covered:
+the ladder's three sources on scalars/enum/number, richtext default, array zero,
+the body row, a body-disabled kind, an unknown-kind card, the top-level-only
+`source` decision, the coercion-namespace ruling (`edit::field_conform`
+re-anchored in `DocPath` space), and — the fixture the reference quill could not
+produce (#1004) — a `!must_fill` **card** field whose `validate()` is non-empty
+with a `cards.<kind>[i].<field>` path.
+
+Two runners share the one file: `crates/conformance` replays it against
+`quillmark-core` in the workspace tests (`cargo test --workspace`), and
+`@quillmark/conformance` ships the identical JSON with a JS runner over a
+consumer-supplied adapter, published lockstep with `@quillmark/wasm`.
+`contractVersion` lives on the WASM surface (`quillmark_core::CONTRACT_VERSION`),
+the engine runner refusing a fixture-set mismatch. Fixtures assert
+code/path/source/value, never message text — the format carries no message
+field. Canon: [CONFORMANCE.md](../canon/CONFORMANCE.md); the post-1.0 fixture
+-diff policy is written there and in the 0.96 migration guide.
+
+The **consumer half** — the editor's `@quillmark/conformance` adapter and its CI
+run — lands in `quillmark-editor`, as phase 2's `parsePath` removal and phase 4's
+codec deletions do. Freezing the set (dropping `contractVersion` to `1.0.0`) is
+the 1.0 release itself; pre-1.0 the fixture diffs stay the pivot log.

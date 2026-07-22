@@ -208,6 +208,26 @@ jobs:
             npm publish --access public --provenance
           fi
 
+      # @quillmark/conformance ships lockstep from the same commit: the fixtures
+      # a consumer runs must match the engine it pins. Stamp the release version
+      # in (conformance/ is committed source, not generated), then publish.
+      - name: Stamp @quillmark/conformance version
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          node -e "const f='conformance/package.json',p=require('./'+f);p.version=process.env.V;require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\n')"
+        env:
+          V: ${{ needs.prepare.outputs.version }}
+
+      - name: Publish @quillmark/conformance
+        working-directory: conformance
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          if [[ "$VERSION" == *-* ]]; then
+            npm publish --access public --provenance --tag next
+          else
+            npm publish --access public --provenance
+          fi
+
   # ──────────────────────────────────────────────
   # Publish: Python → PyPI
   # ──────────────────────────────────────────────

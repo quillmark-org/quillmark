@@ -124,6 +124,12 @@ jobs:
         working-directory: crates/bindings/wasm
         run: npm run typecheck
 
+      # The engine-side conformance run is `cargo test --workspace` (the
+      # quillmark-conformance crate). This guards the @quillmark/conformance
+      # package itself — the module loads and its data is well-formed.
+      - name: Smoke-test @quillmark/conformance
+        run: node conformance/smoke.mjs
+
   python:
     runs-on: ubuntu-latest
     steps:

@@ -75,3 +75,17 @@ pub mod normalize;
 
 pub mod version;
 pub use version::{quill_ref_hint, QuillReference, Version, VersionSelector};
+
+/// The engine↔consumer **contract** version, semver'd over the boundary
+/// surface — the diagnostic taxonomy (codes), the [`DocPath`] grammar, and the
+/// [`field_states`](quill::Quill::field_states) shape — independently of crate
+/// semver. A pinned consumer asserts compatibility against it at load time
+/// rather than discovering a boundary break at bug-report time; the WASM
+/// surface re-exports it as `contractVersion()`, and the conformance suite
+/// (`prose/canon/CONFORMANCE.md`) stamps every fixture set with the value it was
+/// frozen against.
+///
+/// Mostly a pre-1.0 signal: while crate versions break freely, this moves only
+/// when a boundary surface does. Post-freeze, package semver plus the fixtures
+/// nearly subsume it.
+pub const CONTRACT_VERSION: &str = "0.1.0";

@@ -45,6 +45,13 @@ describe('@quillmark/wasm/core surface', () => {
     expect(core.LiveSession).toBeUndefined()
   })
 
+  it('exposes contractVersion() — the boundary-surface semver', () => {
+    // Present in the core build (the contract surface is engine-free), a
+    // dotted semver string a pinned consumer asserts compatibility against.
+    expect(typeof core.contractVersion).toBe('function')
+    expect(core.contractVersion()).toMatch(/^\d+\.\d+\.\d+$/)
+  })
+
   it('loads a quill via Quill.fromTree with no engine', () => {
     const quill = Quill.fromTree(makeCoreQuill())
     expect(quill.backendId).toBe('typst')
