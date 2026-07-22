@@ -37,7 +37,14 @@ pub(crate) fn is_valid_datetime(s: &str) -> bool {
 /// is rejected: a date field holds a date, full stop, and a time-bearing string
 /// is a `type: datetime`. The `time` parser enforces zero-padding and calendar
 /// validity (`2026-02-30` is rejected). `None` for any other string.
+///
+/// `time`'s `[year]` component defaults to `sign:automatic`, accepting a
+/// leading `+`/`-`; rejected here up front so the grammar stays strict about
+/// the sign too, instead of lowering a BCE year into the Typst backend.
 pub fn parse_date(s: &str) -> Option<(i32, u8, u8)> {
+    if s.starts_with(['+', '-']) {
+        return None;
+    }
     Date::parse(s, &*DATE_FMT)
         .ok()
         .map(|d| (d.year(), u8::from(d.month()), d.day()))
@@ -51,7 +58,13 @@ pub fn parse_date(s: &str) -> Option<(i32, u8, u8)> {
 /// error at the seam, never a silently dropped component; the whose-wall-clock
 /// decision is forced to the consumer boundary where the context lives. `None`
 /// for any other string.
+///
+/// Same leading-sign rejection as [`parse_date`]: a signed year is rejected
+/// up front rather than accepted and lowered as BCE.
 pub fn parse_datetime(s: &str) -> Option<(i32, u8, u8, u8, u8, u8)> {
+    if s.starts_with(['+', '-']) {
+        return None;
+    }
     for fmt in DATETIME_FMTS.iter() {
         if let Ok(dt) = PrimitiveDateTime::parse(s, fmt) {
             return Some((
@@ -94,6 +107,8 @@ mod tests {
             "2026-06-01Z",           // stray offset marker
             "2026-06-01T12:00:00Z",  // offset instant
             "not-a-date",
+            "-2026-01-01",           // signed year (BCE) — leading sign rejected
+            "+2026-01-01",           // signed year — leading sign rejected
         ] {
             assert_eq!(parse_date(s), None, "expected rejected date: {s}");
         }
@@ -136,6 +151,8 @@ mod tests {
             "2026-06-01T14:3",          // single-digit minute
             "2026-13-01T14:30:00",      // month out of range
             "2026-02-30T14:30:00",      // Feb 30
+            "-2026-06-01T12:00",        // signed year (BCE) — leading sign rejected
+            "+2026-06-01T12:00",        // signed year — leading sign rejected
         ] {
             assert_eq!(parse_datetime(s), None, "expected rejected datetime: {s}");
         }
