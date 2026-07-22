@@ -6,7 +6,7 @@
 
 Four workflows. `ci.yml` runs lint/test/wasm on every PR and non-tag push. `release-prepare.yml` computes the next version, bumps the workspace, and opens a release PR. `release.yml` tags and publishes to crates.io, npm, and PyPI when that PR merges. `docs.yml` builds MkDocs and deploys to GitHub Pages on stable releases.
 
-Published crates, in dependency order: `quillmark-content`, `quillmark-core`, `quillmark-pdf`, `quillmark-pdfform`, `quillmark-typst`, `quillmark`, `quillmark-cli`. Not published: `quillmark-fixtures`, `quillmark-fuzz`, `quillmark-python`, `quillmark-wasm`.
+Published crates, in dependency order: `quillmark-content`, `quillmark-core`, `quillmark-pdf`, `quillmark-pdfform`, `quillmark-typst`, `quillmark`, `quillmark-cli`. Not published to crates.io: `quillmark-fixtures`, `quillmark-conformance`, `quillmark-fuzz`, `quillmark-python`, `quillmark-wasm`. Two npm packages publish lockstep: `@quillmark/wasm` and `@quillmark/conformance` (the frozen contract fixtures, [CONFORMANCE.md](CONFORMANCE.md)).
 
 ---
 
@@ -18,8 +18,8 @@ Published crates, in dependency order: `quillmark-content`, `quillmark-core`, `q
 | Job | What it does |
 |-----|-------------|
 | `lint` | `cargo doc --no-deps --locked` with `RUSTDOCFLAGS=-Dwarnings` — the standing lint gate; clippy is deliberately not gated |
-| `test` | `cargo test --workspace --all-features --locked` |
-| `wasm` | first asserts the no-default-features core graph excludes Typst (`cargo tree -i quillmark-typst` must fail), then builds via `./scripts/build-wasm.sh --ci`, then `npx vitest run` |
+| `test` | `cargo test --workspace --all-features --locked` — includes the `quillmark-conformance` crate, the engine-side run of the frozen fixtures ([CONFORMANCE.md](CONFORMANCE.md)) |
+| `wasm` | first asserts the no-default-features core graph excludes Typst (`cargo tree -i quillmark-typst` must fail), then builds via `./scripts/build-wasm.sh --ci`, then `npx vitest run`, then `node conformance/smoke.mjs` (the `@quillmark/conformance` package loads and its data is well-formed) |
 
 The `wasm` job caches `target/wasm32-unknown-unknown/wasm-ci` under key `wasm-ci-${os}-${hashFiles('Cargo.lock')}` (restore-prefix `wasm-ci-${os}-`), so a lockfile change takes a fresh key while source-only edits restore the prefix and rebuild incrementally. The `wasm-ci-` namespace is deliberately disjoint from `release.yml`'s `wasm-release-` cache so a CI build (debug `wasm-ci` profile) can never be restored into a release job and published to npm.
 
@@ -53,10 +53,12 @@ The PR uses a GitHub App token (`TAGGER_APP_ID`/`TAGGER_PRIVATE_KEY`) so CI runs
 |--------|----------|---------|
 | Rust crates | crates.io | `cargo publish --workspace --locked --no-verify` via `rust-lang/crates-io-auth-action` |
 | WASM | npm | `npm publish --access public --provenance` (Trusted Publisher) |
+| Conformance | npm | `npm publish --access public --provenance` from `conformance/`, version stamped to the release tag (Trusted Publisher) |
 | Python | PyPI | `pypa/gh-action-pypi-publish` over prebuilt wheels |
 
 - **Rust crates**: `--workspace` reaches every publishable member, including `quillmark-content` — the leaf the default-members exclude — and skips the `publish = false` members (fixtures, fuzz, bindings). Cargo orders the rest by dependency and skips any version already on the registry with a warning, so re-running resumes a partially-uploaded release instead of erroring.
 - **WASM**: restores the `wasm-release-` cache (`wasm-release` profile), builds via `./scripts/build-wasm.sh`, runs `npx vitest run`, publishes `@quillmark/wasm`. Pre-release versions (containing `-`) publish with `--tag next` so they land on the `next` dist-tag instead of `latest`.
+- **Conformance**: the same job then stamps `conformance/package.json`'s version to the release tag (it is committed source, not generated like `pkg/`) and publishes `@quillmark/conformance` — the same JSON the `quillmark-conformance` crate runs against `quillmark-core`, so a consumer's pin and the engine agree. Same `--tag next` rule. Being a distinct npm package, its **first** publish needs a Trusted Publisher config on npm, like a new crate on crates.io (below).
 - **Python**: `maturin-action` builds wheels for Linux (x86_64, aarch64), Windows (x64), macOS (aarch64) across Python 3.10–3.12, plus an sdist; artifacts are gathered and uploaded with `skip-existing`.
 
 ### Trusted Publishing scope (crates.io)

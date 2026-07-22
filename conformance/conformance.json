@@ -1,0 +1,539 @@
+{
+  "contractVersion": "0.1.0",
+  "quills": {
+    "conf": {
+      "Quill.yaml": "quill:\n  name: conf\n  version: \"1.0.0\"\n  backend: typst\n  description: Conformance fixture quill\nmain:\n  body:\n    example: \"Body prose.\"\n  fields:\n    title:\n      type: string\n    status:\n      type: string\n      default: draft\n    notes:\n      type: string\n    priority:\n      type: enum\n      values:\n        - low\n        - high\n      default: low\n    font_size:\n      type: number\n      default: 12\n    intro:\n      type: richtext\n      default: \"**hi**\"\n    recipients:\n      type: array\n      items:\n        type: object\n        properties:\n          name:\n            type: string\ncard_kinds:\n  note:\n    fields:\n      author:\n        type: string\n        example: A. Author\n      tag:\n        type: string\n      count:\n        type: number\n  stamp:\n    body:\n      enabled: false\n    fields:\n      label:\n        type: string\n"
+    }
+  },
+  "fixtures": [
+    {
+      "name": "main-field-ladder",
+      "description": "The three source rungs on main scalars, plus enum/number default, richtext default, array zero, and the body row.",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: Hello\n~~~\n\nBody prose here.\n",
+      "fieldStates": {
+        "main": {
+          "order": [
+            "title",
+            "status",
+            "notes",
+            "priority",
+            "font_size",
+            "intro",
+            "recipients",
+            "$body"
+          ],
+          "fields": {
+            "title": {
+              "source": "authored",
+              "value": "Hello"
+            },
+            "status": {
+              "source": "default",
+              "value": "draft"
+            },
+            "notes": {
+              "source": "zero",
+              "value": ""
+            },
+            "priority": {
+              "source": "default",
+              "value": "low"
+            },
+            "font_size": {
+              "source": "default"
+            },
+            "intro": {
+              "source": "default"
+            },
+            "recipients": {
+              "source": "zero",
+              "value": []
+            },
+            "$body": {
+              "source": "authored"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "main-body-zero",
+      "description": "A blank body rows as $body with source zero.",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\n~~~\n",
+      "fieldStates": {
+        "main": {
+          "fields": {
+            "$body": {
+              "source": "zero"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "array-authored-nested",
+      "description": "An authored array of objects rides through verbatim.",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\nrecipients:\n  - name: Alice\n  - name: Bob\n~~~\n",
+      "fieldStates": {
+        "main": {
+          "fields": {
+            "recipients": {
+              "source": "authored",
+              "value": [
+                {
+                  "name": "Alice"
+                },
+                {
+                  "name": "Bob"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "nested-zero-fill-source-is-top-level",
+      "description": "A partially-authored container reports source authored at the top level; the nested zero-fill is a value detail, not a per-subpath source (phase-3 top-level-only decision).",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\nrecipients:\n  - {}\n~~~\n",
+      "fieldStates": {
+        "main": {
+          "fields": {
+            "recipients": {
+              "source": "authored"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "remove-field-unsets-to-default",
+      "description": "removeField is the sole unset verb: dropping an authored field returns it to its schema default rung (null == absent).",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\nstatus: custom\n~~~\n",
+      "steps": [
+        {
+          "op": "removeField",
+          "field": "status"
+        }
+      ],
+      "fieldStates": {
+        "main": {
+          "fields": {
+            "status": {
+              "source": "default",
+              "value": "draft"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "note-card-field-states",
+      "description": "A composable card reports kind, index, declaration order, the body row, and per-field rungs.",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\n~~~\n\n~~~card-yaml\n$kind: note\nauthor: Zed\n~~~\nNote body.\n",
+      "fieldStates": {
+        "cards": [
+          {
+            "index": 0,
+            "kind": "note",
+            "order": [
+              "author",
+              "tag",
+              "count",
+              "$body"
+            ],
+            "fields": {
+              "author": {
+                "source": "authored",
+                "value": "Zed"
+              },
+              "tag": {
+                "source": "zero",
+                "value": ""
+              },
+              "count": {
+                "source": "zero"
+              },
+              "$body": {
+                "source": "authored"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "body-disabled-card-omits-body-row",
+      "description": "A body-disabled kind carries no $body row.",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\n~~~\n\n~~~card-yaml\n$kind: stamp\nlabel: L\n~~~\n",
+      "fieldStates": {
+        "cards": [
+          {
+            "index": 0,
+            "kind": "stamp",
+            "order": [
+              "label"
+            ],
+            "fields": {
+              "label": {
+                "source": "authored",
+                "value": "L"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "unknown-kind-card",
+      "description": "A card whose $kind names no schema carries its authored fields verbatim \u2014 no ladder, no body row.",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\n~~~\n\n~~~card-yaml\n$kind: mystery\nfoo: bar\n~~~\nUnread.\n",
+      "fieldStates": {
+        "cards": [
+          {
+            "index": 0,
+            "kind": "mystery",
+            "order": [
+              "foo"
+            ],
+            "fields": {
+              "foo": {
+                "source": "authored",
+                "value": "bar"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "clean-document-validates-empty",
+      "description": "A complete, well-typed document produces no diagnostics.",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: Hello\n~~~\n\nBody.\n",
+      "validate": []
+    },
+    {
+      "name": "type-mismatch-is-fatal",
+      "description": "A string in a number field is a fatal validation error, anchored at the field.",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\nfont_size: huge\n~~~\n",
+      "validate": [
+        {
+          "severity": "error",
+          "code": "validation::type_mismatch",
+          "path": "font_size"
+        }
+      ]
+    },
+    {
+      "name": "card-must-fill-is-nonempty-validate",
+      "description": "A !must_fill card field surfaces a non-fatal, card-path diagnostic end-to-end \u2014 the fixture the reference quill could not produce (#1004).",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\n~~~\n",
+      "steps": [
+        {
+          "op": "insertCard",
+          "kind": "note"
+        },
+        {
+          "op": "storeFill",
+          "card": 0,
+          "field": "tag",
+          "value": ""
+        }
+      ],
+      "validate": [
+        {
+          "severity": "warning",
+          "code": "validation::must_fill",
+          "path": "cards.note[0].tag"
+        }
+      ]
+    },
+    {
+      "name": "commit-unknown-field",
+      "description": "A typed commit of an undeclared name is edit::unknown_field.",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\n~~~\n",
+      "steps": [
+        {
+          "op": "commitField",
+          "field": "nope",
+          "value": "x",
+          "error": {
+            "code": "edit::unknown_field",
+            "path": "nope"
+          }
+        }
+      ]
+    },
+    {
+      "name": "commit-conform-main",
+      "description": "A value that cannot conform is edit::field_conform, re-anchored in DocPath space (the coercion-namespace ruling).",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\n~~~\n",
+      "steps": [
+        {
+          "op": "commitField",
+          "field": "font_size",
+          "value": "big",
+          "error": {
+            "code": "edit::field_conform",
+            "path": "font_size"
+          }
+        }
+      ]
+    },
+    {
+      "name": "commit-conform-card",
+      "description": "A card-field conform failure re-anchors at the card's DocPath, kind-qualified.",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\n~~~\n\n~~~card-yaml\n$kind: note\n~~~\n",
+      "steps": [
+        {
+          "op": "commitField",
+          "card": 0,
+          "field": "count",
+          "value": "lots",
+          "error": {
+            "code": "edit::field_conform",
+            "path": "cards.note[0].count"
+          }
+        }
+      ]
+    },
+    {
+      "name": "store-invalid-field-name",
+      "description": "A malformed field name is edit::invalid_field_name.",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\n~~~\n",
+      "steps": [
+        {
+          "op": "storeField",
+          "field": "bad name",
+          "value": "x",
+          "error": {
+            "code": "edit::invalid_field_name",
+            "path": "bad name"
+          }
+        }
+      ]
+    },
+    {
+      "name": "insert-card-out-of-range",
+      "description": "A structural op past the array end is edit::index_out_of_range, anchored at the bare-index slot.",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\n~~~\n",
+      "steps": [
+        {
+          "op": "insertCard",
+          "kind": "note",
+          "index": 5,
+          "error": {
+            "code": "edit::index_out_of_range",
+            "path": "cards[5]"
+          }
+        }
+      ]
+    },
+    {
+      "name": "insert-card-invalid-kind",
+      "description": "An invalid card kind anchors at the target slot.",
+      "quill": "conf",
+      "document": "~~~card-yaml\n$quill: conf@1.0.0\n$kind: main\ntitle: T\n~~~\n",
+      "steps": [
+        {
+          "op": "insertCard",
+          "kind": "Bad-Kind",
+          "index": 0,
+          "error": {
+            "code": "edit::invalid_kind_name",
+            "path": "cards[0]"
+          }
+        }
+      ]
+    }
+  ],
+  "paths": [
+    {
+      "name": "path-main-field",
+      "path": "title",
+      "segs": [
+        {
+          "seg": "field",
+          "name": "title"
+        }
+      ],
+      "plate": {
+        "addr": "title",
+        "cardKinds": []
+      }
+    },
+    {
+      "name": "path-nested-array-object",
+      "path": "recipients[0].name",
+      "segs": [
+        {
+          "seg": "field",
+          "name": "recipients"
+        },
+        {
+          "seg": "index",
+          "index": 0
+        },
+        {
+          "seg": "field",
+          "name": "name"
+        }
+      ]
+    },
+    {
+      "name": "path-main-body",
+      "path": "main.body",
+      "segs": [
+        {
+          "seg": "main"
+        },
+        {
+          "seg": "body"
+        }
+      ],
+      "plate": {
+        "addr": "$body",
+        "cardKinds": []
+      }
+    },
+    {
+      "name": "path-typed-card-whole",
+      "path": "cards.note[0]",
+      "segs": [
+        {
+          "seg": "card",
+          "kind": "note",
+          "index": 0
+        }
+      ]
+    },
+    {
+      "name": "path-card-field",
+      "path": "cards.note[0].author",
+      "segs": [
+        {
+          "seg": "card",
+          "kind": "note",
+          "index": 0
+        },
+        {
+          "seg": "field",
+          "name": "author"
+        }
+      ],
+      "plate": {
+        "addr": "$cards.note.0.author",
+        "cardKinds": [
+          "note"
+        ]
+      }
+    },
+    {
+      "name": "path-card-body",
+      "path": "cards.note[0].body",
+      "segs": [
+        {
+          "seg": "card",
+          "kind": "note",
+          "index": 0
+        },
+        {
+          "seg": "body"
+        }
+      ],
+      "plate": {
+        "addr": "$cards.note.0.$body",
+        "cardKinds": [
+          "note"
+        ]
+      }
+    },
+    {
+      "name": "path-unknown-kind-card",
+      "path": "cards[0]",
+      "segs": [
+        {
+          "seg": "card",
+          "kind": null,
+          "index": 0
+        }
+      ]
+    },
+    {
+      "name": "path-interleaved-kind-absolute-index",
+      "path": "cards.note[2].author",
+      "segs": [
+        {
+          "seg": "card",
+          "kind": "note",
+          "index": 2
+        },
+        {
+          "seg": "field",
+          "name": "author"
+        }
+      ],
+      "plate": {
+        "addr": "$cards.note.1.author",
+        "cardKinds": [
+          "note",
+          "stamp",
+          "note"
+        ]
+      }
+    },
+    {
+      "name": "path-nested-index-under-card",
+      "path": "cards.note[0].tags[1]",
+      "segs": [
+        {
+          "seg": "card",
+          "kind": "note",
+          "index": 0
+        },
+        {
+          "seg": "field",
+          "name": "tags"
+        },
+        {
+          "seg": "index",
+          "index": 1
+        }
+      ]
+    },
+    {
+      "name": "path-config-space-seed-anchor",
+      "path": "$seed.note.author",
+      "segs": [
+        {
+          "seg": "field",
+          "name": "$seed"
+        },
+        {
+          "seg": "field",
+          "name": "note"
+        },
+        {
+          "seg": "field",
+          "name": "author"
+        }
+      ]
+    }
+  ]
+}

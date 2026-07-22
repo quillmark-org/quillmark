@@ -2304,6 +2304,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "quillmark-conformance"
+version = "0.95.1"
+dependencies = [
+ "indexmap",
+ "quillmark-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "quillmark-content"
 version = "0.95.1"
 dependencies = [
