@@ -1828,10 +1828,16 @@ pub fn parse_doc_path(path: &str) -> Result<JsValue, JsValue> {
         .parse::<quillmark_core::DocPath>()
         .map_err(|e| WasmError::from(e.to_string()).to_js_value())?;
     // Via `serde_json::Value` so the tagged segments cross as plain objects,
-    // sidestepping serde-wasm-bindgen's tagged-enum handling.
+    // sidestepping serde-wasm-bindgen's tagged-enum handling; `missing_as_null`
+    // so an unknown-kind card's `kind` is JS `null`, not `undefined` — the
+    // `DocPathSeg` contract is `kind: string | null`.
     let json = serde_json::to_value(&doc_path)
         .map_err(|e| WasmError::from(format!("parseDocPath: {e}")).to_js_value())?;
-    serialize_or_throw(&json, "parseDocPath")
+    let serializer = serde_wasm_bindgen::Serializer::new()
+        .serialize_maps_as_objects(true)
+        .serialize_missing_as_null(true);
+    json.serialize(&serializer)
+        .map_err(|e| WasmError::from(format!("parseDocPath: {e}")).to_js_value())
 }
 
 /// Serialize structured [`DocPathSeg`] segments back to the canonical path
