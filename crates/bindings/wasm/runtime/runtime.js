@@ -67,9 +67,6 @@ export { importMarkdown, exportMarkdown, rebase, mapPos } from '../core/wasm.js'
 // and its inverse `formatDocPath`, so a consumer routes on `Diagnostic.path`
 // segments instead of reverse-engineering the grammar.
 export { parseDocPath, formatDocPath } from '../core/wasm.js';
-// The engine↔consumer contract version — assert compatibility at load time and
-// against the `@quillmark/conformance` fixture set's stamped version.
-export { contractVersion } from '../core/wasm.js';
 
 // ── The main-card address ───────────────────────────────────────────────────
 /**

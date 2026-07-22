@@ -7,7 +7,6 @@ members = [
     "crates/backends/pdfform",
     "crates/content",
     "crates/fixtures",
-    "crates/conformance",
     "crates/bindings/wasm",
     "crates/fuzz",
     "crates/bindings/python",

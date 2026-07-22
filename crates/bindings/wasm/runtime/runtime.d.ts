@@ -19,10 +19,6 @@ export { importMarkdown, exportMarkdown, rebase, mapPos } from '../core/wasm.js'
 // The document-model path parser/serializer — route on `Diagnostic.path`
 // segments instead of regexing the string.
 export { parseDocPath, formatDocPath } from '../core/wasm.js';
-// The engine↔consumer contract version — semver'd over the boundary surface
-// (diagnostic taxonomy, `DocPath` grammar, `fieldStates` shape); assert
-// compatibility at load time and against `@quillmark/conformance`.
-export { contractVersion } from '../core/wasm.js';
 
 import type { CardAddr } from '../core/wasm.js';
 

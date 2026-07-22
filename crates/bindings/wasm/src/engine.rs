@@ -2003,17 +2003,6 @@ export interface FieldStates {
 }
 "#;
 
-/// The engine↔consumer contract version (`quillmark_core::CONTRACT_VERSION`) —
-/// semver'd over the boundary surface (diagnostic taxonomy, `DocPath` grammar,
-/// `fieldStates` shape) independently of the npm package version. A pinned
-/// consumer asserts compatibility against it at load time, and the
-/// `@quillmark/conformance` fixture set is stamped with the value it was frozen
-/// against. Present in every build (the core build carries it too).
-#[wasm_bindgen(js_name = contractVersion)]
-pub fn contract_version() -> String {
-    quillmark_core::CONTRACT_VERSION.to_string()
-}
-
 /// Parse a canonical document-model `Diagnostic.path`
 /// (`cards.<kind>[<i>].<field>`, `main.body`, `recipients[0].name`) into its
 /// structured [`DocPathSeg`] segments — the exported inverse of the engine's

@@ -33,4 +33,3 @@
 ## Infrastructure
 
 - **[CI_CD.md](CI_CD.md)** - CI/CD workflows
-- **[CONFORMANCE.md](CONFORMANCE.md)** - Cross-repo contract fixtures (`@quillmark/conformance`) and `contractVersion`, frozen at 1.0
