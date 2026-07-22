@@ -53,8 +53,10 @@ resting typography typesets the *resolved* value.
 
 - The editor's placeholder shim is deletable: resolved value + provenance come
   from `fieldStates()`; completeness and errors keep coming from `validate()`.
-- `source` agrees with the render projection on every fixture — same rung,
-  same value, byte-for-byte on the zero floor.
+- The value is byte-for-byte the render projection's on every fixture (asserted
+  against `compile_data`); `source` is the rung that same projection cut, held by
+  construction — both halves read the one `resolve_value_sourced` producer — not
+  a separate cross-check, since the render path keeps the value and drops the tag.
 - `SCHEMAS.md` names the consumer-side join a non-goal.
 
 ## Status
