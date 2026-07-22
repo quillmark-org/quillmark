@@ -74,10 +74,11 @@ export type {
 	DocPathSeg
 } from '../core/wasm.js';
 
-// The resolved-field view — the return shape of `quill.fieldStates(doc)`. Value
-// + source rung + bucketed diagnostics per declared field (the body rides the
-// fields map under `$body`). Declared in the core build's generated `.d.ts` via
-// a `typescript_custom_section`; re-exported here so the single public entry
+// The resolved-value view — the return shape of `quill.fieldStates(doc)`. Value
+// + source rung per declared field (the body rides the fields map under
+// `$body`); diagnostics stay `quill.validate`, guidance stays `quill.schema`.
+// Declared in the core build's generated `.d.ts` via a
+// `typescript_custom_section`; re-exported here so the single public entry
 // point names them.
 export type {
 	FieldSource,

@@ -211,32 +211,6 @@ impl PyQuill {
         Ok(list.clone())
     }
 
-    /// The resolved-field view of `doc` against this quill's schema, as a nested
-    /// dict — `main` (its `fields` map plus a card-level `diagnostics` list),
-    /// the `cards` list (each with `kind`, `index`, `fields`, `diagnostics`),
-    /// and a document-level `diagnostics` list. Per field: `value`, `source`
-    /// (`"authored" | "default" | "zero"`), `diagnostics`, and `example`
-    /// (present only when the field declares one). The card body rides the
-    /// `fields` map under the `$body` key. Diagnostics are the standalone
-    /// `validate` contract bucketed by `DocPath` into per-field, per-card, and
-    /// document slots (plus a path-anchored `validation::coercion_failed` per
-    /// field whose render coercion fails). Mirrors WASM `fieldStates`.
-    fn field_states<'py>(
-        &self,
-        py: Python<'py>,
-        doc: PyRef<'_, PyDocument>,
-    ) -> PyResult<Bound<'py, PyDict>> {
-        let states = self.inner.field_states(&doc.inner);
-        let json_value = serde_json::to_value(&states).map_err(|e| {
-            PyValueError::new_err(format!("field_states: serialization failed: {e}"))
-        })?;
-        let py_obj = json_to_py(py, &json_value)?;
-        let dict = py_obj
-            .downcast::<PyDict>()
-            .map_err(|_| PyValueError::new_err("field_states: expected a dict at top level"))?;
-        Ok(dict.clone())
-    }
-
     /// Seed a starter `Document` from the schema — the main card plus one
     /// instance of each composable card kind, each committing its fields'
     /// `example` values and leaving every other field absent (interpolated at

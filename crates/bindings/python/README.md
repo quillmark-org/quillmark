@@ -77,7 +77,6 @@ quill.metadata              # pure config snapshot of the quill: section (never 
 quill.quill_ref             # "name@version"
 
 diags   = quill.validate(parsed)          # list of validation::* diagnostic dicts ([] = valid)
-states  = quill.field_states(parsed)      # resolved-field view: value + source rung + diagnostics per field
 seed    = quill.seed_document()           # starter Document seeded from `example:` values
 main    = quill.seed_main()               # just the $kind: main card (dict, like doc.main)
 card    = quill.seed_card("note")         # one starter composable card (dict), None if kind undeclared

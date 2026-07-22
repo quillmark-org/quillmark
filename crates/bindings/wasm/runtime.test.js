@@ -671,10 +671,11 @@ A single line of body ink.`
       expect(typeof session.render).toBe('function')
       expect(session.render({ format: 'svg' }).artifacts.length).toBeGreaterThan(0)
 
-      // regions — the $body markdown content field auto-tags one region.
+      // regions — the body markdown content field auto-tags one region, keyed
+      // by the canonical DocPath `main.body`.
       expect(typeof session.regions).toBe('function')
       const regions = session.regions()
-      const body = regions.find((r) => r.field === '$body')
+      const body = regions.find((r) => r.field === 'main.body')
       expect(body).toBeDefined()
 
       // pageSize.
@@ -683,22 +684,22 @@ A single line of body ink.`
       expect(size.heightPt).toBeGreaterThan(0)
 
       // fieldAt — the delegation that was missing (#801). Hit-test the centre
-      // of the $body region's rect ([x0, y0, x1, y1], bottom-left PDF points)
+      // of the body region's rect ([x0, y0, x1, y1], bottom-left PDF points)
       // — guaranteed ink for the single-line body (see SMOKE_MARKDOWN above) —
-      // and expect it to resolve back through the wrapper. Off any field's ink
-      // (the page corner) the contract is undefined.
+      // and expect it to resolve back through the wrapper as its DocPath. Off
+      // any field's ink (the page corner) the contract is undefined.
       expect(typeof session.fieldAt).toBe('function')
       const [x0, y0, x1, y1] = body.rect
       const hit = session.fieldAt(body.page, (x0 + x1) / 2, (y0 + y1) / 2)
-      expect(hit).toBe('$body')
+      expect(hit).toBe('main.body')
       expect(session.fieldAt(body.page, 1, 1)).toBeUndefined()
 
       // fieldBoxes — the whole-field union helper. A single-line body has one
       // span-bearing segment, so its box unions to one rect covering that line.
       expect(typeof session.fieldBoxes).toBe('function')
-      const boxes = session.fieldBoxes('$body')
+      const boxes = session.fieldBoxes('main.body')
       expect(boxes.length).toBe(1)
-      expect(boxes[0].field).toBe('$body')
+      expect(boxes[0].field).toBe('main.body')
       expect(boxes[0].span).toBeDefined()
       // A field with no span-bearing region has no derived content box.
       expect(session.fieldBoxes('does_not_exist')).toEqual([])
@@ -707,7 +708,7 @@ A single line of body ink.`
       // signal. A hit on the single line's ink is cluster-exact.
       expect(typeof session.positionAt).toBe('function')
       const chit = session.positionAt(body.page, (x0 + x1) / 2, (y0 + y1) / 2)
-      expect(chit.field).toBe('$body')
+      expect(chit.field).toBe('main.body')
       expect(chit.granularity).toBe('cluster')
 
       // paint.

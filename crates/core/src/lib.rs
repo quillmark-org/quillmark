@@ -46,7 +46,10 @@ pub mod types;
 pub use types::{Artifact, OutputFormat, RenderOptions};
 
 pub mod region;
-pub use region::{field_boxes, ContentHit, HitGranularity, RenderedRegion};
+pub use region::{
+    doc_path_to_plate_addr, field_boxes, plate_addr_to_doc_path, ContentHit, HitGranularity,
+    RenderedRegion,
+};
 
 pub mod session;
 pub use session::{ApplyError, Assoc, ChangeSet, Delta, LineOp, LiveSession, MarkOp, Op};

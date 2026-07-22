@@ -18,18 +18,21 @@ guides in order.
 
 ## Available guides
 
-- [0.95 → 0.96](0.95-to-0.96.md) — mutator failures join the diagnostic
-  taxonomy: every `EditError` variant carries a namespaced `edit::*` `code`
-  (`edit::unknown_field`, `edit::field_conform`, …) in both bindings, and the
-  `[EditError::<Variant>]` message-prefix convention is deleted — route on
-  `diagnostics[0].code`, never on message text. `Diagnostic.path` gains an
-  exported `parseDocPath` / `formatDocPath` (route on `DocPathSeg[]`, not a
-  regex); the emitted path strings are unchanged. Canon ratifies null ≡ absent
-  as a 1.0 commitment (no behavior change). Adds `fieldStates()` (Python
-  `field_states`) — the resolved-field view: value, source rung
-  (`"authored" | "default" | "zero"`), the schema `example:`, and the
-  `validate()` diagnostics bucketed per field, in one call (additive, no
-  action).
+- [0.95 → 0.96](0.95-to-0.96.md) — one address grammar on every boundary.
+  **Break:** `LiveSession` geometry (`regions` / `fieldAt` / `positionAt` /
+  `locate`) now keys on the canonical `DocPath` (`main.body`,
+  `cards.<kind>[<abs>].<field>`) instead of the plate-space
+  `$cards.<kind>.<ordinal>` form — migrate the preview/overlay code that reads
+  `region.field`. Mutator failures join the diagnostic taxonomy: every
+  `EditError` variant carries a namespaced `edit::*` `code`
+  (`edit::unknown_field`, `edit::field_conform`, …) in both bindings, the
+  `[EditError::<Variant>]` message-prefix is deleted (route on
+  `diagnostics[0].code`), and each mutator diagnostic now carries a `DocPath`
+  `path` (WASM). `Diagnostic.path` gains an exported `parseDocPath` /
+  `formatDocPath` (route on `DocPathSeg[]`, not a regex). Canon ratifies
+  null ≡ absent as a 1.0 commitment (no behavior change). Adds `fieldStates()`
+  (WASM) — the resolved-value view: per field, value + source rung
+  (`"authored" | "default" | "zero"`), in one call (additive, no action).
 - [0.94 → 0.95](0.94-to-0.95.md) — WASM `pushCard` folds into
   `insertCard(card, at?)` (one insertion verb; `insertCard`'s args reorder to
   `(card, at?)`) and the deprecated `replaceBody` alias is deleted (use

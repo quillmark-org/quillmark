@@ -160,6 +160,32 @@ impl EditError {
             EditError::ContentApply(_) => "edit::content_apply",
         }
     }
+
+    /// The [`DocPath`] this error anchors to, relative to `base` — the card root
+    /// the mutator ran against (empty for a main-card mutator, `cards.<kind>[i]`
+    /// for a composable card, `cards[i]` for a structural op on the array).
+    ///
+    /// A field-named variant anchors at its field under `base`
+    /// (`cards.<kind>[i].<field>`, or a bare `<field>` when `base` is empty);
+    /// [`IndexOutOfRange`](Self::IndexOutOfRange) at the document-array slot
+    /// `cards[index]`, base-independent — a structural op names a slot, not a
+    /// field; and the remaining variants (kind errors, depth, content
+    /// apply/import) anchor at `base` itself when it names a card, else carry no
+    /// anchor (a main-card `$ext`/`$seed` depth error is config-space). Both
+    /// bindings route through this so a mutator diagnostic is addressable the
+    /// same way a validation diagnostic is.
+    pub fn doc_path(&self, base: &crate::path::DocPath) -> Option<crate::path::DocPath> {
+        use crate::path::DocPath;
+        match self {
+            EditError::InvalidFieldName(f)
+            | EditError::UnknownField(f)
+            | EditError::FieldRichtextNotInline(f) => Some(base.field(f)),
+            EditError::FieldConform { field, .. }
+            | EditError::FieldRichtextDecode { field, .. } => Some(base.field(field)),
+            EditError::IndexOutOfRange { index, .. } => Some(DocPath::card(None, *index)),
+            _ => (!base.segs().is_empty()).then(|| base.clone()),
+        }
+    }
 }
 
 /// A field-level invariant violation, shared by every payload ingestion path.
@@ -833,5 +859,67 @@ impl Card {
             .map_err(EditError::ContentApply)?;
         self.store_field_content(name, &content);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::path::DocPath;
+
+    #[test]
+    fn field_error_anchors_under_the_card_base() {
+        // A main field write: empty base → a bare field path.
+        let main = DocPath::new();
+        assert_eq!(
+            EditError::FieldConform {
+                field: "font_size".into(),
+                message: "x".into(),
+            }
+            .doc_path(&main)
+            .unwrap()
+            .to_string(),
+            "font_size"
+        );
+        // A card field write: the card root qualifies the field.
+        let card = DocPath::card(Some("indorsement"), 1);
+        assert_eq!(
+            EditError::UnknownField("signature_block".into())
+                .doc_path(&card)
+                .unwrap()
+                .to_string(),
+            "cards.indorsement[1].signature_block"
+        );
+    }
+
+    #[test]
+    fn index_out_of_range_anchors_at_the_array_slot() {
+        // Structural op: names a slot, base-independent.
+        for base in [DocPath::new(), DocPath::card(Some("note"), 0)] {
+            assert_eq!(
+                EditError::IndexOutOfRange { index: 4, len: 2 }
+                    .doc_path(&base)
+                    .unwrap()
+                    .to_string(),
+                "cards[4]"
+            );
+        }
+    }
+
+    #[test]
+    fn kind_and_depth_errors_anchor_at_base_or_nowhere() {
+        // A kind error on a structural op carries the slot base it was given.
+        assert_eq!(
+            EditError::ReservedKind
+                .doc_path(&DocPath::card(None, 2))
+                .unwrap()
+                .to_string(),
+            "cards[2]"
+        );
+        // A main-card depth error ($ext/$seed) is config-space — no anchor.
+        assert_eq!(
+            EditError::ValueTooDeep { max: 8 }.doc_path(&DocPath::new()),
+            None
+        );
     }
 }

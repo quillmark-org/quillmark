@@ -51,28 +51,31 @@ surviving at the busier site.
 - Canon: ERROR.md's corrected example and `DocPath` grammar section; the
   `$cards`/`cards` namespace split.
 
-## Remaining
+## Shipped — the 0.96 break
 
 1. **Geometry-lane unification** — the phase's completion criterion.
    `regions()` / `fieldBoxes(field)` / `fieldAt` / `positionAt` / `locate`
-   speak `DocPath` strings in both directions (returns and arguments). The
-   plate-space per-kind grammar is untouched template-side — the
-   `_qm-plaintext` table contract stays — but it stops crossing the consumer
-   boundary: the session holds the composed document and owns the
-   plate-space ↔ `DocPath` translation, so per-kind ordinals never reach a
-   consumer. Editor payoff: `parsePath` and the ordinal bridge delete; every
-   address routes through `parseDocPath`. This is the 0.96 break's
-   centerpiece — the migration entry leads with it.
-2. **Mutator-path retrofit** — every edit diagnostic carries a `DocPath`:
-   `IndexOutOfRange` learns which card array, `FieldConform` which card,
-   threaded through the binding call sites. Completes the one-envelope
-   invariant: every diagnostic from every producer is
-   `{severity, code, message, path}`-addressable. (The batched twins carry a
-   bare field-name `path` from phase 1; the single mutators carry none.)
-3. **Coercion-namespace ruling** — `CoercionError` paths are schema-space
-   (`card_kinds.<kind>.<field>`, bare field names), not document-model
-   anchors. Fold them into `DocPath` space, or name them a distinct schema
-   namespace in ERROR.md; either way the ruling is written, not implied.
+   speak `DocPath` in both directions. The plate-space per-kind grammar is
+   untouched template-side — the `$path` / `_qm-plaintext` contract stays — but
+   stops crossing the consumer boundary: the WASM `LiveSession` retains the
+   compile's ordered card kinds (refreshed on `apply`) and translates
+   plate-space ↔ `DocPath` (`plate_addr_to_doc_path` / `doc_path_to_plate_addr`
+   in `crates/core/src/region.rs`), so per-kind ordinals never reach a consumer.
+   Editor payoff: `parsePath` and the ordinal bridge delete; every address
+   routes through `parseDocPath`. The migration entry leads with it.
+2. **Mutator-path retrofit** (WASM) — every edit diagnostic carries a `DocPath`
+   via `EditError::doc_path(base)`: a field error at `cards.<kind>[i].<field>`,
+   a structural op at `cards[i]`, threaded through the binding call sites (the
+   binding computes the card-root `base` before the mutable borrow). Completes
+   the one-envelope invariant on the WASM surface: every diagnostic is
+   `{severity, code, message, path}`-addressable. Python keeps its phase-1
+   codes; the mutator-`path` retrofit waits for a Python consumer that routes on
+   it (the field_states cut, same reasoning).
+3. **Coercion-namespace ruling** — written in ERROR.md: `CoercionError` keeps
+   its schema-space anchors (`card_kinds.<kind>.<field>`, bare field names) as a
+   distinct namespace; where a coercion becomes `edit::field_conform` the
+   binding re-anchors it in `DocPath` space at the field written, so the raw
+   schema-space anchor never crosses.
 
 ## Acceptance
 

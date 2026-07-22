@@ -142,13 +142,14 @@ field maps rather than a sort key):
 | `blueprint` document | Endorsed: `default:`; Unendorsed: `example:` else zero, stamped `!must_fill` | zero (under the marker) | annotated string — [BLUEPRINT.md](BLUEPRINT.md) |
 | seeding | `example:` › absent | (deferred to render floor) | committed `Document` — [Document seeding](#document-seeding) |
 | add-card (into a document) | `$seed` overlay › `example:` › absent | (deferred to render floor) | a new composable `Card` — [Document seeding](#document-seeding) |
-| editor (consumer-side) | authored › `default:` › zero, resolved per field and **tagged with its source rung** (`example:` rides as guidance) | zero | the engine's [`fieldStates()`](#the-resolved-field-view-fieldstates) resolved-field view — value, source rung, and `validate()` diagnostics bucketed per field |
+| editor (consumer-side) | authored › `default:` › zero, resolved per field and **tagged with its source rung** | zero | the engine's [`fieldStates()`](#the-resolved-field-view-fieldstates) resolved-value view — value and source rung per field |
 
 The consumer-side `Document`-payload × schema join is a **non-goal**:
 [`fieldStates()`](#the-resolved-field-view-fieldstates) supersedes it. The
-editor reads value, source rung, and bucketed diagnostics from one engine call
-rather than re-cutting the ladder in consumer code and re-joining
-`Quill::validate` by path.
+editor reads value and source rung from one engine call rather than re-cutting
+the ladder in consumer code. Completeness and errors stay `Quill::validate`'s
+(a consumer merges it with its own diagnostic producers regardless), and schema
+guidance — `example:`, labels, groups — reads from `Quill::schema`.
 
 Two seams are deliberate, not uniform: on `blueprint` the floor still
 zero-fills like every other projection (an Unendorsed cell with no `example`
@@ -158,24 +159,25 @@ rides *alongside* the value rather than replacing it; and `zero` is honestly
 blank for every type except `enum`, whose zero is the first declared variant
 (there is no empty enum member). Both are detailed below.
 
-### The resolved-field view (`fieldStates()`)
+### The resolved-value view (`fieldStates()`)
 
-`Quill::field_states(doc)` (WASM `fieldStates`, Python `field_states`) cuts the
-render ladder into observable data: for every declared field, the value
-`compile_data` would emit into the plate, tagged with its source rung
-(`authored` / `default` / `zero`), the schema `example:` as guidance, and the
-diagnostics anchored to it — byte-for-byte with the plate on every fixture. The
-shape is nested: a `main` card and a `cards` list, each field keyed by name in
-declaration order. The card body rides the `fields` map under the universal
-`$body` key as an ordinary field row — present iff the kind enables a body
-(`enabled: false` undeclares it, so there is no row), its source only ever
-`authored` (non-blank) or `zero` (blank). Source is one **top-level** rung per
-field; a nested zero-fill inside an authored dict or array is a projection
-detail of the value, not a per-subpath source. Diagnostics are `Quill::validate`
-verbatim, bucketed by their [`DocPath`](ERROR.md#document-model-paths) into
-per-field, per-card, and document slots — every diagnostic in exactly one —
-plus a path-anchored `validation::coercion_failed` on any field whose render
-coercion fails.
+`Quill::field_states(doc)` (WASM `fieldStates`) cuts the render ladder into
+observable data: for every declared field, the value `compile_data` would emit
+into the plate, tagged with its source rung (`authored` / `default` / `zero`) —
+byte-for-byte with the plate on every fixture. The shape is nested: a `main`
+card and a `cards` list, each field keyed by name in declaration order. The card
+body rides the `fields` map under the universal `$body` key as an ordinary field
+row — present iff the kind enables a body (`enabled: false` undeclares it, so
+there is no row), its source only ever `authored` (non-blank) or `zero` (blank).
+Source is one **top-level** rung per field; a nested zero-fill inside an authored
+dict or array is a projection detail of the value, not a per-subpath source.
+
+Value and provenance only. The view carries no diagnostics — completeness and
+errors stay `Quill::validate`'s, which a consumer merges with its own producers
+(session warnings, render errors) regardless, so bucketing here would delete no
+consumer code. Schema guidance (`example:`, labels, groups) reads from
+`Quill::schema`. Python is out of scope until a Python consumer names a call
+site (the Tier-1 cut, [BINDINGS.md](BINDINGS.md)).
 
 ## Zero-filled render
 

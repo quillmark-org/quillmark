@@ -431,10 +431,11 @@ describe('Quillmark.quill', () => {
     expect(svg.artifacts[0].mimeType).toBe('image/svg+xml')
   })
 
-  it('session.regions() is always a non-null array', () => {
+  it('session.regions() is always a non-null array, keyed by DocPath', () => {
     // Regions are a session-level query, not on the render result. The document
-    // body is a markdown content field, so it auto-tags one schema-field region
-    // keyed `$body`; the result is always an array, never undefined.
+    // body is a markdown content field, so it auto-tags one region; its address
+    // is the canonical DocPath `main.body` (the backend's plate-space `$body` is
+    // translated at the session boundary). The result is always an array.
     const engine = new Quillmark()
     const quill = Quill.fromTree(makeQuill({ name: 'test_quill', plate: TEST_PLATE }))
     const doc = Document.fromMarkdown(TEST_MARKDOWN)
@@ -442,7 +443,9 @@ describe('Quillmark.quill', () => {
     const session = engine.open(quill, doc)
     const regions = session.regions()
     expect(Array.isArray(regions)).toBe(true)
-    expect(regions.some((r) => r.field === '$body')).toBe(true)
+    expect(regions.some((r) => r.field === 'main.body')).toBe(true)
+    // No plate-space ordinal grammar crosses the boundary.
+    expect(regions.some((r) => r.field.startsWith('$cards.') || r.field === '$body')).toBe(false)
     session.free()
   })
 
@@ -828,6 +831,31 @@ card_kinds:
     doc._commitField(quill, { card: 0, field: 'body' }, 'Card **body**.')
     expect(exportMarkdown(field(doc.cards[0], 'body'))).toBe('Card **body**.')
     expectEditCode(() => doc._commitField(quill, { card: 9, field: 'body' }, 'x'), 'edit::index_out_of_range')
+  })
+
+  it('a mutator diagnostic carries the DocPath it anchors to', () => {
+    const quill = buildQuill()
+    const doc = Document.fromMarkdown(
+      '~~~card-yaml\n$quill: commit_test\n~~~\n\nMain.\n\n~~~card-yaml\n$kind: note\n~~~\n\nCard.',
+    )
+    // The path a diagnostic thrown by `fn` carries.
+    const pathOf = (fn) => {
+      try {
+        fn()
+      } catch (err) {
+        return err.diagnostics[0].path
+      }
+      throw new Error('expected a throw, got none')
+    }
+    // A main field conform error anchors at the bare field DocPath…
+    expect(pathOf(() => doc._commitField(quill, 'qty', 'not-a-number'))).toBe('qty')
+    // …a card field is kind-qualified with its absolute index…
+    expect(pathOf(() => doc._commitField(quill, { card: 0, field: 'stray' }, 'x'))).toBe(
+      'cards.note[0].stray',
+    )
+    // …and a structural out-of-range op anchors at the array slot.
+    expect(pathOf(() => doc.setCardKind(9, 'note'))).toBe('cards[9]')
+    expect(pathOf(() => doc.moveCard(9, 0))).toBe('cards[9]')
   })
 
   it('commitFields typed-commits a batch', () => {
@@ -1744,14 +1772,14 @@ addr:
 })
 
 // ---------------------------------------------------------------------------
-// quill.fieldStates — the resolved-field view
+// quill.fieldStates — the resolved-value view
 // ---------------------------------------------------------------------------
 //
-// For every declared field: the value the render projection would use, the
-// source rung it came from ("authored" | "default" | "zero"), the schema
-// `example:` as guidance (absent from the wire when the field declares none),
-// and the diagnostics bucketed onto it. The body rides the fields map under the
-// `$body` key. See prose/canon/SCHEMAS.md § "Value sources and projections".
+// For every declared field: the value the render projection would use and the
+// source rung it came from ("authored" | "default" | "zero"). Value and
+// provenance only — diagnostics stay validate(), guidance stays the schema. The
+// body rides the fields map under the `$body` key. See prose/canon/SCHEMAS.md
+// § "Value sources and projections".
 
 describe('quill.fieldStates', () => {
   const QUILL_YAML = `quill:
@@ -1829,7 +1857,7 @@ title: T
     expect(noBody.main.fields.$body.source).toBe('zero')
   })
 
-  it('includes example only on a field that declares one', () => {
+  it('carries value and source only — no diagnostics, no example', () => {
     const quill = buildQuill()
     const md = `~~~card-yaml
 $quill: field_states_test
@@ -1838,11 +1866,11 @@ title: T
 ~~~
 `
     const f = quill.fieldStates(Document.fromMarkdown(md)).main.fields
-    // `author` declares `example: A. Author` — the key is present.
-    expect('example' in f.author).toBe(true)
-    expect(f.author.example).toBe('A. Author')
-    // `title` declares none — the key is absent on the wire, not null.
-    expect('example' in f.title).toBe(false)
+    // Each row is exactly { value, source } — schema guidance (example:) and
+    // diagnostics are read from quill.schema / quill.validate, not duplicated here.
+    expect(Object.keys(f.author).sort()).toEqual(['source', 'value'])
+    expect('example' in f.author).toBe(false)
+    expect('diagnostics' in f.author).toBe(false)
   })
 
   it('reports kind and index on a card entry', () => {
@@ -1868,7 +1896,7 @@ Note body.
     expect(card.fields.label.value).toBe('L')
   })
 
-  it('buckets a type mismatch onto its field row', () => {
+  it('keeps a render-uncoercible value raw (byte-for-byte with the plate)', () => {
     const quill = buildQuill()
     const md = `~~~card-yaml
 $quill: field_states_test
@@ -1877,8 +1905,13 @@ title: T
 count: "not-a-number"
 ~~~
 `
+    // A value the render coercion cannot conform is kept raw and Authored,
+    // exactly as compile_data leaves it — the error surfaces via validate(),
+    // not this view (which carries no diagnostics).
     const row = quill.fieldStates(Document.fromMarkdown(md)).main.fields.count
-    expect(row.diagnostics.some((d) => d.code === 'validation::type_mismatch')).toBe(true)
+    expect(row.source).toBe('authored')
+    expect(row.value).toBe('not-a-number')
+    expect('diagnostics' in row).toBe(false)
   })
 
   it('result is JSON.stringify-able', () => {

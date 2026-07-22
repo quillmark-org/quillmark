@@ -59,11 +59,14 @@ resting typography typesets the *resolved* value.
 
 ## Status
 
-The rich projection — per-row diagnostics bucketing, `$seed` and card-level
-slots, `example`, Python parity — is implemented at `d079280` on this branch
-(`crates/core/src/quill/field_states.rs` over `resolve_value_sourced`); the
-slim above lands before merge. Cut pieces resurrect from that commit when a
-consumer names them.
+**Shipped** the lean shape: `field_states.rs` rows are `{ value, source }` over
+the shared `resolve_value_sourced` producer; the WASM `FieldState` /
+`MainFieldStates` / `CardFieldStates` / `FieldStates` types dropped
+`diagnostics` and `example`; Python `field_states` removed; `validate()` stays
+the diagnostics door; the `SCHEMAS.md` editor-row flip re-lands on the lean
+surface. The rich projection (per-row bucketing, `$seed`/card slots, `example`,
+Python parity) is preserved at `d079280` — resurrect from that commit when a
+consumer names a cut piece.
 
 ## Deferred
 
