@@ -22,8 +22,10 @@ guides in order.
   taxonomy: every `EditError` variant carries a namespaced `edit::*` `code`
   (`edit::unknown_field`, `edit::field_conform`, …) in both bindings, and the
   `[EditError::<Variant>]` message-prefix convention is deleted — route on
-  `diagnostics[0].code`, never on message text. Canon ratifies null ≡ absent as
-  a 1.0 commitment (no behavior change).
+  `diagnostics[0].code`, never on message text. `Diagnostic.path` gains an
+  exported `parseDocPath` / `formatDocPath` (route on `DocPathSeg[]`, not a
+  regex); the emitted path strings are unchanged. Canon ratifies null ≡ absent
+  as a 1.0 commitment (no behavior change).
 - [0.94 → 0.95](0.94-to-0.95.md) — WASM `pushCard` folds into
   `insertCard(card, at?)` (one insertion verb; `insertCard`'s args reorder to
   `(card, at?)`) and the deprecated `replaceBody` alias is deleted (use

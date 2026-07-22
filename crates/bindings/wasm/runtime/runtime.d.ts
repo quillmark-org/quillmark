@@ -16,6 +16,9 @@
 export { Quill, Document, init } from '../core/wasm.js';
 // The document-free content codec, re-exported from the core build.
 export { importMarkdown, exportMarkdown, rebase, mapPos } from '../core/wasm.js';
+// The document-model path parser/serializer — route on `Diagnostic.path`
+// segments instead of regexing the string.
+export { parseDocPath, formatDocPath } from '../core/wasm.js';
 
 import type { CardAddr } from '../core/wasm.js';
 
@@ -67,7 +70,8 @@ export type {
 	Assoc,
 	LineOp,
 	MarkOp,
-	ChangeBundle
+	ChangeBundle,
+	DocPathSeg
 } from '../core/wasm.js';
 
 // ── Error contract ──────────────────────────────────────────────────────────

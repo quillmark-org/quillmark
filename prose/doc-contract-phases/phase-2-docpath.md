@@ -56,3 +56,25 @@ value.
   guessing left.
 - ERROR.md's example is correct and the `$cards`/`cards` namespace split is
   canon.
+
+## Status
+
+**Shipped**: `DocPath` (`crates/core/src/path.rs`) — the type, the one
+serializer, the `FromStr` parser; the `validation.rs` + `compose.rs` retrofit
+(every document-model path now built through `DocPath`, no `format!`); the
+WASM `parseDocPath` / `formatDocPath` export (structured `DocPathSeg[]`);
+ERROR.md's corrected example, the `DocPath` grammar section, and the
+`$cards`/`cards` namespace split in canon.
+
+**Deferred** — a later slice, unblocked now that the type exists:
+
+- **Per-variant `path` on edit (mutator) diagnostics.** The batched twins keep
+  the bare field-name `path` phase 1 set; the single mutators still carry none.
+  Attaching kind-qualified paths needs the call-site plumbing this doc names —
+  `IndexOutOfRange` learning its card array, `FieldConform` its card — threaded
+  through ~50 binding call sites, so it lands on its own.
+- **The coercion namespace.** `CoercionError` paths are schema-space
+  (`card_kinds.<kind>.<field>`, bare field names), not document-model
+  (`cards[<i>]`) anchors, and are dropped where coercion becomes
+  `EditError::FieldConform`. They stay their own namespace; folding them (or
+  ruling them out) rides with the edit-diagnostic slice above.

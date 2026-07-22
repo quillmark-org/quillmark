@@ -22,6 +22,8 @@
 //!
 //! Because field names and card kinds are validated to charsets that exclude
 //! `.`, `[`, `]`, and whitespace, the dotted form round-trips unambiguously.
+//! [`DocPath`](crate::path::DocPath) is the one type that constructs, renders,
+//! and parses it — no site assembles a path with `format!`.
 //!
 //! | Anchor                     | Path                                      |
 //! |----------------------------|-------------------------------------------|

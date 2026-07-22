@@ -99,7 +99,8 @@ Field-level validation diagnostics — `validation::type_mismatch` (fatal) and
 canonical shape:
 
 - **Field path** — the document-model anchor of the offending field
-  (`recipient`, `cards[2].author`).
+  (`recipient`, `cards.indorsement[2].author`); see [Document-model
+  paths](#document-model-paths).
 - **Source token** — the YAML scalar that triggered the error, rendered
   verbatim in its YAML-canonical form (`42`, `null`, `true`, `""`). Strings
   appear quoted; primitives appear bare. (Absent fields have no source
@@ -137,6 +138,42 @@ Implementation: `crates/core/src/quill/validation.rs` (the `ValidationError`
 `Display` impl, for `validation::type_mismatch`) and
 `crates/core/src/quill/compose.rs` (`validate_fills`/`fill_warning`, for
 `validation::must_fill`).
+
+## Document-model paths
+
+`Diagnostic.path` is a **document-model** anchor into a typed `Document`:
+one canonical grammar, one serializer, one parser — `DocPath`
+(`crates/core/src/path.rs`). Every emit site (schema validation,
+`!must_fill` collection) constructs a `DocPath`; no site assembles a path
+with `format!`, so the engine never ships two shapes for one anchor.
+
+| Anchor | Path |
+|---|---|
+| Main-card field | `recipient` |
+| Nested in an array of objects | `recipients[0].name` |
+| Main body | `main.body` |
+| Typed card (whole) | `cards.indorsement[0]` |
+| Field on a typed card | `cards.indorsement[0].signature_block` |
+| Body on a typed card | `cards.indorsement[0].body` |
+| Card with unknown kind | `cards[0]` |
+
+Card fields are **kind-qualified** — `cards.<kind>[<index>]` fuses kind and
+document-array index so a consumer gets both without a second lookup. The
+unknown-kind whole-card `cards[<index>]` is the only bare-index form. Field
+names and card kinds exclude `.`, `[`, `]`, so the rendered form round-trips;
+the WASM build exports `parseDocPath` / `formatDocPath` (structured
+`DocPathSeg[]` ↔ string) so a consumer routes on segments instead of regexing
+the string.
+
+**Two path namespaces, not to be confused.** The unsigiled `cards` here is a
+document-model path. The sigiled `data.$cards` a template author sees
+([CARDS.md](CARDS.md)) is plate JSON — glue delivered to the backend, a
+different namespace. The plate key is *not* renamed (template-author blast
+radius); the two are documented apart. Config-space anchors
+(`$seed.<kind>.<field>`, Quill.yaml schema-literal owner labels) ride the
+same serializer with their prefix as a leading segment. The coercion layer
+(`CoercionError`) keeps its own schema-space anchors (`card_kinds.<kind>...`,
+bare field names) — a distinct namespace, not a document path.
 
 ## Error Presentation
 

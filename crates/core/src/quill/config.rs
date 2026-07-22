@@ -1053,7 +1053,11 @@ impl QuillConfig {
     ) {
         use super::validation::{validate_schema_literal, ValidationError};
 
-        for violation in validate_schema_literal(schema, value, owner_label) {
+        // A Quill.yaml schema-literal anchor (`$seed.<kind>`, a field label) is
+        // config-space, not a document path; it rides the one serializer with
+        // its prefix as an opaque head field.
+        let owner_path = crate::path::DocPath::new().field(owner_label);
+        for violation in validate_schema_literal(schema, value, &owner_path) {
             let diag = match &violation {
                 ValidationError::TypeMismatch {
                     path,

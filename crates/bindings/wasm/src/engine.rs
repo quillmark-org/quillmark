@@ -1798,6 +1798,61 @@ pub fn rebase(
     serialize_or_throw(&out, "rebase")
 }
 
+/// The structured form of a `Diagnostic.path` — one tagged segment per
+/// `DocPathSeg`. Emitted here as the single source of truth for the parser
+/// boundary so a consumer routes on segments instead of splitting the string.
+#[wasm_bindgen(typescript_custom_section)]
+const DOCPATH_TS: &'static str = r#"
+/**
+ * One segment of a parsed `Diagnostic.path` (see `parseDocPath`). The head
+ * carries the document-model root — `main` (only before `body`), a `card`
+ * (`kind: null` is the unknown-kind `cards[i]` form), or a `field`; the tail is
+ * `field` / `index` / a terminal `body`.
+ */
+export type DocPathSeg =
+    | { seg: "main" }
+    | { seg: "card"; kind: string | null; index: number }
+    | { seg: "field"; name: string }
+    | { seg: "index"; index: number }
+    | { seg: "body" };
+"#;
+
+/// Parse a canonical document-model `Diagnostic.path`
+/// (`cards.<kind>[<i>].<field>`, `main.body`, `recipients[0].name`) into its
+/// structured [`DocPathSeg`] segments — the exported inverse of the engine's
+/// one path serializer, so a consumer routes on segments instead of regexing
+/// the string. Throws on a malformed path.
+#[wasm_bindgen(js_name = parseDocPath, unchecked_return_type = "DocPathSeg[]")]
+pub fn parse_doc_path(path: &str) -> Result<JsValue, JsValue> {
+    let doc_path = path
+        .parse::<quillmark_core::DocPath>()
+        .map_err(|e| WasmError::from(e.to_string()).to_js_value())?;
+    // Via `serde_json::Value` so the tagged segments cross as plain objects,
+    // sidestepping serde-wasm-bindgen's tagged-enum handling; `missing_as_null`
+    // so an unknown-kind card's `kind` is JS `null`, not `undefined` — the
+    // `DocPathSeg` contract is `kind: string | null`.
+    let json = serde_json::to_value(&doc_path)
+        .map_err(|e| WasmError::from(format!("parseDocPath: {e}")).to_js_value())?;
+    let serializer = serde_wasm_bindgen::Serializer::new()
+        .serialize_maps_as_objects(true)
+        .serialize_missing_as_null(true);
+    json.serialize(&serializer)
+        .map_err(|e| WasmError::from(format!("parseDocPath: {e}")).to_js_value())
+}
+
+/// Serialize structured [`DocPathSeg`] segments back to the canonical path
+/// string — the inverse of `parseDocPath`, for a consumer that builds a path
+/// rather than reads one. Throws on a segment array the deserializer rejects.
+#[wasm_bindgen(js_name = formatDocPath)]
+pub fn format_doc_path(
+    #[wasm_bindgen(unchecked_param_type = "DocPathSeg[]")] segs: JsValue,
+) -> Result<String, JsValue> {
+    let json = js_value_to_json(segs, "formatDocPath")?;
+    let doc_path: quillmark_core::DocPath = serde_json::from_value(json)
+        .map_err(|e| WasmError::from(format!("formatDocPath: {e}")).to_js_value())?;
+    Ok(doc_path.to_string())
+}
+
 /// Map a base content position through a `delta` to its new position — the pure
 /// position-mapping codec an editor bridge composes to hold a caret stable
 /// across a `revise`. `assoc` decides the side of a same-position insertion

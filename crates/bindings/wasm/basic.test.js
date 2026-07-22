@@ -16,6 +16,8 @@ import {
   exportMarkdown,
   rebase,
   mapPos,
+  parseDocPath,
+  formatDocPath,
 } from '@quillmark-wasm'
 import { makeQuill, expectEditCode } from './test-helpers.js'
 
@@ -555,7 +557,10 @@ describe('Document editor surface — storeFields', () => {
       throw new Error('storeFields should have thrown')
     } catch (err) {
       expect(err.diagnostics.map((d) => d.path)).toEqual(['bad-name', 'also bad'])
-      expect(err.message).toMatch(/InvalidFieldName/)
+      expect(err.diagnostics.map((d) => d.code)).toEqual([
+        'edit::invalid_field_name',
+        'edit::invalid_field_name',
+      ])
     }
     expect(hasField(doc.main, 'ok_field')).toBe(false)
   })
@@ -648,6 +653,53 @@ describe('Content codec — importMarkdown / exportMarkdown / rebase / mapPos', 
     // A caret at the end of "hello " stays; one after "world" shifts past "brave ".
     expect(mapPos(delta, 6, 'before')).toBe(6)
     expect(mapPos(delta, 11, 'after')).toBe(17)
+  })
+})
+
+describe('Document-model path — parseDocPath / formatDocPath', () => {
+  // Every emitted shape routes on tagged segments, not on a regex.
+  const cases = [
+    ['title', [{ seg: 'field', name: 'title' }]],
+    [
+      'recipients[0].name',
+      [
+        { seg: 'field', name: 'recipients' },
+        { seg: 'index', index: 0 },
+        { seg: 'field', name: 'name' },
+      ],
+    ],
+    ['main.body', [{ seg: 'main' }, { seg: 'body' }]],
+    ['cards[3]', [{ seg: 'card', kind: null, index: 3 }]],
+    [
+      'cards.indorsement[0].signature_block',
+      [
+        { seg: 'card', kind: 'indorsement', index: 0 },
+        { seg: 'field', name: 'signature_block' },
+      ],
+    ],
+    [
+      'cards.skills[2].body',
+      [{ seg: 'card', kind: 'skills', index: 2 }, { seg: 'body' }],
+    ],
+  ]
+
+  it('parseDocPath and formatDocPath round-trip every emitted shape', () => {
+    for (const [rendered, segs] of cases) {
+      expect(parseDocPath(rendered)).toEqual(segs)
+      expect(formatDocPath(segs)).toBe(rendered)
+    }
+  })
+
+  it('a card diagnostic routes on the head segment, no string parsing', () => {
+    const [head] = parseDocPath('cards.indorsement[0].signature_block')
+    expect(head.seg).toBe('card')
+    expect(head.kind).toBe('indorsement')
+    expect(head.index).toBe(0)
+  })
+
+  it('parseDocPath throws on a malformed path', () => {
+    expect(() => parseDocPath('cards[')).toThrow()
+    expect(() => parseDocPath('')).toThrow()
   })
 })
 
