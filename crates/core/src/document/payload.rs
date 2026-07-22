@@ -742,7 +742,7 @@ mod tests {
         let mut fm = Payload::new();
         fm.set_quill("foo@0.1".parse().unwrap());
         fm.set_kind("main");
-        fm.insert("title", qv("Hello"));
+        let _ = fm.insert("title", qv("Hello"));
         let items = std::mem::take(&mut fm).items().to_vec();
         // Reconstruct with an interleaved comment.
         let mut items_with_comment = items;

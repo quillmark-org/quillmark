@@ -734,7 +734,8 @@ fn inline_on_empty_mapping_degrades_to_own_line() {
     // Construct programmatically since `key: {}` doesn't appear in source.
     let src = "~~~card-yaml\n$quill: q\n$kind: main\n~~~\n";
     let mut doc = Document::parse(src).unwrap().document;
-    doc.main_mut()
+    let _ = doc
+        .main_mut()
         .payload_mut()
         .insert("empty", QuillValue::from_json(serde_json::json!({})));
     // Append an inline comment item right after the empty-mapping field.
