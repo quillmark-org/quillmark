@@ -459,7 +459,7 @@ fn rebuild_payload_with_meta(source: &Card, fields: IndexMap<String, QuillValue>
 /// consumer treats any outstanding marker as "not done".
 fn validate_fills(config: &QuillConfig, doc: &Document) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    collect_fill_diags(doc.main(), &DocPath::new(), &mut diags);
+    collect_fill_diags(doc.main(), &DocPath::main(), &mut diags);
     for (index, card) in doc.cards().iter().enumerate() {
         // A card whose declared `$kind` has no schema drops the kind segment and
         // stays `cards[<i>]`, matching `validate_typed_document`; a

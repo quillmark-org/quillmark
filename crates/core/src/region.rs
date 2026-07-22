@@ -243,13 +243,13 @@ pub fn plate_addr_to_doc_path(addr: &str, card_kinds: &[Option<&str>]) -> Option
             card.field(tail)
         });
     }
-    // A bare main field is spelled identically in both grammars; route it
-    // through `DocPath` so a consumer always receives a parsed path. An
-    // unrecognized `$`-token (never a main field) does not translate.
+    // A plate-space bare main field (`subject`) roots at `main` in `DocPath`
+    // space (`main.subject`), so a consumer always receives a parsed, rooted
+    // path. An unrecognized `$`-token (never a main field) does not translate.
     if addr.starts_with('$') {
         return None;
     }
-    Some(DocPath::new().field(addr))
+    Some(DocPath::main().field(addr))
 }
 
 /// Translate a canonical [`DocPath`] geometry address back to the backend
@@ -262,7 +262,7 @@ pub fn plate_addr_to_doc_path(addr: &str, card_kinds: &[Option<&str>]) -> Option
 pub fn doc_path_to_plate_addr(path: &DocPath, card_kinds: &[Option<&str>]) -> Option<String> {
     match path.segs() {
         [DocSeg::Main, DocSeg::Body] => Some("$body".to_string()),
-        [DocSeg::Field { name }] => Some(name.clone()),
+        [DocSeg::Main, DocSeg::Field { name }] => Some(name.clone()),
         [DocSeg::Card {
             kind: Some(kind),
             index,
@@ -486,8 +486,8 @@ mod tests {
             to_doc("$cards.note.1.$body").as_deref(),
             Some("cards.note[2].body")
         );
-        // A bare main field is spelled the same in both grammars.
-        assert_eq!(to_doc("signature_block").as_deref(), Some("signature_block"));
+        // A plate-space bare main field roots at `main` in DocPath space.
+        assert_eq!(to_doc("signature_block").as_deref(), Some("main.signature_block"));
     }
 
     #[test]

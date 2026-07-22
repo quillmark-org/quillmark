@@ -162,17 +162,19 @@ impl EditError {
     }
 
     /// The [`DocPath`](crate::path::DocPath) this error anchors to, relative to
-    /// `base` — the card root
-    /// the mutator ran against (empty for a main-card mutator, `cards.<kind>[i]`
-    /// for a composable card, `cards[i]` for a structural op on the array).
+    /// `base` — the card root the mutator ran against (`main` for a main-card
+    /// mutator, `cards.<kind>[i]` for a composable card, `cards[i]` for a
+    /// structural op on the array; empty only for a card built before it is
+    /// placed, which has no index yet).
     ///
     /// A field-named variant anchors at its field under `base`
-    /// (`cards.<kind>[i].<field>`, or a bare `<field>` when `base` is empty);
+    /// (`main.<field>`, `cards.<kind>[i].<field>`, or a bare `<field>` when
+    /// `base` is empty — the pre-placement card);
     /// [`IndexOutOfRange`](Self::IndexOutOfRange) at the document-array slot
     /// `cards[index]`, base-independent — a structural op names a slot, not a
     /// field; and the remaining variants (kind errors, depth, content
     /// apply/import) anchor at `base` itself when it names a card, else carry no
-    /// anchor (a main-card `$ext`/`$seed` depth error is config-space). Both
+    /// anchor (a config-space `$seed` error keeps an empty base). Both
     /// bindings route through this so a mutator diagnostic is addressable the
     /// same way a validation diagnostic is.
     pub fn doc_path(&self, base: &crate::path::DocPath) -> Option<crate::path::DocPath> {
@@ -870,8 +872,8 @@ mod tests {
 
     #[test]
     fn field_error_anchors_under_the_card_base() {
-        // A main field write: empty base → a bare field path.
-        let main = DocPath::new();
+        // A main field write: the `main` base roots the field path.
+        let main = DocPath::main();
         assert_eq!(
             EditError::FieldConform {
                 field: "font_size".into(),
@@ -880,7 +882,7 @@ mod tests {
             .doc_path(&main)
             .unwrap()
             .to_string(),
-            "font_size"
+            "main.font_size"
         );
         // A card field write: the card root qualifies the field.
         let card = DocPath::card(Some("indorsement"), 1);
@@ -896,7 +898,7 @@ mod tests {
     #[test]
     fn index_out_of_range_anchors_at_the_array_slot() {
         // Structural op: names a slot, base-independent.
-        for base in [DocPath::new(), DocPath::card(Some("note"), 0)] {
+        for base in [DocPath::main(), DocPath::card(Some("note"), 0)] {
             assert_eq!(
                 EditError::IndexOutOfRange { index: 4, len: 2 }
                     .doc_path(&base)
@@ -917,10 +919,18 @@ mod tests {
                 .to_string(),
             "cards[2]"
         );
-        // A main-card depth error ($ext/$seed) is config-space — no anchor.
+        // A config-space `$seed` depth error keeps an empty base — no anchor.
         assert_eq!(
             EditError::ValueTooDeep { max: 8 }.doc_path(&DocPath::new()),
             None
+        );
+        // A main-card depth error roots at `main` (its base names the card).
+        assert_eq!(
+            EditError::ValueTooDeep { max: 8 }
+                .doc_path(&DocPath::main())
+                .unwrap()
+                .to_string(),
+            "main"
         );
     }
 }

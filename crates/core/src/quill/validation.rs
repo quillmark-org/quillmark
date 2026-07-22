@@ -282,7 +282,7 @@ pub fn validate_typed_document(
     doc: &Document,
 ) -> Result<(), Vec<ValidationError>> {
     let main_fields = doc.main().payload().to_index_map();
-    let mut errors = validate_fields_for_card_indexmap(&config.main, &main_fields, &DocPath::new());
+    let mut errors = validate_fields_for_card_indexmap(&config.main, &main_fields, &DocPath::main());
 
     // Enforce body.enabled on the main card. Whitespace-only bodies are
     // treated as empty — only meaningful prose triggers the diagnostic.
@@ -690,7 +690,7 @@ main:
         assert!(has_error(&errors, |e| matches!(
             e,
             ValidationError::TypeMismatch { path, expected, actual, source_token, .. }
-            if path == "title" && expected == "string" && actual == "array" && source_token == "[…]"
+            if path == "main.title" && expected == "string" && actual == "array" && source_token == "[…]"
         )));
     }
 
@@ -709,7 +709,7 @@ main:
         assert!(has_error(&errors, |e| matches!(
             e,
             ValidationError::TypeMismatch { path, expected, actual, source_token, .. }
-            if path == "count" && expected == "integer" && actual == "number" && source_token == "9.5"
+            if path == "main.count" && expected == "integer" && actual == "number" && source_token == "9.5"
         )));
     }
 
@@ -987,7 +987,7 @@ main:
         let errors = validate_typed_document(&config, &doc).unwrap_err();
         assert!(has_error(&errors, |e| matches!(
             e,
-            ValidationError::NotInline { path } if path == "tag"
+            ValidationError::NotInline { path } if path == "main.tag"
         )));
     }
 

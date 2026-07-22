@@ -1755,14 +1755,14 @@ impl Document {
         }
     }
 
-    /// The `DocPath` card root an [`Addr`] targets — empty for the main card,
+    /// The `DocPath` card root an [`Addr`] targets — `main` for the main card,
     /// `cards.<kind>[i]` for a composable one (kind read off the live card,
     /// `None` when the index is out of range, where the error self-anchors at
     /// `cards[i]` anyway). The base every addressed mutator passes to
     /// [`edit_error_to_js`], computed before the mutable borrow.
     fn addr_base(&self, addr: &Addr) -> quillmark_core::DocPath {
         match addr.card {
-            None => quillmark_core::DocPath::new(),
+            None => quillmark_core::DocPath::main(),
             Some(index) => quillmark_core::DocPath::card(
                 self.inner.cards().get(index).and_then(|c| c.kind()),
                 index,

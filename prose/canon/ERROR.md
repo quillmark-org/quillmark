@@ -149,17 +149,20 @@ with `format!`, so the engine never ships two shapes for one anchor.
 
 | Anchor | Path |
 |---|---|
-| Main-card field | `recipient` |
-| Nested in an array of objects | `recipients[0].name` |
+| Main-card field | `main.recipient` |
+| Nested in an array of objects | `main.recipients[0].name` |
 | Main body | `main.body` |
 | Typed card (whole) | `cards.indorsement[0]` |
 | Field on a typed card | `cards.indorsement[0].signature_block` |
 | Body on a typed card | `cards.indorsement[0].body` |
 | Card with unknown kind | `cards[0]` |
 
-Card fields are **kind-qualified** — `cards.<kind>[<index>]` fuses kind and
-document-array index so a consumer gets both without a second lookup. The
-unknown-kind whole-card `cards[<index>]` is the only bare-index form. Field
+Every path is **rooted** — a main field at `main.<field>`, a card field
+kind-qualified at `cards.<kind>[<index>].<field>` (kind and document-array index
+fused so a consumer gets both without a second lookup). The unknown-kind
+whole-card `cards[<index>]` is the only bare-index form. Rooting keeps the
+grammar total against a field named for a root (`main.cards`, `main.main`); only
+a field literally named `body` still collides with the body terminal. Field
 names and card kinds exclude `.`, `[`, `]`, so the rendered form round-trips;
 the WASM build exports `parseDocPath` / `formatDocPath` (structured
 `DocPathSeg[]` ↔ string) so a consumer routes on segments instead of regexing
@@ -167,7 +170,8 @@ the string.
 
 `DocPath` is the anchor on **every** address that crosses to a consumer, not
 only `Diagnostic.path`. Mutator (`edit::*`) diagnostics carry it (a field error
-at `cards.<kind>[<i>].<field>`, a structural out-of-range op at `cards[<i>]`);
+at `main.<field>` or `cards.<kind>[<i>].<field>`, a structural out-of-range op at
+`cards[<i>]`);
 and `LiveSession` geometry (`regions` / `fieldAt` / `positionAt` / `locate`)
 keys on it — the session translates the backend's plate-space
 `$cards.<kind>.<ordinal>` form to the `DocPath` absolute index at the boundary,

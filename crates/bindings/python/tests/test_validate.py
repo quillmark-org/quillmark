@@ -91,7 +91,7 @@ def test_validate_forwards_type_mismatch(tmp_path):
         (d for d in diags if d.get("code") == "validation::type_mismatch"), None
     )
     assert mismatch is not None, f"expected type_mismatch; got: {diags}"
-    assert mismatch["path"] == "count"
+    assert mismatch["path"] == "main.count"
     assert mismatch.get("hint")
 
 

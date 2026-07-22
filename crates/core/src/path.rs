@@ -11,34 +11,36 @@
 //! # Grammar
 //!
 //! ```text
-//! path   := root? segment*
-//! root   := "main"                         // only as the main body head
-//!         | "cards" "." kind "[" index "]"  // typed card
-//!         | "cards" "[" index "]"           // unknown-kind card (the only bare-index root)
+//! path   := root segment*
+//! root   := "main"                          // the main card
+//!         | "cards" "." kind "[" index "]"   // typed card
+//!         | "cards" "[" index "]"            // unknown-kind card (the only bare-index root)
 //! segment:= "." field | "[" index "]" | ".body"
 //! kind   := [a-z_][a-z0-9_]*
 //! field  := [A-Za-z_][A-Za-z0-9_]*
 //! ```
 //!
-//! A bare main field carries no root (`recipient`, `recipients[0].name`); the
-//! main body is `main.body`. A card field is kind-qualified —
-//! `cards.<kind>[<i>].<field>` — so a consumer receives kind and array index
-//! without a second lookup; a card whose `$kind` has no schema — absent, or
-//! present but not a declared card kind — stays `cards[<i>]`. Field names and
-//! card kinds exclude `.`, `[`, `]`, so the
+//! Every document-model path is **rooted**: a main field is `main.<field>`
+//! (`main.title`, `main.recipients[0].name`), the main body `main.body`. A card
+//! field is kind-qualified — `cards.<kind>[<i>].<field>` — so a consumer
+//! receives kind and array index without a second lookup; a card whose `$kind`
+//! has no schema — absent, or present but not a declared card kind — stays
+//! `cards[<i>]`. Field names and card kinds exclude `.`, `[`, `]`, so the
 //! rendered form round-trips.
 //!
-//! `cards` and `main` are reserved roots and `body` a reserved terminal: a
-//! main field literally named `cards`/`main`, or a scalar field named `body`,
-//! collides with a root/terminal and does not round-trip. No fixture field
-//! uses these names; the collision is accepted, not guarded.
+//! Rooting makes the grammar total against a field named for a root: a main
+//! field literally named `cards` or `main` is `main.cards` / `main.main`, which
+//! no longer collides. One residual: a field literally named `body` renders
+//! `<root>.body` and collides with the body terminal — accepted, not guarded (no
+//! fixture field uses the name).
 //!
 //! This is the **document-model** namespace, distinct from the plate-JSON
 //! `data.$cards` array template authors see (`prose/canon/CARDS.md`): sigiled
 //! `$cards` is glue delivered to the backend, unsigiled `cards` is a path into
 //! the document. Config-space anchors (`$seed.<kind>.<field>`, Quill.yaml
-//! schema-literal owner labels) ride the same serializer with their prefix as
-//! a leading [`field`](DocPath::field) segment — verbatim, never parsed.
+//! schema-literal owner labels) ride the same serializer with their prefix as a
+//! leading [`field`](DocPath::field) segment — the one **unrooted** form,
+//! config-space not document-model, verbatim and never parsed.
 
 use crate::value::PathSegment;
 use std::fmt;
@@ -51,8 +53,8 @@ use std::str::FromStr;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "seg", rename_all = "lowercase")]
 pub enum DocSeg {
-    /// The main card — only ever the head of `main.body`; a bare main field
-    /// carries no root segment.
+    /// The main-card root — heads every main-card address (`main.title`,
+    /// `main.body`).
     Main,
     /// A composable card by document-array index. `kind: None` is the
     /// unknown-kind whole-card form (`cards[<i>]`), the only bare-index root.
@@ -75,9 +77,20 @@ pub struct DocPath {
 }
 
 impl DocPath {
-    /// The empty path — the base a bare main field extends (`title`).
+    /// The empty base for a config-space / opaque-prefix path (`$seed.<kind>`, a
+    /// Quill.yaml schema-literal owner label) — the one unrooted form, not a
+    /// document-model address. A document-model path roots at [`main`](Self::main)
+    /// or [`card`](Self::card).
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The main-card root, `main` — the base every main-card address extends
+    /// (`main.title`, `main.recipients[0].name`, `main.body`).
+    pub fn main() -> Self {
+        Self {
+            segs: vec![DocSeg::Main],
+        }
     }
 
     /// The main body anchor, `main.body`.
@@ -185,10 +198,12 @@ impl std::error::Error for DocPathParseError {}
 impl FromStr for DocPath {
     type Err = DocPathParseError;
 
-    /// The inverse of [`Display`](std::fmt::Display), total over every emitted path. `main.body`
-    /// is the main body; a `cards`-headed shape matching a card root becomes a
-    /// [`Card`](DocSeg::Card); a trailing `.body` under a root is [`Body`](DocSeg::Body);
-    /// everything else is a bare field chain (`recipients[0].name`).
+    /// The inverse of [`Display`](std::fmt::Display), total over every emitted path. A
+    /// `main` head is the main root — `main.body` the body, `main` alone the bare
+    /// root, otherwise a main field chain; a `cards`-headed shape matching a card
+    /// root becomes a [`Card`](DocSeg::Card); a trailing `.body` under a root is
+    /// [`Body`](DocSeg::Body); an unrooted chain is a config-space anchor
+    /// (`$seed.<kind>`).
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let err = |reason: &'static str| DocPathParseError {
             input: s.to_owned(),
@@ -202,11 +217,18 @@ impl FromStr for DocPath {
         // into its root below, otherwise it stays the field it names.
         let segs = scan(s).map_err(err)?;
 
-        // `main.body` is the sole `main`-headed form.
-        if let [DocSeg::Field { name: a }, DocSeg::Field { name: b }] = segs.as_slice() {
-            if a == "main" && b == "body" {
+        // A `main` head is the main root. `main.body` is the body; `main` alone
+        // the bare root; otherwise a main field chain (`main.recipients[0].name`).
+        // A main field literally named `body` renders `main.body` and reads back
+        // as the body — the accepted residual collision.
+        if matches!(segs.first(), Some(DocSeg::Field { name }) if name == "main") {
+            let rest = &segs[1..];
+            if matches!(rest, [DocSeg::Field { name }] if name == "body") {
                 return Ok(DocPath::main_body());
             }
+            let mut out = vec![DocSeg::Main];
+            out.extend_from_slice(rest);
+            return Ok(DocPath { segs: out });
         }
 
         // A `cards` head that matches a card-root shape is a Card; the tail
@@ -220,7 +242,8 @@ impl FromStr for DocPath {
             }
         }
 
-        // A bare field chain: the scanned segments already stand.
+        // An unrooted field chain — a config-space anchor (`$seed.<kind>`, an
+        // owner label), never a document-model address.
         Ok(DocPath { segs })
     }
 }
@@ -324,10 +347,11 @@ mod tests {
 
     #[test]
     fn main_field_and_nested() {
-        round_trip(DocPath::new().field("title"), "title");
+        round_trip(DocPath::main(), "main");
+        round_trip(DocPath::main().field("title"), "main.title");
         round_trip(
-            DocPath::new().field("recipients").index(0).field("name"),
-            "recipients[0].name",
+            DocPath::main().field("recipients").index(0).field("name"),
+            "main.recipients[0].name",
         );
     }
 
@@ -362,21 +386,37 @@ mod tests {
     }
 
     #[test]
-    fn body_and_main_are_reserved_only_at_the_edges() {
+    fn body_is_reserved_only_as_a_root_terminal() {
         // A non-terminal `body` under a card is an ordinary field named body.
         round_trip(
             DocPath::card(Some("k"), 0).field("body").field("x"),
             "cards.k[0].body.x",
         );
-        // A `main`-headed chain that is not `main.body` is a field chain.
-        round_trip(DocPath::new().field("main").field("x"), "main.x");
-        round_trip(DocPath::new().field("main"), "main");
+        // A main field chain that is not `main.body` roots at `main`.
+        round_trip(DocPath::main().field("x"), "main.x");
     }
 
     #[test]
-    fn cards_as_a_field_name_when_no_index_follows() {
-        // `cards.foo` has no index → not a card root → a field chain.
+    fn main_field_named_for_a_root_no_longer_collides() {
+        // Rooting makes `cards` / `main` field names total — they were the
+        // bare-form collisions the old grammar could not round-trip.
+        round_trip(DocPath::main().field("cards"), "main.cards");
+        round_trip(DocPath::main().field("main"), "main.main");
+        // A bare `cards.foo` (no index) is a config-space chain, not a card.
         round_trip(DocPath::new().field("cards").field("foo"), "cards.foo");
+    }
+
+    #[test]
+    fn config_space_anchor_is_the_unrooted_form() {
+        // Config-space paths (`$seed` overlays, owner labels) are the one
+        // unrooted shape — a leading field, never reclassed to a root.
+        round_trip(
+            DocPath::new()
+                .field("$seed")
+                .field("indorsement")
+                .field("author"),
+            "$seed.indorsement.author",
+        );
     }
 
     #[test]

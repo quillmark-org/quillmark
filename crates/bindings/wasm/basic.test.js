@@ -559,7 +559,7 @@ describe('Document editor surface — storeFields', () => {
       doc.storeFields({}, { ok_field: 'v', 'bad-name': 'v', 'also bad': 'v' })
       throw new Error('storeFields should have thrown')
     } catch (err) {
-      expect(err.diagnostics.map((d) => d.path)).toEqual(['bad-name', 'also bad'])
+      expect(err.diagnostics.map((d) => d.path)).toEqual(['main.bad-name', 'main.also bad'])
       expect(err.diagnostics.map((d) => d.code)).toEqual([
         'edit::invalid_field_name',
         'edit::invalid_field_name',
@@ -662,10 +662,11 @@ describe('Content codec — importMarkdown / exportMarkdown / rebase / mapPos', 
 describe('Document-model path — parseDocPath / formatDocPath', () => {
   // Every emitted shape routes on tagged segments, not on a regex.
   const cases = [
-    ['title', [{ seg: 'field', name: 'title' }]],
+    ['main.title', [{ seg: 'main' }, { seg: 'field', name: 'title' }]],
     [
-      'recipients[0].name',
+      'main.recipients[0].name',
       [
+        { seg: 'main' },
         { seg: 'field', name: 'recipients' },
         { seg: 'index', index: 0 },
         { seg: 'field', name: 'name' },
@@ -847,8 +848,8 @@ card_kinds:
       }
       throw new Error('expected a throw, got none')
     }
-    // A main field conform error anchors at the bare field DocPath…
-    expect(pathOf(() => doc._commitField(quill, 'qty', 'not-a-number'))).toBe('qty')
+    // A main field conform error anchors at the rooted main field DocPath…
+    expect(pathOf(() => doc._commitField(quill, 'qty', 'not-a-number'))).toBe('main.qty')
     // …a card field is kind-qualified with its absolute index…
     expect(pathOf(() => doc._commitField(quill, { card: 0, field: 'stray' }, 'x'))).toBe(
       'cards.note[0].stray',
@@ -1492,7 +1493,7 @@ count: "not-a-number"
     const diags = quill.validate(Document.fromMarkdown(md))
     const mismatch = diags.find((d) => d.code === 'validation::type_mismatch')
     expect(mismatch).toBeDefined()
-    expect(mismatch.path).toBe('count')
+    expect(mismatch.path).toBe('main.count')
     expect(typeof mismatch.hint).toBe('string')
   })
 
@@ -1714,7 +1715,7 @@ title: !must_fill
         (d) =>
           d.code === 'validation::must_fill' &&
           d.severity === 'warning' &&
-          d.path === 'title' &&
+          d.path === 'main.title' &&
           typeof d.hint === 'string' &&
           d.hint.includes('!must_fill'),
       ),

@@ -159,8 +159,8 @@ def test_render_tolerates_must_fill_marker(engine, tmp_path):
     # validate surfaces a non-fatal warning for the marker.
     diags = quill.validate(doc)
     fill = [d for d in diags if d.get("code") == "validation::must_fill"]
-    assert any(d.get("path") == "title" for d in fill), (
-        f"expected a validation::must_fill warning on `title`; got: {diags}"
+    assert any(d.get("path") == "main.title" for d in fill), (
+        f"expected a validation::must_fill warning on `main.title`; got: {diags}"
     )
     assert all(d.get("severity") == "warning" for d in fill), (
         f"validation::must_fill must be a non-fatal warning; got: {fill}"
