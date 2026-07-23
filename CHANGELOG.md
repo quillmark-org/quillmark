@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.96.0 - 2026-07-23
+
+- docs(spec): keep plate JSON out of the markdown spec
+- docs(core): fix doc-lint and mkdocs-strict CI failures
+- core: gate plate $body at construction, not post-hoc strip
+- docs(core): trim duplicated $kind comment in to_plate_json
+- core: plate $body/$kind absent on undefined (#1030)
+- core: compile_data conforms once — ladder consumes the gate's coerced output
+- rename: view()→reader(), fieldStates()→resolve() across core and bindings
+- core: one shared resolver behind compile_data and field_states
+- content: dense-prose + simplify pass on the #1002 decision
+- content: decide island-id ↔ content-hash determinism (#1002)
+- Re-key runtime.d.ts geometry docs onto the canonical DocPath form
+- Canon lint cleanup: dedup spine restatements, fold CI job, shape-based anchor check
+- Canon docs infra: single-source the spine in prose/README.md, enforce in CI
+- release: strip the seed coverage comment by construction; fix blank-notes fallback
+- Reject signed years in date/datetime grammar (#1008)
+- core: silence unused_must_use on Payload::insert in tests
+- DocPath: root every main-field address at `main`
+- fieldStates: ordered rows carrying `name`, body as a sibling (drop `$body`)
+- Descope phase 5: cut the conformance suite, contractVersion, and phase-plan docs
+- Contract phase 5 — conformance suite + contractVersion
+- Contract phase 4 — typed-surface completion: QuillCardUi.groups + island props
+- Phase 3 doc: separate tested value-parity from structural source-rung claim
+- Fix rustdoc intra-doc links on EditError::doc_path / RenderedRegion.field
+- simplify pass: hoist kinds vec, unify render-sidecar addressing, merge doc_path arms
+- Contract phases 2–3: geometry DocPath unification, mutator paths, lean fieldStates
+- Repivot the contract rework around consumer evidence (phase-doc rewrite)
+- Qualify card fill diagnostics by schema-declared kind only (#1014)
+- Contract phase 2 — canonical DocPath (+ phase 1 wasm test fix) (#1012)
+- edit:: diagnostic codes on mutator failures (contract phase 1) (#1006)
+- Add document-contract rework phase plan (#1005)
+- content: centralize island type dispatch behind KnownIslandType (#985) (#1001)
+
+
 ## v0.95.1 - 2026-07-19
 
 

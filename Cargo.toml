@@ -24,7 +24,7 @@ default-members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.95.1"
+version = "0.96.0"
 edition = "2021"
 include = ["src/**", "Cargo.toml", "README*", "LICENSE*"]
 readme = "README.md"
@@ -66,12 +66,12 @@ typst-render = "0.15.0"
 typst-svg = "0.15.0"
 
 # Intra-project dependencies
-quillmark-core = { version = "0.95.1", path = "crates/core" }
-quillmark-content = { version = "0.95.1", path = "crates/content" }
-quillmark-pdf = { version = "0.95.1", path = "crates/quillmark-pdf" }
-quillmark-typst = { version = "0.95.1", path = "crates/backends/typst", default-features = false }
-quillmark-pdfform = { version = "0.95.1", path = "crates/backends/pdfform", default-features = false }
-quillmark = { version = "0.95.1", path = "crates/quillmark" }
+quillmark-core = { version = "0.96.0", path = "crates/core" }
+quillmark-content = { version = "0.96.0", path = "crates/content" }
+quillmark-pdf = { version = "0.96.0", path = "crates/quillmark-pdf" }
+quillmark-typst = { version = "0.96.0", path = "crates/backends/typst", default-features = false }
+quillmark-pdfform = { version = "0.96.0", path = "crates/backends/pdfform", default-features = false }
+quillmark = { version = "0.96.0", path = "crates/quillmark" }
 
 # Test and dev dependencies
 tempfile = "~3.23"
