@@ -196,7 +196,7 @@ author wrote the line.
   Required to be a YAML mapping (object); scalars and sequences are
   rejected. Contents are carried verbatim through Markdown and storage
   DTO round-trips, and **never** appear in the plate JSON consumed by
-  backends (§5). Bespoke consumers namespace their state inside the
+  backends. Bespoke consumers namespace their state inside the
   map — e.g. `$ext.editor.title`, the canonical slot for a per-card
   display name (an editor-side rename).
   An empty `$ext: {}` is preserved as a distinct, explicit declaration.
@@ -358,46 +358,18 @@ thematic break — card-yaml does not reserve any thematic-break syntax.
 
 ## 5. Data Model
 
-Parsing yields the `Document` model, which serialises via
-`to_plate_json` into the following wire shape for backend templates.
-All system-metadata keys are `$`-prefixed; user payload fields live flat
-at the root and cannot collide with metadata because field names exclude
-the `$` sigil.
+Parsing yields the `Document` model: a root block plus zero or more composable
+cards, in document order. System metadata rides on the closed set of
+`$`-prefixed keys (§3.3); user payload fields sit flat alongside them and cannot
+collide, because field names exclude the `$` sigil.
 
-```typescript
-interface PlateJson {
-  $quill: string;         // quill name@version, from the root block $quill
-  $body?: object;         // root-block body as canonical Content-JSON on the plate wire (backends lower it directly); present when the main enables a body; markdown consumers get a lossy projection via exportMarkdown
-  $cards: Card[];         // zero or more cards, in document order
-  [field: string]: any;   // root-block payload fields, flat
-}
-
-interface Card {
-  $kind?: string;         // card kind, matches /^[a-z_][a-z0-9_]*$/; absent for a kindless card
-  $body?: object;         // card body as canonical Content-JSON on the plate wire (backends lower it directly); present when the card's kind enables a body; markdown consumers get a lossy projection via exportMarkdown
-  [field: string]: any;   // card payload fields, flat
-}
-```
-
-- `$`-metadata is **present exactly where the schema defines it** ("absent on
-  undefined"): `$kind` is document-defined (absent for a kindless card), `$body`
-  is schema-defined (absent for a body-disabled or unknown kind, and for a
-  body-disabled main). The raw `to_plate_json` is schema-free and omits only the
-  document-defined `$kind`; the render plate the backend receives
-  (`compile_data`) additionally drops `$body` where the schema defines none. Read
-  plate metadata with a total accessor (`card.at("$body", default: "")`); a
-  present `$body` is always a content object.
-- `$cards` is always present, possibly empty.
 - Root-block fields and card-field names may collide freely; each card is its
   own scope.
 - Body text is preserved verbatim — whitespace, line endings, and inline
   CommonMark are untouched by the splitter.
-- `$body` (root and per-card) and every `richtext` payload field cross as
-  canonical Content-JSON content objects (`{ text, lines, marks, islands }`) —
-  the lossless carrier. Markdown is a *lossy* projection of that content
-  (`underline` and island ids have no markdown form), available to
-  markdown/LLM consumers via the `exportMarkdown` codec, not the plate wire
-  form.
+
+How the engine serialises this model onto the wire for backends (the plate JSON)
+is an engine concern, outside this markdown standard.
 
 ## 6. Markdown Content
 
