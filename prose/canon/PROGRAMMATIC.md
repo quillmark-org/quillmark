@@ -44,10 +44,11 @@ and example values would pollute it.
 Python shown; Rust and WASM mirror it method-for-method:
 
 ```python
-doc = Document("invoice")
-doc.store_fields({"customer": row.name, "total": row.total})
+doc = Document("invoice")                       # blank canvas
+w = quill.writer(doc)                            # schema-bound: coerce + check at the write
+w.set_all({"customer": row.name, "total": row.total})
 for item in row.items:
-    doc.push_card(Document.make_card("line_item", {"desc": item.desc, "qty": item.qty}))
+    w.add_card("line_item", {"desc": item.desc, "qty": item.qty})
 result = engine.render(quill, doc, OutputFormat.PDF)
 ```
 
@@ -106,7 +107,7 @@ the index when patching:
 
 ```python
 idx = next(i for i, c in enumerate(doc.cards) if c["id"] == row_id)
-doc.store_card_fields(idx, {"qty": new_qty})
+quill.writer(doc).card(idx).set_all({"qty": new_qty})
 ```
 
 `$id` is optional and opaque; the model imposes no uniqueness on it.

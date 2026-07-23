@@ -77,7 +77,7 @@ block-level discipline.
 Anchor and unknown marks emit nothing; unknown island types emit nothing
 (parallel to the HTML rule at import). Content that import never admits into the
 content — raw HTML other than `<u>`, HTML comments, `<br>`, math, footnotes, task
-lists, definition lists (markdown-spec §6.3) — is simply absent here.
+lists, definition lists (markdown-spec §6.3) — is absent here.
 
 ### Island props
 

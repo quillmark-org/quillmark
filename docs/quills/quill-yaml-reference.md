@@ -238,7 +238,7 @@ main:
         group: letterhead
 ```
 
-The registry is the card's table of contents. Its keys are **snake_case ids** (same discipline as field keys), and their declaration order fixes the group display order — the contract every consumer follows, exactly as field declaration order fixes `ui.order`. A field's `ui.group` names one of those ids; a value with no matching registry key is a load error (`quill::unknown_group`), so a one-character typo can no longer silently split a section.
+The registry is the card's table of contents. Its keys are **snake_case ids** (same discipline as field keys), and their declaration order fixes the group display order — the contract every consumer follows, exactly as field declaration order fixes field display order. A field's `ui.group` names one of those ids; a value with no matching registry key is a load error (`quill::unknown_group`), so a one-character typo cannot silently split a section.
 
 **Identity is the id, not the label.** Consumers derive a group's display label from its id (`addressing` → "Addressing"), just as a field label is derived from its key. Override the derived label with `title:` — which requires the mapping form of the registry:
 
@@ -260,7 +260,7 @@ The two registry forms are interchangeable: a bare sequence of ids (`[addressing
 
 Field display order is **declaration order** — the order the keys appear in `Quill.yaml`. This holds at every level: card-level fields, and the properties of a typed dictionary or typed-table row. The order is carried structurally (the schema's field maps preserve key order, and `schema()` re-emits that order), so no per-field knob is involved.
 
-There is no `ui.order` key. It was removed: an authored `ui: { order: N }` is now a load error (`quill::field_parse_error`) directing you to reorder the fields instead. To move a field, move its block in `Quill.yaml`.
+There is no `ui.order` key: an authored `ui: { order: N }` is a load error (`quill::field_parse_error`) directing you to reorder the fields instead. To move a field, move its block in `Quill.yaml`.
 
 ### `compact`
 

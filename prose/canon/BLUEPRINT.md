@@ -472,21 +472,12 @@ prose.
 | `blueprint` | *"give me the form to fill"* | Endorsed: `default:`; Unendorsed: `example:` else bare | annotated string | yes (`!must_fill`) |
 | seeding | *"give me a filled-out one"* | `example:` › absent | committed `Document` | no |
 
-- The **blueprint** is the canonical authoring surface: an Endorsed field
-  (has a `default:`) renders its default with no marker; an Unendorsed field
-  is stamped `!must_fill`, carrying its `example` as the suggested value when
-  one exists (else bare null/empty). On an Endorsed field an `example:`
-  surfaces only as a `# e.g.` hint, never as the rendered value.
-- **Seeding** commits each field's `example:` and leaves every other field
-  absent (`example: → absent`, *not* `example: › default: › zero`), so the
-  compilation layer fills `default: → zero` underneath at render time. It is
-  the committed, structured twin handed to editor consumers. See
-  [SCHEMAS.md](SCHEMAS.md) § "Document seeding".
-- A seeded document therefore *renders* each field's `example:` where present,
-  else its `default:`, else its zero value — the same consolidation an eager
-  fill would produce, but resolved at the render floor for fidelity. The
-  per-field **zero value** (`zero_value`, defined in
-  [SCHEMAS.md](SCHEMAS.md) § "Zero-filled render") is that shared render floor.
+The **blueprint** column is this doc's contract (above). The **seeding**
+column — value precedence `example: → absent`, with `default:`/`zero` deferred
+to the render floor — is owned by [SCHEMAS.md](SCHEMAS.md) § "Document
+seeding"; a seeded document renders each field's `example:` where present, else
+the render floor's `default: → zero` (`zero_value`, [SCHEMAS.md](SCHEMAS.md)
+§ "Zero-filled render").
 
 ## Bindings surface
 

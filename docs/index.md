@@ -19,7 +19,7 @@
   → [Creating Quills](quills/creating-quills.md)
 
 - **Integrating into an app?** You use Quillmark via Python or JavaScript.  
-  → [Quickstart](getting-started/quickstart.md)
+  → [Quickstart](getting-started/quickstart.md) · [Integrating Quillmark](integration/index.md)
 
 - **Using the CLI?** You render and validate from the command line.  
   → [CLI Reference](cli/reference.md)

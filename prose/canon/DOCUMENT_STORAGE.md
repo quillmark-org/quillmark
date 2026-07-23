@@ -259,4 +259,4 @@ version, so retirement is reserved for shapes with no live rows.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — `Document` in the core type overview
 - [markdown-spec.md](../references/markdown-spec.md) — Markdown syntax and the in-memory data model
 - [VERSIONING.md](VERSIONING.md) — quill version resolution (a separate concern)
-- [QUILL_VALUE.md](QUILL_VALUE.md) — value type stored inside payload fields
+- `QuillValue` (`crates/core/src/value.rs` rustdoc) — value type stored inside payload fields

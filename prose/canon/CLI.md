@@ -62,25 +62,7 @@ quillmark info <QUILL_PATH> [--json]
 
 Displays quill metadata: name, description, version, author, backend, field count, card count (when nonzero), and any non-standard metadata keys; the text output also shows a defaults count (when nonzero). `--json` emits name, backend, version, author, description, `field_count`, `card_count` (when nonzero), and a `metadata` object for non-standard keys — it has no defaults count. Standard keys (`backend`, `version`, `author`, `description`) are excluded from the metadata section.
 
-## Project Structure
+## Implementation
 
-```
-crates/bindings/cli/src/
-├── main.rs
-├── commands/
-│   ├── mod.rs
-│   ├── info.rs
-│   ├── render.rs
-│   ├── schema.rs
-│   ├── blueprint.rs
-│   └── validate.rs
-├── output.rs
-└── errors.rs
-```
-
-## Dependencies
-
-- `clap` — argument parsing
-- `quillmark` — the engine, with its default `typst`/`pdfform` backend features enabled
-- `quillmark-core` — types
-- `serde_json` — JSON output
+`clap` over the `quillmark` engine (default `typst`/`pdfform` features).
+Module layout and the dependency set are in `crates/bindings/cli/`.

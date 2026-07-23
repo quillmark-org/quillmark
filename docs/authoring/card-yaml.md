@@ -94,13 +94,9 @@ title: Document Title
 ~~~
 ```
 
-| Syntax | Meaning |
-|--------|---------|
-| `format` | Latest version (default) |
-| `format@latest` | Latest version (explicit) |
-| `format@2` | Latest 2.x.x |
-| `format@2.1` | Latest 2.1.x |
-| `format@2.1.0` | Exact version 2.1.0 |
+A bare name selects the latest version; `@latest`, `@2`, `@2.1`, and `@2.1.0`
+pin progressively tighter. The [Quill Versioning](../quills/versioning.md#how-authors-select-versions)
+page owns the full selector semantics.
 
 Quill names must match `[a-z_][a-z0-9_]*` (lowercase letters, digits, and
 underscores; must start with a lowercase letter or underscore).

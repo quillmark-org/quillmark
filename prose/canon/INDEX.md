@@ -10,7 +10,6 @@
 - **[../references/markdown-spec.md](../references/markdown-spec.md)** - Quillmark Markdown specification (superset of CommonMark)
 - **[DOCUMENT_STORAGE.md](DOCUMENT_STORAGE.md)** - Versioned JSON serialization of `Document` for database persistence
 - **[QUILL.md](QUILL.md)** - Quill resource file structure and the portable, declarative `Quill` data type
-- **[QUILL_VALUE.md](QUILL_VALUE.md)** - Unified value type for YAML/JSON conversions
 - **[VERSIONING.md](VERSIONING.md)** - Quill version format and `$quill` reference syntax (selector parsed, not runtime-resolved)
 - **[SCHEMAS.md](SCHEMAS.md)** - `QuillConfig` schema model, native validation, and emission overview
 - **[BLUEPRINT.md](BLUEPRINT.md)** - Annotated Markdown blueprint for LLM/MCP authoring
