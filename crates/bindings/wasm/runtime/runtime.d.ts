@@ -170,6 +170,10 @@ export type HitGranularity = 'cluster' | 'segment';
 
 /** A click resolved to a field and USV offset into its Content. */
 export interface ContentHit {
+	/**
+	 * The field's canonical `DocPath` address (`parseDocPath`-routable) — the same
+	 * address {@link LiveSession.fieldAt} returns for that point.
+	 */
 	field: string;
 	pos: number;
 	/**
@@ -180,8 +184,8 @@ export interface ContentHit {
 }
 
 /**
- * A rendered field region: the quill schema field address (`field`) plus its
- * geometry (`rect`) on the page. Emitted by backends that place schema fields
+ * A rendered field region: the canonical `DocPath` field address (`field`) plus
+ * its geometry (`rect`) on the page. Emitted by backends that place schema fields
  * (`pdfform` AcroForm widgets; Typst form-fields and span-tracked content —
  * richtext bodies, `richtext[]` elements, card content fields, direct scalar
  * references). Only fields with a schema address produce a region — a
@@ -217,7 +221,12 @@ export interface ContentHit {
  * ```
  */
 export interface FieldRegion {
-	/** Quill schema field path (e.g. `"signature_block"`), not a backend widget name. */
+	/**
+	 * The field's canonical `DocPath` address (`parseDocPath`-routable), not a
+	 * backend widget name: `main.signature_block` for a main field,
+	 * `cards.<kind>[<i>].signature_block` for a card field (`cards[<i>].…` when the
+	 * card's kind is unknown).
+	 */
 	field: string;
 	/** 0-based page index. */
 	page: number;
@@ -412,11 +421,11 @@ export declare class LiveSession {
 	apply(doc: Document): ChangeSet;
 	render(options?: RenderOptions): RenderResult;
 	/**
-	 * Schema-field geometry for this compiled session, keyed on quill schema
-	 * field path. A session-level query: no render, no byte artifact. Read it
-	 * to scroll to / highlight the focused field over a `paint`-ed canvas;
-	 * the click direction is {@link fieldAt}. Empty for backends that place
-	 * no schema fields.
+	 * Schema-field geometry for this compiled session, keyed on the canonical
+	 * `DocPath` address (`parseDocPath`-routable). A session-level query: no
+	 * render, no byte artifact. Read it to scroll to / highlight the focused
+	 * field over a `paint`-ed canvas; the click direction is {@link fieldAt}.
+	 * Empty for backends that place no schema fields.
 	 *
 	 * `field` is **not** unique: a content field surfaces its **first
 	 * placement** as one {@link FieldRegion} per page that placement touches
@@ -429,9 +438,10 @@ export declare class LiveSession {
 	 */
 	regions(): FieldRegion[];
 	/**
-	 * The whole-field highlight boxes for `field` — one union rect per page,
-	 * over the field's `span`-bearing content segments (the "highlight the
-	 * focused field" quantity). Owns the union {@link regions} leaves derived
+	 * The whole-field highlight boxes for `field` (a canonical `DocPath` address,
+	 * as {@link regions} keys) — one union rect per page, over the field's
+	 * `span`-bearing content segments (the "highlight the focused field"
+	 * quantity). Owns the union {@link regions} leaves derived
 	 * (span-filter + per-page union), keeping `regions()` the low-level disjoint
 	 * truth, so a consumer stops reimplementing it. **Content only** — a field
 	 * placed solely as a scalar reference or a bound widget carries no `span`
@@ -442,10 +452,11 @@ export declare class LiveSession {
 	/**
 	 * The schema field whose content is under a point on `page` — the forward
 	 * (click → field) direction: hit-test a click against the compiled
-	 * document and get back the field address to focus in the editor, or
-	 * `undefined` off any field's ink. `x`/`y` are PDF points with a
-	 * **bottom-left** origin, the same space as {@link FieldRegion.rect} —
-	 * from a canvas click, invert the overlay transform documented there:
+	 * document and get back the canonical `DocPath` field address
+	 * (`parseDocPath`-routable) to focus in the editor, or `undefined` off any
+	 * field's ink. `x`/`y` are PDF points with a **bottom-left** origin, the
+	 * same space as {@link FieldRegion.rect} — from a canvas click, invert the
+	 * overlay transform documented there:
 	 * `x = clickPx.x / renderScale`,
 	 * `y = pageHeightPt - clickPx.y / renderScale`. Unlike {@link regions},
 	 * *every* placement answers, not just the first.
@@ -456,7 +467,10 @@ export declare class LiveSession {
 	 * space as {@link fieldAt}; `undefined` off all content ink.
 	 */
 	positionAt(page: number, x: number, y: number): ContentHit | undefined;
-	/** Content position → caret rect — reverse of {@link positionAt}. */
+	/**
+	 * Content position → caret rect — reverse of {@link positionAt}. `field` is a
+	 * canonical `DocPath` address (`parseDocPath`-routable), as {@link regions} keys.
+	 */
 	locate(field: string, pos: number): FieldRegion | undefined;
 	/** Page geometry in points (1/72″). Report-only; the painter sizes the canvas. */
 	pageSize(page: number): PageSize;
