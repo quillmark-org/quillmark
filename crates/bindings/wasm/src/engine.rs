@@ -1392,7 +1392,7 @@ impl Document {
     }
 
     /// **Revise** the richtext value at `addr` from a markdown string — **edit
-    /// semantics**, the default write path, returning the text [`Delta`]. Imports
+    /// semantics**, the default write path, returning the text `Delta`. Imports
     /// the markdown, diffs it against the current value, rebases surviving
     /// identity anchors, and returns the change an editor bridge maps its own
     /// positions through (`mapPos`). An absent `addr.field` targets the body, an
@@ -1424,7 +1424,7 @@ impl Document {
     /// surviving anchors rebase (as [`revise`](Self::revise)), then the diffed
     /// result is schema-conformed, so a `richtext(inline)` field rejects a
     /// multi-block result with `edit::field_richtext_not_inline`. Returns the
-    /// text [`Delta`].
+    /// text `Delta`.
     ///
     /// `addr` must name a field (a bare string is `{ field }`); a body address
     /// throws (a body carries no field schema — use [`revise`](Self::revise)). A
