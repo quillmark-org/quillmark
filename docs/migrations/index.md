@@ -18,6 +18,13 @@ guides in order.
 
 ## Available guides
 
+- [0.96 → 0.97](0.96-to-0.97.md) — the WASM verbatim transport read renames.
+  **Break:** `Document.get` → **`Document.getStored`** (JS) — the quill-free
+  field/body read gains its own verb so it no longer collides with the interpreted
+  `quill.reader(doc).get`; semantics are unchanged, only the name. Rename
+  `doc.get(...)` call sites to `doc.getStored(...)`; `reader.get`, `getMarkdown`,
+  `getExt`, and `isFill` are untouched, and Python (no quill-free field read) is
+  unaffected.
 - [0.95 → 0.96](0.95-to-0.96.md) — one address grammar on every boundary.
   **Break:** `LiveSession` geometry (`regions` / `fieldAt` / `positionAt` /
   `locate`) now keys on the canonical `DocPath` (`main.body`,

@@ -2,9 +2,10 @@
 //! [`TypedWriter`](crate::TypedWriter).
 //!
 //! The read surface's verbs split by read-vs-write, but the deeper fault line is
-//! **interpret-vs-transport**. [`Document::get`](crate::Card::payload) is
-//! *transport*: it returns the stored value verbatim, schema-free and
-//! round-trippable — the disambiguation / debug read. Projecting a field to
+//! **interpret-vs-transport**. The verbatim [`payload().get`](crate::Card::payload)
+//! (the WASM binding's `Document.getStored`) is *transport*: it returns the stored
+//! value verbatim, schema-free and round-trippable — the disambiguation / debug
+//! read. Projecting a field to
 //! markdown is *interpretation*: a schema-shaped question ("this field's
 //! richtext, as markdown") that a schema-free `Document` cannot answer without
 //! guessing which fields are even richtext. [`Card::field_markdown`] carries the

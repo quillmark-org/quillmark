@@ -928,16 +928,18 @@ impl Document {
         serialize_or_throw(&cards, "cards")
     }
 
-    /// Read the value at `addr` — the raw stored payload value of a field (a
-    /// content object for a richtext field, a scalar/array/object otherwise), or
-    /// the **body content** when `addr.field` is absent. A bare string is `Addr`
-    /// shorthand for `{ field }`. Reads are total over the field axis: an absent
-    /// field is `undefined`; only an out-of-range `addr.card` throws
-    /// `edit::index_out_of_range`. Reads need no schema, so they live on
-    /// `Document`, not the typed writer; for the markdown projection of a
-    /// richtext value use [`getMarkdown`](Self::get_markdown).
-    #[wasm_bindgen(js_name = get, unchecked_return_type = "unknown")]
-    pub fn get(
+    /// Read the **verbatim stored value** at `addr` — the raw payload value of a
+    /// field (a content object for a richtext field, a scalar/array/object
+    /// otherwise), or the **body content** when `addr.field` is absent. A bare
+    /// string is `Addr` shorthand for `{ field }`. Reads are total over the field
+    /// axis: an absent field is `undefined`; only an out-of-range `addr.card`
+    /// throws `edit::index_out_of_range`. Needs no schema, so it lives on
+    /// `Document` — the read echo of the verbatim `store*` write, distinct from
+    /// the interpreted schema-plane [`reader.get`](Self::reader_get). For the
+    /// markdown projection use [`getMarkdown`](Self::get_markdown) (body) or
+    /// `reader.get` (a field's declared type).
+    #[wasm_bindgen(js_name = getStored, unchecked_return_type = "unknown")]
+    pub fn get_stored(
         &self,
         #[wasm_bindgen(unchecked_param_type = "Addr | string")] addr: JsValue,
     ) -> Result<JsValue, JsValue> {
@@ -946,10 +948,10 @@ impl Document {
         match &addr.field {
             None => serialize_or_throw(
                 &quillmark_content::serial::to_canonical_value(card.body()),
-                "get",
+                "getStored",
             ),
             Some(field) => match card.payload().get(field) {
-                Some(v) => serialize_or_throw(v.as_json(), "get"),
+                Some(v) => serialize_or_throw(v.as_json(), "getStored"),
                 None => Ok(JsValue::UNDEFINED),
             },
         }
@@ -982,7 +984,7 @@ impl Document {
 
     /// Interpreted read at `addr`, resolving the field's declared `type` from
     /// `quill` — the stable ABI under the runtime `reader.get` / `reader.card(i).get`.
-    /// The schema-plane twin of the quill-free [`get`](Self::get): a `richtext`
+    /// The schema-plane twin of the quill-free [`getStored`](Self::get_stored): a `richtext`
     /// field returns its markdown projection, every other declared type its
     /// canonical value verbatim, so a consumer holding the quill reads by field
     /// meaning rather than by wire shape.

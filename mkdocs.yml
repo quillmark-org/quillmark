@@ -50,6 +50,7 @@ nav:
       - Markdown Specification: reference/markdown-spec.md
   - Migration:
       - Overview: migrations/index.md
+      - 0.96 → 0.97 (WASM Document.get → getStored; verbatim transport read gains its own verb): migrations/0.96-to-0.97.md
       - '0.95 → 0.96 (mutator edit:: codes; [EditError::…] prefix deleted; DocPath parser; null ≡ absent ratified)': migrations/0.95-to-0.96.md
       - 0.94 → 0.95 (store* verbs; one WASM address; quill.view; RichText → Content; strict date/datetime): migrations/0.94-to-0.95.md
       - 0.93 → 0.94 (richtext(inline) token retires; ui.order removed, declaration order is the ordering contract): migrations/0.93-to-0.94.md

@@ -630,7 +630,7 @@ export declare class CardWriter {
  * text, every other type its canonical value verbatim. Holds both handles by
  * reference and owns neither — nothing to `free()`.
  *
- * The schema authority is the point: unlike the quill-free transport `Document.get`,
+ * The schema authority is the point: unlike the quill-free transport `Document.getStored`,
  * a name the schema does not declare throws `UnknownField` (a typo) rather than
  * reading back `undefined`, and a content field holding a value that does not
  * decode throws `FieldRichtextDecode`. A field's markdown lives here, not on the

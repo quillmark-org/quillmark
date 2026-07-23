@@ -255,9 +255,10 @@ Build a fresh card from a flat field map with
 `{ card?, field? }`, absent `card` = main, absent `field` = body — and a bare
 string is shorthand for `{ field }`. So `doc.storeField("qty", 3)` targets the
 main card's `qty`, `doc.storeField({ card: 2, field: "qty" }, 3)` a composable
-card's. Reads are total over the field axis (`get` → `undefined`, `isFill` → `false` for
+card's. Reads are total over the field axis (`getStored` → `undefined`, `isFill` → `false` for
 an absent field; only an out-of-range card throws); field writes throw on a body
-address. `getMarkdown` is the body markdown read (a `CardAddr`; a field's
+address. `getStored` is the verbatim transport read, distinct from the interpreted
+`quill.reader(doc).get`; `getMarkdown` is the body markdown read (a `CardAddr`; a field's
 markdown is read through `quill.reader(doc).get(field)`). Card-scoped verbs take a
 `CardAddr` (`{ card? }`) first: `doc.getExt({ card: 2 })`, and the batch below.
 

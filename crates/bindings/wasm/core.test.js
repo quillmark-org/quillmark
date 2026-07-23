@@ -158,8 +158,8 @@ title: Draft
     doc.storeField({ card: 0, field: 'author' }, 'Bob')
     // Keyed card read (#953) — mirrors the write, no payloadItems walk. Agrees
     // with the hand-rolled projection it replaces.
-    expect(doc.get({ card: 0, field: 'author' })).toBe('Bob')
-    expect(doc.get({ card: 0, field: 'author' })).toBe(field(doc.cards[0], 'author'))
+    expect(doc.getStored({ card: 0, field: 'author' })).toBe('Bob')
+    expect(doc.getStored({ card: 0, field: 'author' })).toBe(field(doc.cards[0], 'author'))
 
     // Storage DTO round-trips losslessly — the editor's persistence path.
     const restored = Document.fromJson(doc.toJson())
@@ -180,9 +180,9 @@ title: Draft
 # Body`)
     doc.insertCard(Document.makeCard('note', { author: 'Alice' }, 'A note body.'))
 
-    // getCardField — value keyed by name; undefined when the field is absent.
-    expect(doc.get({ card: 0, field: 'author' })).toBe('Alice')
-    expect(doc.get({ card: 0, field: 'missing' })).toBeUndefined()
+    // getStored — value keyed by name; undefined when the field is absent.
+    expect(doc.getStored({ card: 0, field: 'author' })).toBe('Alice')
+    expect(doc.getStored({ card: 0, field: 'missing' })).toBeUndefined()
 
     // getMarkdown is the card body read (card address); a field address throws.
     // A field's markdown reads through the schema-plane view,
@@ -192,13 +192,13 @@ title: Draft
 
     // An out-of-range index is a boundary error — it throws, the way the card
     // write verbs do, rather than reading back as undefined/"".
-    expect(() => doc.get({ card: 1, field: 'author' })).toThrow()
+    expect(() => doc.getStored({ card: 1, field: 'author' })).toThrow()
     expect(() => doc.getMarkdown({ card: 1 })).toThrow()
 
-    // get still reads the raw value verbatim (transport) — including a scalar a
+    // getStored still reads the raw value verbatim (transport) — including a scalar a
     // storeField wrote under a would-be richtext field.
     doc.storeField({ card: 0, field: 'qty' }, 3)
-    expect(doc.get({ card: 0, field: 'qty' })).toBe(3)
+    expect(doc.getStored({ card: 0, field: 'qty' })).toBe(3)
   })
 
   it('single-card, $id, and seed-overlay reads (#956)', () => {

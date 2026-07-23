@@ -247,22 +247,22 @@ card_kinds:
     expectEditCode(() => cardEd.set('body', 'x'), 'edit::index_out_of_range')
   })
 
-  it('get reads raw values quill-free; getMarkdown is body-only (field half retired)', () => {
+  it('getStored reads raw values quill-free; getMarkdown is body-only (field half retired)', () => {
     const quill = buildQuill()
     const ed = quill.writer(blankDoc())
     ed.set('qty', '3')
     ed.set('subject', 'Q3 **results**')
     ed.setBody('Main **body**.')
     // Transport reads stay quill-free on the Document.
-    expect(ed.document.get('qty')).toBe(3)
-    expect(ed.document.get('missing')).toBeUndefined()
+    expect(ed.document.getStored('qty')).toBe(3)
+    expect(ed.document.getStored('missing')).toBeUndefined()
     // getMarkdown is the body read; a field address throws — a field's markdown
     // reads through the schema-plane view (#978).
     expect(ed.document.getMarkdown()).toBe('Main **body**.')
     expect(() => ed.document.getMarkdown({ field: 'subject' })).toThrow(/body-only/)
     expect(quill.reader(ed.document).get('subject')).toBe('Q3 **results**')
-    // view.get carries schema authority: an unknown name throws (vs `undefined`
-    // from the quill-free transport `Document.get` above).
+    // reader.get carries schema authority: an unknown name throws (vs `undefined`
+    // from the quill-free transport `Document.getStored` above).
     expectEditCode(() => quill.reader(ed.document).get('missing'), 'edit::unknown_field')
   })
 })

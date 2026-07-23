@@ -754,7 +754,7 @@ Quill.prototype.writer = function writer(doc) {
 };
 
 // ── Typed-reader sugar: the schema-plane read surface ──────────────────────────
-// The read twin of the writer above. The transport `Document.get` is schema-free
+// The read twin of the writer above. The transport `Document.getStored` is schema-free
 // — a `Document` cannot say which fields are richtext, so an unknown field name
 // reads back `undefined` rather than as the typo it is. Binding the quill's
 // schema (`_readerGet` takes the handle, like the `commit*` verbs) lets one `get`
