@@ -668,7 +668,8 @@ impl Quill {
     /// The resolved-value view of `doc` against this quill's schema — for every
     /// declared field the value the render projection would use and the
     /// `FieldSource` rung it came from (`"authored" | "default" | "zero"`), in
-    /// one call. The card body rides the `fields` map under the `$body` key.
+    /// one call. The card body is a `body` sibling on its card (row `name`
+    /// `"body"`), never a row in `fields` — `null` when the kind enables no body.
     ///
     /// Value and provenance only: completeness and errors stay `validate`'s
     /// (a consumer merges it with its own diagnostic producers regardless), and

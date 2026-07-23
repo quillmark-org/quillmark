@@ -79,8 +79,9 @@ export type {
 } from '../core/wasm.js';
 
 // The resolved-value view — the return shape of `quill.resolve(doc)`. Value
-// + source rung per declared field (the body rides the fields map under
-// `$body`); diagnostics stay `quill.validate`, guidance stays `quill.schema`.
+// + source rung per declared field (the body is a `body` sibling on its card,
+// never a row in `fields`); diagnostics stay `quill.validate`, guidance stays
+// `quill.schema`.
 // Declared in the core build's generated `.d.ts` via a
 // `typescript_custom_section`; re-exported here so the single public entry
 // point names them.
