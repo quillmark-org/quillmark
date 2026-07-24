@@ -1121,10 +1121,10 @@ impl Document {
         card_to_js(self.card_or_throw(index)?)
     }
 
-    /// The index of the first composable card whose `$id` equals `id`, or
-    /// `undefined` when none carries it. Resolves the canonical durable address
+    /// The index of the composable card whose `$id` equals `id`, or
+    /// `undefined` when none carries it. Resolves the durable card handle
     /// without a hand-rolled scan over [`cards`](Self::cards); `$id` is
-    /// non-unique by design, so the first match wins.
+    /// unique per document, so at most one card matches.
     #[wasm_bindgen(js_name = cardIndexById, unchecked_return_type = "number | undefined")]
     pub fn card_index_by_id(&self, id: &str) -> JsValue {
         match self.inner.find_card(id) {

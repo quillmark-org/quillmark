@@ -57,7 +57,7 @@ idx = next(i for i, c in enumerate(doc.cards) if c["id"] == row_id)
 quill.writer(doc).card(idx).set_all({"qty": new_qty})
 ```
 
-`$id` is optional and opaque; the model imposes no uniqueness on it.
+`$id` is optional and opaque; when present it is unique per document — mutators reject a collision, and parse repairs one under a warning.
 
 ## Scope note
 

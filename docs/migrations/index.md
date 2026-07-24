@@ -18,13 +18,20 @@ guides in order.
 
 ## Available guides
 
-- [0.96 → 0.97](0.96-to-0.97.md) — the WASM verbatim transport read renames.
+- [0.96 → 0.97](0.96-to-0.97.md) — the WASM transport read renames; `$id`
+  becomes the unique card handle.
   **Break:** `Document.get` → **`Document.getStored`** (JS) — the quill-free
   field/body read gains its own verb so it no longer collides with the interpreted
   `quill.reader(doc).get`; semantics are unchanged, only the name. Rename
   `doc.get(...)` call sites to `doc.getStored(...)`; `reader.get`, `getMarkdown`,
   `getExt`, and `isFill` are untouched, and Python (no quill-free field read) is
   unaffected.
+  **Break:** a card `$id` is now unique per document and never empty — parse
+  drops a duplicate or empty `$id` under a warning (first card keeps it),
+  card-insertion verbs throw `edit::card_id_collision` / `edit::empty_card_id`,
+  and a stored blob carrying a violation fails to load. New guarded verbs:
+  `Document::set_card_id` / `remove_card_id`. No writer up to 0.96 minted a
+  `$id`, so only documents hand-stamped with repeats are affected.
 - [0.95 → 0.96](0.95-to-0.96.md) — one address grammar on every boundary.
   **Break:** `LiveSession` geometry (`regions` / `fieldAt` / `positionAt` /
   `locate`) now keys on the canonical `DocPath` (`main.body`,

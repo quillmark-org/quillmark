@@ -60,8 +60,10 @@ on the block's typed metadata.
   `main` by position; `$kind: main` may be omitted or declared explicitly —
   any other value is a parse error. Every composable card must declare a kind
   matching `[a-z_][a-z0-9_]*` other than `main`.
-- **`$id: <value>`** is an opaque, optional identifier — plain metadata with
-  no validation or uniqueness requirement, carried through the round-trip.
+- **`$id: <value>`** is an opaque, optional identifier — the durable card
+  handle, carried through the round-trip. Unique per document: the first
+  card carrying a given `$id` keeps it, and a later duplicate (or an empty
+  `$id`) is dropped with a warning.
 - **`$ext: <mapping>`** is an opaque YAML mapping reserved for out-of-band
   extension data — UI editor state, agent annotations, anything bespoke to a
   consumer that should not reach the rendered output. Round-trips through

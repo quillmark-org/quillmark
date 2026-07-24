@@ -209,17 +209,20 @@ title: Draft
 ~~~
 
 # Body`)
-    doc.insertCard({ kind: 'note', id: 'dup', body: 'A' })
+    doc.insertCard({ kind: 'note', id: 'first', body: 'A' })
     doc.insertCard({ kind: 'note', id: 'other', body: 'B' })
-    doc.insertCard({ kind: 'note', id: 'dup', body: 'C' })
+    // $id is unique per document — a colliding insert is rejected
+    // (edit::card_id_collision), and the empty id is a degenerate handle.
+    expect(() => doc.insertCard({ kind: 'note', id: 'first', body: 'C' })).toThrow()
+    expect(() => doc.insertCard({ kind: 'note', id: '', body: 'C' })).toThrow()
 
     // card(i) reads one whole card without materializing the cards array.
     expect(doc.card(1).kind).toBe('note')
     expect(doc.card(1).id).toBe('other')
-    expect(() => doc.card(3)).toThrow() // out of range is a boundary error
+    expect(() => doc.card(2)).toThrow() // out of range is a boundary error
 
-    // cardIndexById resolves the durable $id address; non-unique → first match.
-    expect(doc.cardIndexById('dup')).toBe(0)
+    // cardIndexById resolves the durable $id handle — at most one match.
+    expect(doc.cardIndexById('first')).toBe(0)
     expect(doc.cardIndexById('other')).toBe(1)
     expect(doc.cardIndexById('missing')).toBeUndefined()
 

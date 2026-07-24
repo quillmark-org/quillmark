@@ -188,9 +188,13 @@ author wrote the line.
   byte-equal); omitting it is also accepted and synthesised at parse time.
   A non-`main` `$kind` on the root is a parse error. No composable card may
   declare `$kind: main`.
-- **`$id: <value>`** — an opaque, optional identifier. Plain metadata: no
-  validation, no uniqueness requirement; carried through round-trip
-  unchanged.
+- **`$id: <value>`** — an opaque, optional identifier: the durable card
+  handle, carried through round-trip unchanged. Unique across a document's
+  composable cards: the parser keeps the first card carrying a given `$id`
+  and drops the entry from any later duplicate under a warning; an empty
+  `$id` (a degenerate handle) is dropped the same way. A `$id` on the root
+  block is outside this scope — the root is addressed by position, never by
+  id — and is preserved verbatim.
 - **`$ext: <mapping>`** — an opaque, optional **mapping** reserved for
   out-of-band extension data (UI editor state, agent annotations, …).
   Required to be a YAML mapping (object); scalars and sequences are

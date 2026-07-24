@@ -14,7 +14,7 @@ syntax also evolves), `Document` serializes to a **versioned JSON envelope**,
 
 | Form | Round-trips? | Stable for storage? |
 |---|---|---|
-| Markdown (`Document::to_markdown`) | Yes | No — syntax evolves |
+| Markdown (`Document::to_markdown`) | Yes — valid documents (§ Card-id identity) | No — syntax evolves |
 | `StoredDocument` JSON | Yes — lossless | Yes — frozen per schema version |
 
 Use `StoredDocument` JSON whenever a `Document` must survive a process
@@ -208,6 +208,56 @@ Non-rendering is a property of review-time metadata, not a gap; a future render
 projection (proof annotations, PDF destinations) would render the referent or a
 position, never the id, so this policy holds either way.
 
+## Card-id identity
+
+A card's `$id` is the third id-bearing handle beside island and anchor ids:
+the **durable card handle** — the address that survives reorder, kind change,
+and both round-trips, where a card's index does not (`Document::find_card`
+resolves it). The three handles differ on one stated axis — *who can know
+the id*. An island id is determined by content, so the engine mints it at
+import (§ Island-id determinism). An anchor id is determined by an external
+referent only the caller knows (§ Anchor-id identity). A card id is
+determined by nothing external — but the scope that makes one valid, the
+document, is out of view at the creation site (`Quill::seed_card` returns a
+detached card), so the caller mints here too: the engine lacks the scope,
+not the referent.
+
+The policy: **a card `$id` is caller-supplied, optional, unique across the
+document's composable cards, opaque and invariant while the card lives;
+parse repairs a violation, every other boundary rejects one.**
+
+- **Caller-supplied; parse and load never mint.** A creation path stamps the
+  detached card (`Payload::set_id`) and the insertion guard checks it;
+  `Document::set_card_id` is the guarded door for a placed card. Minting at
+  import would break equal-markdown → equal-bytes; stamping at load would
+  move stored-row hashes under Byte-stability. A card without `$id` stays
+  legal — the handle is opt-in, and positional addressing remains.
+- **Unique per document, enforced per boundary.** Markdown is the lenient
+  hand-authoring boundary: parse **repairs** — the empty id (a degenerate
+  handle, as for anchors) and every duplicate after the first occupant drop
+  under a warning (`parse::card_id_empty` / `parse::card_id_duplicate`), so
+  a hand-edited or merge-conflicted file still loads and one emit converges
+  on a valid document (the markdown twin of legacy-row read-repair above).
+  Keep-first hands the handle to the card `find_card` resolves; it is
+  position-dependent — pasting a copy of a card above its original hands the
+  copy the handle — but the two blocks are byte-identical at paste time, so
+  no tie-break can recover "the original". Mutators **reject**
+  (`EditError::CardIdCollision` / `EmptyCardId` on `push_card` /
+  `insert_card` / `set_card_id`), and storage **rejects**
+  (`StorageError::Malformed`): the writer cannot produce a violating blob,
+  so one carrying a violation is corrupt, not a repair candidate. The wire
+  form (`CardWire`) is card-scoped and carries no document; its documents
+  are checked where they assemble — at insertion.
+- **Scope is the composable-card list.** `main` is addressed structurally,
+  never by id; a `$id` on `main` is preserved verbatim, outside the handle
+  domain and the uniqueness scan — explicit partial scope, like the
+  island-cell anchors above.
+- **Opaque and invariant.** No mutator rewrites an id: `move_card`,
+  `set_card_kind`, and both round-trips pass it untouched. Removing a card
+  (or its id) retires the handle, and a retired handle is free for re-supply
+  — undo reconstructs a deleted card, stamp included, exactly because the
+  collision check guarantees the id it re-supplies is unused.
+
 ## Schema Versioning
 
 The schema version is tied to the **crate version at which the `Document`
@@ -301,6 +351,9 @@ version, so retirement is reserved for shapes with no live rows.
 - Unknown schema versions are rejected on read, never silently ignored.
 - DTO type names carry version suffixes with underscores
   (`DocumentV0_92_0`); `non_camel_case_types` is allowed module-wide for this.
+- No file extension is part of the storage contract: the interchange forms
+  are card-yaml markdown **text** and `StoredDocument` **JSON**. `.qmd` in
+  particular is unsanctioned — it collides with Quarto's extension.
 
 ## Links
 
