@@ -48,6 +48,18 @@ jobs:
           RUSTDOCFLAGS: -Dwarnings
         run: cargo doc --no-deps --locked
 
+      # The step above walks default-members, which omits the binding crates —
+      # crates/bindings/wasm is a wasm32 cdylib excluded from default-members —
+      # so their rustdoc, intra-doc links included, is never linted by it. That
+      # blind spot let two broken `Delta` links accumulate on the JS surface
+      # (#1034). quillmark-wasm also carries an rlib target, so it documents on
+      # the host toolchain; lint it explicitly to catch such breakage going
+      # forward. Separate step so a wasm-only doc failure is legible in the log.
+      - name: Build docs (wasm binding)
+        env:
+          RUSTDOCFLAGS: -Dwarnings
+        run: cargo doc --no-deps --locked -p quillmark-wasm
+
   test:
     runs-on: ubuntu-latest
     steps:
