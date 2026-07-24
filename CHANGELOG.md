@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.97.0 - 2026-07-24
+
+- core: one take_item primitive behind the three payload removers
+- core: fold the incoming-card guard shared by push_card/insert_card
+- tests: dense-prose fix on a muddy reinstatement comment
+- canon/docs: §Card-id identity — the third twin; wasm surface follows
+- core: card $id is the durable handle — unique per document, guarded
+- wasm: add island/mark discriminant guards; USV docs on mapPos/rebase
+- ci: lint the wasm binding's rustdoc to catch intra-doc breakage
+- Canonize anchor-id policy: caller-supplied, unique, invariant
+- Fix stale resolve() docs: body is a sibling, not a `$body` row
+- docs: prune per pruning pass — archive old migrations, cut duplication
+- docs: public integration pages for the high/medium doc gaps
+- docs: dense-prose sweep and accuracy fixes in docs/ and canon
+- docs(wasm): fix broken [`Delta`] intra-doc links (#1034)
+- wasm: rename Document.get → getStored so the verbatim read carries its lane
+
+
 ## v0.96.0 - 2026-07-23
 
 - docs(spec): keep plate JSON out of the markdown spec
