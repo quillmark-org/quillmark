@@ -98,6 +98,49 @@ export function isQuillmarkError(e) {
 	return e instanceof Error && Array.isArray(/** @type {any} */ (e).diagnostics);
 }
 
+// ── Open-set discriminant guards ────────────────────────────────────────────
+// `ContentIsland.type` and `ContentMark.type` are OPEN sets: each union carries
+// a residual `{ type: string; … }` arm, so a bare `x.type === 'table'` check
+// never narrows the payload — TS keeps the residual arm live (a `string` can be
+// `'table'`), leaving `props` / the mark payload opaque at every consumer. These
+// are the checked narrowing path: on the true branch the payload's pinned shape
+// is asserted. Only the payload-carrying arms get a guard — an island always
+// carries `props`, a `link` mark carries `url`, an `anchor` mark carries `id`;
+// the bare marks (`strong`/`emph`/`underline`/`strike`/`code`) narrow to
+// nothing. An unrecognized `type` fails every guard and keeps its opaque payload.
+
+/**
+ * @param {import('../core/wasm.js').ContentIsland} island
+ * @returns {island is import('../core/wasm.js').ContentIsland & { type: 'table'; props: import('../core/wasm.js').TableProps }}
+ */
+export function isTableIsland(island) {
+	return island.type === 'table';
+}
+
+/**
+ * @param {import('../core/wasm.js').ContentIsland} island
+ * @returns {island is import('../core/wasm.js').ContentIsland & { type: 'image'; props: import('../core/wasm.js').ImageProps }}
+ */
+export function isImageIsland(island) {
+	return island.type === 'image';
+}
+
+/**
+ * @param {import('../core/wasm.js').ContentMark} mark
+ * @returns {mark is import('../core/wasm.js').ContentMark & { type: 'link'; url: string }}
+ */
+export function isLinkMark(mark) {
+	return mark.type === 'link';
+}
+
+/**
+ * @param {import('../core/wasm.js').ContentMark} mark
+ * @returns {mark is import('../core/wasm.js').ContentMark & { type: 'anchor'; id: string }}
+ */
+export function isAnchorMark(mark) {
+	return mark.type === 'anchor';
+}
+
 // Backend builds are NEVER statically imported here — that would pull a
 // multi-MB binary into the eager graph and defeat lazy loading. Each entry is a
 // DESCRIPTOR: `load` is a thunk returning a dynamic `import()` (a backend's
