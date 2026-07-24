@@ -227,10 +227,13 @@ export type ContentContainer =
     | { container: "list_item"; ordered: boolean; start: number; ordinal: number }
     | { container: "quote" };
 
-/** A mark over char range `[start, end)` into `Content.text`. An `anchor`'s
- * `id` is a caller-supplied, opaque handle, unique per `Content` and invariant
- * while the mark lives (positions rebase, the id never does); it has no markdown
- * projection and survives only through the edit lane. See DOCUMENT_STORAGE
+/** A mark over char range `[start, end)` into `Content.text`. The open `type`
+ * arm blocks discriminant narrowing (as on `ContentIsland`), so read a
+ * payload-carrying arm behind its guard — `isLinkMark` (`url`) / `isAnchorMark`
+ * (`id`), from `@quillmark/wasm/runtime`; the bare arms carry no payload. An
+ * `anchor`'s `id` is a caller-supplied, opaque handle, unique per `Content` and
+ * invariant while the mark lives (positions rebase, the id never does); it has no
+ * markdown projection and survives only through the edit lane. See DOCUMENT_STORAGE
  * § Anchor-id identity. */
 export type ContentMark = { start: number; end: number } & (
     | { type: "strong" | "emph" | "underline" | "strike" | "code" }
@@ -267,7 +270,8 @@ export interface ImageProps {
  * open set: the engine pins `props` as `TableProps` for `table` and `ImageProps`
  * for `image`; an island of any other type round-trips with opaque `props`. Like
  * `ContentMark`, the open `type` arm means a discriminant check does not itself
- * narrow `props` — key off `type` and read `props` as the matching shape. */
+ * narrow `props` — read `props` as the matching shape behind the `isTableIsland` /
+ * `isImageIsland` guards (from `@quillmark/wasm/runtime`), which narrow it. */
 export type ContentIsland = {
     id: string;
     /** How faithfully the markdown projection can carry this island. */
@@ -1927,9 +1931,10 @@ pub fn export_markdown(
 
 /// Rebase `markdown` onto a `base` content — the pure, document-free twin of
 /// `revise`: cold-import + `diff_import`, returning the new `content` and the
-/// text `delta` (surviving anchors rebased). Use it to compute a revise without
-/// a document in hand; `revise(addr, md)` fuses this with the store for
-/// atomicity. Throws on an over-nested markdown input or a non-content `base`.
+/// text `delta` (its offsets USV indices into `Content.text`, surviving anchors
+/// rebased). Use it to compute a revise without a document in hand; `revise(addr,
+/// md)` fuses this with the store for atomicity. Throws on an over-nested
+/// markdown input or a non-content `base`.
 #[wasm_bindgen(js_name = rebase, unchecked_return_type = "{ content: Content; delta: Delta }")]
 pub fn rebase(
     #[wasm_bindgen(unchecked_param_type = "Content")] base: JsValue,
@@ -2057,10 +2062,11 @@ pub fn format_doc_path(
     Ok(doc_path.to_string())
 }
 
-/// Map a base content position through a `delta` to its new position — the pure
-/// position-mapping codec an editor bridge composes to hold a caret stable
-/// across a `revise`. `assoc` decides the side of a same-position insertion
-/// (`"after"` moves past it). Throws on a malformed `delta`.
+/// Map a base content position — a USV index into `Content.text`, not a UTF-16
+/// offset — through a `delta` to its new USV position: the pure position-mapping
+/// codec an editor bridge composes to hold a caret stable across a `revise`.
+/// `assoc` decides the side of a same-position insertion (`"after"` moves past
+/// it). Throws on a malformed `delta`.
 #[wasm_bindgen(js_name = mapPos)]
 pub fn map_pos(
     #[wasm_bindgen(unchecked_param_type = "Delta")] delta: JsValue,

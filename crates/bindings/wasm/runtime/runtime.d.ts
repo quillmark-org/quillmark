@@ -121,6 +121,37 @@ export interface QuillmarkError extends Error {
  */
 export declare function isQuillmarkError(e: unknown): e is QuillmarkError;
 
+// ── Open-set discriminant guards ────────────────────────────────────────────
+// `ContentIsland.type` / `ContentMark.type` are open sets — each union has a
+// residual `{ type: string; … }` arm, so a bare discriminant check never narrows
+// the payload (TS keeps the residual arm live, since a `string` can equal the
+// literal). These guards are the checked narrowing path for the pinned arms; an
+// unrecognized `type` fails every guard and keeps its opaque payload. Only the
+// payload-carrying arms get a guard — the bare marks
+// (`strong`/`emph`/`underline`/`strike`/`code`) narrow to nothing.
+
+import type { ContentIsland, TableProps, ImageProps, ContentMark } from '../core/wasm.js';
+
+/** Narrow a {@link ContentIsland} to the pinned `table` arm (`props: TableProps`). */
+export declare function isTableIsland(
+	island: ContentIsland
+): island is ContentIsland & { type: 'table'; props: TableProps };
+
+/** Narrow a {@link ContentIsland} to the pinned `image` arm (`props: ImageProps`). */
+export declare function isImageIsland(
+	island: ContentIsland
+): island is ContentIsland & { type: 'image'; props: ImageProps };
+
+/** Narrow a {@link ContentMark} to the `link` arm (carries `url`). */
+export declare function isLinkMark(
+	mark: ContentMark
+): mark is ContentMark & { type: 'link'; url: string };
+
+/** Narrow a {@link ContentMark} to the `anchor` arm (carries `id`). */
+export declare function isAnchorMark(
+	mark: ContentMark
+): mark is ContentMark & { type: 'anchor'; id: string };
+
 // ── Canonical render-side types ─────────────────────────────────────────────
 // These are the BACKEND-NEUTRAL render contract of the plural-backend API. They
 // are defined HERE (not re-exported from one private backend) because no single

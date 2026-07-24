@@ -182,3 +182,31 @@ export type ContentExportsPresent = [
 type MainCardAddrType = typeof import('../../../pkg/runtime/runtime.d.ts').MAIN_CARD_ADDR;
 const mainCardAddrIsCardAddr: CardAddr = {} as MainCardAddrType;
 void mainCardAddrIsCardAddr;
+
+// ── Open-set discriminant guards (#1042) ────────────────────────────────────
+// The guards must NARROW the open `type` unions — the whole point, since a bare
+// `x.type === 'table'` check cannot (the residual `{ type: string; … }` arm
+// stays live). Each `if` body reads a payload reachable only after narrowing, so
+// a guard that stops narrowing fails `npm run typecheck`. `ContentIsland`,
+// `TableProps`, `ImageProps`, and `ContentMark` are the types imported above.
+import { isTableIsland, isImageIsland, isLinkMark, isAnchorMark } from '../../../pkg/runtime/runtime.js';
+
+declare const guardIsland: ContentIsland;
+if (isTableIsland(guardIsland)) {
+	const tableProps: TableProps = guardIsland.props;
+	void tableProps;
+}
+if (isImageIsland(guardIsland)) {
+	const imageProps: ImageProps = guardIsland.props;
+	void imageProps;
+}
+
+declare const guardMark: ContentMark;
+if (isLinkMark(guardMark)) {
+	const url: string = guardMark.url;
+	void url;
+}
+if (isAnchorMark(guardMark)) {
+	const id: string = guardMark.id;
+	void id;
+}
