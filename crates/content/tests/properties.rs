@@ -448,6 +448,63 @@ proptest! {
         }
     }
 
+    /// Property (issue #1039): an anchor's `id` is bit-invariant under a random
+    /// splice + rebase. The mark may drop (its anchored text deleted) or move
+    /// (its range rebases through `map_pos`), but any *surviving* anchor carries
+    /// the exact id it started with — the runtime never rewrites an id. Import
+    /// mints no anchor, so the one id seeded here is the only one that can appear;
+    /// an astral char in it would expose any byte-level munging.
+    #[test]
+    fn anchor_id_bit_invariant_under_splice(
+        md in document(),
+        a_seed in 0usize..4096,
+        b_seed in 0usize..4096,
+        ins in "[a-z0-9 \n]{0,10}",
+        pos_seed in 0usize..4096,
+        del_seed in 0usize..4096,
+        is_delete in any::<bool>(),
+    ) {
+        const ID: &str = "anchor-\u{1f4a1}-42";
+        let mut rt = from_markdown(&md).unwrap();
+        let len = rt.len_usv();
+        let a = a_seed % (len + 1);
+        let b = b_seed % (len + 1);
+        rt.marks.push(Mark {
+            start: a.min(b),
+            end: a.max(b),
+            kind: MarkKind::Anchor { id: ID.into() },
+        });
+        rt.normalize();
+        prop_assert_eq!(rt.validate(), Ok(()), "seeded content invalid for {:?}", md);
+
+        let len = rt.len_usv();
+        let pos = pos_seed % (len + 1);
+        let delta = if is_delete {
+            let k = del_seed % (len - pos + 1);
+            let ops = retain(pos)
+                .into_iter()
+                .chain(std::iter::once(Op::Delete(k)))
+                .chain(retain(len - pos - k))
+                .collect();
+            Delta { ops }
+        } else {
+            let ops = retain(pos)
+                .into_iter()
+                .chain(std::iter::once(Op::Insert(ins.clone())))
+                .chain(retain(len - pos))
+                .collect();
+            Delta { ops }
+        };
+        if rt.apply_text_delta(&delta).is_ok() {
+            for m in &rt.marks {
+                if let MarkKind::Anchor { id } = &m.kind {
+                    prop_assert_eq!(id.as_str(), ID, "rebase rewrote an anchor id");
+                }
+            }
+            prop_assert_eq!(rt.validate(), Ok(()), "splice broke an invariant");
+        }
+    }
+
     /// `apply_mark_ops` preserves `validate()`: an accepted Add over a clamped
     /// range leaves the content valid (normalization trims edges / drops
     /// zero-width).

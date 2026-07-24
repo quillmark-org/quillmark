@@ -19,7 +19,11 @@ use std::borrow::Cow;
 /// A mark edit in final-text coordinates (post-delta, post-line-op).
 #[derive(Debug, Clone, PartialEq)]
 pub enum MarkOp {
-    /// Add a mark over `[start, end)`.
+    /// Add a mark over `[start, end)`. An anchor `kind` must carry a non-empty
+    /// `id` not already live in the field — ids are caller-supplied and unique
+    /// per `Content` (`DOCUMENT_STORAGE.md` § Anchor-id identity); a collision or
+    /// the empty id is rejected ([`ApplyError::AnchorIdCollision`] /
+    /// [`ApplyError::EmptyAnchorId`]), never replaced or coexisted.
     Add {
         start: Usv,
         end: Usv,
@@ -316,6 +320,16 @@ pub enum ApplyError {
     /// backing [`Island`], an orphaned-slot invariant violation. Islands are
     /// created through their own channel, never a text splice.
     IslandSlotInInsert,
+    /// A [`MarkOp::Add`] of an anchor whose `id` is already live in the field.
+    /// An anchor id is a caller-supplied handle, unique per `Content`
+    /// (`DOCUMENT_STORAGE.md` § Anchor-id identity); `add` rejects a collision
+    /// rather than replace (which would silently retarget a live thread) or
+    /// coexist (which `RemoveAnchor` cannot disambiguate). The op-time twin of
+    /// [`Invariant::AnchorIdCollision`](crate::model::Invariant::AnchorIdCollision).
+    AnchorIdCollision { id: String },
+    /// A [`MarkOp::Add`] of an anchor with the empty `id` — a degenerate handle,
+    /// refused so every anchor carries a usable referent.
+    EmptyAnchorId,
 }
 
 impl Content {
@@ -446,6 +460,24 @@ impl Content {
                             end: *end,
                             len,
                         });
+                    }
+                    // Anchor id: caller-supplied, unique per `Content`, non-empty
+                    // (`DOCUMENT_STORAGE.md` § Anchor-id identity). Reject a live
+                    // collision — `RemoveAnchor` cannot tell two same-id anchors
+                    // apart — and the empty degenerate handle. Ops apply in
+                    // sequence, so a `RemoveAnchor` earlier in the bundle frees
+                    // the id for re-add here.
+                    if let MarkKind::Anchor { id } = kind {
+                        if id.is_empty() {
+                            return Err(ApplyError::EmptyAnchorId);
+                        }
+                        if self
+                            .marks
+                            .iter()
+                            .any(|m| matches!(&m.kind, MarkKind::Anchor { id: aid } if aid == id))
+                        {
+                            return Err(ApplyError::AnchorIdCollision { id: id.clone() });
+                        }
                     }
                     self.marks.push(Mark {
                         start: *start,
@@ -1366,6 +1398,54 @@ mod tests {
         );
         assert!(matches!(err, Err(ApplyError::MarkOutOfRange { .. })));
         assert_eq!(rt, before, "failed bundle must not mutate the content");
+    }
+
+    /// `add` of an anchor rejects a live id collision and the empty id, but
+    /// re-adds an id freed by an earlier `RemoveAnchor` in the same bundle.
+    /// Issue #1039.
+    #[test]
+    fn add_anchor_id_uniqueness() {
+        let anchor = |id: &str| MarkKind::Anchor { id: id.into() };
+        let add = |start, end, id: &str| MarkOp::Add {
+            start,
+            end,
+            kind: anchor(id),
+        };
+
+        // First anchor lands; a second `add` of the same id is a collision.
+        let mut rt = from_markdown("abcd").unwrap();
+        rt.apply_field_change(&diff("abcd", "abcd"), &[], &[add(0, 2, "x")])
+            .unwrap();
+        assert_eq!(
+            rt.apply_field_change(&diff("abcd", "abcd"), &[], &[add(2, 4, "x")]),
+            Err(ApplyError::AnchorIdCollision { id: "x".into() })
+        );
+
+        // The empty id is refused.
+        let mut rt = from_markdown("abcd").unwrap();
+        assert_eq!(
+            rt.apply_field_change(&diff("abcd", "abcd"), &[], &[add(0, 2, "")]),
+            Err(ApplyError::EmptyAnchorId)
+        );
+
+        // Remove-then-add of the same id in one bundle is allowed — ops apply in
+        // sequence, so the id is free by the time the `add` runs.
+        let mut rt = from_markdown("abcd").unwrap();
+        rt.apply_field_change(&diff("abcd", "abcd"), &[], &[add(0, 2, "x")])
+            .unwrap();
+        rt.apply_field_change(
+            &diff("abcd", "abcd"),
+            &[],
+            &[MarkOp::RemoveAnchor { id: "x".into() }, add(2, 4, "x")],
+        )
+        .unwrap();
+        let anchors: Vec<_> = rt
+            .marks
+            .iter()
+            .filter(|m| matches!(m.kind, MarkKind::Anchor { .. }))
+            .collect();
+        assert_eq!(anchors.len(), 1);
+        assert_eq!((anchors[0].start, anchors[0].end), (2, 4));
     }
 
     // ── sync_lines_for_delta characterization (issue #926 finding 2) ─────────

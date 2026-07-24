@@ -136,8 +136,11 @@ pub enum MarkKind {
     },
     // Identity — a handle, not a property. Never merged, may be zero-width.
     /// A comment thread or stable anchor, carried by id and rebased across
-    /// edits like any position. No markdown projection (omitted on export;
-    /// survives via diff-rebase).
+    /// edits like any position. The id is caller-supplied, unique per `Content`,
+    /// opaque and invariant while the mark lives; positions rebase, the id never
+    /// does, and moved-and-rewritten text drops the mark whole
+    /// (`DOCUMENT_STORAGE.md` § Anchor-id identity). No markdown projection
+    /// (omitted on export; survives via diff-rebase).
     Anchor {
         id: String,
     },
@@ -338,6 +341,13 @@ pub enum Invariant {
     /// wrong one. Uniqueness is the id invariant `validate` enforces — positional
     /// equality is not, since edits keep an island's id stable across renumbers.
     IslandIdCollision { id: String },
+    /// Two prose anchors share an `id`, or one carries the empty id. An anchor
+    /// id is a caller-supplied, opaque handle, unique per `Content` (hash input,
+    /// never ambient in the twin's sense; `DOCUMENT_STORAGE.md` § Anchor-id
+    /// identity). `RemoveAnchor { id }` retains-out *every* match, so a shared id
+    /// makes removing one destroy both; the empty id is a degenerate handle.
+    /// Scope is prose marks — cell anchors are outside the op surface.
+    AnchorIdCollision { id: String },
     /// A table island's `header` prop is present but not a JSON array — it
     /// cannot carry column cells. `normalize` rewrites a non-array header to an
     /// empty array (a zero-column, content-free table).
@@ -505,6 +515,11 @@ impl Content {
         }
         let len = self.len_usv();
         let chars: Vec<char> = self.text.chars().collect();
+        // Prose anchor ids: unique, non-empty, caller-supplied opaque handles
+        // (`DOCUMENT_STORAGE.md` § Anchor-id identity). Uniqueness — the same
+        // invariant the island loop enforces below — is what `RemoveAnchor`
+        // presumes; scope is prose marks, cell anchors excluded by construction.
+        let mut seen_anchor_ids = std::collections::HashSet::new();
         for m in &self.marks {
             if m.start > m.end || m.end > len {
                 return Err(Invariant::MarkOutOfRange {
@@ -524,10 +539,18 @@ impl Content {
                     return Err(Invariant::MarkEdgeOnNewline { at: m.end - 1 });
                 }
             }
-            if let MarkKind::Unknown { tag, .. } = &m.kind {
-                if Self::RESERVED_MARK_TYPES.contains(&tag.as_str()) {
-                    return Err(Invariant::ReservedUnknownTag(tag.clone()));
+            match &m.kind {
+                MarkKind::Unknown { tag, .. } => {
+                    if Self::RESERVED_MARK_TYPES.contains(&tag.as_str()) {
+                        return Err(Invariant::ReservedUnknownTag(tag.clone()));
+                    }
                 }
+                MarkKind::Anchor { id } => {
+                    if id.is_empty() || !seen_anchor_ids.insert(id.as_str()) {
+                        return Err(Invariant::AnchorIdCollision { id: id.clone() });
+                    }
+                }
+                _ => {}
             }
         }
         for line in &self.lines {
@@ -1063,6 +1086,36 @@ mod tests {
         // Distinct ids validate.
         rt.islands = vec![table("a"), table("b")];
         assert_eq!(rt.validate(), Ok(()));
+    }
+
+    /// Two prose anchors sharing an `id` at different ranges violate the
+    /// anchor-id uniqueness invariant, as does the empty id. (Byte-identical
+    /// anchors `normalize` already dedupes; this is the surviving collision.)
+    /// Issue #1039.
+    #[test]
+    fn duplicate_or_empty_anchor_id_is_rejected() {
+        let mut rt = Content::empty();
+        rt.text = "abcd".into();
+        let anchor = |start, end, id: &str| Mark {
+            start,
+            end,
+            kind: MarkKind::Anchor { id: id.into() },
+        };
+        // Same id at two ranges — `RemoveAnchor` can't disambiguate them.
+        rt.marks = vec![anchor(0, 2, "x"), anchor(2, 4, "x")];
+        assert_eq!(
+            rt.validate(),
+            Err(Invariant::AnchorIdCollision { id: "x".into() })
+        );
+        // Distinct ids over distinct ranges validate.
+        rt.marks = vec![anchor(0, 2, "x"), anchor(2, 4, "y")];
+        assert_eq!(rt.validate(), Ok(()));
+        // The empty id is a degenerate handle.
+        rt.marks = vec![anchor(0, 2, "")];
+        assert_eq!(
+            rt.validate(),
+            Err(Invariant::AnchorIdCollision { id: String::new() })
+        );
     }
 
     /// `normalize` drops a byte-identical duplicate identity mark (same range,

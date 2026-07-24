@@ -160,6 +160,54 @@ producer (a live editor, a richer island type) is bound by the same rule:
 continue the positional sequence for appended islands; never mint an ambient
 id.
 
+## Anchor-id identity
+
+An anchor (`MarkKind::Anchor { id }`) and an island id are the *same handle* —
+opaque, unique per `Content`, hash input, session-stable, rebased not rewritten
+— differing on exactly one axis: **derivability at the markdown boundary**. An
+island projects to markdown, so its id is a pure function of that projection
+(§ Island-id determinism); an anchor has **no** projection — it names an
+external referent (a comment thread, an editor bookmark) that no content
+determines. The never-ambient rule therefore cannot apply, and need not: that
+rule exists to keep *import* a pure function of markdown, and import mints no
+anchor, so equal markdown still imports to equal bytes. The two sections read as
+one handle model, not a contradiction.
+
+The policy: **an anchor id is caller-supplied, unique per `Content`, opaque and
+invariant while the mark lives; the mark is best-effort under edits and absent
+from markdown.**
+
+- **Caller-supplied.** The engine mints no anchor id and cannot — only the
+  consumer knows the referent. Each consumer (editor, MCP writer) supplies its
+  own; the runtime persists it verbatim. Engine-minting is a considered
+  non-goal: a counter is history-dependent (the same final content reached two
+  ways carries different ids — the ambient source the twin rule forbids) and
+  forfeits referent-convergence (two `add`s for one thread would mint two
+  handles). A client wanting generated ids mints them client-side and supplies
+  them; the auto-fallback middle ground (engine mints when the caller omits) is
+  a non-goal too.
+- **Unique per `Content`.** `add` *rejects* a collision — not replace (which
+  silently retargets a live thread) nor coexist (already incoherent: an anchor
+  is *the* handle `RemoveAnchor { id }` retains-out, so a shared id makes
+  removing one destroy both). The empty id is rejected as a degenerate handle.
+  Enforced at op time in the `Add` arm and as a `Content::validate` invariant
+  (`Invariant::AnchorIdCollision`, the uniqueness scan the island check shares).
+  Scope is prose `marks`: an anchor inside an island cell is unreachable by
+  `RemoveAnchor` (it scans prose marks only), so it sits outside the op surface
+  and outside this uniqueness check — explicit partial enforcement, not silent
+  half-enforcement.
+- **Opaque and invariant.** The runtime never rewrites an id. Positions rebase
+  through splices (`map_pos`); the id passes untouched. A mark whose text is
+  deleted, or moved-and-rewritten in one round, drops *whole* — never
+  partially, never re-id'd (the documented diff-rebase residual).
+
+No markdown round-trip guarantee: export emits nothing for an anchor and import
+mints none, so a cold export→import loses every anchor. Anchors are edit-lane
+infrastructure — they survive only through diff-rebase (`revise` / `rebase`).
+Non-rendering is a property of review-time metadata, not a gap; a future render
+projection (proof annotations, PDF destinations) would render the referent or a
+position, never the id, so this policy holds either way.
+
 ## Schema Versioning
 
 The schema version is tied to the **crate version at which the `Document`

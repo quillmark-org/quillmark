@@ -227,7 +227,11 @@ export type ContentContainer =
     | { container: "list_item"; ordered: boolean; start: number; ordinal: number }
     | { container: "quote" };
 
-/** A mark over char range `[start, end)` into `Content.text`. */
+/** A mark over char range `[start, end)` into `Content.text`. An `anchor`'s
+ * `id` is a caller-supplied, opaque handle, unique per `Content` and invariant
+ * while the mark lives (positions rebase, the id never does); it has no markdown
+ * projection and survives only through the edit lane. See DOCUMENT_STORAGE
+ * § Anchor-id identity. */
 export type ContentMark = { start: number; end: number } & (
     | { type: "strong" | "emph" | "underline" | "strike" | "code" }
     | { type: "link"; url: string }
@@ -316,7 +320,10 @@ export type Assoc = "before" | "after";
 /**
  * A mark edit in final-text coordinates (post-delta, post-line-op). `add` /
  * `remove` carry the `ContentMark` vocabulary (`{ type, … }`); `removeAnchor`
- * drops one identity anchor by id.
+ * drops one identity anchor by id. An `add` of an `anchor` requires a non-empty
+ * `id` not already live in the field — a collision or the empty id throws
+ * (ids are caller-supplied and unique per `Content`; DOCUMENT_STORAGE
+ * § Anchor-id identity).
  */
 export type MarkOp =
     | ({ op: "add" | "remove"; start: number; end: number } & (
